@@ -1,0 +1,182 @@
+name: bal3_3hop_069_swift_codable_transform_chain
+tags:
+- lang:swift
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    Sources/DTOs/UserDTO.swift: |
+      import Foundation
+
+      struct UserDTO: Codable {
+          let id: String
+          let name: String
+          let email: String
+      }
+    Sources/Mappers/UserMapper.swift: |
+      import Foundation
+      import DTOs
+
+      struct UserMapper {
+          static func toDomain(dto: UserDTO) -> UserModel {
+              return UserModel(id: dto.id, displayName: dto.name)
+          }
+      }
+    Sources/Domain/UserModel.swift: |
+      import Foundation
+
+      struct UserModel {
+          let id: String
+          let displayName: String
+      }
+    Sources/Interactors/ProfileInteractor.swift: |
+      import Foundation
+      import Mappers
+      import DTOs
+
+      class ProfileInteractor {
+          func mapUser(dto: UserDTO) -> UserModel {
+              return UserMapper.toDomain(dto: dto)
+          }
+      }
+    Sources/Presenters/ProfilePresenter.swift: |
+      import Foundation
+      import Interactors
+
+      class ProfilePresenter {
+          private let interactor: ProfileInteractor
+          init(interactor: ProfileInteractor) {
+              self.interactor = interactor
+          }
+          func presentUser(dto: UserDTO) -> String {
+              let model = interactor.mapUser(dto: dto)
+              return model.displayName
+          }
+      }
+    Sources/Extensions/StringExt.swift: |
+      import Foundation
+      let GARBAGE_069_STR_EXT_A = "extension"
+      let GARBAGE_069_TRIM_B = "whitespace"
+
+      extension String {
+          var trimmed: String { trimmingCharacters(in: .whitespaces) }
+      }
+    Sources/Extensions/DateExt.swift: |
+      import Foundation
+      let GARBAGE_069_DATE_EXT_C = "extension"
+      let GARBAGE_069_ISO_D = "8601"
+
+      extension Date {
+          var iso8601: String { return "\(self)" }
+      }
+  changed_files:
+    Sources/DTOs/UserDTO.swift: |
+      import Foundation
+
+      struct UserDTO: Codable {
+          let id: String
+          let name: String
+          let email: String
+          let avatarURL: String?
+          let bio: String?
+      }
+    Sources/Mappers/UserMapper.swift: |
+      import Foundation
+      import DTOs
+
+      struct UserMapper {
+          static func toDomain(dto: UserDTO) -> UserModel {
+              return UserModel(id: dto.id, displayName: dto.name, avatarURL: dto.avatarURL)
+          }
+      }
+    Sources/Domain/UserModel.swift: |
+      import Foundation
+
+      struct UserModel {
+          let id: String
+          let displayName: String
+          let avatarURL: String?
+      }
+    Sources/Interactors/ProfileInteractor.swift: |
+      import Foundation
+      import Mappers
+      import DTOs
+
+      class ProfileInteractor {
+          func mapUser(dto: UserDTO) -> UserModel {
+              return UserMapper.toDomain(dto: dto)
+          }
+      }
+    Sources/Presenters/ProfilePresenter.swift: |
+      import Foundation
+      import Interactors
+
+      class ProfilePresenter {
+          private let interactor: ProfileInteractor
+          init(interactor: ProfileInteractor) {
+              self.interactor = interactor
+          }
+          func presentUser(dto: UserDTO) -> String {
+              let model = interactor.mapUser(dto: dto)
+              return model.displayName
+          }
+      }
+    Sources/Extensions/StringExt.swift: |
+      import Foundation
+      let GARBAGE_069_STR_EXT_A = "extension"
+      let GARBAGE_069_TRIM_B = "whitespace"
+
+      extension String {
+          var trimmed: String { trimmingCharacters(in: .whitespaces) }
+      }
+    Sources/Extensions/DateExt.swift: |
+      import Foundation
+      let GARBAGE_069_DATE_EXT_C = "extension"
+      let GARBAGE_069_ISO_D = "8601"
+
+      extension Date {
+          var iso8601: String { return "\(self)" }
+      }
+  commit_message: "feat: add avatar and bio fields to user DTO"
+fragments:
+- id: dto_avatar
+  selector:
+    path: Sources/DTOs/UserDTO.swift
+    anchor: "let avatarURL: String?"
+- id: mapper_avatar
+  selector:
+    path: Sources/Mappers/UserMapper.swift
+    anchor: "avatarURL: dto.avatarURL"
+- id: model_avatar
+  selector:
+    path: Sources/Domain/UserModel.swift
+    anchor: "let avatarURL: String?"
+- id: interactor_imports_mappers
+  selector:
+    path: Sources/Interactors/ProfileInteractor.swift
+    anchor: "import Mappers"
+- id: presenter_imports_interactors
+  selector:
+    path: Sources/Presenters/ProfilePresenter.swift
+    anchor: "import Interactors"
+- id: no_string_ext
+  selector:
+    path: Sources/Extensions/StringExt.swift
+    anchor: "GARBAGE_069_STR_EXT_A"
+- id: no_date_ext
+  selector:
+    path: Sources/Extensions/DateExt.swift
+    anchor: "GARBAGE_069_DATE_EXT_C"
+oracle:
+  required:
+  - dto_avatar
+  - mapper_avatar
+  - model_avatar
+  - interactor_imports_mappers
+  - presenter_imports_interactors
+  allowed: []
+  forbidden:
+  - no_string_ext
+  - no_date_ext

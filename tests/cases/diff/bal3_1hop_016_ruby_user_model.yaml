@@ -1,0 +1,275 @@
+name: bal3_1hop_016_ruby_user_model
+tags:
+- lang:python
+- change:bug_fix
+- change:multi_file
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/tasks/scheduler.py: |
+      import heapq
+      import time
+      from dataclasses import dataclass, field
+      from typing import Callable, Optional
+
+      @dataclass(order=True)
+      class ScheduledTask:
+          run_at: float
+          task_id: str = field(compare=False)
+          callback: Callable = field(compare=False)
+
+      class TaskScheduler:
+          def __init__(self):
+              self._queue: list = []
+              self._task_ids: set = set()
+
+          def schedule(self, task_id: str, delay_seconds: float, callback: Callable) -> None:
+              if task_id in self._task_ids:
+                  raise ValueError(f"task already scheduled: {task_id}")
+              task = ScheduledTask(
+                  run_at=time.monotonic() + delay_seconds,
+                  task_id=task_id,
+                  callback=callback,
+              )
+              heapq.heappush(self._queue, task)
+              self._task_ids.add(task_id)
+
+          def tick(self) -> int:
+              now = time.monotonic()
+              ran = 0
+              while self._queue and self._queue[0].run_at <= now:
+                  task = heapq.heappop(self._queue)
+                  self._task_ids.discard(task.task_id)
+                  task.callback()
+                  ran += 1
+              return ran
+
+          def pending_count(self) -> int:
+              return len(self._queue)
+    src/tasks/runner.py: |
+      from src.tasks.scheduler import TaskScheduler
+
+      class TaskRunner:
+          def __init__(self, scheduler: TaskScheduler):
+              self.scheduler = scheduler
+              self.results = []
+
+          def enqueue(self, task_id: str, delay: float, value: str) -> None:
+              self.scheduler.schedule(task_id, delay, lambda: self.results.append(value))
+
+          def run_pending(self) -> int:
+              return self.scheduler.tick()
+    tests/test_scheduler.py: |
+      import pytest
+      import time
+      from src.tasks.scheduler import TaskScheduler
+
+      def test_schedule_and_tick_runs_callback():
+          scheduler = TaskScheduler()
+          results = []
+          scheduler.schedule("task-1", 0.0, lambda: results.append("done"))
+          scheduler.tick()
+          assert "done" in results
+
+      def test_schedule_duplicate_id_raises():
+          scheduler = TaskScheduler()
+          scheduler.schedule("task-x", 10.0, lambda: None)
+          with pytest.raises(ValueError, match="already scheduled"):
+              scheduler.schedule("task-x", 10.0, lambda: None)
+
+      def test_pending_count_decrements_after_tick():
+          scheduler = TaskScheduler()
+          scheduler.schedule("a", 0.0, lambda: None)
+          scheduler.schedule("b", 0.0, lambda: None)
+          assert scheduler.pending_count() == 2
+          scheduler.tick()
+          assert scheduler.pending_count() == 0
+    src/monitoring/heartbeat.py: |
+      # GARBAGE_RUB16_A = "heartbeat_monitor_unrelated"
+      class HeartbeatMonitor:
+          def ping(self, service: str) -> bool:
+              return True
+    src/monitoring/watchdog.py: |
+      # GARBAGE_RUB16_B = "watchdog_monitor_unrelated"
+      class Watchdog:
+          def reset(self) -> None:
+              pass
+          def is_expired(self) -> bool:
+              return False
+    src/monitoring/circuit_breaker.py: |
+      # GARBAGE_RUB16_C = "circuit_breaker_unrelated"
+      class CircuitBreaker:
+          def __init__(self, failure_threshold: int):
+              self.failure_threshold = failure_threshold
+              self.failures = 0
+          def record_failure(self) -> None:
+              self.failures += 1
+          def is_open(self) -> bool:
+              return self.failures >= self.failure_threshold
+  changed_files:
+    src/tasks/scheduler.py: |
+      import heapq
+      import time
+      from dataclasses import dataclass, field
+      from typing import Callable, Optional
+
+      @dataclass(order=True)
+      class ScheduledTask:
+          run_at: float
+          task_id: str = field(compare=False)
+          callback: Callable = field(compare=False)
+
+      class TaskScheduler:
+          def __init__(self):
+              self._queue: list = []
+              self._task_ids: set = set()
+
+          def schedule(self, task_id: str, delay_seconds: float, callback: Callable) -> None:
+              if delay_seconds < 0:
+                  raise ValueError("delay_seconds must be non-negative")
+              if task_id in self._task_ids:
+                  raise ValueError(f"task already scheduled: {task_id}")
+              task = ScheduledTask(
+                  run_at=time.monotonic() + delay_seconds,
+                  task_id=task_id,
+                  callback=callback,
+              )
+              heapq.heappush(self._queue, task)
+              self._task_ids.add(task_id)
+
+          def cancel(self, task_id: str) -> bool:
+              if task_id not in self._task_ids:
+                  return False
+              self._task_ids.discard(task_id)
+              self._queue = [t for t in self._queue if t.task_id != task_id]
+              heapq.heapify(self._queue)
+              return True
+
+          def tick(self) -> int:
+              now = time.monotonic()
+              ran = 0
+              while self._queue and self._queue[0].run_at <= now:
+                  task = heapq.heappop(self._queue)
+                  if task.task_id not in self._task_ids:
+                      continue
+                  self._task_ids.discard(task.task_id)
+                  task.callback()
+                  ran += 1
+              return ran
+
+          def pending_count(self) -> int:
+              return len(self._task_ids)
+    src/tasks/runner.py: |
+      from src.tasks.scheduler import TaskScheduler
+
+      class TaskRunner:
+          def __init__(self, scheduler: TaskScheduler):
+              self.scheduler = scheduler
+              self.results = []
+
+          def enqueue(self, task_id: str, delay: float, value: str) -> None:
+              self.scheduler.schedule(task_id, delay, lambda: self.results.append(value))
+
+          def run_pending(self) -> int:
+              return self.scheduler.tick()
+    tests/test_scheduler.py: |
+      import pytest
+      import time
+      from src.tasks.scheduler import TaskScheduler
+
+      def test_schedule_and_tick_runs_callback():
+          scheduler = TaskScheduler()
+          results = []
+          scheduler.schedule("task-1", 0.0, lambda: results.append("done"))
+          scheduler.tick()
+          assert "done" in results
+
+      def test_schedule_duplicate_id_raises():
+          scheduler = TaskScheduler()
+          scheduler.schedule("task-x", 10.0, lambda: None)
+          with pytest.raises(ValueError, match="already scheduled"):
+              scheduler.schedule("task-x", 10.0, lambda: None)
+
+      def test_pending_count_decrements_after_tick():
+          scheduler = TaskScheduler()
+          scheduler.schedule("a", 0.0, lambda: None)
+          scheduler.schedule("b", 0.0, lambda: None)
+          assert scheduler.pending_count() == 2
+          scheduler.tick()
+          assert scheduler.pending_count() == 0
+
+      def test_negative_delay_raises():
+          scheduler = TaskScheduler()
+          with pytest.raises(ValueError, match="non-negative"):
+              scheduler.schedule("bad", -1.0, lambda: None)
+
+      def test_cancel_prevents_execution():
+          scheduler = TaskScheduler()
+          results = []
+          scheduler.schedule("c", 0.0, lambda: results.append("x"))
+          cancelled = scheduler.cancel("c")
+          assert cancelled is True
+          scheduler.tick()
+          assert results == []
+    src/monitoring/heartbeat.py: |
+      # GARBAGE_RUB16_A = "heartbeat_monitor_unrelated"
+      class HeartbeatMonitor:
+          def ping(self, service: str) -> bool:
+              return True
+    src/monitoring/watchdog.py: |
+      # GARBAGE_RUB16_B = "watchdog_monitor_unrelated"
+      class Watchdog:
+          def reset(self) -> None:
+              pass
+          def is_expired(self) -> bool:
+              return False
+    src/monitoring/circuit_breaker.py: |
+      # GARBAGE_RUB16_C = "circuit_breaker_unrelated"
+      class CircuitBreaker:
+          def __init__(self, failure_threshold: int):
+              self.failure_threshold = failure_threshold
+              self.failures = 0
+          def record_failure(self) -> None:
+              self.failures += 1
+          def is_open(self) -> bool:
+              return self.failures >= self.failure_threshold
+  commit_message: "fix: guard negative delay and add cancel method to TaskScheduler"
+fragments:
+- id: negative_delay_guard
+  selector:
+    path: src/tasks/scheduler.py
+    anchor: "delay_seconds must be non-negative"
+- id: cancel_method
+  selector:
+    path: src/tasks/scheduler.py
+    anchor: "def cancel"
+- id: test_negative_delay
+  selector:
+    path: tests/test_scheduler.py
+    anchor: "test_negative_delay_raises"
+- id: test_cancel_prevents
+  selector:
+    path: tests/test_scheduler.py
+    anchor: "test_cancel_prevents_execution"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_RUB16_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_RUB16_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_RUB16_C
+oracle:
+  required:
+  - negative_delay_guard
+  - cancel_method
+  - test_negative_delay
+  allowed:
+  - test_cancel_prevents
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

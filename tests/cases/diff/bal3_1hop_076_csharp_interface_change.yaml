@@ -1,0 +1,383 @@
+name: bal3_1hop_076_csharp_interface_change
+tags:
+- lang:csharp
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: csharp-no-tree-sitter
+repo:
+  initial_files:
+    src/Core/IMessageBroker.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Core
+      {
+          public interface IMessageBroker
+          {
+              void Publish(string topic, string message);
+              void Subscribe(string topic, Action<string> handler);
+          }
+      }
+    src/Services/OrderNotifier.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Services
+      {
+          public class OrderNotifier
+          {
+              private readonly IMessageBroker _broker;
+
+              public OrderNotifier(IMessageBroker broker)
+              {
+                  _broker = broker;
+              }
+
+              public void NotifyOrderCreated(int orderId)
+              {
+                  _broker.Publish("orders.created", orderId.ToString());
+              }
+
+              public void NotifyOrderShipped(int orderId)
+              {
+                  _broker.Publish("orders.shipped", orderId.ToString());
+              }
+          }
+      }
+    src/Services/InventorySync.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Services
+      {
+          public class InventorySync
+          {
+              private readonly IMessageBroker _broker;
+
+              public InventorySync(IMessageBroker broker)
+              {
+                  _broker = broker;
+                  _broker.Subscribe("orders.created", HandleOrderCreated);
+              }
+
+              private void HandleOrderCreated(string message)
+              {
+                  Console.WriteLine($"Syncing inventory for order {message}");
+              }
+          }
+      }
+    src/Services/AuditLogger.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Services
+      {
+          public class AuditLogger
+          {
+              private readonly IMessageBroker _broker;
+
+              public AuditLogger(IMessageBroker broker)
+              {
+                  _broker = broker;
+                  _broker.Subscribe("orders.created", LogEvent);
+                  _broker.Subscribe("orders.shipped", LogEvent);
+              }
+
+              private void LogEvent(string message)
+              {
+                  Console.WriteLine($"[AUDIT] {DateTime.UtcNow}: {message}");
+              }
+          }
+      }
+    src/Services/EmailDispatcher.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Services
+      {
+          public class EmailDispatcher
+          {
+              private readonly IMessageBroker _broker;
+
+              public EmailDispatcher(IMessageBroker broker)
+              {
+                  _broker = broker;
+                  _broker.Subscribe("orders.shipped", SendShipmentEmail);
+              }
+
+              private void SendShipmentEmail(string message)
+              {
+                  Console.WriteLine($"Sending shipment email for {message}");
+              }
+          }
+      }
+    src/Utils/StringHelper.cs: |
+      using System;
+      GARBAGE_076_STRING_PAD_A = 20;
+      GARBAGE_076_TRIM_MODE_B = "both";
+
+      namespace App.Utils
+      {
+          public static class StringHelper
+          {
+              public static string Truncate(string input, int maxLength)
+              {
+                  return input.Length <= maxLength ? input : input.Substring(0, maxLength);
+              }
+          }
+      }
+    src/Utils/MathHelper.cs: |
+      using System;
+      GARBAGE_076_PRECISION_C = 6;
+      GARBAGE_076_ROUNDING_D = "half_up";
+
+      namespace App.Utils
+      {
+          public static class MathHelper
+          {
+              public static double Round(double value, int decimals)
+              {
+                  return Math.Round(value, decimals);
+              }
+          }
+      }
+    src/Config/AppSettings.cs: |
+      using System;
+      GARBAGE_076_ENV_NAME_E = "production";
+      GARBAGE_076_LOG_LEVEL_F = "info";
+
+      namespace App.Config
+      {
+          public class AppSettings
+          {
+              public string Environment { get; set; }
+              public int MaxRetries { get; set; }
+          }
+      }
+  changed_files:
+    src/Core/IMessageBroker.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Threading.Tasks;
+
+      namespace App.Core
+      {
+          public interface IMessageBroker
+          {
+              Task PublishAsync(string topic, string message);
+              Task<IDisposable> SubscribeAsync(string topic, Func<string, Task> handler);
+              void Publish(string topic, string message);
+              void Subscribe(string topic, Action<string> handler);
+          }
+      }
+    src/Services/OrderNotifier.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Services
+      {
+          public class OrderNotifier
+          {
+              private readonly IMessageBroker _broker;
+
+              public OrderNotifier(IMessageBroker broker)
+              {
+                  _broker = broker;
+              }
+
+              public void NotifyOrderCreated(int orderId)
+              {
+                  _broker.Publish("orders.created", orderId.ToString());
+              }
+
+              public void NotifyOrderShipped(int orderId)
+              {
+                  _broker.Publish("orders.shipped", orderId.ToString());
+              }
+          }
+      }
+    src/Services/InventorySync.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Services
+      {
+          public class InventorySync
+          {
+              private readonly IMessageBroker _broker;
+
+              public InventorySync(IMessageBroker broker)
+              {
+                  _broker = broker;
+                  _broker.Subscribe("orders.created", HandleOrderCreated);
+              }
+
+              private void HandleOrderCreated(string message)
+              {
+                  Console.WriteLine($"Syncing inventory for order {message}");
+              }
+          }
+      }
+    src/Services/AuditLogger.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Services
+      {
+          public class AuditLogger
+          {
+              private readonly IMessageBroker _broker;
+
+              public AuditLogger(IMessageBroker broker)
+              {
+                  _broker = broker;
+                  _broker.Subscribe("orders.created", LogEvent);
+                  _broker.Subscribe("orders.shipped", LogEvent);
+              }
+
+              private void LogEvent(string message)
+              {
+                  Console.WriteLine($"[AUDIT] {DateTime.UtcNow}: {message}");
+              }
+          }
+      }
+    src/Services/EmailDispatcher.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Services
+      {
+          public class EmailDispatcher
+          {
+              private readonly IMessageBroker _broker;
+
+              public EmailDispatcher(IMessageBroker broker)
+              {
+                  _broker = broker;
+                  _broker.Subscribe("orders.shipped", SendShipmentEmail);
+              }
+
+              private void SendShipmentEmail(string message)
+              {
+                  Console.WriteLine($"Sending shipment email for {message}");
+              }
+          }
+      }
+    src/Utils/StringHelper.cs: |
+      using System;
+      GARBAGE_076_STRING_PAD_A = 20;
+      GARBAGE_076_TRIM_MODE_B = "both";
+
+      namespace App.Utils
+      {
+          public static class StringHelper
+          {
+              public static string Truncate(string input, int maxLength)
+              {
+                  return input.Length <= maxLength ? input : input.Substring(0, maxLength);
+              }
+          }
+      }
+    src/Utils/MathHelper.cs: |
+      using System;
+      GARBAGE_076_PRECISION_C = 6;
+      GARBAGE_076_ROUNDING_D = "half_up";
+
+      namespace App.Utils
+      {
+          public static class MathHelper
+          {
+              public static double Round(double value, int decimals)
+              {
+                  return Math.Round(value, decimals);
+              }
+          }
+      }
+    src/Config/AppSettings.cs: |
+      using System;
+      GARBAGE_076_ENV_NAME_E = "production";
+      GARBAGE_076_LOG_LEVEL_F = "info";
+
+      namespace App.Config
+      {
+          public class AppSettings
+          {
+              public string Environment { get; set; }
+              public int MaxRetries { get; set; }
+          }
+      }
+  commit_message: "feat: add async PublishAsync and SubscribeAsync to IMessageBroker"
+fragments:
+- id: order_notifier_using
+  selector:
+    path: src/Services/OrderNotifier.cs
+    anchor: "using App.Core"
+- id: order_notifier_publish
+  selector:
+    path: src/Services/OrderNotifier.cs
+    anchor: '_broker.Publish("orders.created"'
+- id: inventory_using
+  selector:
+    path: src/Services/InventorySync.cs
+    anchor: "using App.Core"
+- id: inventory_subscribe
+  selector:
+    path: src/Services/InventorySync.cs
+    anchor: '_broker.Subscribe("orders.created"'
+- id: audit_using
+  selector:
+    path: src/Services/AuditLogger.cs
+    anchor: "using App.Core"
+- id: email_using
+  selector:
+    path: src/Services/EmailDispatcher.cs
+    anchor: "using App.Core"
+- id: no_string_helper
+  selector:
+    path: src/Utils/StringHelper.cs
+- id: no_math_helper
+  selector:
+    path: src/Utils/MathHelper.cs
+- id: no_app_settings
+  selector:
+    path: src/Config/AppSettings.cs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_076_STRING_PAD_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_076_TRIM_MODE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_076_PRECISION_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_076_ROUNDING_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_076_ENV_NAME_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_076_LOG_LEVEL_F
+oracle:
+  required:
+  - order_notifier_using
+  - order_notifier_publish
+  - inventory_using
+  - inventory_subscribe
+  - audit_using
+  - email_using
+  allowed: []
+  forbidden:
+  - no_string_helper
+  - no_math_helper
+  - no_app_settings
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

@@ -1,0 +1,195 @@
+name: gap_132_swift_cross_module_search_index
+tags:
+- lang:swift
+- change:new_function
+- change:single_file
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    Sources/Search/SearchEngine.swift: |
+      import Foundation
+
+      struct SearchQuery {
+          let terms: [String]
+          let limit: Int
+          let offset: Int
+      }
+
+      struct SearchResult {
+          let documentId: String
+          let score: Double
+          let highlights: [String]
+      }
+
+      class SearchEngine {
+          private let index: InvertedIndex
+          private let scorer: RelevanceScorer
+
+          init(index: InvertedIndex, scorer: RelevanceScorer) {
+              self.index = index
+              self.scorer = scorer
+          }
+
+          func search(query: SearchQuery) -> [SearchResult] {
+              var candidates: [String: Double] = [:]
+              for term in query.terms {
+                  let postings = index.lookup(term: term)
+                  for (docId, frequency) in postings {
+                      let score = scorer.score(term: term, frequency: frequency)
+                      candidates[docId, default: 0] += score
+                  }
+              }
+              return candidates
+                  .sorted { $0.value > $1.value }
+                  .dropFirst(query.offset)
+                  .prefix(query.limit)
+                  .map { SearchResult(documentId: $0.key, score: $0.value, highlights: []) }
+          }
+      }
+    Sources/Index/InvertedIndex.swift: |
+      import Foundation
+
+      class InvertedIndex {
+          private var postings: [String: [(String, Int)]] = [:]
+          private var documentCount: Int = 0
+
+          func addDocument(id: String, tokens: [String]) {
+              var termFrequency: [String: Int] = [:]
+              for token in tokens {
+                  termFrequency[token, default: 0] += 1
+              }
+              for (term, freq) in termFrequency {
+                  postings[term, default: []].append((id, freq))
+              }
+              documentCount += 1
+          }
+
+          func lookup(term: String) -> [(String, Int)] {
+              postings[term] ?? []
+          }
+
+          func totalDocuments() -> Int {
+              documentCount
+          }
+
+          func termDocumentFrequency(term: String) -> Int {
+              postings[term]?.count ?? 0
+          }
+      }
+    Sources/Scoring/RelevanceScorer.swift: |
+      import Foundation
+
+      class RelevanceScorer {
+          private let boostFactors: [String: Double]
+
+          init(boostFactors: [String: Double] = [:]) {
+              self.boostFactors = boostFactors
+          }
+
+          func score(term: String, frequency: Int) -> Double {
+              let baseScore = log2(Double(frequency) + 1)
+              let boost = boostFactors[term] ?? 1.0
+              return baseScore * boost
+          }
+
+          func adjustBoost(term: String, factor: Double) {
+              var mutable = boostFactors
+              mutable[term] = factor
+          }
+      }
+    Sources/Export/ReportGenerator.swift: |
+      import Foundation
+
+      class ReportGenerator {
+          func generateCSV(results: [SearchResult]) -> String {
+              var output = "document_id,score\n"
+              for result in results {
+                  output += "\(result.documentId),\(result.score)\n"
+              }
+              return output
+          }
+
+          func generateJSON(results: [SearchResult]) -> Data? {
+              try? JSONEncoder().encode(results.map { $0.documentId })
+          }
+      }
+  changed_files:
+    Sources/Search/SearchEngine.swift: |
+      import Foundation
+
+      struct SearchQuery {
+          let terms: [String]
+          let limit: Int
+          let offset: Int
+      }
+
+      struct SearchResult {
+          let documentId: String
+          let score: Double
+          let highlights: [String]
+      }
+
+      class SearchEngine {
+          private let index: InvertedIndex
+          private let scorer: RelevanceScorer
+
+          init(index: InvertedIndex, scorer: RelevanceScorer) {
+              self.index = index
+              self.scorer = scorer
+          }
+
+          func search(query: SearchQuery) -> [SearchResult] {
+              var candidates: [String: Double] = [:]
+              for term in query.terms {
+                  let postings = index.lookup(term: term)
+                  for (docId, frequency) in postings {
+                      let score = scorer.score(term: term, frequency: frequency)
+                      candidates[docId, default: 0] += score
+                  }
+              }
+              return candidates
+                  .sorted { $0.value > $1.value }
+                  .dropFirst(query.offset)
+                  .prefix(query.limit)
+                  .map { SearchResult(documentId: $0.key, score: $0.value, highlights: []) }
+          }
+
+          func suggest(prefix: String, maxResults: Int) -> [String] {
+              let allTerms = index.allTerms()
+              return allTerms
+                  .filter { $0.hasPrefix(prefix) }
+                  .sorted { scorer.score(term: $0, frequency: 1) > scorer.score(term: $1, frequency: 1) }
+                  .prefix(maxResults)
+                  .map { $0 }
+          }
+      }
+fragments:
+- id: suggest_fn
+  selector:
+    path: Sources/Search/SearchEngine.swift
+    anchor: "func suggest"
+- id: index_lookup
+  selector:
+    path: Sources/Index/InvertedIndex.swift
+    anchor: "func lookup"
+- id: scorer_score
+  selector:
+    path: Sources/Scoring/RelevanceScorer.swift
+    anchor: "func score"
+- id: no_report
+  selector:
+    path: Sources/Export/ReportGenerator.swift
+- id: no_csv
+  selector:
+    anchor: generateCSV
+oracle:
+  required:
+  - suggest_fn
+  - scorer_score
+  forbidden:
+  - no_report
+  - no_csv

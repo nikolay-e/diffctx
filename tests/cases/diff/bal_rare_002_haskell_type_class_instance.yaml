@@ -1,0 +1,192 @@
+name: bal_rare_002_haskell_type_class_instance
+tags:
+- lang:haskell
+- change:multi_file
+- change:signature
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/Shape.hs: |
+      module Shape where
+
+      class Measurable a where
+        area :: a -> Double
+        perimeter :: a -> Double
+
+      data Circle = Circle { radius :: Double } deriving (Show)
+      data Rectangle = Rectangle { width :: Double, height :: Double } deriving (Show)
+
+      instance Measurable Circle where
+        area c = pi * radius c ^ 2
+        perimeter c = 2 * pi * radius c
+
+      instance Measurable Rectangle where
+        area r = width r * height r
+        perimeter r = 2 * (width r + height r)
+    src/Renderer.hs: |
+      module Renderer where
+      import Shape (Measurable, area, perimeter)
+
+      renderStats :: Measurable a => a -> String
+      renderStats shape =
+        "Area: " ++ show (area shape) ++ ", Perimeter: " ++ show (perimeter shape)
+    src/App.hs: |
+      module App where
+      import Renderer (renderStats)
+      import Shape (Circle(..), Rectangle(..))
+
+      main :: IO ()
+      main = do
+        let c = Circle 5.0
+        let r = Rectangle 3.0 4.0
+        putStrLn (renderStats c)
+        putStrLn (renderStats r)
+    garbage_db.hs: |
+      module GarbageDb where
+      GARBAGE_RARE_002_CONN_A = "postgres"
+      GARBAGE_RARE_002_POOL_B = 10
+
+      connectDb :: String -> IO ()
+      connectDb _ = return ()
+
+      GARBAGE_RARE_002_TIMEOUT_C = 30
+    garbage_auth.hs: |
+      module GarbageAuth where
+      GARBAGE_RARE_002_TOKEN_D = "jwt"
+      GARBAGE_RARE_002_SECRET_E = "hidden"
+
+      authenticate :: String -> Bool
+      authenticate _ = False
+
+      GARBAGE_RARE_002_EXPIRE_F = 7200
+  changed_files:
+    src/Shape.hs: |
+      module Shape where
+
+      class Measurable a where
+        area :: a -> Double
+        perimeter :: a -> Double
+        describe :: a -> String
+
+      data Circle = Circle { radius :: Double } deriving (Show)
+      data Rectangle = Rectangle { width :: Double, height :: Double } deriving (Show)
+      data Triangle = Triangle { sideA :: Double, sideB :: Double, sideC :: Double } deriving (Show)
+
+      instance Measurable Circle where
+        area c = pi * radius c ^ 2
+        perimeter c = 2 * pi * radius c
+        describe _ = "Circle"
+
+      instance Measurable Rectangle where
+        area r = width r * height r
+        perimeter r = 2 * (width r + height r)
+        describe _ = "Rectangle"
+
+      instance Measurable Triangle where
+        area t = let s = perimeter t / 2
+                 in sqrt (s * (s - sideA t) * (s - sideB t) * (s - sideC t))
+        perimeter t = sideA t + sideB t + sideC t
+        describe _ = "Triangle"
+    src/Renderer.hs: |
+      module Renderer where
+      import Shape (Measurable, area, perimeter, describe)
+
+      renderStats :: Measurable a => a -> String
+      renderStats shape =
+        describe shape ++ " - Area: " ++ show (area shape) ++ ", Perimeter: " ++ show (perimeter shape)
+    src/App.hs: |
+      module App where
+      import Renderer (renderStats)
+      import Shape (Circle(..), Rectangle(..), Triangle(..))
+
+      main :: IO ()
+      main = do
+        let c = Circle 5.0
+        let r = Rectangle 3.0 4.0
+        let t = Triangle 3.0 4.0 5.0
+        putStrLn (renderStats c)
+        putStrLn (renderStats r)
+        putStrLn (renderStats t)
+    garbage_db.hs: |
+      module GarbageDb where
+      GARBAGE_RARE_002_CONN_A = "postgres"
+      GARBAGE_RARE_002_POOL_B = 10
+
+      connectDb :: String -> IO ()
+      connectDb _ = return ()
+
+      GARBAGE_RARE_002_TIMEOUT_C = 30
+    garbage_auth.hs: |
+      module GarbageAuth where
+      GARBAGE_RARE_002_TOKEN_D = "jwt"
+      GARBAGE_RARE_002_SECRET_E = "hidden"
+
+      authenticate :: String -> Bool
+      authenticate _ = False
+
+      GARBAGE_RARE_002_EXPIRE_F = 7200
+  commit_message: "feat: add Triangle type and describe method to Measurable class"
+fragments:
+- id: shape_describe_method
+  selector:
+    path: src/Shape.hs
+    anchor: "describe :: a -> String"
+- id: triangle_data_type
+  selector:
+    path: src/Shape.hs
+    anchor: "data Triangle"
+- id: triangle_instance
+  selector:
+    path: src/Shape.hs
+    anchor: "instance Measurable Triangle"
+- id: renderer_imports_describe
+  selector:
+    path: src/Renderer.hs
+    anchor: "import Shape (Measurable, area, perimeter, describe)"
+- id: app_imports_triangle
+  selector:
+    path: src/App.hs
+    anchor: "Triangle(..)"
+- id: no_garbage_db
+  selector:
+    path: garbage_db.hs
+- id: no_garbage_auth
+  selector:
+    path: garbage_auth.hs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_RARE_002_CONN_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_RARE_002_POOL_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_RARE_002_TIMEOUT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_RARE_002_TOKEN_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_RARE_002_SECRET_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_RARE_002_EXPIRE_F
+oracle:
+  required:
+  - shape_describe_method
+  - triangle_data_type
+  - triangle_instance
+  - renderer_imports_describe
+  - app_imports_triangle
+  allowed: []
+  forbidden:
+  - no_garbage_db
+  - no_garbage_auth
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

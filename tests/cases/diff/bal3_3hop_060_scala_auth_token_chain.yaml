@@ -1,0 +1,150 @@
+name: bal3_3hop_060_scala_auth_token_chain
+tags:
+- lang:scala
+- change:multi_file
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/com/app/auth/Token.scala: |
+      package com.app.auth
+
+      case class Token(
+        subject: String,
+        issuer: String
+      )
+    src/main/scala/com/app/auth/TokenValidator.scala: |
+      package com.app.auth
+
+      class TokenValidator {
+        def validate(token: Token): Boolean = {
+          token.subject.nonEmpty && token.issuer.nonEmpty
+        }
+      }
+    src/main/scala/com/app/auth/AuthGateway.scala: |
+      package com.app.auth
+
+      class AuthGateway(validator: TokenValidator) {
+        def authenticate(token: Token): Either[String, Token] = {
+          if (validator.validate(token)) Right(token)
+          else Left("invalid token")
+        }
+      }
+    src/main/scala/com/app/service/SecurityService.scala: |
+      package com.app.service
+
+      import com.app.auth.{AuthGateway, Token}
+
+      class SecurityService(gateway: AuthGateway) {
+        def check(subject: String, issuer: String): Boolean = {
+          gateway.authenticate(Token(subject, issuer)).isRight
+        }
+      }
+    src/main/scala/com/app/api/AuthEndpoint.scala: |
+      package com.app.api
+
+      import com.app.service.SecurityService
+
+      class AuthEndpoint(service: SecurityService) {
+        def login(subject: String, issuer: String): String = {
+          if (service.check(subject, issuer)) "authenticated"
+          else "denied"
+        }
+      }
+    src/main/scala/com/app/util/JwtHelper.scala: |
+      package com.app.util
+
+      var GARBAGE_060_JWT_MARKER_A = "hs256"
+      var GARBAGE_060_SECRET_MARKER_B = "secret"
+
+      object JwtHelper {
+        def sign(payload: String): String = payload
+      }
+    src/main/scala/com/app/util/SessionStore.scala: |
+      package com.app.util
+
+      var GARBAGE_060_SESSION_MARKER_C = "redis"
+      var GARBAGE_060_TTL_MARKER_D = 3600
+
+      object SessionStore {
+        def get(id: String): Option[String] = None
+      }
+  changed_files:
+    src/main/scala/com/app/auth/Token.scala: |
+      package com.app.auth
+
+      case class Token(
+        subject: String,
+        issuer: String,
+        expiresAt: Long = Long.MaxValue,
+        scopes: Set[String] = Set.empty
+      ) {
+        def isExpired: Boolean = System.currentTimeMillis() > expiresAt
+        def hasScope(scope: String): Boolean = scopes.contains(scope)
+      }
+    src/main/scala/com/app/auth/TokenValidator.scala: |
+      package com.app.auth
+
+      class TokenValidator {
+        def validate(token: Token): Boolean = {
+          token.subject.nonEmpty && token.issuer.nonEmpty && !token.isExpired
+        }
+      }
+  commit_message: "feat: add expiration and scopes to Token with validation"
+fragments:
+- id: token_expires_at
+  selector:
+    path: src/main/scala/com/app/auth/Token.scala
+    anchor: "expiresAt: Long"
+- id: token_scopes
+  selector:
+    path: src/main/scala/com/app/auth/Token.scala
+    anchor: "scopes: Set[String]"
+- id: token_is_expired
+  selector:
+    path: src/main/scala/com/app/auth/Token.scala
+    anchor: "def isExpired"
+- id: token_has_scope
+  selector:
+    path: src/main/scala/com/app/auth/Token.scala
+    anchor: "def hasScope"
+- id: validator_checks_expired
+  selector:
+    path: src/main/scala/com/app/auth/TokenValidator.scala
+    anchor: "!token.isExpired"
+- id: gateway_uses_validator
+  selector:
+    path: src/main/scala/com/app/auth/AuthGateway.scala
+    anchor: "validator: TokenValidator"
+- id: service_imports_gateway
+  selector:
+    path: src/main/scala/com/app/service/SecurityService.scala
+    anchor: "import com.app.auth"
+- id: endpoint_imports_service
+  selector:
+    path: src/main/scala/com/app/api/AuthEndpoint.scala
+    anchor: "import com.app.service.SecurityService"
+- id: no_jwt_helper
+  selector:
+    path: src/main/scala/com/app/util/JwtHelper.scala
+    anchor: "GARBAGE_060_JWT_MARKER_A"
+- id: no_session_store
+  selector:
+    path: src/main/scala/com/app/util/SessionStore.scala
+    anchor: "GARBAGE_060_SESSION_MARKER_C"
+oracle:
+  required:
+  - token_expires_at
+  - token_scopes
+  - token_is_expired
+  - validator_checks_expired
+  - gateway_uses_validator
+  - service_imports_gateway
+  allowed:
+  - token_has_scope
+  - endpoint_imports_service
+  forbidden:
+  - no_jwt_helper
+  - no_session_store

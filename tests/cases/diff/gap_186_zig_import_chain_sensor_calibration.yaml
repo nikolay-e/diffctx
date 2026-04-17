@@ -1,0 +1,214 @@
+name: gap_186_zig_import_chain_sensor_calibration
+tags:
+- lang:zig
+- change:single_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+repo:
+  initial_files:
+    src/sensor.zig: |
+      const std = @import("std");
+      const filter = @import("filter.zig");
+
+      pub const SensorReading = struct {
+          raw: f64,
+          timestamp: u64,
+
+          pub fn calibrated(self: SensorReading) f64 {
+              return filter.applyKalman(self.raw);
+          }
+
+          pub fn isValid(self: SensorReading) bool {
+              return self.raw >= -100.0 and self.raw <= 500.0;
+          }
+      };
+
+      pub fn readSensor(channel: u8) SensorReading {
+          _ = channel;
+          return SensorReading{ .raw = 0.0, .timestamp = 0 };
+      }
+    src/filter.zig: |
+      const math = @import("math_ext.zig");
+
+      const gain: f64 = 0.8;
+      const noise_estimate: f64 = 0.05;
+
+      pub fn applyKalman(measurement: f64) f64 {
+          const predicted = math.weightedAverage(measurement, 0.0, gain);
+          return predicted;
+      }
+
+      pub fn applyMovingAverage(values: []const f64) f64 {
+          var sum: f64 = 0.0;
+          for (values) |v| sum += v;
+          return if (values.len > 0) sum / @as(f64, @floatFromInt(values.len)) else 0.0;
+      }
+    src/math_ext.zig: |
+      pub fn weightedAverage(a: f64, b: f64, weight: f64) f64 {
+          return a * weight + b * (1.0 - weight);
+      }
+
+      pub fn clampf(value: f64, lo: f64, hi: f64) f64 {
+          if (value < lo) return lo;
+          if (value > hi) return hi;
+          return value;
+      }
+
+      pub fn mapRange(value: f64, in_lo: f64, in_hi: f64, out_lo: f64, out_hi: f64) f64 {
+          const t = (value - in_lo) / (in_hi - in_lo);
+          return out_lo + t * (out_hi - out_lo);
+      }
+    src/display.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_186_DISPLAY_MARKER_A: []const u8 = "display_noise";
+      const TRAP_GAP_186_DISPLAY_FLAG_B: bool = false;
+
+      pub fn renderGauge(value: f64, max: f64) void {
+          _ = value;
+          _ = max;
+      }
+
+      pub fn clearScreen() void {}
+    src/protocol.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_186_PROTO_MARKER_C: []const u8 = "protocol_noise";
+      const TRAP_GAP_186_PROTO_FLAG_D: u16 = 9600;
+
+      pub fn encodeFrame(payload: []const u8) []const u8 {
+          return payload;
+      }
+
+      pub fn decodeFrame(frame: []const u8) []const u8 {
+          return frame;
+      }
+  changed_files:
+    src/sensor.zig: |
+      const std = @import("std");
+      const filter = @import("filter.zig");
+
+      pub const SensorReading = struct {
+          raw: f64,
+          timestamp: u64,
+
+          pub fn calibrated(self: SensorReading) f64 {
+              return filter.applyKalman(self.raw);
+          }
+
+          pub fn isValid(self: SensorReading) bool {
+              return self.raw >= -40.0 and self.raw <= 125.0;
+          }
+      };
+
+      pub fn readSensor(channel: u8) SensorReading {
+          _ = channel;
+          return SensorReading{ .raw = 0.0, .timestamp = 0 };
+      }
+    src/filter.zig: |
+      const math = @import("math_ext.zig");
+
+      const gain: f64 = 0.8;
+      const noise_estimate: f64 = 0.05;
+
+      pub fn applyKalman(measurement: f64) f64 {
+          const predicted = math.weightedAverage(measurement, 0.0, gain);
+          return predicted;
+      }
+
+      pub fn applyMovingAverage(values: []const f64) f64 {
+          var sum: f64 = 0.0;
+          for (values) |v| sum += v;
+          return if (values.len > 0) sum / @as(f64, @floatFromInt(values.len)) else 0.0;
+      }
+    src/math_ext.zig: |
+      pub fn weightedAverage(a: f64, b: f64, weight: f64) f64 {
+          return a * weight + b * (1.0 - weight);
+      }
+
+      pub fn clampf(value: f64, lo: f64, hi: f64) f64 {
+          if (value < lo) return lo;
+          if (value > hi) return hi;
+          return value;
+      }
+
+      pub fn mapRange(value: f64, in_lo: f64, in_hi: f64, out_lo: f64, out_hi: f64) f64 {
+          const t = (value - in_lo) / (in_hi - in_lo);
+          return out_lo + t * (out_hi - out_lo);
+      }
+    src/display.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_186_DISPLAY_MARKER_A: []const u8 = "display_noise";
+      const TRAP_GAP_186_DISPLAY_FLAG_B: bool = false;
+
+      pub fn renderGauge(value: f64, max: f64) void {
+          _ = value;
+          _ = max;
+      }
+
+      pub fn clearScreen() void {}
+    src/protocol.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_186_PROTO_MARKER_C: []const u8 = "protocol_noise";
+      const TRAP_GAP_186_PROTO_FLAG_D: u16 = 9600;
+
+      pub fn encodeFrame(payload: []const u8) []const u8 {
+          return payload;
+      }
+
+      pub fn decodeFrame(frame: []const u8) []const u8 {
+          return frame;
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: sensor_range_change
+  selector:
+    path: src/sensor.zig
+    anchor: self.raw >= -40.0 and self.raw <= 125.0
+- id: sensor_struct
+  selector:
+    path: src/sensor.zig
+    anchor: "pub const SensorReading = struct"
+- id: filter_kalman
+  selector:
+    path: src/filter.zig
+    anchor: "pub fn applyKalman(measurement: f64) f64"
+- id: math_weighted
+  selector:
+    path: src/math_ext.zig
+    anchor: "pub fn weightedAverage(a: f64, b: f64, weight: f64) f64"
+- id: no_display
+  selector:
+    path: src/display.zig
+- id: no_protocol
+  selector:
+    path: src/protocol.zig
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP_186_DISPLAY_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP_186_DISPLAY_FLAG_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP_186_PROTO_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP_186_PROTO_FLAG_D
+oracle:
+  required:
+  - sensor_range_change
+  - sensor_struct
+  allowed: []
+  forbidden:
+  - no_display
+  - no_protocol
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

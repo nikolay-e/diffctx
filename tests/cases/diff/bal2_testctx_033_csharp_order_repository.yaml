@@ -1,0 +1,153 @@
+name: bal2_testctx_033_csharp_order_repository
+tags:
+- lang:csharp
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/Repositories/OrderRepository.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Linq;
+
+      namespace App.Repositories
+      {
+          public class Order
+          {
+              public int Id { get; set; }
+              public string CustomerId { get; set; }
+              public decimal Total { get; set; }
+              public DateTime CreatedAt { get; set; }
+          }
+
+          public class OrderRepository
+          {
+              private readonly List<Order> _orders = new List<Order>();
+
+              public void Add(Order order)
+              {
+                  _orders.Add(order);
+              }
+
+              public Order GetById(int id)
+              {
+                  return _orders.FirstOrDefault(o => o.Id == id);
+              }
+
+              public List<Order> GetByCustomer(string customerId)
+              {
+                  return _orders.Where(o => o.CustomerId == customerId).ToList();
+              }
+          }
+      }
+    Tests/OrderRepositoryTests.cs: |
+      using Xunit;
+      using App.Repositories;
+      using System;
+
+      namespace App.Tests
+      {
+          public class OrderRepositoryTests
+          {
+              [Fact]
+              public void Add_And_GetById_ReturnsOrder()
+              {
+                  var repo = new OrderRepository();
+                  var order = new Order { Id = 1, CustomerId = "c1", Total = 99.99m };
+                  repo.Add(order);
+                  Assert.Equal(1, repo.GetById(1).Id);
+              }
+
+              [Fact]
+              public void GetByCustomer_ReturnsMatchingOrders()
+              {
+                  var repo = new OrderRepository();
+                  repo.Add(new Order { Id = 1, CustomerId = "c1", Total = 10m });
+                  repo.Add(new Order { Id = 2, CustomerId = "c2", Total = 20m });
+                  var result = repo.GetByCustomer("c1");
+                  Assert.Single(result);
+              }
+          }
+      }
+    src/Services/ShippingService.cs: |
+      using System;
+
+      namespace App.Services
+      {
+          public class ShippingService
+          {
+              public decimal CalculateRate(decimal weight)
+              {
+                  return weight * 2.5m;
+              }
+          }
+      }
+  changed_files:
+    src/Repositories/OrderRepository.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Linq;
+
+      namespace App.Repositories
+      {
+          public class Order
+          {
+              public int Id { get; set; }
+              public string CustomerId { get; set; }
+              public decimal Total { get; set; }
+              public DateTime CreatedAt { get; set; }
+          }
+
+          public class OrderRepository
+          {
+              private readonly List<Order> _orders = new List<Order>();
+
+              public void Add(Order order)
+              {
+                  _orders.Add(order);
+              }
+
+              public Order GetById(int id)
+              {
+                  return _orders.FirstOrDefault(o => o.Id == id);
+              }
+
+              public List<Order> GetByCustomer(string customerId)
+              {
+                  return _orders.Where(o => o.CustomerId == customerId).ToList();
+              }
+
+              public List<Order> GetByDateRange(DateTime from, DateTime to)
+              {
+                  return _orders.Where(o => o.CreatedAt >= from && o.CreatedAt <= to).ToList();
+              }
+          }
+      }
+  commit_message: "feat: add date range query to order repository"
+fragments:
+- id: get_by_date_range
+  selector:
+    path: src/Repositories/OrderRepository.cs
+    anchor: "public List<Order> GetByDateRange"
+- id: test_imports
+  selector:
+    path: Tests/OrderRepositoryTests.cs
+    anchor: "using App.Repositories"
+- id: test_class
+  selector:
+    path: Tests/OrderRepositoryTests.cs
+    anchor: "public class OrderRepositoryTests"
+- id: no_shipping
+  selector:
+    path: src/Services/ShippingService.cs
+    anchor: "class ShippingService"
+oracle:
+  required:
+  - get_by_date_range
+  - test_imports
+  allowed:
+  - test_class
+  forbidden:
+  - no_shipping

@@ -1,0 +1,157 @@
+name: bal_testctx_016_typescript_form_validator_test
+tags:
+- lang:typescript
+- change:multi_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/formValidator.ts: |
+      export interface ValidationRule {
+        field: string;
+        validate: (value: string) => boolean;
+        message: string;
+      }
+
+      export interface ValidationResult {
+        valid: boolean;
+        errors: string[];
+      }
+
+      export function validateForm(
+        data: Record<string, string>,
+        rules: ValidationRule[],
+      ): ValidationResult {
+        const errors: string[] = [];
+        for (const rule of rules) {
+          const value = data[rule.field] || '';
+          if (!rule.validate(value)) {
+            errors.push(rule.message);
+          }
+        }
+        return { valid: errors.length === 0, errors };
+      }
+    __tests__/formValidator.test.ts: |
+      import { validateForm, ValidationRule } from '../src/formValidator';
+
+      describe('formValidator', () => {
+        const requiredRule: ValidationRule = {
+          field: 'name',
+          validate: (v) => v.length > 0,
+          message: 'Name is required',
+        };
+
+        test('passes when all rules satisfied', () => {
+          const result = validateForm({ name: 'Alice' }, [requiredRule]);
+          expect(result.valid).toBe(true);
+          expect(result.errors).toHaveLength(0);
+        });
+
+        test('fails when rule violated', () => {
+          const result = validateForm({ name: '' }, [requiredRule]);
+          expect(result.valid).toBe(false);
+          expect(result.errors).toContain('Name is required');
+        });
+      });
+    src/formSerializer.ts: |
+      export function serializeForm(data: Record<string, string>): string {
+        return new URLSearchParams(data).toString();
+      }
+
+      export function deserializeForm(query: string): Record<string, string> {
+        const params = new URLSearchParams(query);
+        const result: Record<string, string> = {};
+        params.forEach((value, key) => {
+          result[key] = value;
+        });
+        return result;
+      }
+    src/dateUtils.ts: |
+      export function formatDate(date: Date): string {
+        return date.toISOString().split('T')[0];
+      }
+
+      export function daysBetween(a: Date, b: Date): number {
+        const ms = Math.abs(b.getTime() - a.getTime());
+        return Math.floor(ms / (1000 * 60 * 60 * 24));
+      }
+  changed_files:
+    src/formValidator.ts: |
+      export interface ValidationRule {
+        field: string;
+        validate: (value: string) => boolean;
+        message: string;
+      }
+
+      export interface ValidationResult {
+        valid: boolean;
+        errors: string[];
+      }
+
+      export function validateForm(
+        data: Record<string, string>,
+        rules: ValidationRule[],
+      ): ValidationResult {
+        const errors: string[] = [];
+        for (const rule of rules) {
+          const value = data[rule.field] || '';
+          if (!rule.validate(value)) {
+            errors.push(rule.message);
+          }
+        }
+        return { valid: errors.length === 0, errors };
+      }
+
+      export function createEmailRule(field: string): ValidationRule {
+        return {
+          field,
+          validate: (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v),
+          message: `${field} must be a valid email`,
+        };
+      }
+
+      export function createMinLengthRule(field: string, min: number): ValidationRule {
+        return {
+          field,
+          validate: (v) => v.length >= min,
+          message: `${field} must be at least ${min} characters`,
+        };
+      }
+  commit_message: "feat: add built-in email and minLength validation rules"
+fragments:
+- id: email_rule_fn
+  selector:
+    path: src/formValidator.ts
+    anchor: "export function createEmailRule"
+- id: min_length_rule_fn
+  selector:
+    path: src/formValidator.ts
+    anchor: "export function createMinLengthRule"
+- id: test_imports_form
+  selector:
+    path: __tests__/formValidator.test.ts
+    anchor: "import { validateForm, ValidationRule } from"
+- id: test_passes_rules
+  selector:
+    path: __tests__/formValidator.test.ts
+    anchor: "test('passes when all rules satisfied'"
+- id: no_form_serializer
+  selector:
+    path: src/formSerializer.ts
+    anchor: "export function serializeForm"
+- id: no_date_utils
+  selector:
+    path: src/dateUtils.ts
+    anchor: "export function formatDate"
+oracle:
+  required:
+  - email_rule_fn
+  - min_length_rule_fn
+  - test_imports_form
+  allowed:
+  - test_passes_rules
+  forbidden:
+  - no_form_serializer
+  - no_date_utils

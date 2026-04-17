@@ -1,0 +1,140 @@
+name: bal3_3hop_059_scala_data_pipeline_etl
+tags:
+- lang:scala
+- change:single_file
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/com/app/etl/Record.scala: |
+      package com.app.etl
+
+      case class Record(
+        key: String,
+        fields: Map[String, String]
+      )
+    src/main/scala/com/app/etl/Extractor.scala: |
+      package com.app.etl
+
+      class Extractor {
+        def extract(raw: String): List[Record] = {
+          raw.split("\n").toList.map { line =>
+            val parts = line.split(",")
+            Record(parts.headOption.getOrElse(""), Map("value" -> parts.lastOption.getOrElse("")))
+          }
+        }
+      }
+    src/main/scala/com/app/etl/Transformer.scala: |
+      package com.app.etl
+
+      class Transformer(extractor: Extractor) {
+        def transform(raw: String): List[Record] = {
+          extractor.extract(raw).map { record =>
+            record.copy(fields = record.fields.map { case (k, v) => (k, v.toUpperCase) })
+          }
+        }
+      }
+    src/main/scala/com/app/service/EtlService.scala: |
+      package com.app.service
+
+      import com.app.etl.Transformer
+
+      class EtlService(transformer: Transformer) {
+        def run(rawData: String): Int = {
+          transformer.transform(rawData).size
+        }
+      }
+    src/main/scala/com/app/api/EtlEndpoint.scala: |
+      package com.app.api
+
+      import com.app.service.EtlService
+
+      class EtlEndpoint(service: EtlService) {
+        def ingest(data: String): String = {
+          val count = service.run(data)
+          s"processed:$count"
+        }
+      }
+    src/main/scala/com/app/util/FileReader.scala: |
+      package com.app.util
+
+      var GARBAGE_059_FILE_MARKER_A = "csv"
+      var GARBAGE_059_ENCODING_MARKER_B = "utf-8"
+
+      object FileReader {
+        def read(path: String): String = ""
+      }
+    src/main/scala/com/app/util/Checksum.scala: |
+      package com.app.util
+
+      var GARBAGE_059_CHECKSUM_MARKER_C = "md5"
+      var GARBAGE_059_DIGEST_MARKER_D = 128
+
+      object Checksum {
+        def compute(data: Array[Byte]): String = ""
+      }
+  changed_files:
+    src/main/scala/com/app/etl/Record.scala: |
+      package com.app.etl
+
+      case class Record(
+        key: String,
+        fields: Map[String, String],
+        metadata: Map[String, String] = Map.empty
+      ) {
+        def withMeta(k: String, v: String): Record = copy(metadata = metadata + (k -> v))
+        def hasMeta(k: String): Boolean = metadata.contains(k)
+      }
+  commit_message: "feat: add metadata map with builder to ETL Record"
+fragments:
+- id: record_metadata
+  selector:
+    path: src/main/scala/com/app/etl/Record.scala
+    anchor: "metadata: Map[String, String]"
+- id: record_with_meta
+  selector:
+    path: src/main/scala/com/app/etl/Record.scala
+    anchor: "def withMeta"
+- id: record_has_meta
+  selector:
+    path: src/main/scala/com/app/etl/Record.scala
+    anchor: "def hasMeta"
+- id: extractor_returns_records
+  selector:
+    path: src/main/scala/com/app/etl/Extractor.scala
+    anchor: "List[Record]"
+- id: transformer_uses_extractor
+  selector:
+    path: src/main/scala/com/app/etl/Transformer.scala
+    anchor: "extractor: Extractor"
+- id: service_imports_transformer
+  selector:
+    path: src/main/scala/com/app/service/EtlService.scala
+    anchor: "import com.app.etl.Transformer"
+- id: endpoint_imports_service
+  selector:
+    path: src/main/scala/com/app/api/EtlEndpoint.scala
+    anchor: "import com.app.service.EtlService"
+- id: no_file_reader
+  selector:
+    path: src/main/scala/com/app/util/FileReader.scala
+    anchor: "GARBAGE_059_FILE_MARKER_A"
+- id: no_checksum
+  selector:
+    path: src/main/scala/com/app/util/Checksum.scala
+    anchor: "GARBAGE_059_CHECKSUM_MARKER_C"
+oracle:
+  required:
+  - record_metadata
+  - record_with_meta
+  - record_has_meta
+  - extractor_returns_records
+  - transformer_uses_extractor
+  - service_imports_transformer
+  allowed:
+  - endpoint_imports_service
+  forbidden:
+  - no_file_reader
+  - no_checksum

@@ -1,0 +1,278 @@
+name: bal3_rare_012_elixir_plug_pipeline
+tags:
+- lang:rust
+- change:bug_fix
+- change:multi_file
+- context:test_file
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/auth/token.rs: |
+      use std::time::{SystemTime, UNIX_EPOCH};
+
+      pub struct Token {
+          pub user_id: u64,
+          pub expires_at: u64,
+          pub scope: String,
+      }
+
+      pub fn verify_token(raw: &str) -> Result<Token, String> {
+          let parts: Vec<&str> = raw.splitn(3, '.').collect();
+          if parts.len() != 3 {
+              return Err("malformed token".to_string());
+          }
+          let expires_at: u64 = parts[1].parse().map_err(|_| "invalid expiry".to_string())?;
+          let now = SystemTime::now()
+              .duration_since(UNIX_EPOCH)
+              .unwrap()
+              .as_secs();
+          if now > expires_at {
+              return Err("token expired".to_string());
+          }
+          Ok(Token {
+              user_id: parts[0].parse().unwrap_or(0),
+              expires_at,
+              scope: parts[2].to_string(),
+          })
+      }
+    src/auth/middleware.rs: |
+      use crate::auth::token::verify_token;
+
+      pub struct AuthContext {
+          pub user_id: u64,
+          pub scope: String,
+      }
+
+      pub fn authenticate(header: Option<&str>) -> Result<AuthContext, String> {
+          let header = header.ok_or("missing authorization header")?;
+          let raw = header.strip_prefix("Bearer ").ok_or("invalid scheme")?;
+          let token = verify_token(raw)?;
+          Ok(AuthContext {
+              user_id: token.user_id,
+              scope: token.scope,
+          })
+      }
+    src/handlers/profile.rs: |
+      use crate::auth::middleware::authenticate;
+
+      pub fn handle_profile(auth_header: Option<&str>) -> Result<String, String> {
+          let ctx = authenticate(auth_header)?;
+          Ok(format!("profile for user {}", ctx.user_id))
+      }
+    tests/auth_integration.rs: |
+      use crate::auth::token::verify_token;
+      use crate::auth::middleware::authenticate;
+
+      #[test]
+      fn test_verify_valid_token() {
+          let far_future = 9999999999u64;
+          let raw = format!("42.{}.read:profile", far_future);
+          let token = verify_token(&raw).unwrap();
+          assert_eq!(token.user_id, 42);
+          assert_eq!(token.scope, "read:profile");
+      }
+
+      #[test]
+      fn test_authenticate_bearer() {
+          let far_future = 9999999999u64;
+          let raw = format!("Bearer 7.{}.write:data", far_future);
+          let ctx = authenticate(Some(&raw)).unwrap();
+          assert_eq!(ctx.user_id, 7);
+      }
+
+      #[test]
+      fn test_expired_token_rejected() {
+          let raw = "5.1000000000.read:data";
+          assert!(verify_token(raw).is_err());
+      }
+    src/cache/lru.rs: |
+      // GARBAGE_R012_A = "lru_cache_unrelated"
+      pub struct LruCache {
+          capacity: usize,
+      }
+      impl LruCache {
+          pub fn new(capacity: usize) -> Self { LruCache { capacity } }
+          pub fn get(&self, _key: &str) -> Option<String> { None }
+      }
+    src/metrics/counter.rs: |
+      // GARBAGE_R012_B = "metrics_counter_unrelated"
+      pub struct Counter {
+          value: u64,
+      }
+      impl Counter {
+          pub fn new() -> Self { Counter { value: 0 } }
+          pub fn increment(&mut self) { self.value += 1; }
+          pub fn get(&self) -> u64 { self.value }
+      }
+    src/config/loader.rs: |
+      // GARBAGE_R012_C = "config_loader_unrelated"
+      pub fn load_config(path: &str) -> std::collections::HashMap<String, String> {
+          std::collections::HashMap::new()
+      }
+    src/db/pool.rs: |
+      // GARBAGE_R012_D = "db_pool_unrelated"
+      pub struct Pool {
+          size: usize,
+      }
+      impl Pool {
+          pub fn new(size: usize) -> Self { Pool { size } }
+          pub fn acquire(&self) -> Option<()> { Some(()) }
+      }
+  changed_files:
+    src/auth/token.rs: |
+      use std::time::{SystemTime, UNIX_EPOCH};
+
+      pub struct Token {
+          pub user_id: u64,
+          pub expires_at: u64,
+          pub scope: String,
+      }
+
+      pub fn verify_token(raw: &str) -> Result<Token, String> {
+          let parts: Vec<&str> = raw.splitn(3, '.').collect();
+          if parts.len() != 3 {
+              return Err("malformed token".to_string());
+          }
+          let expires_at: u64 = parts[1].parse().map_err(|_| "invalid expiry".to_string())?;
+          let now = SystemTime::now()
+              .duration_since(UNIX_EPOCH)
+              .unwrap()
+              .as_secs();
+          if now >= expires_at {
+              return Err("token expired".to_string());
+          }
+          let user_id: u64 = parts[0].parse().map_err(|_| "invalid user_id".to_string())?;
+          Ok(Token {
+              user_id,
+              expires_at,
+              scope: parts[2].to_string(),
+          })
+      }
+    src/auth/middleware.rs: |
+      use crate::auth::token::verify_token;
+
+      pub struct AuthContext {
+          pub user_id: u64,
+          pub scope: String,
+      }
+
+      pub fn authenticate(header: Option<&str>) -> Result<AuthContext, String> {
+          let header = header.ok_or("missing authorization header")?;
+          let raw = header.strip_prefix("Bearer ").ok_or("invalid scheme")?;
+          let token = verify_token(raw)?;
+          Ok(AuthContext {
+              user_id: token.user_id,
+              scope: token.scope,
+          })
+      }
+    src/handlers/profile.rs: |
+      use crate::auth::middleware::authenticate;
+
+      pub fn handle_profile(auth_header: Option<&str>) -> Result<String, String> {
+          let ctx = authenticate(auth_header)?;
+          Ok(format!("profile for user {}", ctx.user_id))
+      }
+    tests/auth_integration.rs: |
+      use crate::auth::token::verify_token;
+      use crate::auth::middleware::authenticate;
+
+      #[test]
+      fn test_verify_valid_token() {
+          let far_future = 9999999999u64;
+          let raw = format!("42.{}.read:profile", far_future);
+          let token = verify_token(&raw).unwrap();
+          assert_eq!(token.user_id, 42);
+          assert_eq!(token.scope, "read:profile");
+      }
+
+      #[test]
+      fn test_authenticate_bearer() {
+          let far_future = 9999999999u64;
+          let raw = format!("Bearer 7.{}.write:data", far_future);
+          let ctx = authenticate(Some(&raw)).unwrap();
+          assert_eq!(ctx.user_id, 7);
+      }
+
+      #[test]
+      fn test_expired_token_rejected() {
+          let raw = "5.1000000000.read:data";
+          assert!(verify_token(raw).is_err());
+      }
+
+      #[test]
+      fn test_invalid_user_id_rejected() {
+          let far_future = 9999999999u64;
+          let raw = format!("notanumber.{}.read:data", far_future);
+          assert!(verify_token(&raw).is_err());
+      }
+    src/cache/lru.rs: |
+      // GARBAGE_R012_A = "lru_cache_unrelated"
+      pub struct LruCache {
+          capacity: usize,
+      }
+      impl LruCache {
+          pub fn new(capacity: usize) -> Self { LruCache { capacity } }
+          pub fn get(&self, _key: &str) -> Option<String> { None }
+      }
+    src/metrics/counter.rs: |
+      // GARBAGE_R012_B = "metrics_counter_unrelated"
+      pub struct Counter {
+          value: u64,
+      }
+      impl Counter {
+          pub fn new() -> Self { Counter { value: 0 } }
+          pub fn increment(&mut self) { self.value += 1; }
+          pub fn get(&self) -> u64 { self.value }
+      }
+    src/config/loader.rs: |
+      // GARBAGE_R012_C = "config_loader_unrelated"
+      pub fn load_config(path: &str) -> std::collections::HashMap<String, String> {
+          std::collections::HashMap::new()
+      }
+    src/db/pool.rs: |
+      // GARBAGE_R012_D = "db_pool_unrelated"
+      pub struct Pool {
+          size: usize,
+      }
+      impl Pool {
+          pub fn new(size: usize) -> Self { Pool { size } }
+          pub fn acquire(&self) -> Option<()> { Some(()) }
+      }
+  commit_message: "fix: use >= for expiry check and validate user_id parse in verify_token"
+fragments:
+- id: verify_token_fn
+  selector:
+    path: src/auth/token.rs
+    anchor: "pub fn verify_token"
+- id: test_expired_token
+  selector:
+    path: tests/auth_integration.rs
+    anchor: "test_expired_token_rejected"
+- id: test_valid_token
+  selector:
+    path: tests/auth_integration.rs
+    anchor: "test_verify_valid_token"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_R012_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_R012_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_R012_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_R012_D
+oracle:
+  required:
+  - verify_token_fn
+  - test_expired_token
+  - test_valid_token
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

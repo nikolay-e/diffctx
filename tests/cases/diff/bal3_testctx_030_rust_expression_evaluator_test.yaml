@@ -1,0 +1,297 @@
+name: bal3_testctx_030_rust_expression_evaluator_test
+tags:
+- lang:rust
+- change:single_file
+- change:refactor
+- context:test_file
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/evaluator.rs: |
+      #[derive(Debug, PartialEq)]
+      pub enum Token {
+          Number(f64),
+          Plus,
+          Minus,
+          Multiply,
+          Divide,
+      }
+
+      pub fn tokenize(input: &str) -> Vec<Token> {
+          let mut tokens = Vec::new();
+          for part in input.split_whitespace() {
+              match part {
+                  "+" => tokens.push(Token::Plus),
+                  "-" => tokens.push(Token::Minus),
+                  "*" => tokens.push(Token::Multiply),
+                  "/" => tokens.push(Token::Divide),
+                  num => {
+                      if let Ok(n) = num.parse::<f64>() {
+                          tokens.push(Token::Number(n));
+                      }
+                  }
+              }
+          }
+          tokens
+      }
+
+      pub fn evaluate(tokens: &[Token]) -> Result<f64, String> {
+          if tokens.len() != 3 {
+              return Err("expected 3 tokens".to_string());
+          }
+          let left = match &tokens[0] {
+              Token::Number(n) => *n,
+              _ => return Err("expected number".to_string()),
+          };
+          let right = match &tokens[2] {
+              Token::Number(n) => *n,
+              _ => return Err("expected number".to_string()),
+          };
+          match &tokens[1] {
+              Token::Plus => Ok(left + right),
+              Token::Minus => Ok(left - right),
+              Token::Multiply => Ok(left * right),
+              Token::Divide => {
+                  if right == 0.0 {
+                      Err("division by zero".to_string())
+                  } else {
+                      Ok(left / right)
+                  }
+              }
+              _ => Err("expected operator".to_string()),
+          }
+      }
+    tests/evaluator_test.rs: |
+      use mylib::evaluator::{tokenize, evaluate, Token};
+
+      #[test]
+      fn test_tokenize_simple() {
+          let tokens = tokenize("3 + 4");
+          assert_eq!(tokens.len(), 3);
+          assert_eq!(tokens[0], Token::Number(3.0));
+          assert_eq!(tokens[1], Token::Plus);
+      }
+
+      #[test]
+      fn test_evaluate_add() {
+          let tokens = tokenize("3 + 4");
+          assert_eq!(evaluate(&tokens), Ok(7.0));
+      }
+
+      #[test]
+      fn test_evaluate_subtract() {
+          let tokens = tokenize("10 - 3");
+          assert_eq!(evaluate(&tokens), Ok(7.0));
+      }
+
+      #[test]
+      fn test_evaluate_multiply() {
+          let tokens = tokenize("3 * 5");
+          assert_eq!(evaluate(&tokens), Ok(15.0));
+      }
+
+      #[test]
+      fn test_evaluate_divide() {
+          let tokens = tokenize("10 / 4");
+          assert_eq!(evaluate(&tokens), Ok(2.5));
+      }
+
+      #[test]
+      fn test_evaluate_divide_by_zero() {
+          let tokens = tokenize("5 / 0");
+          assert!(evaluate(&tokens).is_err());
+      }
+    src/formatter.rs: |
+      pub fn format_result(value: f64, decimals: usize) -> String {
+          format!("{:.prec$}", value, prec = decimals)
+      }
+    src/history.rs: |
+      pub struct History {
+          entries: Vec<String>,
+      }
+
+      impl History {
+          pub fn new() -> Self {
+              History { entries: Vec::new() }
+          }
+
+          pub fn add(&mut self, entry: &str) {
+              self.entries.push(entry.to_string());
+          }
+
+          pub fn list(&self) -> &[String] {
+              &self.entries
+          }
+      }
+    src/constants.rs: |
+      pub const PI: f64 = 3.14159265358979;
+      pub const E: f64 = 2.71828182845905;
+      pub const TAU: f64 = 6.28318530717959;
+  changed_files:
+    src/evaluator.rs: |
+      use std::collections::HashMap;
+
+      #[derive(Debug, PartialEq)]
+      pub enum Token {
+          Number(f64),
+          Operator(String),
+          LeftParen,
+          RightParen,
+      }
+
+      type BinaryOp = fn(f64, f64) -> Result<f64, String>;
+
+      pub struct Evaluator {
+          operators: HashMap<String, (u8, BinaryOp)>,
+      }
+
+      impl Evaluator {
+          pub fn new() -> Self {
+              let mut operators: HashMap<String, (u8, BinaryOp)> = HashMap::new();
+              operators.insert("+".into(), (1, |a, b| Ok(a + b)));
+              operators.insert("-".into(), (1, |a, b| Ok(a - b)));
+              operators.insert("*".into(), (2, |a, b| Ok(a * b)));
+              operators.insert("/".into(), (2, |a, b| {
+                  if b == 0.0 { Err("division by zero".into()) } else { Ok(a / b) }
+              }));
+              operators.insert("%".into(), (2, |a, b| {
+                  if b == 0.0 { Err("modulo by zero".into()) } else { Ok(a % b) }
+              }));
+              operators.insert("^".into(), (3, |a, b| Ok(a.powf(b))));
+              Evaluator { operators }
+          }
+
+          pub fn register_operator(&mut self, symbol: &str, precedence: u8, func: BinaryOp) {
+              self.operators.insert(symbol.to_string(), (precedence, func));
+          }
+
+          pub fn tokenize(&self, input: &str) -> Vec<Token> {
+              let mut tokens = Vec::new();
+              for part in input.split_whitespace() {
+                  match part {
+                      "(" => tokens.push(Token::LeftParen),
+                      ")" => tokens.push(Token::RightParen),
+                      s if self.operators.contains_key(s) => {
+                          tokens.push(Token::Operator(s.to_string()));
+                      }
+                      num => {
+                          if let Ok(n) = num.parse::<f64>() {
+                              tokens.push(Token::Number(n));
+                          }
+                      }
+                  }
+              }
+              tokens
+          }
+
+          pub fn evaluate(&self, input: &str) -> Result<f64, String> {
+              let tokens = self.tokenize(input);
+              self.eval_tokens(&tokens)
+          }
+
+          fn eval_tokens(&self, tokens: &[Token]) -> Result<f64, String> {
+              if tokens.len() != 3 {
+                  return Err("expected simple expression".into());
+              }
+              let left = match &tokens[0] {
+                  Token::Number(n) => *n,
+                  _ => return Err("expected number".into()),
+              };
+              let right = match &tokens[2] {
+                  Token::Number(n) => *n,
+                  _ => return Err("expected number".into()),
+              };
+              let op = match &tokens[1] {
+                  Token::Operator(s) => s,
+                  _ => return Err("expected operator".into()),
+              };
+              let (_, func) = self.operators.get(op).ok_or("unknown operator")?;
+              func(left, right)
+          }
+
+          pub fn supported_operators(&self) -> Vec<&str> {
+              self.operators.keys().map(|s| s.as_str()).collect()
+          }
+      }
+  commit_message: "refactor: operator registry with precedence, add modulo and power"
+fragments:
+- id: evaluator_struct
+  selector:
+    path: src/evaluator.rs
+    anchor: "pub struct Evaluator"
+- id: binary_op_type
+  selector:
+    path: src/evaluator.rs
+    anchor: "type BinaryOp = fn(f64, f64)"
+- id: register_operator
+  selector:
+    path: src/evaluator.rs
+    anchor: "pub fn register_operator"
+- id: modulo_op
+  selector:
+    path: src/evaluator.rs
+    anchor: "modulo by zero"
+- id: power_op
+  selector:
+    path: src/evaluator.rs
+    anchor: "a.powf(b)"
+- id: supported_operators
+  selector:
+    path: src/evaluator.rs
+    anchor: "pub fn supported_operators"
+- id: left_paren_token
+  selector:
+    path: src/evaluator.rs
+    anchor: "LeftParen"
+- id: test_tokenize
+  selector:
+    path: tests/evaluator_test.rs
+    anchor: "fn test_tokenize_simple()"
+- id: test_eval_add
+  selector:
+    path: tests/evaluator_test.rs
+    anchor: "fn test_evaluate_add()"
+- id: test_eval_multiply
+  selector:
+    path: tests/evaluator_test.rs
+    anchor: "fn test_evaluate_multiply()"
+- id: test_eval_divide
+  selector:
+    path: tests/evaluator_test.rs
+    anchor: "fn test_evaluate_divide()"
+- id: test_div_zero
+  selector:
+    path: tests/evaluator_test.rs
+    anchor: "fn test_evaluate_divide_by_zero()"
+- id: no_formatter
+  selector:
+    path: src/formatter.rs
+    anchor: "pub fn format_result"
+- id: no_history
+  selector:
+    path: src/history.rs
+    anchor: "pub struct History"
+- id: no_constants
+  selector:
+    path: src/constants.rs
+    anchor: "pub const PI"
+oracle:
+  required:
+  - evaluator_struct
+  - register_operator
+  - modulo_op
+  - test_tokenize
+  - test_eval_add
+  - test_eval_multiply
+  allowed:
+  - binary_op_type
+  - power_op
+  - supported_operators
+  - left_paren_token
+  - test_eval_divide
+  - test_div_zero
+  forbidden:
+  - no_formatter
+  - no_history
+  - no_constants

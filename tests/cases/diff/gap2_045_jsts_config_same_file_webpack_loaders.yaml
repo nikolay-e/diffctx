@@ -1,0 +1,180 @@
+name: gap2_045_jsts_config_same_file_webpack_loaders
+tags:
+- lang:python
+- change:config
+- change:single_file
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    config/settings.py: |
+      DATABASE_URL = "postgresql://localhost:5432/ecommerce"
+      CACHE_BACKEND = "redis"
+      CACHE_URL = "redis://localhost:6379/0"
+      MAX_CONNECTIONS = 10
+      TIMEOUT_SECONDS = 30
+    services/product_service.py: |
+      from config.settings import DATABASE_URL, MAX_CONNECTIONS
+
+      class ProductService:
+          def __init__(self):
+              self.db_url = DATABASE_URL
+              self.pool_size = MAX_CONNECTIONS
+
+          def list_products(self):
+              return []
+
+          def get_product(self, product_id: str):
+              return None
+    services/cart_service.py: |
+      from config.settings import DATABASE_URL, CACHE_URL, MAX_CONNECTIONS
+
+      class CartService:
+          def __init__(self):
+              self.db_url = DATABASE_URL
+              self.cache_url = CACHE_URL
+              self.pool_size = MAX_CONNECTIONS
+
+          def add_item(self, cart_id: str, product_id: str):
+              pass
+
+          def get_cart(self, cart_id: str):
+              return {}
+    api/checkout_router.py: |
+      from services.cart_service import CartService
+      from services.product_service import ProductService
+
+      cart_svc = CartService()
+      product_svc = ProductService()
+
+      def checkout(cart_id: str):
+          cart = cart_svc.get_cart(cart_id)
+          return {"cart": cart, "status": "pending"}
+    garbage/IoTSensor.py: |
+      # GARBAGE_GAP045_A = "iot_sensor_marker"
+
+      class IoTSensor:
+          device_id = "sensor-001"
+    garbage/GameLeaderboard.py: |
+      # GARBAGE_GAP045_B = "game_leaderboard_marker"
+
+      class GameLeaderboard:
+          scores = []
+    garbage/StreamBuffer.py: |
+      # GARBAGE_GAP045_C = "stream_buffer_marker"
+
+      class StreamBuffer:
+          capacity = 1024
+  changed_files:
+    config/settings.py: |
+      DATABASE_URL = "postgresql://localhost:5432/ecommerce"
+      CACHE_BACKEND = "redis"
+      CACHE_URL = "redis://localhost:6379/0"
+      MAX_CONNECTIONS = 25
+      TIMEOUT_SECONDS = 60
+      READ_REPLICA_URL = "postgresql://replica.localhost:5432/ecommerce"
+    services/product_service.py: |
+      from config.settings import DATABASE_URL, MAX_CONNECTIONS, READ_REPLICA_URL
+
+      class ProductService:
+          def __init__(self):
+              self.db_url = DATABASE_URL
+              self.replica_url = READ_REPLICA_URL
+              self.pool_size = MAX_CONNECTIONS
+
+          def list_products(self):
+              return []
+
+          def get_product(self, product_id: str):
+              return None
+    services/cart_service.py: |
+      from config.settings import DATABASE_URL, CACHE_URL, MAX_CONNECTIONS
+
+      class CartService:
+          def __init__(self):
+              self.db_url = DATABASE_URL
+              self.cache_url = CACHE_URL
+              self.pool_size = MAX_CONNECTIONS
+
+          def add_item(self, cart_id: str, product_id: str):
+              pass
+
+          def get_cart(self, cart_id: str):
+              return {}
+    api/checkout_router.py: |
+      from services.cart_service import CartService
+      from services.product_service import ProductService
+
+      cart_svc = CartService()
+      product_svc = ProductService()
+
+      def checkout(cart_id: str):
+          cart = cart_svc.get_cart(cart_id)
+          return {"cart": cart, "status": "pending"}
+    garbage/IoTSensor.py: |
+      # GARBAGE_GAP045_A = "iot_sensor_marker"
+
+      class IoTSensor:
+          device_id = "sensor-001"
+    garbage/GameLeaderboard.py: |
+      # GARBAGE_GAP045_B = "game_leaderboard_marker"
+
+      class GameLeaderboard:
+          scores = []
+    garbage/StreamBuffer.py: |
+      # GARBAGE_GAP045_C = "stream_buffer_marker"
+
+      class StreamBuffer:
+          capacity = 1024
+  commit_message: "config: increase pool size to 25, bump timeout, add read replica URL"
+fragments:
+- id: settings_max_conn
+  selector:
+    path: config/settings.py
+    anchor: "MAX_CONNECTIONS = 25"
+- id: settings_timeout
+  selector:
+    path: config/settings.py
+    anchor: "TIMEOUT_SECONDS = 60"
+- id: settings_replica
+  selector:
+    path: config/settings.py
+    anchor: "READ_REPLICA_URL"
+- id: product_replica_import
+  selector:
+    path: services/product_service.py
+    anchor: "READ_REPLICA_URL"
+- id: product_replica_usage
+  selector:
+    path: services/product_service.py
+    anchor: "self.replica_url = READ_REPLICA_URL"
+- id: no_cart_service
+  selector:
+    path: services/cart_service.py
+- id: no_checkout_router
+  selector:
+    path: api/checkout_router.py
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_GAP045_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_GAP045_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_GAP045_C
+oracle:
+  required:
+  - settings_max_conn
+  - settings_replica
+  - product_replica_import
+  - product_replica_usage
+  allowed:
+  - settings_timeout
+  forbidden:
+  - no_cart_service
+  - no_checkout_router
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

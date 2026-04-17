@@ -1,0 +1,66 @@
+name: bal_1hop_035_java_mapper_to_facade
+tags:
+- lang:java
+- change:new_function
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/main/java/com/crm/mapper/CustomerMapper.java: |
+      package com.crm.mapper;
+      public class CustomerMapper {
+          public String toDisplayName(String first, String last) {
+              return first + " " + last;
+          }
+      }
+    src/main/java/com/crm/facade/CustomerFacade.java: |
+      package com.crm.facade;
+      import com.crm.mapper.CustomerMapper;
+      public class CustomerFacade {
+          private final CustomerMapper mapper;
+          public CustomerFacade(CustomerMapper mapper) { this.mapper = mapper; }
+          public String getCustomerLabel(String first, String last) {
+              return mapper.toDisplayName(first, last);
+          }
+      }
+    src/main/java/com/crm/notification/SmsGateway.java: |
+      package com.crm.notification;
+      public class SmsGateway {
+          public void send(String phone, String message) {
+              System.out.println("SMS to " + phone + ": " + message);
+          }
+      }
+  changed_files:
+    src/main/java/com/crm/mapper/CustomerMapper.java: |
+      package com.crm.mapper;
+      public class CustomerMapper {
+          public String toDisplayName(String first, String last) {
+              return first + " " + last;
+          }
+          public String toInitials(String first, String last) {
+              return ("" + first.charAt(0) + last.charAt(0)).toUpperCase();
+          }
+      }
+  commit_message: "feat: add toInitials to CustomerMapper"
+fragments:
+- id: mapper_initials
+  selector:
+    path: CustomerMapper.java
+    anchor: "toInitials"
+- id: facade_uses_mapper
+  selector:
+    path: CustomerFacade.java
+    anchor: "mapper.toDisplayName"
+- id: no_sms_gateway
+  selector:
+    path: SmsGateway.java
+    anchor: "SmsGateway"
+oracle:
+  required:
+  - mapper_initials
+  - facade_uses_mapper
+  allowed: []
+  forbidden:
+  - no_sms_gateway

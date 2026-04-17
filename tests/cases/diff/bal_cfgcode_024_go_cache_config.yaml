@@ -1,0 +1,212 @@
+name: bal_cfgcode_024_go_cache_config
+tags:
+- lang:go
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    config/cache.json: |
+      {
+        "driver": "memory",
+        "ttl_seconds": 300,
+        "max_entries": 1000,
+        "prefix": "app:"
+      }
+    internal/cache/cache.go: |
+      package cache
+
+      import (
+        "encoding/json"
+        "os"
+      )
+
+      type CacheConfig struct {
+        Driver     string `json:"driver"`
+        TTL        int    `json:"ttl_seconds"`
+        MaxEntries int    `json:"max_entries"`
+        Prefix     string `json:"prefix"`
+      }
+
+      func LoadCacheConfig() (*CacheConfig, error) {
+        data, err := os.ReadFile("config/cache.json")
+        if err != nil {
+          return nil, err
+        }
+        var cfg CacheConfig
+        json.Unmarshal(data, &cfg)
+        return &cfg, nil
+      }
+
+      func (c *CacheConfig) KeyWithPrefix(key string) string {
+        return c.Prefix + key
+      }
+    internal/session/session.go: |
+      package session
+
+      import (
+        "encoding/json"
+        "os"
+      )
+
+      type sessionCfg struct {
+        TTL    int    `json:"ttl_seconds"`
+        Prefix string `json:"prefix"`
+      }
+
+      func GetSessionTTL() int {
+        data, _ := os.ReadFile("config/cache.json")
+        var cfg sessionCfg
+        json.Unmarshal(data, &cfg)
+        return cfg.TTL * 2
+      }
+    internal/health/health.go: |
+      package health
+
+      var GARBAGE_CFGCODE_024_HEALTH_A = "ok"
+      var GARBAGE_CFGCODE_024_HEALTH_B = 200
+
+      func Check() string {
+        return "healthy"
+      }
+    internal/metrics/metrics.go: |
+      package metrics
+
+      var GARBAGE_CFGCODE_024_MET_C = "prometheus"
+      var GARBAGE_CFGCODE_024_MET_D = 9090
+
+      func Record(name string, val float64) {
+      }
+  changed_files:
+    config/cache.json: |
+      {
+        "driver": "redis",
+        "ttl_seconds": 600,
+        "max_entries": 50000,
+        "prefix": "prod:",
+        "redis": {
+          "addr": "redis.internal:6379",
+          "password": "",
+          "db": 0
+        }
+      }
+    internal/cache/cache.go: |
+      package cache
+
+      import (
+        "encoding/json"
+        "os"
+      )
+
+      type CacheConfig struct {
+        Driver     string `json:"driver"`
+        TTL        int    `json:"ttl_seconds"`
+        MaxEntries int    `json:"max_entries"`
+        Prefix     string `json:"prefix"`
+      }
+
+      func LoadCacheConfig() (*CacheConfig, error) {
+        data, err := os.ReadFile("config/cache.json")
+        if err != nil {
+          return nil, err
+        }
+        var cfg CacheConfig
+        json.Unmarshal(data, &cfg)
+        return &cfg, nil
+      }
+
+      func (c *CacheConfig) KeyWithPrefix(key string) string {
+        return c.Prefix + key
+      }
+    internal/session/session.go: |
+      package session
+
+      import (
+        "encoding/json"
+        "os"
+      )
+
+      type sessionCfg struct {
+        TTL    int    `json:"ttl_seconds"`
+        Prefix string `json:"prefix"`
+      }
+
+      func GetSessionTTL() int {
+        data, _ := os.ReadFile("config/cache.json")
+        var cfg sessionCfg
+        json.Unmarshal(data, &cfg)
+        return cfg.TTL * 2
+      }
+    internal/health/health.go: |
+      package health
+
+      var GARBAGE_CFGCODE_024_HEALTH_A = "ok"
+      var GARBAGE_CFGCODE_024_HEALTH_B = 200
+
+      func Check() string {
+        return "healthy"
+      }
+    internal/metrics/metrics.go: |
+      package metrics
+
+      var GARBAGE_CFGCODE_024_MET_C = "prometheus"
+      var GARBAGE_CFGCODE_024_MET_D = 9090
+
+      func Record(name string, val float64) {
+      }
+  commit_message: "config: switch cache to redis for production"
+fragments:
+- id: config_driver
+  selector:
+    path: config/cache.json
+    anchor: '"driver": "redis"'
+- id: config_redis_addr
+  selector:
+    path: config/cache.json
+    anchor: "redis.internal:6379"
+- id: cache_reads_config
+  selector:
+    path: internal/cache/cache.go
+    anchor: 'os.ReadFile("config/cache.json")'
+- id: cache_uses_prefix
+  selector:
+    path: internal/cache/cache.go
+    anchor: "c.Prefix + key"
+- id: session_reads_config
+  selector:
+    path: internal/session/session.go
+    anchor: 'os.ReadFile("config/cache.json")'
+- id: no_health
+  selector:
+    path: internal/health/health.go
+- id: no_metrics
+  selector:
+    path: internal/metrics/metrics.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_024_HEALTH_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_024_HEALTH_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_024_MET_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_024_MET_D
+oracle:
+  required:
+  - config_driver
+  - config_redis_addr
+  - cache_reads_config
+  - session_reads_config
+  allowed: []
+  forbidden:
+  - no_health
+  - no_metrics
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

@@ -1,0 +1,165 @@
+name: gap_012_python_metric_aggregator_precision_fix
+tags:
+- lang:python
+- change:bug_fix
+- change:single_file
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    metrics/aggregator.py: |
+      from collections import defaultdict
+
+      class MetricAggregator:
+          def __init__(self):
+              self._buckets: dict[str, list[float]] = defaultdict(list)
+
+          def record(self, name: str, value: float) -> None:
+              self._buckets[name].append(value)
+
+          def mean(self, name: str) -> float:
+              values = self._buckets.get(name, [])
+              if not values:
+                  return 0.0
+              return sum(values) / len(values)
+
+          def percentile(self, name: str, pct: float) -> float:
+              values = sorted(self._buckets.get(name, []))
+              if not values:
+                  return 0.0
+              idx = int(len(values) * pct / 100)
+              return values[min(idx, len(values) - 1)]
+
+          def flush(self, name: str) -> list[float]:
+              return self._buckets.pop(name, [])
+    metrics/exporter.py: |
+      from metrics.aggregator import MetricAggregator
+
+      class PrometheusExporter:
+          def __init__(self, aggregator: MetricAggregator):
+              self._agg = aggregator
+              self._prefix = "app"
+
+          def format_metric(self, name: str) -> str:
+              mean_val = self._agg.mean(name)
+              p99 = self._agg.percentile(name, 99)
+              lines = [
+                  f"{self._prefix}_{name}_mean {mean_val:.6f}",
+                  f"{self._prefix}_{name}_p99 {p99:.6f}",
+              ]
+              return "\n".join(lines)
+    dashboard/panels.py: |
+      from metrics.exporter import PrometheusExporter
+
+      class DashboardPanel:
+          def __init__(self, exporter: PrometheusExporter, metric_names: list[str]):
+              self._exporter = exporter
+              self._names = metric_names
+
+          def render(self) -> str:
+              sections = []
+              for name in self._names:
+                  sections.append(self._exporter.format_metric(name))
+              return "\n\n".join(sections)
+
+          def metric_count(self) -> int:
+              return len(self._names)
+    dashboard/alerts.py: |
+      class AlertRule:
+          def __init__(self, metric_name: str, threshold: float):
+              self.metric_name = metric_name
+              self.threshold = threshold
+
+          def evaluate(self, current_value: float) -> bool:
+              return current_value > self.threshold
+
+          def description(self) -> str:
+              return f"{self.metric_name} > {self.threshold}"
+
+      class AlertManager:
+          def __init__(self):
+              self._rules: list[AlertRule] = []
+
+          def add_rule(self, rule: AlertRule) -> None:
+              self._rules.append(rule)
+
+          def check_all(self, values: dict[str, float]) -> list[str]:
+              fired = []
+              for rule in self._rules:
+                  val = values.get(rule.metric_name, 0.0)
+                  if rule.evaluate(val):
+                      fired.append(rule.description())
+              return fired
+  changed_files:
+    metrics/aggregator.py: |
+      from collections import defaultdict
+      from decimal import Decimal, ROUND_HALF_UP
+
+      class MetricAggregator:
+          def __init__(self, precision: int = 6):
+              self._buckets: dict[str, list[Decimal]] = defaultdict(list)
+              self._precision = precision
+
+          def record(self, name: str, value: float) -> None:
+              self._buckets[name].append(Decimal(str(value)))
+
+          def mean(self, name: str) -> float:
+              values = self._buckets.get(name, [])
+              if not values:
+                  return 0.0
+              total = sum(values, Decimal("0"))
+              result = total / len(values)
+              return float(result.quantize(
+                  Decimal(10) ** -self._precision, rounding=ROUND_HALF_UP
+              ))
+
+          def percentile(self, name: str, pct: float) -> float:
+              values = sorted(self._buckets.get(name, []))
+              if not values:
+                  return 0.0
+              rank = Decimal(str(pct)) / Decimal("100") * (len(values) - 1)
+              lower = int(rank)
+              upper = min(lower + 1, len(values) - 1)
+              weight = rank - lower
+              result = values[lower] * (1 - weight) + values[upper] * weight
+              return float(result.quantize(
+                  Decimal(10) ** -self._precision, rounding=ROUND_HALF_UP
+              ))
+
+          def flush(self, name: str) -> list[float]:
+              decimals = self._buckets.pop(name, [])
+              return [float(d) for d in decimals]
+fragments:
+- id: agg_mean
+  selector:
+    path: metrics/aggregator.py
+    anchor: "def mean"
+- id: agg_percentile
+  selector:
+    path: metrics/aggregator.py
+    anchor: "def percentile"
+- id: exporter_format
+  selector:
+    path: metrics/exporter.py
+    anchor: "def format_metric"
+- id: panel_render
+  selector:
+    path: dashboard/panels.py
+    anchor: "def render"
+- id: no_alerts
+  selector:
+    path: dashboard/alerts.py
+- id: no_alert_rule
+  selector:
+    anchor: AlertRule
+oracle:
+  required:
+  - agg_mean
+  - agg_percentile
+  - exporter_format
+  forbidden:
+  - no_alerts
+  - no_alert_rule

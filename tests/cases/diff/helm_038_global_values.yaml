@@ -1,39 +1,164 @@
 name: helm_038_global_values
+tags:
+- lang:cpp
+- change:new_function
+- change:single_file
+- context:cross_module
+- distance:1hop
+- difficulty:easy
 repo:
   initial_files:
-    values.yaml: |
-      image:
-        repository: myapp
-    unrelated.txt: |
-      garbage_marker_12345
-      unused_marker_67890
-  changed_files:
-    values.yaml: |
-      global:
-        imageRegistry: registry.example.com
-        imagePullSecrets:
-          - name: registry-secret
+    include/net/packet_parser.hpp: |
+      #pragma once
+      #include <cstdint>
+      #include <vector>
+      #include <optional>
 
-      image:
-        repository: myapp
-    unrelated.txt: |
-      garbage_marker_12345
-      unused_marker_67890
-  commit_message: Update files
+      namespace net {
+
+      struct PacketHeader {
+          uint16_t version;
+          uint16_t type;
+          uint32_t payload_length;
+          uint32_t sequence_number;
+      };
+
+      class PacketParser {
+      public:
+          std::optional<PacketHeader> parse_header(const std::vector<uint8_t>& raw) const;
+          std::vector<uint8_t> extract_payload(const std::vector<uint8_t>& raw) const;
+
+      private:
+          static constexpr size_t HEADER_SIZE = 12;
+      };
+
+      } // namespace net
+    src/net/packet_dispatcher.cpp: |
+      #include "net/packet_parser.hpp"
+      #include <functional>
+      #include <unordered_map>
+
+      namespace net {
+
+      class PacketDispatcher {
+      public:
+          using Handler = std::function<void(const std::vector<uint8_t>&)>;
+
+          void register_handler(uint16_t type, Handler h) {
+              handlers_[type] = std::move(h);
+          }
+
+          void dispatch(const std::vector<uint8_t>& raw) {
+              PacketParser parser;
+              auto header = parser.parse_header(raw);
+              if (!header) return;
+              auto it = handlers_.find(header->type);
+              if (it != handlers_.end()) {
+                  it->second(parser.extract_payload(raw));
+              }
+          }
+
+      private:
+          std::unordered_map<uint16_t, Handler> handlers_;
+      };
+
+      } // namespace net
+    garbage/tcp_socket.cpp: |
+      // GARBAGE_NET_A = "tcp_socket_marker"
+    garbage/udp_socket.cpp: |
+      // GARBAGE_NET_B = "udp_socket_marker"
+    garbage/tls_handshake.cpp: |
+      // GARBAGE_NET_C = "tls_handshake_marker"
+  changed_files:
+    include/net/packet_parser.hpp: |
+      #pragma once
+      #include <cstdint>
+      #include <vector>
+      #include <optional>
+
+      namespace net {
+
+      struct PacketHeader {
+          uint16_t version;
+          uint16_t type;
+          uint32_t payload_length;
+          uint32_t sequence_number;
+      };
+
+      class PacketParser {
+      public:
+          std::optional<PacketHeader> parse_header(const std::vector<uint8_t>& raw) const;
+          std::vector<uint8_t> extract_payload(const std::vector<uint8_t>& raw) const;
+          bool validate_checksum(const std::vector<uint8_t>& raw) const;
+
+      private:
+          static constexpr size_t HEADER_SIZE = 12;
+          uint32_t compute_checksum(const std::vector<uint8_t>& data) const;
+      };
+
+      } // namespace net
+    src/net/packet_dispatcher.cpp: |
+      #include "net/packet_parser.hpp"
+      #include <functional>
+      #include <unordered_map>
+
+      namespace net {
+
+      class PacketDispatcher {
+      public:
+          using Handler = std::function<void(const std::vector<uint8_t>&)>;
+
+          void register_handler(uint16_t type, Handler h) {
+              handlers_[type] = std::move(h);
+          }
+
+          void dispatch(const std::vector<uint8_t>& raw) {
+              PacketParser parser;
+              if (!parser.validate_checksum(raw)) return;
+              auto header = parser.parse_header(raw);
+              if (!header) return;
+              auto it = handlers_.find(header->type);
+              if (it != handlers_.end()) {
+                  it->second(parser.extract_payload(raw));
+              }
+          }
+
+      private:
+          std::unordered_map<uint16_t, Handler> handlers_;
+      };
+
+      } // namespace net
+    garbage/tcp_socket.cpp: |
+      // GARBAGE_NET_A = "tcp_socket_marker"
+    garbage/udp_socket.cpp: |
+      // GARBAGE_NET_B = "udp_socket_marker"
+    garbage/tls_handshake.cpp: |
+      // GARBAGE_NET_C = "tls_handshake_marker"
+  commit_message: "feat: add validate_checksum to PacketParser"
 fragments:
-- id: values_file
+- id: validate_checksum
   selector:
-    path: values.yaml
-- id: req_global_0
+    path: include/net/packet_parser.hpp
+    anchor: "bool validate_checksum"
+- id: dispatcher_uses_checksum
   selector:
-    anchor: 'imageRegistry: registry.example.com'
-- id: no_global_0
+    path: src/net/packet_dispatcher.cpp
+    anchor: "parser.validate_checksum"
+- id: no_garbage_a
   selector:
-    anchor: unrelated.txt
+    anchor: GARBAGE_NET_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_NET_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_NET_C
 oracle:
   required:
-  - values_file
-  - req_global_0
-  allowed: []
+  - validate_checksum
+  allowed:
+  - dispatcher_uses_checksum
   forbidden:
-  - no_global_0
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

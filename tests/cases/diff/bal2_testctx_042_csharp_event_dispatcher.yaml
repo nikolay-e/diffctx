@@ -1,0 +1,174 @@
+name: bal2_testctx_042_csharp_event_dispatcher
+tags:
+- lang:csharp
+- change:signature
+- context:test_file
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/Events/EventDispatcher.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Events
+      {
+          public class EventDispatcher
+          {
+              private readonly Dictionary<string, List<Action<object>>> _handlers = new();
+
+              public void Subscribe(string eventName, Action<object> handler)
+              {
+                  if (!_handlers.ContainsKey(eventName))
+                      _handlers[eventName] = new List<Action<object>>();
+                  _handlers[eventName].Add(handler);
+              }
+
+              public void Publish(string eventName, object payload)
+              {
+                  if (!_handlers.ContainsKey(eventName)) return;
+                  foreach (var handler in _handlers[eventName])
+                      handler(payload);
+              }
+          }
+      }
+    Tests/EventDispatcherTests.cs: |
+      using Xunit;
+      using App.Events;
+
+      namespace App.Tests
+      {
+          public class EventDispatcherTests
+          {
+              [Fact]
+              public void Publish_WithSubscriber_InvokesHandler()
+              {
+                  var dispatcher = new EventDispatcher();
+                  object received = null;
+                  dispatcher.Subscribe("test", payload => received = payload);
+                  dispatcher.Publish("test", "hello");
+                  Assert.Equal("hello", received);
+              }
+
+              [Fact]
+              public void Publish_NoSubscribers_DoesNotThrow()
+              {
+                  var dispatcher = new EventDispatcher();
+                  dispatcher.Publish("unknown", null);
+              }
+          }
+      }
+    src/Events/EventStore.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Events
+      {
+          public class EventStore
+          {
+              private readonly List<(string Name, object Payload, DateTime Timestamp)> _events = new();
+
+              public void Append(string name, object payload)
+              {
+                  _events.Add((name, payload, DateTime.UtcNow));
+              }
+
+              public int Count => _events.Count;
+          }
+      }
+    src/Messaging/MessageBroker.cs: |
+      using System;
+
+      namespace App.Messaging
+      {
+          public class MessageBroker
+          {
+              public void SendMessage(string queue, string message)
+              {
+                  Console.WriteLine($"Sent to {queue}: {message}");
+              }
+          }
+      }
+  changed_files:
+    src/Events/EventDispatcher.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Threading.Tasks;
+
+      namespace App.Events
+      {
+          public class EventDispatcher
+          {
+              private readonly Dictionary<string, List<Func<object, Task>>> _handlers = new();
+
+              public void Subscribe(string eventName, Func<object, Task> handler)
+              {
+                  if (!_handlers.ContainsKey(eventName))
+                      _handlers[eventName] = new List<Func<object, Task>>();
+                  _handlers[eventName].Add(handler);
+              }
+
+              public void Unsubscribe(string eventName)
+              {
+                  _handlers.Remove(eventName);
+              }
+
+              public async Task PublishAsync(string eventName, object payload)
+              {
+                  if (!_handlers.ContainsKey(eventName)) return;
+                  foreach (var handler in _handlers[eventName])
+                      await handler(payload);
+              }
+
+              public bool HasSubscribers(string eventName)
+              {
+                  return _handlers.ContainsKey(eventName) && _handlers[eventName].Count > 0;
+              }
+          }
+      }
+  commit_message: "refactor: make event dispatcher async, add unsubscribe"
+fragments:
+- id: subscribe_async
+  selector:
+    path: src/Events/EventDispatcher.cs
+    anchor: "Func<object, Task> handler"
+- id: unsubscribe
+  selector:
+    path: src/Events/EventDispatcher.cs
+    anchor: "public void Unsubscribe(string eventName)"
+- id: publish_async
+  selector:
+    path: src/Events/EventDispatcher.cs
+    anchor: "public async Task PublishAsync"
+- id: has_subscribers
+  selector:
+    path: src/Events/EventDispatcher.cs
+    anchor: "public bool HasSubscribers"
+- id: test_imports
+  selector:
+    path: Tests/EventDispatcherTests.cs
+    anchor: "using App.Events"
+- id: test_publish
+  selector:
+    path: Tests/EventDispatcherTests.cs
+    anchor: "Publish_WithSubscriber_InvokesHandler"
+- id: no_event_store
+  selector:
+    path: src/Events/EventStore.cs
+    anchor: "class EventStore"
+- id: no_message_broker
+  selector:
+    path: src/Messaging/MessageBroker.cs
+    anchor: "class MessageBroker"
+oracle:
+  required:
+  - publish_async
+  - unsubscribe
+  - test_imports
+  allowed:
+  - subscribe_async
+  - has_subscribers
+  - test_publish
+  forbidden:
+  - no_event_store
+  - no_message_broker

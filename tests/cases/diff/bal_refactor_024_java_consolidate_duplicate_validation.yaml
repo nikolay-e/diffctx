@@ -1,0 +1,319 @@
+name: bal_refactor_024_java_consolidate_duplicate_validation
+tags:
+- lang:java
+- change:multi_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/erp/employee/EmployeeService.java: |
+      package com.erp.employee;
+
+      import java.util.List;
+      import java.util.Optional;
+
+      public class EmployeeService {
+          private final EmployeeRepository repository;
+
+          public EmployeeService(EmployeeRepository repository) {
+              this.repository = repository;
+          }
+
+          public Employee findById(Long id) {
+              return repository.findById(id)
+                  .orElseThrow(() -> new IllegalArgumentException("employee not found: " + id));
+          }
+
+          public List<Employee> findByDepartment(String department) {
+              return repository.findByDepartment(department);
+          }
+
+          public Employee save(Employee employee) {
+              return repository.save(employee);
+          }
+      }
+    src/main/java/com/erp/employee/EmployeeRepository.java: |
+      package com.erp.employee;
+
+      import java.util.List;
+      import java.util.Optional;
+
+      public interface EmployeeRepository {
+          Optional<Employee> findById(Long id);
+          List<Employee> findByDepartment(String department);
+          List<Employee> findByManagerId(Long managerId);
+          Employee save(Employee employee);
+      }
+    src/main/java/com/erp/employee/Employee.java: |
+      package com.erp.employee;
+
+      public class Employee {
+          private Long id;
+          private String name;
+          private String department;
+          private Long managerId;
+          private double salary;
+
+          public Employee(Long id, String name, String department, Long managerId, double salary) {
+              this.id = id;
+              this.name = name;
+              this.department = department;
+              this.managerId = managerId;
+              this.salary = salary;
+          }
+
+          public Long getId() { return id; }
+          public String getName() { return name; }
+          public String getDepartment() { return department; }
+          public Long getManagerId() { return managerId; }
+          public double getSalary() { return salary; }
+          public void setSalary(double salary) { this.salary = salary; }
+      }
+    src/test/java/com/erp/employee/EmployeeServiceTest.java: |
+      package com.erp.employee;
+
+      import org.junit.jupiter.api.Test;
+      import java.util.List;
+      import java.util.Optional;
+      import static org.junit.jupiter.api.Assertions.*;
+
+      class EmployeeServiceTest {
+          private final InMemoryEmployeeRepository repo = new InMemoryEmployeeRepository();
+          private final EmployeeService service = new EmployeeService(repo);
+
+          @Test
+          void findById_existingId_returnsEmployee() {
+              repo.save(new Employee(1L, "Alice", "Engineering", null, 90000));
+              Employee emp = service.findById(1L);
+              assertEquals("Alice", emp.getName());
+          }
+
+          @Test
+          void findById_missingId_throwsException() {
+              assertThrows(IllegalArgumentException.class, () -> service.findById(99L));
+          }
+      }
+    src/main/java/com/erp/payroll/PayrollEngine.java: |
+      package com.erp.payroll;
+
+      // GARBAGE_RF24_A = "payroll_engine_unrelated"
+      public class PayrollEngine {
+          public double computeNetPay(double gross, double taxRate) {
+              return gross * (1 - taxRate);
+          }
+      }
+    src/main/java/com/erp/timesheet/TimesheetService.java: |
+      package com.erp.timesheet;
+
+      // GARBAGE_RF24_B = "timesheet_service_unrelated"
+      public class TimesheetService {
+          public int totalHours(Long employeeId, String month) {
+              return 0;
+          }
+      }
+    src/main/java/com/erp/leave/LeaveBalanceService.java: |
+      package com.erp.leave;
+
+      // GARBAGE_RF24_C = "leave_balance_unrelated"
+      public class LeaveBalanceService {
+          public int remainingDays(Long employeeId) {
+              return 20;
+          }
+      }
+  changed_files:
+    src/main/java/com/erp/employee/EmployeeService.java: |
+      package com.erp.employee;
+
+      import java.util.List;
+      import java.util.Optional;
+
+      public class EmployeeService {
+          private final EmployeeRepository repository;
+
+          public EmployeeService(EmployeeRepository repository) {
+              this.repository = repository;
+          }
+
+          public Employee findById(Long id) {
+              return repository.findById(id)
+                  .orElseThrow(() -> new IllegalArgumentException("employee not found: " + id));
+          }
+
+          public List<Employee> findByDepartment(String department) {
+              return repository.findByDepartment(department);
+          }
+
+          public List<Employee> findDirectReports(Long managerId) {
+              Employee manager = findById(managerId);
+              return repository.findByManagerId(manager.getId());
+          }
+
+          public Employee updateSalary(Long id, double newSalary) {
+              if (newSalary < 0) {
+                  throw new IllegalArgumentException("salary cannot be negative");
+              }
+              Employee emp = findById(id);
+              emp.setSalary(newSalary);
+              return repository.save(emp);
+          }
+
+          public Employee save(Employee employee) {
+              return repository.save(employee);
+          }
+      }
+    src/main/java/com/erp/employee/EmployeeRepository.java: |
+      package com.erp.employee;
+
+      import java.util.List;
+      import java.util.Optional;
+
+      public interface EmployeeRepository {
+          Optional<Employee> findById(Long id);
+          List<Employee> findByDepartment(String department);
+          List<Employee> findByManagerId(Long managerId);
+          Employee save(Employee employee);
+      }
+    src/main/java/com/erp/employee/Employee.java: |
+      package com.erp.employee;
+
+      public class Employee {
+          private Long id;
+          private String name;
+          private String department;
+          private Long managerId;
+          private double salary;
+
+          public Employee(Long id, String name, String department, Long managerId, double salary) {
+              this.id = id;
+              this.name = name;
+              this.department = department;
+              this.managerId = managerId;
+              this.salary = salary;
+          }
+
+          public Long getId() { return id; }
+          public String getName() { return name; }
+          public String getDepartment() { return department; }
+          public Long getManagerId() { return managerId; }
+          public double getSalary() { return salary; }
+          public void setSalary(double salary) { this.salary = salary; }
+      }
+    src/test/java/com/erp/employee/EmployeeServiceTest.java: |
+      package com.erp.employee;
+
+      import org.junit.jupiter.api.Test;
+      import java.util.List;
+      import java.util.Optional;
+      import static org.junit.jupiter.api.Assertions.*;
+
+      class EmployeeServiceTest {
+          private final InMemoryEmployeeRepository repo = new InMemoryEmployeeRepository();
+          private final EmployeeService service = new EmployeeService(repo);
+
+          @Test
+          void findById_existingId_returnsEmployee() {
+              repo.save(new Employee(1L, "Alice", "Engineering", null, 90000));
+              Employee emp = service.findById(1L);
+              assertEquals("Alice", emp.getName());
+          }
+
+          @Test
+          void findById_missingId_throwsException() {
+              assertThrows(IllegalArgumentException.class, () -> service.findById(99L));
+          }
+
+          @Test
+          void findDirectReports_returnsSubordinates() {
+              repo.save(new Employee(10L, "Manager", "Eng", null, 120000));
+              repo.save(new Employee(11L, "Dev1", "Eng", 10L, 90000));
+              repo.save(new Employee(12L, "Dev2", "Eng", 10L, 85000));
+              List<Employee> reports = service.findDirectReports(10L);
+              assertEquals(2, reports.size());
+          }
+
+          @Test
+          void updateSalary_validAmount_persistsChange() {
+              repo.save(new Employee(20L, "Bob", "Finance", null, 70000));
+              Employee updated = service.updateSalary(20L, 75000);
+              assertEquals(75000, updated.getSalary());
+          }
+
+          @Test
+          void updateSalary_negative_throwsException() {
+              repo.save(new Employee(21L, "Carol", "HR", null, 60000));
+              assertThrows(IllegalArgumentException.class,
+                  () -> service.updateSalary(21L, -1000));
+          }
+      }
+    src/main/java/com/erp/payroll/PayrollEngine.java: |
+      package com.erp.payroll;
+
+      // GARBAGE_RF24_A = "payroll_engine_unrelated"
+      public class PayrollEngine {
+          public double computeNetPay(double gross, double taxRate) {
+              return gross * (1 - taxRate);
+          }
+      }
+    src/main/java/com/erp/timesheet/TimesheetService.java: |
+      package com.erp.timesheet;
+
+      // GARBAGE_RF24_B = "timesheet_service_unrelated"
+      public class TimesheetService {
+          public int totalHours(Long employeeId, String month) {
+              return 0;
+          }
+      }
+    src/main/java/com/erp/leave/LeaveBalanceService.java: |
+      package com.erp.leave;
+
+      // GARBAGE_RF24_C = "leave_balance_unrelated"
+      public class LeaveBalanceService {
+          public int remainingDays(Long employeeId) {
+              return 20;
+          }
+      }
+  commit_message: "feat: add findDirectReports and updateSalary to EmployeeService"
+fragments:
+- id: find_direct_reports
+  selector:
+    path: src/main/java/com/erp/employee/EmployeeService.java
+    anchor: "public List<Employee> findDirectReports"
+- id: update_salary
+  selector:
+    path: src/main/java/com/erp/employee/EmployeeService.java
+    anchor: "public Employee updateSalary"
+- id: test_direct_reports
+  selector:
+    path: src/test/java/com/erp/employee/EmployeeServiceTest.java
+    anchor: "findDirectReports_returnsSubordinates"
+- id: test_update_salary
+  selector:
+    path: src/test/java/com/erp/employee/EmployeeServiceTest.java
+    anchor: "updateSalary_validAmount_persistsChange"
+- id: test_negative_salary
+  selector:
+    path: src/test/java/com/erp/employee/EmployeeServiceTest.java
+    anchor: "updateSalary_negative_throwsException"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_RF24_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_RF24_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_RF24_C
+oracle:
+  required:
+  - find_direct_reports
+  - update_salary
+  - test_direct_reports
+  allowed:
+  - test_update_salary
+  - test_negative_salary
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

@@ -1,0 +1,109 @@
+name: bal3_testctx_014_csharp_string_utils_test
+tags:
+- lang:csharp
+- change:single_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/StringUtils.cs: |
+      namespace App.Utils;
+
+      public static class StringUtils
+      {
+          public static string Reverse(string input)
+          {
+              var chars = input.ToCharArray();
+              System.Array.Reverse(chars);
+              return new string(chars);
+          }
+
+          public static bool IsPalindrome(string input)
+          {
+              var cleaned = input.ToLowerInvariant().Replace(" ", "");
+              return cleaned == Reverse(cleaned);
+          }
+      }
+    tests/StringUtilsTests.cs: |
+      using Xunit;
+      using App.Utils;
+
+      public class StringUtilsTests
+      {
+          [Fact]
+          public void Reverse_ReversesString()
+          {
+              Assert.Equal("cba", StringUtils.Reverse("abc"));
+          }
+
+          [Fact]
+          public void IsPalindrome_DetectsPalindrome()
+          {
+              Assert.True(StringUtils.IsPalindrome("racecar"));
+          }
+
+          [Fact]
+          public void IsPalindrome_RejectsNonPalindrome()
+          {
+              Assert.False(StringUtils.IsPalindrome("hello"));
+          }
+      }
+    src/DateUtils.cs: |
+      namespace App.Utils;
+
+      public static class DateUtils
+      {
+          public static bool IsWeekend(System.DayOfWeek day)
+          {
+              return day == System.DayOfWeek.Saturday || day == System.DayOfWeek.Sunday;
+          }
+      }
+  changed_files:
+    src/StringUtils.cs: |
+      namespace App.Utils;
+
+      public static class StringUtils
+      {
+          public static string Reverse(string input)
+          {
+              var chars = input.ToCharArray();
+              System.Array.Reverse(chars);
+              return new string(chars);
+          }
+
+          public static bool IsPalindrome(string input)
+          {
+              var cleaned = input.ToLowerInvariant().Replace(" ", "");
+              return cleaned == Reverse(cleaned);
+          }
+
+          public static string Truncate(string input, int maxLength)
+          {
+              if (string.IsNullOrEmpty(input) || input.Length <= maxLength)
+                  return input;
+              return input.Substring(0, maxLength) + "...";
+          }
+      }
+  commit_message: "feat: add Truncate to StringUtils"
+fragments:
+- id: truncate_method
+  selector:
+    path: src/StringUtils.cs
+    anchor: "public static string Truncate(string input, int maxLength)"
+- id: test_reverse
+  selector:
+    path: tests/StringUtilsTests.cs
+    anchor: "public void Reverse_ReversesString()"
+- id: no_date_utils
+  selector:
+    path: src/DateUtils.cs
+    anchor: "public static class DateUtils"
+oracle:
+  required:
+  - truncate_method
+  - test_reverse
+  allowed: []
+  forbidden:
+  - no_date_utils

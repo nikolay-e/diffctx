@@ -1,0 +1,106 @@
+name: bal_1hop_013_go_controller_calls_service
+tags:
+- lang:rust
+- change:bug_fix
+- change:single_file
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/pricing/discount.rs: |
+      pub struct DiscountEngine {
+          tiers: Vec<(u32, f64)>,
+      }
+
+      impl DiscountEngine {
+          pub fn new(tiers: Vec<(u32, f64)>) -> Self {
+              DiscountEngine { tiers }
+          }
+
+          pub fn rate_for_quantity(&self, qty: u32) -> f64 {
+              // BUG: iterates forward and returns first match instead of best match
+              for (threshold, rate) in &self.tiers {
+                  if qty >= *threshold {
+                      return *rate;
+                  }
+              }
+              0.0
+          }
+
+          pub fn apply(&self, unit_price: f64, qty: u32) -> f64 {
+              let rate = self.rate_for_quantity(qty);
+              unit_price * qty as f64 * (1.0 - rate)
+          }
+      }
+    garbage/voucher.rs: |
+      // GARBAGE_1HOP13_VOUCH_A = "voucher_marker"
+    garbage/loyalty.rs: |
+      // GARBAGE_1HOP13_LOYAL_B = "loyalty_marker"
+    garbage/promo.rs: |
+      // GARBAGE_1HOP13_PROMO_C = "promo_marker"
+  changed_files:
+    src/pricing/discount.rs: |
+      pub struct DiscountEngine {
+          tiers: Vec<(u32, f64)>,
+      }
+
+      impl DiscountEngine {
+          pub fn new(mut tiers: Vec<(u32, f64)>) -> Self {
+              tiers.sort_by(|a, b| b.0.cmp(&a.0));
+              DiscountEngine { tiers }
+          }
+
+          pub fn rate_for_quantity(&self, qty: u32) -> f64 {
+              for (threshold, rate) in &self.tiers {
+                  if qty >= *threshold {
+                      return *rate;
+                  }
+              }
+              0.0
+          }
+
+          pub fn apply(&self, unit_price: f64, qty: u32) -> f64 {
+              let rate = self.rate_for_quantity(qty);
+              unit_price * qty as f64 * (1.0 - rate)
+          }
+      }
+    garbage/voucher.rs: |
+      // GARBAGE_1HOP13_VOUCH_A = "voucher_marker"
+    garbage/loyalty.rs: |
+      // GARBAGE_1HOP13_LOYAL_B = "loyalty_marker"
+    garbage/promo.rs: |
+      // GARBAGE_1HOP13_PROMO_C = "promo_marker"
+  commit_message: "fix: sort discount tiers descending so highest threshold matches first"
+fragments:
+- id: tiers_sort
+  selector:
+    path: src/pricing/discount.rs
+    anchor: "tiers.sort_by(|a, b| b.0.cmp(&a.0));"
+- id: rate_for_quantity
+  selector:
+    path: src/pricing/discount.rs
+    anchor: "pub fn rate_for_quantity(&self, qty: u32) -> f64 {"
+- id: apply_method
+  selector:
+    path: src/pricing/discount.rs
+    anchor: "pub fn apply(&self, unit_price: f64, qty: u32) -> f64 {"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_1HOP13_VOUCH_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_1HOP13_LOYAL_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_1HOP13_PROMO_C
+oracle:
+  required:
+  - tiers_sort
+  - rate_for_quantity
+  allowed:
+  - apply_method
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

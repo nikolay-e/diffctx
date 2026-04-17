@@ -1,0 +1,115 @@
+name: gap_151_shell_terraform_healthcheck_same_file
+tags:
+- change:config
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+- lang:shell
+- lang:terraform
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    scripts/healthcheck.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      ENDPOINT="${HEALTH_ENDPOINT:-http://localhost:8080/health}"
+      TIMEOUT=5
+      RETRIES=3
+      RETRY_DELAY=2
+
+      attempt=0
+      while [[ ${attempt} -lt ${RETRIES} ]]; do
+        status=$(curl -s -o /dev/null -w "%{http_code}" --max-time "${TIMEOUT}" "${ENDPOINT}" || true)
+        if [[ "${status}" == "200" ]]; then
+          exit 0
+        fi
+        attempt=$((attempt + 1))
+        sleep "${RETRY_DELAY}"
+      done
+      exit 1
+    infra/autoscaling.tf: |
+      resource "aws_autoscaling_group" "web" {
+        name                = "web-asg"
+        min_size            = 1
+        max_size            = 4
+        desired_capacity    = 2
+        vpc_zone_identifier = var.private_subnets
+
+        launch_template {
+          id      = aws_launch_template.web.id
+          version = "$Latest"
+        }
+      }
+
+      resource "aws_launch_template" "web" {
+        name_prefix   = "web-"
+        image_id      = "ami-0abcdef1234567890"
+        instance_type = "t3.small"
+      }
+    infra/waf.tf: |
+      resource "aws_wafv2_web_acl" "main" {
+        name  = "app-waf"
+        scope = "REGIONAL"
+
+        default_action {
+          allow {}
+        }
+
+        visibility_config {
+          cloudwatch_metrics_enabled = true
+          metric_name                = "app-waf"
+          sampled_requests_enabled   = true
+        }
+      }
+  changed_files:
+    scripts/healthcheck.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      ENDPOINT="${HEALTH_ENDPOINT:-http://localhost:8080/health}"
+      TIMEOUT=10
+      RETRIES=5
+      RETRY_DELAY=3
+      EXPECTED_BODY="${EXPECTED_BODY:-ok}"
+
+      attempt=0
+      while [[ ${attempt} -lt ${RETRIES} ]]; do
+        response=$(curl -s --max-time "${TIMEOUT}" "${ENDPOINT}" || true)
+        status=$(curl -s -o /dev/null -w "%{http_code}" --max-time "${TIMEOUT}" "${ENDPOINT}" || true)
+        if [[ "${status}" == "200" ]] && echo "${response}" | grep -q "${EXPECTED_BODY}"; then
+          exit 0
+        fi
+        attempt=$((attempt + 1))
+        sleep "${RETRY_DELAY}"
+      done
+      exit 1
+fragments:
+- id: timeout
+  selector:
+    path: scripts/healthcheck.sh
+    anchor: TIMEOUT=10
+- id: retries
+  selector:
+    path: scripts/healthcheck.sh
+    anchor: RETRIES=5
+- id: expected_body
+  selector:
+    path: scripts/healthcheck.sh
+    anchor: EXPECTED_BODY
+- id: no_autoscaling
+  selector:
+    path: infra/autoscaling.tf
+- id: no_waf
+  selector:
+    path: infra/waf.tf
+oracle:
+  required:
+  - timeout
+  - retries
+  - expected_body
+  forbidden:
+  - no_autoscaling
+  - no_waf

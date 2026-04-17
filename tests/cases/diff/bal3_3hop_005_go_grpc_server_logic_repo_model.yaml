@@ -1,0 +1,216 @@
+name: bal3_3hop_005_go_grpc_server_logic_repo_model
+tags:
+- lang:go
+- change:multi_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    domain/model/product.go: |
+      package model
+
+      type Product struct {
+          ID    string
+          Name  string
+          Price float64
+      }
+
+      func NewProduct(id, name string, price float64) *Product {
+          return &Product{ID: id, Name: name, Price: price}
+      }
+
+      func (p *Product) IsValid() bool {
+          return p.Name != "" && p.Price > 0
+      }
+    domain/repo/product_repo.go: |
+      package repo
+
+      import "myapp/domain/model"
+
+      type ProductRepo struct {
+          items map[string]*model.Product
+      }
+
+      func NewProductRepo() *ProductRepo {
+          return &ProductRepo{items: make(map[string]*model.Product)}
+      }
+
+      func (r *ProductRepo) Save(p *model.Product) {
+          r.items[p.ID] = p
+      }
+
+      func (r *ProductRepo) FindByID(id string) *model.Product {
+          return r.items[id]
+      }
+    domain/logic/product_logic.go: |
+      package logic
+
+      import (
+          "myapp/domain/model"
+          "myapp/domain/repo"
+      )
+
+      type ProductLogic struct {
+          repo *repo.ProductRepo
+      }
+
+      func NewProductLogic(r *repo.ProductRepo) *ProductLogic {
+          return &ProductLogic{repo: r}
+      }
+
+      func (l *ProductLogic) CreateProduct(id, name string, price float64) error {
+          p := model.NewProduct(id, name, price)
+          if !p.IsValid() {
+              return nil
+          }
+          l.repo.Save(p)
+          return nil
+      }
+
+      func (l *ProductLogic) GetProduct(id string) *model.Product {
+          return l.repo.FindByID(id)
+      }
+    transport/grpc/product_server.go: |
+      package grpc
+
+      import "myapp/domain/logic"
+
+      type ProductServer struct {
+          logic *logic.ProductLogic
+      }
+
+      func NewProductServer(l *logic.ProductLogic) *ProductServer {
+          return &ProductServer{logic: l}
+      }
+
+      func (s *ProductServer) Create(id, name string, price float64) error {
+          return s.logic.CreateProduct(id, name, price)
+      }
+
+      func (s *ProductServer) Get(id string) (string, float64) {
+          p := s.logic.GetProduct(id)
+          if p == nil {
+              return "", 0
+          }
+          return p.Name, p.Price
+      }
+    transport/rest/health.go: |
+      package rest
+
+      var GARBAGE_BAL3_005_REST_MARKER_A = "rest"
+      var GARBAGE_BAL3_005_PING_MARKER_B = "pong"
+
+      func HealthCheck() string {
+          return "ok"
+      }
+    transport/rest/version.go: |
+      package rest
+
+      var GARBAGE_BAL3_005_VERSION_MARKER_C = "v1"
+      var GARBAGE_BAL3_005_BUILD_MARKER_D = "dev"
+
+      func Version() string {
+          return "1.0.0"
+      }
+  changed_files:
+    domain/model/product.go: |
+      package model
+
+      type Product struct {
+          ID       string
+          Name     string
+          Price    float64
+          Currency string
+      }
+
+      func NewProduct(id, name string, price float64) *Product {
+          return &Product{ID: id, Name: name, Price: price, Currency: "USD"}
+      }
+
+      func (p *Product) IsValid() bool {
+          return p.Name != "" && p.Price > 0
+      }
+
+      func (p *Product) DisplayPrice() string {
+          return p.Currency + " " + fmt.Sprintf("%.2f", p.Price)
+      }
+    transport/grpc/product_server.go: |
+      package grpc
+
+      import "myapp/domain/logic"
+
+      type ProductServer struct {
+          logic *logic.ProductLogic
+      }
+
+      func NewProductServer(l *logic.ProductLogic) *ProductServer {
+          return &ProductServer{logic: l}
+      }
+
+      func (s *ProductServer) Create(id, name string, price float64) error {
+          return s.logic.CreateProduct(id, name, price)
+      }
+
+      func (s *ProductServer) Get(id string) (string, float64, string) {
+          p := s.logic.GetProduct(id)
+          if p == nil {
+              return "", 0, ""
+          }
+          return p.Name, p.Price, p.Currency
+      }
+  commit_message: "Add currency field to product model and expose in gRPC"
+fragments:
+- id: model_currency
+  selector:
+    path: domain/model/product.go
+    anchor: "Currency string"
+- id: model_display_price
+  selector:
+    path: domain/model/product.go
+    anchor: "func (p *Product) DisplayPrice"
+- id: repo_save
+  selector:
+    path: domain/repo/product_repo.go
+    anchor: "func (r *ProductRepo) Save"
+- id: logic_create
+  selector:
+    path: domain/logic/product_logic.go
+    anchor: "func (l *ProductLogic) CreateProduct"
+- id: grpc_get
+  selector:
+    path: transport/grpc/product_server.go
+    anchor: "func (s *ProductServer) Get"
+- id: no_health
+  selector:
+    path: transport/rest/health.go
+- id: no_version
+  selector:
+    path: transport/rest/version.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_005_REST_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_005_PING_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_005_VERSION_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_005_BUILD_MARKER_D
+oracle:
+  required:
+  - model_currency
+  - model_display_price
+  - repo_save
+  - logic_create
+  - grpc_get
+  allowed: []
+  forbidden:
+  - no_health
+  - no_version
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

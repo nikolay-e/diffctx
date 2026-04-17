@@ -1,0 +1,200 @@
+name: bal3_3hop_066_swift_combine_publisher_chain
+tags:
+- lang:swift
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    Sources/Data/WeatherData.swift: |
+      import Foundation
+
+      struct WeatherData {
+          let temperature: Double
+          let humidity: Double
+          let city: String
+      }
+    Sources/Network/WeatherAPI.swift: |
+      import Foundation
+      import Combine
+      import Data
+
+      class WeatherAPI {
+          func fetchWeather(city: String) -> AnyPublisher<WeatherData, Error> {
+              return Just(WeatherData(temperature: 20, humidity: 50, city: city))
+                  .setFailureType(to: Error.self)
+                  .eraseToAnyPublisher()
+          }
+      }
+    Sources/Services/WeatherService.swift: |
+      import Foundation
+      import Combine
+      import Network
+
+      class WeatherService {
+          private let api: WeatherAPI
+          init(api: WeatherAPI) {
+              self.api = api
+          }
+          func currentWeather(city: String) -> AnyPublisher<WeatherData, Error> {
+              return api.fetchWeather(city: city)
+          }
+      }
+    Sources/ViewModels/WeatherViewModel.swift: |
+      import Foundation
+      import Combine
+      import Services
+
+      class WeatherViewModel: ObservableObject {
+          @Published var temperature: Double = 0
+          private let service: WeatherService
+          private var cancellables = Set<AnyCancellable>()
+          init(service: WeatherService) {
+              self.service = service
+          }
+          func refresh(city: String) {
+              service.currentWeather(city: city)
+                  .sink(receiveCompletion: { _ in },
+                        receiveValue: { [weak self] data in
+                      self?.temperature = data.temperature
+                  })
+                  .store(in: &cancellables)
+          }
+      }
+    Sources/Formatters/TemperatureFormatter.swift: |
+      import Foundation
+      let GARBAGE_066_TEMP_FMT_A = "celsius"
+      let GARBAGE_066_UNIT_B = "metric"
+
+      struct TemperatureFormatter {
+          static func format(_ temp: Double) -> String {
+              return "\(temp)C"
+          }
+      }
+    Sources/Formatters/WindFormatter.swift: |
+      import Foundation
+      let GARBAGE_066_WIND_FMT_C = "wind"
+      let GARBAGE_066_SPEED_D = "kmh"
+
+      struct WindFormatter {
+          static func format(_ speed: Double) -> String {
+              return "\(speed) km/h"
+          }
+      }
+  changed_files:
+    Sources/Data/WeatherData.swift: |
+      import Foundation
+
+      struct WeatherData {
+          let temperature: Double
+          let humidity: Double
+          let city: String
+          let windSpeed: Double
+          let condition: String
+      }
+    Sources/Network/WeatherAPI.swift: |
+      import Foundation
+      import Combine
+      import Data
+
+      class WeatherAPI {
+          func fetchWeather(city: String) -> AnyPublisher<WeatherData, Error> {
+              return Just(WeatherData(temperature: 20, humidity: 50, city: city, windSpeed: 10, condition: "sunny"))
+                  .setFailureType(to: Error.self)
+                  .eraseToAnyPublisher()
+          }
+      }
+    Sources/Services/WeatherService.swift: |
+      import Foundation
+      import Combine
+      import Network
+
+      class WeatherService {
+          private let api: WeatherAPI
+          init(api: WeatherAPI) {
+              self.api = api
+          }
+          func currentWeather(city: String) -> AnyPublisher<WeatherData, Error> {
+              return api.fetchWeather(city: city)
+          }
+      }
+    Sources/ViewModels/WeatherViewModel.swift: |
+      import Foundation
+      import Combine
+      import Services
+
+      class WeatherViewModel: ObservableObject {
+          @Published var temperature: Double = 0
+          @Published var condition: String = ""
+          private let service: WeatherService
+          private var cancellables = Set<AnyCancellable>()
+          init(service: WeatherService) {
+              self.service = service
+          }
+          func refresh(city: String) {
+              service.currentWeather(city: city)
+                  .sink(receiveCompletion: { _ in },
+                        receiveValue: { [weak self] data in
+                      self?.temperature = data.temperature
+                      self?.condition = data.condition
+                  })
+                  .store(in: &cancellables)
+          }
+      }
+    Sources/Formatters/TemperatureFormatter.swift: |
+      import Foundation
+      let GARBAGE_066_TEMP_FMT_A = "celsius"
+      let GARBAGE_066_UNIT_B = "metric"
+
+      struct TemperatureFormatter {
+          static func format(_ temp: Double) -> String {
+              return "\(temp)C"
+          }
+      }
+    Sources/Formatters/WindFormatter.swift: |
+      import Foundation
+      let GARBAGE_066_WIND_FMT_C = "wind"
+      let GARBAGE_066_SPEED_D = "kmh"
+
+      struct WindFormatter {
+          static func format(_ speed: Double) -> String {
+              return "\(speed) km/h"
+          }
+      }
+  commit_message: "feat: add wind speed and condition to weather data model"
+fragments:
+- id: weather_data_fields
+  selector:
+    path: Sources/Data/WeatherData.swift
+    anchor: "let windSpeed: Double"
+- id: api_creates_data
+  selector:
+    path: Sources/Network/WeatherAPI.swift
+    anchor: "import Data"
+- id: service_imports_network
+  selector:
+    path: Sources/Services/WeatherService.swift
+    anchor: "import Network"
+- id: vm_condition_published
+  selector:
+    path: Sources/ViewModels/WeatherViewModel.swift
+    anchor: "@Published var condition"
+- id: no_temp_formatter
+  selector:
+    path: Sources/Formatters/TemperatureFormatter.swift
+    anchor: "GARBAGE_066_TEMP_FMT_A"
+- id: no_wind_formatter
+  selector:
+    path: Sources/Formatters/WindFormatter.swift
+    anchor: "GARBAGE_066_WIND_FMT_C"
+oracle:
+  required:
+  - weather_data_fields
+  - api_creates_data
+  - service_imports_network
+  - vm_condition_published
+  allowed: []
+  forbidden:
+  - no_temp_formatter
+  - no_wind_formatter

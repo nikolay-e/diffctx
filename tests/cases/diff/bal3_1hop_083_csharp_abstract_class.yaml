@@ -1,0 +1,334 @@
+name: bal3_1hop_083_csharp_abstract_class
+tags:
+- lang:csharp
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: csharp-no-tree-sitter
+repo:
+  initial_files:
+    src/Base/BaseEntity.cs: |
+      using System;
+
+      namespace App.Base
+      {
+          public abstract class BaseEntity
+          {
+              public int Id { get; set; }
+              public DateTime CreatedAt { get; set; }
+
+              public abstract bool IsValid();
+          }
+      }
+    src/Models/Invoice.cs: |
+      using System;
+      using App.Base;
+
+      namespace App.Models
+      {
+          public class Invoice : BaseEntity
+          {
+              public string Number { get; set; }
+              public decimal Amount { get; set; }
+
+              public override bool IsValid()
+              {
+                  return !string.IsNullOrEmpty(Number) && Amount > 0;
+              }
+          }
+      }
+    src/Models/Payment.cs: |
+      using System;
+      using App.Base;
+
+      namespace App.Models
+      {
+          public class Payment : BaseEntity
+          {
+              public string TransactionId { get; set; }
+              public decimal Amount { get; set; }
+
+              public override bool IsValid()
+              {
+                  return !string.IsNullOrEmpty(TransactionId) && Amount > 0;
+              }
+          }
+      }
+    src/Models/Refund.cs: |
+      using System;
+      using App.Base;
+
+      namespace App.Models
+      {
+          public class Refund : BaseEntity
+          {
+              public string Reason { get; set; }
+              public decimal Amount { get; set; }
+
+              public override bool IsValid()
+              {
+                  return !string.IsNullOrEmpty(Reason) && Amount > 0;
+              }
+          }
+      }
+    src/Models/Subscription.cs: |
+      using System;
+      using App.Base;
+
+      namespace App.Models
+      {
+          public class Subscription : BaseEntity
+          {
+              public string PlanId { get; set; }
+              public DateTime ExpiresAt { get; set; }
+
+              public override bool IsValid()
+              {
+                  return !string.IsNullOrEmpty(PlanId);
+              }
+          }
+      }
+    src/Queues/MessageQueue.cs: |
+      using System;
+      GARBAGE_083_QUEUE_NAME_A = "default";
+      GARBAGE_083_MAX_SIZE_B = 10000;
+
+      namespace App.Queues
+      {
+          public class MessageQueue
+          {
+              public void Enqueue(string message) { }
+              public string Dequeue() { return ""; }
+          }
+      }
+    src/Queues/DeadLetterQueue.cs: |
+      using System;
+      GARBAGE_083_DLQ_TTL_C = 86400;
+      GARBAGE_083_DLQ_MAX_D = 1000;
+
+      namespace App.Queues
+      {
+          public class DeadLetterQueue
+          {
+              public void Store(string failedMessage) { }
+          }
+      }
+    src/Search/Indexer.cs: |
+      using System;
+      GARBAGE_083_INDEX_SHARD_E = 5;
+      GARBAGE_083_REPLICA_COUNT_F = 1;
+
+      namespace App.Search
+      {
+          public class Indexer
+          {
+              public void Index(string document) { }
+          }
+      }
+  changed_files:
+    src/Base/BaseEntity.cs: |
+      using System;
+
+      namespace App.Base
+      {
+          public abstract class BaseEntity
+          {
+              public int Id { get; set; }
+              public DateTime CreatedAt { get; set; }
+              public DateTime? UpdatedAt { get; set; }
+              public string CreatedBy { get; set; }
+              public bool IsDeleted { get; set; }
+
+              public abstract bool IsValid();
+
+              public virtual void SoftDelete()
+              {
+                  IsDeleted = true;
+                  UpdatedAt = DateTime.UtcNow;
+              }
+
+              public virtual string GetAuditInfo()
+              {
+                  return $"Created by {CreatedBy} at {CreatedAt}";
+              }
+          }
+      }
+    src/Models/Invoice.cs: |
+      using System;
+      using App.Base;
+
+      namespace App.Models
+      {
+          public class Invoice : BaseEntity
+          {
+              public string Number { get; set; }
+              public decimal Amount { get; set; }
+
+              public override bool IsValid()
+              {
+                  return !string.IsNullOrEmpty(Number) && Amount > 0;
+              }
+          }
+      }
+    src/Models/Payment.cs: |
+      using System;
+      using App.Base;
+
+      namespace App.Models
+      {
+          public class Payment : BaseEntity
+          {
+              public string TransactionId { get; set; }
+              public decimal Amount { get; set; }
+
+              public override bool IsValid()
+              {
+                  return !string.IsNullOrEmpty(TransactionId) && Amount > 0;
+              }
+          }
+      }
+    src/Models/Refund.cs: |
+      using System;
+      using App.Base;
+
+      namespace App.Models
+      {
+          public class Refund : BaseEntity
+          {
+              public string Reason { get; set; }
+              public decimal Amount { get; set; }
+
+              public override bool IsValid()
+              {
+                  return !string.IsNullOrEmpty(Reason) && Amount > 0;
+              }
+          }
+      }
+    src/Models/Subscription.cs: |
+      using System;
+      using App.Base;
+
+      namespace App.Models
+      {
+          public class Subscription : BaseEntity
+          {
+              public string PlanId { get; set; }
+              public DateTime ExpiresAt { get; set; }
+
+              public override bool IsValid()
+              {
+                  return !string.IsNullOrEmpty(PlanId);
+              }
+          }
+      }
+    src/Queues/MessageQueue.cs: |
+      using System;
+      GARBAGE_083_QUEUE_NAME_A = "default";
+      GARBAGE_083_MAX_SIZE_B = 10000;
+
+      namespace App.Queues
+      {
+          public class MessageQueue
+          {
+              public void Enqueue(string message) { }
+              public string Dequeue() { return ""; }
+          }
+      }
+    src/Queues/DeadLetterQueue.cs: |
+      using System;
+      GARBAGE_083_DLQ_TTL_C = 86400;
+      GARBAGE_083_DLQ_MAX_D = 1000;
+
+      namespace App.Queues
+      {
+          public class DeadLetterQueue
+          {
+              public void Store(string failedMessage) { }
+          }
+      }
+    src/Search/Indexer.cs: |
+      using System;
+      GARBAGE_083_INDEX_SHARD_E = 5;
+      GARBAGE_083_REPLICA_COUNT_F = 1;
+
+      namespace App.Search
+      {
+          public class Indexer
+          {
+              public void Index(string document) { }
+          }
+      }
+  commit_message: "feat: add soft delete, audit info and timestamps to BaseEntity"
+fragments:
+- id: invoice_using
+  selector:
+    path: src/Models/Invoice.cs
+    anchor: "using App.Base"
+- id: invoice_extends
+  selector:
+    path: src/Models/Invoice.cs
+    anchor: "class Invoice : BaseEntity"
+- id: payment_using
+  selector:
+    path: src/Models/Payment.cs
+    anchor: "using App.Base"
+- id: refund_using
+  selector:
+    path: src/Models/Refund.cs
+    anchor: "using App.Base"
+- id: subscription_using
+  selector:
+    path: src/Models/Subscription.cs
+    anchor: "using App.Base"
+- id: subscription_extends
+  selector:
+    path: src/Models/Subscription.cs
+    anchor: "class Subscription : BaseEntity"
+- id: no_queue
+  selector:
+    path: src/Queues/MessageQueue.cs
+- id: no_dlq
+  selector:
+    path: src/Queues/DeadLetterQueue.cs
+- id: no_indexer
+  selector:
+    path: src/Search/Indexer.cs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_083_QUEUE_NAME_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_083_MAX_SIZE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_083_DLQ_TTL_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_083_DLQ_MAX_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_083_INDEX_SHARD_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_083_REPLICA_COUNT_F
+oracle:
+  required:
+  - invoice_using
+  - invoice_extends
+  - payment_using
+  - refund_using
+  - subscription_using
+  - subscription_extends
+  allowed: []
+  forbidden:
+  - no_queue
+  - no_dlq
+  - no_indexer
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

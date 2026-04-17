@@ -1,0 +1,112 @@
+name: xml_005_log4j_appender_changed
+tags:
+- lang:xml
+- change:single_file
+- change:config
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/main/resources/log4j2.xml: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <Configuration status="WARN">
+        <Appenders>
+          <Console name="ConsoleAppender" target="SYSTEM_OUT">
+            <PatternLayout pattern="%d{HH:mm:ss} %-5level %logger{36} - %msg%n"/>
+          </Console>
+          <RollingFile name="FileAppender" fileName="logs/app.log"
+                       filePattern="logs/app-%d{yyyy-MM-dd}.log.gz">
+            <PatternLayout pattern="%d{HH:mm:ss} %-5level %logger{36} - %msg%n"/>
+            <Policies>
+              <TimeBasedTriggeringPolicy/>
+            </Policies>
+          </RollingFile>
+        </Appenders>
+        <Loggers>
+          <Root level="info">
+            <AppenderRef ref="ConsoleAppender"/>
+            <AppenderRef ref="FileAppender"/>
+          </Root>
+        </Loggers>
+      </Configuration>
+    XML_NOISE_005_checkstyle.xml: |
+      <!DOCTYPE module PUBLIC "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+          "https://checkstyle.org/dtds/configuration_1_3.dtd">
+      <module name="Checker">
+        <!-- XML_NOISE_005_LineLength -->
+        <module name="LineLength">
+          <property name="max" value="120"/>
+        </module>
+        <module name="XML_NOISE_005_WhitespaceAround"/>
+      </module>
+    XML_NOISE_005_findbugs.xml: |
+      <FindBugsFilter>
+        <!-- XML_NOISE_005_FINDBUGS_EXCLUDE -->
+        <Match>
+          <Class name="com.example.generated.*"/>
+        </Match>
+      </FindBugsFilter>
+    garbage/PmdRuleset.xml: |
+      <!-- XML_NOISE_005_PmdRuleset = "pmd_ruleset_marker" -->
+      <ruleset name="Custom Rules">
+        <rule ref="category/java/bestpractices.xml/UnusedImports"/>
+      </ruleset>
+  changed_files:
+    src/main/resources/log4j2.xml: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <Configuration status="WARN">
+        <Appenders>
+          <Console name="ConsoleAppender" target="SYSTEM_OUT">
+            <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n"/>
+          </Console>
+          <RollingFile name="FileAppender" fileName="logs/app.log"
+                       filePattern="logs/app-%d{yyyy-MM-dd}.log.gz">
+            <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n"/>
+            <Policies>
+              <TimeBasedTriggeringPolicy/>
+            </Policies>
+          </RollingFile>
+        </Appenders>
+        <Loggers>
+          <Root level="info">
+            <AppenderRef ref="ConsoleAppender"/>
+            <AppenderRef ref="FileAppender"/>
+          </Root>
+        </Loggers>
+      </Configuration>
+  commit_message: "chore: add date and thread to log4j2 pattern layout"
+fragments:
+- id: log4j2_pattern
+  selector:
+    path: src/main/resources/log4j2.xml
+    anchor: "yyyy-MM-dd HH:mm:ss.SSS"
+- id: no_checkstyle
+  selector:
+    path: XML_NOISE_005_checkstyle.xml
+- id: no_findbugs
+  selector:
+    path: XML_NOISE_005_findbugs.xml
+- id: no_global_0
+  selector:
+    anchor: XML_NOISE_005_LineLength
+- id: no_global_1
+  selector:
+    anchor: XML_NOISE_005_WhitespaceAround
+- id: no_global_2
+  selector:
+    anchor: XML_NOISE_005_FINDBUGS_EXCLUDE
+- id: no_global_3
+  selector:
+    anchor: XML_NOISE_005_PmdRuleset
+oracle:
+  required:
+  - log4j2_pattern
+  allowed: []
+  forbidden:
+  - no_checkstyle
+  - no_findbugs
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

@@ -1,0 +1,278 @@
+name: bal3_1hop_075_swift_new_function_middleware
+tags:
+- lang:swift
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    Sources/HTTP/Middleware.swift: |
+      import Foundation
+
+      struct HTTPRequest {
+          var path: String
+          var method: String
+          var headers: [String: String]
+          var body: Data?
+      }
+
+      struct HTTPResponse {
+          var statusCode: Int
+          var headers: [String: String]
+          var body: Data?
+      }
+
+      typealias MiddlewareFunc = (HTTPRequest) -> HTTPRequest
+    Sources/HTTP/AuthMiddleware.swift: |
+      import Foundation
+      import HTTP
+
+      class AuthMiddleware {
+          func apply(request: HTTPRequest) -> HTTPRequest {
+              var req = request
+              req.headers["Authorization"] = "Bearer token"
+              return req
+          }
+      }
+    Sources/HTTP/LoggingMiddleware.swift: |
+      import Foundation
+      import HTTP
+
+      class LoggingMiddleware {
+          func apply(request: HTTPRequest) -> HTTPRequest {
+              print("\(request.method) \(request.path)")
+              return request
+          }
+      }
+    Sources/HTTP/CompressionMiddleware.swift: |
+      import Foundation
+      import HTTP
+
+      class CompressionMiddleware {
+          func apply(request: HTTPRequest) -> HTTPRequest {
+              var req = request
+              req.headers["Accept-Encoding"] = "gzip"
+              return req
+          }
+      }
+    Sources/HTTP/RetryMiddleware.swift: |
+      import Foundation
+      import HTTP
+
+      class RetryMiddleware {
+          let maxRetries: Int
+
+          init(maxRetries: Int = 3) {
+              self.maxRetries = maxRetries
+          }
+
+          func apply(request: HTTPRequest) -> HTTPRequest {
+              var req = request
+              req.headers["X-Retry-Count"] = "\(maxRetries)"
+              return req
+          }
+      }
+    Sources/Database/ConnectionPool.swift: |
+      import Foundation
+      GARBAGE_075_POOL_MIN_A = 2
+      GARBAGE_075_POOL_MAX_B = 10
+
+      class ConnectionPool {
+          func acquire() -> Any? { return nil }
+          func release(_ conn: Any) {}
+      }
+    Sources/Database/QueryBuilder.swift: |
+      import Foundation
+      GARBAGE_075_MAX_PARAMS_C = 100
+      GARBAGE_075_DIALECT_D = "sqlite"
+
+      class QueryBuilder {
+          func select(table: String) -> String { return "" }
+      }
+    Sources/Monitoring/HealthCheck.swift: |
+      import Foundation
+      GARBAGE_075_CHECK_PATH_E = "/health"
+      GARBAGE_075_CHECK_INTERVAL_F = 30
+
+      class HealthCheck {
+          func isHealthy() -> Bool { return true }
+      }
+  changed_files:
+    Sources/HTTP/Middleware.swift: |
+      import Foundation
+
+      struct HTTPRequest {
+          var path: String
+          var method: String
+          var headers: [String: String]
+          var body: Data?
+          var queryParams: [String: String]
+      }
+
+      struct HTTPResponse {
+          var statusCode: Int
+          var headers: [String: String]
+          var body: Data?
+      }
+
+      typealias MiddlewareFunc = (HTTPRequest) -> HTTPRequest
+      typealias AsyncMiddlewareFunc = (HTTPRequest, @escaping (HTTPRequest) -> Void) -> Void
+
+      class MiddlewarePipeline {
+          private var middlewares: [MiddlewareFunc] = []
+
+          func use(_ middleware: @escaping MiddlewareFunc) {
+              middlewares.append(middleware)
+          }
+
+          func execute(request: HTTPRequest) -> HTTPRequest {
+              return middlewares.reduce(request) { req, mw in mw(req) }
+          }
+      }
+    Sources/HTTP/AuthMiddleware.swift: |
+      import Foundation
+      import HTTP
+
+      class AuthMiddleware {
+          func apply(request: HTTPRequest) -> HTTPRequest {
+              var req = request
+              req.headers["Authorization"] = "Bearer token"
+              return req
+          }
+      }
+    Sources/HTTP/LoggingMiddleware.swift: |
+      import Foundation
+      import HTTP
+
+      class LoggingMiddleware {
+          func apply(request: HTTPRequest) -> HTTPRequest {
+              print("\(request.method) \(request.path)")
+              return request
+          }
+      }
+    Sources/HTTP/CompressionMiddleware.swift: |
+      import Foundation
+      import HTTP
+
+      class CompressionMiddleware {
+          func apply(request: HTTPRequest) -> HTTPRequest {
+              var req = request
+              req.headers["Accept-Encoding"] = "gzip"
+              return req
+          }
+      }
+    Sources/HTTP/RetryMiddleware.swift: |
+      import Foundation
+      import HTTP
+
+      class RetryMiddleware {
+          let maxRetries: Int
+
+          init(maxRetries: Int = 3) {
+              self.maxRetries = maxRetries
+          }
+
+          func apply(request: HTTPRequest) -> HTTPRequest {
+              var req = request
+              req.headers["X-Retry-Count"] = "\(maxRetries)"
+              return req
+          }
+      }
+    Sources/Database/ConnectionPool.swift: |
+      import Foundation
+      GARBAGE_075_POOL_MIN_A = 2
+      GARBAGE_075_POOL_MAX_B = 10
+
+      class ConnectionPool {
+          func acquire() -> Any? { return nil }
+          func release(_ conn: Any) {}
+      }
+    Sources/Database/QueryBuilder.swift: |
+      import Foundation
+      GARBAGE_075_MAX_PARAMS_C = 100
+      GARBAGE_075_DIALECT_D = "sqlite"
+
+      class QueryBuilder {
+          func select(table: String) -> String { return "" }
+      }
+    Sources/Monitoring/HealthCheck.swift: |
+      import Foundation
+      GARBAGE_075_CHECK_PATH_E = "/health"
+      GARBAGE_075_CHECK_INTERVAL_F = 30
+
+      class HealthCheck {
+          func isHealthy() -> Bool { return true }
+      }
+  commit_message: "feat: add queryParams, MiddlewarePipeline and async support"
+fragments:
+- id: auth_mw_imports
+  selector:
+    path: Sources/HTTP/AuthMiddleware.swift
+    anchor: "import HTTP"
+- id: auth_mw_request
+  selector:
+    path: Sources/HTTP/AuthMiddleware.swift
+    anchor: "func apply(request: HTTPRequest)"
+- id: logging_mw_imports
+  selector:
+    path: Sources/HTTP/LoggingMiddleware.swift
+    anchor: "import HTTP"
+- id: compression_mw_imports
+  selector:
+    path: Sources/HTTP/CompressionMiddleware.swift
+    anchor: "import HTTP"
+- id: retry_mw_imports
+  selector:
+    path: Sources/HTTP/RetryMiddleware.swift
+    anchor: "import HTTP"
+- id: retry_mw_request
+  selector:
+    path: Sources/HTTP/RetryMiddleware.swift
+    anchor: "func apply(request: HTTPRequest)"
+- id: no_pool
+  selector:
+    path: Sources/Database/ConnectionPool.swift
+- id: no_query
+  selector:
+    path: Sources/Database/QueryBuilder.swift
+- id: no_health
+  selector:
+    path: Sources/Monitoring/HealthCheck.swift
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_075_POOL_MIN_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_075_POOL_MAX_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_075_MAX_PARAMS_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_075_DIALECT_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_075_CHECK_PATH_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_075_CHECK_INTERVAL_F
+oracle:
+  required:
+  - auth_mw_imports
+  - auth_mw_request
+  - logging_mw_imports
+  - compression_mw_imports
+  - retry_mw_imports
+  - retry_mw_request
+  allowed: []
+  forbidden:
+  - no_pool
+  - no_query
+  - no_health
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

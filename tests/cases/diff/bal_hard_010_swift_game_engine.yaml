@@ -1,0 +1,192 @@
+name: bal_hard_010_swift_game_engine
+tags:
+- lang:swift
+- change:multi_file
+- change:new_function
+- context:cross_module
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    Sources/Engine/Vector2D.swift: |
+      struct Vector2D {
+          var x: Double
+          var y: Double
+          static func +(lhs: Vector2D, rhs: Vector2D) -> Vector2D {
+              Vector2D(x: lhs.x + rhs.x, y: lhs.y + rhs.y)
+          }
+          func magnitude() -> Double {
+              (x * x + y * y).squareRoot()
+          }
+      }
+    Sources/Engine/Entity.swift: |
+      protocol Entity {
+          var id: String { get }
+          var position: Vector2D { get set }
+          func update(deltaTime: Double)
+      }
+    Sources/Engine/PhysicsBody.swift: |
+      class PhysicsBody {
+          var velocity: Vector2D
+          var mass: Double
+          init(velocity: Vector2D = Vector2D(x: 0, y: 0), mass: Double = 1.0) {
+              self.velocity = velocity
+              self.mass = mass
+          }
+          func applyForce(_ force: Vector2D) {
+              velocity = velocity + Vector2D(x: force.x / mass, y: force.y / mass)
+          }
+      }
+    Sources/Game/Player.swift: |
+      class Player: Entity {
+          let id: String
+          var position: Vector2D
+          let physics: PhysicsBody
+          init(id: String, position: Vector2D) {
+              self.id = id
+              self.position = position
+              self.physics = PhysicsBody(mass: 5.0)
+          }
+          func update(deltaTime: Double) {
+              position = position + Vector2D(x: physics.velocity.x * deltaTime, y: physics.velocity.y * deltaTime)
+          }
+      }
+    Sources/Game/World.swift: |
+      class World {
+          var entities: [Entity] = []
+          func addEntity(_ entity: Entity) {
+              entities.append(entity)
+          }
+          func tick(deltaTime: Double) {
+              for i in entities.indices {
+                  entities[i].update(deltaTime: deltaTime)
+              }
+          }
+      }
+    Sources/Game/GameLoop.swift: |
+      class GameLoop {
+          private let world: World
+          private var isRunning = false
+          init(world: World) {
+              self.world = world
+          }
+          func start() {
+              isRunning = true
+              while isRunning {
+                  world.tick(deltaTime: 1.0 / 60.0)
+              }
+          }
+          func stop() { isRunning = false }
+      }
+    Sources/Render/Renderer.swift: |
+      class Renderer {
+          func draw(entities: [Entity]) {
+              for entity in entities {
+                  print("Drawing \(entity.id) at \(entity.position)")
+              }
+          }
+      }
+    Sources/Audio/SoundManager.swift: |
+      class SoundManager {
+          func playSound(name: String) {
+              print("Playing \(name)")
+          }
+      }
+  changed_files:
+    Sources/Engine/PhysicsBody.swift: |
+      class PhysicsBody {
+          var velocity: Vector2D
+          var mass: Double
+          var collisionRadius: Double
+          init(velocity: Vector2D = Vector2D(x: 0, y: 0), mass: Double = 1.0, collisionRadius: Double = 1.0) {
+              self.velocity = velocity
+              self.mass = mass
+              self.collisionRadius = collisionRadius
+          }
+          func applyForce(_ force: Vector2D) {
+              velocity = velocity + Vector2D(x: force.x / mass, y: force.y / mass)
+          }
+          func collidesWith(_ other: PhysicsBody, selfPos: Vector2D, otherPos: Vector2D) -> Bool {
+              let dx = selfPos.x - otherPos.x
+              let dy = selfPos.y - otherPos.y
+              let dist = (dx * dx + dy * dy).squareRoot()
+              return dist < (collisionRadius + other.collisionRadius)
+          }
+      }
+    Sources/Game/World.swift: |
+      class World {
+          var entities: [Entity] = []
+          func addEntity(_ entity: Entity) {
+              entities.append(entity)
+          }
+          func tick(deltaTime: Double) {
+              for i in entities.indices {
+                  entities[i].update(deltaTime: deltaTime)
+              }
+              checkCollisions()
+          }
+          private func checkCollisions() {
+              for i in 0..<entities.count {
+                  for j in (i+1)..<entities.count {
+                      if let a = entities[i] as? Player, let b = entities[j] as? Player {
+                          if a.physics.collidesWith(b.physics, selfPos: a.position, otherPos: b.position) {
+                              print("Collision: \(a.id) and \(b.id)")
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  commit_message: "feat: add collision detection to physics engine"
+fragments:
+- id: collision_radius
+  selector:
+    path: PhysicsBody.swift
+    anchor: "var collisionRadius: Double"
+- id: collides_with_method
+  selector:
+    path: PhysicsBody.swift
+    anchor: "func collidesWith"
+- id: world_check_collisions
+  selector:
+    path: World.swift
+    anchor: "func checkCollisions"
+- id: world_calls_collides
+  selector:
+    path: World.swift
+    anchor: "a.physics.collidesWith"
+- id: player_has_physics
+  selector:
+    path: Player.swift
+    anchor: "let physics: PhysicsBody"
+- id: entity_protocol
+  selector:
+    path: Entity.swift
+    anchor: "protocol Entity"
+- id: vector_add
+  selector:
+    path: Vector2D.swift
+    anchor: "static func +"
+- id: no_renderer
+  selector:
+    path: Render/Renderer.swift
+- id: no_sound_manager
+  selector:
+    path: Audio/SoundManager.swift
+- id: no_play_sound
+  selector:
+    anchor: "func playSound"
+oracle:
+  required:
+  - collision_radius
+  - collides_with_method
+  - world_check_collisions
+  - world_calls_collides
+  - player_has_physics
+  - entity_protocol
+  allowed:
+  - vector_add
+  forbidden:
+  - no_renderer
+  - no_sound_manager
+  - no_play_sound

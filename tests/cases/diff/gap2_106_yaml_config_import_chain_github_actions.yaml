@@ -1,0 +1,130 @@
+name: gap2_106_yaml_config_import_chain_github_actions
+tags:
+- change:config
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:0hop
+- lang:yaml
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    .github/workflows/ci.yaml: |
+      name: CI
+      on:
+        push:
+          branches: [main]
+      jobs:
+        build:
+          runs-on: ubuntu-latest
+          steps:
+          - uses: actions/checkout@v4
+          - uses: actions/setup-node@v4
+            with:
+              node-version: "18"
+          - run: npm ci
+          - run: npm test
+    .github/workflows/deploy.yaml: |
+      name: Deploy
+      on:
+        workflow_run:
+          workflows: [CI]
+          types: [completed]
+      jobs:
+        deploy:
+          runs-on: ubuntu-latest
+          steps:
+          - uses: actions/checkout@v4
+          - run: ./scripts/deploy.sh
+    .github/workflows/codeql.yaml: |
+      TRAP_GAP2_106_CODEQL_A: "analysis_config"
+      TRAP_GAP2_106_LANG_B: "javascript"
+      name: CodeQL
+      on:
+        schedule:
+        - cron: "0 6 * * 1"
+      jobs:
+        analyze:
+          runs-on: ubuntu-latest
+          steps:
+          - uses: github/codeql-action/init@v3
+  changed_files:
+    .github/workflows/ci.yaml: |
+      name: CI
+      on:
+        push:
+          branches: [main, develop]
+        pull_request:
+          branches: [main]
+      jobs:
+        build:
+          runs-on: ubuntu-22.04
+          strategy:
+            matrix:
+              node-version: ["18", "20"]
+          steps:
+          - uses: actions/checkout@v4
+          - uses: actions/setup-node@v4
+            with:
+              node-version: "${{ matrix.node-version }}"
+          - run: npm ci
+          - run: npm test
+          - run: npm run lint
+    .github/workflows/deploy.yaml: |
+      name: Deploy
+      on:
+        workflow_run:
+          workflows: [CI]
+          types: [completed]
+      jobs:
+        deploy:
+          runs-on: ubuntu-latest
+          steps:
+          - uses: actions/checkout@v4
+          - run: ./scripts/deploy.sh
+    .github/workflows/codeql.yaml: |
+      TRAP_GAP2_106_CODEQL_A: "analysis_config"
+      TRAP_GAP2_106_LANG_B: "javascript"
+      name: CodeQL
+      on:
+        schedule:
+        - cron: "0 6 * * 1"
+      jobs:
+        analyze:
+          runs-on: ubuntu-latest
+          steps:
+          - uses: github/codeql-action/init@v3
+  commit_message: Update files
+fragments:
+- id: ci_pr_trigger
+  selector:
+    path: .github/workflows/ci.yaml
+    anchor: "pull_request:"
+- id: ci_matrix
+  selector:
+    path: .github/workflows/ci.yaml
+    anchor: "matrix:"
+- id: ci_lint_step
+  selector:
+    path: .github/workflows/ci.yaml
+    anchor: npm run lint
+- id: no_codeql
+  selector:
+    path: .github/workflows/codeql.yaml
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_106_CODEQL_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_106_LANG_B
+oracle:
+  required:
+  - ci_pr_trigger
+  - ci_matrix
+  - ci_lint_step
+  allowed: []
+  forbidden:
+  - no_codeql
+  - no_global_0
+  - no_global_1

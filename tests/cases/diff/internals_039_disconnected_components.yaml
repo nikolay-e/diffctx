@@ -1,50 +1,149 @@
 name: internals_039_disconnected_components
+tags:
+- lang:sql
+- change:single_file
+- context:cross_module
+- distance:0hop
+- difficulty:medium
 repo:
   initial_files:
-    component_a.py: |
-      def placeholder():
+    db/schema.sql: |
+      CREATE TABLE products (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(255) NOT NULL,
+          price NUMERIC(10, 2) NOT NULL,
+          category_id INTEGER REFERENCES categories(id)
+      );
+
+      CREATE TABLE categories (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(100) NOT NULL
+      );
+    src/models/product.py: |
+      import psycopg2
+
+      def get_product(conn, product_id: int) -> dict:
+          cur = conn.cursor()
+          cur.execute("SELECT id, name, price, category_id FROM products WHERE id = %s", (product_id,))
+          row = cur.fetchone()
+          return {"id": row[0], "name": row[1], "price": row[2], "category_id": row[3]}
+    src/reports/inventory.py: |
+      import psycopg2
+
+      def list_products_in_category(conn, category_id: int) -> list:
+          cur = conn.cursor()
+          cur.execute(
+              "SELECT id, name, price FROM products WHERE category_id = %s ORDER BY name",
+              (category_id,)
+          )
+          return cur.fetchall()
+    garbage/auth.py: |
+      GARBAGE_SQL039_AUTH_A = "auth_marker"
+
+
+      def check_permissions(user_id: int) -> bool:
+          return True
+    garbage/cache.py: |
+      GARBAGE_SQL039_CACHE_B = "cache_marker"
+
+
+      def invalidate(key: str) -> None:
           pass
-    component_b.py: |
-      def placeholder_b():
+    garbage/notify.py: |
+      GARBAGE_SQL039_NOTIFY_C = "notify_marker"
+
+
+      def send_email(to: str, body: str) -> None:
           pass
   changed_files:
-    component_a.py: |
-      def alpha_one():
-          alpha_two()
+    db/schema.sql: |
+      CREATE TABLE products (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(255) NOT NULL,
+          price NUMERIC(10, 2) NOT NULL,
+          category_id INTEGER REFERENCES categories(id),
+          stock_quantity INTEGER NOT NULL DEFAULT 0,
+          sku VARCHAR(64) UNIQUE
+      );
 
-      def alpha_two():
-          alpha_three()
+      CREATE TABLE categories (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(100) NOT NULL
+      );
 
-      def alpha_three():
+      CREATE INDEX idx_products_sku ON products(sku);
+      CREATE INDEX idx_products_category ON products(category_id);
+    src/models/product.py: |
+      import psycopg2
+
+      def get_product(conn, product_id: int) -> dict:
+          cur = conn.cursor()
+          cur.execute("SELECT id, name, price, category_id FROM products WHERE id = %s", (product_id,))
+          row = cur.fetchone()
+          return {"id": row[0], "name": row[1], "price": row[2], "category_id": row[3]}
+    src/reports/inventory.py: |
+      import psycopg2
+
+      def list_products_in_category(conn, category_id: int) -> list:
+          cur = conn.cursor()
+          cur.execute(
+              "SELECT id, name, price FROM products WHERE category_id = %s ORDER BY name",
+              (category_id,)
+          )
+          return cur.fetchall()
+    garbage/auth.py: |
+      GARBAGE_SQL039_AUTH_A = "auth_marker"
+
+
+      def check_permissions(user_id: int) -> bool:
+          return True
+    garbage/cache.py: |
+      GARBAGE_SQL039_CACHE_B = "cache_marker"
+
+
+      def invalidate(key: str) -> None:
           pass
-    component_b.py: |
-      def beta_one():
-          beta_two()
+    garbage/notify.py: |
+      GARBAGE_SQL039_NOTIFY_C = "notify_marker"
 
-      def beta_two():
-          beta_three()
 
-      def beta_three():
+      def send_email(to: str, body: str) -> None:
           pass
-  commit_message: Update files
+  commit_message: "feat: add stock_quantity and sku columns to products table"
 fragments:
-- id: component_a_file
+- id: products_schema
   selector:
-    path: component_a.py
-- id: component_b_file
+    path: db/schema.sql
+    anchor: "stock_quantity INTEGER"
+- id: sku_column
   selector:
-    path: component_b.py
-- id: req_global_0
+    path: db/schema.sql
+    anchor: "sku VARCHAR(64)"
+- id: product_model_query
   selector:
-    anchor: 'def alpha_one():'
-- id: req_global_1
+    path: src/models/product.py
+    anchor: "SELECT id, name, price, category_id FROM products"
+- id: inventory_report_query
   selector:
-    anchor: 'def alpha_two():'
+    path: src/reports/inventory.py
+    anchor: "SELECT id, name, price FROM products WHERE category_id"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_SQL039_AUTH_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_SQL039_CACHE_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_SQL039_NOTIFY_C
 oracle:
   required:
-  - component_a_file
-  - component_b_file
-  - req_global_0
-  - req_global_1
+  - products_schema
+  - sku_column
+  - product_model_query
+  - inventory_report_query
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

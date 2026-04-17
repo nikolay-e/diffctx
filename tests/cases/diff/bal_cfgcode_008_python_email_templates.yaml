@@ -1,0 +1,187 @@
+name: bal_cfgcode_008_python_email_templates
+tags:
+- lang:python
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    config/email.json: |
+      {
+        "smtp_host": "smtp.gmail.com",
+        "smtp_port": 587,
+        "from_address": "noreply@example.com",
+        "templates": {
+          "welcome": "Welcome, {name}!",
+          "reset": "Reset your password: {link}"
+        }
+      }
+    src/mailer.py: |
+      import json
+
+      class Mailer:
+          def __init__(self):
+              with open("config/email.json") as f:
+                  self.cfg = json.load(f)
+              self.host = self.cfg["smtp_host"]
+              self.port = self.cfg["smtp_port"]
+              self.sender = self.cfg["from_address"]
+
+          def send(self, to, template_name, context):
+              tpl = self.cfg["templates"][template_name]
+              body = tpl.format(**context)
+              return self.sender, to, body
+    src/notifications.py: |
+      import json
+
+      def get_template(name):
+          with open("config/email.json") as f:
+              cfg = json.load(f)
+          return cfg["templates"].get(name)
+    src/auth_service.py: |
+      GARBAGE_CFGCODE_008_AUTH_A = "jwt"
+      GARBAGE_CFGCODE_008_AUTH_B = 3600
+
+      def generate_token(user_id):
+          return f"token_{user_id}"
+    src/file_storage.py: |
+      GARBAGE_CFGCODE_008_STORE_C = "s3"
+      GARBAGE_CFGCODE_008_STORE_D = "uploads/"
+
+      class FileStorage:
+          def upload(self, path, data):
+              pass
+    src/analytics.py: |
+      GARBAGE_CFGCODE_008_ANAL_E = "mixpanel"
+      GARBAGE_CFGCODE_008_ANAL_F = False
+
+      def track_event(name, props):
+          pass
+  changed_files:
+    config/email.json: |
+      {
+        "smtp_host": "smtp.sendgrid.net",
+        "smtp_port": 465,
+        "from_address": "hello@example.com",
+        "templates": {
+          "welcome": "Welcome aboard, {name}! Get started at {link}.",
+          "reset": "Reset your password: {link}",
+          "invoice": "Invoice #{number} for ${amount} is ready."
+        },
+        "use_tls": true
+      }
+    src/mailer.py: |
+      import json
+
+      class Mailer:
+          def __init__(self):
+              with open("config/email.json") as f:
+                  self.cfg = json.load(f)
+              self.host = self.cfg["smtp_host"]
+              self.port = self.cfg["smtp_port"]
+              self.sender = self.cfg["from_address"]
+
+          def send(self, to, template_name, context):
+              tpl = self.cfg["templates"][template_name]
+              body = tpl.format(**context)
+              return self.sender, to, body
+    src/notifications.py: |
+      import json
+
+      def get_template(name):
+          with open("config/email.json") as f:
+              cfg = json.load(f)
+          return cfg["templates"].get(name)
+    src/auth_service.py: |
+      GARBAGE_CFGCODE_008_AUTH_A = "jwt"
+      GARBAGE_CFGCODE_008_AUTH_B = 3600
+
+      def generate_token(user_id):
+          return f"token_{user_id}"
+    src/file_storage.py: |
+      GARBAGE_CFGCODE_008_STORE_C = "s3"
+      GARBAGE_CFGCODE_008_STORE_D = "uploads/"
+
+      class FileStorage:
+          def upload(self, path, data):
+              pass
+    src/analytics.py: |
+      GARBAGE_CFGCODE_008_ANAL_E = "mixpanel"
+      GARBAGE_CFGCODE_008_ANAL_F = False
+
+      def track_event(name, props):
+          pass
+  commit_message: "config: switch to sendgrid and add invoice template"
+fragments:
+- id: config_smtp_host
+  selector:
+    path: config/email.json
+    anchor: "smtp.sendgrid.net"
+- id: config_invoice_tpl
+  selector:
+    path: config/email.json
+    anchor: "Invoice #{number}"
+- id: config_tls
+  selector:
+    path: config/email.json
+    anchor: '"use_tls": true'
+- id: mailer_reads_smtp
+  selector:
+    path: src/mailer.py
+    anchor: 'self.cfg["smtp_host"]'
+- id: mailer_reads_templates
+  selector:
+    path: src/mailer.py
+    anchor: 'self.cfg["templates"]'
+- id: notifications_reads
+  selector:
+    path: src/notifications.py
+    anchor: 'cfg["templates"]'
+- id: no_auth
+  selector:
+    path: src/auth_service.py
+- id: no_storage
+  selector:
+    path: src/file_storage.py
+- id: no_analytics
+  selector:
+    path: src/analytics.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_008_AUTH_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_008_AUTH_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_008_STORE_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_008_STORE_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CFGCODE_008_ANAL_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CFGCODE_008_ANAL_F
+oracle:
+  required:
+  - config_smtp_host
+  - config_invoice_tpl
+  - config_tls
+  - mailer_reads_smtp
+  - mailer_reads_templates
+  - notifications_reads
+  allowed: []
+  forbidden:
+  - no_auth
+  - no_storage
+  - no_analytics
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

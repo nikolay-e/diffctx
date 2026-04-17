@@ -1,0 +1,230 @@
+name: bal3_3hop_026_rust_exporter_formatter_aggregator_collector
+tags:
+- lang:rust
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/collector/metric.rs: |
+      #[derive(Clone)]
+      pub struct Metric {
+          pub name: String,
+          pub value: f64,
+      }
+
+      pub struct Collector {
+          metrics: Vec<Metric>,
+      }
+
+      impl Collector {
+          pub fn new() -> Self {
+              Self { metrics: Vec::new() }
+          }
+
+          pub fn record(&mut self, name: &str, value: f64) {
+              self.metrics.push(Metric {
+                  name: name.to_string(),
+                  value,
+              });
+          }
+
+          pub fn all(&self) -> &[Metric] {
+              &self.metrics
+          }
+      }
+    src/collector/mod.rs: |
+      pub mod metric;
+    src/aggregator/aggregator.rs: |
+      use crate::collector::metric::Collector;
+
+      pub struct Aggregator {
+          collector: Collector,
+      }
+
+      impl Aggregator {
+          pub fn new(collector: Collector) -> Self {
+              Self { collector }
+          }
+
+          pub fn sum(&self) -> f64 {
+              self.collector.all().iter().map(|m| m.value).sum()
+          }
+
+          pub fn count(&self) -> usize {
+              self.collector.all().len()
+          }
+
+          pub fn average(&self) -> f64 {
+              let count = self.count();
+              if count == 0 {
+                  return 0.0;
+              }
+              self.sum() / count as f64
+          }
+      }
+    src/aggregator/mod.rs: |
+      pub mod aggregator;
+    src/formatter/text_fmt.rs: |
+      use crate::aggregator::aggregator::Aggregator;
+
+      pub struct TextFormatter {
+          aggregator: Aggregator,
+      }
+
+      impl TextFormatter {
+          pub fn new(aggregator: Aggregator) -> Self {
+              Self { aggregator }
+          }
+
+          pub fn format(&self) -> String {
+              format!(
+                  "sum={:.2} count={} avg={:.2}",
+                  self.aggregator.sum(),
+                  self.aggregator.count(),
+                  self.aggregator.average()
+              )
+          }
+      }
+    src/formatter/mod.rs: |
+      pub mod text_fmt;
+    src/exporter/exporter.rs: |
+      use crate::formatter::text_fmt::TextFormatter;
+
+      pub struct Exporter {
+          formatter: TextFormatter,
+      }
+
+      impl Exporter {
+          pub fn new(formatter: TextFormatter) -> Self {
+              Self { formatter }
+          }
+
+          pub fn export(&self) -> String {
+              self.formatter.format()
+          }
+      }
+    src/exporter/mod.rs: |
+      pub mod exporter;
+    src/dashboard/panel.rs: |
+      pub static GARBAGE_BAL3_026_PANEL_MARKER_A: &str = "panel";
+      pub static GARBAGE_BAL3_026_REFRESH_MARKER_B: u32 = 30;
+
+      pub struct Panel;
+      impl Panel {
+          pub fn render(&self) -> String { String::new() }
+      }
+    src/dashboard/chart.rs: |
+      pub static GARBAGE_BAL3_026_CHART_MARKER_C: &str = "chart";
+      pub static GARBAGE_BAL3_026_TYPE_MARKER_D: &str = "line";
+
+      pub struct Chart;
+      impl Chart {
+          pub fn draw(&self) {}
+      }
+    src/dashboard/mod.rs: |
+      pub mod panel;
+      pub mod chart;
+    src/lib.rs: |
+      pub mod collector;
+      pub mod aggregator;
+      pub mod formatter;
+      pub mod exporter;
+      pub mod dashboard;
+  changed_files:
+    src/collector/metric.rs: |
+      #[derive(Clone)]
+      pub struct Metric {
+          pub name: String,
+          pub value: f64,
+      }
+
+      pub struct Collector {
+          metrics: Vec<Metric>,
+          max_size: usize,
+      }
+
+      impl Collector {
+          pub fn new(max_size: usize) -> Self {
+              Self { metrics: Vec::new(), max_size }
+          }
+
+          pub fn record(&mut self, name: &str, value: f64) {
+              if self.metrics.len() >= self.max_size {
+                  self.metrics.remove(0);
+              }
+              self.metrics.push(Metric {
+                  name: name.to_string(),
+                  value,
+              });
+          }
+
+          pub fn all(&self) -> &[Metric] {
+              &self.metrics
+          }
+
+          pub fn is_full(&self) -> bool {
+              self.metrics.len() >= self.max_size
+          }
+      }
+  commit_message: "Fix unbounded metric growth with max_size ring buffer"
+fragments:
+- id: collector_max_size
+  selector:
+    path: src/collector/metric.rs
+    anchor: "max_size: usize"
+- id: collector_evict
+  selector:
+    path: src/collector/metric.rs
+    anchor: "self.metrics.remove(0)"
+- id: collector_is_full
+  selector:
+    path: src/collector/metric.rs
+    anchor: "pub fn is_full"
+- id: aggregator_sum
+  selector:
+    path: src/aggregator/aggregator.rs
+    anchor: "pub fn sum"
+- id: formatter_format
+  selector:
+    path: src/formatter/text_fmt.rs
+    anchor: "pub fn format"
+- id: exporter_export
+  selector:
+    path: src/exporter/exporter.rs
+    anchor: "pub fn export"
+- id: no_panel
+  selector:
+    path: src/dashboard/panel.rs
+- id: no_chart
+  selector:
+    path: src/dashboard/chart.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_026_PANEL_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_026_REFRESH_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_026_CHART_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_026_TYPE_MARKER_D
+oracle:
+  required:
+  - collector_max_size
+  - collector_evict
+  - collector_is_full
+  - aggregator_sum
+  - formatter_format
+  - exporter_export
+  allowed: []
+  forbidden:
+  - no_panel
+  - no_chart
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

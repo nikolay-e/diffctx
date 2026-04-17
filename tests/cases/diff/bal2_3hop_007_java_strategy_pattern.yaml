@@ -1,0 +1,196 @@
+name: bal2_3hop_007_java_strategy_pattern
+tags:
+- lang:java
+- change:single_file
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/app/sort/SortStrategy.java: |
+      package com.app.sort;
+
+      import java.util.List;
+
+      public interface SortStrategy {
+          List<Integer> sort(List<Integer> data);
+      }
+    src/main/java/com/app/sort/QuickSort.java: |
+      package com.app.sort;
+
+      import com.app.sort.SortStrategy;
+      import java.util.ArrayList;
+      import java.util.List;
+
+      public class QuickSort implements SortStrategy {
+          public List<Integer> sort(List<Integer> data) {
+              List<Integer> sorted = new ArrayList<>(data);
+              sorted.sort(Integer::compareTo);
+              return sorted;
+          }
+      }
+    src/main/java/com/app/engine/SortEngine.java: |
+      package com.app.engine;
+
+      import com.app.sort.QuickSort;
+      import com.app.sort.SortStrategy;
+      import java.util.List;
+
+      public class SortEngine {
+          private SortStrategy strategy;
+          public SortEngine() {
+              this.strategy = new QuickSort();
+          }
+          public List<Integer> execute(List<Integer> data) {
+              return strategy.sort(data);
+          }
+      }
+    src/main/java/com/app/api/DataEndpoint.java: |
+      package com.app.api;
+
+      import com.app.engine.SortEngine;
+      import java.util.List;
+
+      public class DataEndpoint {
+          private final SortEngine engine;
+          public DataEndpoint(SortEngine engine) {
+              this.engine = engine;
+          }
+          public List<Integer> getSorted(List<Integer> input) {
+              return engine.execute(input);
+          }
+      }
+    src/main/java/com/app/util/ArrayUtils.java: |
+      package com.app.util;
+
+      public class ArrayUtils {
+          public static int[] reverse(int[] arr) {
+              int[] result = new int[arr.length];
+              for (int i = 0; i < arr.length; i++) {
+                  result[i] = arr[arr.length - 1 - i];
+              }
+              return result;
+          }
+      }
+    src/main/java/com/app/util/Timer.java: |
+      package com.app.util;
+
+      public class Timer {
+          private long start;
+          public void begin() { start = System.nanoTime(); }
+          public long elapsed() { return System.nanoTime() - start; }
+      }
+  changed_files:
+    src/main/java/com/app/sort/SortStrategy.java: |
+      package com.app.sort;
+
+      import java.util.List;
+
+      public interface SortStrategy {
+          List<Integer> sort(List<Integer> data);
+          default String getName() {
+              return this.getClass().getSimpleName();
+          }
+      }
+    src/main/java/com/app/sort/QuickSort.java: |
+      package com.app.sort;
+
+      import com.app.sort.SortStrategy;
+      import java.util.ArrayList;
+      import java.util.List;
+
+      public class QuickSort implements SortStrategy {
+          public List<Integer> sort(List<Integer> data) {
+              List<Integer> sorted = new ArrayList<>(data);
+              sorted.sort(Integer::compareTo);
+              return sorted;
+          }
+      }
+    src/main/java/com/app/engine/SortEngine.java: |
+      package com.app.engine;
+
+      import com.app.sort.QuickSort;
+      import com.app.sort.SortStrategy;
+      import java.util.List;
+
+      public class SortEngine {
+          private SortStrategy strategy;
+          public SortEngine() {
+              this.strategy = new QuickSort();
+          }
+          public List<Integer> execute(List<Integer> data) {
+              return strategy.sort(data);
+          }
+      }
+    src/main/java/com/app/api/DataEndpoint.java: |
+      package com.app.api;
+
+      import com.app.engine.SortEngine;
+      import java.util.List;
+
+      public class DataEndpoint {
+          private final SortEngine engine;
+          public DataEndpoint(SortEngine engine) {
+              this.engine = engine;
+          }
+          public List<Integer> getSorted(List<Integer> input) {
+              return engine.execute(input);
+          }
+      }
+    src/main/java/com/app/util/ArrayUtils.java: |
+      package com.app.util;
+
+      public class ArrayUtils {
+          public static int[] reverse(int[] arr) {
+              int[] result = new int[arr.length];
+              for (int i = 0; i < arr.length; i++) {
+                  result[i] = arr[arr.length - 1 - i];
+              }
+              return result;
+          }
+      }
+    src/main/java/com/app/util/Timer.java: |
+      package com.app.util;
+
+      public class Timer {
+          private long start;
+          public void begin() { start = System.nanoTime(); }
+          public long elapsed() { return System.nanoTime() - start; }
+      }
+  commit_message: "feat: add default getName to SortStrategy interface"
+fragments:
+- id: strategy_get_name
+  selector:
+    path: src/main/java/com/app/sort/SortStrategy.java
+    anchor: "default String getName()"
+- id: quicksort_implements
+  selector:
+    path: src/main/java/com/app/sort/QuickSort.java
+    anchor: "import com.app.sort.SortStrategy"
+- id: engine_imports_quicksort
+  selector:
+    path: src/main/java/com/app/engine/SortEngine.java
+    anchor: "import com.app.sort.QuickSort"
+- id: endpoint_imports_engine
+  selector:
+    path: src/main/java/com/app/api/DataEndpoint.java
+    anchor: "import com.app.engine.SortEngine"
+- id: no_array_utils
+  selector:
+    path: src/main/java/com/app/util/ArrayUtils.java
+    anchor: "class ArrayUtils"
+- id: no_timer
+  selector:
+    path: src/main/java/com/app/util/Timer.java
+    anchor: "class Timer"
+oracle:
+  required:
+  - strategy_get_name
+  - quicksort_implements
+  - engine_imports_quicksort
+  - endpoint_imports_engine
+  allowed: []
+  forbidden:
+  - no_array_utils
+  - no_timer

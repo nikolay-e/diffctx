@@ -1,71 +1,258 @@
 name: ppr_008_single_node_graph
+tags:
+- lang:ruby
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:medium
 repo:
   initial_files:
-    single.py: |
-      def only():
-          pass
-    utils.py: |
-      def standalone_helper():
-          return "standalone_result"
+    lib/core/event_bus.rb: |
+      require_relative 'event'
 
-      def format_output(value):
-          return str(value)
-    constants.py: |
-      ONLY_VALUE = None
+      module Core
+        class EventBus
+          def initialize
+            @subscribers = Hash.new { |h, k| h[k] = [] }
+          end
 
-      def get_only_default():
-          return ONLY_VALUE
+          def subscribe(event_type, &handler)
+            @subscribers[event_type] << handler
+          end
+
+          def publish(event)
+            @subscribers[event.class].each { |h| h.call(event) }
+          end
+        end
+      end
+    lib/core/event.rb: |
+      module Core
+        class Event
+          attr_reader :occurred_at
+
+          def initialize
+            @occurred_at = Time.now
+          end
+        end
+      end
+    lib/domain/order_events.rb: |
+      require_relative '../core/event'
+
+      module Domain
+        class OrderPlaced < Core::Event
+          attr_reader :order_id, :amount
+
+          def initialize(order_id, amount)
+            super()
+            @order_id = order_id
+            @amount = amount
+          end
+        end
+      end
+    lib/app/order_handler.rb: |
+      require_relative '../domain/order_events'
+      require_relative '../core/event_bus'
+
+      module App
+        class OrderHandler
+          def initialize(bus)
+            @bus = bus
+          end
+
+          def place_order(order_id, amount)
+            event = Domain::OrderPlaced.new(order_id, amount)
+            @bus.publish(event)
+          end
+        end
+      end
+    lib/infra/email_notifier.rb: |
+      require_relative '../core/event_bus'
+
+      module Infra
+        class EmailNotifier
+          def initialize(bus)
+            bus.subscribe(Domain::OrderPlaced) { |e| send_email(e) }
+          end
+
+          private
+
+          def send_email(event)
+            puts "Order #{event.order_id} placed for #{event.amount}"
+          end
+        end
+      end
+    lib/utils/formatter.rb: |
+      GARBAGE_PPR008_A = 'currency_format_usd'
+
+      module Utils
+        class Formatter
+          def self.currency(amount)
+            "$#{format('%.2f', amount)}"
+          end
+        end
+      end
+    lib/utils/validator.rb: |
+      GARBAGE_PPR008_B = 'validation_schema_v1'
+      GARBAGE_PPR008_C = 50
+
+      module Utils
+        class Validator
+          def self.positive?(value)
+            value.is_a?(Numeric) && value > 0
+          end
+        end
+      end
+    lib/config/settings.rb: |
+      GARBAGE_PPR008_D = 'settings_namespace'
+
+      module Config
+        TIMEOUT = 30
+        MAX_RETRIES = 3
+      end
   changed_files:
-    single.py: |
-      def only():
-          return 1
-    utils.py: |
-      def standalone_helper():
-          return "standalone_result"
+    lib/core/event_bus.rb: |
+      require_relative 'event'
 
-      def format_output(value):
-          return str(value)
-    constants.py: |
-      ONLY_VALUE = None
+      module Core
+        class EventBus
+          def initialize
+            @subscribers = Hash.new { |h, k| h[k] = [] }
+          end
 
-      def get_only_default():
-          return ONLY_VALUE
-  commit_message: Update files
+          def subscribe(event_type, priority: 0, &handler)
+            @subscribers[event_type] << { handler: handler, priority: priority }
+            @subscribers[event_type].sort_by! { |s| -s[:priority] }
+          end
+
+          def publish(event)
+            @subscribers[event.class].each { |s| s[:handler].call(event) }
+          end
+        end
+      end
+    lib/core/event.rb: |
+      module Core
+        class Event
+          attr_reader :occurred_at
+
+          def initialize
+            @occurred_at = Time.now
+          end
+        end
+      end
+    lib/domain/order_events.rb: |
+      require_relative '../core/event'
+
+      module Domain
+        class OrderPlaced < Core::Event
+          attr_reader :order_id, :amount
+
+          def initialize(order_id, amount)
+            super()
+            @order_id = order_id
+            @amount = amount
+          end
+        end
+      end
+    lib/app/order_handler.rb: |
+      require_relative '../domain/order_events'
+      require_relative '../core/event_bus'
+
+      module App
+        class OrderHandler
+          def initialize(bus)
+            @bus = bus
+          end
+
+          def place_order(order_id, amount)
+            event = Domain::OrderPlaced.new(order_id, amount)
+            @bus.publish(event)
+          end
+        end
+      end
+    lib/infra/email_notifier.rb: |
+      require_relative '../core/event_bus'
+
+      module Infra
+        class EmailNotifier
+          def initialize(bus, priority: 10)
+            bus.subscribe(Domain::OrderPlaced, priority: priority) { |e| send_email(e) }
+          end
+
+          private
+
+          def send_email(event)
+            puts "Order #{event.order_id} placed for #{event.amount}"
+          end
+        end
+      end
+    lib/utils/formatter.rb: |
+      GARBAGE_PPR008_A = 'currency_format_usd'
+
+      module Utils
+        class Formatter
+          def self.currency(amount)
+            "$#{format('%.2f', amount)}"
+          end
+        end
+      end
+    lib/utils/validator.rb: |
+      GARBAGE_PPR008_B = 'validation_schema_v1'
+      GARBAGE_PPR008_C = 50
+
+      module Utils
+        class Validator
+          def self.positive?(value)
+            value.is_a?(Numeric) && value > 0
+          end
+        end
+      end
+    lib/config/settings.rb: |
+      GARBAGE_PPR008_D = 'settings_namespace'
+
+      module Config
+        TIMEOUT = 30
+        MAX_RETRIES = 3
+      end
+  commit_message: "feat: add priority parameter to EventBus#subscribe"
 fragments:
-- id: single
+- id: event_bus_subscribe
   selector:
-    path: single.py
-    anchor: 'def only():'
-- id: single_1
+    path: lib/core/event_bus.rb
+    anchor: "def subscribe(event_type, priority:"
+- id: email_notifier_subscribe
   selector:
-    path: single.py
-    anchor: return 1
-- id: no_utils
+    path: lib/infra/email_notifier.rb
+    anchor: "bus.subscribe(Domain::OrderPlaced, priority:"
+- id: no_formatter
   selector:
-    path: utils.py
-- id: no_constants
+    path: lib/utils/formatter.rb
+- id: no_validator
   selector:
-    path: constants.py
+    path: lib/utils/validator.rb
+- id: no_settings
+  selector:
+    path: lib/config/settings.rb
 - id: no_global_0
   selector:
-    anchor: standalone_helper
+    anchor: GARBAGE_PPR008_A
 - id: no_global_1
   selector:
-    anchor: format_output
+    anchor: GARBAGE_PPR008_B
 - id: no_global_2
   selector:
-    anchor: ONLY_VALUE
+    anchor: GARBAGE_PPR008_C
 - id: no_global_3
   selector:
-    anchor: get_only_default
+    anchor: GARBAGE_PPR008_D
 oracle:
   required:
-  - single
-  - single_1
+  - event_bus_subscribe
+  - email_notifier_subscribe
   allowed: []
   forbidden:
-  - no_utils
-  - no_constants
+  - no_formatter
+  - no_validator
+  - no_settings
   - no_global_0
   - no_global_1
   - no_global_2

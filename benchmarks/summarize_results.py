@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
+
+from common import load_results
 
 
 def main() -> None:
@@ -29,7 +30,7 @@ def main() -> None:
 
     for jf in sorted(results_dir.glob("loo_*.json")):
         mode = jf.stem.replace("loo_", "")
-        data = json.loads(jf.read_text())
+        data = load_results(jf)
         found = sum(1 for r in data if r["found"])
         total = len(data)
         pct = 100 * found / total if total else 0

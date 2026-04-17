@@ -1,0 +1,83 @@
+name: bal_cfgcode_001_python_db_config
+tags:
+- lang:python
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    config/database.yaml: |
+      host: localhost
+      port: 5432
+      name: myapp
+    src/db.py: |
+      import yaml
+
+      with open("config/database.yaml") as f:
+          cfg = yaml.safe_load(f)
+
+      HOST = cfg["host"]
+      PORT = cfg["port"]
+      DB_NAME = cfg["name"]
+    src/utils.py: |
+      GARBAGE_CFGCODE_001_UTIL_A = "helper"
+      GARBAGE_CFGCODE_001_UTIL_B = True
+
+      def format_timestamp(ts):
+          return ts.isoformat()
+  changed_files:
+    config/database.yaml: |
+      host: db.prod.example.com
+      port: 5432
+      name: myapp_prod
+      pool_size: 20
+    src/db.py: |
+      import yaml
+
+      with open("config/database.yaml") as f:
+          cfg = yaml.safe_load(f)
+
+      HOST = cfg["host"]
+      PORT = cfg["port"]
+      DB_NAME = cfg["name"]
+    src/utils.py: |
+      GARBAGE_CFGCODE_001_UTIL_A = "helper"
+      GARBAGE_CFGCODE_001_UTIL_B = True
+
+      def format_timestamp(ts):
+          return ts.isoformat()
+  commit_message: "config: switch to production database"
+fragments:
+- id: config_host
+  selector:
+    path: config/database.yaml
+    anchor: "host: db.prod.example.com"
+- id: config_pool
+  selector:
+    path: config/database.yaml
+    anchor: "pool_size: 20"
+- id: db_reads_config
+  selector:
+    path: src/db.py
+    anchor: 'cfg["host"]'
+- id: no_utils
+  selector:
+    path: src/utils.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_001_UTIL_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_001_UTIL_B
+oracle:
+  required:
+  - config_host
+  - config_pool
+  - db_reads_config
+  allowed: []
+  forbidden:
+  - no_utils
+  - no_global_0
+  - no_global_1

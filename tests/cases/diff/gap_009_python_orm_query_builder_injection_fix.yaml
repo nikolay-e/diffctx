@@ -1,0 +1,174 @@
+name: gap_009_python_orm_query_builder_injection_fix
+tags:
+- lang:python
+- change:bug_fix
+- change:single_file
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    db/query.py: |
+      class QueryBuilder:
+          def __init__(self, table: str):
+              self._table = table
+              self._conditions: list[str] = []
+              self._params: list = []
+              self._order_by: str | None = None
+
+          def where(self, clause: str, *params) -> "QueryBuilder":
+              self._conditions.append(clause)
+              self._params.extend(params)
+              return self
+
+          def order(self, column: str, direction: str = "ASC") -> "QueryBuilder":
+              self._order_by = f"{column} {direction}"
+              return self
+
+          def build(self) -> tuple[str, list]:
+              sql = f"SELECT * FROM {self._table}"
+              if self._conditions:
+                  sql += " WHERE " + " AND ".join(self._conditions)
+              if self._order_by:
+                  sql += f" ORDER BY {self._order_by}"
+              return sql, self._params
+    db/connection.py: |
+      class ConnectionPool:
+          def __init__(self, dsn: str, max_size: int = 10):
+              self._dsn = dsn
+              self._max_size = max_size
+              self._connections: list = []
+
+          def acquire(self):
+              if self._connections:
+                  return self._connections.pop()
+              return self._create_connection()
+
+          def release(self, conn) -> None:
+              if len(self._connections) < self._max_size:
+                  self._connections.append(conn)
+
+          def _create_connection(self):
+              return {"dsn": self._dsn, "active": True}
+    api/handlers.py: |
+      from db.query import QueryBuilder
+
+      class UserHandler:
+          def __init__(self, db):
+              self._db = db
+
+          def search(self, name_filter: str) -> list[dict]:
+              q = QueryBuilder("users").where("name LIKE ?", f"%{name_filter}%")
+              sql, params = q.build()
+              return self._db.execute(sql, params)
+
+          def list_active(self) -> list[dict]:
+              q = QueryBuilder("users").where("active = ?", True).order("created_at", "DESC")
+              sql, params = q.build()
+              return self._db.execute(sql, params)
+    api/middleware.py: |
+      class RequestLogger:
+          def __init__(self):
+              self._log: list[dict] = []
+
+          def log_request(self, method: str, path: str, status: int) -> None:
+              self._log.append({"method": method, "path": path, "status": status})
+
+          def recent(self, count: int = 10) -> list[dict]:
+              return self._log[-count:]
+    db/migration.py: |
+      class MigrationRunner:
+          def __init__(self):
+              self._applied: list[str] = []
+
+          def apply(self, name: str, sql: str) -> None:
+              self._applied.append(name)
+
+          def rollback(self, name: str) -> None:
+              self._applied = [m for m in self._applied if m != name]
+
+          def status(self) -> list[str]:
+              return list(self._applied)
+  changed_files:
+    db/query.py: |
+      import re
+
+      VALID_IDENTIFIER = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_.]*$")
+
+      class QueryBuilder:
+          def __init__(self, table: str):
+              self._validate_identifier(table)
+              self._table = table
+              self._conditions: list[str] = []
+              self._params: list = []
+              self._order_by: str | None = None
+              self._limit: int | None = None
+
+          def where(self, clause: str, *params) -> "QueryBuilder":
+              self._conditions.append(clause)
+              self._params.extend(params)
+              return self
+
+          def order(self, column: str, direction: str = "ASC") -> "QueryBuilder":
+              self._validate_identifier(column)
+              if direction.upper() not in ("ASC", "DESC"):
+                  raise ValueError(f"Invalid direction: {direction}")
+              self._order_by = f"{column} {direction.upper()}"
+              return self
+
+          def limit(self, n: int) -> "QueryBuilder":
+              if n < 0:
+                  raise ValueError("Limit must be non-negative")
+              self._limit = n
+              return self
+
+          def build(self) -> tuple[str, list]:
+              sql = f"SELECT * FROM {self._table}"
+              if self._conditions:
+                  sql += " WHERE " + " AND ".join(self._conditions)
+              if self._order_by:
+                  sql += f" ORDER BY {self._order_by}"
+              if self._limit is not None:
+                  sql += f" LIMIT {self._limit}"
+              return sql, self._params
+
+          def _validate_identifier(self, name: str) -> None:
+              if not VALID_IDENTIFIER.match(name):
+                  raise ValueError(f"Invalid identifier: {name}")
+fragments:
+- id: query_build
+  selector:
+    path: db/query.py
+    anchor: "def build"
+- id: query_order
+  selector:
+    path: db/query.py
+    anchor: "def order"
+- id: handler_search
+  selector:
+    path: api/handlers.py
+    anchor: "def search"
+- id: handler_list
+  selector:
+    path: api/handlers.py
+    anchor: "def list_active"
+- id: no_middleware
+  selector:
+    path: api/middleware.py
+- id: no_migration
+  selector:
+    path: db/migration.py
+- id: no_connection
+  selector:
+    path: db/connection.py
+oracle:
+  required:
+  - query_build
+  - query_order
+  - handler_search
+  forbidden:
+  - no_middleware
+  - no_migration
+  - no_connection

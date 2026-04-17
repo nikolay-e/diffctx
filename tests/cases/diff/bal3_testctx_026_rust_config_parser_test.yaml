@@ -1,0 +1,118 @@
+name: bal3_testctx_026_rust_config_parser_test
+tags:
+- lang:rust
+- change:single_file
+- change:signature
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/config.rs: |
+      use std::collections::HashMap;
+
+      pub struct Config {
+          values: HashMap<String, String>,
+      }
+
+      impl Config {
+          pub fn new() -> Self {
+              Config { values: HashMap::new() }
+          }
+
+          pub fn set(&mut self, key: &str, value: &str) {
+              self.values.insert(key.to_string(), value.to_string());
+          }
+
+          pub fn get(&self, key: &str) -> Option<&String> {
+              self.values.get(key)
+          }
+      }
+    tests/config_test.rs: |
+      use mylib::config::Config;
+
+      #[test]
+      fn test_set_and_get() {
+          let mut cfg = Config::new();
+          cfg.set("host", "localhost");
+          assert_eq!(cfg.get("host"), Some(&"localhost".to_string()));
+      }
+
+      #[test]
+      fn test_get_missing() {
+          let cfg = Config::new();
+          assert_eq!(cfg.get("missing"), None);
+      }
+    src/logger.rs: |
+      pub fn log(level: &str, message: &str) {
+          println!("[{}] {}", level, message);
+      }
+  changed_files:
+    src/config.rs: |
+      use std::collections::HashMap;
+
+      pub struct Config {
+          values: HashMap<String, String>,
+      }
+
+      impl Config {
+          pub fn new() -> Self {
+              Config { values: HashMap::new() }
+          }
+
+          pub fn set(&mut self, key: &str, value: &str) {
+              self.values.insert(key.to_string(), value.to_string());
+          }
+
+          pub fn get(&self, key: &str) -> Option<&String> {
+              self.values.get(key)
+          }
+
+          pub fn get_or_default<'a>(&'a self, key: &str, default: &'a str) -> &'a str {
+              self.values.get(key).map(|s| s.as_str()).unwrap_or(default)
+          }
+
+          pub fn remove(&mut self, key: &str) -> Option<String> {
+              self.values.remove(key)
+          }
+
+          pub fn keys(&self) -> Vec<&String> {
+              self.values.keys().collect()
+          }
+      }
+  commit_message: "feat: add get_or_default, remove, keys to Config"
+fragments:
+- id: get_or_default
+  selector:
+    path: src/config.rs
+    anchor: "pub fn get_or_default"
+- id: remove_method
+  selector:
+    path: src/config.rs
+    anchor: "pub fn remove(&mut self, key: &str)"
+- id: keys_method
+  selector:
+    path: src/config.rs
+    anchor: "pub fn keys(&self)"
+- id: test_set_get
+  selector:
+    path: tests/config_test.rs
+    anchor: "fn test_set_and_get()"
+- id: test_get_missing
+  selector:
+    path: tests/config_test.rs
+    anchor: "fn test_get_missing()"
+- id: no_logger
+  selector:
+    path: src/logger.rs
+    anchor: "pub fn log"
+oracle:
+  required:
+  - get_or_default
+  - remove_method
+  - test_set_get
+  allowed:
+  - keys_method
+  - test_get_missing
+  forbidden:
+  - no_logger

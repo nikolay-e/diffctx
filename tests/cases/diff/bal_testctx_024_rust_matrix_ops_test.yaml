@@ -1,0 +1,164 @@
+name: bal_testctx_024_rust_matrix_ops_test
+tags:
+- lang:rust
+- change:single_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/matrix.rs: |
+      #[derive(Debug, Clone, PartialEq)]
+      pub struct Matrix {
+          rows: usize,
+          cols: usize,
+          data: Vec<Vec<f64>>,
+      }
+
+      impl Matrix {
+          pub fn new(rows: usize, cols: usize) -> Self {
+              Matrix {
+                  rows,
+                  cols,
+                  data: vec![vec![0.0; cols]; rows],
+              }
+          }
+
+          pub fn set(&mut self, row: usize, col: usize, value: f64) {
+              self.data[row][col] = value;
+          }
+
+          pub fn get(&self, row: usize, col: usize) -> f64 {
+              self.data[row][col]
+          }
+
+          pub fn dimensions(&self) -> (usize, usize) {
+              (self.rows, self.cols)
+          }
+      }
+    tests/test_matrix.rs: |
+      use crate::matrix::Matrix;
+
+      #[test]
+      fn test_new_matrix_is_zeroed() {
+          let m = Matrix::new(2, 3);
+          assert_eq!(m.get(0, 0), 0.0);
+          assert_eq!(m.get(1, 2), 0.0);
+      }
+
+      #[test]
+      fn test_set_and_get() {
+          let mut m = Matrix::new(2, 2);
+          m.set(0, 1, 5.0);
+          assert_eq!(m.get(0, 1), 5.0);
+      }
+
+      #[test]
+      fn test_dimensions() {
+          let m = Matrix::new(3, 4);
+          assert_eq!(m.dimensions(), (3, 4));
+      }
+    src/vector.rs: |
+      pub fn dot_product(a: &[f64], b: &[f64]) -> f64 {
+          a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
+      }
+
+      pub fn magnitude(v: &[f64]) -> f64 {
+          v.iter().map(|x| x * x).sum::<f64>().sqrt()
+      }
+  changed_files:
+    src/matrix.rs: |
+      #[derive(Debug, Clone, PartialEq)]
+      pub struct Matrix {
+          rows: usize,
+          cols: usize,
+          data: Vec<Vec<f64>>,
+      }
+
+      impl Matrix {
+          pub fn new(rows: usize, cols: usize) -> Self {
+              Matrix {
+                  rows,
+                  cols,
+                  data: vec![vec![0.0; cols]; rows],
+              }
+          }
+
+          pub fn from_vec(data: Vec<Vec<f64>>) -> Self {
+              let rows = data.len();
+              let cols = if rows > 0 { data[0].len() } else { 0 };
+              Matrix { rows, cols, data }
+          }
+
+          pub fn set(&mut self, row: usize, col: usize, value: f64) {
+              self.data[row][col] = value;
+          }
+
+          pub fn get(&self, row: usize, col: usize) -> f64 {
+              self.data[row][col]
+          }
+
+          pub fn dimensions(&self) -> (usize, usize) {
+              (self.rows, self.cols)
+          }
+
+          pub fn transpose(&self) -> Matrix {
+              let mut result = Matrix::new(self.cols, self.rows);
+              for r in 0..self.rows {
+                  for c in 0..self.cols {
+                      result.set(c, r, self.data[r][c]);
+                  }
+              }
+              result
+          }
+
+          pub fn add(&self, other: &Matrix) -> Result<Matrix, String> {
+              if self.dimensions() != other.dimensions() {
+                  return Err("Dimension mismatch".to_string());
+              }
+              let mut result = Matrix::new(self.rows, self.cols);
+              for r in 0..self.rows {
+                  for c in 0..self.cols {
+                      result.set(r, c, self.get(r, c) + other.get(r, c));
+                  }
+              }
+              Ok(result)
+          }
+      }
+  commit_message: "feat: add from_vec, transpose, and add operations to Matrix"
+fragments:
+- id: from_vec_fn
+  selector:
+    path: src/matrix.rs
+    anchor: "pub fn from_vec"
+- id: transpose_fn
+  selector:
+    path: src/matrix.rs
+    anchor: "pub fn transpose"
+- id: add_fn
+  selector:
+    path: src/matrix.rs
+    anchor: "pub fn add(&self, other"
+- id: test_imports_matrix
+  selector:
+    path: tests/test_matrix.rs
+    anchor: "use crate::matrix::Matrix"
+- id: test_set_get
+  selector:
+    path: tests/test_matrix.rs
+    anchor: "fn test_set_and_get"
+- id: no_vector
+  selector:
+    path: src/vector.rs
+    anchor: "pub fn dot_product"
+oracle:
+  required:
+  - transpose_fn
+  - add_fn
+  - test_imports_matrix
+  allowed:
+  - from_vec_fn
+  - test_set_get
+  forbidden:
+  - no_vector

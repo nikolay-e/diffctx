@@ -1,0 +1,205 @@
+name: bal3_1hop_050_scala_multi_file_event_bus
+tags:
+- lang:scala
+- change:multi_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/event/EventBus.scala: |
+      package event
+
+      class EventBus {
+        private var handlers: Map[String, List[Map[String, Any] => Unit]] = Map.empty
+
+        def subscribe(event: String, handler: Map[String, Any] => Unit): Unit = {
+          handlers = handlers + (event -> (handlers.getOrElse(event, Nil) :+ handler))
+        }
+
+        def publish(event: String, payload: Map[String, Any]): Unit = {
+          handlers.getOrElse(event, Nil).foreach(_(payload))
+        }
+      }
+    src/main/scala/event/EventLogger.scala: |
+      package event
+
+      class EventLogger(bus: EventBus) {
+        def logEvent(event: String, data: Map[String, Any]): Unit = {
+          bus.publish(event, data)
+        }
+      }
+    src/main/scala/service/OrderProcessor.scala: |
+      package service
+
+      import event.EventBus
+
+      class OrderProcessor(eventBus: EventBus) {
+        def processOrder(orderId: Int, items: List[String]): Unit = {
+          eventBus.publish("order.processed", Map("orderId" -> orderId, "items" -> items))
+        }
+      }
+    src/main/scala/service/NotificationDispatcher.scala: |
+      package service
+
+      import event.EventBus
+
+      class NotificationDispatcher(eventBus: EventBus) {
+        def setupListeners(): Unit = {
+          eventBus.subscribe("order.processed", payload => {
+            val orderId = payload("orderId")
+          })
+        }
+      }
+    src/main/scala/service/AuditTrail.scala: |
+      package service
+
+      import event.EventBus
+
+      class AuditTrail(eventBus: EventBus) {
+        def trackAll(): Unit = {
+          eventBus.subscribe("order.processed", payload => ())
+          eventBus.subscribe("user.created", payload => ())
+        }
+      }
+    src/main/scala/service/MetricsCollector.scala: |
+      package service
+
+      import event.EventBus
+      import event.EventLogger
+
+      class MetricsCollector(eventBus: EventBus, logger: EventLogger) {
+        def recordMetric(name: String, value: Double): Unit = {
+          logger.logEvent("metric.recorded", Map("name" -> name, "value" -> value))
+        }
+      }
+    src/main/scala/config/AppConfig.scala: |
+      package config
+
+      object AppConfig {
+        val GARBAGE_BAL3_050_CFG_A = "config"
+        val GARBAGE_BAL3_050_ENV_B = "prod"
+
+        def get(key: String): String = ""
+      }
+    src/main/scala/config/DbConfig.scala: |
+      package config
+
+      object DbConfig {
+        val GARBAGE_BAL3_050_DB_C = "database"
+        val GARBAGE_BAL3_050_HOST_D = "localhost"
+
+        def dsn(): String = "jdbc:postgresql://localhost"
+      }
+    src/main/scala/config/RedisConfig.scala: |
+      package config
+
+      object RedisConfig {
+        val GARBAGE_BAL3_050_REDIS_E = "redis"
+        val GARBAGE_BAL3_050_RPORT_F = 6379
+
+        def url(): String = "redis://localhost:6379"
+      }
+  changed_files:
+    src/main/scala/event/EventBus.scala: |
+      package event
+
+      class EventBus {
+        private var handlers: Map[String, List[(Map[String, Any] => Unit, Int)]] = Map.empty
+        private var history: List[(String, Map[String, Any])] = Nil
+
+        def subscribe(event: String, handler: Map[String, Any] => Unit, priority: Int = 0): Unit = {
+          val current = handlers.getOrElse(event, Nil)
+          handlers = handlers + (event -> (current :+ (handler, priority)).sortBy(-_._2))
+        }
+
+        def publish(event: String, payload: Map[String, Any]): Unit = {
+          history = history :+ (event, payload)
+          handlers.getOrElse(event, Nil).foreach(_._1(payload))
+        }
+
+        def getHistory: List[(String, Map[String, Any])] = history
+
+        def clearHistory(): Unit = {
+          history = Nil
+        }
+      }
+    src/main/scala/event/EventLogger.scala: |
+      package event
+
+      class EventLogger(bus: EventBus) {
+        def logEvent(event: String, data: Map[String, Any]): Unit = {
+          bus.publish(event, data)
+        }
+
+        def replayHistory(): List[(String, Map[String, Any])] = {
+          bus.getHistory
+        }
+      }
+  commit_message: "Add priority-based dispatch and event history to EventBus"
+fragments:
+- id: order_processor
+  selector:
+    path: src/main/scala/service/OrderProcessor.scala
+    anchor: "import event.EventBus"
+- id: order_publish
+  selector:
+    path: src/main/scala/service/OrderProcessor.scala
+    anchor: "eventBus.publish"
+- id: notification_dispatcher
+  selector:
+    path: src/main/scala/service/NotificationDispatcher.scala
+    anchor: "import event.EventBus"
+- id: audit_trail
+  selector:
+    path: src/main/scala/service/AuditTrail.scala
+    anchor: "import event.EventBus"
+- id: metrics_collector
+  selector:
+    path: src/main/scala/service/MetricsCollector.scala
+    anchor: "import event.EventBus"
+- id: no_app_config
+  selector:
+    path: src/main/scala/config/AppConfig.scala
+- id: no_db_config
+  selector:
+    path: src/main/scala/config/DbConfig.scala
+- id: no_redis_config
+  selector:
+    path: src/main/scala/config/RedisConfig.scala
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_050_CFG_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_050_ENV_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_050_DB_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_050_HOST_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL3_050_REDIS_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL3_050_RPORT_F
+oracle:
+  required:
+  - order_processor
+  - order_publish
+  - notification_dispatcher
+  - audit_trail
+  - metrics_collector
+  allowed: []
+  forbidden:
+  - no_app_config
+  - no_db_config
+  - no_redis_config
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

@@ -1,0 +1,237 @@
+name: bal2_1hop_068_csharp_validator_bugfix
+tags:
+- lang:csharp
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: csharp-no-tree-sitter
+repo:
+  initial_files:
+    src/Validation/EmailValidator.cs: |
+      using System;
+      using System.Text.RegularExpressions;
+
+      namespace App.Validation
+      {
+          public class EmailValidator
+          {
+              private static readonly Regex Pattern = new Regex(@"^[\w.]+@[\w.]+\.\w+$");
+
+              public bool IsValid(string email)
+              {
+                  if (string.IsNullOrWhiteSpace(email)) return false;
+                  return Pattern.IsMatch(email);
+              }
+          }
+      }
+    src/Services/RegistrationService.cs: |
+      using System;
+      using System.Threading.Tasks;
+      using App.Validation;
+
+      namespace App.Services
+      {
+          public class RegistrationService
+          {
+              private readonly EmailValidator _emailValidator;
+
+              public RegistrationService(EmailValidator emailValidator)
+              {
+                  _emailValidator = emailValidator;
+              }
+
+              public async Task<bool> Register(string name, string email, string password)
+              {
+                  if (!_emailValidator.IsValid(email))
+                      return false;
+                  await Task.Delay(10);
+                  return true;
+              }
+          }
+      }
+    src/Controllers/AccountController.cs: |
+      using System;
+      using System.Threading.Tasks;
+      using App.Services;
+      using Microsoft.AspNetCore.Mvc;
+
+      namespace App.Controllers
+      {
+          [ApiController]
+          [Route("api/account")]
+          public class AccountController : ControllerBase
+          {
+              private readonly RegistrationService _registrationService;
+
+              public AccountController(RegistrationService registrationService)
+              {
+                  _registrationService = registrationService;
+              }
+
+              [HttpPost("register")]
+              public async Task<IActionResult> Register(string name, string email, string password)
+              {
+                  var success = await _registrationService.Register(name, email, password);
+                  return success ? Ok() : BadRequest("Invalid email");
+              }
+          }
+      }
+    src/Services/NotificationService.cs: |
+      using System;
+      using App.Validation;
+
+      namespace App.Services
+      {
+          public class NotificationService
+          {
+              private readonly EmailValidator _emailValidator;
+
+              public NotificationService(EmailValidator emailValidator)
+              {
+                  _emailValidator = emailValidator;
+              }
+
+              public bool CanSendTo(string email)
+              {
+                  return _emailValidator.IsValid(email);
+              }
+          }
+      }
+    src/Services/ContactImporter.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Linq;
+      using App.Validation;
+
+      namespace App.Services
+      {
+          public class ContactImporter
+          {
+              private readonly EmailValidator _emailValidator;
+
+              public ContactImporter(EmailValidator emailValidator)
+              {
+                  _emailValidator = emailValidator;
+              }
+
+              public List<string> FilterValid(List<string> emails)
+              {
+                  return emails.Where(e => _emailValidator.IsValid(e)).ToList();
+              }
+          }
+      }
+    garbage/Formatters/DateFormatter.cs: |
+      using System;
+      GARBAGE_068_DATE_FMT_A = "yyyy-MM-dd";
+      GARBAGE_068_TIMEZONE_B = "UTC";
+
+      namespace App.Formatters
+      {
+          public class DateFormatter
+          {
+              GARBAGE_068_LOCALE_C = "en-US";
+
+              public string Format(DateTime dt) { return dt.ToString(); }
+          }
+      }
+    garbage/Network/HttpRetryPolicy.cs: |
+      using System;
+      GARBAGE_068_RETRY_POLICY_D = "exponential";
+      GARBAGE_068_MAX_WAIT_E = 60;
+
+      namespace App.Network
+      {
+          public class HttpRetryPolicy
+          {
+              GARBAGE_068_BASE_DELAY_F = 1;
+
+              public int GetDelay(int attempt) { return attempt * 2; }
+          }
+      }
+    garbage/Serialization/JsonConverter.cs: |
+      using System;
+      GARBAGE_068_JSON_MODE_G = "strict";
+      GARBAGE_068_INDENT_H = 2;
+
+      namespace App.Serialization
+      {
+          public class JsonConverter
+          {
+              GARBAGE_068_ESCAPE_I = true;
+              GARBAGE_068_NULL_HANDLING_J = "ignore";
+
+              public string Serialize(object obj) { return "{}"; }
+          }
+      }
+  changed_files:
+    src/Validation/EmailValidator.cs: |
+      using System;
+      using System.Text.RegularExpressions;
+
+      namespace App.Validation
+      {
+          public class EmailValidator
+          {
+              private static readonly Regex Pattern = new Regex(
+                  @"^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$");
+
+              public bool IsValid(string email)
+              {
+                  if (string.IsNullOrWhiteSpace(email)) return false;
+                  if (email.Length > 254) return false;
+                  return Pattern.IsMatch(email);
+              }
+          }
+      }
+  commit_message: "Fix email validation regex to follow RFC 5322"
+fragments:
+- id: registration_validate
+  selector:
+    path: src/Services/RegistrationService.cs
+    anchor: "_emailValidator.IsValid(email)"
+- id: notification_can_send
+  selector:
+    path: src/Services/NotificationService.cs
+    anchor: "_emailValidator.IsValid(email)"
+- id: importer_filter
+  selector:
+    path: src/Services/ContactImporter.cs
+    anchor: "_emailValidator.IsValid(e)"
+- id: controller_register
+  selector:
+    path: src/Controllers/AccountController.cs
+    anchor: "_registrationService.Register(name, email, password)"
+- id: no_date_formatter
+  selector:
+    path: garbage/Formatters/DateFormatter.cs
+- id: no_retry_policy
+  selector:
+    path: garbage/Network/HttpRetryPolicy.cs
+- id: no_json_converter
+  selector:
+    path: garbage/Serialization/JsonConverter.cs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_068_DATE_FMT_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_068_RETRY_POLICY_D
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_068_JSON_MODE_G
+oracle:
+  required:
+  - registration_validate
+  - notification_can_send
+  - importer_filter
+  - controller_register
+  allowed: []
+  forbidden:
+  - no_date_formatter
+  - no_retry_policy
+  - no_json_converter
+  - no_global_0
+  - no_global_1
+  - no_global_2

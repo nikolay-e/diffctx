@@ -1,0 +1,125 @@
+name: bal_cfgcode_004_python_logging_config
+tags:
+- lang:python
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    config/logging.toml: |
+      [logging]
+      level = "DEBUG"
+      format = "%(asctime)s %(levelname)s %(message)s"
+      file = "app.log"
+      max_bytes = 1048576
+    src/logger.py: |
+      import tomllib
+
+      def setup_logging():
+          with open("config/logging.toml", "rb") as f:
+              cfg = tomllib.load(f)
+          log_cfg = cfg["logging"]
+          level = log_cfg["level"]
+          fmt = log_cfg["format"]
+          logfile = log_cfg["file"]
+          return level, fmt, logfile
+    src/handlers.py: |
+      GARBAGE_CFGCODE_004_HANDLER_A = "stream"
+      GARBAGE_CFGCODE_004_HANDLER_B = 1024
+
+      class StreamHandler:
+          def emit(self, record):
+              pass
+
+      class NullHandler:
+          def emit(self, record):
+              pass
+    src/validators.py: |
+      GARBAGE_CFGCODE_004_VALID_C = "check"
+      GARBAGE_CFGCODE_004_VALID_D = False
+
+      def validate_email(email):
+          return "@" in email
+  changed_files:
+    config/logging.toml: |
+      [logging]
+      level = "WARNING"
+      format = "%(asctime)s %(name)s %(levelname)s %(message)s"
+      file = "app.log"
+      max_bytes = 10485760
+      rotation = "daily"
+    src/logger.py: |
+      import tomllib
+
+      def setup_logging():
+          with open("config/logging.toml", "rb") as f:
+              cfg = tomllib.load(f)
+          log_cfg = cfg["logging"]
+          level = log_cfg["level"]
+          fmt = log_cfg["format"]
+          logfile = log_cfg["file"]
+          return level, fmt, logfile
+    src/handlers.py: |
+      GARBAGE_CFGCODE_004_HANDLER_A = "stream"
+      GARBAGE_CFGCODE_004_HANDLER_B = 1024
+
+      class StreamHandler:
+          def emit(self, record):
+              pass
+
+      class NullHandler:
+          def emit(self, record):
+              pass
+    src/validators.py: |
+      GARBAGE_CFGCODE_004_VALID_C = "check"
+      GARBAGE_CFGCODE_004_VALID_D = False
+
+      def validate_email(email):
+          return "@" in email
+  commit_message: "config: raise log level and add rotation"
+fragments:
+- id: config_level
+  selector:
+    path: config/logging.toml
+    anchor: 'level = "WARNING"'
+- id: config_rotation
+  selector:
+    path: config/logging.toml
+    anchor: 'rotation = "daily"'
+- id: logger_reads_config
+  selector:
+    path: src/logger.py
+    anchor: 'cfg["logging"]'
+- id: no_handlers
+  selector:
+    path: src/handlers.py
+- id: no_validators
+  selector:
+    path: src/validators.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_004_HANDLER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_004_HANDLER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_004_VALID_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_004_VALID_D
+oracle:
+  required:
+  - config_level
+  - config_rotation
+  - logger_reads_config
+  allowed: []
+  forbidden:
+  - no_handlers
+  - no_validators
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

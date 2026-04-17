@@ -1,0 +1,144 @@
+name: gap_052_json_config_babel_jest
+tags:
+- lang:rust
+- change:bug_fix
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/logistics/route_optimizer.rs: |
+      use std::collections::HashMap;
+
+      pub struct RouteOptimizer {
+          distances: HashMap<(String, String), f64>,
+      }
+
+      impl RouteOptimizer {
+          pub fn new() -> Self {
+              Self { distances: HashMap::new() }
+          }
+
+          pub fn add_edge(&mut self, from: &str, to: &str, dist: f64) {
+              self.distances.insert((from.to_string(), to.to_string()), dist);
+          }
+
+          pub fn shortest_path(&self, from: &str, to: &str) -> Option<f64> {
+              // BUG: only checks direct edge, ignores multi-hop paths
+              self.distances.get(&(from.to_string(), to.to_string())).copied()
+          }
+      }
+    src/logistics/delivery_planner.rs: |
+      use crate::logistics::route_optimizer::RouteOptimizer;
+
+      pub struct DeliveryPlanner {
+          optimizer: RouteOptimizer,
+      }
+
+      impl DeliveryPlanner {
+          pub fn new(optimizer: RouteOptimizer) -> Self {
+              Self { optimizer }
+          }
+
+          pub fn plan_delivery(&self, origin: &str, destination: &str) -> Option<f64> {
+              self.optimizer.shortest_path(origin, destination)
+          }
+      }
+    garbage/fleet.rs: |
+      // GARBAGE_LOG_A = "fleet_marker"
+    garbage/customs.rs: |
+      // GARBAGE_LOG_B = "customs_marker"
+    garbage/warehouse_mgmt.rs: |
+      // GARBAGE_LOG_C = "warehouse_mgmt_marker"
+  changed_files:
+    src/logistics/route_optimizer.rs: |
+      use std::collections::HashMap;
+
+      pub struct RouteOptimizer {
+          distances: HashMap<(String, String), f64>,
+      }
+
+      impl RouteOptimizer {
+          pub fn new() -> Self {
+              Self { distances: HashMap::new() }
+          }
+
+          pub fn add_edge(&mut self, from: &str, to: &str, dist: f64) {
+              self.distances.insert((from.to_string(), to.to_string()), dist);
+          }
+
+          pub fn shortest_path(&self, from: &str, to: &str) -> Option<f64> {
+              let mut visited = std::collections::HashSet::new();
+              self.dijkstra(from, to, &mut visited)
+          }
+
+          fn dijkstra(&self, from: &str, to: &str, visited: &mut std::collections::HashSet<String>) -> Option<f64> {
+              if from == to {
+                  return Some(0.0);
+              }
+              if !visited.insert(from.to_string()) {
+                  return None;
+              }
+              let mut best: Option<f64> = None;
+              for ((f, t), &d) in &self.distances {
+                  if f == from {
+                      if let Some(rest) = self.dijkstra(t, to, visited) {
+                          let total = d + rest;
+                          best = Some(best.map_or(total, |b: f64| b.min(total)));
+                      }
+                  }
+              }
+              best
+          }
+      }
+    src/logistics/delivery_planner.rs: |
+      use crate::logistics::route_optimizer::RouteOptimizer;
+
+      pub struct DeliveryPlanner {
+          optimizer: RouteOptimizer,
+      }
+
+      impl DeliveryPlanner {
+          pub fn new(optimizer: RouteOptimizer) -> Self {
+              Self { optimizer }
+          }
+
+          pub fn plan_delivery(&self, origin: &str, destination: &str) -> Option<f64> {
+              self.optimizer.shortest_path(origin, destination)
+          }
+      }
+    garbage/fleet.rs: |
+      // GARBAGE_LOG_A = "fleet_marker"
+    garbage/customs.rs: |
+      // GARBAGE_LOG_B = "customs_marker"
+    garbage/warehouse_mgmt.rs: |
+      // GARBAGE_LOG_C = "warehouse_mgmt_marker"
+  commit_message: "fix: implement proper multi-hop path search in RouteOptimizer::shortest_path"
+fragments:
+- id: shortest_path
+  selector:
+    path: src/logistics/route_optimizer.rs
+    anchor: "pub fn shortest_path"
+- id: plan_delivery
+  selector:
+    path: src/logistics/delivery_planner.rs
+    anchor: "pub fn plan_delivery"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_LOG_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_LOG_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_LOG_C
+oracle:
+  required:
+  - shortest_path
+  allowed:
+  - plan_delivery
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

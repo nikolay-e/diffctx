@@ -1,0 +1,255 @@
+name: bal_refactor_002_python_rename_class_across_files
+tags:
+- lang:go
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:easy
+repo:
+  initial_files:
+    pkg/encoding/base58.go: |
+      package encoding
+
+      const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+
+      func Encode(input []byte) string {
+          if len(input) == 0 {
+              return ""
+          }
+          result := []byte{}
+          for _, b := range input {
+              carry := int(b)
+              for i := len(result) - 1; i >= 0; i-- {
+                  carry += 256 * int(result[i])
+                  result[i] = byte(carry % 58)
+                  carry /= 58
+              }
+              for carry > 0 {
+                  result = append(result, byte(carry%58))
+                  carry /= 58
+              }
+          }
+          // BUG: result not reversed before encoding
+          out := make([]byte, len(result))
+          for i, b := range result {
+              out[i] = alphabet[b]
+          }
+          return string(out)
+      }
+    pkg/wallet/address.go: |
+      package wallet
+
+      import "pkg/encoding"
+
+      type Address struct {
+          Raw []byte
+      }
+
+      func NewAddress(raw []byte) Address {
+          return Address{Raw: raw}
+      }
+
+      func (a Address) String() string {
+          return encoding.Encode(a.Raw)
+      }
+    internal/blockchain/tx.go: |
+      package blockchain
+
+      import "pkg/wallet"
+
+      type Transaction struct {
+          From wallet.Address
+          To   wallet.Address
+          Amt  int64
+      }
+
+      func NewTransaction(from, to wallet.Address, amt int64) Transaction {
+          return Transaction{From: from, To: to, Amt: amt}
+      }
+
+      func (t Transaction) Valid() bool {
+          return len(t.From.Raw) > 0 && len(t.To.Raw) > 0 && t.Amt > 0
+      }
+    internal/api/send_handler.go: |
+      package api
+
+      import "internal/blockchain"
+
+      func HandleSend(fromRaw, toRaw []byte, amt int64) (string, error) {
+          tx := blockchain.NewTransaction(
+              blockchain.Transaction{}.From, // placeholder
+              blockchain.Transaction{}.To,
+              amt,
+          )
+          if !tx.Valid() {
+              return "", nil
+          }
+          return tx.From.String(), nil
+      }
+    garbage/GameProfile.go: |
+      package garbage
+
+      // GARBAGE_REFACT002_A = "game_profile_marker"
+
+      type GameProfile struct{ Username string }
+    garbage/StreamCodec.go: |
+      package garbage
+
+      // GARBAGE_REFACT002_B = "stream_codec_marker"
+
+      type StreamCodec struct{ Format string }
+    garbage/IoTFirmwareUpdate.go: |
+      package garbage
+
+      // GARBAGE_REFACT002_C = "iot_firmware_update_marker"
+
+      type IoTFirmwareUpdate struct{ Version string }
+    garbage/PaymentDispute.go: |
+      package garbage
+
+      // GARBAGE_REFACT002_D = "payment_dispute_marker"
+
+      type PaymentDispute struct{ Reason string }
+  changed_files:
+    pkg/encoding/base58.go: |
+      package encoding
+
+      const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+
+      func Encode(input []byte) string {
+          if len(input) == 0 {
+              return ""
+          }
+          result := []byte{}
+          for _, b := range input {
+              carry := int(b)
+              for i := len(result) - 1; i >= 0; i-- {
+                  carry += 256 * int(result[i])
+                  result[i] = byte(carry % 58)
+                  carry /= 58
+              }
+              for carry > 0 {
+                  result = append(result, byte(carry%58))
+                  carry /= 58
+              }
+          }
+          for i, j := 0, len(result)-1; i < j; i, j = i+1, j-1 {
+              result[i], result[j] = result[j], result[i]
+          }
+          out := make([]byte, len(result))
+          for i, b := range result {
+              out[i] = alphabet[b]
+          }
+          return string(out)
+      }
+    pkg/wallet/address.go: |
+      package wallet
+
+      import "pkg/encoding"
+
+      type Address struct {
+          Raw []byte
+      }
+
+      func NewAddress(raw []byte) Address {
+          return Address{Raw: raw}
+      }
+
+      func (a Address) String() string {
+          return encoding.Encode(a.Raw)
+      }
+    internal/blockchain/tx.go: |
+      package blockchain
+
+      import "pkg/wallet"
+
+      type Transaction struct {
+          From wallet.Address
+          To   wallet.Address
+          Amt  int64
+      }
+
+      func NewTransaction(from, to wallet.Address, amt int64) Transaction {
+          return Transaction{From: from, To: to, Amt: amt}
+      }
+
+      func (t Transaction) Valid() bool {
+          return len(t.From.Raw) > 0 && len(t.To.Raw) > 0 && t.Amt > 0
+      }
+    internal/api/send_handler.go: |
+      package api
+
+      import "internal/blockchain"
+
+      func HandleSend(fromRaw, toRaw []byte, amt int64) (string, error) {
+          tx := blockchain.NewTransaction(
+              blockchain.Transaction{}.From, // placeholder
+              blockchain.Transaction{}.To,
+              amt,
+          )
+          if !tx.Valid() {
+              return "", nil
+          }
+          return tx.From.String(), nil
+      }
+    garbage/GameProfile.go: |
+      package garbage
+
+      // GARBAGE_REFACT002_A = "game_profile_marker"
+
+      type GameProfile struct{ Username string }
+    garbage/StreamCodec.go: |
+      package garbage
+
+      // GARBAGE_REFACT002_B = "stream_codec_marker"
+
+      type StreamCodec struct{ Format string }
+    garbage/IoTFirmwareUpdate.go: |
+      package garbage
+
+      // GARBAGE_REFACT002_C = "iot_firmware_update_marker"
+
+      type IoTFirmwareUpdate struct{ Version string }
+    garbage/PaymentDispute.go: |
+      package garbage
+
+      // GARBAGE_REFACT002_D = "payment_dispute_marker"
+
+      type PaymentDispute struct{ Reason string }
+  commit_message: "fix: reverse result slice before encoding in base58 Encode"
+fragments:
+- id: reverse_loop
+  selector:
+    path: pkg/encoding/base58.go
+    anchor: "result[i], result[j] = result[j], result[i]"
+- id: address_string
+  selector:
+    path: pkg/wallet/address.go
+    anchor: "func (a Address) String()"
+- id: tx_valid
+  selector:
+    path: internal/blockchain/tx.go
+    anchor: "func (t Transaction) Valid()"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_REFACT002_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_REFACT002_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_REFACT002_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_REFACT002_D
+oracle:
+  required:
+  - reverse_loop
+  - address_string
+  allowed:
+  - tx_valid
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

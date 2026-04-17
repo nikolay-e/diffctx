@@ -187,7 +187,7 @@ class GoEdgeBuilder(EdgeBuilder):
         if go_changed:
             fc = kwargs.get("file_cache")
             file_cache: dict[Path, str] | None = fc if isinstance(fc, dict) else None
-            candidate_index = self._build_candidate_import_index(candidates, repo_root, file_cache)
+            candidate_index = self._build_candidate_import_index(candidates, file_cache)
             self._discover_cross_package(go_changed, changed_set, candidates, candidate_index, discovered, repo_root, file_cache)
 
         return list(discovered)
@@ -195,7 +195,6 @@ class GoEdgeBuilder(EdgeBuilder):
     def _build_candidate_import_index(
         self,
         candidates: list[Path],
-        repo_root: Path | None,
         file_cache: dict[Path, str] | None,
     ) -> dict[Path, tuple[str, set[str]]]:
         index: dict[Path, tuple[str, set[str]]] = {}
@@ -228,27 +227,48 @@ class GoEdgeBuilder(EdgeBuilder):
                 f_imports = _extract_imports(content)
                 f_pkg = _get_package_name_from_content(content, f).lower()
                 f_rel_dir = str(f.relative_to(repo_root).parent) if repo_root else None
-
-                for c in candidates:
-                    if c in changed_set or c in discovered:
-                        continue
-                    c_info = candidate_index.get(c)
-                    if c_info is None:
-                        continue
-                    c_pkg, c_imports = c_info
-
-                    if self._import_matches_file(f_imports, c, c_pkg, repo_root):
-                        discovered.add(c)
-                        next_frontier.add(c)
-                        continue
-
-                    if self._import_matches_source(c_imports, f, f_pkg, f_rel_dir, repo_root):
-                        discovered.add(c)
-                        next_frontier.add(c)
-
+                self._match_candidates(
+                    candidates,
+                    changed_set,
+                    discovered,
+                    next_frontier,
+                    candidate_index,
+                    f_imports,
+                    f,
+                    f_pkg,
+                    f_rel_dir,
+                    repo_root,
+                )
             frontier = next_frontier
             if not frontier:
                 break
+
+    def _match_candidates(
+        self,
+        candidates: list[Path],
+        changed_set: set[Path],
+        discovered: set[Path],
+        next_frontier: set[Path],
+        candidate_index: dict[Path, tuple[str, set[str]]],
+        f_imports: set[str],
+        f: Path,
+        f_pkg: str,
+        f_rel_dir: str | None,
+        repo_root: Path | None,
+    ) -> None:
+        for c in candidates:
+            if c in changed_set or c in discovered:
+                continue
+            c_info = candidate_index.get(c)
+            if c_info is None:
+                continue
+            c_pkg, c_imports = c_info
+            if self._import_matches_file(f_imports, c, c_pkg, repo_root):
+                discovered.add(c)
+                next_frontier.add(c)
+            elif self._import_matches_source(c_imports, f, f_pkg, f_rel_dir, repo_root):
+                discovered.add(c)
+                next_frontier.add(c)
 
     @staticmethod
     def _import_matches_file(

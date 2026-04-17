@@ -1,0 +1,131 @@
+name: bal4_cfgcode_007_rust_db_pool
+tags:
+- lang:rust
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:trivial
+repo:
+  initial_files:
+    config.toml: |
+      [database]
+      url = "postgres://localhost/myapp"
+      pool_size = 5
+      timeout_secs = 30
+    src/db.rs: |
+      use std::fs;
+      use toml::Value;
+
+      pub struct DbPool {
+          url: String,
+          pool_size: u32,
+          timeout: u64,
+      }
+
+      impl DbPool {
+          pub fn from_config() -> Self {
+              let raw = fs::read_to_string("config.toml").unwrap();
+              let cfg: Value = raw.parse().unwrap();
+              let db = &cfg["database"];
+              DbPool {
+                  url: db["url"].as_str().unwrap().to_string(),
+                  pool_size: db["pool_size"].as_integer().unwrap() as u32,
+                  timeout: db["timeout_secs"].as_integer().unwrap() as u64,
+              }
+          }
+      }
+    garbage_cli.rs: |
+      const GARBAGE_CFGCODE_007_CLI_A: &str = "v1.0";
+      const GARBAGE_CFGCODE_007_CLI_B: bool = true;
+      pub struct CliArgs {
+          pub verbose: bool,
+      }
+      const GARBAGE_CFGCODE_007_CLI_C: u32 = 80;
+      const GARBAGE_CFGCODE_007_CLI_D: &str = "default";
+    garbage_logger.rs: |
+      const GARBAGE_CFGCODE_007_LOG_E: &str = "info";
+      const GARBAGE_CFGCODE_007_LOG_F: &str = "/var/log";
+      pub fn init_logger() {
+          let _level = GARBAGE_CFGCODE_007_LOG_E;
+      }
+      const GARBAGE_CFGCODE_007_LOG_G: bool = false;
+      const GARBAGE_CFGCODE_007_LOG_H: u32 = 1024;
+    garbage_metrics.rs: |
+      const GARBAGE_CFGCODE_007_MET_I: &str = "prometheus";
+      const GARBAGE_CFGCODE_007_MET_J: u16 = 9090;
+  changed_files:
+    config.toml: |
+      [database]
+      url = "postgres://db.prod.internal/myapp"
+      pool_size = 25
+      timeout_secs = 10
+      max_lifetime_secs = 1800
+  commit_message: "increase db pool and switch to prod host"
+fragments:
+- id: db_config
+  selector:
+    path: config.toml
+    anchor: "pool_size = 25"
+- id: db_pool
+  selector:
+    path: src/db.rs
+    anchor: "config.toml"
+- id: no_cli
+  selector:
+    path: garbage_cli.rs
+- id: no_logger
+  selector:
+    path: garbage_logger.rs
+- id: no_metrics
+  selector:
+    path: garbage_metrics.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_007_CLI_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_007_CLI_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_007_LOG_E
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_007_LOG_F
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CFGCODE_007_MET_I
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CFGCODE_007_MET_J
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_CFGCODE_007_CLI_C
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_CFGCODE_007_CLI_D
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_CFGCODE_007_LOG_G
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_CFGCODE_007_LOG_H
+oracle:
+  required:
+  - db_config
+  - db_pool
+  allowed: []
+  forbidden:
+  - no_cli
+  - no_logger
+  - no_metrics
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

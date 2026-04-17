@@ -1,0 +1,146 @@
+name: gap_051_json_config_vscode_workspace
+tags:
+- lang:json
+- change:config
+- change:multi_file
+- context:same_file
+- distance:0hop
+- difficulty:easy
+repo:
+  initial_files:
+    .vscode/settings.json: |
+      {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "typescript.preferences.importModuleSpecifier": "relative",
+        "files.exclude": {
+          "node_modules": true,
+          "dist": true
+        }
+      }
+    .vscode/launch.json: |
+      {
+        "version": "0.2.0",
+        "configurations": [
+          {
+            "type": "node",
+            "request": "launch",
+            "name": "Debug Server",
+            "program": "${workspaceFolder}/src/main.ts",
+            "preLaunchTask": "tsc: build",
+            "outFiles": ["${workspaceFolder}/dist/**/*.js"]
+          }
+        ]
+      }
+    .prettierrc.json: |
+      {
+        "semi": true,
+        "singleQuote": false,
+        "tabWidth": 2,
+        "trailingComma": "es5",
+        "printWidth": 80
+      }
+    src/main.ts: |
+      interface AppConfig {
+        debug: boolean;
+        port: number;
+        host: string;
+      }
+
+      const defaultConfig: AppConfig = {
+        debug: false,
+        port: 4000,
+        host: "0.0.0.0",
+      };
+
+      function loadConfig(overrides: Partial<AppConfig>): AppConfig {
+        return { ...defaultConfig, ...overrides };
+      }
+  changed_files:
+    .vscode/settings.json: |
+      {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.codeActionsOnSave": {
+          "source.organizeImports": "explicit"
+        },
+        "typescript.preferences.importModuleSpecifier": "relative",
+        "files.exclude": {
+          "node_modules": true,
+          "dist": true,
+          "coverage": true
+        }
+      }
+    .vscode/launch.json: |
+      {
+        "version": "0.2.0",
+        "configurations": [
+          {
+            "type": "node",
+            "request": "launch",
+            "name": "Debug Server",
+            "program": "${workspaceFolder}/src/main.ts",
+            "preLaunchTask": "tsc: build",
+            "outFiles": ["${workspaceFolder}/dist/**/*.js"],
+            "env": {
+              "NODE_ENV": "development",
+              "LOG_LEVEL": "debug"
+            }
+          }
+        ]
+      }
+    .prettierrc.json: |
+      {
+        "semi": true,
+        "singleQuote": false,
+        "tabWidth": 2,
+        "trailingComma": "all",
+        "printWidth": 100
+      }
+    src/main.ts: |
+      interface AppConfig {
+        debug: boolean;
+        port: number;
+        host: string;
+      }
+
+      const defaultConfig: AppConfig = {
+        debug: false,
+        port: 4000,
+        host: "0.0.0.0",
+      };
+
+      function loadConfig(overrides: Partial<AppConfig>): AppConfig {
+        return { ...defaultConfig, ...overrides };
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: settings_organize_imports
+  selector:
+    path: .vscode/settings.json
+    anchor: "source.organizeImports"
+- id: settings_coverage_exclude
+  selector:
+    path: .vscode/settings.json
+    anchor: '"coverage": true'
+- id: launch_env
+  selector:
+    path: .vscode/launch.json
+    anchor: "NODE_ENV"
+- id: prettier_trailing
+  selector:
+    path: .prettierrc.json
+    anchor: '"trailingComma": "all"'
+- id: prettier_width
+  selector:
+    path: .prettierrc.json
+    anchor: '"printWidth": 100'
+oracle:
+  required:
+  - settings_organize_imports
+  - launch_env
+  - prettier_trailing
+  allowed: []
+  forbidden: []

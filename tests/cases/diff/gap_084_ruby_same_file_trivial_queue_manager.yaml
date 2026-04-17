@@ -1,0 +1,160 @@
+name: gap_084_ruby_same_file_trivial_queue_manager
+tags:
+- lang:ruby
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+repo:
+  initial_files:
+    lib/queue_manager.rb: |
+      class QueueManager
+        def initialize(max_size: 100)
+          @queue = []
+          @max_size = max_size
+        end
+
+        def enqueue(item)
+          return false if full?
+          @queue.push(item)
+          true
+        end
+
+        def dequeue
+          @queue.shift
+        end
+
+        def peek
+          @queue.first
+        end
+
+        def full?
+          @queue.size >= @max_size
+        end
+
+        def empty?
+          @queue.empty?
+        end
+
+        def size
+          @queue.size
+        end
+      end
+    lib/stack.rb: |
+      class Stack
+        def initialize
+          @elements = []
+        end
+
+        def push(item)
+          @elements.push(item)
+        end
+
+        def pop
+          @elements.pop
+        end
+
+        def top
+          @elements.last
+        end
+
+        def empty?
+          @elements.empty?
+        end
+      end
+    lib/ring_buffer.rb: |
+      class RingBuffer
+        def initialize(capacity)
+          @buffer = Array.new(capacity)
+          @capacity = capacity
+          @head = 0
+          @count = 0
+        end
+
+        def write(value)
+          @buffer[(@head + @count) % @capacity] = value
+          @count = [@count + 1, @capacity].min
+        end
+
+        def read
+          return nil if @count == 0
+          value = @buffer[@head]
+          @head = (@head + 1) % @capacity
+          @count -= 1
+          value
+        end
+      end
+  changed_files:
+    lib/queue_manager.rb: |
+      class QueueManager
+        def initialize(max_size: 100)
+          @queue = []
+          @max_size = max_size
+          @dropped = 0
+        end
+
+        def enqueue(item)
+          unless full?
+            @queue.push(item)
+            return true
+          end
+          @dropped += 1
+          false
+        end
+
+        def dequeue
+          @queue.shift
+        end
+
+        def peek
+          @queue.first
+        end
+
+        def full?
+          @queue.size >= @max_size
+        end
+
+        def empty?
+          @queue.empty?
+        end
+
+        def size
+          @queue.size
+        end
+
+        def dropped_count
+          @dropped
+        end
+      end
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: queue_file
+  selector:
+    path: queue_manager.rb
+- id: req_dropped
+  selector:
+    anchor: "@dropped = 0"
+- id: req_dropped_count
+  selector:
+    anchor: def dropped_count
+- id: no_stack
+  selector:
+    path: stack.rb
+- id: no_ring_buffer
+  selector:
+    path: ring_buffer.rb
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_084_A
+oracle:
+  required:
+  - queue_file
+  - req_dropped
+  - req_dropped_count
+  allowed: []
+  forbidden:
+  - no_stack
+  - no_ring_buffer
+  - no_global_0

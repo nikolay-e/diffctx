@@ -1,0 +1,219 @@
+name: gap2_082_swift_cross_module_music_playlist
+tags:
+- lang:scala
+- change:multi_file
+- change:refactor
+- context:cross_module
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/main/scala/workflow/WorkflowEngine.scala: |
+      package workflow
+
+      import workflow.step.WorkflowStep
+      import workflow.model.WorkflowContext
+
+      class WorkflowEngine {
+        def execute(steps: List[WorkflowStep], input: Map[String, Any]): WorkflowContext = {
+          val ctx = WorkflowContext(input, Map.empty, List.empty)
+          steps.foldLeft(ctx) { (acc, step) => step.run(acc) }
+        }
+      }
+    src/main/scala/workflow/step/WorkflowStep.scala: |
+      package workflow.step
+
+      import workflow.model.WorkflowContext
+
+      trait WorkflowStep {
+        def run(ctx: WorkflowContext): WorkflowContext
+      }
+    src/main/scala/workflow/model/WorkflowContext.scala: |
+      package workflow.model
+
+      case class WorkflowContext(
+        input: Map[String, Any],
+        output: Map[String, Any],
+        errors: List[String]
+      ) {
+        def withOutput(key: String, value: Any): WorkflowContext =
+          copy(output = output + (key -> value))
+
+        def withError(msg: String): WorkflowContext =
+          copy(errors = errors :+ msg)
+
+        def hasErrors: Boolean = errors.nonEmpty
+      }
+    src/main/scala/approval/ApprovalStep.scala: |
+      package approval
+
+      import workflow.step.WorkflowStep
+      import workflow.model.WorkflowContext
+
+      class ApprovalStep(approverId: String) extends WorkflowStep {
+        def run(ctx: WorkflowContext): WorkflowContext = {
+          val amount = ctx.input.get("amount").map(_.toString.toDouble).getOrElse(0.0)
+          if (amount > 10000.0) {
+            ctx.withOutput("requires_approval", true).withOutput("approver_id", approverId)
+          } else {
+            ctx.withOutput("requires_approval", false)
+          }
+        }
+      }
+    src/main/scala/hr/LeaveManagement.scala: |
+      package hr
+
+      val GARBAGE_GAP082_A: String = "leave_policy_v3"
+
+      class LeaveManagement {
+        def approve(employeeId: String, days: Int): Boolean = days <= 20
+      }
+    src/main/scala/compliance/AuditTrail.scala: |
+      package compliance
+
+      val GARBAGE_GAP082_B: String = "audit_trail_table"
+      val GARBAGE_GAP082_C: Int = 365
+
+      class AuditTrail {
+        def record(action: String): Unit = println(s"AUDIT: $action")
+      }
+    src/main/scala/finance/BudgetTracker.scala: |
+      package finance
+
+      val GARBAGE_GAP082_D: String = "budget_tracker_v1"
+
+      class BudgetTracker {
+        def remaining(department: String): Double = 50000.0
+      }
+  changed_files:
+    src/main/scala/workflow/WorkflowEngine.scala: |
+      package workflow
+
+      import workflow.step.WorkflowStep
+      import workflow.model.{WorkflowContext, WorkflowResult}
+
+      class WorkflowEngine {
+        def execute(steps: List[WorkflowStep], input: Map[String, Any]): WorkflowResult = {
+          val ctx = WorkflowContext(input, Map.empty, List.empty)
+          val finalCtx = steps.foldLeft(ctx) { (acc, step) =>
+            if (acc.hasErrors) acc else step.run(acc)
+          }
+          WorkflowResult(success = !finalCtx.hasErrors, context = finalCtx)
+        }
+      }
+    src/main/scala/workflow/step/WorkflowStep.scala: |
+      package workflow.step
+
+      import workflow.model.WorkflowContext
+
+      trait WorkflowStep {
+        def run(ctx: WorkflowContext): WorkflowContext
+      }
+    src/main/scala/workflow/model/WorkflowContext.scala: |
+      package workflow.model
+
+      case class WorkflowContext(
+        input: Map[String, Any],
+        output: Map[String, Any],
+        errors: List[String]
+      ) {
+        def withOutput(key: String, value: Any): WorkflowContext =
+          copy(output = output + (key -> value))
+
+        def withError(msg: String): WorkflowContext =
+          copy(errors = errors :+ msg)
+
+        def hasErrors: Boolean = errors.nonEmpty
+      }
+
+      case class WorkflowResult(success: Boolean, context: WorkflowContext)
+    src/main/scala/approval/ApprovalStep.scala: |
+      package approval
+
+      import workflow.step.WorkflowStep
+      import workflow.model.WorkflowContext
+
+      class ApprovalStep(approverId: String) extends WorkflowStep {
+        def run(ctx: WorkflowContext): WorkflowContext = {
+          val amount = ctx.input.get("amount").map(_.toString.toDouble).getOrElse(0.0)
+          if (amount > 10000.0) {
+            ctx.withOutput("requires_approval", true).withOutput("approver_id", approverId)
+          } else {
+            ctx.withOutput("requires_approval", false)
+          }
+        }
+      }
+    src/main/scala/hr/LeaveManagement.scala: |
+      package hr
+
+      val GARBAGE_GAP082_A: String = "leave_policy_v3"
+
+      class LeaveManagement {
+        def approve(employeeId: String, days: Int): Boolean = days <= 20
+      }
+    src/main/scala/compliance/AuditTrail.scala: |
+      package compliance
+
+      val GARBAGE_GAP082_B: String = "audit_trail_table"
+      val GARBAGE_GAP082_C: Int = 365
+
+      class AuditTrail {
+        def record(action: String): Unit = println(s"AUDIT: $action")
+      }
+    src/main/scala/finance/BudgetTracker.scala: |
+      package finance
+
+      val GARBAGE_GAP082_D: String = "budget_tracker_v1"
+
+      class BudgetTracker {
+        def remaining(department: String): Double = 50000.0
+      }
+  commit_message: "refactor: add WorkflowResult and short-circuit on errors in WorkflowEngine"
+fragments:
+- id: workflow_result_case_class
+  selector:
+    path: src/main/scala/workflow/model/WorkflowContext.scala
+    anchor: "case class WorkflowResult"
+- id: engine_execute_returns_result
+  selector:
+    path: src/main/scala/workflow/WorkflowEngine.scala
+    anchor: "def execute(steps: List[WorkflowStep], input: Map[String, Any]): WorkflowResult"
+- id: engine_short_circuit
+  selector:
+    path: src/main/scala/workflow/WorkflowEngine.scala
+    anchor: "if (acc.hasErrors) acc else step.run(acc)"
+- id: no_leave_management
+  selector:
+    path: src/main/scala/hr/LeaveManagement.scala
+- id: no_audit_trail
+  selector:
+    path: src/main/scala/compliance/AuditTrail.scala
+- id: no_budget_tracker
+  selector:
+    path: src/main/scala/finance/BudgetTracker.scala
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP082_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GAP082_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GAP082_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GAP082_D
+oracle:
+  required:
+  - workflow_result_case_class
+  - engine_execute_returns_result
+  - engine_short_circuit
+  allowed: []
+  forbidden:
+  - no_leave_management
+  - no_audit_trail
+  - no_budget_tracker
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

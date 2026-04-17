@@ -1,0 +1,201 @@
+name: bal3_1hop_021_ruby_event_dispatcher
+tags:
+- lang:ruby
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    lib/events/dispatcher.rb: |
+      module Events
+        class Dispatcher
+          def initialize
+            @listeners = Hash.new { |h, k| h[k] = [] }
+          end
+
+          def on(event_name, &block)
+            @listeners[event_name] << block
+          end
+
+          def emit(event_name, data = {})
+            @listeners[event_name].each { |listener| listener.call(data) }
+          end
+        end
+      end
+    lib/handlers/order_handler.rb: |
+      require_relative '../events/dispatcher'
+
+      module Handlers
+        class OrderHandler
+          def initialize(dispatcher)
+            @dispatcher = dispatcher
+            @dispatcher.on(:order_placed) { |data| on_order_placed(data) }
+          end
+
+          def on_order_placed(data)
+            "order #{data[:order_id]} placed"
+          end
+        end
+      end
+    lib/handlers/inventory_handler.rb: |
+      require_relative '../events/dispatcher'
+
+      module Handlers
+        class InventoryHandler
+          def initialize(dispatcher)
+            @dispatcher = dispatcher
+            @dispatcher.on(:order_placed) { |data| on_order_placed(data) }
+          end
+
+          def on_order_placed(data)
+            "reducing stock for order #{data[:order_id]}"
+          end
+        end
+      end
+    lib/handlers/analytics_handler.rb: |
+      require_relative '../events/dispatcher'
+
+      module Handlers
+        class AnalyticsHandler
+          def initialize(dispatcher)
+            @dispatcher = dispatcher
+            @dispatcher.on(:order_placed) { |data| track(data) }
+          end
+
+          def track(data)
+            "tracked order #{data[:order_id]}"
+          end
+        end
+      end
+    lib/storage/file_store.rb: |
+      GARBAGE_021_FILESTORE_A = "file_store"
+
+      module Storage
+        class FileStore
+          def save(path, content)
+            "saved to #{path}"
+          end
+        end
+      end
+    lib/storage/s3_store.rb: |
+      GARBAGE_021_S3_B = "s3_store"
+
+      module Storage
+        class S3Store
+          def upload(bucket, key, data)
+            "uploaded to #{bucket}/#{key}"
+          end
+        end
+      end
+    lib/storage/ftp_store.rb: |
+      GARBAGE_021_FTP_C = "ftp_store"
+
+      module Storage
+        class FtpStore
+          def upload(host, path, data)
+            "uploaded to #{host}:#{path}"
+          end
+        end
+      end
+  changed_files:
+    lib/events/dispatcher.rb: |
+      module Events
+        class Dispatcher
+          def initialize
+            @listeners = Hash.new { |h, k| h[k] = [] }
+            @once_listeners = Hash.new { |h, k| h[k] = [] }
+          end
+
+          def on(event_name, &block)
+            @listeners[event_name] << block
+          end
+
+          def once(event_name, &block)
+            @once_listeners[event_name] << block
+          end
+
+          def off(event_name)
+            @listeners.delete(event_name)
+            @once_listeners.delete(event_name)
+          end
+
+          def emit(event_name, data = {})
+            @listeners[event_name].each { |listener| listener.call(data) }
+            @once_listeners[event_name].each { |listener| listener.call(data) }
+            @once_listeners.delete(event_name)
+          end
+
+          def listener_count(event_name)
+            @listeners[event_name].size + @once_listeners[event_name].size
+          end
+        end
+      end
+  commit_message: "feat: add once, off, and listener_count to Dispatcher"
+fragments:
+- id: once_method
+  selector:
+    path: lib/events/dispatcher.rb
+    anchor: "def once(event_name, &block)"
+- id: off_method
+  selector:
+    path: lib/events/dispatcher.rb
+    anchor: "def off(event_name)"
+- id: listener_count_method
+  selector:
+    path: lib/events/dispatcher.rb
+    anchor: "def listener_count"
+- id: once_listeners_field
+  selector:
+    path: lib/events/dispatcher.rb
+    anchor: "@once_listeners = Hash.new"
+- id: order_handler_subscribes
+  selector:
+    path: lib/handlers/order_handler.rb
+    anchor: "@dispatcher.on(:order_placed)"
+- id: inventory_handler_subscribes
+  selector:
+    path: lib/handlers/inventory_handler.rb
+    anchor: "@dispatcher.on(:order_placed)"
+- id: analytics_handler_subscribes
+  selector:
+    path: lib/handlers/analytics_handler.rb
+    anchor: "@dispatcher.on(:order_placed)"
+- id: unrelated_filestore
+  selector:
+    path: lib/storage/file_store.rb
+    anchor: "class FileStore"
+- id: unrelated_s3
+  selector:
+    path: lib/storage/s3_store.rb
+    anchor: "class S3Store"
+- id: unrelated_ftp
+  selector:
+    path: lib/storage/ftp_store.rb
+    anchor: "class FtpStore"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_021_FILESTORE_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_021_S3_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_021_FTP_C
+oracle:
+  required:
+  - once_method
+  - off_method
+  - listener_count_method
+  - order_handler_subscribes
+  allowed:
+  - once_listeners_field
+  - inventory_handler_subscribes
+  - analytics_handler_subscribes
+  forbidden:
+  - unrelated_filestore
+  - unrelated_s3
+  - unrelated_ftp
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

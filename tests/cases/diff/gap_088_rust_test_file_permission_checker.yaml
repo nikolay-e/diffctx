@@ -1,0 +1,174 @@
+name: gap_088_rust_test_file_permission_checker
+tags:
+- lang:rust
+- change:new_function
+- change:signature
+- change:single_file
+- context:test_file
+- difficulty:medium
+- distance:2hop
+repo:
+  initial_files:
+    src/permission.rs: |
+      #[derive(Clone, PartialEq)]
+      pub enum Role {
+          Guest,
+          Member,
+          Admin,
+      }
+
+      pub struct Permission {
+          role: Role,
+      }
+
+      impl Permission {
+          pub fn new(role: Role) -> Self {
+              Permission { role }
+          }
+
+          pub fn can_read(&self) -> bool {
+              true
+          }
+
+          pub fn can_write(&self) -> bool {
+              matches!(self.role, Role::Member | Role::Admin)
+          }
+
+          pub fn can_delete(&self) -> bool {
+              matches!(self.role, Role::Admin)
+          }
+      }
+    tests/test_permission.rs: |
+      use crate::permission::{Permission, Role};
+
+      #[cfg(test)]
+      mod tests {
+          use super::*;
+
+          #[test]
+          fn test_guest_read_only() {
+              let p = Permission::new(Role::Guest);
+              assert!(p.can_read());
+              assert!(!p.can_write());
+          }
+
+          #[test]
+          fn test_admin_full_access() {
+              let p = Permission::new(Role::Admin);
+              assert!(p.can_read());
+              assert!(p.can_write());
+              assert!(p.can_delete());
+          }
+
+          #[test]
+          fn test_member_no_delete() {
+              let p = Permission::new(Role::Member);
+              assert!(p.can_write());
+              assert!(!p.can_delete());
+          }
+      }
+    src/audit_log.rs: |
+      use std::time::SystemTime;
+
+      pub struct AuditEntry {
+          pub action: String,
+          pub user: String,
+          pub timestamp: SystemTime,
+      }
+
+      pub struct AuditLog {
+          entries: Vec<AuditEntry>,
+      }
+
+      impl AuditLog {
+          pub fn new() -> Self {
+              AuditLog { entries: Vec::new() }
+          }
+
+          pub fn record(&mut self, action: &str, user: &str) {
+              self.entries.push(AuditEntry {
+                  action: action.to_string(),
+                  user: user.to_string(),
+                  timestamp: SystemTime::now(),
+              });
+          }
+
+          pub fn count(&self) -> usize {
+              self.entries.len()
+          }
+      }
+  changed_files:
+    src/permission.rs: |
+      #[derive(Clone, PartialEq)]
+      pub enum Role {
+          Guest,
+          Member,
+          Moderator,
+          Admin,
+      }
+
+      pub struct Permission {
+          role: Role,
+      }
+
+      impl Permission {
+          pub fn new(role: Role) -> Self {
+              Permission { role }
+          }
+
+          pub fn with_moderator() -> Self {
+              Permission { role: Role::Moderator }
+          }
+
+          pub fn can_read(&self) -> bool {
+              true
+          }
+
+          pub fn can_write(&self) -> bool {
+              matches!(self.role, Role::Member | Role::Moderator | Role::Admin)
+          }
+
+          pub fn can_moderate(&self) -> bool {
+              matches!(self.role, Role::Moderator | Role::Admin)
+          }
+
+          pub fn can_delete(&self) -> bool {
+              matches!(self.role, Role::Admin)
+          }
+      }
+  commit_message: "feat(permission): add moderator role"
+fixtures:
+  auto_garbage: true
+fragments:
+- id: perm_moderator_variant
+  selector:
+    path: src/permission.rs
+    anchor: Moderator
+- id: perm_with_moderator
+  selector:
+    path: src/permission.rs
+    anchor: "pub fn with_moderator()"
+- id: perm_can_moderate
+  selector:
+    path: src/permission.rs
+    anchor: "pub fn can_moderate(&self)"
+- id: test_uses_permission
+  selector:
+    path: tests/test_permission.rs
+    anchor: "Permission::new(Role::Guest)"
+- id: no_audit_log
+  selector:
+    path: src/audit_log.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_088_A
+oracle:
+  required:
+  - perm_moderator_variant
+  - perm_with_moderator
+  - perm_can_moderate
+  - test_uses_permission
+  allowed: []
+  forbidden:
+  - no_audit_log
+  - no_global_0

@@ -1,0 +1,265 @@
+name: bal_testctx_002_python_user_validator_test
+tags:
+- lang:scala
+- change:multi_file
+- change:refactor
+- context:cross_module
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/main/scala/auth/UserService.scala: |
+      package auth
+
+      import auth.model.User
+      import auth.repository.UserRepository
+
+      class UserService(repo: UserRepository) {
+        def register(username: String, email: String, passwordHash: String): Either[String, User] = {
+          if (repo.existsByEmail(email)) Left("Email already in use")
+          else Right(repo.save(User(username, email, passwordHash, active = true)))
+        }
+
+        def deactivate(email: String): Boolean = {
+          repo.findByEmail(email).exists { user =>
+            repo.save(user.copy(active = false))
+            true
+          }
+        }
+      }
+    src/main/scala/auth/model/User.scala: |
+      package auth.model
+
+      case class User(username: String, email: String, passwordHash: String, active: Boolean)
+    src/main/scala/auth/repository/UserRepository.scala: |
+      package auth.repository
+
+      import auth.model.User
+
+      trait UserRepository {
+        def save(user: User): User
+        def findByEmail(email: String): Option[User]
+        def existsByEmail(email: String): Boolean
+      }
+
+      class InMemoryUserRepository extends UserRepository {
+        private var users: List[User] = List.empty
+
+        def save(user: User): User = {
+          users = users.filterNot(_.email == user.email) :+ user
+          user
+        }
+
+        def findByEmail(email: String): Option[User] = users.find(_.email == email)
+
+        def existsByEmail(email: String): Boolean = users.exists(_.email == email)
+      }
+    src/main/scala/auth/SessionManager.scala: |
+      package auth
+
+      import auth.repository.UserRepository
+
+      class SessionManager(repo: UserRepository) {
+        private var sessions: Map[String, String] = Map.empty
+
+        def createSession(email: String): Option[String] = {
+          repo.findByEmail(email).filter(_.active).map { _ =>
+            val token = java.util.UUID.randomUUID().toString
+            sessions = sessions + (token -> email)
+            token
+          }
+        }
+
+        def invalidate(token: String): Unit = {
+          sessions = sessions - token
+        }
+      }
+    src/main/scala/notifications/EmailSender.scala: |
+      package notifications
+
+      val GARBAGE_TESTCTX002_A: String = "smtp_host_default"
+
+      class EmailSender {
+        def send(to: String, subject: String, body: String): Unit =
+          println(s"Email to $to: $subject")
+      }
+    src/main/scala/audit/AuditLogger.scala: |
+      package audit
+
+      val GARBAGE_TESTCTX002_B: String = "audit_log_table"
+      val GARBAGE_TESTCTX002_C: Int = 90
+
+      class AuditLogger {
+        def log(action: String, actor: String): Unit =
+          println(s"AUDIT: $actor -> $action")
+      }
+    src/main/scala/billing/SubscriptionService.scala: |
+      package billing
+
+      val GARBAGE_TESTCTX002_D: String = "subscription_plan_free"
+
+      class SubscriptionService {
+        def getplan(userId: String): String = "free"
+      }
+  changed_files:
+    src/main/scala/auth/UserService.scala: |
+      package auth
+
+      import auth.model.{User, UserRole}
+      import auth.repository.UserRepository
+
+      class UserService(repo: UserRepository) {
+        def register(username: String, email: String, passwordHash: String, role: UserRole = UserRole.Member): Either[String, User] = {
+          if (repo.existsByEmail(email)) Left("Email already in use")
+          else Right(repo.save(User(username, email, passwordHash, active = true, role = role)))
+        }
+
+        def deactivate(email: String): Boolean = {
+          repo.findByEmail(email).exists { user =>
+            repo.save(user.copy(active = false))
+            true
+          }
+        }
+
+        def promote(email: String, role: UserRole): Either[String, User] = {
+          repo.findByEmail(email) match {
+            case Some(user) => Right(repo.save(user.copy(role = role)))
+            case None => Left("User not found")
+          }
+        }
+      }
+    src/main/scala/auth/model/User.scala: |
+      package auth.model
+
+      sealed trait UserRole
+      object UserRole {
+        case object Member extends UserRole
+        case object Admin extends UserRole
+        case object Moderator extends UserRole
+      }
+
+      case class User(username: String, email: String, passwordHash: String, active: Boolean, role: UserRole = UserRole.Member)
+    src/main/scala/auth/repository/UserRepository.scala: |
+      package auth.repository
+
+      import auth.model.User
+
+      trait UserRepository {
+        def save(user: User): User
+        def findByEmail(email: String): Option[User]
+        def existsByEmail(email: String): Boolean
+      }
+
+      class InMemoryUserRepository extends UserRepository {
+        private var users: List[User] = List.empty
+
+        def save(user: User): User = {
+          users = users.filterNot(_.email == user.email) :+ user
+          user
+        }
+
+        def findByEmail(email: String): Option[User] = users.find(_.email == email)
+
+        def existsByEmail(email: String): Boolean = users.exists(_.email == email)
+      }
+    src/main/scala/auth/SessionManager.scala: |
+      package auth
+
+      import auth.repository.UserRepository
+
+      class SessionManager(repo: UserRepository) {
+        private var sessions: Map[String, String] = Map.empty
+
+        def createSession(email: String): Option[String] = {
+          repo.findByEmail(email).filter(_.active).map { _ =>
+            val token = java.util.UUID.randomUUID().toString
+            sessions = sessions + (token -> email)
+            token
+          }
+        }
+
+        def invalidate(token: String): Unit = {
+          sessions = sessions - token
+        }
+      }
+    src/main/scala/notifications/EmailSender.scala: |
+      package notifications
+
+      val GARBAGE_TESTCTX002_A: String = "smtp_host_default"
+
+      class EmailSender {
+        def send(to: String, subject: String, body: String): Unit =
+          println(s"Email to $to: $subject")
+      }
+    src/main/scala/audit/AuditLogger.scala: |
+      package audit
+
+      val GARBAGE_TESTCTX002_B: String = "audit_log_table"
+      val GARBAGE_TESTCTX002_C: Int = 90
+
+      class AuditLogger {
+        def log(action: String, actor: String): Unit =
+          println(s"AUDIT: $actor -> $action")
+      }
+    src/main/scala/billing/SubscriptionService.scala: |
+      package billing
+
+      val GARBAGE_TESTCTX002_D: String = "subscription_plan_free"
+
+      class SubscriptionService {
+        def getplan(userId: String): String = "free"
+      }
+  commit_message: "refactor: add UserRole to User model and UserService operations"
+fragments:
+- id: user_role_trait
+  selector:
+    path: src/main/scala/auth/model/User.scala
+    anchor: "sealed trait UserRole"
+- id: user_case_class
+  selector:
+    path: src/main/scala/auth/model/User.scala
+    anchor: "case class User"
+- id: user_service_register
+  selector:
+    path: src/main/scala/auth/UserService.scala
+    anchor: "def register"
+- id: user_service_promote
+  selector:
+    path: src/main/scala/auth/UserService.scala
+    anchor: "def promote"
+- id: no_email_sender
+  selector:
+    path: src/main/scala/notifications/EmailSender.scala
+- id: no_audit_logger
+  selector:
+    path: src/main/scala/audit/AuditLogger.scala
+- id: no_subscription
+  selector:
+    path: src/main/scala/billing/SubscriptionService.scala
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_TESTCTX002_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_TESTCTX002_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_TESTCTX002_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_TESTCTX002_D
+oracle:
+  required:
+  - user_role_trait
+  - user_case_class
+  - user_service_register
+  - user_service_promote
+  allowed: []
+  forbidden:
+  - no_email_sender
+  - no_audit_logger
+  - no_subscription
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

@@ -1,0 +1,238 @@
+name: bal_refactor_014_typescript_rename_across_files
+tags:
+- lang:python
+- change:bug_fix
+- change:multi_file
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/sessions/store.py: |
+      import secrets
+      import time
+      from typing import Optional, Dict, Any
+
+      class SessionStore:
+          def __init__(self, ttl_seconds: int = 3600):
+              self._sessions: Dict[str, dict] = {}
+              self._ttl = ttl_seconds
+
+          def create(self, user_id: str, data: Dict[str, Any] = None) -> str:
+              token = secrets.token_hex(32)
+              self._sessions[token] = {
+                  "user_id": user_id,
+                  "data": data or {},
+                  "created_at": time.time(),
+              }
+              return token
+
+          def get(self, token: str) -> Optional[dict]:
+              session = self._sessions.get(token)
+              if session is None:
+                  return None
+              return session
+
+          def delete(self, token: str) -> None:
+              self._sessions.pop(token, None)
+    src/sessions/middleware.py: |
+      from src.sessions.store import SessionStore
+
+      class SessionMiddleware:
+          def __init__(self, store: SessionStore):
+              self.store = store
+
+          def process_request(self, request: dict) -> dict:
+              token = request.get("session_token")
+              if token:
+                  session = self.store.get(token)
+                  request["session"] = session
+              else:
+                  request["session"] = None
+              return request
+    tests/test_sessions.py: |
+      import pytest
+      import time
+      from src.sessions.store import SessionStore
+
+      def test_create_returns_token():
+          store = SessionStore(ttl_seconds=60)
+          token = store.create("user-1")
+          assert token is not None
+          assert len(token) == 64
+
+      def test_get_returns_session_data():
+          store = SessionStore(ttl_seconds=60)
+          token = store.create("user-1", {"role": "admin"})
+          session = store.get(token)
+          assert session["user_id"] == "user-1"
+          assert session["data"]["role"] == "admin"
+
+      def test_delete_removes_session():
+          store = SessionStore(ttl_seconds=60)
+          token = store.create("user-2")
+          store.delete(token)
+          assert store.get(token) is None
+    src/auth/oauth.py: |
+      # GARBAGE_RF14_A = "oauth_provider_unrelated"
+      class OAuthProvider:
+          def exchange_code(self, code: str) -> str:
+              return "access_token"
+    src/cache/redis_cache.py: |
+      # GARBAGE_RF14_B = "redis_cache_unrelated"
+      class RedisCache:
+          def get(self, key: str):
+              return None
+          def set(self, key: str, value, ttl: int = None):
+              pass
+    src/audit/log.py: |
+      # GARBAGE_RF14_C = "audit_log_unrelated"
+      class AuditLog:
+          def record(self, action: str, actor: str, resource: str) -> None:
+              pass
+  changed_files:
+    src/sessions/store.py: |
+      import secrets
+      import time
+      from typing import Optional, Dict, Any
+
+      class SessionStore:
+          def __init__(self, ttl_seconds: int = 3600):
+              self._sessions: Dict[str, dict] = {}
+              self._ttl = ttl_seconds
+
+          def create(self, user_id: str, data: Dict[str, Any] = None) -> str:
+              token = secrets.token_hex(32)
+              self._sessions[token] = {
+                  "user_id": user_id,
+                  "data": data or {},
+                  "created_at": time.time(),
+              }
+              return token
+
+          def get(self, token: str) -> Optional[dict]:
+              session = self._sessions.get(token)
+              if session is None:
+                  return None
+              age = time.time() - session["created_at"]
+              if age > self._ttl:
+                  self.delete(token)
+                  return None
+              return session
+
+          def delete(self, token: str) -> None:
+              self._sessions.pop(token, None)
+
+          def purge_expired(self) -> int:
+              now = time.time()
+              expired = [t for t, s in self._sessions.items() if now - s["created_at"] > self._ttl]
+              for t in expired:
+                  del self._sessions[t]
+              return len(expired)
+    src/sessions/middleware.py: |
+      from src.sessions.store import SessionStore
+
+      class SessionMiddleware:
+          def __init__(self, store: SessionStore):
+              self.store = store
+
+          def process_request(self, request: dict) -> dict:
+              token = request.get("session_token")
+              if token:
+                  session = self.store.get(token)
+                  request["session"] = session
+              else:
+                  request["session"] = None
+              return request
+    tests/test_sessions.py: |
+      import pytest
+      import time
+      from src.sessions.store import SessionStore
+
+      def test_create_returns_token():
+          store = SessionStore(ttl_seconds=60)
+          token = store.create("user-1")
+          assert token is not None
+          assert len(token) == 64
+
+      def test_get_returns_session_data():
+          store = SessionStore(ttl_seconds=60)
+          token = store.create("user-1", {"role": "admin"})
+          session = store.get(token)
+          assert session["user_id"] == "user-1"
+          assert session["data"]["role"] == "admin"
+
+      def test_delete_removes_session():
+          store = SessionStore(ttl_seconds=60)
+          token = store.create("user-2")
+          store.delete(token)
+          assert store.get(token) is None
+
+      def test_get_expired_session_returns_none():
+          store = SessionStore(ttl_seconds=1)
+          token = store.create("user-3")
+          time.sleep(1.05)
+          assert store.get(token) is None
+
+      def test_purge_expired_removes_stale_sessions():
+          store = SessionStore(ttl_seconds=1)
+          store.create("user-4")
+          store.create("user-5")
+          time.sleep(1.05)
+          purged = store.purge_expired()
+          assert purged == 2
+    src/auth/oauth.py: |
+      # GARBAGE_RF14_A = "oauth_provider_unrelated"
+      class OAuthProvider:
+          def exchange_code(self, code: str) -> str:
+              return "access_token"
+    src/cache/redis_cache.py: |
+      # GARBAGE_RF14_B = "redis_cache_unrelated"
+      class RedisCache:
+          def get(self, key: str):
+              return None
+          def set(self, key: str, value, ttl: int = None):
+              pass
+    src/audit/log.py: |
+      # GARBAGE_RF14_C = "audit_log_unrelated"
+      class AuditLog:
+          def record(self, action: str, actor: str, resource: str) -> None:
+              pass
+  commit_message: "fix: expire sessions on get and add purge_expired to SessionStore"
+fragments:
+- id: get_expiry_check
+  selector:
+    path: src/sessions/store.py
+    anchor: "age > self._ttl"
+- id: purge_expired_fn
+  selector:
+    path: src/sessions/store.py
+    anchor: "def purge_expired"
+- id: test_expired_returns_none
+  selector:
+    path: tests/test_sessions.py
+    anchor: "test_get_expired_session_returns_none"
+- id: test_purge_removes
+  selector:
+    path: tests/test_sessions.py
+    anchor: "test_purge_expired_removes_stale_sessions"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_RF14_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_RF14_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_RF14_C
+oracle:
+  required:
+  - get_expiry_check
+  - purge_expired_fn
+  - test_expired_returns_none
+  allowed:
+  - test_purge_removes
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

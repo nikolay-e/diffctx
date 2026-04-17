@@ -1,0 +1,128 @@
+name: gap2_105_yaml_config_import_chain_helm_values
+tags:
+- change:config
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:0hop
+- lang:yaml
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    charts/api/values.yaml: |
+      replicaCount: 2
+      image:
+        repository: registry.io/api
+        tag: "1.0.0"
+      service:
+        type: ClusterIP
+        port: 8080
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+    charts/api/templates/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: api
+      spec:
+        replicas: "{{ .Values.replicaCount }}"
+        template:
+          spec:
+            containers:
+            - name: api
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              ports:
+              - containerPort: "{{ .Values.service.port }}"
+              resources: "{{ toYaml .Values.resources | nindent 16 }}"
+    charts/api/Chart.yaml: |
+      apiVersion: v2
+      name: api
+      version: 0.1.0
+      appVersion: "1.0.0"
+    charts/gateway/values.yaml: |
+      TRAP_GAP2_105_GW_A: "gateway_defaults"
+      TRAP_GAP2_105_GW_B: 3
+      replicaCount: 1
+      image:
+        repository: registry.io/gateway
+        tag: "2.0.0"
+  changed_files:
+    charts/api/values.yaml: |
+      replicaCount: 3
+      image:
+        repository: registry.io/api
+        tag: "1.2.0"
+      service:
+        type: ClusterIP
+        port: 8080
+      resources:
+        requests:
+          cpu: 250m
+          memory: 256Mi
+      autoscaling:
+        enabled: true
+        minReplicas: 3
+        maxReplicas: 10
+    charts/api/templates/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: api
+      spec:
+        replicas: "{{ .Values.replicaCount }}"
+        template:
+          spec:
+            containers:
+            - name: api
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              ports:
+              - containerPort: "{{ .Values.service.port }}"
+              resources: "{{ toYaml .Values.resources | nindent 16 }}"
+    charts/api/Chart.yaml: |
+      apiVersion: v2
+      name: api
+      version: 0.1.0
+      appVersion: "1.0.0"
+    charts/gateway/values.yaml: |
+      TRAP_GAP2_105_GW_A: "gateway_defaults"
+      TRAP_GAP2_105_GW_B: 3
+      replicaCount: 1
+      image:
+        repository: registry.io/gateway
+        tag: "2.0.0"
+  commit_message: Update files
+fragments:
+- id: values_replicas
+  selector:
+    path: charts/api/values.yaml
+    anchor: "replicaCount: 3"
+- id: values_tag
+  selector:
+    path: charts/api/values.yaml
+    anchor: 'tag: "1.2.0"'
+- id: values_autoscaling
+  selector:
+    path: charts/api/values.yaml
+    anchor: "enabled: true"
+- id: no_gateway
+  selector:
+    path: charts/gateway/values.yaml
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_105_GW_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_105_GW_B
+oracle:
+  required:
+  - values_replicas
+  - values_tag
+  - values_autoscaling
+  allowed: []
+  forbidden:
+  - no_gateway
+  - no_global_0
+  - no_global_1

@@ -1,0 +1,102 @@
+name: bal_testctx_003_python_http_client_test
+tags:
+- lang:python
+- change:single_file
+- change:signature
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/http_client.py: |
+      import urllib.request
+      from typing import Optional
+
+      class HttpClient:
+          def __init__(self, base_url: str):
+              self.base_url = base_url
+
+          def get(self, path: str) -> str:
+              url = f"{self.base_url}{path}"
+              with urllib.request.urlopen(url) as response:
+                  return response.read().decode()
+    tests/test_http_client.py: |
+      from src.http_client import HttpClient
+
+      def test_get_constructs_url():
+          client = HttpClient("https://api.example.com")
+          assert client.base_url == "https://api.example.com"
+
+      def test_client_initialization():
+          client = HttpClient("https://test.local")
+          assert isinstance(client, HttpClient)
+    src/cache.py: |
+      from typing import Any, Dict
+
+      class InMemoryCache:
+          def __init__(self):
+              self._store: Dict[str, Any] = {}
+
+          def get(self, key: str) -> Any:
+              return self._store.get(key)
+
+          def set(self, key: str, value: Any) -> None:
+              self._store[key] = value
+    src/logger.py: |
+      import logging
+
+      def get_logger(name: str) -> logging.Logger:
+          logger = logging.getLogger(name)
+          logger.setLevel(logging.INFO)
+          return logger
+  changed_files:
+    src/http_client.py: |
+      import urllib.request
+      from typing import Optional, Dict
+
+      class HttpClient:
+          def __init__(self, base_url: str, timeout: int = 30):
+              self.base_url = base_url
+              self.timeout = timeout
+
+          def get(self, path: str, headers: Optional[Dict[str, str]] = None) -> str:
+              url = f"{self.base_url}{path}"
+              req = urllib.request.Request(url, headers=headers or {})
+              with urllib.request.urlopen(req, timeout=self.timeout) as response:
+                  return response.read().decode()
+  commit_message: "feat: add timeout and headers to HttpClient"
+fragments:
+- id: http_client_class
+  selector:
+    path: src/http_client.py
+    anchor: "class HttpClient"
+- id: get_method
+  selector:
+    path: src/http_client.py
+    anchor: "def get(self, path: str, headers"
+- id: test_imports_http
+  selector:
+    path: tests/test_http_client.py
+    anchor: "from src.http_client import HttpClient"
+- id: test_get_constructs
+  selector:
+    path: tests/test_http_client.py
+    anchor: "def test_get_constructs_url"
+- id: no_cache
+  selector:
+    path: src/cache.py
+    anchor: "class InMemoryCache"
+- id: no_logger
+  selector:
+    path: src/logger.py
+    anchor: "def get_logger"
+oracle:
+  required:
+  - http_client_class
+  - test_imports_http
+  allowed:
+  - get_method
+  - test_get_constructs
+  forbidden:
+  - no_cache
+  - no_logger

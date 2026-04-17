@@ -1,0 +1,280 @@
+name: bal_3hop_048_go_middleware_rate_limiter
+tags:
+- lang:go
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    pkg/ratelimit/bucket.go: |
+      package ratelimit
+
+      import "time"
+
+      type TokenBucket struct {
+        capacity int
+        tokens   int
+        rate     time.Duration
+        lastFill time.Time
+      }
+
+      func NewTokenBucket(capacity int, rate time.Duration) *TokenBucket {
+        return &TokenBucket{capacity: capacity, tokens: capacity, rate: rate, lastFill: time.Now()}
+      }
+
+      func (b *TokenBucket) Allow() bool {
+        b.refill()
+        if b.tokens > 0 {
+          b.tokens--
+          return true
+        }
+        return false
+      }
+
+      func (b *TokenBucket) refill() {
+        elapsed := time.Since(b.lastFill)
+        newTokens := int(elapsed / b.rate)
+        if newTokens > 0 {
+          b.tokens = min(b.capacity, b.tokens+newTokens)
+          b.lastFill = time.Now()
+        }
+      }
+    pkg/ratelimit/limiter.go: |
+      package ratelimit
+
+      import "time"
+
+      type Limiter struct {
+        buckets map[string]*TokenBucket
+        capacity int
+        rate     time.Duration
+      }
+
+      func NewLimiter(capacity int, rate time.Duration) *Limiter {
+        return &Limiter{buckets: make(map[string]*TokenBucket), capacity: capacity, rate: rate}
+      }
+
+      func (l *Limiter) Allow(key string) bool {
+        if _, ok := l.buckets[key]; !ok {
+          l.buckets[key] = NewTokenBucket(l.capacity, l.rate)
+        }
+        return l.buckets[key].Allow()
+      }
+    pkg/middleware/ratelimit.go: |
+      package middleware
+
+      import (
+        "net/http"
+        "pkg/ratelimit"
+        "time"
+      )
+
+      func RateLimitMiddleware(next http.Handler) http.Handler {
+        limiter := ratelimit.NewLimiter(100, time.Second)
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+          ip := r.RemoteAddr
+          if !limiter.Allow(ip) {
+            http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+            return
+          }
+          next.ServeHTTP(w, r)
+        })
+      }
+    cmd/server/main.go: |
+      package main
+
+      import (
+        "net/http"
+        "pkg/middleware"
+      )
+
+      func main() {
+        mux := http.NewServeMux()
+        mux.HandleFunc("/api/data", func(w http.ResponseWriter, r *http.Request) {
+          w.Write([]byte("ok"))
+        })
+        handler := middleware.RateLimitMiddleware(mux)
+        http.ListenAndServe(":8080", handler)
+      }
+    pkg/util/hash.go: |
+      package util
+
+      var GARBAGE_048_HASH_MARKER_A = "hash"
+      var GARBAGE_048_SHA_MARKER_B = "sha256"
+
+      func HashString(s string) string { return s }
+    pkg/util/convert.go: |
+      package util
+
+      var GARBAGE_048_CONVERT_MARKER_C = "convert"
+      var GARBAGE_048_CAST_MARKER_D = true
+
+      func ToInt(s string) int { return 0 }
+  changed_files:
+    pkg/ratelimit/bucket.go: |
+      package ratelimit
+
+      import "time"
+
+      type TokenBucket struct {
+        capacity int
+        tokens   int
+        rate     time.Duration
+        lastFill time.Time
+        blocked  int
+      }
+
+      func NewTokenBucket(capacity int, rate time.Duration) *TokenBucket {
+        return &TokenBucket{capacity: capacity, tokens: capacity, rate: rate, lastFill: time.Now()}
+      }
+
+      func (b *TokenBucket) Allow() bool {
+        b.refill()
+        if b.tokens > 0 {
+          b.tokens--
+          return true
+        }
+        b.blocked++
+        return false
+      }
+
+      func (b *TokenBucket) BlockedCount() int {
+        return b.blocked
+      }
+
+      func (b *TokenBucket) refill() {
+        elapsed := time.Since(b.lastFill)
+        newTokens := int(elapsed / b.rate)
+        if newTokens > 0 {
+          b.tokens = min(b.capacity, b.tokens+newTokens)
+          b.lastFill = time.Now()
+        }
+      }
+    pkg/ratelimit/limiter.go: |
+      package ratelimit
+
+      import "time"
+
+      type Limiter struct {
+        buckets  map[string]*TokenBucket
+        capacity int
+        rate     time.Duration
+      }
+
+      func NewLimiter(capacity int, rate time.Duration) *Limiter {
+        return &Limiter{buckets: make(map[string]*TokenBucket), capacity: capacity, rate: rate}
+      }
+
+      func (l *Limiter) Allow(key string) bool {
+        if _, ok := l.buckets[key]; !ok {
+          l.buckets[key] = NewTokenBucket(l.capacity, l.rate)
+        }
+        return l.buckets[key].Allow()
+      }
+
+      func (l *Limiter) TotalBlocked() int {
+        total := 0
+        for _, b := range l.buckets {
+          total += b.BlockedCount()
+        }
+        return total
+      }
+    pkg/middleware/ratelimit.go: |
+      package middleware
+
+      import (
+        "fmt"
+        "net/http"
+        "pkg/ratelimit"
+        "time"
+      )
+
+      func RateLimitMiddleware(next http.Handler) http.Handler {
+        limiter := ratelimit.NewLimiter(100, time.Second)
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+          ip := r.RemoteAddr
+          if !limiter.Allow(ip) {
+            w.Header().Set("X-RateLimit-Blocked", fmt.Sprintf("%d", limiter.TotalBlocked()))
+            http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+            return
+          }
+          next.ServeHTTP(w, r)
+        })
+      }
+    cmd/server/main.go: |
+      package main
+
+      import (
+        "net/http"
+        "pkg/middleware"
+      )
+
+      func main() {
+        mux := http.NewServeMux()
+        mux.HandleFunc("/api/data", func(w http.ResponseWriter, r *http.Request) {
+          w.Write([]byte("ok"))
+        })
+        handler := middleware.RateLimitMiddleware(mux)
+        http.ListenAndServe(":8080", handler)
+      }
+    pkg/util/hash.go: |
+      package util
+
+      var GARBAGE_048_HASH_MARKER_A = "hash"
+      var GARBAGE_048_SHA_MARKER_B = "sha256"
+
+      func HashString(s string) string { return s }
+    pkg/util/convert.go: |
+      package util
+
+      var GARBAGE_048_CONVERT_MARKER_C = "convert"
+      var GARBAGE_048_CAST_MARKER_D = true
+
+      func ToInt(s string) int { return 0 }
+  commit_message: "feat: track blocked request counts in rate limiter"
+fragments:
+- id: bucket_blocked_field
+  selector:
+    path: pkg/ratelimit/bucket.go
+    anchor: "blocked  int"
+- id: bucket_blocked_count
+  selector:
+    path: pkg/ratelimit/bucket.go
+    anchor: "func (b *TokenBucket) BlockedCount"
+- id: limiter_total_blocked
+  selector:
+    path: pkg/ratelimit/limiter.go
+    anchor: "func (l *Limiter) TotalBlocked"
+- id: middleware_imports_ratelimit
+  selector:
+    path: pkg/middleware/ratelimit.go
+    anchor: "pkg/ratelimit"
+- id: middleware_header_blocked
+  selector:
+    path: pkg/middleware/ratelimit.go
+    anchor: "X-RateLimit-Blocked"
+- id: server_imports_middleware
+  selector:
+    path: cmd/server/main.go
+    anchor: "pkg/middleware"
+- id: no_hash
+  selector:
+    path: pkg/util/hash.go
+    anchor: "GARBAGE_048_HASH_MARKER_A"
+- id: no_convert
+  selector:
+    path: pkg/util/convert.go
+    anchor: "GARBAGE_048_CONVERT_MARKER_C"
+oracle:
+  required:
+  - bucket_blocked_field
+  - bucket_blocked_count
+  - limiter_total_blocked
+  - middleware_imports_ratelimit
+  - middleware_header_blocked
+  - server_imports_middleware
+  allowed: []
+  forbidden:
+  - no_hash
+  - no_convert

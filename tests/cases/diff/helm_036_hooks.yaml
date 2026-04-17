@@ -1,47 +1,128 @@
 name: helm_036_hooks
+tags:
+- lang:json
+- lang:yaml
+- change:config
+- change:single_file
+- context:import_chain
+- distance:2hop
+- difficulty:medium
 repo:
   initial_files:
-    templates/hooks/pre-install.yaml: |
-      # Hook placeholder
-    unrelated.md: |
-      # garbage_marker_12345
-      unused_marker_67890
+    config/notifications.json: |
+      {
+        "notifications": {
+          "emailEnabled": true,
+          "smsEnabled": false,
+          "retryCount": 2,
+          "timeoutSeconds": 10
+        }
+      }
+    src/notifications/dispatcher.py: |
+      import json
+
+      def load_notification_config(path: str = "config/notifications.json") -> dict:
+          with open(path) as f:
+              return json.load(f)
+
+      def create_dispatcher(config: dict) -> "NotificationDispatcher":
+          nc = config["notifications"]
+          return NotificationDispatcher(
+              email_enabled=nc["emailEnabled"],
+              sms_enabled=nc["smsEnabled"],
+              retry_count=nc["retryCount"],
+              timeout_seconds=nc["timeoutSeconds"],
+          )
+    src/notifications/router.py: |
+      from src.notifications.dispatcher import create_dispatcher, load_notification_config
+
+      class NotificationRouter:
+          def __init__(self):
+              config = load_notification_config()
+              self.dispatcher = create_dispatcher(config)
+
+          def notify(self, user_id: str, message: str, channel: str = "email"):
+              return self.dispatcher.send(user_id=user_id, message=message, channel=channel)
+    garbage/TemplateEngine.py: |
+      # GARBAGE_NOTIF_A = "template_engine_marker"
+    garbage/UnsubscribeManager.py: |
+      # GARBAGE_NOTIF_B = "unsubscribe_manager_marker"
+    garbage/DeliveryTracker.py: |
+      # GARBAGE_NOTIF_C = "delivery_tracker_marker"
   changed_files:
-    templates/hooks/pre-install.yaml: |
-      apiVersion: batch/v1
-      kind: Job
-      metadata:
-        name: {{ .Release.Name }}-db-init
-        annotations:
-          "helm.sh/hook": pre-install
-          "helm.sh/hook-weight": "-5"
-          "helm.sh/hook-delete-policy": hook-succeeded
-      spec:
-        template:
-          spec:
-            containers:
-            - name: init
-              image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
-              command: ["./init-db.sh"]
-            restartPolicy: Never
-    unrelated.md: |
-      # garbage_marker_12345
-      unused_marker_67890
-  commit_message: Update files
+    config/notifications.json: |
+      {
+        "notifications": {
+          "emailEnabled": true,
+          "smsEnabled": true,
+          "pushEnabled": true,
+          "retryCount": 3,
+          "timeoutSeconds": 15,
+          "rateLimitPerMinute": 100
+        }
+      }
+    src/notifications/dispatcher.py: |
+      import json
+
+      def load_notification_config(path: str = "config/notifications.json") -> dict:
+          with open(path) as f:
+              return json.load(f)
+
+      def create_dispatcher(config: dict) -> "NotificationDispatcher":
+          nc = config["notifications"]
+          return NotificationDispatcher(
+              email_enabled=nc["emailEnabled"],
+              sms_enabled=nc["smsEnabled"],
+              push_enabled=nc.get("pushEnabled", False),
+              retry_count=nc["retryCount"],
+              timeout_seconds=nc["timeoutSeconds"],
+              rate_limit_per_minute=nc.get("rateLimitPerMinute", 60),
+          )
+    src/notifications/router.py: |
+      from src.notifications.dispatcher import create_dispatcher, load_notification_config
+
+      class NotificationRouter:
+          def __init__(self):
+              config = load_notification_config()
+              self.dispatcher = create_dispatcher(config)
+
+          def notify(self, user_id: str, message: str, channel: str = "email"):
+              return self.dispatcher.send(user_id=user_id, message=message, channel=channel)
+    garbage/TemplateEngine.py: |
+      # GARBAGE_NOTIF_A = "template_engine_marker"
+    garbage/UnsubscribeManager.py: |
+      # GARBAGE_NOTIF_B = "unsubscribe_manager_marker"
+    garbage/DeliveryTracker.py: |
+      # GARBAGE_NOTIF_C = "delivery_tracker_marker"
+  commit_message: "config: enable SMS and push notifications, add rate limiting"
 fragments:
-- id: pre_install_file
+- id: notifications_config
   selector:
-    path: templates/hooks/pre-install.yaml
-- id: req_global_0
+    path: config/notifications.json
+    anchor: "pushEnabled"
+- id: create_dispatcher
   selector:
-    anchor: 'apiVersion: batch/v1'
-- id: no_global_0
+    path: src/notifications/dispatcher.py
+    anchor: "def create_dispatcher"
+- id: no_router
   selector:
-    anchor: unrelated.md
+    path: src/notifications/router.py
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_NOTIF_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_NOTIF_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_NOTIF_C
 oracle:
   required:
-  - pre_install_file
-  - req_global_0
+  - notifications_config
+  - create_dispatcher
   allowed: []
   forbidden:
-  - no_global_0
+  - no_router
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

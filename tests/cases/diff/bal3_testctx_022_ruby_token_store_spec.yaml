@@ -1,0 +1,164 @@
+name: bal3_testctx_022_ruby_token_store_spec
+tags:
+- lang:ruby
+- change:single_file
+- change:refactor
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    lib/token_store.rb: |
+      require 'securerandom'
+
+      class TokenStore
+        def initialize
+          @tokens = {}
+        end
+
+        def generate(user_id)
+          token = SecureRandom.hex(16)
+          @tokens[token] = user_id
+          token
+        end
+
+        def verify(token)
+          @tokens[token]
+        end
+
+        def revoke(token)
+          @tokens.delete(token)
+        end
+      end
+    spec/token_store_spec.rb: |
+      require_relative '../lib/token_store'
+
+      RSpec.describe TokenStore do
+        subject { described_class.new }
+
+        describe '#generate' do
+          it 'returns a token string' do
+            token = subject.generate('user_1')
+            expect(token).to be_a(String)
+            expect(token.length).to eq(32)
+          end
+        end
+
+        describe '#verify' do
+          it 'returns user_id for valid token' do
+            token = subject.generate('user_1')
+            expect(subject.verify(token)).to eq('user_1')
+          end
+
+          it 'returns nil for unknown token' do
+            expect(subject.verify('bogus')).to be_nil
+          end
+        end
+
+        describe '#revoke' do
+          it 'invalidates the token' do
+            token = subject.generate('user_1')
+            subject.revoke(token)
+            expect(subject.verify(token)).to be_nil
+          end
+        end
+      end
+    lib/encryption.rb: |
+      class Encryption
+        def self.hash(value)
+          require 'digest'
+          Digest::SHA256.hexdigest(value)
+        end
+      end
+  changed_files:
+    lib/token_store.rb: |
+      require 'securerandom'
+
+      class TokenStore
+        def initialize(ttl_seconds: 3600)
+          @tokens = {}
+          @ttl = ttl_seconds
+        end
+
+        def generate(user_id)
+          token = SecureRandom.hex(16)
+          @tokens[token] = { user_id: user_id, created_at: Time.now }
+          token
+        end
+
+        def verify(token)
+          entry = @tokens[token]
+          return nil unless entry
+          if Time.now - entry[:created_at] > @ttl
+            @tokens.delete(token)
+            return nil
+          end
+          entry[:user_id]
+        end
+
+        def revoke(token)
+          @tokens.delete(token)
+        end
+
+        def revoke_all(user_id)
+          @tokens.reject! { |_, v| v[:user_id] == user_id }
+        end
+
+        def active_count
+          cleanup_expired
+          @tokens.size
+        end
+
+        private
+
+        def cleanup_expired
+          now = Time.now
+          @tokens.reject! { |_, v| now - v[:created_at] > @ttl }
+        end
+      end
+  commit_message: "refactor: add TTL expiration, revoke_all, active_count"
+fragments:
+- id: ttl_param
+  selector:
+    path: lib/token_store.rb
+    anchor: "def initialize(ttl_seconds: 3600)"
+- id: ttl_check
+  selector:
+    path: lib/token_store.rb
+    anchor: "Time.now - entry[:created_at] > @ttl"
+- id: revoke_all_method
+  selector:
+    path: lib/token_store.rb
+    anchor: "def revoke_all(user_id)"
+- id: active_count_method
+  selector:
+    path: lib/token_store.rb
+    anchor: "def active_count"
+- id: spec_generate
+  selector:
+    path: spec/token_store_spec.rb
+    anchor: "describe '#generate'"
+- id: spec_verify
+  selector:
+    path: spec/token_store_spec.rb
+    anchor: "describe '#verify'"
+- id: spec_revoke
+  selector:
+    path: spec/token_store_spec.rb
+    anchor: "describe '#revoke'"
+- id: no_encryption
+  selector:
+    path: lib/encryption.rb
+    anchor: "class Encryption"
+oracle:
+  required:
+  - ttl_param
+  - ttl_check
+  - revoke_all_method
+  - spec_generate
+  - spec_verify
+  allowed:
+  - active_count_method
+  - spec_revoke
+  forbidden:
+  - no_encryption

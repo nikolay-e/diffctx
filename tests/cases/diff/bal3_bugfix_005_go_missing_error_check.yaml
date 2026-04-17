@@ -1,0 +1,95 @@
+name: bal3_bugfix_005_go_missing_error_check
+tags:
+- lang:go
+- change:single_file
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    internal/storage/file.go: |
+      package storage
+
+      import (
+          "io/ioutil"
+          "os"
+      )
+
+      func ReadConfig(path string) ([]byte, error) {
+          f, _ := os.Open(path)
+          defer f.Close()
+          return ioutil.ReadAll(f)
+      }
+    internal/app/bootstrap.go: |
+      package app
+
+      import (
+          "encoding/json"
+          "myapp/internal/storage"
+      )
+
+      type Config struct {
+          Port int    `json:"port"`
+          Name string `json:"name"`
+      }
+
+      func LoadConfig(path string) (*Config, error) {
+          data, err := storage.ReadConfig(path)
+          if err != nil {
+              return nil, err
+          }
+          var cfg Config
+          if err := json.Unmarshal(data, &cfg); err != nil {
+              return nil, err
+          }
+          return &cfg, nil
+      }
+    internal/metrics/collector.go: |
+      package metrics
+
+      type Collector struct {
+          Counts map[string]int
+      }
+
+      func NewCollector() *Collector {
+          return &Collector{Counts: make(map[string]int)}
+      }
+  changed_files:
+    internal/storage/file.go: |
+      package storage
+
+      import (
+          "io/ioutil"
+          "os"
+      )
+
+      func ReadConfig(path string) ([]byte, error) {
+          f, err := os.Open(path)
+          if err != nil {
+              return nil, err
+          }
+          defer f.Close()
+          return ioutil.ReadAll(f)
+      }
+  commit_message: "fix: handle os.Open error instead of discarding it"
+fragments:
+- id: error_check_fix
+  selector:
+    path: internal/storage/file.go
+    anchor: "if err != nil"
+- id: bootstrap_calls_read
+  selector:
+    path: internal/app/bootstrap.go
+    anchor: "storage.ReadConfig(path)"
+- id: no_metrics
+  selector:
+    path: internal/metrics/collector.go
+    anchor: "func NewCollector"
+oracle:
+  required:
+  - error_check_fix
+  - bootstrap_calls_read
+  allowed: []
+  forbidden:
+  - no_metrics

@@ -1,0 +1,232 @@
+name: bal_1hop_060_typescript_plugin_registry_to_loader
+tags:
+- lang:typescript
+- change:signature
+- change:multi_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/plugins/pluginRegistry.ts: |
+      export interface Plugin {
+        name: string;
+        version: string;
+        init: () => void;
+      }
+
+      const registry = new Map<string, Plugin>();
+
+      export function registerPlugin(plugin: Plugin): void {
+        if (registry.has(plugin.name)) {
+          throw new Error(`Plugin ${plugin.name} already registered`);
+        }
+        registry.set(plugin.name, plugin);
+      }
+
+      export function getPlugin(name: string): Plugin | undefined {
+        return registry.get(name);
+      }
+
+      export function listPlugins(): string[] {
+        return [...registry.keys()];
+      }
+    src/plugins/pluginLoader.ts: |
+      import { registerPlugin, getPlugin, Plugin } from './pluginRegistry';
+
+      export function loadPlugins(configs: Array<{ name: string; version: string }>): void {
+        for (const config of configs) {
+          const plugin: Plugin = {
+            name: config.name,
+            version: config.version,
+            init: () => console.log(`Initialized ${config.name} v${config.version}`),
+          };
+          registerPlugin(plugin);
+        }
+      }
+
+      export function initializeAll(configs: Array<{ name: string; version: string }>): void {
+        loadPlugins(configs);
+        for (const config of configs) {
+          const plugin = getPlugin(config.name);
+          if (plugin) plugin.init();
+        }
+      }
+    src/plugins/builtinPlugins.ts: |
+      export const BUILTIN_PLUGINS = [
+        { name: 'logger', version: '1.0.0' },
+        { name: 'metrics', version: '1.0.0' },
+        { name: 'healthcheck', version: '1.0.0' },
+      ];
+    src/config/appSettings.ts: |
+      export interface AppSettings {
+        appName: string;
+        debug: boolean;
+        port: number;
+      }
+
+      export const defaultSettings: AppSettings = {
+        appName: 'MyApp',
+        debug: false,
+        port: 3000,
+      };
+    src/lifecycle/shutdownManager.ts: |
+      const shutdownHooks: Array<() => void> = [];
+
+      export function addShutdownHook(hook: () => void): void {
+        shutdownHooks.push(hook);
+      }
+
+      export function executeShutdown(): void {
+        for (const hook of shutdownHooks) {
+          hook();
+        }
+      }
+    src/telemetry/telemetryCollector.ts: |
+      export interface TelemetryEvent {
+        name: string;
+        timestamp: number;
+        metadata: Record<string, unknown>;
+      }
+
+      export function createEvent(name: string, metadata: Record<string, unknown> = {}): TelemetryEvent {
+        return { name, timestamp: Date.now(), metadata };
+      }
+    src/i18n/localeManager.ts: |
+      const messages = new Map<string, Record<string, string>>();
+
+      export function loadLocale(locale: string, data: Record<string, string>): void {
+        messages.set(locale, data);
+      }
+
+      export function translate(locale: string, key: string): string {
+        return messages.get(locale)?.[key] ?? key;
+      }
+  changed_files:
+    src/plugins/pluginRegistry.ts: |
+      export interface PluginHooks {
+        onLoad?: () => void;
+        onUnload?: () => void;
+        onError?: (error: Error) => void;
+      }
+
+      export interface Plugin {
+        name: string;
+        version: string;
+        dependencies: string[];
+        hooks: PluginHooks;
+        init: () => void;
+      }
+
+      const registry = new Map<string, Plugin>();
+
+      export function registerPlugin(plugin: Plugin): void {
+        if (registry.has(plugin.name)) {
+          throw new Error(`Plugin ${plugin.name} already registered`);
+        }
+        for (const dep of plugin.dependencies) {
+          if (!registry.has(dep)) {
+            throw new Error(`Missing dependency: ${dep} required by ${plugin.name}`);
+          }
+        }
+        registry.set(plugin.name, plugin);
+        plugin.hooks.onLoad?.();
+      }
+
+      export function unregisterPlugin(name: string): boolean {
+        const plugin = registry.get(name);
+        if (!plugin) return false;
+        const dependents = [...registry.values()].filter(p => p.dependencies.includes(name));
+        if (dependents.length > 0) {
+          throw new Error(`Cannot unregister ${name}: required by ${dependents.map(d => d.name).join(', ')}`);
+        }
+        plugin.hooks.onUnload?.();
+        return registry.delete(name);
+      }
+
+      export function getPlugin(name: string): Plugin | undefined {
+        return registry.get(name);
+      }
+
+      export function listPlugins(): string[] {
+        return [...registry.keys()];
+      }
+
+      export function getDependencyGraph(): Record<string, string[]> {
+        const graph: Record<string, string[]> = {};
+        for (const [name, plugin] of registry.entries()) {
+          graph[name] = [...plugin.dependencies];
+        }
+        return graph;
+      }
+  commit_message: "feat: add dependency resolution, lifecycle hooks and unregister to plugin registry"
+fragments:
+- id: registry_dependencies
+  selector:
+    path: pluginRegistry.ts
+    anchor: "dependencies"
+- id: registry_hooks_interface
+  selector:
+    path: pluginRegistry.ts
+    anchor: "PluginHooks"
+- id: registry_dep_check
+  selector:
+    path: pluginRegistry.ts
+    anchor: "Missing dependency"
+- id: registry_unregister
+  selector:
+    path: pluginRegistry.ts
+    anchor: "unregisterPlugin"
+- id: registry_dep_graph
+  selector:
+    path: pluginRegistry.ts
+    anchor: "getDependencyGraph"
+- id: loader_uses_register
+  selector:
+    path: pluginLoader.ts
+    anchor: "registerPlugin(plugin)"
+- id: loader_uses_get_plugin
+  selector:
+    path: pluginLoader.ts
+    anchor: "getPlugin(config.name)"
+- id: loader_initialize_all
+  selector:
+    path: pluginLoader.ts
+    anchor: "initializeAll"
+- id: no_builtin_plugins
+  selector:
+    path: builtinPlugins.ts
+    anchor: "BUILTIN_PLUGINS"
+- id: no_app_settings
+  selector:
+    path: appSettings.ts
+    anchor: "AppSettings"
+- id: no_shutdown_manager
+  selector:
+    path: shutdownManager.ts
+    anchor: "executeShutdown"
+- id: no_telemetry
+  selector:
+    path: telemetryCollector.ts
+    anchor: "TelemetryEvent"
+- id: no_i18n
+  selector:
+    path: localeManager.ts
+    anchor: "translate"
+oracle:
+  required:
+  - registry_dependencies
+  - registry_hooks_interface
+  - registry_dep_check
+  - registry_unregister
+  - loader_uses_register
+  allowed:
+  - registry_dep_graph
+  - loader_uses_get_plugin
+  - loader_initialize_all
+  forbidden:
+  - no_builtin_plugins
+  - no_app_settings
+  - no_shutdown_manager
+  - no_telemetry
+  - no_i18n

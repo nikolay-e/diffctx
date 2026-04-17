@@ -1,0 +1,159 @@
+name: gap_121_shell_import_chain_dns_resolver
+tags:
+- lang:shell
+- change:single_file
+- context:import_chain
+- difficulty:hard
+- distance:2hop
+xfail:
+  category: low-relevance-threshold-tuning
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    bin/resolve.sh: |
+      #!/usr/bin/env bash
+      source lib/dns/lookup.sh
+
+      resolve_hostname() {
+          local host="$1"
+          local result
+          result=$(dns_lookup "$host")
+          if [[ -z "$result" ]]; then
+              echo "NXDOMAIN" >&2
+              return 1
+          fi
+          echo "$result"
+      }
+
+      resolve_with_ttl() {
+          local host="$1"
+          local ttl
+          ttl=$(dns_get_ttl "$host")
+          echo "$(resolve_hostname "$host") ttl=$ttl"
+      }
+    lib/dns/lookup.sh: |
+      #!/usr/bin/env bash
+      source lib/dns/cache.sh
+
+      dns_lookup() {
+          local host="$1"
+          local cached
+          cached=$(cache_get "$host")
+          if [[ -n "$cached" ]]; then
+              echo "$cached"
+              return 0
+          fi
+          local ip
+          ip=$(dig +short "$host" A 2>/dev/null)
+          if [[ -n "$ip" ]]; then
+              cache_set "$host" "$ip"
+          fi
+          echo "$ip"
+      }
+
+      dns_get_ttl() {
+          local host="$1"
+          dig +noall +answer "$host" | awk '{print $2}'
+      }
+    lib/dns/cache.sh: |
+      #!/usr/bin/env bash
+      CACHE_DIR="/tmp/dns_cache"
+
+      cache_init() {
+          mkdir -p "$CACHE_DIR"
+      }
+
+      cache_get() {
+          local key="$1"
+          local file="$CACHE_DIR/$key"
+          if [[ -f "$file" ]]; then
+              local age
+              age=$(( $(date +%s) - $(stat -c %Y "$file" 2>/dev/null || stat -f %m "$file") ))
+              if (( age < 300 )); then
+                  cat "$file"
+                  return 0
+              fi
+              rm -f "$file"
+          fi
+          return 1
+      }
+
+      cache_set() {
+          local key="$1"
+          local value="$2"
+          cache_init
+          echo "$value" > "$CACHE_DIR/$key"
+      }
+    lib/network/ping.sh: |
+      #!/usr/bin/env bash
+
+      ping_host() {
+          local host="$1"
+          local count="${2:-3}"
+          ping -c "$count" "$host" 2>/dev/null | tail -1
+      }
+
+      ping_check_alive() {
+          local host="$1"
+          ping -c 1 -W 2 "$host" > /dev/null 2>&1
+      }
+  changed_files:
+    bin/resolve.sh: |
+      #!/usr/bin/env bash
+      source lib/dns/lookup.sh
+
+      resolve_hostname() {
+          local host="$1"
+          local result
+          result=$(dns_lookup "$host")
+          if [[ -z "$result" ]]; then
+              echo "NXDOMAIN" >&2
+              return 1
+          fi
+          echo "$result"
+      }
+
+      resolve_with_ttl() {
+          local host="$1"
+          local ttl
+          ttl=$(dns_get_ttl "$host")
+          echo "$(resolve_hostname "$host") ttl=$ttl"
+      }
+
+      resolve_batch() {
+          local input_file="$1"
+          while IFS= read -r host; do
+              [[ -z "$host" ]] && continue
+              local ip
+              ip=$(resolve_hostname "$host")
+              echo "$host $ip"
+          done < "$input_file"
+      }
+fragments:
+- id: resolve_batch
+  selector:
+    path: bin/resolve.sh
+    anchor: resolve_batch
+- id: dns_lookup_fn
+  selector:
+    path: lib/dns/lookup.sh
+    anchor: dns_lookup
+- id: cache_get_fn
+  selector:
+    path: lib/dns/cache.sh
+    anchor: cache_get
+- id: no_ping
+  selector:
+    path: lib/network/ping.sh
+- id: no_ping_host
+  selector:
+    anchor: ping_host
+oracle:
+  required:
+  - resolve_batch
+  - dns_lookup_fn
+  - cache_get_fn
+  forbidden:
+  - no_ping
+  - no_ping_host

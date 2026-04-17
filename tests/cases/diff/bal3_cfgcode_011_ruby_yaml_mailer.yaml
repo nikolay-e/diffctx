@@ -1,0 +1,110 @@
+name: bal3_cfgcode_011_ruby_yaml_mailer
+tags:
+- lang:kotlin
+- change:bug_fix
+- change:single_file
+- context:test_file
+- distance:1hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/main/kotlin/ecommerce/PriceEngine.kt: |
+      class PriceEngine {
+          fun applyDiscount(price: Double, discountPercent: Double): Double {
+              return price - (price * discountPercent / 100)
+          }
+
+          fun applyVat(price: Double, vatRatePercent: Double): Double {
+              return price + (price * vatRatePercent)  // BUG: vatRatePercent should be /100
+          }
+
+          fun finalPrice(basePrice: Double, discountPercent: Double, vatRatePercent: Double): Double {
+              val discounted = applyDiscount(basePrice, discountPercent)
+              return applyVat(discounted, vatRatePercent)
+          }
+      }
+    src/test/kotlin/ecommerce/PriceEngineTest.kt: |
+      import org.junit.Test
+      import kotlin.test.assertEquals
+
+      class PriceEngineTest {
+          private val engine = PriceEngine()
+
+          @Test fun discountReducesPrice() {
+              assertEquals(90.0, engine.applyDiscount(100.0, 10.0))
+          }
+
+          @Test fun vatIncreasesPrice() {
+              assertEquals(121.0, engine.applyVat(100.0, 21.0), 0.01)
+          }
+      }
+    garbage/AuthTokenStore.kt: |
+      // GARBAGE_BAL3CFG011_A = "auth_token_store_marker"
+    garbage/ShipmentStatus.kt: |
+      // GARBAGE_BAL3CFG011_B = "shipment_status_marker"
+    garbage/IoTDeviceManager.kt: |
+      // GARBAGE_BAL3CFG011_C = "iot_device_manager_marker"
+  changed_files:
+    src/main/kotlin/ecommerce/PriceEngine.kt: |
+      class PriceEngine {
+          fun applyDiscount(price: Double, discountPercent: Double): Double {
+              return price - (price * discountPercent / 100)
+          }
+
+          fun applyVat(price: Double, vatRatePercent: Double): Double {
+              return price + (price * vatRatePercent / 100)
+          }
+
+          fun finalPrice(basePrice: Double, discountPercent: Double, vatRatePercent: Double): Double {
+              val discounted = applyDiscount(basePrice, discountPercent)
+              return applyVat(discounted, vatRatePercent)
+          }
+      }
+    src/test/kotlin/ecommerce/PriceEngineTest.kt: |
+      import org.junit.Test
+      import kotlin.test.assertEquals
+
+      class PriceEngineTest {
+          private val engine = PriceEngine()
+
+          @Test fun discountReducesPrice() {
+              assertEquals(90.0, engine.applyDiscount(100.0, 10.0))
+          }
+
+          @Test fun vatIncreasesPrice() {
+              assertEquals(121.0, engine.applyVat(100.0, 21.0), 0.01)
+          }
+      }
+    garbage/AuthTokenStore.kt: |
+      // GARBAGE_BAL3CFG011_A = "auth_token_store_marker"
+    garbage/ShipmentStatus.kt: |
+      // GARBAGE_BAL3CFG011_B = "shipment_status_marker"
+    garbage/IoTDeviceManager.kt: |
+      // GARBAGE_BAL3CFG011_C = "iot_device_manager_marker"
+  commit_message: "fix: divide vatRatePercent by 100 in PriceEngine.applyVat"
+fragments:
+- id: apply_vat_method
+  selector:
+    path: src/main/kotlin/ecommerce/PriceEngine.kt
+    anchor: "fun applyVat(price: Double"
+- id: test_file
+  selector:
+    path: src/test/kotlin/ecommerce/PriceEngineTest.kt
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_BAL3CFG011_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_BAL3CFG011_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_BAL3CFG011_C
+oracle:
+  required:
+  - apply_vat_method
+  - test_file
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

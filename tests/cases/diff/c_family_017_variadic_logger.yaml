@@ -1,0 +1,130 @@
+name: c_family_017_variadic_logger
+tags:
+- lang:c
+- change:multi_file
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    log.h: |
+      #ifndef LOG_H
+      #define LOG_H
+      typedef enum { LOG_INFO, LOG_WARN, LOG_ERROR } LogLevel;
+      void log_write(LogLevel level, const char *msg);
+      #endif
+    log.c: |
+      #include "log.h"
+      #include <stdio.h>
+      void log_write(LogLevel level, const char *msg) {
+          const char *prefix = level == LOG_ERROR ? "ERROR" :
+                               level == LOG_WARN  ? "WARN"  : "INFO";
+          printf("[%s] %s\n", prefix, msg);
+      }
+    db.c: |
+      #include "log.h"
+      void db_connect(const char *dsn) {
+          log_write(LOG_INFO, "connecting to database");
+      }
+      void db_error(void) {
+          log_write(LOG_ERROR, "query failed");
+      }
+    http.c: |
+      #include "log.h"
+      void http_request(const char *method, const char *path) {
+          log_write(LOG_INFO, "incoming request");
+      }
+    C_NOISE_017_battery.h: |
+      #ifndef C_NOISE_017_BATTERY_H
+      #define C_NOISE_017_BATTERY_H
+      int C_NOISE_017_battery_percent(void);
+      int C_NOISE_017_battery_charging(void);
+      #endif
+    C_NOISE_017_battery.c: |
+      #include "C_NOISE_017_battery.h"
+      int C_NOISE_017_battery_percent(void) { return 100; }
+      int C_NOISE_017_battery_charging(void) { return 1; }
+  changed_files:
+    log.h: |
+      #ifndef LOG_H
+      #define LOG_H
+      #include <stdarg.h>
+      typedef enum { LOG_INFO, LOG_WARN, LOG_ERROR } LogLevel;
+      void log_write(LogLevel level, const char *fmt, ...);
+      #endif
+    log.c: |
+      #include "log.h"
+      #include <stdio.h>
+      #include <stdarg.h>
+      void log_write(LogLevel level, const char *fmt, ...) {
+          const char *prefix = level == LOG_ERROR ? "ERROR" :
+                               level == LOG_WARN  ? "WARN"  : "INFO";
+          va_list args;
+          va_start(args, fmt);
+          printf("[%s] ", prefix);
+          vprintf(fmt, args);
+          printf("\n");
+          va_end(args);
+      }
+    db.c: |
+      #include "log.h"
+      void db_connect(const char *dsn) {
+          log_write(LOG_INFO, "connecting to %s", dsn);
+      }
+      void db_error(void) {
+          log_write(LOG_ERROR, "query failed with code %d", -1);
+      }
+    http.c: |
+      #include "log.h"
+      void http_request(const char *method, const char *path) {
+          log_write(LOG_INFO, "%s %s", method, path);
+      }
+    C_NOISE_017_battery.h: |
+      #ifndef C_NOISE_017_BATTERY_H
+      #define C_NOISE_017_BATTERY_H
+      int C_NOISE_017_battery_percent(void);
+      int C_NOISE_017_battery_charging(void);
+      #endif
+    C_NOISE_017_battery.c: |
+      #include "C_NOISE_017_battery.h"
+      int C_NOISE_017_battery_percent(void) { return 100; }
+      int C_NOISE_017_battery_charging(void) { return 1; }
+  commit_message: "feat: convert log_write to variadic format-string API and update callers"
+fragments:
+- id: log_h
+  selector:
+    path: log.h
+    anchor: "const char *fmt, ..."
+- id: log_c
+  selector:
+    path: log.c
+    anchor: vprintf
+- id: db_c
+  selector:
+    path: db.c
+    anchor: "connecting to %s"
+- id: http_c
+  selector:
+    path: http.c
+    anchor: "\"%s %s\""
+- id: no_battery_h
+  selector:
+    anchor: C_NOISE_017_battery_percent
+- id: no_battery_c
+  selector:
+    path: C_NOISE_017_battery.c
+- id: no_global_charging
+  selector:
+    anchor: C_NOISE_017_battery_charging
+oracle:
+  required:
+  - log_h
+  - log_c
+  - db_c
+  - http_c
+  allowed: []
+  forbidden:
+  - no_battery_h
+  - no_battery_c
+  - no_global_charging

@@ -1,0 +1,178 @@
+name: gap2_025_js_new_func_recipe_scaling
+tags:
+- lang:rust
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/payment/processor.rs: |
+      use crate::ledger::journal::Journal;
+
+      pub struct PaymentProcessor {
+          journal: Journal,
+          fee_rate: f64,
+      }
+
+      impl PaymentProcessor {
+          pub fn new(journal: Journal, fee_rate: f64) -> Self {
+              PaymentProcessor { journal, fee_rate }
+          }
+
+          pub fn charge(&mut self, account_id: &str, amount_cents: i64) -> Result<(), String> {
+              let fee = (amount_cents as f64 * self.fee_rate) as i64;
+              self.journal.record(account_id, amount_cents + fee)
+          }
+
+          pub fn refund(&mut self, account_id: &str, amount_cents: i64) -> Result<(), String> {
+              self.journal.record(account_id, -amount_cents)
+              // BUG: fee not refunded — net balance drifts
+          }
+      }
+    src/ledger/journal.rs: |
+      pub struct Journal {
+          entries: Vec<(String, i64)>,
+      }
+
+      impl Journal {
+          pub fn new() -> Self {
+              Journal { entries: Vec::new() }
+          }
+
+          pub fn record(&mut self, account_id: &str, delta: i64) -> Result<(), String> {
+              if delta == 0 {
+                  return Err("zero-value entry rejected".to_string());
+              }
+              self.entries.push((account_id.to_string(), delta));
+              Ok(())
+          }
+
+          pub fn balance(&self, account_id: &str) -> i64 {
+              self.entries
+                  .iter()
+                  .filter(|(id, _)| id == account_id)
+                  .map(|(_, delta)| delta)
+                  .sum()
+          }
+      }
+    src/ledger/audit.rs: |
+      use crate::ledger::journal::Journal;
+
+      pub fn audit_account(journal: &Journal, account_id: &str) -> i64 {
+          journal.balance(account_id)
+      }
+    garbage/notifications.rs: |
+      // GARBAGE_GAP25JSA = "notification_marker"
+    garbage/scheduler.rs: |
+      // GARBAGE_GAP25JSB = "scheduler_marker"
+    garbage/reporting.rs: |
+      // GARBAGE_GAP25JSC = "reporting_marker"
+    garbage/archival.rs: |
+      // GARBAGE_GAP25JSD = "archival_marker"
+  changed_files:
+    src/payment/processor.rs: |
+      use crate::ledger::journal::Journal;
+
+      pub struct PaymentProcessor {
+          journal: Journal,
+          fee_rate: f64,
+      }
+
+      impl PaymentProcessor {
+          pub fn new(journal: Journal, fee_rate: f64) -> Self {
+              PaymentProcessor { journal, fee_rate }
+          }
+
+          pub fn charge(&mut self, account_id: &str, amount_cents: i64) -> Result<(), String> {
+              let fee = (amount_cents as f64 * self.fee_rate) as i64;
+              self.journal.record(account_id, amount_cents + fee)
+          }
+
+          pub fn refund(&mut self, account_id: &str, amount_cents: i64) -> Result<(), String> {
+              let fee = (amount_cents as f64 * self.fee_rate) as i64;
+              self.journal.record(account_id, -(amount_cents + fee))
+          }
+      }
+    src/ledger/journal.rs: |
+      pub struct Journal {
+          entries: Vec<(String, i64)>,
+      }
+
+      impl Journal {
+          pub fn new() -> Self {
+              Journal { entries: Vec::new() }
+          }
+
+          pub fn record(&mut self, account_id: &str, delta: i64) -> Result<(), String> {
+              if delta == 0 {
+                  return Err("zero-value entry rejected".to_string());
+              }
+              self.entries.push((account_id.to_string(), delta));
+              Ok(())
+          }
+
+          pub fn balance(&self, account_id: &str) -> i64 {
+              self.entries
+                  .iter()
+                  .filter(|(id, _)| id == account_id)
+                  .map(|(_, delta)| delta)
+                  .sum()
+          }
+      }
+    src/ledger/audit.rs: |
+      use crate::ledger::journal::Journal;
+
+      pub fn audit_account(journal: &Journal, account_id: &str) -> i64 {
+          journal.balance(account_id)
+      }
+    garbage/notifications.rs: |
+      // GARBAGE_GAP25JSA = "notification_marker"
+    garbage/scheduler.rs: |
+      // GARBAGE_GAP25JSB = "scheduler_marker"
+    garbage/reporting.rs: |
+      // GARBAGE_GAP25JSC = "reporting_marker"
+    garbage/archival.rs: |
+      // GARBAGE_GAP25JSD = "archival_marker"
+  commit_message: "fix: include fee in refund amount to prevent balance drift"
+fragments:
+- id: refund_fee_fix
+  selector:
+    path: src/payment/processor.rs
+    anchor: "let fee = (amount_cents as f64 * self.fee_rate) as i64;"
+- id: refund_record_call
+  selector:
+    path: src/payment/processor.rs
+    anchor: "self.journal.record(account_id, -(amount_cents + fee))"
+- id: journal_record_method
+  selector:
+    path: src/ledger/journal.rs
+    anchor: "pub fn record(&mut self, account_id: &str, delta: i64)"
+- id: audit_uses_balance
+  selector:
+    path: src/ledger/audit.rs
+    anchor: "journal.balance(account_id)"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_GAP25JSA
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_GAP25JSB
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_GAP25JSC
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_GAP25JSD
+oracle:
+  required:
+  - refund_fee_fix
+  - refund_record_call
+  - journal_record_method
+  allowed:
+  - audit_uses_balance
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

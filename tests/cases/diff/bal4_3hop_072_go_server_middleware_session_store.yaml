@@ -1,0 +1,214 @@
+name: bal4_3hop_072_go_server_middleware_session_store
+tags:
+- lang:go
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:easy
+repo:
+  initial_files:
+    internal/store/redis.go: |
+      package store
+
+      type RedisStore struct {
+          Addr string
+      }
+
+      func NewRedis(addr string) *RedisStore {
+          return &RedisStore{Addr: addr}
+      }
+
+      func (r *RedisStore) Get(key string) string {
+          return "val-" + key
+      }
+
+      func (r *RedisStore) Set(key, val string) bool {
+          return true
+      }
+    internal/session/manager.go: |
+      package session
+
+      import "myapp/internal/store"
+
+      type Manager struct {
+          st *store.RedisStore
+      }
+
+      func NewManager(st *store.RedisStore) *Manager {
+          return &Manager{st: st}
+      }
+
+      func (m *Manager) Load(sid string) string {
+          return m.st.Get(sid)
+      }
+    internal/middleware/session_mw.go: |
+      package middleware
+
+      import "myapp/internal/session"
+
+      type SessionMW struct {
+          mgr *session.Manager
+      }
+
+      func NewSessionMW(mgr *session.Manager) *SessionMW {
+          return &SessionMW{mgr: mgr}
+      }
+
+      func (s *SessionMW) Process(sid string) string {
+          return s.mgr.Load(sid)
+      }
+    internal/server/app.go: |
+      package server
+
+      import "myapp/internal/middleware"
+
+      type App struct {
+          mw *middleware.SessionMW
+      }
+
+      func NewApp(mw *middleware.SessionMW) *App {
+          return &App{mw: mw}
+      }
+
+      func (a *App) Handle(sid string) string {
+          return a.mw.Process(sid)
+      }
+    internal/garbage/cache_noise.go: |
+      package garbage
+
+      var GARBAGE_072_CACHE_A = "cache"
+      var GARBAGE_072_CACHE_B = 60
+
+      type GarbageCache struct {
+          GARBAGE_072_CACHE_C int
+      }
+
+      func GarbageCacheFlush() {}
+  changed_files:
+    internal/store/redis.go: |
+      package store
+
+      type RedisStore struct {
+          Addr string
+      }
+
+      func NewRedis(addr string) *RedisStore {
+          return &RedisStore{Addr: addr}
+      }
+
+      func (r *RedisStore) Get(key string) string {
+          return "val-" + key
+      }
+
+      func (r *RedisStore) Set(key, val string) bool {
+          return true
+      }
+
+      func (r *RedisStore) Delete(key string) bool {
+          return true
+      }
+    internal/session/manager.go: |
+      package session
+
+      import "myapp/internal/store"
+
+      type Manager struct {
+          st *store.RedisStore
+      }
+
+      func NewManager(st *store.RedisStore) *Manager {
+          return &Manager{st: st}
+      }
+
+      func (m *Manager) Load(sid string) string {
+          return m.st.Get(sid)
+      }
+
+      func (m *Manager) Destroy(sid string) bool {
+          return m.st.Delete(sid)
+      }
+    internal/middleware/session_mw.go: |
+      package middleware
+
+      import "myapp/internal/session"
+
+      type SessionMW struct {
+          mgr *session.Manager
+      }
+
+      func NewSessionMW(mgr *session.Manager) *SessionMW {
+          return &SessionMW{mgr: mgr}
+      }
+
+      func (s *SessionMW) Process(sid string) string {
+          return s.mgr.Load(sid)
+      }
+    internal/server/app.go: |
+      package server
+
+      import "myapp/internal/middleware"
+
+      type App struct {
+          mw *middleware.SessionMW
+      }
+
+      func NewApp(mw *middleware.SessionMW) *App {
+          return &App{mw: mw}
+      }
+
+      func (a *App) Handle(sid string) string {
+          return a.mw.Process(sid)
+      }
+    internal/garbage/cache_noise.go: |
+      package garbage
+
+      var GARBAGE_072_CACHE_A = "cache"
+      var GARBAGE_072_CACHE_B = 60
+
+      type GarbageCache struct {
+          GARBAGE_072_CACHE_C int
+      }
+
+      func GarbageCacheFlush() {}
+  commit_message: "add Delete and Destroy for session cleanup"
+fragments:
+- id: delete_method
+  selector:
+    path: internal/store/redis.go
+    anchor: "func (r *RedisStore) Delete"
+- id: destroy_method
+  selector:
+    path: internal/session/manager.go
+    anchor: "func (m *Manager) Destroy"
+- id: redis_store_struct
+  selector:
+    path: internal/store/redis.go
+    anchor: "type RedisStore struct"
+- id: manager_struct
+  selector:
+    path: internal/session/manager.go
+    anchor: "type Manager struct"
+- id: no_garbage_cache
+  selector:
+    path: internal/garbage/cache_noise.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_072_CACHE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_072_CACHE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_072_CACHE_C
+oracle:
+  required:
+  - delete_method
+  - destroy_method
+  - redis_store_struct
+  - manager_struct
+  allowed: []
+  forbidden:
+  - no_garbage_cache
+  - no_global_0
+  - no_global_1
+  - no_global_2

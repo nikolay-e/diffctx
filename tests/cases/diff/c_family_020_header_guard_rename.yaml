@@ -1,0 +1,70 @@
+name: c_family_020_header_guard_rename
+tags:
+- lang:c
+- change:single_file
+- change:refactor
+- context:none
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    vector.h: |
+      #ifndef VECTOR_H
+      #define VECTOR_H
+      typedef struct { float x; float y; float z; } Vec3;
+      Vec3 vec3_add(Vec3 a, Vec3 b);
+      Vec3 vec3_scale(Vec3 v, float s);
+      float vec3_dot(Vec3 a, Vec3 b);
+      #endif
+    C_NOISE_020_keyboard.h: |
+      #ifndef C_NOISE_020_KEYBOARD_H
+      #define C_NOISE_020_KEYBOARD_H
+      int C_NOISE_020_key_pressed(int keycode);
+      void C_NOISE_020_key_flush(void);
+      #endif
+    C_NOISE_020_keyboard.c: |
+      #include "C_NOISE_020_keyboard.h"
+      int C_NOISE_020_key_pressed(int keycode) { return 0; }
+      void C_NOISE_020_key_flush(void) {}
+  changed_files:
+    vector.h: |
+      #ifndef MATH_VECTOR3_H
+      #define MATH_VECTOR3_H
+      typedef struct { float x; float y; float z; } Vec3;
+      Vec3 vec3_add(Vec3 a, Vec3 b);
+      Vec3 vec3_scale(Vec3 v, float s);
+      float vec3_dot(Vec3 a, Vec3 b);
+      #endif
+    C_NOISE_020_keyboard.h: |
+      #ifndef C_NOISE_020_KEYBOARD_H
+      #define C_NOISE_020_KEYBOARD_H
+      int C_NOISE_020_key_pressed(int keycode);
+      void C_NOISE_020_key_flush(void);
+      #endif
+    C_NOISE_020_keyboard.c: |
+      #include "C_NOISE_020_keyboard.h"
+      int C_NOISE_020_key_pressed(int keycode) { return 0; }
+      void C_NOISE_020_key_flush(void) {}
+  commit_message: "refactor: rename header guard VECTOR_H to MATH_VECTOR3_H"
+fragments:
+- id: vector_h_guard
+  selector:
+    path: vector.h
+    anchor: "MATH_VECTOR3_H"
+- id: no_keyboard_h
+  selector:
+    anchor: C_NOISE_020_key_pressed
+- id: no_keyboard_c
+  selector:
+    path: C_NOISE_020_keyboard.c
+- id: no_global_flush
+  selector:
+    anchor: C_NOISE_020_key_flush
+oracle:
+  required:
+  - vector_h_guard
+  allowed: []
+  forbidden:
+  - no_keyboard_h
+  - no_keyboard_c
+  - no_global_flush

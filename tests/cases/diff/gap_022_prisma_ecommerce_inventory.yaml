@@ -1,0 +1,239 @@
+name: gap_022_prisma_ecommerce_inventory
+tags:
+- change:multi_file
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:prisma
+- lang:sql
+- lang:typescript
+repo:
+  initial_files:
+    prisma/schema.prisma: |
+      generator client {
+        provider = "prisma-client-js"
+      }
+
+      datasource db {
+        provider = "postgresql"
+        url      = env("DATABASE_URL")
+      }
+
+      model Product {
+        id        Int      @id @default(autoincrement())
+        sku       String   @unique
+        name      String
+        price     Float
+        stock     Int      @default(0)
+        createdAt DateTime @default(now())
+      }
+
+      model Order {
+        id         Int         @id @default(autoincrement())
+        status     String      @default("pending")
+        total      Float
+        items      OrderItem[]
+        createdAt  DateTime    @default(now())
+      }
+
+      model OrderItem {
+        id        Int   @id @default(autoincrement())
+        quantity  Int
+        unitPrice Float
+        order     Order @relation(fields: [orderId], references: [id])
+        orderId   Int
+
+        @@index([orderId])
+      }
+    prisma/migrations/20240115_init/migration.sql: |
+      CREATE TABLE "Product" (
+        "id" SERIAL PRIMARY KEY,
+        "sku" TEXT NOT NULL UNIQUE,
+        "name" TEXT NOT NULL,
+        "price" DOUBLE PRECISION NOT NULL,
+        "stock" INTEGER NOT NULL DEFAULT 0,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    src/cart/checkout.ts: |
+      import { PrismaClient } from '@prisma/client';
+
+      const prisma = new PrismaClient();
+
+      interface CartItem {
+        productId: number;
+        quantity: number;
+      }
+
+      export async function processCheckout(items: CartItem[]): Promise<number> {
+        const order = await prisma.order.create({
+          data: {
+            total: 0,
+            items: {
+              create: items.map(i => ({ quantity: i.quantity, unitPrice: 0 })),
+            },
+          },
+        });
+        return order.id;
+      }
+    src/shipping/tracker.ts: |
+      GARBAGE_GAP_022_SHIP_A = "tracking_marker";
+      GARBAGE_GAP_022_CARRIER_B = "fedex";
+
+      export function estimateDelivery(zipCode: string): Date {
+        const days = zipCode.startsWith("1") ? 2 : 5;
+        const date = new Date();
+        date.setDate(date.getDate() + days);
+        return date;
+      }
+    src/analytics/revenue.ts: |
+      GARBAGE_GAP_022_REV_C = "revenue_marker";
+      GARBAGE_GAP_022_METRIC_D = "monthly";
+
+      export function calculateRevenue(totals: number[]): number {
+        return totals.reduce((sum, t) => sum + t, 0);
+      }
+  changed_files:
+    prisma/schema.prisma: |
+      generator client {
+        provider = "prisma-client-js"
+      }
+
+      datasource db {
+        provider = "postgresql"
+        url      = env("DATABASE_URL")
+      }
+
+      model Product {
+        id        Int      @id @default(autoincrement())
+        sku       String   @unique
+        name      String
+        price     Float
+        stock     Int      @default(0)
+        createdAt DateTime @default(now())
+      }
+
+      model Order {
+        id         Int         @id @default(autoincrement())
+        status     String      @default("pending")
+        total      Float
+        items      OrderItem[]
+        discount   Discount?   @relation(fields: [discountId], references: [id])
+        discountId Int?
+        createdAt  DateTime    @default(now())
+      }
+
+      model OrderItem {
+        id        Int   @id @default(autoincrement())
+        quantity  Int
+        unitPrice Float
+        order     Order @relation(fields: [orderId], references: [id])
+        orderId   Int
+
+        @@index([orderId])
+      }
+
+      model Discount {
+        id         Int      @id @default(autoincrement())
+        code       String   @unique
+        percentage Float
+        validUntil DateTime
+        orders     Order[]
+        createdAt  DateTime @default(now())
+      }
+    src/cart/checkout.ts: |
+      import { PrismaClient } from '@prisma/client';
+
+      const prisma = new PrismaClient();
+
+      interface CartItem {
+        productId: number;
+        quantity: number;
+      }
+
+      export async function processCheckout(items: CartItem[], discountCode?: string): Promise<number> {
+        let discountId: number | undefined;
+        if (discountCode) {
+          const discount = await prisma.discount.findUnique({ where: { code: discountCode } });
+          if (discount && discount.validUntil > new Date()) {
+            discountId = discount.id;
+          }
+        }
+        const order = await prisma.order.create({
+          data: {
+            total: 0,
+            discountId,
+            items: {
+              create: items.map(i => ({ quantity: i.quantity, unitPrice: 0 })),
+            },
+          },
+        });
+        return order.id;
+      }
+    src/shipping/tracker.ts: |
+      GARBAGE_GAP_022_SHIP_A = "tracking_marker";
+      GARBAGE_GAP_022_CARRIER_B = "fedex";
+
+      export function estimateDelivery(zipCode: string): Date {
+        const days = zipCode.startsWith("1") ? 2 : 5;
+        const date = new Date();
+        date.setDate(date.getDate() + days);
+        return date;
+      }
+    src/analytics/revenue.ts: |
+      GARBAGE_GAP_022_REV_C = "revenue_marker";
+      GARBAGE_GAP_022_METRIC_D = "monthly";
+
+      export function calculateRevenue(totals: number[]): number {
+        return totals.reduce((sum, t) => sum + t, 0);
+      }
+  commit_message: "add Discount model and apply discount in checkout"
+fixtures:
+  auto_garbage: true
+fragments:
+- id: schema_discount_model
+  selector:
+    path: prisma/schema.prisma
+    anchor: model Discount
+- id: schema_order_discount
+  selector:
+    path: prisma/schema.prisma
+    anchor: "discountId Int?"
+- id: checkout_discount_logic
+  selector:
+    path: src/cart/checkout.ts
+    anchor: discountCode
+- id: no_tracker
+  selector:
+    path: src/shipping/tracker.ts
+- id: no_revenue
+  selector:
+    path: src/analytics/revenue.ts
+- id: no_migration
+  selector:
+    path: prisma/migrations/20240115_init/migration.sql
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_022_SHIP_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GAP_022_CARRIER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GAP_022_REV_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GAP_022_METRIC_D
+oracle:
+  required:
+  - schema_discount_model
+  - schema_order_discount
+  - checkout_discount_logic
+  allowed: []
+  forbidden:
+  - no_tracker
+  - no_revenue
+  - no_migration
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

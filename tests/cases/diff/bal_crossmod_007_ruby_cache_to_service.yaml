@@ -1,0 +1,118 @@
+name: bal_crossmod_007_ruby_cache_to_service
+tags:
+- lang:ruby
+- change:single_file
+- change:signature
+- context:cross_module
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    lib/cache/memory_store.rb: |
+      module Cache
+        class MemoryStore
+          def initialize
+            @data = {}
+          end
+
+          def get(key)
+            @data[key]
+          end
+
+          def set(key, value)
+            @data[key] = value
+          end
+        end
+      end
+    lib/services/session_service.rb: |
+      require_relative '../cache/memory_store'
+      module Services
+        class SessionService
+          def initialize
+            @store = Cache::MemoryStore.new
+          end
+
+          def create_session(user_id)
+            token = SecureRandom.hex(16)
+            @store.set(token, user_id)
+            token
+          end
+
+          def get_user(token)
+            @store.get(token)
+          end
+        end
+      end
+    lib/helpers/string_helper.rb: |
+      module Helpers
+        class StringHelper
+          def self.truncate(str, length)
+            str.length > length ? "#{str[0...length]}..." : str
+          end
+        end
+      end
+  changed_files:
+    lib/cache/memory_store.rb: |
+      module Cache
+        class MemoryStore
+          def initialize
+            @data = {}
+          end
+
+          def get(key)
+            @data[key]
+          end
+
+          def set(key, value, ttl: nil)
+            @data[key] = { value: value, expires_at: ttl ? Time.now + ttl : nil }
+          end
+        end
+      end
+    lib/services/session_service.rb: |
+      require_relative '../cache/memory_store'
+      module Services
+        class SessionService
+          def initialize
+            @store = Cache::MemoryStore.new
+          end
+
+          def create_session(user_id)
+            token = SecureRandom.hex(16)
+            @store.set(token, user_id)
+            token
+          end
+
+          def get_user(token)
+            @store.get(token)
+          end
+        end
+      end
+    lib/helpers/string_helper.rb: |
+      module Helpers
+        class StringHelper
+          def self.truncate(str, length)
+            str.length > length ? "#{str[0...length]}..." : str
+          end
+        end
+      end
+  commit_message: "feat: add TTL support to memory store"
+fragments:
+- id: set_with_ttl
+  selector:
+    path: lib/cache/memory_store.rb
+    anchor: "def set(key, value, ttl: nil)"
+- id: session_calls_set
+  selector:
+    path: lib/services/session_service.rb
+    anchor: "@store.set(token, user_id)"
+- id: no_string_helper
+  selector:
+    path: lib/helpers/string_helper.rb
+    anchor: "def self.truncate"
+oracle:
+  required:
+  - set_with_ttl
+  - session_calls_set
+  allowed: []
+  forbidden:
+  - no_string_helper

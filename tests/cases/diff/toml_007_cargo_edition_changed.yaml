@@ -1,0 +1,110 @@
+name: toml_007_cargo_edition_changed
+tags:
+- lang:toml
+- lang:rust
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "toolkit"
+      version = "0.5.0"
+      edition = "2021"
+
+      [dependencies]
+      anyhow = "1.0"
+      thiserror = "1.0"
+    src/main.rs: |
+      use anyhow::Result;
+
+      fn main() -> Result<()> {
+          let items = vec![1u32, 2, 3];
+          for item in &items {
+              println!("{item}");
+          }
+          Ok(())
+      }
+    src/error.rs: |
+      use thiserror::Error;
+
+      #[derive(Error, Debug)]
+      pub enum AppError {
+          #[error("io error: {0}")]
+          Io(#[from] std::io::Error),
+          #[error("parse error: {0}")]
+          Parse(String),
+      }
+    TOML_NOISE_007_features.toml: |
+      [TOML_NOISE_007_flags]
+      TOML_NOISE_007_dark_mode = false
+      TOML_NOISE_007_beta_ui = false
+      TOML_NOISE_007_analytics = true
+
+      [TOML_NOISE_007_rollout]
+      TOML_NOISE_007_percentage = 0
+    src/toml_noise_007_scratch.rs: |
+      // TOML_NOISE_007_scratch module
+      pub fn toml_noise_007_placeholder() -> u32 { 0 }
+  changed_files:
+    Cargo.toml: |
+      [package]
+      name = "toolkit"
+      version = "0.5.0"
+      edition = "2024"
+
+      [dependencies]
+      anyhow = "1.0"
+      thiserror = "2.0"
+    src/main.rs: |
+      use anyhow::Result;
+
+      fn main() -> Result<()> {
+          let items = vec![1u32, 2, 3];
+          // edition 2024: gen keyword reserved — rename loop variable
+          for item in &items {
+              println!("{item}");
+          }
+          let gen_value = compute();
+          println!("computed: {gen_value}");
+          Ok(())
+      }
+
+      fn compute() -> u32 {
+          42
+      }
+  commit_message: "chore: upgrade Cargo edition to 2024 and thiserror to 2.0"
+fragments:
+- id: cargo_edition
+  selector:
+    path: Cargo.toml
+    anchor: "edition = \"2024\""
+- id: main_rs_gen
+  selector:
+    path: src/main.rs
+    anchor: gen_value
+- id: no_noise_toml
+  selector:
+    path: TOML_NOISE_007_features.toml
+- id: no_scratch_rs
+  selector:
+    path: src/toml_noise_007_scratch.rs
+- id: no_global_0
+  selector:
+    anchor: TOML_NOISE_007_dark_mode
+- id: no_global_1
+  selector:
+    anchor: toml_noise_007_placeholder
+oracle:
+  required:
+  - cargo_edition
+  - main_rs_gen
+  allowed: []
+  forbidden:
+  - no_noise_toml
+  - no_scratch_rs
+  - no_global_0
+  - no_global_1

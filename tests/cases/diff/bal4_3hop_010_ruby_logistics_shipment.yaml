@@ -1,0 +1,248 @@
+name: bal4_3hop_010_ruby_logistics_shipment
+tags:
+- lang:ruby
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:medium
+repo:
+  initial_files:
+    lib/logistics/address.rb: |
+      module Logistics
+        class Address
+          attr_reader :city, :country, :zip
+          def initialize(city, country, zip)
+            @city = city
+            @country = country
+            @zip = zip
+          end
+          def domestic?
+            country == "US"
+          end
+        end
+      end
+    lib/logistics/parcel.rb: |
+      require_relative 'address'
+      module Logistics
+        class Parcel
+          attr_reader :weight, :destination
+          def initialize(weight, city, country, zip)
+            @weight = weight
+            @destination = Address.new(city, country, zip)
+          end
+          def shipping_cost
+            base = destination.domestic? ? 5.0 : 15.0
+            base + weight * 0.5
+          end
+        end
+      end
+    lib/logistics/shipment.rb: |
+      require_relative 'parcel'
+      module Logistics
+        class Shipment
+          def initialize
+            @parcels = []
+          end
+          def add(weight, city, country, zip)
+            @parcels << Parcel.new(weight, city, country, zip)
+          end
+          def total_cost
+            @parcels.sum(&:shipping_cost)
+          end
+        end
+      end
+    lib/logistics/dispatcher.rb: |
+      require_relative 'shipment'
+      module Logistics
+        class Dispatcher
+          def initialize
+            @shipment = Shipment.new
+          end
+          def enqueue(weight, city, country, zip)
+            @shipment.add(weight, city, country, zip)
+          end
+          def dispatch
+            cost = @shipment.total_cost
+            { status: "dispatched", cost: cost }
+          end
+        end
+      end
+    lib/logistics/api.rb: |
+      require_relative 'dispatcher'
+      module Logistics
+        class Api
+          def initialize
+            @dispatcher = Dispatcher.new
+          end
+          def ship(weight, city, country, zip)
+            @dispatcher.enqueue(weight, city, country, zip)
+            @dispatcher.dispatch
+          end
+        end
+      end
+    lib/warehouse/inventory.rb: |
+      module Warehouse
+        GARBAGE_010_INVENTORY_A = "stock"
+        GARBAGE_010_SKU_B = "item"
+        class Inventory
+          def self.count(sku)
+            0
+          end
+        end
+      end
+    lib/warehouse/shelf.rb: |
+      module Warehouse
+        GARBAGE_010_SHELF_C = "A1"
+        GARBAGE_010_CAPACITY_D = 100
+        class Shelf
+          def self.locate(sku)
+            "A1"
+          end
+        end
+      end
+  changed_files:
+    lib/logistics/address.rb: |
+      module Logistics
+        class Address
+          attr_reader :city, :country, :zip
+          def initialize(city, country, zip)
+            @city = city
+            @country = country
+            @zip = zip
+          end
+          def domestic?
+            country == "US"
+          end
+          def full
+            "#{city}, #{zip}, #{country}"
+          end
+        end
+      end
+    lib/logistics/parcel.rb: |
+      require_relative 'address'
+      module Logistics
+        class Parcel
+          attr_reader :weight, :destination
+          def initialize(weight, city, country, zip)
+            @weight = weight
+            @destination = Address.new(city, country, zip)
+          end
+          def shipping_cost
+            base = destination.domestic? ? 5.0 : 15.0
+            base + weight * 0.5
+          end
+        end
+      end
+    lib/logistics/shipment.rb: |
+      require_relative 'parcel'
+      module Logistics
+        class Shipment
+          def initialize
+            @parcels = []
+          end
+          def add(weight, city, country, zip)
+            @parcels << Parcel.new(weight, city, country, zip)
+          end
+          def total_cost
+            @parcels.sum(&:shipping_cost)
+          end
+        end
+      end
+    lib/logistics/dispatcher.rb: |
+      require_relative 'shipment'
+      module Logistics
+        class Dispatcher
+          def initialize
+            @shipment = Shipment.new
+          end
+          def enqueue(weight, city, country, zip)
+            @shipment.add(weight, city, country, zip)
+          end
+          def dispatch
+            cost = @shipment.total_cost
+            { status: "dispatched", cost: cost }
+          end
+        end
+      end
+    lib/logistics/api.rb: |
+      require_relative 'dispatcher'
+      module Logistics
+        class Api
+          def initialize
+            @dispatcher = Dispatcher.new
+          end
+          def ship(weight, city, country, zip)
+            @dispatcher.enqueue(weight, city, country, zip)
+            @dispatcher.dispatch
+          end
+        end
+      end
+    lib/warehouse/inventory.rb: |
+      module Warehouse
+        GARBAGE_010_INVENTORY_A = "stock"
+        GARBAGE_010_SKU_B = "item"
+        class Inventory
+          def self.count(sku)
+            0
+          end
+        end
+      end
+    lib/warehouse/shelf.rb: |
+      module Warehouse
+        GARBAGE_010_SHELF_C = "A1"
+        GARBAGE_010_CAPACITY_D = 100
+        class Shelf
+          def self.locate(sku)
+            "A1"
+          end
+        end
+      end
+  commit_message: "feat: add full address formatting method"
+fragments:
+- id: address_full
+  selector:
+    path: lib/logistics/address.rb
+    anchor: "def full"
+- id: parcel_uses_address
+  selector:
+    path: lib/logistics/parcel.rb
+    anchor: "require_relative 'address'"
+- id: shipment_uses_parcel
+  selector:
+    path: lib/logistics/shipment.rb
+    anchor: "require_relative 'parcel'"
+- id: dispatcher_uses_shipment
+  selector:
+    path: lib/logistics/dispatcher.rb
+    anchor: "require_relative 'shipment'"
+- id: api_uses_dispatcher
+  selector:
+    path: lib/logistics/api.rb
+    anchor: "require_relative 'dispatcher'"
+- id: no_inventory
+  selector:
+    path: lib/warehouse/inventory.rb
+    anchor: "GARBAGE_010_INVENTORY_A"
+- id: no_shelf
+  selector:
+    path: lib/warehouse/shelf.rb
+    anchor: "GARBAGE_010_SHELF_C"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_010_SKU_B
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_010_CAPACITY_D
+oracle:
+  required:
+  - address_full
+  - parcel_uses_address
+  - shipment_uses_parcel
+  - dispatcher_uses_shipment
+  - api_uses_dispatcher
+  allowed: []
+  forbidden:
+  - no_inventory
+  - no_shelf
+  - no_global_0
+  - no_global_1

@@ -1,0 +1,145 @@
+name: gap2_135_ocaml_multi_file_task_scheduler
+tags:
+- change:multi_file
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:ocaml
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    lib/task.ml: |
+      type priority = Low | Medium | High
+
+      type t = {
+        id : int;
+        name : string;
+        priority : priority;
+      }
+
+      let create id name priority = { id; name; priority }
+
+      let priority_to_int = function
+        | Low -> 0
+        | Medium -> 1
+        | High -> 2
+    lib/scheduler.ml: |
+      open Task
+
+      let sort_by_priority tasks =
+        List.sort (fun a b ->
+          compare (priority_to_int b.priority) (priority_to_int a.priority)
+        ) tasks
+
+      let next_task tasks =
+        match sort_by_priority tasks with
+        | [] -> None
+        | hd :: _ -> Some hd
+
+      let filter_by_priority tasks p =
+        List.filter (fun t -> t.priority = p) tasks
+    lib/logger.ml: |
+      let _GARBAGE_GAP2_135_LOG_A = "logger_noise"
+      let _GARBAGE_GAP2_135_LOG_B = "level_noise"
+
+      let log_info msg = Printf.printf "[INFO] %s\n" msg
+
+      let log_error msg = Printf.printf "[ERROR] %s\n" msg
+    lib/config.ml: |
+      let _GARBAGE_GAP2_135_CFG_C = "config_noise"
+      let _GARBAGE_GAP2_135_CFG_D = "env_noise"
+
+      let max_workers = 4
+
+      let timeout_secs = 30
+  changed_files:
+    lib/task.ml: |
+      type priority = Low | Medium | High | Critical
+
+      type t = {
+        id : int;
+        name : string;
+        priority : priority;
+        deadline : float option;
+      }
+
+      let create id name priority = { id; name; priority; deadline = None }
+
+      let with_deadline task dl = { task with deadline = Some dl }
+
+      let priority_to_int = function
+        | Low -> 0
+        | Medium -> 1
+        | High -> 2
+        | Critical -> 3
+    lib/scheduler.ml: |
+      open Task
+
+      let sort_by_priority tasks =
+        List.sort (fun a b ->
+          compare (priority_to_int b.priority) (priority_to_int a.priority)
+        ) tasks
+
+      let next_task tasks =
+        match sort_by_priority tasks with
+        | [] -> None
+        | hd :: _ -> Some hd
+
+      let filter_by_priority tasks p =
+        List.filter (fun t -> t.priority = p) tasks
+
+      let overdue_tasks tasks now =
+        List.filter (fun t ->
+          match t.deadline with
+          | Some dl -> dl < now
+          | None -> false
+        ) tasks
+fragments:
+- id: critical_variant
+  selector:
+    path: lib/task.ml
+    anchor: "| Critical"
+- id: deadline_field
+  selector:
+    path: lib/task.ml
+    anchor: "deadline : float option"
+- id: with_deadline
+  selector:
+    path: lib/task.ml
+    anchor: let with_deadline task dl
+- id: overdue_fn
+  selector:
+    path: lib/scheduler.ml
+    anchor: let overdue_tasks tasks now
+- id: no_logger
+  selector:
+    path: lib/logger.ml
+- id: no_config
+  selector:
+    path: lib/config.ml
+- id: no_global_0
+  selector:
+    anchor: _GARBAGE_GAP2_135_LOG_A
+- id: no_global_1
+  selector:
+    anchor: _GARBAGE_GAP2_135_LOG_B
+- id: no_global_2
+  selector:
+    anchor: _GARBAGE_GAP2_135_CFG_C
+- id: no_global_3
+  selector:
+    anchor: _GARBAGE_GAP2_135_CFG_D
+oracle:
+  required:
+  - critical_variant
+  - deadline_field
+  - with_deadline
+  - overdue_fn
+  forbidden:
+  - no_logger
+  - no_config
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

@@ -1,0 +1,236 @@
+name: gap2_068_java_config_cross_module_logging_level
+tags:
+- change:config
+- change:single_file
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+- lang:java
+repo:
+  initial_files:
+    src/main/resources/logback.xml: |
+      <configuration>
+        <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+          <encoder>
+            <pattern>%d{HH:mm:ss} %-5level %logger - %msg%n</pattern>
+          </encoder>
+        </appender>
+        <root level="INFO">
+          <appender-ref ref="STDOUT"/>
+        </root>
+      </configuration>
+    src/main/java/logging/LoggerFactory.java: |
+      package logging;
+
+      public class LoggerFactory {
+          private static String rootLevel = "INFO";
+
+          public static void setRootLevel(String level) {
+              rootLevel = level;
+          }
+
+          public static Logger getLogger(String name) {
+              return new Logger(name, rootLevel);
+          }
+      }
+    src/main/java/logging/Logger.java: |
+      package logging;
+
+      public class Logger {
+          private final String name;
+          private final String level;
+
+          public Logger(String name, String level) {
+              this.name = name;
+              this.level = level;
+          }
+
+          public void info(String msg) { System.out.println("[" + level + "] " + name + ": " + msg); }
+          public void debug(String msg) { if ("DEBUG".equals(level)) info(msg); }
+      }
+    src/main/java/service/OrderService.java: |
+      package service;
+
+      import logging.LoggerFactory;
+      import logging.Logger;
+
+      public class OrderService {
+          private static final Logger log = LoggerFactory.getLogger("OrderService");
+
+          public void process(String orderId) {
+              log.info("Processing " + orderId);
+          }
+      }
+    src/main/java/pdf/PdfRenderer.java: |
+      package pdf;
+      static final String TRAP_GAP2_068_PDF_A = "pdf_noise";
+      static final int TRAP_GAP2_068_PDF_B = 72;
+
+      public class PdfRenderer {
+          public byte[] render(String html) { return new byte[0]; }
+      }
+    src/main/java/geo/CoordinateParser.java: |
+      package geo;
+      static final String TRAP_GAP2_068_GEO_C = "geo_noise";
+      static final double TRAP_GAP2_068_GEO_D = 90.0;
+
+      public class CoordinateParser {
+          public double[] parse(String coords) { return new double[]{0, 0}; }
+      }
+    src/main/java/compress/GzipUtil.java: |
+      package compress;
+      static final String TRAP_GAP2_068_GZIP_E = "gzip_noise";
+      static final int TRAP_GAP2_068_GZIP_F = 9;
+
+      public class GzipUtil {
+          public byte[] compress(byte[] data) { return data; }
+      }
+  changed_files:
+    src/main/resources/logback.xml: |
+      <configuration>
+        <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+          <encoder>
+            <pattern>%d{HH:mm:ss} %-5level %logger - %msg%n</pattern>
+          </encoder>
+        </appender>
+        <appender name="FILE" class="ch.qos.logback.core.FileAppender">
+          <file>app.log</file>
+          <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss} %-5level %logger - %msg%n</pattern>
+          </encoder>
+        </appender>
+        <root level="DEBUG">
+          <appender-ref ref="STDOUT"/>
+          <appender-ref ref="FILE"/>
+        </root>
+      </configuration>
+    src/main/java/logging/LoggerFactory.java: |
+      package logging;
+
+      public class LoggerFactory {
+          private static String rootLevel = "INFO";
+
+          public static void setRootLevel(String level) {
+              rootLevel = level;
+          }
+
+          public static Logger getLogger(String name) {
+              return new Logger(name, rootLevel);
+          }
+      }
+    src/main/java/logging/Logger.java: |
+      package logging;
+
+      public class Logger {
+          private final String name;
+          private final String level;
+
+          public Logger(String name, String level) {
+              this.name = name;
+              this.level = level;
+          }
+
+          public void info(String msg) { System.out.println("[" + level + "] " + name + ": " + msg); }
+          public void debug(String msg) { if ("DEBUG".equals(level)) info(msg); }
+      }
+    src/main/java/service/OrderService.java: |
+      package service;
+
+      import logging.LoggerFactory;
+      import logging.Logger;
+
+      public class OrderService {
+          private static final Logger log = LoggerFactory.getLogger("OrderService");
+
+          public void process(String orderId) {
+              log.info("Processing " + orderId);
+          }
+      }
+    src/main/java/pdf/PdfRenderer.java: |
+      package pdf;
+      static final String TRAP_GAP2_068_PDF_A = "pdf_noise";
+      static final int TRAP_GAP2_068_PDF_B = 72;
+
+      public class PdfRenderer {
+          public byte[] render(String html) { return new byte[0]; }
+      }
+    src/main/java/geo/CoordinateParser.java: |
+      package geo;
+      static final String TRAP_GAP2_068_GEO_C = "geo_noise";
+      static final double TRAP_GAP2_068_GEO_D = 90.0;
+
+      public class CoordinateParser {
+          public double[] parse(String coords) { return new double[]{0, 0}; }
+      }
+    src/main/java/compress/GzipUtil.java: |
+      package compress;
+      static final String TRAP_GAP2_068_GZIP_E = "gzip_noise";
+      static final int TRAP_GAP2_068_GZIP_F = 9;
+
+      public class GzipUtil {
+          public byte[] compress(byte[] data) { return data; }
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: root_debug
+  selector:
+    path: src/main/resources/logback.xml
+    anchor: 'level="DEBUG"'
+- id: file_appender
+  selector:
+    path: src/main/resources/logback.xml
+    anchor: 'name="FILE"'
+- id: logger_factory_get
+  selector:
+    path: src/main/java/logging/LoggerFactory.java
+    anchor: "public static Logger getLogger(String name)"
+- id: order_uses_logger
+  selector:
+    path: src/main/java/service/OrderService.java
+    anchor: 'LoggerFactory.getLogger("OrderService")'
+- id: no_pdf
+  selector:
+    path: src/main/java/pdf/PdfRenderer.java
+- id: no_geo
+  selector:
+    path: src/main/java/geo/CoordinateParser.java
+- id: no_gzip
+  selector:
+    path: src/main/java/compress/GzipUtil.java
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_068_PDF_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_068_PDF_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP2_068_GEO_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP2_068_GEO_D
+- id: no_global_4
+  selector:
+    anchor: TRAP_GAP2_068_GZIP_E
+- id: no_global_5
+  selector:
+    anchor: TRAP_GAP2_068_GZIP_F
+oracle:
+  required:
+  - root_debug
+  - file_appender
+  - logger_factory_get
+  - order_uses_logger
+  allowed: []
+  forbidden:
+  - no_pdf
+  - no_geo
+  - no_gzip
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

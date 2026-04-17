@@ -1,0 +1,96 @@
+name: gap2_121_markdown_same_file_changelog_update
+tags:
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+- lang:markdown
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    CHANGELOG.md: |
+      # Changelog
+
+      ## 2.3.0 - 2025-08-14
+
+      - Added webhook retry logic with exponential backoff
+      - Fixed connection pool exhaustion under high concurrency
+      - Updated gRPC dependency to v1.58.0
+
+      ## 2.2.0 - 2025-06-01
+
+      - Introduced rate limiting per tenant
+      - Improved query planner for nested joins
+      - Removed deprecated XML export endpoint
+    docs/migration.md: |
+      # Migration Guide
+
+      TRAP_GAP2_121_MIGRATION_A markers here.
+
+      ## Upgrading from 1.x to 2.x
+
+      Run the schema migration script before deploying.
+      Back up your database before proceeding.
+    docs/faq.md: |
+      # FAQ
+
+      TRAP_GAP2_121_FAQ_B noise content.
+
+      ## How do I reset my API key?
+
+      Navigate to Settings and click Regenerate Key.
+
+      ## What formats are supported?
+
+      JSON and Protocol Buffers are supported.
+  changed_files:
+    CHANGELOG.md: |
+      # Changelog
+
+      ## 2.4.0 - 2025-10-20
+
+      - Added bulk import endpoint for CSV uploads
+      - Fixed timezone handling in scheduled reports
+
+      ## 2.3.0 - 2025-08-14
+
+      - Added webhook retry logic with exponential backoff
+      - Fixed connection pool exhaustion under high concurrency
+      - Updated gRPC dependency to v1.58.0
+
+      ## 2.2.0 - 2025-06-01
+
+      - Introduced rate limiting per tenant
+      - Improved query planner for nested joins
+      - Removed deprecated XML export endpoint
+fragments:
+- id: bulk_import
+  selector:
+    path: CHANGELOG.md
+    anchor: Added bulk import endpoint for CSV uploads
+- id: version_header
+  selector:
+    path: CHANGELOG.md
+    anchor: "## 2.4.0 - 2025-10-20"
+- id: no_migration
+  selector:
+    path: docs/migration.md
+- id: no_faq
+  selector:
+    path: docs/faq.md
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_121_MIGRATION_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_121_FAQ_B
+oracle:
+  required:
+  - bulk_import
+  - version_header
+  forbidden:
+  - no_migration
+  - no_faq
+  - no_global_0
+  - no_global_1

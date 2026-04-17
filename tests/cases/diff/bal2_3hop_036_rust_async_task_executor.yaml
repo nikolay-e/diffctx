@@ -1,0 +1,165 @@
+name: bal2_3hop_036_rust_async_task_executor
+tags:
+- lang:rust
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/task/handle.rs: |
+      pub struct TaskHandle {
+          pub id: u64,
+          pub name: String,
+          pub priority: u8,
+      }
+
+      impl TaskHandle {
+          pub fn new(id: u64, name: &str, priority: u8) -> Self {
+              Self { id, name: name.to_string(), priority }
+          }
+      }
+    src/task/queue.rs: |
+      use crate::task::handle::TaskHandle;
+
+      pub struct TaskQueue {
+          tasks: Vec<TaskHandle>,
+      }
+
+      impl TaskQueue {
+          pub fn new() -> Self {
+              Self { tasks: Vec::new() }
+          }
+
+          pub fn enqueue(&mut self, task: TaskHandle) {
+              self.tasks.push(task);
+              self.tasks.sort_by(|a, b| b.priority.cmp(&a.priority));
+          }
+
+          pub fn dequeue(&mut self) -> Option<TaskHandle> {
+              if self.tasks.is_empty() { None } else { Some(self.tasks.remove(0)) }
+          }
+      }
+    src/executor/worker.rs: |
+      use crate::task::queue::TaskQueue;
+
+      pub struct Worker {
+          id: usize,
+          queue: TaskQueue,
+      }
+
+      impl Worker {
+          pub fn new(id: usize, queue: TaskQueue) -> Self {
+              Self { id, queue }
+          }
+
+          pub fn run(&mut self) {
+              while let Some(task) = self.queue.dequeue() {
+                  println!("Worker {} executing task {}", self.id, task.name);
+              }
+          }
+      }
+    src/executor/pool.rs: |
+      use crate::executor::worker::Worker;
+
+      pub struct ThreadPool {
+          workers: Vec<Worker>,
+      }
+
+      impl ThreadPool {
+          pub fn new(workers: Vec<Worker>) -> Self {
+              Self { workers }
+          }
+
+          pub fn start(&mut self) {
+              for worker in &mut self.workers {
+                  worker.run();
+              }
+          }
+      }
+    src/sync/mutex.rs: |
+      GARBAGE_036_MUTEX_MARKER_A = "spin_lock";
+      GARBAGE_036_LOCK_MARKER_B = false;
+
+      pub struct SpinMutex {
+          locked: bool,
+      }
+
+      impl SpinMutex {
+          pub fn lock(&mut self) { self.locked = true; }
+          pub fn unlock(&mut self) { self.locked = false; }
+      }
+    src/sync/channel.rs: |
+      GARBAGE_036_CHAN_MARKER_C = "mpsc";
+      GARBAGE_036_SEND_MARKER_D = "sender";
+
+      pub struct Channel<T> {
+          buffer: Vec<T>,
+      }
+    src/timer/sleep.rs: |
+      GARBAGE_036_TIMER_MARKER_E = "sleep";
+      GARBAGE_036_DELAY_MARKER_F = 1000;
+
+      pub fn sleep_ms(ms: u64) {
+          std::thread::sleep(std::time::Duration::from_millis(ms));
+      }
+  changed_files:
+    src/task/handle.rs: |
+      pub struct TaskHandle {
+          pub id: u64,
+          pub name: String,
+          pub priority: u8,
+          pub deadline_ms: Option<u64>,
+      }
+
+      impl TaskHandle {
+          pub fn new(id: u64, name: &str, priority: u8) -> Self {
+              Self { id, name: name.to_string(), priority, deadline_ms: None }
+          }
+
+          pub fn with_deadline(mut self, ms: u64) -> Self {
+              self.deadline_ms = Some(ms);
+              self
+          }
+      }
+  commit_message: "feat: add optional deadline to TaskHandle"
+fragments:
+- id: handle_deadline
+  selector:
+    path: src/task/handle.rs
+    anchor: "pub deadline_ms: Option<u64>"
+- id: queue_enqueue
+  selector:
+    path: src/task/queue.rs
+    anchor: "pub fn enqueue"
+- id: worker_run
+  selector:
+    path: src/executor/worker.rs
+    anchor: "pub fn run"
+- id: pool_start
+  selector:
+    path: src/executor/pool.rs
+    anchor: "pub fn start"
+- id: no_mutex
+  selector:
+    path: src/sync/mutex.rs
+    anchor: "GARBAGE_036_MUTEX_MARKER_A"
+- id: no_channel
+  selector:
+    path: src/sync/channel.rs
+    anchor: "GARBAGE_036_CHAN_MARKER_C"
+- id: no_timer
+  selector:
+    path: src/timer/sleep.rs
+    anchor: "GARBAGE_036_TIMER_MARKER_E"
+oracle:
+  required:
+  - handle_deadline
+  - queue_enqueue
+  - worker_run
+  - pool_start
+  allowed: []
+  forbidden:
+  - no_mutex
+  - no_channel
+  - no_timer

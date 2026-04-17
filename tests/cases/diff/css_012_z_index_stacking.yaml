@@ -1,0 +1,89 @@
+name: css_012_z_index_stacking
+tags:
+- lang:css
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    z-index.css: |
+      :root {
+        --z-base: 0;
+        --z-dropdown: 100;
+        --z-sticky: 200;
+        --z-modal: 300;
+        --z-toast: 400;
+      }
+    modal.css: |
+      @import "z-index.css";
+      .modal-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: var(--z-modal);
+        background: rgba(0, 0, 0, 0.4);
+      }
+    overlay.css: |
+      @import "z-index.css";
+      .overlay {
+        position: fixed;
+        inset: 0;
+        z-index: var(--z-modal);
+      }
+    CSS_NOISE_012_calendar.css: |
+      .CSS_NOISE_012_calendar_grid { display: grid; grid-template-columns: repeat(7, 1fr); }
+      .CSS_NOISE_012_calendar_day { aspect-ratio: 1; }
+    CSS_NOISE_012_tags.css: |
+      .CSS_NOISE_012_tag_pill { display: inline-flex; border-radius: 999px; padding: 2px 10px; }
+      .CSS_NOISE_012_tag_remove { cursor: pointer; margin-left: 4px; }
+  changed_files:
+    z-index.css: |
+      :root {
+        --z-base: 0;
+        --z-dropdown: 100;
+        --z-sticky: 200;
+        --z-modal: 500;
+        --z-toast: 600;
+      }
+  commit_message: "style: raise --z-modal and --z-toast to avoid stacking conflicts"
+fragments:
+- id: z_modal_raised
+  selector:
+    path: z-index.css
+    anchor: "--z-modal: 500"
+- id: z_toast_raised
+  selector:
+    path: z-index.css
+    anchor: "--z-toast: 600"
+- id: modal_imports_z_index
+  selector:
+    path: modal.css
+    anchor: z-index.css
+- id: overlay_imports_z_index
+  selector:
+    path: overlay.css
+    anchor: z-index.css
+- id: no_calendar
+  selector:
+    path: CSS_NOISE_012_calendar.css
+- id: no_tags
+  selector:
+    path: CSS_NOISE_012_tags.css
+- id: no_global_0
+  selector:
+    anchor: CSS_NOISE_012_calendar_grid
+- id: no_global_1
+  selector:
+    anchor: CSS_NOISE_012_tag_pill
+oracle:
+  required:
+  - z_modal_raised
+  - z_toast_raised
+  - modal_imports_z_index
+  - overlay_imports_z_index
+  allowed: []
+  forbidden:
+  - no_calendar
+  - no_tags
+  - no_global_0
+  - no_global_1

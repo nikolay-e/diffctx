@@ -1,0 +1,145 @@
+name: gap2_109_ts_config_import_chain_feature_flags
+tags:
+- change:config
+- change:single_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:typescript
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/config/features.ts: |
+      export interface FeatureFlags {
+        darkMode: boolean;
+        betaSearch: boolean;
+        maxUploadSizeMb: number;
+      }
+
+      export const features: FeatureFlags = {
+        darkMode: false,
+        betaSearch: false,
+        maxUploadSizeMb: 10,
+      };
+    src/services/upload.ts: |
+      import { features } from "../config/features";
+
+      export function validateFileSize(bytes: number): boolean {
+        const maxBytes = features.maxUploadSizeMb * 1024 * 1024;
+        return bytes <= maxBytes;
+      }
+
+      export function getUploadLimit(): string {
+        return `${features.maxUploadSizeMb}MB`;
+      }
+    src/handlers/upload_handler.ts: |
+      import { validateFileSize, getUploadLimit } from "../services/upload";
+
+      export function handleUpload(fileBytes: number): string {
+        if (!validateFileSize(fileBytes)) {
+          return `File exceeds limit of ${getUploadLimit()}`;
+        }
+        return "Upload accepted";
+      }
+    src/utils/format.ts: |
+      const TRAP_GAP2_109_FMT_A: string = "formatter";
+      const TRAP_GAP2_109_LOCALE_B: string = "en-US";
+
+      export function formatBytes(bytes: number): string {
+        const units = ["B", "KB", "MB", "GB"];
+        let idx = 0;
+        let value = bytes;
+        while (value >= 1024 && idx < units.length - 1) {
+          value /= 1024;
+          idx++;
+        }
+        return `${value.toFixed(1)} ${units[idx]}`;
+      }
+  changed_files:
+    src/config/features.ts: |
+      export interface FeatureFlags {
+        darkMode: boolean;
+        betaSearch: boolean;
+        maxUploadSizeMb: number;
+        chunkUpload: boolean;
+      }
+
+      export const features: FeatureFlags = {
+        darkMode: true,
+        betaSearch: false,
+        maxUploadSizeMb: 50,
+        chunkUpload: true,
+      };
+    src/services/upload.ts: |
+      import { features } from "../config/features";
+
+      export function validateFileSize(bytes: number): boolean {
+        const maxBytes = features.maxUploadSizeMb * 1024 * 1024;
+        return bytes <= maxBytes;
+      }
+
+      export function getUploadLimit(): string {
+        return `${features.maxUploadSizeMb}MB`;
+      }
+    src/handlers/upload_handler.ts: |
+      import { validateFileSize, getUploadLimit } from "../services/upload";
+
+      export function handleUpload(fileBytes: number): string {
+        if (!validateFileSize(fileBytes)) {
+          return `File exceeds limit of ${getUploadLimit()}`;
+        }
+        return "Upload accepted";
+      }
+    src/utils/format.ts: |
+      const TRAP_GAP2_109_FMT_A: string = "formatter";
+      const TRAP_GAP2_109_LOCALE_B: string = "en-US";
+
+      export function formatBytes(bytes: number): string {
+        const units = ["B", "KB", "MB", "GB"];
+        let idx = 0;
+        let value = bytes;
+        while (value >= 1024 && idx < units.length - 1) {
+          value /= 1024;
+          idx++;
+        }
+        return `${value.toFixed(1)} ${units[idx]}`;
+      }
+  commit_message: Update files
+fragments:
+- id: features_upload_size
+  selector:
+    path: src/config/features.ts
+    anchor: "maxUploadSizeMb: 50"
+- id: features_chunk
+  selector:
+    path: src/config/features.ts
+    anchor: "chunkUpload: true"
+- id: upload_validate
+  selector:
+    path: src/services/upload.ts
+    anchor: features.maxUploadSizeMb
+- id: handler_upload
+  selector:
+    path: src/handlers/upload_handler.ts
+    anchor: validateFileSize
+- id: no_format
+  selector:
+    path: src/utils/format.ts
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_109_FMT_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_109_LOCALE_B
+oracle:
+  required:
+  - features_upload_size
+  - features_chunk
+  - upload_validate
+  - handler_upload
+  allowed: []
+  forbidden:
+  - no_format
+  - no_global_0
+  - no_global_1

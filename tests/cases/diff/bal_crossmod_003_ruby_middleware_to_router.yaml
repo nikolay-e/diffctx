@@ -1,0 +1,138 @@
+name: bal_crossmod_003_ruby_middleware_to_router
+tags:
+- lang:ruby
+- change:single_file
+- change:new_function
+- context:cross_module
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    lib/middleware/auth.rb: |
+      module Middleware
+        class Auth
+          def initialize(app)
+            @app = app
+          end
+
+          def call(env)
+            token = env['HTTP_AUTHORIZATION']
+            if valid_token?(token)
+              @app.call(env)
+            else
+              [401, {}, ['Unauthorized']]
+            end
+          end
+
+          private
+
+          def valid_token?(token)
+            token && token.start_with?('Bearer ')
+          end
+        end
+      end
+    lib/routing/router.rb: |
+      require_relative '../middleware/auth'
+      module Routing
+        class Router
+          def initialize
+            @routes = {}
+            @auth = Middleware::Auth.new(nil)
+          end
+
+          def add_route(path, handler)
+            @routes[path] = handler
+          end
+
+          def dispatch(path, env)
+            handler = @routes[path]
+            handler&.call(env)
+          end
+        end
+      end
+    lib/logging/request_logger.rb: |
+      module Logging
+        class RequestLogger
+          def self.log(method, path, status)
+            puts "[#{method}] #{path} -> #{status}"
+          end
+        end
+      end
+  changed_files:
+    lib/middleware/auth.rb: |
+      module Middleware
+        class Auth
+          def initialize(app)
+            @app = app
+          end
+
+          def call(env)
+            token = env['HTTP_AUTHORIZATION']
+            if valid_token?(token)
+              @app.call(env)
+            else
+              [401, {}, ['Unauthorized']]
+            end
+          end
+
+          def extract_user_id(env)
+            token = env['HTTP_AUTHORIZATION']
+            return nil unless token
+            token.split('.').last
+          end
+
+          private
+
+          def valid_token?(token)
+            token && token.start_with?('Bearer ')
+          end
+        end
+      end
+    lib/routing/router.rb: |
+      require_relative '../middleware/auth'
+      module Routing
+        class Router
+          def initialize
+            @routes = {}
+            @auth = Middleware::Auth.new(nil)
+          end
+
+          def add_route(path, handler)
+            @routes[path] = handler
+          end
+
+          def dispatch(path, env)
+            handler = @routes[path]
+            handler&.call(env)
+          end
+        end
+      end
+    lib/logging/request_logger.rb: |
+      module Logging
+        class RequestLogger
+          def self.log(method, path, status)
+            puts "[#{method}] #{path} -> #{status}"
+          end
+        end
+      end
+  commit_message: "feat: add extract_user_id to auth middleware"
+fragments:
+- id: extract_user_id_method
+  selector:
+    path: lib/middleware/auth.rb
+    anchor: "def extract_user_id(env)"
+- id: router_uses_auth
+  selector:
+    path: lib/routing/router.rb
+    anchor: "Middleware::Auth.new"
+- id: no_logger
+  selector:
+    path: lib/logging/request_logger.rb
+    anchor: "def self.log"
+oracle:
+  required:
+  - extract_user_id_method
+  - router_uses_auth
+  allowed: []
+  forbidden:
+  - no_logger

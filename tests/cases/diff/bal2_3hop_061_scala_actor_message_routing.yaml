@@ -1,0 +1,194 @@
+name: bal2_3hop_061_scala_actor_message_routing
+tags:
+- lang:scala
+- change:multi_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/com/app/message/Envelope.scala: |
+      package com.app.message
+
+      case class Envelope(
+        id: String,
+        payload: String,
+        timestamp: Long
+      )
+    src/main/scala/com/app/message/Router.scala: |
+      package com.app.message
+
+      class Router {
+        def route(envelope: Envelope): String = {
+          s"routed:${envelope.id}"
+        }
+      }
+    src/main/scala/com/app/actor/Dispatcher.scala: |
+      package com.app.actor
+
+      import com.app.message.{Envelope, Router}
+
+      class Dispatcher(router: Router) {
+        def dispatch(envelope: Envelope): Unit = {
+          val target = router.route(envelope)
+          println(s"Dispatching to $target")
+        }
+      }
+    src/main/scala/com/app/actor/ActorSystem.scala: |
+      package com.app.actor
+
+      class ActorSystem(name: String) {
+        private val dispatcher = new Dispatcher(new com.app.message.Router)
+
+        def send(msg: com.app.message.Envelope): Unit = {
+          dispatcher.dispatch(msg)
+        }
+      }
+    src/main/scala/com/app/Main.scala: |
+      package com.app
+
+      import com.app.actor.ActorSystem
+      import com.app.message.Envelope
+
+      object Main extends App {
+        val system = new ActorSystem("main")
+        system.send(Envelope("1", "hello", System.currentTimeMillis()))
+      }
+    src/main/scala/com/app/util/Logger.scala: |
+      package com.app.util
+
+      var GARBAGE_061_LOGGER_MARKER_A = "logger"
+      var GARBAGE_061_LEVEL_MARKER_B = "info"
+
+      object Logger {
+        def log(msg: String): Unit = println(msg)
+      }
+    src/main/scala/com/app/util/Config.scala: |
+      package com.app.util
+
+      var GARBAGE_061_CONFIG_MARKER_C = "config"
+      var GARBAGE_061_ENV_MARKER_D = "prod"
+
+      object Config {
+        def get(key: String): String = ""
+      }
+  changed_files:
+    src/main/scala/com/app/message/Envelope.scala: |
+      package com.app.message
+
+      case class Envelope(
+        id: String,
+        payload: String,
+        timestamp: Long,
+        priority: Int = 0,
+        retryCount: Int = 0
+      )
+    src/main/scala/com/app/message/Router.scala: |
+      package com.app.message
+
+      class Router {
+        def route(envelope: Envelope): String = {
+          if (envelope.priority > 5) s"priority:${envelope.id}"
+          else s"routed:${envelope.id}"
+        }
+      }
+    src/main/scala/com/app/actor/Dispatcher.scala: |
+      package com.app.actor
+
+      import com.app.message.{Envelope, Router}
+
+      class Dispatcher(router: Router) {
+        def dispatch(envelope: Envelope): Unit = {
+          val target = router.route(envelope)
+          println(s"Dispatching to $target (priority=${envelope.priority})")
+        }
+      }
+    src/main/scala/com/app/actor/ActorSystem.scala: |
+      package com.app.actor
+
+      class ActorSystem(name: String) {
+        private val dispatcher = new Dispatcher(new com.app.message.Router)
+
+        def send(msg: com.app.message.Envelope): Unit = {
+          dispatcher.dispatch(msg)
+        }
+
+        def sendPriority(msg: com.app.message.Envelope): Unit = {
+          dispatcher.dispatch(msg.copy(priority = 10))
+        }
+      }
+    src/main/scala/com/app/Main.scala: |
+      package com.app
+
+      import com.app.actor.ActorSystem
+      import com.app.message.Envelope
+
+      object Main extends App {
+        val system = new ActorSystem("main")
+        system.send(Envelope("1", "hello", System.currentTimeMillis()))
+        system.sendPriority(Envelope("2", "urgent", System.currentTimeMillis()))
+      }
+    src/main/scala/com/app/util/Logger.scala: |
+      package com.app.util
+
+      var GARBAGE_061_LOGGER_MARKER_A = "logger"
+      var GARBAGE_061_LEVEL_MARKER_B = "info"
+
+      object Logger {
+        def log(msg: String): Unit = println(msg)
+      }
+    src/main/scala/com/app/util/Config.scala: |
+      package com.app.util
+
+      var GARBAGE_061_CONFIG_MARKER_C = "config"
+      var GARBAGE_061_ENV_MARKER_D = "prod"
+
+      object Config {
+        def get(key: String): String = ""
+      }
+  commit_message: "feat: add priority routing and retry count to message envelope"
+fragments:
+- id: envelope_priority_field
+  selector:
+    path: src/main/scala/com/app/message/Envelope.scala
+    anchor: "priority: Int = 0"
+- id: envelope_retry_field
+  selector:
+    path: src/main/scala/com/app/message/Envelope.scala
+    anchor: "retryCount: Int = 0"
+- id: router_priority_check
+  selector:
+    path: src/main/scala/com/app/message/Router.scala
+    anchor: "envelope.priority > 5"
+- id: dispatcher_priority_log
+  selector:
+    path: src/main/scala/com/app/actor/Dispatcher.scala
+    anchor: "priority=${envelope.priority}"
+- id: system_send_priority
+  selector:
+    path: src/main/scala/com/app/actor/ActorSystem.scala
+    anchor: "def sendPriority"
+- id: main_calls_send_priority
+  selector:
+    path: src/main/scala/com/app/Main.scala
+    anchor: "system.sendPriority"
+- id: no_logger
+  selector:
+    path: src/main/scala/com/app/util/Logger.scala
+    anchor: "GARBAGE_061_LOGGER_MARKER_A"
+- id: no_config
+  selector:
+    path: src/main/scala/com/app/util/Config.scala
+    anchor: "GARBAGE_061_CONFIG_MARKER_C"
+oracle:
+  required:
+  - envelope_priority_field
+  - router_priority_check
+  - dispatcher_priority_log
+  - system_send_priority
+  - main_calls_send_priority
+  allowed:
+  - envelope_retry_field
+  forbidden:
+  - no_logger
+  - no_config

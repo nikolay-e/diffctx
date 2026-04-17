@@ -1,0 +1,119 @@
+name: bal4_crossmod_008_rust_struct_field_cross_mod
+tags:
+- lang:rust
+- change:single_file
+- context:cross_module
+- distance:1hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/domain/order.rs: |
+      pub struct Order {
+          pub id: u64,
+          pub total: f64,
+          pub status: String,
+      }
+
+      impl Order {
+          pub fn new(id: u64, total: f64) -> Self {
+              Order { id, total, status: "pending".to_string() }
+          }
+      }
+    src/handlers/order_handler.rs: |
+      use crate::domain::order::Order;
+
+      pub fn create_order(id: u64, total: f64) -> Order {
+          Order::new(id, total)
+      }
+
+      pub fn format_order(order: &Order) -> String {
+          format!("Order #{}: ${:.2} [{}]", order.id, order.total, order.status)
+      }
+    src/middleware/auth.rs: |
+      pub const GARBAGE_008_TOKEN_A: &str = "bearer";
+      pub const GARBAGE_008_HEADER_B: &str = "Authorization";
+
+      pub fn check_auth(token: &str) -> bool {
+          !token.is_empty()
+      }
+    garbage_cli.rs: |
+      pub const GARBAGE_008_CMD_C: &str = "run";
+      pub const GARBAGE_008_FLAG_D: &str = "--verbose";
+
+      pub fn parse_args() {}
+  changed_files:
+    src/domain/order.rs: |
+      pub struct Order {
+          pub id: u64,
+          pub total: f64,
+          pub status: String,
+          pub currency: String,
+      }
+
+      impl Order {
+          pub fn new(id: u64, total: f64) -> Self {
+              Order { id, total, status: "pending".to_string(), currency: "USD".to_string() }
+          }
+      }
+    src/handlers/order_handler.rs: |
+      use crate::domain::order::Order;
+
+      pub fn create_order(id: u64, total: f64) -> Order {
+          Order::new(id, total)
+      }
+
+      pub fn format_order(order: &Order) -> String {
+          format!("Order #{}: ${:.2} [{}]", order.id, order.total, order.status)
+      }
+    src/middleware/auth.rs: |
+      pub const GARBAGE_008_TOKEN_A: &str = "bearer";
+      pub const GARBAGE_008_HEADER_B: &str = "Authorization";
+
+      pub fn check_auth(token: &str) -> bool {
+          !token.is_empty()
+      }
+    garbage_cli.rs: |
+      pub const GARBAGE_008_CMD_C: &str = "run";
+      pub const GARBAGE_008_FLAG_D: &str = "--verbose";
+
+      pub fn parse_args() {}
+  commit_message: "add currency field to Order"
+fragments:
+- id: handler_format
+  selector:
+    path: src/handlers/order_handler.rs
+    anchor: "pub fn format_order(order: &Order)"
+- id: handler_create
+  selector:
+    path: src/handlers/order_handler.rs
+    anchor: "pub fn create_order(id: u64, total: f64)"
+- id: no_auth
+  selector:
+    path: src/middleware/auth.rs
+- id: no_garbage_cli
+  selector:
+    path: garbage_cli.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_008_TOKEN_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_008_HEADER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_008_CMD_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_008_FLAG_D
+oracle:
+  required:
+  - handler_format
+  - handler_create
+  allowed: []
+  forbidden:
+  - no_auth
+  - no_garbage_cli
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

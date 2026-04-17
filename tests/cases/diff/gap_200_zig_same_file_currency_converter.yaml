@@ -1,0 +1,229 @@
+name: gap_200_zig_same_file_currency_converter
+tags:
+- lang:zig
+- change:single_file
+- context:same_file
+- difficulty:easy
+- distance:0hop
+repo:
+  initial_files:
+    src/currency.zig: |
+      pub const Currency = enum {
+          usd,
+          eur,
+          gbp,
+          jpy,
+      };
+
+      pub const Money = struct {
+          amount: i64,
+          currency: Currency,
+
+          pub fn add(self: Money, other: Money) Money {
+              if (self.currency != other.currency) return self;
+              return Money{
+                  .amount = self.amount + other.amount,
+                  .currency = self.currency,
+              };
+          }
+
+          pub fn subtract(self: Money, other: Money) Money {
+              if (self.currency != other.currency) return self;
+              return Money{
+                  .amount = self.amount - other.amount,
+                  .currency = self.currency,
+              };
+          }
+
+          pub fn isPositive(self: Money) bool {
+              return self.amount > 0;
+          }
+
+          pub fn isZero(self: Money) bool {
+              return self.amount == 0;
+          }
+
+          pub fn negate(self: Money) Money {
+              return Money{
+                  .amount = -self.amount,
+                  .currency = self.currency,
+              };
+          }
+      };
+    src/invoice.zig: |
+      const TRAP_GAP_200_INVOICE_MARKER_A: []const u8 = "invoice_noise";
+      const TRAP_GAP_200_INVOICE_FLAG_B: u32 = 30;
+
+      pub const Invoice = struct {
+          id: u64,
+          total: i64,
+          paid: bool,
+      };
+
+      pub fn createInvoice(id: u64, total: i64) Invoice {
+          return Invoice{ .id = id, .total = total, .paid = false };
+      }
+    src/ledger.zig: |
+      const TRAP_GAP_200_LEDGER_MARKER_C: []const u8 = "ledger_noise";
+      const TRAP_GAP_200_LEDGER_FLAG_D: bool = true;
+
+      pub fn recordEntry(account: u64, amount: i64) void {
+          _ = account;
+          _ = amount;
+      }
+
+      pub fn getBalance(account: u64) i64 {
+          _ = account;
+          return 0;
+      }
+    src/tax.zig: |
+      const TRAP_GAP_200_TAX_MARKER_E: []const u8 = "tax_noise";
+      const TRAP_GAP_200_TAX_FLAG_F: f64 = 0.21;
+
+      pub fn calculateVat(amount: i64, rate: f64) i64 {
+          return @intFromFloat(@as(f64, @floatFromInt(amount)) * rate);
+      }
+  changed_files:
+    src/currency.zig: |
+      pub const Currency = enum {
+          usd,
+          eur,
+          gbp,
+          jpy,
+          chf,
+      };
+
+      pub const Money = struct {
+          amount: i64,
+          currency: Currency,
+
+          pub fn add(self: Money, other: Money) Money {
+              if (self.currency != other.currency) return self;
+              return Money{
+                  .amount = self.amount + other.amount,
+                  .currency = self.currency,
+              };
+          }
+
+          pub fn subtract(self: Money, other: Money) Money {
+              if (self.currency != other.currency) return self;
+              return Money{
+                  .amount = self.amount - other.amount,
+                  .currency = self.currency,
+              };
+          }
+
+          pub fn isPositive(self: Money) bool {
+              return self.amount > 0;
+          }
+
+          pub fn isZero(self: Money) bool {
+              return self.amount == 0;
+          }
+
+          pub fn negate(self: Money) Money {
+              return Money{
+                  .amount = -self.amount,
+                  .currency = self.currency,
+              };
+          }
+
+          pub fn multiply(self: Money, factor: i64) Money {
+              return Money{
+                  .amount = self.amount * factor,
+                  .currency = self.currency,
+              };
+          }
+      };
+    src/invoice.zig: |
+      const TRAP_GAP_200_INVOICE_MARKER_A: []const u8 = "invoice_noise";
+      const TRAP_GAP_200_INVOICE_FLAG_B: u32 = 30;
+
+      pub const Invoice = struct {
+          id: u64,
+          total: i64,
+          paid: bool,
+      };
+
+      pub fn createInvoice(id: u64, total: i64) Invoice {
+          return Invoice{ .id = id, .total = total, .paid = false };
+      }
+    src/ledger.zig: |
+      const TRAP_GAP_200_LEDGER_MARKER_C: []const u8 = "ledger_noise";
+      const TRAP_GAP_200_LEDGER_FLAG_D: bool = true;
+
+      pub fn recordEntry(account: u64, amount: i64) void {
+          _ = account;
+          _ = amount;
+      }
+
+      pub fn getBalance(account: u64) i64 {
+          _ = account;
+          return 0;
+      }
+    src/tax.zig: |
+      const TRAP_GAP_200_TAX_MARKER_E: []const u8 = "tax_noise";
+      const TRAP_GAP_200_TAX_FLAG_F: f64 = 0.21;
+
+      pub fn calculateVat(amount: i64, rate: f64) i64 {
+          return @intFromFloat(@as(f64, @floatFromInt(amount)) * rate);
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: currency_chf
+  selector:
+    path: src/currency.zig
+    anchor: chf
+- id: money_multiply
+  selector:
+    path: src/currency.zig
+    anchor: "pub fn multiply(self: Money, factor: i64) Money"
+- id: money_struct
+  selector:
+    path: src/currency.zig
+    anchor: "pub const Money = struct"
+- id: no_invoice
+  selector:
+    path: src/invoice.zig
+- id: no_ledger
+  selector:
+    path: src/ledger.zig
+- id: no_tax
+  selector:
+    path: src/tax.zig
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP_200_INVOICE_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP_200_INVOICE_FLAG_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP_200_LEDGER_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP_200_LEDGER_FLAG_D
+- id: no_global_4
+  selector:
+    anchor: TRAP_GAP_200_TAX_MARKER_E
+- id: no_global_5
+  selector:
+    anchor: TRAP_GAP_200_TAX_FLAG_F
+oracle:
+  required:
+  - currency_chf
+  - money_multiply
+  - money_struct
+  allowed: []
+  forbidden:
+  - no_invoice
+  - no_ledger
+  - no_tax
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

@@ -1,25 +1,303 @@
 name: internals_017_zalgo_in_diff_text
+tags:
+- lang:java
+- change:multi_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:hard
 repo:
   initial_files:
-    zalgo_diff.py: |
-      def placeholder():
-          pass
+    src/main/java/com/warehouse/order/OrderFulfillmentService.java: |
+      package com.warehouse.order;
+
+      import java.util.List;
+
+      public class OrderFulfillmentService {
+          private final OrderRepository orderRepo;
+          private final InventoryRepository inventoryRepo;
+
+          public OrderFulfillmentService(OrderRepository orderRepo, InventoryRepository inventoryRepo) {
+              this.orderRepo = orderRepo;
+              this.inventoryRepo = inventoryRepo;
+          }
+
+          public FulfillmentResult fulfill(Long orderId) {
+              Order order = orderRepo.findById(orderId)
+                  .orElseThrow(() -> new IllegalArgumentException("order not found: " + orderId));
+              for (OrderLine line : order.getLines()) {
+                  int available = inventoryRepo.getAvailable(line.getSku());
+                  if (available < line.getQuantity()) {
+                      return FulfillmentResult.insufficientStock(line.getSku());
+                  }
+              }
+              for (OrderLine line : order.getLines()) {
+                  inventoryRepo.reserve(line.getSku(), line.getQuantity());
+              }
+              order.setStatus(OrderStatus.FULFILLED);
+              orderRepo.save(order);
+              return FulfillmentResult.success(orderId);
+          }
+      }
+    src/main/java/com/warehouse/order/OrderRepository.java: |
+      package com.warehouse.order;
+
+      import java.util.Optional;
+
+      public interface OrderRepository {
+          Optional<Order> findById(Long id);
+          Order save(Order order);
+          java.util.List<Order> findByStatus(OrderStatus status);
+      }
+    src/main/java/com/warehouse/order/InventoryRepository.java: |
+      package com.warehouse.order;
+
+      public interface InventoryRepository {
+          int getAvailable(String sku);
+          void reserve(String sku, int quantity);
+          void release(String sku, int quantity);
+      }
+    src/test/java/com/warehouse/order/OrderFulfillmentServiceTest.java: |
+      package com.warehouse.order;
+
+      import org.junit.jupiter.api.Test;
+      import java.util.List;
+      import static org.junit.jupiter.api.Assertions.*;
+
+      class OrderFulfillmentServiceTest {
+          private final InMemoryOrderRepository orderRepo = new InMemoryOrderRepository();
+          private final InMemoryInventoryRepository inventoryRepo = new InMemoryInventoryRepository();
+          private final OrderFulfillmentService service =
+              new OrderFulfillmentService(orderRepo, inventoryRepo);
+
+          @Test
+          void fulfill_sufficientStock_succeeds() {
+              inventoryRepo.setAvailable("SKU-A", 100);
+              Order order = new Order(1L, List.of(new OrderLine("SKU-A", 10)));
+              orderRepo.save(order);
+              FulfillmentResult result = service.fulfill(1L);
+              assertTrue(result.isSuccess());
+          }
+
+          @Test
+          void fulfill_insufficientStock_returnsError() {
+              inventoryRepo.setAvailable("SKU-B", 3);
+              Order order = new Order(2L, List.of(new OrderLine("SKU-B", 10)));
+              orderRepo.save(order);
+              FulfillmentResult result = service.fulfill(2L);
+              assertFalse(result.isSuccess());
+              assertEquals("SKU-B", result.getFailedSku());
+          }
+      }
+    src/main/java/com/warehouse/shipping/ShippingService.java: |
+      package com.warehouse.shipping;
+
+      // GARBAGE_ZAL17_A = "shipping_service_unrelated"
+      public class ShippingService {
+          public String createLabel(Long orderId) {
+              return "LABEL-" + orderId;
+          }
+      }
+    src/main/java/com/warehouse/billing/InvoiceService.java: |
+      package com.warehouse.billing;
+
+      // GARBAGE_ZAL17_B = "invoice_service_unrelated"
+      public class InvoiceService {
+          public String generateInvoice(Long orderId) {
+              return "INV-" + orderId;
+          }
+      }
+    src/main/java/com/warehouse/notification/NotificationService.java: |
+      package com.warehouse.notification;
+
+      // GARBAGE_ZAL17_C = "notification_service_unrelated"
+      public class NotificationService {
+          public void sendOrderConfirmation(Long orderId, String email) {}
+      }
   changed_files:
-    zalgo_diff.py: |
-      # H̸̡̪̯ͨ͊̽̅̾̎Ȩ̬̩̾͛ͪ̈́̀́͘ COMES
-      def process_data(items):
-          return items
-  commit_message: Update files
+    src/main/java/com/warehouse/order/OrderFulfillmentService.java: |
+      package com.warehouse.order;
+
+      import java.util.List;
+
+      public class OrderFulfillmentService {
+          private final OrderRepository orderRepo;
+          private final InventoryRepository inventoryRepo;
+
+          public OrderFulfillmentService(OrderRepository orderRepo, InventoryRepository inventoryRepo) {
+              this.orderRepo = orderRepo;
+              this.inventoryRepo = inventoryRepo;
+          }
+
+          public FulfillmentResult fulfill(Long orderId) {
+              Order order = orderRepo.findById(orderId)
+                  .orElseThrow(() -> new IllegalArgumentException("order not found: " + orderId));
+              for (OrderLine line : order.getLines()) {
+                  int available = inventoryRepo.getAvailable(line.getSku());
+                  if (available < line.getQuantity()) {
+                      return FulfillmentResult.insufficientStock(line.getSku());
+                  }
+              }
+              for (OrderLine line : order.getLines()) {
+                  inventoryRepo.reserve(line.getSku(), line.getQuantity());
+              }
+              order.setStatus(OrderStatus.FULFILLED);
+              orderRepo.save(order);
+              return FulfillmentResult.success(orderId);
+          }
+
+          public FulfillmentResult cancelFulfillment(Long orderId) {
+              Order order = orderRepo.findById(orderId)
+                  .orElseThrow(() -> new IllegalArgumentException("order not found: " + orderId));
+              if (order.getStatus() != OrderStatus.FULFILLED) {
+                  return FulfillmentResult.failure("order is not fulfilled");
+              }
+              for (OrderLine line : order.getLines()) {
+                  inventoryRepo.release(line.getSku(), line.getQuantity());
+              }
+              order.setStatus(OrderStatus.CANCELLED);
+              orderRepo.save(order);
+              return FulfillmentResult.success(orderId);
+          }
+
+          public List<Order> findPendingOrders() {
+              return orderRepo.findByStatus(OrderStatus.PENDING);
+          }
+      }
+    src/main/java/com/warehouse/order/OrderRepository.java: |
+      package com.warehouse.order;
+
+      import java.util.Optional;
+
+      public interface OrderRepository {
+          Optional<Order> findById(Long id);
+          Order save(Order order);
+          java.util.List<Order> findByStatus(OrderStatus status);
+      }
+    src/main/java/com/warehouse/order/InventoryRepository.java: |
+      package com.warehouse.order;
+
+      public interface InventoryRepository {
+          int getAvailable(String sku);
+          void reserve(String sku, int quantity);
+          void release(String sku, int quantity);
+      }
+    src/test/java/com/warehouse/order/OrderFulfillmentServiceTest.java: |
+      package com.warehouse.order;
+
+      import org.junit.jupiter.api.Test;
+      import java.util.List;
+      import static org.junit.jupiter.api.Assertions.*;
+
+      class OrderFulfillmentServiceTest {
+          private final InMemoryOrderRepository orderRepo = new InMemoryOrderRepository();
+          private final InMemoryInventoryRepository inventoryRepo = new InMemoryInventoryRepository();
+          private final OrderFulfillmentService service =
+              new OrderFulfillmentService(orderRepo, inventoryRepo);
+
+          @Test
+          void fulfill_sufficientStock_succeeds() {
+              inventoryRepo.setAvailable("SKU-A", 100);
+              Order order = new Order(1L, List.of(new OrderLine("SKU-A", 10)));
+              orderRepo.save(order);
+              FulfillmentResult result = service.fulfill(1L);
+              assertTrue(result.isSuccess());
+          }
+
+          @Test
+          void fulfill_insufficientStock_returnsError() {
+              inventoryRepo.setAvailable("SKU-B", 3);
+              Order order = new Order(2L, List.of(new OrderLine("SKU-B", 10)));
+              orderRepo.save(order);
+              FulfillmentResult result = service.fulfill(2L);
+              assertFalse(result.isSuccess());
+              assertEquals("SKU-B", result.getFailedSku());
+          }
+
+          @Test
+          void cancelFulfillment_releasesInventory() {
+              inventoryRepo.setAvailable("SKU-C", 50);
+              Order order = new Order(3L, List.of(new OrderLine("SKU-C", 5)));
+              orderRepo.save(order);
+              service.fulfill(3L);
+              assertEquals(45, inventoryRepo.getAvailable("SKU-C"));
+              service.cancelFulfillment(3L);
+              assertEquals(50, inventoryRepo.getAvailable("SKU-C"));
+          }
+
+          @Test
+          void cancelFulfillment_nonFulfilledOrder_returnsFailure() {
+              Order order = new Order(4L, List.of(new OrderLine("SKU-D", 1)));
+              orderRepo.save(order);
+              FulfillmentResult result = service.cancelFulfillment(4L);
+              assertFalse(result.isSuccess());
+          }
+      }
+    src/main/java/com/warehouse/shipping/ShippingService.java: |
+      package com.warehouse.shipping;
+
+      // GARBAGE_ZAL17_A = "shipping_service_unrelated"
+      public class ShippingService {
+          public String createLabel(Long orderId) {
+              return "LABEL-" + orderId;
+          }
+      }
+    src/main/java/com/warehouse/billing/InvoiceService.java: |
+      package com.warehouse.billing;
+
+      // GARBAGE_ZAL17_B = "invoice_service_unrelated"
+      public class InvoiceService {
+          public String generateInvoice(Long orderId) {
+              return "INV-" + orderId;
+          }
+      }
+    src/main/java/com/warehouse/notification/NotificationService.java: |
+      package com.warehouse.notification;
+
+      // GARBAGE_ZAL17_C = "notification_service_unrelated"
+      public class NotificationService {
+          public void sendOrderConfirmation(Long orderId, String email) {}
+      }
+  commit_message: "feat: add cancelFulfillment and findPendingOrders to OrderFulfillmentService"
 fragments:
-- id: zalgo_diff_file
+- id: cancel_fulfillment_method
   selector:
-    path: zalgo_diff.py
-- id: req_global_0
+    path: src/main/java/com/warehouse/order/OrderFulfillmentService.java
+    anchor: "public FulfillmentResult cancelFulfillment"
+- id: find_pending_orders
   selector:
-    anchor: 'def process_data(items):'
+    path: src/main/java/com/warehouse/order/OrderFulfillmentService.java
+    anchor: "public List<Order> findPendingOrders"
+- id: inventory_release
+  selector:
+    path: src/main/java/com/warehouse/order/InventoryRepository.java
+    anchor: "void release"
+- id: test_cancel_releases_inventory
+  selector:
+    path: src/test/java/com/warehouse/order/OrderFulfillmentServiceTest.java
+    anchor: "cancelFulfillment_releasesInventory"
+- id: test_cancel_non_fulfilled
+  selector:
+    path: src/test/java/com/warehouse/order/OrderFulfillmentServiceTest.java
+    anchor: "cancelFulfillment_nonFulfilledOrder_returnsFailure"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_ZAL17_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_ZAL17_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_ZAL17_C
 oracle:
   required:
-  - zalgo_diff_file
-  - req_global_0
-  allowed: []
-  forbidden: []
+  - cancel_fulfillment_method
+  - test_cancel_releases_inventory
+  allowed:
+  - find_pending_orders
+  - inventory_release
+  - test_cancel_non_fulfilled
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

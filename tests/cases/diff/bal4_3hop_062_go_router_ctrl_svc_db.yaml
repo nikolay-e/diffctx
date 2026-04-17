@@ -1,0 +1,121 @@
+name: bal4_3hop_062_go_router_ctrl_svc_db
+tags:
+- lang:go
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:trivial
+repo:
+  initial_files:
+    internal/db/query.go: |
+      package db
+
+      func FetchOrder(id int) string {
+          return "order"
+      }
+    internal/svc/order_svc.go: |
+      package svc
+
+      import "myapp/internal/db"
+
+      func LoadOrder(id int) string {
+          return db.FetchOrder(id)
+      }
+    internal/ctrl/order_ctrl.go: |
+      package ctrl
+
+      import "myapp/internal/svc"
+
+      func OrderDetail(id int) string {
+          return svc.LoadOrder(id)
+      }
+    internal/router/routes.go: |
+      package router
+
+      import "myapp/internal/ctrl"
+
+      func Setup() string {
+          return ctrl.OrderDetail(1)
+      }
+    internal/util/garbage_math.go: |
+      package util
+
+      var GARBAGE_062_MATH_A = 0
+      var GARBAGE_062_MATH_B = 1
+
+      func GarbageAdd(a, b int) int {
+          return a + b
+      }
+  changed_files:
+    internal/db/query.go: |
+      package db
+
+      func FetchOrder(id int, status string) string {
+          return "order-" + status
+      }
+    internal/svc/order_svc.go: |
+      package svc
+
+      import "myapp/internal/db"
+
+      func LoadOrder(id int) string {
+          return db.FetchOrder(id, "active")
+      }
+    internal/ctrl/order_ctrl.go: |
+      package ctrl
+
+      import "myapp/internal/svc"
+
+      func OrderDetail(id int) string {
+          return svc.LoadOrder(id)
+      }
+    internal/router/routes.go: |
+      package router
+
+      import "myapp/internal/ctrl"
+
+      func Setup() string {
+          return ctrl.OrderDetail(1)
+      }
+    internal/util/garbage_math.go: |
+      package util
+
+      var GARBAGE_062_MATH_A = 0
+      var GARBAGE_062_MATH_B = 1
+
+      func GarbageAdd(a, b int) int {
+          return a + b
+      }
+  commit_message: "add status param to FetchOrder"
+fragments:
+- id: fetch_order
+  selector:
+    path: internal/db/query.go
+    anchor: "func FetchOrder"
+- id: load_order
+  selector:
+    path: internal/svc/order_svc.go
+    anchor: "func LoadOrder"
+- id: order_detail
+  selector:
+    path: internal/ctrl/order_ctrl.go
+    anchor: "func OrderDetail"
+- id: no_garbage_math
+  selector:
+    path: internal/util/garbage_math.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_062_MATH_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_062_MATH_B
+oracle:
+  required:
+  - fetch_order
+  - load_order
+  - order_detail
+  allowed: []
+  forbidden:
+  - no_garbage_math
+  - no_global_0
+  - no_global_1

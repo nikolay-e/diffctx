@@ -1,0 +1,193 @@
+name: gap2_054_julia_new_fn_signature_currency_converter
+tags:
+- change:multi_file
+- change:new_function
+- change:signature
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:julia
+repo:
+  initial_files:
+    src/Currency.jl: |
+      module Currency
+
+      export convert_amount, exchange_rate
+
+      const RATES = Dict{String, Float64}(
+          "USD" => 1.0,
+          "EUR" => 0.85,
+          "GBP" => 0.73,
+          "JPY" => 110.0,
+      )
+
+      function exchange_rate(from::String, to::String)::Float64
+          return RATES[to] / RATES[from]
+      end
+
+      function convert_amount(amount::Float64, from::String, to::String)::Float64
+          rate = exchange_rate(from, to)
+          return round(amount * rate, digits=2)
+      end
+
+      end
+    src/Formatter.jl: |
+      module Formatter
+
+      export format_currency, format_rate
+
+      const SYMBOLS = Dict{String, String}(
+          "USD" => "\$",
+          "EUR" => "€",
+          "GBP" => "£",
+          "JPY" => "¥",
+      )
+
+      function format_currency(amount::Float64, code::String)::String
+          symbol = get(SYMBOLS, code, code)
+          return "$(symbol)$(round(amount, digits=2))"
+      end
+
+      function format_rate(from::String, to::String, rate::Float64)::String
+          return "1 $from = $(round(rate, digits=4)) $to"
+      end
+
+      end
+    src/Portfolio.jl: |
+      module Portfolio
+
+      GARBAGE_GAP2_054_STRATEGY_A = "balanced"
+      GARBAGE_GAP2_054_RISK_B = "medium"
+
+      function total_value(holdings::Dict{String, Float64}, prices::Dict{String, Float64})::Float64
+          return sum(qty * get(prices, sym, 0.0) for (sym, qty) in holdings)
+      end
+
+      function allocation_pct(holdings::Dict{String, Float64})::Dict{String, Float64}
+          total = sum(values(holdings))
+          return Dict(k => v / total for (k, v) in holdings)
+      end
+
+      end
+    src/TaxCalc.jl: |
+      module TaxCalc
+
+      GARBAGE_GAP2_054_BRACKET_C = 0.25
+      GARBAGE_GAP2_054_EXEMPT_D = 12000
+
+      function compute_tax(income::Float64, rate::Float64)::Float64
+          return income * rate
+      end
+
+      function after_tax(income::Float64, rate::Float64)::Float64
+          return income - compute_tax(income, rate)
+      end
+
+      end
+  changed_files:
+    src/Currency.jl: |
+      module Currency
+
+      export convert_amount, exchange_rate, convert_batch, supported_currencies
+
+      const RATES = Dict{String, Float64}(
+          "USD" => 1.0,
+          "EUR" => 0.85,
+          "GBP" => 0.73,
+          "JPY" => 110.0,
+      )
+
+      function supported_currencies()::Vector{String}
+          return collect(keys(RATES))
+      end
+
+      function exchange_rate(from::String, to::String)::Float64
+          return RATES[to] / RATES[from]
+      end
+
+      function convert_amount(amount::Float64, from::String, to::String)::Float64
+          rate = exchange_rate(from, to)
+          return round(amount * rate, digits=2)
+      end
+
+      function convert_batch(amounts::Vector{Float64}, from::String, to::String)::Vector{Float64}
+          rate = exchange_rate(from, to)
+          return [round(a * rate, digits=2) for a in amounts]
+      end
+
+      end
+    src/Formatter.jl: |
+      module Formatter
+
+      export format_currency, format_rate, format_conversion
+
+      const SYMBOLS = Dict{String, String}(
+          "USD" => "\$",
+          "EUR" => "€",
+          "GBP" => "£",
+          "JPY" => "¥",
+      )
+
+      function format_currency(amount::Float64, code::String)::String
+          symbol = get(SYMBOLS, code, code)
+          return "$(symbol)$(round(amount, digits=2))"
+      end
+
+      function format_rate(from::String, to::String, rate::Float64)::String
+          return "1 $from = $(round(rate, digits=4)) $to"
+      end
+
+      function format_conversion(amount::Float64, from::String, result::Float64, to::String)::String
+          src = format_currency(amount, from)
+          dst = format_currency(result, to)
+          return "$src → $dst"
+      end
+
+      end
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: currency_supported
+  selector:
+    path: src/Currency.jl
+    anchor: "function supported_currencies()::Vector{String}"
+- id: currency_batch
+  selector:
+    path: src/Currency.jl
+    anchor: "function convert_batch(amounts::Vector{Float64}"
+- id: formatter_conversion
+  selector:
+    path: src/Formatter.jl
+    anchor: "function format_conversion(amount::Float64, from::String"
+- id: no_portfolio
+  selector:
+    path: src/Portfolio.jl
+- id: no_taxcalc
+  selector:
+    path: src/TaxCalc.jl
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP2_054_STRATEGY_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GAP2_054_RISK_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GAP2_054_BRACKET_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GAP2_054_EXEMPT_D
+oracle:
+  required:
+  - currency_supported
+  - currency_batch
+  - formatter_conversion
+  allowed: []
+  forbidden:
+  - no_portfolio
+  - no_taxcalc
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

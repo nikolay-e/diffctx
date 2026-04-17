@@ -1,0 +1,189 @@
+name: gap2_118_lua_signature_import_chain_logger
+tags:
+- change:signature
+- change:single_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:lua
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    lib/logger.lua: |
+      local M = {}
+
+      function M.log(level, message)
+          print(string.format("[%s] %s", level, message))
+      end
+
+      function M.info(message)
+          M.log("INFO", message)
+      end
+
+      function M.error(message)
+          M.log("ERROR", message)
+      end
+
+      return M
+    lib/service.lua: |
+      local logger = require("lib.logger")
+
+      local M = {}
+
+      function M.start(name)
+          logger.info("Starting service: " .. name)
+          return { name = name, running = true }
+      end
+
+      function M.stop(svc)
+          logger.info("Stopping service: " .. svc.name)
+          svc.running = false
+      end
+
+      function M.crash(svc, reason)
+          logger.error("Service crashed: " .. svc.name .. " reason: " .. reason)
+          svc.running = false
+      end
+
+      return M
+    app/server.lua: |
+      local service = require("lib.service")
+
+      local M = {}
+
+      function M.boot()
+          M.http = service.start("http")
+          M.worker = service.start("worker")
+      end
+
+      function M.shutdown()
+          service.stop(M.http)
+          service.stop(M.worker)
+      end
+
+      return M
+    lib/config_parser.lua: |
+      local TRAP_GAP2_118_PARSER_A = "ini_parser"
+      local TRAP_GAP2_118_STRICT_B = false
+
+      local M = {}
+
+      function M.parse(text)
+          local result = {}
+          for line in text:gmatch("[^\n]+") do
+              local key, val = line:match("^(%w+)%s*=%s*(.+)$")
+              if key then result[key] = val end
+          end
+          return result
+      end
+
+      return M
+  changed_files:
+    lib/logger.lua: |
+      local M = {}
+
+      function M.log(level, message, context)
+          context = context or {}
+          local ctx_str = ""
+          for k, v in pairs(context) do
+              ctx_str = ctx_str .. " " .. k .. "=" .. tostring(v)
+          end
+          print(string.format("[%s] %s%s", level, message, ctx_str))
+      end
+
+      function M.info(message, context)
+          M.log("INFO", message, context)
+      end
+
+      function M.error(message, context)
+          M.log("ERROR", message, context)
+      end
+
+      return M
+    lib/service.lua: |
+      local logger = require("lib.logger")
+
+      local M = {}
+
+      function M.start(name)
+          logger.info("Starting service: " .. name)
+          return { name = name, running = true }
+      end
+
+      function M.stop(svc)
+          logger.info("Stopping service: " .. svc.name)
+          svc.running = false
+      end
+
+      function M.crash(svc, reason)
+          logger.error("Service crashed: " .. svc.name .. " reason: " .. reason)
+          svc.running = false
+      end
+
+      return M
+    app/server.lua: |
+      local service = require("lib.service")
+
+      local M = {}
+
+      function M.boot()
+          M.http = service.start("http")
+          M.worker = service.start("worker")
+      end
+
+      function M.shutdown()
+          service.stop(M.http)
+          service.stop(M.worker)
+      end
+
+      return M
+    lib/config_parser.lua: |
+      local TRAP_GAP2_118_PARSER_A = "ini_parser"
+      local TRAP_GAP2_118_STRICT_B = false
+
+      local M = {}
+
+      function M.parse(text)
+          local result = {}
+          for line in text:gmatch("[^\n]+") do
+              local key, val = line:match("^(%w+)%s*=%s*(.+)$")
+              if key then result[key] = val end
+          end
+          return result
+      end
+
+      return M
+  commit_message: Update files
+fragments:
+- id: log_sig
+  selector:
+    path: lib/logger.lua
+    anchor: function M.log(level, message, context)
+- id: info_sig
+  selector:
+    path: lib/logger.lua
+    anchor: function M.info(message, context)
+- id: service_require
+  selector:
+    path: lib/service.lua
+    anchor: require("lib.logger")
+- id: no_parser
+  selector:
+    path: lib/config_parser.lua
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_118_PARSER_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_118_STRICT_B
+oracle:
+  required:
+  - log_sig
+  - info_sig
+  - service_require
+  allowed: []
+  forbidden:
+  - no_parser
+  - no_global_0
+  - no_global_1

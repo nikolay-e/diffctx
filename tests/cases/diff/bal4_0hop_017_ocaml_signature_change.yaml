@@ -1,0 +1,90 @@
+name: bal4_0hop_017_ocaml_signature_change
+tags:
+- lang:ocaml
+- change:single_file
+- change:signature
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/lookup.ml: |
+      let find key lst =
+        List.assoc key lst
+
+      let mem key lst =
+        List.mem_assoc key lst
+    src/garbage_map.ml: |
+      let garbage_b4o017_map_a = "map"
+      let garbage_b4o017_map_b = 42
+
+      let garbage_get k = k
+    src/garbage_set.ml: |
+      let garbage_b4o017_set_c = "set"
+      let garbage_b4o017_set_d = false
+
+      let garbage_add x = x
+  changed_files:
+    src/lookup.ml: |
+      let find key lst =
+        match List.assoc_opt key lst with
+        | Some v -> Ok v
+        | None -> Error "not found"
+
+      let mem key lst =
+        List.mem_assoc key lst
+    src/garbage_map.ml: |
+      let garbage_b4o017_map_a = "map"
+      let garbage_b4o017_map_b = 42
+
+      let garbage_get k = k
+    src/garbage_set.ml: |
+      let garbage_b4o017_set_c = "set"
+      let garbage_b4o017_set_d = false
+
+      let garbage_add x = x
+  commit_message: "feat: return result type from find instead of raising"
+fragments:
+- id: result_body
+  selector:
+    path: src/lookup.ml
+    anchor: "List.assoc_opt key lst"
+- id: ok_branch
+  selector:
+    path: src/lookup.ml
+    anchor: "| Some v -> Ok v"
+- id: error_branch
+  selector:
+    path: src/lookup.ml
+    anchor: "| None -> Error \"not found\""
+- id: no_garbage_map
+  selector:
+    path: src/garbage_map.ml
+- id: no_garbage_set
+  selector:
+    path: src/garbage_set.ml
+- id: no_global_0
+  selector:
+    anchor: garbage_b4o017_map_a
+- id: no_global_1
+  selector:
+    anchor: garbage_b4o017_map_b
+- id: no_global_2
+  selector:
+    anchor: garbage_b4o017_set_c
+- id: no_global_3
+  selector:
+    anchor: garbage_b4o017_set_d
+oracle:
+  required:
+  - result_body
+  - ok_branch
+  - error_branch
+  allowed: []
+  forbidden:
+  - no_garbage_map
+  - no_garbage_set
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

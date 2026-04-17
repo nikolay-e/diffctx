@@ -1,0 +1,145 @@
+name: bal4_bugfix_010_cpp_missing_return_early
+tags:
+- lang:cpp
+- change:single_file
+- change:bug_fix
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/cache.cpp: |
+      #include <unordered_map>
+      #include <string>
+      #include <optional>
+
+      class LRUCache {
+      public:
+          explicit LRUCache(int capacity) : capacity_(capacity) {}
+
+          std::optional<std::string> get(const std::string& key) const {
+              auto it = store_.find(key);
+              if (it == store_.end()) {
+                  std::optional<std::string>{};
+              }
+              return it->second;
+          }
+
+          void put(const std::string& key, const std::string& value) {
+              store_[key] = value;
+          }
+
+          int size() const {
+              return store_.size();
+          }
+
+      private:
+          int capacity_;
+          std::unordered_map<std::string, std::string> store_;
+      };
+    garbage_bal4_010_crypto.cpp: |
+      // GARBAGE_BAL4_010_CRYPTO_A = "aes256"
+      // GARBAGE_BAL4_010_KEY_B = 256
+      class CryptoEngine {
+          // GARBAGE_BAL4_010_IV_C = 16
+          void encrypt() {}
+      };
+    garbage_bal4_010_dns.cpp: |
+      // GARBAGE_BAL4_010_DNS_D = "cloudflare"
+      // GARBAGE_BAL4_010_TTL_E = 300
+      class DnsResolver {
+          // GARBAGE_BAL4_010_RETRIES_F = 3
+          void resolve() {}
+      };
+  changed_files:
+    src/cache.cpp: |
+      #include <unordered_map>
+      #include <string>
+      #include <optional>
+
+      class LRUCache {
+      public:
+          explicit LRUCache(int capacity) : capacity_(capacity) {}
+
+          std::optional<std::string> get(const std::string& key) const {
+              auto it = store_.find(key);
+              if (it == store_.end()) {
+                  return std::optional<std::string>{};
+              }
+              return it->second;
+          }
+
+          void put(const std::string& key, const std::string& value) {
+              store_[key] = value;
+          }
+
+          int size() const {
+              return store_.size();
+          }
+
+      private:
+          int capacity_;
+          std::unordered_map<std::string, std::string> store_;
+      };
+    garbage_bal4_010_crypto.cpp: |
+      // GARBAGE_BAL4_010_CRYPTO_A = "aes256"
+      // GARBAGE_BAL4_010_KEY_B = 256
+      class CryptoEngine {
+          // GARBAGE_BAL4_010_IV_C = 16
+          void encrypt() {}
+      };
+    garbage_bal4_010_dns.cpp: |
+      // GARBAGE_BAL4_010_DNS_D = "cloudflare"
+      // GARBAGE_BAL4_010_TTL_E = 300
+      class DnsResolver {
+          // GARBAGE_BAL4_010_RETRIES_F = 3
+          void resolve() {}
+      };
+  commit_message: "fix: add missing return for cache miss path"
+fragments:
+- id: get_func
+  selector:
+    path: src/cache.cpp
+    anchor: "std::optional<std::string> get(const std::string& key) const"
+- id: return_fix
+  selector:
+    path: src/cache.cpp
+    anchor: "return std::optional<std::string>{}"
+- id: no_garbage_crypto
+  selector:
+    path: garbage_bal4_010_crypto.cpp
+- id: no_garbage_dns
+  selector:
+    path: garbage_bal4_010_dns.cpp
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL4_010_CRYPTO_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL4_010_KEY_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL4_010_IV_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL4_010_DNS_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL4_010_TTL_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL4_010_RETRIES_F
+oracle:
+  required:
+  - get_func
+  - return_fix
+  allowed: []
+  forbidden:
+  - no_garbage_crypto
+  - no_garbage_dns
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

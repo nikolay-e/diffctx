@@ -1,0 +1,330 @@
+name: bal2_1hop_002_rb_service_object_signature
+tags:
+- lang:ruby
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    lib/payments/stripe_gateway.rb: |
+      require 'stripe'
+
+      module Payments
+        class StripeGateway
+          def initialize(api_key)
+            @api_key = api_key
+            Stripe.api_key = api_key
+          end
+
+          def charge(amount_cents, currency, source_token)
+            Stripe::Charge.create(
+              amount: amount_cents,
+              currency: currency,
+              source: source_token
+            )
+          end
+
+          def refund(charge_id)
+            Stripe::Refund.create(charge: charge_id)
+          end
+        end
+      end
+    lib/payments/payment_processor.rb: |
+      require_relative 'stripe_gateway'
+      require_relative '../logging/transaction_logger'
+
+      module Payments
+        class PaymentProcessor
+          def initialize(gateway: StripeGateway.new(ENV['STRIPE_KEY']))
+            @gateway = gateway
+            @logger = Logging::TransactionLogger.new
+          end
+
+          def process_payment(order)
+            result = @gateway.charge(
+              order.total_cents,
+              'usd',
+              order.payment_token
+            )
+            @logger.log_transaction(order.id, result.id, 'charge')
+            result
+          rescue Stripe::CardError => e
+            @logger.log_failure(order.id, e.message)
+            raise
+          end
+
+          def process_refund(order)
+            result = @gateway.refund(order.charge_id)
+            @logger.log_transaction(order.id, result.id, 'refund')
+            result
+          end
+        end
+      end
+    app/controllers/checkout_controller.rb: |
+      require_relative '../../lib/payments/payment_processor'
+
+      class CheckoutController < ApplicationController
+        before_action :authenticate_user!
+
+        def create
+          processor = Payments::PaymentProcessor.new
+          order = current_user.cart.to_order
+          result = processor.process_payment(order)
+          redirect_to receipt_path(order), notice: 'Payment successful'
+        rescue Stripe::CardError => e
+          flash[:error] = e.message
+          redirect_to cart_path
+        end
+      end
+    app/workers/refund_worker.rb: |
+      require_relative '../../lib/payments/payment_processor'
+
+      class RefundWorker
+        include Sidekiq::Worker
+        sidekiq_options queue: :payments, retry: 3
+
+        def perform(order_id)
+          order = Order.find(order_id)
+          processor = Payments::PaymentProcessor.new
+          processor.process_refund(order)
+          OrderMailer.refund_confirmation(order).deliver_later
+        end
+      end
+    lib/logging/transaction_logger.rb: |
+      module Logging
+        class TransactionLogger
+          def initialize(output: $stdout)
+            @output = output
+          end
+
+          def log_transaction(order_id, transaction_id, type)
+            @output.puts "[#{Time.current}] #{type}: order=#{order_id} txn=#{transaction_id}"
+          end
+
+          def log_failure(order_id, message)
+            @output.puts "[#{Time.current}] FAILURE: order=#{order_id} msg=#{message}"
+          end
+        end
+      end
+    app/models/subscription.rb: |
+      class Subscription < ApplicationRecord
+        belongs_to :user
+        belongs_to :plan
+
+        validates :status, inclusion: { in: %w[active paused cancelled expired] }
+        validates :current_period_end, presence: true
+
+        scope :active, -> { where(status: 'active') }
+        scope :expiring_soon, -> { active.where('current_period_end < ?', 7.days.from_now) }
+
+        def renew!
+          update!(
+            current_period_start: Time.current,
+            current_period_end: 1.month.from_now
+          )
+        end
+      end
+    app/helpers/currency_helper.rb: |
+      module CurrencyHelper
+        SYMBOLS = { 'usd' => '$', 'eur' => "\u20AC", 'gbp' => "\u00A3" }.freeze
+
+        def format_currency(amount_cents, currency = 'usd')
+          symbol = SYMBOLS.fetch(currency, currency.upcase)
+          "#{symbol}#{'%.2f' % (amount_cents / 100.0)}"
+        end
+
+        def format_price_range(min_cents, max_cents, currency = 'usd')
+          "#{format_currency(min_cents, currency)} - #{format_currency(max_cents, currency)}"
+        end
+      end
+  changed_files:
+    lib/payments/stripe_gateway.rb: |
+      require 'stripe'
+
+      module Payments
+        class StripeGateway
+          def initialize(api_key)
+            @api_key = api_key
+            Stripe.api_key = api_key
+          end
+
+          def charge(amount_cents, currency, source_token, idempotency_key: nil)
+            params = {
+              amount: amount_cents,
+              currency: currency,
+              source: source_token
+            }
+            options = {}
+            options[:idempotency_key] = idempotency_key if idempotency_key
+            Stripe::Charge.create(params, options)
+          end
+
+          def refund(charge_id, amount_cents: nil)
+            params = { charge: charge_id }
+            params[:amount] = amount_cents if amount_cents
+            Stripe::Refund.create(params)
+          end
+
+          def retrieve_charge(charge_id)
+            Stripe::Charge.retrieve(charge_id)
+          end
+        end
+      end
+    lib/payments/payment_processor.rb: |
+      require_relative 'stripe_gateway'
+      require_relative '../logging/transaction_logger'
+
+      module Payments
+        class PaymentProcessor
+          def initialize(gateway: StripeGateway.new(ENV['STRIPE_KEY']))
+            @gateway = gateway
+            @logger = Logging::TransactionLogger.new
+          end
+
+          def process_payment(order)
+            result = @gateway.charge(
+              order.total_cents,
+              'usd',
+              order.payment_token,
+              idempotency_key: "order-#{order.id}"
+            )
+            @logger.log_transaction(order.id, result.id, 'charge')
+            result
+          rescue Stripe::CardError => e
+            @logger.log_failure(order.id, e.message)
+            raise
+          end
+
+          def process_refund(order, partial_amount: nil)
+            result = @gateway.refund(order.charge_id, amount_cents: partial_amount)
+            @logger.log_transaction(order.id, result.id, 'refund')
+            result
+          end
+        end
+      end
+    app/controllers/checkout_controller.rb: |
+      require_relative '../../lib/payments/payment_processor'
+
+      class CheckoutController < ApplicationController
+        before_action :authenticate_user!
+
+        def create
+          processor = Payments::PaymentProcessor.new
+          order = current_user.cart.to_order
+          result = processor.process_payment(order)
+          redirect_to receipt_path(order), notice: 'Payment successful'
+        rescue Stripe::CardError => e
+          flash[:error] = e.message
+          redirect_to cart_path
+        end
+      end
+    app/workers/refund_worker.rb: |
+      require_relative '../../lib/payments/payment_processor'
+
+      class RefundWorker
+        include Sidekiq::Worker
+        sidekiq_options queue: :payments, retry: 3
+
+        def perform(order_id)
+          order = Order.find(order_id)
+          processor = Payments::PaymentProcessor.new
+          processor.process_refund(order)
+          OrderMailer.refund_confirmation(order).deliver_later
+        end
+      end
+    lib/logging/transaction_logger.rb: |
+      module Logging
+        class TransactionLogger
+          def initialize(output: $stdout)
+            @output = output
+          end
+
+          def log_transaction(order_id, transaction_id, type)
+            @output.puts "[#{Time.current}] #{type}: order=#{order_id} txn=#{transaction_id}"
+          end
+
+          def log_failure(order_id, message)
+            @output.puts "[#{Time.current}] FAILURE: order=#{order_id} msg=#{message}"
+          end
+        end
+      end
+    app/models/subscription.rb: |
+      class Subscription < ApplicationRecord
+        belongs_to :user
+        belongs_to :plan
+
+        validates :status, inclusion: { in: %w[active paused cancelled expired] }
+        validates :current_period_end, presence: true
+
+        scope :active, -> { where(status: 'active') }
+        scope :expiring_soon, -> { active.where('current_period_end < ?', 7.days.from_now) }
+
+        def renew!
+          update!(
+            current_period_start: Time.current,
+            current_period_end: 1.month.from_now
+          )
+        end
+      end
+    app/helpers/currency_helper.rb: |
+      module CurrencyHelper
+        SYMBOLS = { 'usd' => '$', 'eur' => "\u20AC", 'gbp' => "\u00A3" }.freeze
+
+        def format_currency(amount_cents, currency = 'usd')
+          symbol = SYMBOLS.fetch(currency, currency.upcase)
+          "#{symbol}#{'%.2f' % (amount_cents / 100.0)}"
+        end
+
+        def format_price_range(min_cents, max_cents, currency = 'usd')
+          "#{format_currency(min_cents, currency)} - #{format_currency(max_cents, currency)}"
+        end
+      end
+  commit_message: "feat: add idempotency keys and partial refunds to payment gateway"
+fragments:
+- id: processor_imports_gateway
+  selector:
+    path: lib/payments/payment_processor.rb
+    anchor: "require_relative 'stripe_gateway'"
+- id: processor_idempotency_key
+  selector:
+    path: lib/payments/payment_processor.rb
+    anchor: "idempotency_key: \"order-#{order.id}\""
+- id: processor_partial_refund
+  selector:
+    path: lib/payments/payment_processor.rb
+    anchor: "def process_refund(order, partial_amount: nil)"
+- id: processor_refund_call
+  selector:
+    path: lib/payments/payment_processor.rb
+    anchor: "@gateway.refund(order.charge_id, amount_cents: partial_amount)"
+- id: checkout_uses_processor
+  selector:
+    path: app/controllers/checkout_controller.rb
+    anchor: "processor.process_payment(order)"
+- id: refund_worker_uses_processor
+  selector:
+    path: app/workers/refund_worker.rb
+    anchor: "processor.process_refund(order)"
+- id: no_subscription
+  selector:
+    path: app/models/subscription.rb
+- id: no_currency_helper
+  selector:
+    path: app/helpers/currency_helper.rb
+- id: no_transaction_logger
+  selector:
+    path: lib/logging/transaction_logger.rb
+oracle:
+  required:
+  - processor_imports_gateway
+  - processor_idempotency_key
+  - processor_partial_refund
+  - processor_refund_call
+  - checkout_uses_processor
+  - refund_worker_uses_processor
+  allowed: []
+  forbidden:
+  - no_subscription
+  - no_currency_helper
+  - no_transaction_logger

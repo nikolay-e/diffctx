@@ -1,0 +1,129 @@
+name: gap2_003_python_auction_bid_comparison_fix
+tags:
+- lang:python
+- change:bug_fix
+- change:multi_file
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    auction/engine.py: |
+      from auction.models import Bid
+
+      class AuctionEngine:
+          def __init__(self, reserve_price: float):
+              self.reserve_price = reserve_price
+              self._bids: list[Bid] = []
+
+          def place_bid(self, bid: Bid) -> bool:
+              if bid.amount < self.reserve_price:
+                  return False
+              self._bids.append(bid)
+              return True
+
+          def winning_bid(self) -> Bid | None:
+              if not self._bids:
+                  return None
+              return max(self._bids, key=lambda b: b.timestamp)
+
+          def total_bids(self) -> int:
+              return len(self._bids)
+    auction/models.py: |
+      from dataclasses import dataclass
+      from datetime import datetime
+
+      @dataclass
+      class Bid:
+          bidder_id: str
+          amount: float
+          timestamp: datetime
+
+      @dataclass
+      class AuctionItem:
+          item_id: str
+          title: str
+          description: str
+          starting_price: float
+    auction/notifications.py: |
+      class BidNotifier:
+          def __init__(self, subscribers: list[str]):
+              self._subscribers = subscribers
+
+          def notify_new_bid(self, bidder_id: str, amount: float) -> int:
+              sent = 0
+              for subscriber in self._subscribers:
+                  sent += 1
+              return sent
+
+          def notify_auction_end(self, winner_id: str) -> int:
+              return len(self._subscribers)
+  changed_files:
+    auction/engine.py: |
+      from auction.models import Bid
+
+      class AuctionEngine:
+          def __init__(self, reserve_price: float):
+              self.reserve_price = reserve_price
+              self._bids: list[Bid] = []
+
+          def place_bid(self, bid: Bid) -> bool:
+              if bid.amount < self.reserve_price:
+                  return False
+              self._bids.append(bid)
+              return True
+
+          def winning_bid(self) -> Bid | None:
+              if not self._bids:
+                  return None
+              return max(self._bids, key=lambda b: b.amount)
+
+          def total_bids(self) -> int:
+              return len(self._bids)
+    auction/models.py: |
+      from dataclasses import dataclass
+      from datetime import datetime
+
+      @dataclass
+      class Bid:
+          bidder_id: str
+          amount: float
+          timestamp: datetime
+
+      @dataclass
+      class AuctionItem:
+          item_id: str
+          title: str
+          description: str
+          starting_price: float
+  commit_message: "fix: winning bid selects highest amount not latest timestamp"
+fragments:
+- id: winning_bid_fix
+  selector:
+    path: auction/engine.py
+    anchor: "def winning_bid"
+- id: bid_model
+  selector:
+    path: auction/engine.py
+    anchor: "lambda b: b.amount"
+- id: place_bid
+  selector:
+    path: auction/engine.py
+    anchor: "def place_bid"
+- id: no_notifications
+  selector:
+    path: auction/notifications.py
+- id: no_notifier
+  selector:
+    anchor: BidNotifier
+oracle:
+  required:
+  - winning_bid_fix
+  - bid_model
+  - place_bid
+  allowed: []
+  forbidden:
+  - no_notifications
+  - no_notifier

@@ -1,593 +1,236 @@
 name: cpp_028_virtual_function
+tags:
+- lang:go
+- change:multi_file
+- change:new_function
+- context:same_file
+- distance:0hop
+- difficulty:easy
 repo:
   initial_files:
-    include/ui/drawable.hpp: |
-      #pragma once
-      #include <string>
-      #include <iostream>
+    internal/telemetry/metrics.go: |
+      package telemetry
 
-      namespace app::ui {
+      import "sync/atomic"
 
-      struct Rect {
-          int x, y, width, height;
-      };
-
-      struct Color {
-          unsigned char r, g, b, a;
-
-          static Color red() { return {255, 0, 0, 255}; }
-          static Color green() { return {0, 255, 0, 255}; }
-          static Color blue() { return {0, 0, 255, 255}; }
-          static Color white() { return {255, 255, 255, 255}; }
-          static Color black() { return {0, 0, 0, 255}; }
-      };
-
-      class Drawable {
-      public:
-          virtual ~Drawable() = default;
-
-          virtual void draw() = 0;
-          virtual void resize(int w, int h) = 0;
-          virtual Rect getBounds() const = 0;
-
-          virtual std::string getName() const {
-              return "Drawable";
-          }
-
-          virtual void setVisible(bool visible) {
-              visible_ = visible;
-          }
-
-          virtual bool isVisible() const {
-              return visible_;
-          }
-
-          virtual void setColor(const Color& color) {
-              color_ = color;
-          }
-
-          virtual Color getColor() const {
-              return color_;
-          }
-
-      protected:
-          bool visible_ = true;
-          Color color_ = Color::white();
-      };
-
-      class Transformable {
-      public:
-          virtual ~Transformable() = default;
-
-          virtual void setPosition(int x, int y) = 0;
-          virtual void setScale(float sx, float sy) = 0;
-          virtual void setRotation(float degrees) = 0;
-      };
-
+      type Counter struct {
+          name  string
+          value int64
       }
-    include/unrelated/audio_mixer.hpp: |
-      #pragma once
-      // GARBAGE_CPP_AUDIO_269_001
-      #define GARBAGE_CPP_AUDIO_CHANNELS_269_002 8
 
-      namespace app::unrelated::audio {
-
-      // GARBAGE_CPP_AUDIO_SAMPLE_269_003
-      struct AudioSample {
-          float* data;
-          size_t length;
-          int sampleRate;
-          // GARBAGE_CPP_AUDIO_FORMAT_269_004
-      };
-
-      // GARBAGE_CPP_AUDIO_MIXER_269_005
-      class AudioMixer {
-      public:
-          // GARBAGE_CPP_AUDIO_MIX_269_006
-          void mixSamples(const AudioSample& a, const AudioSample& b, AudioSample& out) {
-              // GARBAGE_CPP_AUDIO_MIX_IMPL_269_007
-          }
-
-          // GARBAGE_CPP_AUDIO_VOLUME_269_008
-          void setVolume(int channel, float volume) {
-              // GARBAGE_CPP_AUDIO_VOL_IMPL_269_009
-          }
-
-          // GARBAGE_CPP_AUDIO_PAN_269_010
-          void setPan(int channel, float pan) {
-              // GARBAGE_CPP_AUDIO_PAN_IMPL_269_011
-          }
-      };
-
+      func NewCounter(name string) *Counter {
+          return &Counter{name: name}
       }
-    src/unrelated/shader_compiler.cpp: |
-      // GARBAGE_CPP_SHADER_269_012
-      #include <string>
 
-      namespace app::unrelated::shader {
-
-      // GARBAGE_CPP_SHADER_TYPE_269_013
-      enum class ShaderType {
-          Vertex,
-          Fragment,
-          Geometry,
-          Compute
-      };
-
-      // GARBAGE_CPP_SHADER_COMPILER_269_014
-      class ShaderCompiler {
-      public:
-          // GARBAGE_CPP_SHADER_COMPILE_269_015
-          bool compile(ShaderType type, const std::string& source) {
-              // GARBAGE_CPP_SHADER_COMP_IMPL_269_016
-              return false;
-          }
-
-          // GARBAGE_CPP_SHADER_LINK_269_017
-          bool link() {
-              // GARBAGE_CPP_SHADER_LINK_IMPL_269_018
-              return false;
-          }
-
-          // GARBAGE_CPP_SHADER_ERROR_269_019
-          std::string getError() {
-              // GARBAGE_CPP_SHADER_ERR_IMPL_269_020
-              return "";
-          }
-      };
-
+      func (c *Counter) Increment() {
+          atomic.AddInt64(&c.value, 1)
       }
-    src/widget.cpp: |
-      #include <iostream>
-      int main() { return 0; }
+
+      func (c *Counter) Value() int64 {
+          return atomic.LoadInt64(&c.value)
+      }
+    internal/telemetry/gauge.go: |
+      package telemetry
+
+      import "sync/atomic"
+      import "math"
+
+      type Gauge struct {
+          name  string
+          bits  uint64
+      }
+
+      func NewGauge(name string) *Gauge {
+          return &Gauge{name: name}
+      }
+
+      func (g *Gauge) Set(v float64) {
+          atomic.StoreUint64(&g.bits, math.Float64bits(v))
+      }
+
+      func (g *Gauge) Get() float64 {
+          return math.Float64frombits(atomic.LoadUint64(&g.bits))
+      }
+    internal/database/connection.go: |
+      package database
+
+      import "fmt"
+
+      type Connection struct {
+          host string
+          port int
+      }
+
+      func NewConnection(host string, port int) *Connection {
+          return &Connection{host: host, port: port}
+      }
+
+      func (c *Connection) Ping() error {
+          fmt.Printf("pinging %s:%d\n", c.host, c.port)
+          return nil
+      }
+    garbage/alerts.go: |
+      // GARBAGE_CPP28_ALERT_A = "alerts_marker"
+    garbage/backup.go: |
+      // GARBAGE_CPP28_BACKUP_B = "backup_marker"
+    garbage/migration.go: |
+      // GARBAGE_CPP28_MIGR_C = "migration_marker"
   changed_files:
-    include/ui/drawable.hpp: |
-      #pragma once
-      #include <string>
-      #include <iostream>
+    internal/telemetry/metrics.go: |
+      package telemetry
 
-      namespace app::ui {
+      import "sync/atomic"
 
-      struct Rect {
-          int x, y, width, height;
-      };
-
-      struct Color {
-          unsigned char r, g, b, a;
-
-          static Color red() { return {255, 0, 0, 255}; }
-          static Color green() { return {0, 255, 0, 255}; }
-          static Color blue() { return {0, 0, 255, 255}; }
-          static Color white() { return {255, 255, 255, 255}; }
-          static Color black() { return {0, 0, 0, 255}; }
-      };
-
-      class Drawable {
-      public:
-          virtual ~Drawable() = default;
-
-          virtual void draw() = 0;
-          virtual void resize(int w, int h) = 0;
-          virtual Rect getBounds() const = 0;
-
-          virtual std::string getName() const {
-              return "Drawable";
-          }
-
-          virtual void setVisible(bool visible) {
-              visible_ = visible;
-          }
-
-          virtual bool isVisible() const {
-              return visible_;
-          }
-
-          virtual void setColor(const Color& color) {
-              color_ = color;
-          }
-
-          virtual Color getColor() const {
-              return color_;
-          }
-
-      protected:
-          bool visible_ = true;
-          Color color_ = Color::white();
-      };
-
-      class Transformable {
-      public:
-          virtual ~Transformable() = default;
-
-          virtual void setPosition(int x, int y) = 0;
-          virtual void setScale(float sx, float sy) = 0;
-          virtual void setRotation(float degrees) = 0;
-      };
-
+      type Counter struct {
+          name  string
+          value int64
       }
-    include/unrelated/audio_mixer.hpp: |
-      #pragma once
-      // GARBAGE_CPP_AUDIO_269_001
-      #define GARBAGE_CPP_AUDIO_CHANNELS_269_002 8
 
-      namespace app::unrelated::audio {
-
-      // GARBAGE_CPP_AUDIO_SAMPLE_269_003
-      struct AudioSample {
-          float* data;
-          size_t length;
-          int sampleRate;
-          // GARBAGE_CPP_AUDIO_FORMAT_269_004
-      };
-
-      // GARBAGE_CPP_AUDIO_MIXER_269_005
-      class AudioMixer {
-      public:
-          // GARBAGE_CPP_AUDIO_MIX_269_006
-          void mixSamples(const AudioSample& a, const AudioSample& b, AudioSample& out) {
-              // GARBAGE_CPP_AUDIO_MIX_IMPL_269_007
-          }
-
-          // GARBAGE_CPP_AUDIO_VOLUME_269_008
-          void setVolume(int channel, float volume) {
-              // GARBAGE_CPP_AUDIO_VOL_IMPL_269_009
-          }
-
-          // GARBAGE_CPP_AUDIO_PAN_269_010
-          void setPan(int channel, float pan) {
-              // GARBAGE_CPP_AUDIO_PAN_IMPL_269_011
-          }
-      };
-
+      func NewCounter(name string) *Counter {
+          return &Counter{name: name}
       }
-    src/unrelated/shader_compiler.cpp: |
-      // GARBAGE_CPP_SHADER_269_012
-      #include <string>
 
-      namespace app::unrelated::shader {
-
-      // GARBAGE_CPP_SHADER_TYPE_269_013
-      enum class ShaderType {
-          Vertex,
-          Fragment,
-          Geometry,
-          Compute
-      };
-
-      // GARBAGE_CPP_SHADER_COMPILER_269_014
-      class ShaderCompiler {
-      public:
-          // GARBAGE_CPP_SHADER_COMPILE_269_015
-          bool compile(ShaderType type, const std::string& source) {
-              // GARBAGE_CPP_SHADER_COMP_IMPL_269_016
-              return false;
-          }
-
-          // GARBAGE_CPP_SHADER_LINK_269_017
-          bool link() {
-              // GARBAGE_CPP_SHADER_LINK_IMPL_269_018
-              return false;
-          }
-
-          // GARBAGE_CPP_SHADER_ERROR_269_019
-          std::string getError() {
-              // GARBAGE_CPP_SHADER_ERR_IMPL_269_020
-              return "";
-          }
-      };
-
+      func (c *Counter) Increment() {
+          atomic.AddInt64(&c.value, 1)
       }
-    src/widget.cpp: |
-      #include "ui/drawable.hpp"
-      #include <iostream>
-      #include <vector>
-      #include <memory>
-      #include <algorithm>
 
-      namespace app::widgets {
+      func (c *Counter) Add(n int64) {
+          atomic.AddInt64(&c.value, n)
+      }
 
-      class Button : public ui::Drawable, public ui::Transformable {
-      public:
-          Button(const std::string& label, int x, int y, int w, int h)
-              : label_(label), bounds_{x, y, w, h}, scale_{1.0f, 1.0f}, rotation_(0.0f) {}
+      func (c *Counter) Reset() {
+          atomic.StoreInt64(&c.value, 0)
+      }
 
-          void draw() override {
-              if (!isVisible()) return;
-              std::cout << "Drawing button '" << label_ << "' at ("
-                        << bounds_.x << "," << bounds_.y << ") size "
-                        << bounds_.width << "x" << bounds_.height << "\n";
+      func (c *Counter) Value() int64 {
+          return atomic.LoadInt64(&c.value)
+      }
+    internal/telemetry/gauge.go: |
+      package telemetry
+
+      import (
+          "math"
+          "sync/atomic"
+      )
+
+      type Gauge struct {
+          name string
+          bits uint64
+          min  uint64
+          max  uint64
+      }
+
+      func NewGauge(name string) *Gauge {
+          return &Gauge{
+              name: name,
+              min:  math.Float64bits(math.MaxFloat64),
+              max:  math.Float64bits(-math.MaxFloat64),
           }
+      }
 
-          void resize(int w, int h) override {
-              bounds_.width = w;
-              bounds_.height = h;
-              std::cout << "Button resized to " << w << "x" << h << "\n";
-          }
-
-          ui::Rect getBounds() const override {
-              return bounds_;
-          }
-
-          std::string getName() const override {
-              return "Button: " + label_;
-          }
-
-          void setPosition(int x, int y) override {
-              bounds_.x = x;
-              bounds_.y = y;
-          }
-
-          void setScale(float sx, float sy) override {
-              scale_ = {sx, sy};
-          }
-
-          void setRotation(float degrees) override {
-              rotation_ = degrees;
-          }
-
-          void setLabel(const std::string& label) {
-              label_ = label;
-          }
-
-      private:
-          std::string label_;
-          ui::Rect bounds_;
-          std::pair<float, float> scale_;
-          float rotation_;
-      };
-
-      class Panel : public ui::Drawable {
-      public:
-          Panel(int x, int y, int w, int h)
-              : bounds_{x, y, w, h} {}
-
-          void draw() override {
-              if (!isVisible()) return;
-              std::cout << "Drawing panel at (" << bounds_.x << "," << bounds_.y
-                        << ") size " << bounds_.width << "x" << bounds_.height << "\n";
-
-              for (auto& child : children_) {
-                  child->draw();
+      func (g *Gauge) Set(v float64) {
+          bits := math.Float64bits(v)
+          atomic.StoreUint64(&g.bits, bits)
+          for {
+              old := atomic.LoadUint64(&g.min)
+              if math.Float64frombits(old) <= v {
+                  break
+              }
+              if atomic.CompareAndSwapUint64(&g.min, old, bits) {
+                  break
               }
           }
-
-          void resize(int w, int h) override {
-              bounds_.width = w;
-              bounds_.height = h;
-          }
-
-          ui::Rect getBounds() const override {
-              return bounds_;
-          }
-
-          std::string getName() const override {
-              return "Panel";
-          }
-
-          void addChild(std::shared_ptr<ui::Drawable> child) {
-              children_.push_back(child);
-          }
-
-          size_t childCount() const {
-              return children_.size();
-          }
-
-      private:
-          ui::Rect bounds_;
-          std::vector<std::shared_ptr<ui::Drawable>> children_;
-      };
-
-      class Label : public ui::Drawable {
-      public:
-          Label(const std::string& text, int x, int y)
-              : text_(text), bounds_{x, y, static_cast<int>(text.length() * 8), 16} {}
-
-          void draw() override {
-              if (!isVisible()) return;
-              std::cout << "Drawing label '" << text_ << "' at ("
-                        << bounds_.x << "," << bounds_.y << ")\n";
-          }
-
-          void resize(int w, int h) override {
-              bounds_.width = w;
-              bounds_.height = h;
-          }
-
-          ui::Rect getBounds() const override {
-              return bounds_;
-          }
-
-          std::string getName() const override {
-              return "Label: " + text_;
-          }
-
-          void setText(const std::string& text) {
-              text_ = text;
-              bounds_.width = static_cast<int>(text.length() * 8);
-          }
-
-      private:
-          std::string text_;
-          ui::Rect bounds_;
-      };
-
-      class Canvas : public ui::Drawable {
-      public:
-          Canvas(int w, int h)
-              : bounds_{0, 0, w, h} {}
-
-          void draw() override {
-              std::cout << "Drawing canvas " << bounds_.width << "x" << bounds_.height << "\n";
-              for (auto& drawable : drawables_) {
-                  drawable->draw();
+          for {
+              old := atomic.LoadUint64(&g.max)
+              if math.Float64frombits(old) >= v {
+                  break
+              }
+              if atomic.CompareAndSwapUint64(&g.max, old, bits) {
+                  break
               }
           }
-
-          void resize(int w, int h) override {
-              bounds_.width = w;
-              bounds_.height = h;
-          }
-
-          ui::Rect getBounds() const override {
-              return bounds_;
-          }
-
-          void add(std::shared_ptr<ui::Drawable> drawable) {
-              drawables_.push_back(drawable);
-          }
-
-          void clear() {
-              drawables_.clear();
-          }
-
-      private:
-          ui::Rect bounds_;
-          std::vector<std::shared_ptr<ui::Drawable>> drawables_;
-      };
-
       }
 
-      int main() {
-          auto button1 = std::make_shared<app::widgets::Button>("OK", 10, 10, 80, 30);
-          auto button2 = std::make_shared<app::widgets::Button>("Cancel", 100, 10, 80, 30);
-          auto label = std::make_shared<app::widgets::Label>("Hello World", 10, 50);
-          auto panel = std::make_shared<app::widgets::Panel>(0, 0, 200, 150);
-
-          panel->addChild(button1);
-          panel->addChild(button2);
-          panel->addChild(label);
-
-          std::cout << "=== Drawing Panel ===\n";
-          panel->draw();
-
-          std::cout << "\n=== Modifying Widgets ===\n";
-          button1->setColor(app::ui::Color::green());
-          button1->resize(100, 40);
-          button2->setVisible(false);
-
-          std::cout << "\n=== Drawing Panel Again ===\n";
-          panel->draw();
-
-          std::cout << "\n=== Widget Info ===\n";
-          std::vector<std::shared_ptr<app::ui::Drawable>> widgets = {button1, button2, label, panel};
-          for (const auto& widget : widgets) {
-              auto bounds = widget->getBounds();
-              std::cout << widget->getName() << " - visible: " << widget->isVisible()
-                        << " bounds: " << bounds.x << "," << bounds.y
-                        << " " << bounds.width << "x" << bounds.height << "\n";
-          }
-
-          std::cout << "\n=== Canvas ===\n";
-          app::widgets::Canvas canvas(800, 600);
-          canvas.add(std::make_shared<app::widgets::Button>("Start", 300, 250, 100, 40));
-          canvas.add(std::make_shared<app::widgets::Label>("Game Title", 350, 200));
-          canvas.draw();
-
-          return 0;
+      func (g *Gauge) Get() float64 {
+          return math.Float64frombits(atomic.LoadUint64(&g.bits))
       }
-  commit_message: Update files
+
+      func (g *Gauge) Min() float64 {
+          return math.Float64frombits(atomic.LoadUint64(&g.min))
+      }
+
+      func (g *Gauge) Max() float64 {
+          return math.Float64frombits(atomic.LoadUint64(&g.max))
+      }
+    internal/database/connection.go: |
+      package database
+
+      import "fmt"
+
+      type Connection struct {
+          host string
+          port int
+      }
+
+      func NewConnection(host string, port int) *Connection {
+          return &Connection{host: host, port: port}
+      }
+
+      func (c *Connection) Ping() error {
+          fmt.Printf("pinging %s:%d\n", c.host, c.port)
+          return nil
+      }
+    garbage/alerts.go: |
+      // GARBAGE_CPP28_ALERT_A = "alerts_marker"
+    garbage/backup.go: |
+      // GARBAGE_CPP28_BACKUP_B = "backup_marker"
+    garbage/migration.go: |
+      // GARBAGE_CPP28_MIGR_C = "migration_marker"
+  commit_message: "feat: add Counter.Add/Reset and Gauge min/max tracking"
 fragments:
-- id: widget_file
+- id: counter_add
   selector:
-    path: src/widget.cpp
-- id: req_global_0
+    path: internal/telemetry/metrics.go
+    anchor: "func (c *Counter) Add(n int64) {"
+- id: counter_reset
   selector:
-    anchor: namespace app::widgets {
-- id: req_global_1
+    path: internal/telemetry/metrics.go
+    anchor: "func (c *Counter) Reset() {"
+- id: gauge_min_func
   selector:
-    anchor: void resize(int w, int h) override {
-- id: no_global_0
+    path: internal/telemetry/gauge.go
+    anchor: "func (g *Gauge) Min() float64 {"
+- id: gauge_max_func
   selector:
-    anchor: GARBAGE_CPP_AUDIO_269_001
-- id: no_global_1
+    path: internal/telemetry/gauge.go
+    anchor: "func (g *Gauge) Max() float64 {"
+- id: gauge_min_tracking
   selector:
-    anchor: GARBAGE_CPP_AUDIO_CHANNELS_269_002
-- id: no_global_2
+    path: internal/telemetry/gauge.go
+    anchor: "CompareAndSwapUint64(&g.min, old, bits)"
+- id: unrelated_db
   selector:
-    anchor: GARBAGE_CPP_AUDIO_FORMAT_269_004
-- id: no_global_3
+    path: internal/database/connection.go
+    anchor: "func (c *Connection) Ping()"
+- id: no_garbage_a
   selector:
-    anchor: GARBAGE_CPP_AUDIO_MIXER_269_005
-- id: no_global_4
+    anchor: GARBAGE_CPP28_ALERT_A
+- id: no_garbage_b
   selector:
-    anchor: GARBAGE_CPP_AUDIO_MIX_269_006
-- id: no_global_5
+    anchor: GARBAGE_CPP28_BACKUP_B
+- id: no_garbage_c
   selector:
-    anchor: GARBAGE_CPP_AUDIO_MIX_IMPL_269_007
-- id: no_global_6
-  selector:
-    anchor: GARBAGE_CPP_AUDIO_PAN_269_010
-- id: no_global_7
-  selector:
-    anchor: GARBAGE_CPP_AUDIO_PAN_IMPL_269_011
-- id: no_global_8
-  selector:
-    anchor: GARBAGE_CPP_AUDIO_SAMPLE_269_003
-- id: no_global_9
-  selector:
-    anchor: GARBAGE_CPP_AUDIO_VOLUME_269_008
-- id: no_global_10
-  selector:
-    anchor: GARBAGE_CPP_AUDIO_VOL_IMPL_269_009
-- id: no_global_11
-  selector:
-    anchor: GARBAGE_CPP_SHADER_269_012
-- id: no_global_12
-  selector:
-    anchor: GARBAGE_CPP_SHADER_COMPILER_269_014
-- id: no_global_13
-  selector:
-    anchor: GARBAGE_CPP_SHADER_COMPILE_269_015
-- id: no_global_14
-  selector:
-    anchor: GARBAGE_CPP_SHADER_COMP_IMPL_269_016
-- id: no_global_15
-  selector:
-    anchor: GARBAGE_CPP_SHADER_ERROR_269_019
-- id: no_global_16
-  selector:
-    anchor: GARBAGE_CPP_SHADER_ERR_IMPL_269_020
-- id: no_global_17
-  selector:
-    anchor: GARBAGE_CPP_SHADER_LINK_269_017
-- id: no_global_18
-  selector:
-    anchor: GARBAGE_CPP_SHADER_LINK_IMPL_269_018
-- id: no_global_19
-  selector:
-    anchor: GARBAGE_CPP_SHADER_TYPE_269_013
-- id: no_global_20
-  selector:
-    anchor: audio_mixer.hpp
-- id: no_global_21
-  selector:
-    anchor: shader_compiler.cpp
+    anchor: GARBAGE_CPP28_MIGR_C
 oracle:
   required:
-  - widget_file
-  - req_global_0
-  - req_global_1
-  allowed: []
+  - counter_add
+  - counter_reset
+  - gauge_min_func
+  - gauge_max_func
+  allowed:
+  - gauge_min_tracking
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
-  - no_global_8
-  - no_global_9
-  - no_global_10
-  - no_global_11
-  - no_global_12
-  - no_global_13
-  - no_global_14
-  - no_global_15
-  - no_global_16
-  - no_global_17
-  - no_global_18
-  - no_global_19
-  - no_global_20
-  - no_global_21
+  - unrelated_db
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

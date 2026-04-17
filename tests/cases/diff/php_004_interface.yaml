@@ -1,177 +1,180 @@
 name: php_004_interface
+tags:
+- lang:python
+- change:config
+- change:single_file
+- context:cross_module
+- distance:2hop
+- difficulty:hard
 repo:
   initial_files:
-    src/Contracts/RequestHandler.php: |
-      <?php
-      namespace App\Contracts;
+    config/stream_settings.py: |
+      CDN_BASE_URL = "https://cdn.example.com"
+      SEGMENT_DURATION_SECONDS = 10
+      MAX_BITRATE_KBPS = 4000
+      BUFFER_SIZE_SEGMENTS = 3
+      ENABLE_ADAPTIVE_BITRATE = False
+    transcoder/pipeline.py: |
+      from config.stream_settings import MAX_BITRATE_KBPS, SEGMENT_DURATION_SECONDS, ENABLE_ADAPTIVE_BITRATE
 
-      interface RequestHandler {
-          public function handle(array $request): array;
-          public function validate(array $request): bool;
-          public function getMiddleware(): array;
-      }
-    src/Contracts/Middleware.php: |
-      <?php
-      namespace App\Contracts;
+      class TranscodePipeline:
+          def __init__(self):
+              self.max_bitrate = MAX_BITRATE_KBPS
+              self.segment_duration = SEGMENT_DURATION_SECONDS
+              self.adaptive = ENABLE_ADAPTIVE_BITRATE
 
-      interface Middleware {
-          public function process(array $request, callable $next): array;
-      }
-    src/Handlers/ApiHandler.php: |
-      <?php
-      namespace App\Handlers;
+          def transcode(self, input_path: str, output_dir: str) -> list:
+              return []
 
-      class ApiHandler {
-          public function respond(array $data): array {
-              return ['data' => $data, 'status' => 200];
-          }
-      }
-    src/Contracts/EventDispatcher.php: |
-      <?php
-      namespace App\Contracts;
+          def get_profiles(self) -> list:
+              if self.adaptive:
+                  return [360, 720, 1080]
+              return [1080]
+    transcoder/segmenter.py: |
+      from config.stream_settings import SEGMENT_DURATION_SECONDS, BUFFER_SIZE_SEGMENTS
 
-      interface EventDispatcher {
-          public function dispatch(string $event, array $payload): void;
-          public function listen(string $event, callable $listener): void;
-          public function hasListeners(string $event): bool;
-      }
-    src/Handlers/WebhookHandler.php: |
-      <?php
-      namespace App\Handlers;
+      class Segmenter:
+          def __init__(self):
+              self.duration = SEGMENT_DURATION_SECONDS
+              self.buffer = BUFFER_SIZE_SEGMENTS
 
-      class WebhookHandler {
-          private string $secret;
+          def segment(self, video_path: str) -> list:
+              return []
+    delivery/cdn_router.py: |
+      from config.stream_settings import CDN_BASE_URL
+      from transcoder.pipeline import TranscodePipeline
 
-          public function __construct(string $secret) {
-              $this->secret = $secret;
-          }
+      class CdnRouter:
+          def __init__(self):
+              self.cdn = CDN_BASE_URL
+              self.pipeline = TranscodePipeline()
 
-          public function verifySignature(string $payload, string $signature): bool {
-              return hash_hmac('sha256', $payload, $this->secret) === $signature;
-          }
+          def route(self, content_id: str) -> str:
+              return f"{self.cdn}/content/{content_id}"
+    garbage/GameSaveState.py: |
+      # GARBAGE_PHP004_A = "game_save_state_marker"
 
-          public function process(array $event): array {
-              return ['event' => $event['type'], 'processed' => true];
-          }
-      }
+      class GameSaveState:
+          slot = 1
+    garbage/PaymentReconciliation.py: |
+      # GARBAGE_PHP004_B = "payment_reconciliation_marker"
+
+      class PaymentReconciliation:
+          period = "monthly"
+    garbage/IoTAlertRule.py: |
+      # GARBAGE_PHP004_C = "iot_alert_rule_marker"
+
+      class IoTAlertRule:
+          threshold = 80.0
   changed_files:
-    src/Contracts/RequestHandler.php: |
-      <?php
-      namespace App\Contracts;
+    config/stream_settings.py: |
+      CDN_BASE_URL = "https://cdn.example.com"
+      SEGMENT_DURATION_SECONDS = 6
+      MAX_BITRATE_KBPS = 8000
+      BUFFER_SIZE_SEGMENTS = 5
+      ENABLE_ADAPTIVE_BITRATE = True
+      ABR_PROFILES = [360, 480, 720, 1080, 1440]
+    transcoder/pipeline.py: |
+      from config.stream_settings import MAX_BITRATE_KBPS, SEGMENT_DURATION_SECONDS, ENABLE_ADAPTIVE_BITRATE, ABR_PROFILES
 
-      interface RequestHandler {
-          public function handle(array $request): array;
-          public function validate(array $request): bool;
-          public function getMiddleware(): array;
-      }
-    src/Contracts/Middleware.php: |
-      <?php
-      namespace App\Contracts;
+      class TranscodePipeline:
+          def __init__(self):
+              self.max_bitrate = MAX_BITRATE_KBPS
+              self.segment_duration = SEGMENT_DURATION_SECONDS
+              self.adaptive = ENABLE_ADAPTIVE_BITRATE
+              self.profiles = ABR_PROFILES
 
-      interface Middleware {
-          public function process(array $request, callable $next): array;
-      }
-    src/Handlers/ApiHandler.php: |
-      <?php
-      namespace App\Handlers;
+          def transcode(self, input_path: str, output_dir: str) -> list:
+              return []
 
-      use App\Contracts\RequestHandler;
+          def get_profiles(self) -> list:
+              if self.adaptive:
+                  return self.profiles
+              return [1080]
+    transcoder/segmenter.py: |
+      from config.stream_settings import SEGMENT_DURATION_SECONDS, BUFFER_SIZE_SEGMENTS
 
-      class ApiHandler implements RequestHandler {
-          public function handle(array $request): array {
-              if (!$this->validate($request)) {
-                  return ['error' => 'Invalid request', 'status' => 400];
-              }
-              return ['data' => $request['body'] ?? [], 'status' => 200];
-          }
+      class Segmenter:
+          def __init__(self):
+              self.duration = SEGMENT_DURATION_SECONDS
+              self.buffer = BUFFER_SIZE_SEGMENTS
 
-          public function validate(array $request): bool {
-              return isset($request['action']) && isset($request['body']);
-          }
+          def segment(self, video_path: str) -> list:
+              return []
+    delivery/cdn_router.py: |
+      from config.stream_settings import CDN_BASE_URL
+      from transcoder.pipeline import TranscodePipeline
 
-          public function getMiddleware(): array {
-              return ['auth', 'throttle'];
-          }
-      }
-    src/Contracts/EventDispatcher.php: |
-      <?php
-      namespace App\Contracts;
+      class CdnRouter:
+          def __init__(self):
+              self.cdn = CDN_BASE_URL
+              self.pipeline = TranscodePipeline()
 
-      interface EventDispatcher {
-          public function dispatch(string $event, array $payload): void;
-          public function listen(string $event, callable $listener): void;
-          public function hasListeners(string $event): bool;
-      }
-    src/Handlers/WebhookHandler.php: |
-      <?php
-      namespace App\Handlers;
+          def route(self, content_id: str) -> str:
+              return f"{self.cdn}/content/{content_id}"
+    garbage/GameSaveState.py: |
+      # GARBAGE_PHP004_A = "game_save_state_marker"
 
-      class WebhookHandler {
-          private string $secret;
+      class GameSaveState:
+          slot = 1
+    garbage/PaymentReconciliation.py: |
+      # GARBAGE_PHP004_B = "payment_reconciliation_marker"
 
-          public function __construct(string $secret) {
-              $this->secret = $secret;
-          }
+      class PaymentReconciliation:
+          period = "monthly"
+    garbage/IoTAlertRule.py: |
+      # GARBAGE_PHP004_C = "iot_alert_rule_marker"
 
-          public function verifySignature(string $payload, string $signature): bool {
-              return hash_hmac('sha256', $payload, $this->secret) === $signature;
-          }
-
-          public function process(array $event): array {
-              return ['event' => $event['type'], 'processed' => true];
-          }
-      }
-  commit_message: Update files
+      class IoTAlertRule:
+          threshold = 80.0
+  commit_message: "config: enable ABR, raise bitrate to 8Mbps, add ABR_PROFILES list"
 fragments:
-- id: apihandler
+- id: config_abr_enabled
   selector:
-    path: src/Handlers/ApiHandler.php
-    anchor: implements RequestHandler
-- id: apihandler_1
+    path: config/stream_settings.py
+    anchor: "ENABLE_ADAPTIVE_BITRATE = True"
+- id: config_abr_profiles
   selector:
-    path: src/Handlers/ApiHandler.php
-    anchor: 'public function validate(array $request): bool'
-- id: requesthandler
+    path: config/stream_settings.py
+    anchor: "ABR_PROFILES = "
+- id: config_bitrate
   selector:
-    path: src/Contracts/RequestHandler.php
-    anchor: interface RequestHandler
-- id: requesthandler_1
+    path: config/stream_settings.py
+    anchor: "MAX_BITRATE_KBPS = 8000"
+- id: pipeline_abr_import
   selector:
-    path: src/Contracts/RequestHandler.php
-    anchor: 'public function handle(array $request): array'
-- id: no_eventdispatcher
+    path: transcoder/pipeline.py
+    anchor: "ABR_PROFILES"
+- id: pipeline_get_profiles
   selector:
-    path: src/Contracts/EventDispatcher.php
-- id: no_webhookhandler
+    path: transcoder/pipeline.py
+    anchor: "def get_profiles(self)"
+- id: no_segmenter
   selector:
-    path: src/Handlers/WebhookHandler.php
-- id: no_global_0
+    path: transcoder/segmenter.py
+- id: no_cdn_router
   selector:
-    anchor: interface EventDispatcher
-- id: no_global_1
+    path: delivery/cdn_router.py
+- id: no_garbage_a
   selector:
-    anchor: hasListeners
-- id: no_global_2
+    anchor: GARBAGE_PHP004_A
+- id: no_garbage_b
   selector:
-    anchor: class WebhookHandler
-- id: no_global_3
+    anchor: GARBAGE_PHP004_B
+- id: no_garbage_c
   selector:
-    anchor: verifySignature
-- id: no_global_4
-  selector:
-    anchor: hash_hmac
+    anchor: GARBAGE_PHP004_C
 oracle:
   required:
-  - apihandler
-  - apihandler_1
-  - requesthandler
-  - requesthandler_1
-  allowed: []
+  - config_abr_enabled
+  - config_abr_profiles
+  - pipeline_abr_import
+  - pipeline_get_profiles
+  allowed:
+  - config_bitrate
   forbidden:
-  - no_eventdispatcher
-  - no_webhookhandler
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
+  - no_segmenter
+  - no_cdn_router
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

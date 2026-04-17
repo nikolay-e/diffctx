@@ -1,0 +1,77 @@
+name: bal3_bugfix_004_go_wrong_operator
+tags:
+- lang:go
+- change:single_file
+- change:bug_fix
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    pkg/access/policy.go: |
+      package access
+
+      type Role int
+
+      const (
+          Guest Role = iota
+          User
+          Admin
+      )
+
+      func CanEdit(role Role) bool {
+          return role > Admin
+      }
+
+      func CanView(role Role) bool {
+          return role >= Guest
+      }
+    pkg/middleware/auth.go: |
+      package middleware
+
+      import "myapp/pkg/access"
+
+      func CheckEdit(role access.Role) bool {
+          return access.CanEdit(role)
+      }
+    pkg/logging/logger.go: |
+      package logging
+
+      func Info(msg string) {
+          println("[INFO]", msg)
+      }
+  changed_files:
+    pkg/access/policy.go: |
+      package access
+
+      type Role int
+
+      const (
+          Guest Role = iota
+          User
+          Admin
+      )
+
+      func CanEdit(role Role) bool {
+          return role >= Admin
+      }
+
+      func CanView(role Role) bool {
+          return role >= Guest
+      }
+  commit_message: "fix: use >= instead of > for Admin edit check"
+fragments:
+- id: operator_fix
+  selector:
+    path: pkg/access/policy.go
+    anchor: "return role >= Admin"
+- id: no_logger
+  selector:
+    path: pkg/logging/logger.go
+    anchor: "func Info"
+oracle:
+  required:
+  - operator_fix
+  allowed: []
+  forbidden:
+  - no_logger

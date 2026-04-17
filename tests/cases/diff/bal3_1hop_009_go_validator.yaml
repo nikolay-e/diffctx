@@ -1,0 +1,150 @@
+name: bal3_1hop_009_go_validator
+tags:
+- lang:rust
+- change:bug_fix
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/pool/connection_pool.rs: |
+      use std::collections::VecDeque;
+
+      pub struct ConnectionPool {
+          available: VecDeque<String>,
+          max_size: usize,
+      }
+
+      impl ConnectionPool {
+          pub fn new(max_size: usize) -> Self {
+              ConnectionPool { available: VecDeque::new(), max_size }
+          }
+
+          pub fn acquire(&mut self) -> Option<String> {
+              self.available.pop_front()
+          }
+
+          pub fn release(&mut self, conn: String) {
+              // BUG: no cap check; pool grows unbounded beyond max_size
+              self.available.push_back(conn);
+          }
+
+          pub fn size(&self) -> usize {
+              self.available.len()
+          }
+      }
+    src/db/repository.rs: |
+      use crate::pool::connection_pool::ConnectionPool;
+
+      pub struct Repository {
+          pool: ConnectionPool,
+      }
+
+      impl Repository {
+          pub fn new(pool_size: usize) -> Self {
+              Repository { pool: ConnectionPool::new(pool_size) }
+          }
+
+          pub fn execute(&mut self, query: &str) -> Result<String, String> {
+              let conn = self.pool.acquire().ok_or("no connection available")?;
+              let result = format!("result of: {} on {}", query, conn);
+              self.pool.release(conn);
+              Ok(result)
+          }
+      }
+    garbage/logger.rs: |
+      // GARBAGE_POOL_A = "logger_marker"
+      pub fn log(_msg: &str) {}
+    garbage/metrics.rs: |
+      // GARBAGE_POOL_B = "metrics_marker"
+      pub fn count(_name: &str) {}
+    garbage/config.rs: |
+      // GARBAGE_POOL_C = "config_marker"
+      pub struct DbConfig { pub url: String }
+  changed_files:
+    src/pool/connection_pool.rs: |
+      use std::collections::VecDeque;
+
+      pub struct ConnectionPool {
+          available: VecDeque<String>,
+          max_size: usize,
+      }
+
+      impl ConnectionPool {
+          pub fn new(max_size: usize) -> Self {
+              ConnectionPool { available: VecDeque::new(), max_size }
+          }
+
+          pub fn acquire(&mut self) -> Option<String> {
+              self.available.pop_front()
+          }
+
+          pub fn release(&mut self, conn: String) {
+              if self.available.len() < self.max_size {
+                  self.available.push_back(conn);
+              }
+          }
+
+          pub fn size(&self) -> usize {
+              self.available.len()
+          }
+      }
+    src/db/repository.rs: |
+      use crate::pool::connection_pool::ConnectionPool;
+
+      pub struct Repository {
+          pool: ConnectionPool,
+      }
+
+      impl Repository {
+          pub fn new(pool_size: usize) -> Self {
+              Repository { pool: ConnectionPool::new(pool_size) }
+          }
+
+          pub fn execute(&mut self, query: &str) -> Result<String, String> {
+              let conn = self.pool.acquire().ok_or("no connection available")?;
+              let result = format!("result of: {} on {}", query, conn);
+              self.pool.release(conn);
+              Ok(result)
+          }
+      }
+    garbage/logger.rs: |
+      // GARBAGE_POOL_A = "logger_marker"
+      pub fn log(_msg: &str) {}
+    garbage/metrics.rs: |
+      // GARBAGE_POOL_B = "metrics_marker"
+      pub fn count(_name: &str) {}
+    garbage/config.rs: |
+      // GARBAGE_POOL_C = "config_marker"
+      pub struct DbConfig { pub url: String }
+  commit_message: "fix: cap released connections at max_size in ConnectionPool::release"
+fragments:
+- id: release_cap_check
+  selector:
+    anchor: "if self.available.len() < self.max_size"
+- id: release_func
+  selector:
+    anchor: "pub fn release(&mut self, conn: String)"
+- id: repo_uses_pool
+  selector:
+    anchor: "use crate::pool::connection_pool::ConnectionPool"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_POOL_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_POOL_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_POOL_C
+oracle:
+  required:
+  - release_cap_check
+  - release_func
+  - repo_uses_pool
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

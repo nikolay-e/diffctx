@@ -1,0 +1,167 @@
+name: bal_testctx_028_rust_http_handler_test
+tags:
+- lang:rust
+- change:multi_file
+- change:new_function
+- context:test_file
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/handler.rs: |
+      use std::collections::HashMap;
+
+      pub struct Request {
+          pub method: String,
+          pub path: String,
+          pub headers: HashMap<String, String>,
+          pub body: String,
+      }
+
+      pub struct Response {
+          pub status: u16,
+          pub body: String,
+      }
+
+      impl Response {
+          pub fn ok(body: &str) -> Self {
+              Response { status: 200, body: body.to_string() }
+          }
+
+          pub fn not_found() -> Self {
+              Response { status: 404, body: "Not Found".to_string() }
+          }
+      }
+
+      pub fn handle_request(req: &Request) -> Response {
+          match req.path.as_str() {
+              "/health" => Response::ok("OK"),
+              _ => Response::not_found(),
+          }
+      }
+    src/middleware.rs: |
+      use crate::handler::{Request, Response};
+
+      pub fn with_logging(req: &Request, next: fn(&Request) -> Response) -> Response {
+          println!("{} {}", req.method, req.path);
+          next(req)
+      }
+    tests/test_handler.rs: |
+      use crate::handler::{Request, Response, handle_request};
+      use std::collections::HashMap;
+
+      fn make_request(method: &str, path: &str) -> Request {
+          Request {
+              method: method.to_string(),
+              path: path.to_string(),
+              headers: HashMap::new(),
+              body: String::new(),
+          }
+      }
+
+      #[test]
+      fn test_health_endpoint() {
+          let req = make_request("GET", "/health");
+          let res = handle_request(&req);
+          assert_eq!(res.status, 200);
+          assert_eq!(res.body, "OK");
+      }
+
+      #[test]
+      fn test_not_found() {
+          let req = make_request("GET", "/unknown");
+          let res = handle_request(&req);
+          assert_eq!(res.status, 404);
+      }
+    src/cors.rs: |
+      pub fn cors_headers() -> Vec<(&'static str, &'static str)> {
+          vec![
+              ("Access-Control-Allow-Origin", "*"),
+              ("Access-Control-Allow-Methods", "GET, POST, OPTIONS"),
+          ]
+      }
+  changed_files:
+    src/handler.rs: |
+      use std::collections::HashMap;
+
+      pub struct Request {
+          pub method: String,
+          pub path: String,
+          pub headers: HashMap<String, String>,
+          pub body: String,
+      }
+
+      pub struct Response {
+          pub status: u16,
+          pub body: String,
+          pub headers: HashMap<String, String>,
+      }
+
+      impl Response {
+          pub fn ok(body: &str) -> Self {
+              Response { status: 200, body: body.to_string(), headers: HashMap::new() }
+          }
+
+          pub fn not_found() -> Self {
+              Response { status: 404, body: "Not Found".to_string(), headers: HashMap::new() }
+          }
+
+          pub fn bad_request(msg: &str) -> Self {
+              Response { status: 400, body: msg.to_string(), headers: HashMap::new() }
+          }
+
+          pub fn json(status: u16, body: &str) -> Self {
+              let mut headers = HashMap::new();
+              headers.insert("Content-Type".to_string(), "application/json".to_string());
+              Response { status, body: body.to_string(), headers }
+          }
+      }
+
+      pub fn handle_request(req: &Request) -> Response {
+          match (req.method.as_str(), req.path.as_str()) {
+              ("GET", "/health") => Response::ok("OK"),
+              ("GET", "/version") => Response::json(200, r#"{"version":"1.0.0"}"#),
+              _ => Response::not_found(),
+          }
+      }
+  commit_message: "feat: add response headers, bad_request, json, version endpoint"
+fragments:
+- id: bad_request_fn
+  selector:
+    path: src/handler.rs
+    anchor: "pub fn bad_request"
+- id: json_fn
+  selector:
+    path: src/handler.rs
+    anchor: "pub fn json(status"
+- id: handle_request_fn
+  selector:
+    path: src/handler.rs
+    anchor: "pub fn handle_request"
+- id: test_imports_handler
+  selector:
+    path: tests/test_handler.rs
+    anchor: "use crate::handler"
+- id: test_health
+  selector:
+    path: tests/test_handler.rs
+    anchor: "fn test_health_endpoint"
+- id: middleware_imports
+  selector:
+    path: src/middleware.rs
+    anchor: "use crate::handler"
+- id: no_cors
+  selector:
+    path: src/cors.rs
+    anchor: "pub fn cors_headers"
+oracle:
+  required:
+  - json_fn
+  - handle_request_fn
+  - test_imports_handler
+  allowed:
+  - bad_request_fn
+  - test_health
+  - middleware_imports
+  forbidden:
+  - no_cors

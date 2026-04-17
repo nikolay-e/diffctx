@@ -1,0 +1,78 @@
+name: css_009_css_grid_template
+tags:
+- lang:css
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    layout.css: |
+      .page-grid {
+        display: grid;
+        grid-template-columns: 240px 1fr;
+        grid-template-rows: 64px 1fr;
+        min-height: 100vh;
+      }
+      .page-header { grid-column: 1 / -1; }
+      .page-sidebar { grid-column: 1; }
+      .page-content { grid-column: 2; }
+    page.css: |
+      @import "layout.css";
+      .page-wrapper { background: #f9fafb; }
+      .page-header { background: #fff; border-bottom: 1px solid #e5e7eb; }
+    CSS_NOISE_009_modal.css: |
+      .CSS_NOISE_009_modal_overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); }
+      .CSS_NOISE_009_modal_dialog { background: #fff; border-radius: 8px; padding: 24px; }
+    CSS_NOISE_009_alert.css: |
+      .CSS_NOISE_009_alert_info { background: #eff6ff; border-left: 4px solid #3b82f6; }
+      .CSS_NOISE_009_alert_error { background: #fef2f2; border-left: 4px solid #ef4444; }
+  changed_files:
+    layout.css: |
+      .page-grid {
+        display: grid;
+        grid-template-columns: 280px 1fr;
+        grid-template-rows: 64px 1fr 48px;
+        min-height: 100vh;
+      }
+      .page-header { grid-column: 1 / -1; }
+      .page-sidebar { grid-column: 1; }
+      .page-content { grid-column: 2; }
+      .page-footer { grid-column: 1 / -1; }
+  commit_message: "style: widen sidebar to 280px and add footer row to page grid"
+fragments:
+- id: grid_template_changed
+  selector:
+    path: layout.css
+    anchor: "280px 1fr"
+- id: page_footer_added
+  selector:
+    path: layout.css
+    anchor: page-footer
+- id: page_imports_layout
+  selector:
+    path: page.css
+    anchor: layout.css
+- id: no_modal
+  selector:
+    path: CSS_NOISE_009_modal.css
+- id: no_alert
+  selector:
+    path: CSS_NOISE_009_alert.css
+- id: no_global_0
+  selector:
+    anchor: CSS_NOISE_009_modal_overlay
+- id: no_global_1
+  selector:
+    anchor: CSS_NOISE_009_alert_info
+oracle:
+  required:
+  - grid_template_changed
+  - page_footer_added
+  - page_imports_layout
+  allowed: []
+  forbidden:
+  - no_modal
+  - no_alert
+  - no_global_0
+  - no_global_1

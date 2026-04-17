@@ -1,0 +1,260 @@
+name: gap_073_ruby_import_chain_encryption
+tags:
+- change:new_function
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:2hop
+- lang:ruby
+repo:
+  initial_files:
+    lib/crypto/cipher.rb: |
+      module Crypto
+        class Cipher
+          BLOCK_SIZE = 16
+
+          def initialize(key)
+            @key = key
+            @rounds = key.length
+          end
+
+          def xor_bytes(data, mask)
+            data.bytes.zip(mask.bytes.cycle).map { |a, b| (a ^ b).chr }.join
+          end
+
+          def pad(data)
+            padding_needed = BLOCK_SIZE - (data.length % BLOCK_SIZE)
+            data + (padding_needed.chr * padding_needed)
+          end
+
+          def unpad(data)
+            pad_len = data[-1].ord
+            data[0...-pad_len]
+          end
+        end
+      end
+    lib/crypto/encoder.rb: |
+      require_relative 'cipher'
+
+      module Crypto
+        class Encoder
+          def initialize(cipher)
+            @cipher = cipher
+          end
+
+          def encode(plaintext)
+            padded = @cipher.pad(plaintext)
+            @cipher.xor_bytes(padded, @cipher.instance_variable_get(:@key))
+          end
+        end
+      end
+    lib/crypto/hasher.rb: |
+      require_relative 'encoder'
+
+      module Crypto
+        class Hasher
+          def initialize(encoder)
+            @encoder = encoder
+          end
+
+          def digest(data)
+            encoded = @encoder.encode(data)
+            encoded.bytes.reduce(0) { |acc, b| (acc * 31 + b) & 0xFFFFFFFF }
+          end
+        end
+      end
+    lib/crypto/random_gen.rb: |
+      TRAP_GAP073_RANDOM_A = "random_generator"
+      TRAP_GAP073_SEED_B = 42
+
+      module Crypto
+        class RandomGen
+          def initialize(seed = 42)
+            @seed = seed
+          end
+
+          def next_int(max = 256)
+            @seed = (@seed * 1103515245 + 12345) & 0x7FFFFFFF
+            @seed % max
+          end
+
+          def next_bytes(count)
+            (0...count).map { next_int.chr }.join
+          end
+        end
+      end
+    lib/crypto/key_store.rb: |
+      TRAP_GAP073_KEYSTORE_C = "key_storage"
+      TRAP_GAP073_FORMAT_D = "pem"
+
+      module Crypto
+        class KeyStore
+          def initialize
+            @keys = {}
+          end
+
+          def store(name, key)
+            @keys[name] = key
+          end
+
+          def fetch(name)
+            @keys[name]
+          end
+
+          def list
+            @keys.keys
+          end
+        end
+      end
+  changed_files:
+    lib/crypto/cipher.rb: |
+      module Crypto
+        class Cipher
+          BLOCK_SIZE = 16
+
+          def initialize(key)
+            @key = key
+            @rounds = key.length
+          end
+
+          def xor_bytes(data, mask)
+            data.bytes.zip(mask.bytes.cycle).map { |a, b| (a ^ b).chr }.join
+          end
+
+          def pad(data)
+            padding_needed = BLOCK_SIZE - (data.length % BLOCK_SIZE)
+            data + (padding_needed.chr * padding_needed)
+          end
+
+          def unpad(data)
+            pad_len = data[-1].ord
+            data[0...-pad_len]
+          end
+        end
+      end
+    lib/crypto/encoder.rb: |
+      require_relative 'cipher'
+
+      module Crypto
+        class Encoder
+          def initialize(cipher)
+            @cipher = cipher
+          end
+
+          def encode(plaintext)
+            padded = @cipher.pad(plaintext)
+            @cipher.xor_bytes(padded, @cipher.instance_variable_get(:@key))
+          end
+        end
+      end
+    lib/crypto/hasher.rb: |
+      require_relative 'encoder'
+
+      module Crypto
+        class Hasher
+          def initialize(encoder)
+            @encoder = encoder
+          end
+
+          def digest(data)
+            encoded = @encoder.encode(data)
+            encoded.bytes.reduce(0) { |acc, b| (acc * 31 + b) & 0xFFFFFFFF }
+          end
+
+          def hmac(data, secret)
+            inner = digest("#{secret}:#{data}")
+            outer = digest("#{inner}:#{secret}")
+            outer.to_s(16).rjust(8, '0')
+          end
+        end
+      end
+    lib/crypto/random_gen.rb: |
+      TRAP_GAP073_RANDOM_A = "random_generator"
+      TRAP_GAP073_SEED_B = 42
+
+      module Crypto
+        class RandomGen
+          def initialize(seed = 42)
+            @seed = seed
+          end
+
+          def next_int(max = 256)
+            @seed = (@seed * 1103515245 + 12345) & 0x7FFFFFFF
+            @seed % max
+          end
+
+          def next_bytes(count)
+            (0...count).map { next_int.chr }.join
+          end
+        end
+      end
+    lib/crypto/key_store.rb: |
+      TRAP_GAP073_KEYSTORE_C = "key_storage"
+      TRAP_GAP073_FORMAT_D = "pem"
+
+      module Crypto
+        class KeyStore
+          def initialize
+            @keys = {}
+          end
+
+          def store(name, key)
+            @keys[name] = key
+          end
+
+          def fetch(name)
+            @keys[name]
+          end
+
+          def list
+            @keys.keys
+          end
+        end
+      end
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: hasher_hmac
+  selector:
+    path: lib/crypto/hasher.rb
+    anchor: 'def hmac(data, secret)'
+- id: hasher_digest
+  selector:
+    path: lib/crypto/hasher.rb
+    anchor: 'def digest(data)'
+- id: encoder_encode
+  selector:
+    path: lib/crypto/encoder.rb
+    anchor: 'def encode(plaintext)'
+- id: no_random_gen
+  selector:
+    path: lib/crypto/random_gen.rb
+- id: no_key_store
+  selector:
+    path: lib/crypto/key_store.rb
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP073_RANDOM_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP073_SEED_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP073_KEYSTORE_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP073_FORMAT_D
+oracle:
+  required:
+  - hasher_hmac
+  - hasher_digest
+  - encoder_encode
+  allowed: []
+  forbidden:
+  - no_random_gen
+  - no_key_store
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

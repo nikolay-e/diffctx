@@ -1,0 +1,214 @@
+name: bal_3hop_041_typescript_form_validation_chain
+tags:
+- lang:typescript
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/validation/rules.ts: |
+      export interface ValidationRule {
+        name: string;
+        test(value: string): boolean;
+        message: string;
+      }
+
+      export const emailRule: ValidationRule = {
+        name: 'email',
+        test: (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v),
+        message: 'Invalid email',
+      };
+
+      export const minLengthRule = (min: number): ValidationRule => ({
+        name: `minLength:${min}`,
+        test: (v) => v.length >= min,
+        message: `Must be at least ${min} characters`,
+      });
+    src/validation/validator.ts: |
+      import { ValidationRule } from './rules';
+
+      export interface ValidationResult {
+        valid: boolean;
+        errors: string[];
+      }
+
+      export function validate(value: string, rules: ValidationRule[]): ValidationResult {
+        const errors = rules.filter(r => !r.test(value)).map(r => r.message);
+        return { valid: errors.length === 0, errors };
+      }
+    src/forms/registrationForm.ts: |
+      import { validate } from '../validation/validator';
+      import { emailRule, minLengthRule } from '../validation/rules';
+
+      export class RegistrationForm {
+        validateEmail(email: string) {
+          return validate(email, [emailRule]);
+        }
+
+        validatePassword(password: string) {
+          return validate(password, [minLengthRule(8)]);
+        }
+
+        submit(email: string, password: string): { success: boolean; errors: string[] } {
+          const emailResult = this.validateEmail(email);
+          const passResult = this.validatePassword(password);
+          const errors = [...emailResult.errors, ...passResult.errors];
+          return { success: errors.length === 0, errors };
+        }
+      }
+    src/pages/register.ts: |
+      import { RegistrationForm } from '../forms/registrationForm';
+
+      const form = new RegistrationForm();
+
+      export function handleRegister(req: any, res: any): void {
+        const result = form.submit(req.body.email, req.body.password);
+        if (!result.success) {
+          res.status(400).json({ errors: result.errors });
+          return;
+        }
+        res.status(201).json({ message: 'Registered' });
+      }
+    src/utils/i18n.ts: |
+      GARBAGE_041_I18N_MARKER_A = "i18n";
+      GARBAGE_041_LOCALE_MARKER_B = "en";
+
+      export function translate(key: string): string { return key; }
+    src/utils/dom.ts: |
+      GARBAGE_041_DOM_MARKER_C = "dom";
+      GARBAGE_041_SELECTOR_MARKER_D = true;
+
+      export function querySelector(selector: string): any { return null; }
+  changed_files:
+    src/validation/rules.ts: |
+      export interface ValidationRule {
+        name: string;
+        test(value: string): boolean;
+        message: string;
+      }
+
+      export const emailRule: ValidationRule = {
+        name: 'email',
+        test: (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v),
+        message: 'Invalid email',
+      };
+
+      export const minLengthRule = (min: number): ValidationRule => ({
+        name: `minLength:${min}`,
+        test: (v) => v.length >= min,
+        message: `Must be at least ${min} characters`,
+      });
+
+      export const maxLengthRule = (max: number): ValidationRule => ({
+        name: `maxLength:${max}`,
+        test: (v) => v.length <= max,
+        message: `Must be at most ${max} characters`,
+      });
+
+      export const hasUpperCase: ValidationRule = {
+        name: 'hasUpperCase',
+        test: (v) => /[A-Z]/.test(v),
+        message: 'Must contain an uppercase letter',
+      };
+    src/validation/validator.ts: |
+      import { ValidationRule } from './rules';
+
+      export interface ValidationResult {
+        valid: boolean;
+        errors: string[];
+      }
+
+      export function validate(value: string, rules: ValidationRule[]): ValidationResult {
+        const errors = rules.filter(r => !r.test(value)).map(r => r.message);
+        return { valid: errors.length === 0, errors };
+      }
+    src/forms/registrationForm.ts: |
+      import { validate } from '../validation/validator';
+      import { emailRule, minLengthRule, maxLengthRule, hasUpperCase } from '../validation/rules';
+
+      export class RegistrationForm {
+        validateEmail(email: string) {
+          return validate(email, [emailRule, maxLengthRule(254)]);
+        }
+
+        validatePassword(password: string) {
+          return validate(password, [minLengthRule(8), maxLengthRule(128), hasUpperCase]);
+        }
+
+        submit(email: string, password: string): { success: boolean; errors: string[] } {
+          const emailResult = this.validateEmail(email);
+          const passResult = this.validatePassword(password);
+          const errors = [...emailResult.errors, ...passResult.errors];
+          return { success: errors.length === 0, errors };
+        }
+      }
+    src/pages/register.ts: |
+      import { RegistrationForm } from '../forms/registrationForm';
+
+      const form = new RegistrationForm();
+
+      export function handleRegister(req: any, res: any): void {
+        const result = form.submit(req.body.email, req.body.password);
+        if (!result.success) {
+          res.status(400).json({ errors: result.errors });
+          return;
+        }
+        res.status(201).json({ message: 'Registered' });
+      }
+    src/utils/i18n.ts: |
+      GARBAGE_041_I18N_MARKER_A = "i18n";
+      GARBAGE_041_LOCALE_MARKER_B = "en";
+
+      export function translate(key: string): string { return key; }
+    src/utils/dom.ts: |
+      GARBAGE_041_DOM_MARKER_C = "dom";
+      GARBAGE_041_SELECTOR_MARKER_D = true;
+
+      export function querySelector(selector: string): any { return null; }
+  commit_message: "fix: add max length and uppercase validation rules"
+fragments:
+- id: max_length_rule
+  selector:
+    path: src/validation/rules.ts
+    anchor: "export const maxLengthRule"
+- id: has_uppercase_rule
+  selector:
+    path: src/validation/rules.ts
+    anchor: "export const hasUpperCase"
+- id: validator_imports_rules
+  selector:
+    path: src/validation/validator.ts
+    anchor: "import { ValidationRule } from './rules'"
+- id: form_imports_new_rules
+  selector:
+    path: src/forms/registrationForm.ts
+    anchor: "maxLengthRule, hasUpperCase"
+- id: form_password_validation
+  selector:
+    path: src/forms/registrationForm.ts
+    anchor: "minLengthRule(8), maxLengthRule(128), hasUpperCase"
+- id: page_imports_form
+  selector:
+    path: src/pages/register.ts
+    anchor: "import { RegistrationForm } from '../forms/registrationForm'"
+- id: no_i18n
+  selector:
+    path: src/utils/i18n.ts
+    anchor: "GARBAGE_041_I18N_MARKER_A"
+- id: no_dom
+  selector:
+    path: src/utils/dom.ts
+    anchor: "GARBAGE_041_DOM_MARKER_C"
+oracle:
+  required:
+  - max_length_rule
+  - has_uppercase_rule
+  - validator_imports_rules
+  - form_imports_new_rules
+  - form_password_validation
+  - page_imports_form
+  allowed: []
+  forbidden:
+  - no_i18n
+  - no_dom

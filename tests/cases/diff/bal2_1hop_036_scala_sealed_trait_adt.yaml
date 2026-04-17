@@ -1,0 +1,146 @@
+name: bal2_1hop_036_scala_sealed_trait_adt
+tags:
+- lang:scala
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/ast/Expr.scala: |
+      package ast
+
+      sealed trait Expr
+      case class Lit(value: Double) extends Expr
+      case class Add(left: Expr, right: Expr) extends Expr
+      case class Mul(left: Expr, right: Expr) extends Expr
+    src/main/scala/eval/Evaluator.scala: |
+      package eval
+
+      import ast._
+
+      object Evaluator {
+        def eval(expr: Expr): Double = expr match {
+          case Lit(v) => v
+          case Add(l, r) => eval(l) + eval(r)
+          case Mul(l, r) => eval(l) * eval(r)
+        }
+      }
+    src/main/scala/printer/PrettyPrinter.scala: |
+      package printer
+
+      import ast._
+
+      object PrettyPrinter {
+        def print(expr: Expr): String = expr match {
+          case Lit(v) => v.toString
+          case Add(l, r) => s"(${print(l)} + ${print(r)})"
+          case Mul(l, r) => s"(${print(l)} * ${print(r)})"
+        }
+      }
+    src/main/scala/optimizer/ConstantFolder.scala: |
+      package optimizer
+
+      import ast._
+
+      object ConstantFolder {
+        def fold(expr: Expr): Expr = expr match {
+          case Add(Lit(a), Lit(b)) => Lit(a + b)
+          case Mul(Lit(a), Lit(b)) => Lit(a * b)
+          case other => other
+        }
+      }
+    src/main/scala/parser/Lexer.scala: |
+      package parser
+
+      GARBAGE_036_LEXER_A = "lexer"
+
+      object Lexer {
+        def tokenize(input: String): List[String] = input.split(" ").toList
+      }
+    src/main/scala/repl/Shell.scala: |
+      package repl
+
+      GARBAGE_036_SHELL_B = "shell"
+
+      class Shell {
+        def prompt(): String = "> "
+        def readLine(): String = ""
+      }
+    src/main/scala/util/FileIO.scala: |
+      package util
+
+      GARBAGE_036_FILE_IO_C = "fileio"
+
+      object FileIO {
+        def readAll(path: String): String = ""
+        def writeAll(path: String, content: String): Unit = ()
+      }
+  changed_files:
+    src/main/scala/ast/Expr.scala: |
+      package ast
+
+      sealed trait Expr
+      case class Lit(value: Double) extends Expr
+      case class Add(left: Expr, right: Expr) extends Expr
+      case class Mul(left: Expr, right: Expr) extends Expr
+      case class Neg(inner: Expr) extends Expr
+      case class Div(left: Expr, right: Expr) extends Expr
+  commit_message: "feat: add Neg and Div variants to Expr ADT"
+fragments:
+- id: neg_variant
+  selector:
+    path: src/main/scala/ast/Expr.scala
+    anchor: "case class Neg(inner: Expr)"
+- id: div_variant
+  selector:
+    path: src/main/scala/ast/Expr.scala
+    anchor: "case class Div(left: Expr, right: Expr)"
+- id: evaluator_match
+  selector:
+    path: src/main/scala/eval/Evaluator.scala
+    anchor: "def eval(expr: Expr): Double"
+- id: printer_match
+  selector:
+    path: src/main/scala/printer/PrettyPrinter.scala
+    anchor: "def print(expr: Expr): String"
+- id: folder_match
+  selector:
+    path: src/main/scala/optimizer/ConstantFolder.scala
+    anchor: "def fold(expr: Expr): Expr"
+- id: unrelated_lexer
+  selector:
+    path: src/main/scala/parser/Lexer.scala
+    anchor: "object Lexer"
+- id: unrelated_shell
+  selector:
+    path: src/main/scala/repl/Shell.scala
+    anchor: "class Shell"
+- id: unrelated_fileio
+  selector:
+    path: src/main/scala/util/FileIO.scala
+    anchor: "object FileIO"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_036_LEXER_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_036_SHELL_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_036_FILE_IO_C
+oracle:
+  required:
+  - neg_variant
+  - div_variant
+  - evaluator_match
+  - printer_match
+  - folder_match
+  allowed: []
+  forbidden:
+  - unrelated_lexer
+  - unrelated_shell
+  - unrelated_fileio
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

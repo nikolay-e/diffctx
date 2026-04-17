@@ -1,0 +1,72 @@
+name: bal3_bugfix_014_ruby_wrong_boolean
+tags:
+- lang:ruby
+- change:single_file
+- change:bug_fix
+- context:same_file
+- distance:0hop
+- difficulty:medium
+repo:
+  initial_files:
+    lib/validator.rb: |
+      class Validator
+        VALID_STATUSES = %w[active pending suspended].freeze
+
+        def valid_status?(status)
+          !VALID_STATUSES.include?(status)
+        end
+
+        def valid_name?(name)
+          name.is_a?(String) && name.length > 0
+        end
+
+        def validate(record)
+          valid_status?(record[:status]) && valid_name?(record[:name])
+        end
+      end
+    lib/importer.rb: |
+      require_relative 'validator'
+
+      class Importer
+        def initialize
+          @validator = Validator.new
+        end
+
+        def import(record)
+          return :invalid unless @validator.validate(record)
+          :ok
+        end
+      end
+  changed_files:
+    lib/validator.rb: |
+      class Validator
+        VALID_STATUSES = %w[active pending suspended].freeze
+
+        def valid_status?(status)
+          VALID_STATUSES.include?(status)
+        end
+
+        def valid_name?(name)
+          name.is_a?(String) && name.length > 0
+        end
+
+        def validate(record)
+          valid_status?(record[:status]) && valid_name?(record[:name])
+        end
+      end
+  commit_message: "fix: remove accidental negation in valid_status? check"
+fragments:
+- id: negation_fix
+  selector:
+    path: lib/validator.rb
+    anchor: "VALID_STATUSES.include?(status)"
+- id: no_importer
+  selector:
+    path: lib/importer.rb
+    anchor: "def import"
+oracle:
+  required:
+  - negation_fix
+  allowed: []
+  forbidden:
+  - no_importer

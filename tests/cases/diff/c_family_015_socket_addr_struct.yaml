@@ -1,0 +1,118 @@
+name: c_family_015_socket_addr_struct
+tags:
+- lang:c
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    net.h: |
+      #ifndef NET_H
+      #define NET_H
+      typedef struct {
+          const char *host;
+          int fd;
+      } connection_t;
+      connection_t net_connect(const char *host);
+      void net_disconnect(connection_t *conn);
+      #endif
+    client.c: |
+      #include "net.h"
+      #include <stdio.h>
+      void client_run(void) {
+          connection_t conn = net_connect("example.com");
+          printf("connected to %s fd=%d\n", conn.host, conn.fd);
+          net_disconnect(&conn);
+      }
+    server.c: |
+      #include "net.h"
+      #include <stdio.h>
+      void server_accept(connection_t *conn) {
+          printf("accepted from %s\n", conn->host);
+      }
+    C_NOISE_015_pwm.h: |
+      #ifndef C_NOISE_015_PWM_H
+      #define C_NOISE_015_PWM_H
+      void C_NOISE_015_pwm_set_duty(int channel, float duty);
+      void C_NOISE_015_pwm_enable(int channel);
+      #endif
+    C_NOISE_015_pwm.c: |
+      #include "C_NOISE_015_pwm.h"
+      void C_NOISE_015_pwm_set_duty(int channel, float duty) {}
+      void C_NOISE_015_pwm_enable(int channel) {}
+  changed_files:
+    net.h: |
+      #ifndef NET_H
+      #define NET_H
+      typedef struct {
+          const char *host;
+          int port;
+          int fd;
+      } connection_t;
+      connection_t net_connect(const char *host, int port);
+      void net_disconnect(connection_t *conn);
+      #endif
+    client.c: |
+      #include "net.h"
+      #include <stdio.h>
+      void client_run(void) {
+          connection_t conn = net_connect("example.com", 8080);
+          printf("connected to %s:%d fd=%d\n", conn.host, conn.port, conn.fd);
+          net_disconnect(&conn);
+      }
+    server.c: |
+      #include "net.h"
+      #include <stdio.h>
+      void server_accept(connection_t *conn) {
+          printf("accepted from %s:%d\n", conn->host, conn->port);
+      }
+    C_NOISE_015_pwm.h: |
+      #ifndef C_NOISE_015_PWM_H
+      #define C_NOISE_015_PWM_H
+      void C_NOISE_015_pwm_set_duty(int channel, float duty);
+      void C_NOISE_015_pwm_enable(int channel);
+      #endif
+    C_NOISE_015_pwm.c: |
+      #include "C_NOISE_015_pwm.h"
+      void C_NOISE_015_pwm_set_duty(int channel, float duty) {}
+      void C_NOISE_015_pwm_enable(int channel) {}
+  commit_message: "feat: add port field to connection_t and update net_connect signature"
+fragments:
+- id: net_h_port
+  selector:
+    path: net.h
+    anchor: "int port;"
+- id: net_h_connect
+  selector:
+    path: net.h
+    anchor: "net_connect(const char *host, int port)"
+- id: client_c
+  selector:
+    path: client.c
+    anchor: "net_connect(\"example.com\", 8080)"
+- id: server_c
+  selector:
+    path: server.c
+    anchor: "conn->port"
+- id: no_pwm_h
+  selector:
+    anchor: C_NOISE_015_pwm_set_duty
+- id: no_pwm_c
+  selector:
+    path: C_NOISE_015_pwm.c
+- id: no_global_enable
+  selector:
+    anchor: C_NOISE_015_pwm_enable
+oracle:
+  required:
+  - net_h_port
+  - net_h_connect
+  - client_c
+  - server_c
+  allowed: []
+  forbidden:
+  - no_pwm_h
+  - no_pwm_c
+  - no_global_enable

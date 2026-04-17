@@ -1,0 +1,93 @@
+name: html_002_id_used_in_js
+tags:
+- lang:html
+- lang:javascript
+- change:multi_file
+- context:cross_module
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    index.html: |
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <title>Counter</title>
+      </head>
+      <body>
+        <div id="counter-display">0</div>
+        <button id="increment-btn">+</button>
+        <script src="script.js"></script>
+      </body>
+      </html>
+    script.js: |
+      const display = document.getElementById('counter-display');
+      const btn = document.getElementById('increment-btn');
+      let count = 0;
+      btn.addEventListener('click', () => {
+        count++;
+        display.textContent = count;
+      });
+    HTML_NOISE_002_faq.html: |
+      <!-- HTML_NOISE_002_faq_page -->
+      <section class="HTML_NOISE_002_faq_section">
+        <h2>Frequently Asked Questions</h2>
+      </section>
+    HTML_NOISE_002_terms.html: |
+      <!-- HTML_NOISE_002_terms_page -->
+      <article class="HTML_NOISE_002_terms_content">Terms of Service</article>
+  changed_files:
+    index.html: |
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <title>Counter</title>
+      </head>
+      <body>
+        <div id="count-value">0</div>
+        <button id="increment-btn">+</button>
+        <script src="script.js"></script>
+      </body>
+      </html>
+    script.js: |
+      const display = document.getElementById('count-value');
+      const btn = document.getElementById('increment-btn');
+      let count = 0;
+      btn.addEventListener('click', () => {
+        count++;
+        display.textContent = count;
+      });
+  commit_message: "refactor: rename counter-display id to count-value in HTML and JS"
+fragments:
+- id: html_id_renamed
+  selector:
+    path: index.html
+    anchor: count-value
+- id: js_getelementbyid
+  selector:
+    path: script.js
+    anchor: "getElementById('count-value')"
+- id: no_faq
+  selector:
+    path: HTML_NOISE_002_faq.html
+- id: no_terms
+  selector:
+    path: HTML_NOISE_002_terms.html
+- id: no_global_0
+  selector:
+    anchor: HTML_NOISE_002_faq_section
+- id: no_global_1
+  selector:
+    anchor: HTML_NOISE_002_terms_content
+oracle:
+  required:
+  - html_id_renamed
+  - js_getelementbyid
+  allowed: []
+  forbidden:
+  - no_faq
+  - no_terms
+  - no_global_0
+  - no_global_1

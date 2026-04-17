@@ -1,4 +1,10 @@
 name: dbt_001_ref_model
+tags:
+- lang:sql
+- change:single_file
+- context:cross_module
+- distance:0hop
+- difficulty:medium
 repo:
   initial_files:
     models/marts/order_summary.sql: |

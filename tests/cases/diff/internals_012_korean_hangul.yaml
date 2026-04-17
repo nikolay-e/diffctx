@@ -1,25 +1,94 @@
 name: internals_012_korean_hangul
+tags:
+- lang:julia
+- change:single_file
+- context:same_file
+- distance:0hop
+- difficulty:trivial
 repo:
   initial_files:
-    korean.py: |
-      def placeholder():
-          pass
+    src/BloodPressure.jl: |
+      module BloodPressure
+
+      export BPReading, classify_bp
+
+      struct BPReading
+          systolic::Int
+          diastolic::Int
+      end
+
+      function classify_bp(r::BPReading)::String
+          if r.systolic < 120 && r.diastolic < 80
+              return "normal"
+          elseif r.systolic < 130
+              return "elevated"
+          else
+              return "hypertension"
+          end
+      end
+
+      end
+    garbage/INT012_meds.jl: |
+      # INT012_GARBAGE_A = "meds_marker"
+    garbage/INT012_schedule.jl: |
+      # INT012_GARBAGE_B = "schedule_marker"
+    garbage/INT012_export.jl: |
+      # INT012_GARBAGE_C = "export_marker"
   changed_files:
-    korean.py: |
-      def handler():
-          message = "안녕하세요"
-          return message
-  commit_message: Update files
+    src/BloodPressure.jl: |
+      module BloodPressure
+
+      export BPReading, classify_bp, pulse_pressure
+
+      struct BPReading
+          systolic::Int
+          diastolic::Int
+      end
+
+      function classify_bp(r::BPReading)::String
+          if r.systolic < 120 && r.diastolic < 80
+              return "normal"
+          elseif r.systolic < 130
+              return "elevated"
+          else
+              return "hypertension"
+          end
+      end
+
+      function pulse_pressure(r::BPReading)::Int
+          return r.systolic - r.diastolic
+      end
+
+      end
+    garbage/INT012_meds.jl: |
+      # INT012_GARBAGE_A = "meds_marker"
+    garbage/INT012_schedule.jl: |
+      # INT012_GARBAGE_B = "schedule_marker"
+    garbage/INT012_export.jl: |
+      # INT012_GARBAGE_C = "export_marker"
+  commit_message: "feat: add pulse_pressure function to BloodPressure module"
 fragments:
-- id: korean_file
+- id: pulse_pressure_func
   selector:
-    path: korean.py
-- id: req_global_0
+    anchor: "function pulse_pressure(r::BPReading)"
+- id: classify_bp_func
   selector:
-    anchor: 'def handler():'
+    anchor: "function classify_bp(r::BPReading)"
+- id: no_garbage_a
+  selector:
+    anchor: INT012_GARBAGE_A
+- id: no_garbage_b
+  selector:
+    anchor: INT012_GARBAGE_B
+- id: no_garbage_c
+  selector:
+    anchor: INT012_GARBAGE_C
 oracle:
   required:
-  - korean_file
-  - req_global_0
-  allowed: []
-  forbidden: []
+  - pulse_pressure_func
+  allowed:
+  - classify_bp_func
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

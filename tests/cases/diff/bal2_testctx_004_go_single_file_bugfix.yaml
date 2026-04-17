@@ -1,0 +1,143 @@
+name: bal2_testctx_004_go_single_file_bugfix
+tags:
+- lang:go
+- change:bug_fix
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    math/divide.go: |
+      package math
+
+      func SafeDivide(a, b float64) float64 {
+          return a / b
+      }
+    math/divide_test.go: |
+      package math
+
+      import "testing"
+
+      func TestSafeDivide(t *testing.T) {
+          got := SafeDivide(10, 2)
+          if got != 5.0 {
+              t.Fatalf("expected 5.0, got %f", got)
+          }
+      }
+
+      func TestSafeDivideByZero(t *testing.T) {
+          got := SafeDivide(10, 0)
+          if got != 0.0 {
+              t.Fatalf("expected 0.0 for division by zero, got %f", got)
+          }
+      }
+    math/abs.go: |
+      package math
+
+      GARBAGE_BAL2_004_ABS_A = "abs"
+
+      func Abs(x float64) float64 {
+          if x < 0 {
+              return -x
+          }
+          return x
+      }
+    math/max.go: |
+      package math
+
+      GARBAGE_BAL2_004_MAX_B = "max"
+      GARBAGE_BAL2_004_MAX_MARKER_C = true
+
+      func Max(a, b float64) float64 {
+          if a > b {
+              return a
+          }
+          return b
+      }
+  changed_files:
+    math/divide.go: |
+      package math
+
+      func SafeDivide(a, b float64) float64 {
+          if b == 0 {
+              return 0
+          }
+          return a / b
+      }
+    math/divide_test.go: |
+      package math
+
+      import "testing"
+
+      func TestSafeDivide(t *testing.T) {
+          got := SafeDivide(10, 2)
+          if got != 5.0 {
+              t.Fatalf("expected 5.0, got %f", got)
+          }
+      }
+
+      func TestSafeDivideByZero(t *testing.T) {
+          got := SafeDivide(10, 0)
+          if got != 0.0 {
+              t.Fatalf("expected 0.0 for division by zero, got %f", got)
+          }
+      }
+    math/abs.go: |
+      package math
+
+      GARBAGE_BAL2_004_ABS_A = "abs"
+
+      func Abs(x float64) float64 {
+          if x < 0 {
+              return -x
+          }
+          return x
+      }
+    math/max.go: |
+      package math
+
+      GARBAGE_BAL2_004_MAX_B = "max"
+      GARBAGE_BAL2_004_MAX_MARKER_C = true
+
+      func Max(a, b float64) float64 {
+          if a > b {
+              return a
+          }
+          return b
+      }
+  commit_message: "Fix division by zero panic in SafeDivide"
+fragments:
+- id: divide_fix
+  selector:
+    path: math/divide.go
+    anchor: "if b == 0"
+- id: divide_test
+  selector:
+    path: math/divide_test.go
+    anchor: "func TestSafeDivideByZero"
+- id: no_abs
+  selector:
+    path: math/abs.go
+- id: no_max
+  selector:
+    path: math/max.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL2_004_ABS_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL2_004_MAX_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL2_004_MAX_MARKER_C
+oracle:
+  required:
+  - divide_fix
+  - divide_test
+  allowed: []
+  forbidden:
+  - no_abs
+  - no_max
+  - no_global_0
+  - no_global_1
+  - no_global_2

@@ -1,0 +1,81 @@
+name: bal3_bugfix_012_ruby_off_by_one_range
+tags:
+- lang:ruby
+- change:single_file
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    lib/batch.rb: |
+      class Batch
+        def initialize(items, size)
+          @items = items
+          @size = size
+        end
+
+        def chunks
+          result = []
+          (0...@items.length).step(@size) do |i|
+            result << @items[i..i + @size]
+          end
+          result
+        end
+      end
+    lib/processor.rb: |
+      require_relative 'batch'
+
+      class Processor
+        def run(items)
+          batch = Batch.new(items, 3)
+          batch.chunks.each { |chunk| handle(chunk) }
+        end
+
+        def handle(chunk)
+          chunk.compact
+        end
+      end
+    lib/logger.rb: |
+      module AppLogger
+        def self.info(msg)
+          puts "[INFO] #{msg}"
+        end
+      end
+  changed_files:
+    lib/batch.rb: |
+      class Batch
+        def initialize(items, size)
+          @items = items
+          @size = size
+        end
+
+        def chunks
+          result = []
+          (0...@items.length).step(@size) do |i|
+            result << @items[i...i + @size]
+          end
+          result
+        end
+      end
+  commit_message: "fix: use exclusive range to prevent overlapping chunks"
+fragments:
+- id: range_fix
+  selector:
+    path: lib/batch.rb
+    anchor: "@items[i...i + @size]"
+- id: processor_calls_chunks
+  selector:
+    path: lib/processor.rb
+    anchor: "batch.chunks.each"
+- id: no_logger
+  selector:
+    path: lib/logger.rb
+    anchor: "def self.info"
+oracle:
+  required:
+  - range_fix
+  - processor_calls_chunks
+  allowed: []
+  forbidden:
+  - no_logger

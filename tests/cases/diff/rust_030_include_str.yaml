@@ -1,204 +1,136 @@
 name: rust_030_include_str
+tags:
+- lang:python
+- lang:protobuf
+- change:multi_file
+- context:same_file
+- distance:0hop
+- difficulty:easy
 repo:
   initial_files:
-    data/config.json: |
-      {"name": "app", "version": "1.0"}
-    src/lib.rs: |
-      pub mod config;
-      pub mod env;
-      pub mod feature_flags;
-    src/config.rs: |
-      const CONFIG_JSON: &str = include_str!("../data/config.json");
+    proto/device.proto: |
+      syntax = "proto3";
 
-      pub fn get_config() -> serde_json::Value {
-          serde_json::from_str(CONFIG_JSON).unwrap()
+      message Device {
+        string device_id = 1;
+        string owner_id = 2;
+        string model = 3;
       }
+    service/device_service.py: |
+      from proto import device_pb2
 
-      pub fn get_app_name() -> String {
-          let config = get_config();
-          config["name"].as_str().unwrap_or("unknown").to_string()
-      }
+      class DeviceService:
+          def register_device(
+              self, device_id: str, owner_id: str, model: str
+          ) -> device_pb2.Device:
+              return device_pb2.Device(
+                  device_id=device_id,
+                  owner_id=owner_id,
+                  model=model,
+              )
 
-      pub fn get_version() -> String {
-          let config = get_config();
-          config["version"].as_str().unwrap_or("0.0.0").to_string()
-      }
-    src/env.rs: |
-      use std::env;
+          def get_device(self, device_id: str) -> device_pb2.Device | None:
+              return None
+    garbage/telemetry.py: |
+      GARBAGE_RUST030_A = "telemetry_marker"
 
-      pub struct EnvConfig {
-          pub port: u16,
-          pub log_level: String,
-          pub debug_mode: bool,
-      }
+      def noop():
+          pass
+    garbage/firmware.py: |
+      GARBAGE_RUST030_B = "firmware_marker"
 
-      impl EnvConfig {
-          pub fn from_env() -> Self {
-              Self {
-                  port: env::var("PORT")
-                      .ok()
-                      .and_then(|p| p.parse().ok())
-                      .unwrap_or(8080),
-                  log_level: env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string()),
-                  debug_mode: env::var("DEBUG").is_ok(),
-              }
-          }
+      def noop():
+          pass
+    garbage/provisioning.py: |
+      GARBAGE_RUST030_C = "provision_marker"
 
-          pub fn is_production(&self) -> bool {
-              self.log_level == "error" && !self.debug_mode
-          }
-      }
-    src/feature_flags.rs: |
-      pub struct FeatureSet {
-          enabled: Vec<String>,
-      }
+      def noop():
+          pass
+    garbage/shadow.py: |
+      GARBAGE_RUST030_D = "shadow_marker"
 
-      impl FeatureSet {
-          pub fn new() -> Self {
-              let mut enabled = Vec::new();
-              #[cfg(feature = "auth")]
-              enabled.push("auth".to_string());
-              #[cfg(feature = "api")]
-              enabled.push("api".to_string());
-              Self { enabled }
-          }
-
-          pub fn is_enabled(&self, feature: &str) -> bool {
-              self.enabled.iter().any(|f| f == feature)
-          }
-
-          pub fn list_features(&self) -> &[String] {
-              &self.enabled
-          }
-      }
+      def noop():
+          pass
   changed_files:
-    data/config.json: |
-      {"name": "app", "version": "2.0", "features": ["auth", "api"]}
-    src/lib.rs: |
-      pub mod config;
-      pub mod env;
-      pub mod feature_flags;
-    src/config.rs: |
-      const CONFIG_JSON: &str = include_str!("../data/config.json");
+    proto/device.proto: |
+      syntax = "proto3";
 
-      pub fn get_config() -> serde_json::Value {
-          serde_json::from_str(CONFIG_JSON).unwrap()
+      message Device {
+        string device_id = 1;
+        string owner_id = 2;
+        string model = 3;
+        string firmware_version = 4;
+        bool is_online = 5;
       }
+    service/device_service.py: |
+      from proto import device_pb2
 
-      pub fn get_app_name() -> String {
-          let config = get_config();
-          config["name"].as_str().unwrap_or("unknown").to_string()
-      }
+      class DeviceService:
+          def register_device(
+              self,
+              device_id: str,
+              owner_id: str,
+              model: str,
+              firmware_version: str = "",
+              is_online: bool = False,
+          ) -> device_pb2.Device:
+              return device_pb2.Device(
+                  device_id=device_id,
+                  owner_id=owner_id,
+                  model=model,
+                  firmware_version=firmware_version,
+                  is_online=is_online,
+              )
 
-      pub fn get_version() -> String {
-          let config = get_config();
-          config["version"].as_str().unwrap_or("0.0.0").to_string()
-      }
+          def get_device(self, device_id: str) -> device_pb2.Device | None:
+              return None
+    garbage/telemetry.py: |
+      GARBAGE_RUST030_A = "telemetry_marker"
 
-      pub fn get_features() -> Vec<String> {
-          let config = get_config();
-          config["features"]
-              .as_array()
-              .map(|arr| {
-                  arr.iter()
-                      .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                      .collect()
-              })
-              .unwrap_or_default()
-      }
-    src/env.rs: |
-      use std::env;
+      def noop():
+          pass
+    garbage/firmware.py: |
+      GARBAGE_RUST030_B = "firmware_marker"
 
-      pub struct EnvConfig {
-          pub port: u16,
-          pub log_level: String,
-          pub debug_mode: bool,
-      }
+      def noop():
+          pass
+    garbage/provisioning.py: |
+      GARBAGE_RUST030_C = "provision_marker"
 
-      impl EnvConfig {
-          pub fn from_env() -> Self {
-              Self {
-                  port: env::var("PORT")
-                      .ok()
-                      .and_then(|p| p.parse().ok())
-                      .unwrap_or(8080),
-                  log_level: env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string()),
-                  debug_mode: env::var("DEBUG").is_ok(),
-              }
-          }
+      def noop():
+          pass
+    garbage/shadow.py: |
+      GARBAGE_RUST030_D = "shadow_marker"
 
-          pub fn is_production(&self) -> bool {
-              self.log_level == "error" && !self.debug_mode
-          }
-      }
-    src/feature_flags.rs: |
-      pub struct FeatureSet {
-          enabled: Vec<String>,
-      }
-
-      impl FeatureSet {
-          pub fn new() -> Self {
-              let mut enabled = Vec::new();
-              #[cfg(feature = "auth")]
-              enabled.push("auth".to_string());
-              #[cfg(feature = "api")]
-              enabled.push("api".to_string());
-              Self { enabled }
-          }
-
-          pub fn is_enabled(&self, feature: &str) -> bool {
-              self.enabled.iter().any(|f| f == feature)
-          }
-
-          pub fn list_features(&self) -> &[String] {
-              &self.enabled
-          }
-      }
-  commit_message: Update files
+      def noop():
+          pass
+  commit_message: "feat: add firmware_version and is_online to Device proto and service"
 fragments:
-- id: config
+- id: proto_file
   selector:
-    path: src/config.rs
-    anchor: pub fn get_features() -> Vec<String> {
-- id: config_1
+    path: proto/device.proto
+- id: service_file
   selector:
-    path: src/config.rs
-    anchor: include_str!("../data/config.json")
-- id: no_env
+    path: service/device_service.py
+- id: no_garbage_a
   selector:
-    path: src/env.rs
-- id: no_feature_flags
+    anchor: GARBAGE_RUST030_A
+- id: no_garbage_b
   selector:
-    path: src/feature_flags.rs
-- id: no_global_0
+    anchor: GARBAGE_RUST030_B
+- id: no_garbage_c
   selector:
-    anchor: EnvConfig
-- id: no_global_1
+    anchor: GARBAGE_RUST030_C
+- id: no_garbage_d
   selector:
-    anchor: from_env
-- id: no_global_2
-  selector:
-    anchor: LOG_LEVEL
-- id: no_global_3
-  selector:
-    anchor: FeatureSet
-- id: no_global_4
-  selector:
-    anchor: is_enabled
-- id: no_global_5
-  selector:
-    anchor: list_features
+    anchor: GARBAGE_RUST030_D
 oracle:
   required:
-  - config
-  - config_1
+  - proto_file
+  - service_file
   allowed: []
   forbidden:
-  - no_env
-  - no_feature_flags
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

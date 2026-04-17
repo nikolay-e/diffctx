@@ -1,0 +1,186 @@
+name: gap2_187_php_import_chain_bakery_order
+tags:
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:2hop
+- lang:php
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/Bakery/OrderTracker.php: |
+      <?php
+
+      namespace App\Bakery;
+
+      use App\Bakery\Recipe\RecipeBook;
+
+      class OrderTracker
+      {
+          private RecipeBook $recipes;
+          private array $orders = [];
+
+          public function __construct(RecipeBook $recipes)
+          {
+              $this->recipes = $recipes;
+          }
+
+          public function placeOrder(string $pastryName, int $qty): string
+          {
+              $id = 'ORD-' . uniqid();
+              $this->orders[$id] = [
+                  'pastry' => $pastryName,
+                  'qty' => $qty,
+                  'status' => 'pending',
+              ];
+              return $id;
+          }
+
+          public function pendingCount(): int
+          {
+              $count = 0;
+              foreach ($this->orders as $order) {
+                  if ($order['status'] === 'pending') {
+                      $count++;
+                  }
+              }
+              return $count;
+          }
+      }
+    src/Bakery/Recipe/RecipeBook.php: |
+      <?php
+
+      namespace App\Bakery\Recipe;
+
+      use App\Bakery\Recipe\Ingredient;
+
+      class RecipeBook
+      {
+          private array $recipes = [];
+
+          public function addRecipe(string $name, array $ingredients): void
+          {
+              $this->recipes[$name] = $ingredients;
+          }
+
+          public function ingredientsFor(string $name): array
+          {
+              return $this->recipes[$name] ?? [];
+          }
+      }
+    src/Bakery/Recipe/Ingredient.php: |
+      <?php
+
+      namespace App\Bakery\Recipe;
+
+      class Ingredient
+      {
+          private string $name;
+          private float $gramsPerUnit;
+
+          public function __construct(string $name, float $gramsPerUnit)
+          {
+              $this->name = $name;
+              $this->gramsPerUnit = $gramsPerUnit;
+          }
+
+          public function name(): string
+          {
+              return $this->name;
+          }
+
+          public function weight(): float
+          {
+              return $this->gramsPerUnit;
+          }
+      }
+    src/StoreFront/DisplayCase.php: |
+      <?php
+
+      namespace App\StoreFront;
+
+      class DisplayCase
+      {
+          public function arrange(array $items): array
+          {
+              sort($items);
+              return $items;
+          }
+      }
+  changed_files:
+    src/Bakery/OrderTracker.php: |
+      <?php
+
+      namespace App\Bakery;
+
+      use App\Bakery\Recipe\RecipeBook;
+
+      class OrderTracker
+      {
+          private RecipeBook $recipes;
+          private array $orders = [];
+
+          public function __construct(RecipeBook $recipes)
+          {
+              $this->recipes = $recipes;
+          }
+
+          public function placeOrder(string $pastryName, int $qty): string
+          {
+              $id = 'ORD-' . uniqid();
+              $this->orders[$id] = [
+                  'pastry' => $pastryName,
+                  'qty' => $qty,
+                  'status' => 'pending',
+              ];
+              return $id;
+          }
+
+          public function markComplete(string $orderId): bool
+          {
+              if (!isset($this->orders[$orderId])) {
+                  return false;
+              }
+              $this->orders[$orderId]['status'] = 'complete';
+              return true;
+          }
+
+          public function pendingCount(): int
+          {
+              $count = 0;
+              foreach ($this->orders as $order) {
+                  if ($order['status'] === 'pending') {
+                      $count++;
+                  }
+              }
+              return $count;
+          }
+      }
+  commit_message: "feat: add order completion tracking"
+fragments:
+- id: mark_complete
+  selector:
+    path: src/Bakery/OrderTracker.php
+    anchor: "public function markComplete"
+- id: recipe_book_class
+  selector:
+    path: src/Bakery/Recipe/RecipeBook.php
+    anchor: class RecipeBook
+- id: ingredient_class
+  selector:
+    path: src/Bakery/Recipe/Ingredient.php
+    anchor: class Ingredient
+- id: no_storefront
+  selector:
+    path: src/StoreFront/DisplayCase.php
+- id: no_display
+  selector:
+    anchor: DisplayCase
+oracle:
+  required:
+  - mark_complete
+  - recipe_book_class
+  forbidden:
+  - no_storefront
+  - no_display

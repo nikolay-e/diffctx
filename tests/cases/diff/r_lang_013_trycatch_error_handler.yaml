@@ -1,0 +1,123 @@
+name: r_lang_013_trycatch_error_handler
+tags:
+- lang:r
+- change:single_file
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    R/api_client.R: |
+      library(httr)
+
+      fetch_user <- function(base_url, user_id, token) {
+        resp <- tryCatch(
+          GET(
+            paste0(base_url, "/users/", user_id),
+            add_headers(Authorization = paste("Bearer", token))
+          ),
+          error = function(e) {
+            list(status = "error", message = conditionMessage(e))
+          }
+        )
+        if (inherits(resp, "response")) {
+          if (status_code(resp) == 200) {
+            list(status = "ok", data = content(resp, as = "parsed"))
+          } else {
+            list(status = "error", message = paste("HTTP", status_code(resp)))
+          }
+        } else {
+          resp
+        }
+      }
+    R/caller.R: |
+      source("R/api_client.R")
+
+      load_user_profile <- function(cfg, user_id) {
+        result <- fetch_user(cfg$base_url, user_id, cfg$token)
+        if (result$status != "ok") {
+          warning("Failed to fetch user ", user_id, ": ", result$message)
+          return(NULL)
+        }
+        result$data
+      }
+    R/R_NOISE_013_matrix_ops.R: |
+      R_NOISE_013_normalize_rows <- function(m) {
+        t(apply(m, 1, function(row) row / sum(row)))
+      }
+      R_NOISE_013_cosine_sim <- function(a, b) {
+        sum(a * b) / (sqrt(sum(a^2)) * sqrt(sum(b^2)))
+      }
+    R/R_NOISE_013_time_utils.R: |
+      R_NOISE_013_now_utc <- function() {
+        as.POSIXct(Sys.time(), tz = "UTC")
+      }
+      R_NOISE_013_elapsed_seconds <- function(start) {
+        as.numeric(difftime(Sys.time(), start, units = "secs"))
+      }
+  changed_files:
+    R/api_client.R: |
+      library(httr)
+
+      fetch_user <- function(base_url, user_id, token) {
+        resp <- tryCatch(
+          GET(
+            paste0(base_url, "/users/", user_id),
+            add_headers(Authorization = paste("Bearer", token)),
+            timeout(10)
+          ),
+          error = function(e) {
+            list(
+              status = "error",
+              code = "network_error",
+              message = conditionMessage(e),
+              retryable = TRUE
+            )
+          }
+        )
+        if (inherits(resp, "response")) {
+          sc <- status_code(resp)
+          if (sc == 200) {
+            list(status = "ok", data = content(resp, as = "parsed"))
+          } else if (sc == 429) {
+            list(status = "error", code = "rate_limited", message = "Rate limit exceeded", retryable = TRUE)
+          } else {
+            list(status = "error", code = "http_error", message = paste("HTTP", sc), retryable = FALSE)
+          }
+        } else {
+          resp
+        }
+      }
+  commit_message: "Update files"
+fragments:
+- id: api_client_error_structure
+  selector:
+    path: R/api_client.R
+    anchor: retryable
+- id: caller_processes_result
+  selector:
+    path: R/caller.R
+    anchor: result$status
+- id: no_matrix_ops
+  selector:
+    path: R/R_NOISE_013_matrix_ops.R
+- id: no_time_utils
+  selector:
+    path: R/R_NOISE_013_time_utils.R
+- id: no_global_0
+  selector:
+    anchor: R_NOISE_013_normalize_rows
+- id: no_global_1
+  selector:
+    anchor: R_NOISE_013_now_utc
+oracle:
+  required:
+  - api_client_error_structure
+  - caller_processes_result
+  allowed: []
+  forbidden:
+  - no_matrix_ops
+  - no_time_utils
+  - no_global_0
+  - no_global_1

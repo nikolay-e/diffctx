@@ -1,0 +1,144 @@
+name: bal2_testctx_044_csharp_queue_processor
+tags:
+- lang:csharp
+- change:bug_fix
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/Processing/QueueProcessor.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Processing
+      {
+          public class QueueProcessor<T>
+          {
+              private readonly Queue<T> _queue = new();
+
+              public void Enqueue(T item)
+              {
+                  _queue.Enqueue(item);
+              }
+
+              public T Dequeue()
+              {
+                  return _queue.Dequeue();
+              }
+
+              public int Count => _queue.Count;
+
+              public bool IsEmpty => _queue.Count == 0;
+          }
+      }
+    Tests/QueueProcessorTests.cs: |
+      using Xunit;
+      using App.Processing;
+
+      namespace App.Tests
+      {
+          public class QueueProcessorTests
+          {
+              [Fact]
+              public void Enqueue_Dequeue_ReturnsItem()
+              {
+                  var q = new QueueProcessor<string>();
+                  q.Enqueue("hello");
+                  Assert.Equal("hello", q.Dequeue());
+              }
+
+              [Fact]
+              public void IsEmpty_AfterEnqueue_ReturnsFalse()
+              {
+                  var q = new QueueProcessor<int>();
+                  q.Enqueue(1);
+                  Assert.False(q.IsEmpty);
+              }
+          }
+      }
+    src/Processing/BatchRunner.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Processing
+      {
+          public class BatchRunner
+          {
+              public void RunAll(List<Action> tasks)
+              {
+                  foreach (var task in tasks)
+                      task();
+              }
+          }
+      }
+  changed_files:
+    src/Processing/QueueProcessor.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Processing
+      {
+          public class QueueProcessor<T>
+          {
+              private readonly Queue<T> _queue = new();
+
+              public void Enqueue(T item)
+              {
+                  _queue.Enqueue(item);
+              }
+
+              public T Dequeue()
+              {
+                  if (_queue.Count == 0)
+                      throw new InvalidOperationException("Queue is empty");
+                  return _queue.Dequeue();
+              }
+
+              public bool TryDequeue(out T item)
+              {
+                  if (_queue.Count == 0)
+                  {
+                      item = default;
+                      return false;
+                  }
+                  item = _queue.Dequeue();
+                  return true;
+              }
+
+              public int Count => _queue.Count;
+
+              public bool IsEmpty => _queue.Count == 0;
+          }
+      }
+  commit_message: "fix: throw on empty dequeue, add TryDequeue"
+fragments:
+- id: dequeue_check
+  selector:
+    path: src/Processing/QueueProcessor.cs
+    anchor: "Queue is empty"
+- id: try_dequeue
+  selector:
+    path: src/Processing/QueueProcessor.cs
+    anchor: "public bool TryDequeue"
+- id: test_imports
+  selector:
+    path: Tests/QueueProcessorTests.cs
+    anchor: "using App.Processing"
+- id: test_class
+  selector:
+    path: Tests/QueueProcessorTests.cs
+    anchor: "public class QueueProcessorTests"
+- id: no_batch_runner
+  selector:
+    path: src/Processing/BatchRunner.cs
+    anchor: "class BatchRunner"
+oracle:
+  required:
+  - dequeue_check
+  - try_dequeue
+  - test_imports
+  allowed:
+  - test_class
+  forbidden:
+  - no_batch_runner

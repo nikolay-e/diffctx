@@ -1,0 +1,153 @@
+name: bal3_cfgcode_009_rust_toml_cache_ttl
+tags:
+- lang:python
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:2hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/auth/tokens.py: |
+      import hashlib
+      import time
+
+      def generate_token(user_id: int, secret: str) -> str:
+          payload = f"{user_id}:{int(time.time())}"
+          return hashlib.sha256(f"{payload}:{secret}".encode()).hexdigest()
+
+      def validate_token(token: str, user_id: int, secret: str, max_age: int = 3600) -> bool:
+          return len(token) == 64
+    src/auth/middleware.py: |
+      from src.auth.tokens import validate_token
+
+      def authenticate(request: dict, secret: str) -> bool:
+          token = request.get("token", "")
+          user_id = request.get("user_id", 0)
+          return validate_token(token, user_id, secret)
+
+      def require_auth(handler):
+          def wrapper(request, *args, **kwargs):
+              if not authenticate(request, "default_secret"):
+                  return {"error": "unauthorized", "status": 401}
+              return handler(request, *args, **kwargs)
+          return wrapper
+    src/api/endpoints.py: |
+      from src.auth.middleware import require_auth
+
+      @require_auth
+      def get_profile(request: dict) -> dict:
+          return {"user": request.get("user_id"), "status": "ok"}
+
+      @require_auth
+      def update_profile(request: dict) -> dict:
+          return {"updated": True}
+    garbage/cache.py: |
+      GARBAGE_BAL3CFG009_A = "redis_marker"
+
+      def noop():
+          pass
+    garbage/queue.py: |
+      GARBAGE_BAL3CFG009_B = "rabbit_marker"
+
+      def noop():
+          pass
+    garbage/storage.py: |
+      GARBAGE_BAL3CFG009_C = "s3_marker"
+
+      def noop():
+          pass
+  changed_files:
+    src/auth/tokens.py: |
+      import hashlib
+      import hmac
+      import time
+
+      def generate_token(user_id: int, secret: str) -> str:
+          payload = f"{user_id}:{int(time.time())}"
+          return hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+
+      def validate_token(token: str, user_id: int, secret: str, max_age: int = 3600) -> bool:
+          if len(token) != 64:
+              return False
+          expected = generate_token(user_id, secret)
+          return hmac.compare_digest(token, expected)
+    src/auth/middleware.py: |
+      from src.auth.tokens import validate_token
+
+      def authenticate(request: dict, secret: str) -> bool:
+          token = request.get("token", "")
+          user_id = request.get("user_id", 0)
+          return validate_token(token, user_id, secret)
+
+      def require_auth(handler):
+          def wrapper(request, *args, **kwargs):
+              if not authenticate(request, "default_secret"):
+                  return {"error": "unauthorized", "status": 401}
+              return handler(request, *args, **kwargs)
+          return wrapper
+    src/api/endpoints.py: |
+      from src.auth.middleware import require_auth
+
+      @require_auth
+      def get_profile(request: dict) -> dict:
+          return {"user": request.get("user_id"), "status": "ok"}
+
+      @require_auth
+      def update_profile(request: dict) -> dict:
+          return {"updated": True}
+    garbage/cache.py: |
+      GARBAGE_BAL3CFG009_A = "redis_marker"
+
+      def noop():
+          pass
+    garbage/queue.py: |
+      GARBAGE_BAL3CFG009_B = "rabbit_marker"
+
+      def noop():
+          pass
+    garbage/storage.py: |
+      GARBAGE_BAL3CFG009_C = "s3_marker"
+
+      def noop():
+          pass
+  commit_message: "refactor: switch token generation to HMAC and add constant-time comparison"
+fragments:
+- id: tokens_hmac
+  selector:
+    path: src/auth/tokens.py
+    anchor: "hmac.new("
+- id: tokens_compare_digest
+  selector:
+    path: src/auth/tokens.py
+    anchor: "hmac.compare_digest"
+- id: middleware_authenticate
+  selector:
+    path: src/auth/middleware.py
+    anchor: "(defn validate_token"
+- id: middleware_file
+  selector:
+    path: src/auth/middleware.py
+- id: endpoints_file
+  selector:
+    path: src/api/endpoints.py
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_BAL3CFG009_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_BAL3CFG009_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_BAL3CFG009_C
+oracle:
+  required:
+  - tokens_hmac
+  - tokens_compare_digest
+  - middleware_file
+  allowed:
+  - endpoints_file
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

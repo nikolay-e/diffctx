@@ -1,0 +1,102 @@
+name: gap2_144_python_multifile_new_func_telescope_tracking
+tags:
+- change:multi_file
+- change:new_function
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:python
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    telescope/tracker.py: |
+      from telescope.motors import slew_to_coordinates
+
+      class MountTracker:
+          def __init__(self, mount_id: str):
+              self.mount_id = mount_id
+              self._position: tuple[float, float] = (0.0, 0.0)
+
+          def goto_target(self, ra: float, dec: float) -> None:
+              slew_to_coordinates(self.mount_id, ra, dec)
+              self._position = (ra, dec)
+
+          def current_position(self) -> tuple[float, float]:
+              return self._position
+    telescope/motors.py: |
+      def slew_to_coordinates(mount_id: str, ra: float, dec: float) -> None:
+          pass
+
+      def park_mount(mount_id: str) -> None:
+          pass
+    telescope/camera.py: |
+      SENSOR_WIDTH_PX = 4096
+      SENSOR_HEIGHT_PX = 4096
+
+      class ImagingSensor:
+          def __init__(self, exposure_sec: float):
+              self.exposure_sec = exposure_sec
+
+          def capture_frame(self) -> bytes:
+              return b"\x00" * SENSOR_WIDTH_PX * SENSOR_HEIGHT_PX
+
+          def set_gain(self, iso: int) -> None:
+              pass
+  changed_files:
+    telescope/tracker.py: |
+      from telescope.motors import slew_to_coordinates, park_mount
+
+      class MountTracker:
+          def __init__(self, mount_id: str):
+              self.mount_id = mount_id
+              self._position: tuple[float, float] = (0.0, 0.0)
+
+          def goto_target(self, ra: float, dec: float) -> None:
+              slew_to_coordinates(self.mount_id, ra, dec)
+              self._position = (ra, dec)
+
+          def current_position(self) -> tuple[float, float]:
+              return self._position
+
+          def park(self) -> None:
+              park_mount(self.mount_id)
+              self._position = (0.0, 0.0)
+    telescope/motors.py: |
+      def slew_to_coordinates(mount_id: str, ra: float, dec: float) -> None:
+          pass
+
+      def park_mount(mount_id: str) -> None:
+          pass
+
+      def set_tracking_rate(mount_id: str, arcsec_per_sec: float) -> None:
+          pass
+  commit_message: "feat: add park command and tracking rate motor control"
+fragments:
+- id: tracker_park
+  selector:
+    path: telescope/tracker.py
+    anchor: "def park(self) -> None:"
+- id: tracker_import_park
+  selector:
+    path: telescope/tracker.py
+    anchor: "from telescope.motors import slew_to_coordinates, park_mount"
+- id: motor_tracking_rate
+  selector:
+    path: telescope/motors.py
+    anchor: "def set_tracking_rate(mount_id: str, arcsec_per_sec: float) -> None:"
+- id: no_camera
+  selector:
+    path: telescope/camera.py
+- id: no_sensor_width
+  selector:
+    anchor: SENSOR_WIDTH_PX
+oracle:
+  required:
+  - tracker_park
+  - tracker_import_park
+  - motor_tracking_rate
+  allowed: []
+  forbidden:
+  - no_camera
+  - no_sensor_width

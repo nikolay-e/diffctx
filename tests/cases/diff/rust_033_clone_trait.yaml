@@ -1,270 +1,125 @@
 name: rust_033_clone_trait
+tags:
+- lang:kotlin
+- change:bug_fix
+- change:single_file
+- context:test_file
+- distance:1hop
+- difficulty:trivial
 repo:
   initial_files:
-    src/lib.rs: |
-      pub mod entity;
-      pub mod cache;
-      pub mod snapshot;
-    src/entity.rs: |
-      #[derive(Debug)]
-      pub struct Entity {
-          id: u64,
-          name: String,
-          tags: Vec<String>,
-      }
+    src/main/kotlin/iot/ThresholdChecker.kt: |
+      class ThresholdChecker(private val warnThreshold: Double, private val critThreshold: Double) {
+          enum class Status { OK, WARN, CRITICAL }
 
-      impl Entity {
-          pub fn new(id: u64, name: String) -> Self {
-              Self {
-                  id,
-                  name,
-                  tags: Vec::new(),
+          fun check(value: Double): Status {
+              if (value >= critThreshold) return Status.CRITICAL
+              if (value >= warnThreshold) return Status.WARN
+              return Status.OK  // BUG: negative values should also warn
+          }
+
+          fun message(value: Double): String {
+              return when (check(value)) {
+                  Status.CRITICAL -> "CRITICAL: $value exceeds $critThreshold"
+                  Status.WARN -> "WARN: $value exceeds $warnThreshold"
+                  Status.OK -> "OK: $value"
               }
           }
+      }
+    src/test/kotlin/iot/ThresholdCheckerTest.kt: |
+      import org.junit.Test
+      import kotlin.test.assertEquals
 
-          pub fn add_tag(&mut self, tag: String) {
-              self.tags.push(tag);
+      class ThresholdCheckerTest {
+          private val checker = ThresholdChecker(70.0, 90.0)
+
+          @Test fun criticalAboveThreshold() {
+              assertEquals(ThresholdChecker.Status.CRITICAL, checker.check(95.0))
           }
 
-          pub fn id(&self) -> u64 {
-              self.id
+          @Test fun warnBetweenThresholds() {
+              assertEquals(ThresholdChecker.Status.WARN, checker.check(75.0))
           }
 
-          pub fn name(&self) -> &str {
-              &self.name
-          }
-
-          pub fn tags(&self) -> &[String] {
-              &self.tags
+          @Test fun okBelowWarn() {
+              assertEquals(ThresholdChecker.Status.OK, checker.check(50.0))
           }
       }
-    src/cache.rs: |
-      use std::collections::HashMap;
-
-      pub struct LruCache<K: std::hash::Hash + Eq + Clone, V: Clone> {
-          map: HashMap<K, V>,
-          max_size: usize,
-      }
-
-      impl<K: std::hash::Hash + Eq + Clone, V: Clone> LruCache<K, V> {
-          pub fn new(max_size: usize) -> Self {
-              Self {
-                  map: HashMap::new(),
-                  max_size,
-              }
-          }
-
-          pub fn get(&self, key: &K) -> Option<V> {
-              self.map.get(key).cloned()
-          }
-
-          pub fn insert(&mut self, key: K, value: V) {
-              if self.map.len() >= self.max_size {
-                  if let Some(first_key) = self.map.keys().next().cloned() {
-                      self.map.remove(&first_key);
-                  }
-              }
-              self.map.insert(key, value);
-          }
-
-          pub fn size(&self) -> usize {
-              self.map.len()
-          }
-      }
-    src/snapshot.rs: |
-      #[derive(Clone)]
-      pub struct AppState {
-          pub version: u32,
-          pub entries: Vec<String>,
-      }
-
-      pub struct SnapshotManager {
-          history: Vec<AppState>,
-      }
-
-      impl SnapshotManager {
-          pub fn new() -> Self {
-              Self { history: Vec::new() }
-          }
-
-          pub fn take_snapshot(&mut self, state: &AppState) {
-              self.history.push(state.clone());
-          }
-
-          pub fn restore_latest(&self) -> Option<AppState> {
-              self.history.last().cloned()
-          }
-
-          pub fn snapshot_count(&self) -> usize {
-              self.history.len()
-          }
-      }
+    garbage/EcommerceSearchIndex.kt: |
+      // GARBAGE_RUST033_A = "ecommerce_search_index_marker"
+    garbage/GameAchievementTracker.kt: |
+      // GARBAGE_RUST033_B = "game_achievement_tracker_marker"
+    garbage/PaymentFraudDetector.kt: |
+      // GARBAGE_RUST033_C = "payment_fraud_detector_marker"
   changed_files:
-    src/lib.rs: |
-      pub mod entity;
-      pub mod service;
-      pub mod cache;
-      pub mod snapshot;
-    src/entity.rs: |
-      #[derive(Debug, Clone)]
-      pub struct Entity {
-          id: u64,
-          name: String,
-          tags: Vec<String>,
-      }
+    src/main/kotlin/iot/ThresholdChecker.kt: |
+      class ThresholdChecker(private val warnThreshold: Double, private val critThreshold: Double) {
+          enum class Status { OK, WARN, CRITICAL }
 
-      impl Entity {
-          pub fn new(id: u64, name: String) -> Self {
-              Self {
-                  id,
-                  name,
-                  tags: Vec::new(),
+          fun check(value: Double): Status {
+              if (value < 0) return Status.WARN
+              if (value >= critThreshold) return Status.CRITICAL
+              if (value >= warnThreshold) return Status.WARN
+              return Status.OK
+          }
+
+          fun message(value: Double): String {
+              return when (check(value)) {
+                  Status.CRITICAL -> "CRITICAL: $value exceeds $critThreshold"
+                  Status.WARN -> "WARN: $value exceeds $warnThreshold"
+                  Status.OK -> "OK: $value"
               }
           }
+      }
+    src/test/kotlin/iot/ThresholdCheckerTest.kt: |
+      import org.junit.Test
+      import kotlin.test.assertEquals
 
-          pub fn add_tag(&mut self, tag: String) {
-              self.tags.push(tag);
+      class ThresholdCheckerTest {
+          private val checker = ThresholdChecker(70.0, 90.0)
+
+          @Test fun criticalAboveThreshold() {
+              assertEquals(ThresholdChecker.Status.CRITICAL, checker.check(95.0))
           }
 
-          pub fn id(&self) -> u64 {
-              self.id
+          @Test fun warnBetweenThresholds() {
+              assertEquals(ThresholdChecker.Status.WARN, checker.check(75.0))
           }
 
-          pub fn name(&self) -> &str {
-              &self.name
-          }
-
-          pub fn tags(&self) -> &[String] {
-              &self.tags
-          }
-
-          pub fn duplicate(&self) -> Self {
-              self.clone()
+          @Test fun okBelowWarn() {
+              assertEquals(ThresholdChecker.Status.OK, checker.check(50.0))
           }
       }
-    src/service.rs: |
-      use crate::entity::Entity;
-
-      pub fn clone_entities(entities: &[Entity]) -> Vec<Entity> {
-          entities.iter().cloned().collect()
-      }
-
-      pub fn process_with_backup(entity: &Entity) -> Entity {
-          let backup = entity.clone();
-          println!("Processing entity {}: {}", entity.id(), entity.name());
-          backup
-      }
-    src/cache.rs: |
-      use std::collections::HashMap;
-
-      pub struct LruCache<K: std::hash::Hash + Eq + Clone, V: Clone> {
-          map: HashMap<K, V>,
-          max_size: usize,
-      }
-
-      impl<K: std::hash::Hash + Eq + Clone, V: Clone> LruCache<K, V> {
-          pub fn new(max_size: usize) -> Self {
-              Self {
-                  map: HashMap::new(),
-                  max_size,
-              }
-          }
-
-          pub fn get(&self, key: &K) -> Option<V> {
-              self.map.get(key).cloned()
-          }
-
-          pub fn insert(&mut self, key: K, value: V) {
-              if self.map.len() >= self.max_size {
-                  if let Some(first_key) = self.map.keys().next().cloned() {
-                      self.map.remove(&first_key);
-                  }
-              }
-              self.map.insert(key, value);
-          }
-
-          pub fn size(&self) -> usize {
-              self.map.len()
-          }
-      }
-    src/snapshot.rs: |
-      #[derive(Clone)]
-      pub struct AppState {
-          pub version: u32,
-          pub entries: Vec<String>,
-      }
-
-      pub struct SnapshotManager {
-          history: Vec<AppState>,
-      }
-
-      impl SnapshotManager {
-          pub fn new() -> Self {
-              Self { history: Vec::new() }
-          }
-
-          pub fn take_snapshot(&mut self, state: &AppState) {
-              self.history.push(state.clone());
-          }
-
-          pub fn restore_latest(&self) -> Option<AppState> {
-              self.history.last().cloned()
-          }
-
-          pub fn snapshot_count(&self) -> usize {
-              self.history.len()
-          }
-      }
-  commit_message: Update files
+    garbage/EcommerceSearchIndex.kt: |
+      // GARBAGE_RUST033_A = "ecommerce_search_index_marker"
+    garbage/GameAchievementTracker.kt: |
+      // GARBAGE_RUST033_B = "game_achievement_tracker_marker"
+    garbage/PaymentFraudDetector.kt: |
+      // GARBAGE_RUST033_C = "payment_fraud_detector_marker"
+  commit_message: "fix: treat negative sensor values as WARN in ThresholdChecker"
 fragments:
-- id: entity
+- id: check_negative
   selector:
-    path: src/entity.rs
-    anchor: pub fn duplicate(&self) -> Self {
-- id: lib
+    path: src/main/kotlin/iot/ThresholdChecker.kt
+    anchor: "if (value < 0) return Status.WARN"
+- id: test_file
   selector:
-    path: src/lib.rs
-    anchor: pub mod service;
-- id: service
+    path: src/test/kotlin/iot/ThresholdCheckerTest.kt
+- id: no_garbage_a
   selector:
-    path: src/service.rs
-    anchor: use crate::entity::Entity;
-- id: no_cache
+    anchor: GARBAGE_RUST033_A
+- id: no_garbage_b
   selector:
-    path: src/cache.rs
-- id: no_snapshot
+    anchor: GARBAGE_RUST033_B
+- id: no_garbage_c
   selector:
-    path: src/snapshot.rs
-- id: no_global_0
-  selector:
-    anchor: LruCache
-- id: no_global_1
-  selector:
-    anchor: max_size
-- id: no_global_2
-  selector:
-    anchor: SnapshotManager
-- id: no_global_3
-  selector:
-    anchor: AppState
-- id: no_global_4
-  selector:
-    anchor: take_snapshot
-- id: no_global_5
-  selector:
-    anchor: restore_latest
+    anchor: GARBAGE_RUST033_C
 oracle:
   required:
-  - entity
-  - lib
-  - service
+  - check_negative
+  - test_file
   allowed: []
   forbidden:
-  - no_cache
-  - no_snapshot
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

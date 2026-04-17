@@ -1,0 +1,177 @@
+name: gap_101_rust_multi_file_network_protocol
+tags:
+- lang:rust
+- change:multi_file
+- change:new_function
+- change:signature
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/protocol/codec.rs: |
+      use crate::protocol::frame::Frame;
+      use crate::protocol::checksum::crc32;
+
+      pub struct Codec {
+          buffer: Vec<u8>,
+          max_frame_size: usize,
+      }
+
+      impl Codec {
+          pub fn new(max_frame_size: usize) -> Self {
+              Self {
+                  buffer: Vec::new(),
+                  max_frame_size,
+              }
+          }
+
+          pub fn encode(&self, frame: &Frame) -> Vec<u8> {
+              let payload = frame.payload();
+              let checksum = crc32(payload);
+              let mut result = Vec::with_capacity(payload.len() + 8);
+              result.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+              result.extend_from_slice(payload);
+              result.extend_from_slice(&checksum.to_be_bytes());
+              result
+          }
+      }
+    src/protocol/frame.rs: |
+      pub struct Frame {
+          kind: FrameKind,
+          data: Vec<u8>,
+      }
+
+      pub enum FrameKind {
+          Data,
+          Control,
+          Heartbeat,
+      }
+
+      impl Frame {
+          pub fn new(kind: FrameKind, data: Vec<u8>) -> Self {
+              Self { kind, data }
+          }
+
+          pub fn payload(&self) -> &[u8] {
+              &self.data
+          }
+
+          pub fn kind(&self) -> &FrameKind {
+              &self.kind
+          }
+      }
+    src/protocol/checksum.rs: |
+      pub fn crc32(data: &[u8]) -> u32 {
+          let mut crc: u32 = 0xFFFFFFFF;
+          for &byte in data {
+              crc ^= byte as u32;
+              for _ in 0..8 {
+                  if crc & 1 != 0 {
+                      crc = (crc >> 1) ^ 0xEDB88320;
+                  } else {
+                      crc >>= 1;
+                  }
+              }
+          }
+          !crc
+      }
+    src/transport/tcp_stream.rs: |
+      use std::net::TcpStream;
+
+      pub struct ManagedStream {
+          inner: Option<TcpStream>,
+          read_timeout_ms: u64,
+      }
+
+      impl ManagedStream {
+          pub fn connect(addr: &str, timeout_ms: u64) -> Result<Self, String> {
+              Ok(Self {
+                  inner: None,
+                  read_timeout_ms: timeout_ms,
+              })
+          }
+
+          pub fn is_connected(&self) -> bool {
+              self.inner.is_some()
+          }
+      }
+  changed_files:
+    src/protocol/codec.rs: |
+      use crate::protocol::frame::{Frame, FrameKind};
+      use crate::protocol::checksum::crc32;
+
+      pub struct Codec {
+          buffer: Vec<u8>,
+          max_frame_size: usize,
+      }
+
+      impl Codec {
+          pub fn new(max_frame_size: usize) -> Self {
+              Self {
+                  buffer: Vec::new(),
+                  max_frame_size,
+              }
+          }
+
+          pub fn encode(&self, frame: &Frame) -> Vec<u8> {
+              let payload = frame.payload();
+              let checksum = crc32(payload);
+              let mut result = Vec::with_capacity(payload.len() + 8);
+              result.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+              result.extend_from_slice(payload);
+              result.extend_from_slice(&checksum.to_be_bytes());
+              result
+          }
+
+          pub fn decode(&self, raw: &[u8]) -> Result<Frame, String> {
+              if raw.len() < 8 {
+                  return Err("frame too short".into());
+              }
+              let len = u32::from_be_bytes(raw[0..4].try_into().unwrap()) as usize;
+              if len + 8 > raw.len() {
+                  return Err("incomplete frame".into());
+              }
+              let payload = &raw[4..4 + len];
+              let expected = u32::from_be_bytes(raw[4 + len..8 + len].try_into().unwrap());
+              let actual = crc32(payload);
+              if expected != actual {
+                  return Err("checksum mismatch".into());
+              }
+              Ok(Frame::new(FrameKind::Data, payload.to_vec()))
+          }
+      }
+fragments:
+- id: codec_decode
+  selector:
+    path: src/protocol/codec.rs
+    anchor: "pub fn decode"
+- id: frame_struct
+  selector:
+    path: src/protocol/frame.rs
+    anchor: "pub struct Frame"
+- id: frame_kind_enum
+  selector:
+    path: src/protocol/frame.rs
+    anchor: "pub enum FrameKind"
+- id: checksum_fn
+  selector:
+    path: src/protocol/checksum.rs
+    anchor: "pub fn crc32"
+- id: no_tcp_stream
+  selector:
+    path: src/transport/tcp_stream.rs
+- id: no_managed_stream
+  selector:
+    anchor: ManagedStream
+oracle:
+  required:
+  - codec_decode
+  - frame_struct
+  - frame_kind_enum
+  - checksum_fn
+  forbidden:
+  - no_tcp_stream
+  - no_managed_stream

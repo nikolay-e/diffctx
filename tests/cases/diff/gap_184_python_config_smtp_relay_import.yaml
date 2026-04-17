@@ -1,0 +1,161 @@
+name: gap_184_python_config_smtp_relay_import
+tags:
+- lang:python
+- change:config
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:1hop
+repo:
+  initial_files:
+    config/smtp.py: |
+      SMTP_HOST = "mail.internal.corp"
+      SMTP_PORT = 587
+      USE_TLS = True
+      SENDER_ADDRESS = "noreply@corp.com"
+    notifications/email_sender.py: |
+      from config.smtp import SMTP_HOST, SMTP_PORT, USE_TLS, SENDER_ADDRESS
+
+      class EmailSender:
+          def __init__(self):
+              self.host = SMTP_HOST
+              self.port = SMTP_PORT
+              self.tls = USE_TLS
+              self.sender = SENDER_ADDRESS
+
+          def send(self, to: str, subject: str, body: str) -> bool:
+              envelope = self._build_envelope(to, subject, body)
+              return self._transmit(envelope)
+
+          def _build_envelope(self, to: str, subject: str, body: str) -> dict:
+              return {
+                  "from": self.sender,
+                  "to": to,
+                  "subject": subject,
+                  "body": body,
+              }
+
+          def _transmit(self, envelope: dict) -> bool:
+              return True
+    notifications/sms_gateway.py: |
+      TRAP_GAP_184_SMS_MARKER_A: str = "sms_noise"
+      TRAP_GAP_184_SMS_FLAG_B: bool = False
+
+      class SmsGateway:
+          def __init__(self, api_key: str):
+              self.api_key = api_key
+
+          def send(self, phone: str, message: str) -> bool:
+              return len(phone) > 0 and len(message) > 0
+    analytics/tracker.py: |
+      TRAP_GAP_184_TRACK_MARKER_C: str = "tracker_noise"
+      TRAP_GAP_184_TRACK_FLAG_D: int = 1000
+
+      class EventTracker:
+          def __init__(self):
+              self._events: list[str] = []
+
+          def record(self, event: str) -> None:
+              self._events.append(event)
+  changed_files:
+    config/smtp.py: |
+      SMTP_HOST = "relay.external.io"
+      SMTP_PORT = 465
+      USE_TLS = True
+      SENDER_ADDRESS = "noreply@corp.com"
+    notifications/email_sender.py: |
+      from config.smtp import SMTP_HOST, SMTP_PORT, USE_TLS, SENDER_ADDRESS
+
+      class EmailSender:
+          def __init__(self):
+              self.host = SMTP_HOST
+              self.port = SMTP_PORT
+              self.tls = USE_TLS
+              self.sender = SENDER_ADDRESS
+
+          def send(self, to: str, subject: str, body: str) -> bool:
+              envelope = self._build_envelope(to, subject, body)
+              return self._transmit(envelope)
+
+          def _build_envelope(self, to: str, subject: str, body: str) -> dict:
+              return {
+                  "from": self.sender,
+                  "to": to,
+                  "subject": subject,
+                  "body": body,
+              }
+
+          def _transmit(self, envelope: dict) -> bool:
+              return True
+    notifications/sms_gateway.py: |
+      TRAP_GAP_184_SMS_MARKER_A: str = "sms_noise"
+      TRAP_GAP_184_SMS_FLAG_B: bool = False
+
+      class SmsGateway:
+          def __init__(self, api_key: str):
+              self.api_key = api_key
+
+          def send(self, phone: str, message: str) -> bool:
+              return len(phone) > 0 and len(message) > 0
+    analytics/tracker.py: |
+      TRAP_GAP_184_TRACK_MARKER_C: str = "tracker_noise"
+      TRAP_GAP_184_TRACK_FLAG_D: int = 1000
+
+      class EventTracker:
+          def __init__(self):
+              self._events: list[str] = []
+
+          def record(self, event: str) -> None:
+              self._events.append(event)
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: config_host
+  selector:
+    path: config/smtp.py
+    anchor: SMTP_HOST = "relay.external.io"
+- id: config_port
+  selector:
+    path: config/smtp.py
+    anchor: SMTP_PORT = 465
+- id: sender_import
+  selector:
+    path: notifications/email_sender.py
+    anchor: from config.smtp import SMTP_HOST, SMTP_PORT, USE_TLS, SENDER_ADDRESS
+- id: sender_uses_host
+  selector:
+    path: notifications/email_sender.py
+    anchor: self.host = SMTP_HOST
+- id: no_sms
+  selector:
+    path: notifications/sms_gateway.py
+- id: no_tracker
+  selector:
+    path: analytics/tracker.py
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP_184_SMS_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP_184_SMS_FLAG_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP_184_TRACK_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP_184_TRACK_FLAG_D
+oracle:
+  required:
+  - config_host
+  - config_port
+  - sender_import
+  - sender_uses_host
+  allowed: []
+  forbidden:
+  - no_sms
+  - no_tracker
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

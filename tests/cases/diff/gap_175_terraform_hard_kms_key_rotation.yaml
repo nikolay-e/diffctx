@@ -1,0 +1,121 @@
+name: gap_175_terraform_hard_kms_key_rotation
+tags:
+- change:config
+- change:single_file
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+- lang:terraform
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    infra/apps/secrets-manager/main.tf: |
+      module "encryption" {
+        source   = "../../shared/kms"
+        key_alias = "secrets-encryption"
+      }
+
+      resource "aws_secretsmanager_secret" "api_keys" {
+        name       = "prod/api-keys"
+        kms_key_id = module.encryption.key_arn
+      }
+
+      resource "aws_secretsmanager_secret_version" "api_keys" {
+        secret_id     = aws_secretsmanager_secret.api_keys.id
+        secret_string = var.api_keys_json
+      }
+    infra/apps/secrets-manager/variables.tf: |
+      variable "api_keys_json" {
+        type      = string
+        sensitive = true
+      }
+    infra/shared/kms/main.tf: |
+      resource "aws_kms_key" "this" {
+        description         = var.key_alias
+        enable_key_rotation = false
+
+        policy = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Sid       = "AllowRoot"
+            Effect    = "Allow"
+            Principal = { AWS = "arn:aws:iam::root" }
+            Action    = "kms:*"
+            Resource  = "*"
+          }]
+        })
+      }
+
+      resource "aws_kms_alias" "this" {
+        name          = "alias/${var.key_alias}"
+        target_key_id = aws_kms_key.this.key_id
+      }
+    infra/shared/kms/variables.tf: |
+      variable "key_alias" {
+        type = string
+      }
+    infra/shared/kms/outputs.tf: |
+      output "key_arn" {
+        value = aws_kms_key.this.arn
+      }
+
+      output "key_id" {
+        value = aws_kms_key.this.key_id
+      }
+    infra/shared/ssm/main.tf: |
+      resource "aws_ssm_parameter" "app_config" {
+        name  = "/app/config"
+        type  = "SecureString"
+        value = "placeholder"
+      }
+  changed_files:
+    infra/shared/kms/main.tf: |
+      resource "aws_kms_key" "this" {
+        description              = var.key_alias
+        enable_key_rotation      = true
+        rotation_period_in_days  = 90
+
+        policy = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Sid       = "AllowRoot"
+            Effect    = "Allow"
+            Principal = { AWS = "arn:aws:iam::root" }
+            Action    = "kms:*"
+            Resource  = "*"
+          }]
+        })
+      }
+
+      resource "aws_kms_alias" "this" {
+        name          = "alias/${var.key_alias}"
+        target_key_id = aws_kms_key.this.key_id
+      }
+fragments:
+- id: kms_rotation
+  selector:
+    path: infra/shared/kms/main.tf
+    anchor: enable_key_rotation
+- id: kms_rotation_period
+  selector:
+    path: infra/shared/kms/main.tf
+    anchor: rotation_period_in_days
+- id: secrets_uses_kms
+  selector:
+    path: infra/apps/secrets-manager/main.tf
+    anchor: kms_key_id
+- id: no_ssm
+  selector:
+    path: infra/shared/ssm/main.tf
+- id: no_secret_version
+  selector:
+    path: infra/apps/secrets-manager/main.tf
+    anchor: secret_string
+oracle:
+  required:
+  - kms_rotation
+  - kms_rotation_period
+  forbidden:
+  - no_ssm
+  - no_secret_version

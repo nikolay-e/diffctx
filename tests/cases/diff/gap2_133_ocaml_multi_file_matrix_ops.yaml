@@ -1,0 +1,147 @@
+name: gap2_133_ocaml_multi_file_matrix_ops
+tags:
+- change:multi_file
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:ocaml
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    lib/vector.ml: |
+      type t = float array
+
+      let create n = Array.make n 0.0
+
+      let dot a b =
+        let sum = ref 0.0 in
+        Array.iteri (fun i x -> sum := !sum +. x *. b.(i)) a;
+        !sum
+
+      let norm v =
+        sqrt (dot v v)
+    lib/matrix.ml: |
+      type t = float array array
+
+      let create rows cols =
+        Array.init rows (fun _ -> Array.make cols 0.0)
+
+      let multiply a b =
+        let rows = Array.length a in
+        let cols = Array.length b.(0) in
+        let result = create rows cols in
+        for i = 0 to rows - 1 do
+          for j = 0 to cols - 1 do
+            let sum = ref 0.0 in
+            Array.iteri (fun k v -> sum := !sum +. v *. b.(k).(j)) a.(i);
+            result.(i).(j) <- !sum
+          done
+        done;
+        result
+    lib/stats.ml: |
+      let _GARBAGE_GAP2_133_STATS_A = "stats_noise"
+      let _GARBAGE_GAP2_133_STATS_B = "variance_noise"
+
+      let mean lst =
+        let sum = List.fold_left ( +. ) 0.0 lst in
+        sum /. float_of_int (List.length lst)
+
+      let variance lst =
+        let m = mean lst in
+        let sq_diff = List.map (fun x -> (x -. m) ** 2.0) lst in
+        mean sq_diff
+    lib/random_gen.ml: |
+      let _GARBAGE_GAP2_133_RNG_C = "rng_noise"
+      let _GARBAGE_GAP2_133_RNG_D = "seed_noise"
+
+      let init_seed s = Random.init s
+
+      let random_float () = Random.float 1.0
+
+      let random_int bound = Random.int bound
+  changed_files:
+    lib/vector.ml: |
+      type t = float array
+
+      let create n = Array.make n 0.0
+
+      let dot a b =
+        let sum = ref 0.0 in
+        Array.iteri (fun i x -> sum := !sum +. x *. b.(i)) a;
+        !sum
+
+      let norm v =
+        sqrt (dot v v)
+
+      let scale v factor =
+        Array.map (fun x -> x *. factor) v
+
+      let add a b =
+        Array.init (Array.length a) (fun i -> a.(i) +. b.(i))
+    lib/matrix.ml: |
+      type t = float array array
+
+      let create rows cols =
+        Array.init rows (fun _ -> Array.make cols 0.0)
+
+      let multiply a b =
+        let rows = Array.length a in
+        let cols = Array.length b.(0) in
+        let result = create rows cols in
+        for i = 0 to rows - 1 do
+          for j = 0 to cols - 1 do
+            let sum = ref 0.0 in
+            Array.iteri (fun k v -> sum := !sum +. v *. b.(k).(j)) a.(i);
+            result.(i).(j) <- !sum
+          done
+        done;
+        result
+
+      let transpose m =
+        let rows = Array.length m in
+        let cols = Array.length m.(0) in
+        Array.init cols (fun j -> Array.init rows (fun i -> m.(i).(j)))
+fragments:
+- id: scale_fn
+  selector:
+    path: lib/vector.ml
+    anchor: let scale v factor
+- id: add_fn
+  selector:
+    path: lib/vector.ml
+    anchor: let add a b
+- id: transpose_fn
+  selector:
+    path: lib/matrix.ml
+    anchor: let transpose m
+- id: no_stats
+  selector:
+    path: lib/stats.ml
+- id: no_rng
+  selector:
+    path: lib/random_gen.ml
+- id: no_global_0
+  selector:
+    anchor: _GARBAGE_GAP2_133_STATS_A
+- id: no_global_1
+  selector:
+    anchor: _GARBAGE_GAP2_133_STATS_B
+- id: no_global_2
+  selector:
+    anchor: _GARBAGE_GAP2_133_RNG_C
+- id: no_global_3
+  selector:
+    anchor: _GARBAGE_GAP2_133_RNG_D
+oracle:
+  required:
+  - scale_fn
+  - add_fn
+  - transpose_fn
+  forbidden:
+  - no_stats
+  - no_rng
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

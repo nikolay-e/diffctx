@@ -1,0 +1,185 @@
+name: bal3_3hop_011_go_notifier_template_renderer_locale
+tags:
+- lang:go
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    notify/locale/translations.go: |
+      package locale
+
+      type Translations struct {
+          lang    string
+          entries map[string]string
+      }
+
+      func NewTranslations(lang string) *Translations {
+          return &Translations{lang: lang, entries: make(map[string]string)}
+      }
+
+      func (t *Translations) Set(key, value string) {
+          t.entries[key] = value
+      }
+
+      func (t *Translations) Get(key string) string {
+          if v, ok := t.entries[key]; ok {
+              return v
+          }
+          return key
+      }
+    notify/renderer/renderer.go: |
+      package renderer
+
+      import "myapp/notify/locale"
+
+      type Renderer struct {
+          translations *locale.Translations
+      }
+
+      func NewRenderer(t *locale.Translations) *Renderer {
+          return &Renderer{translations: t}
+      }
+
+      func (r *Renderer) Render(key string, args map[string]string) string {
+          tmpl := r.translations.Get(key)
+          for k, v := range args {
+              tmpl = tmpl + " " + k + "=" + v
+          }
+          return tmpl
+      }
+    notify/template/builder.go: |
+      package template
+
+      import "myapp/notify/renderer"
+
+      type Builder struct {
+          renderer *renderer.Renderer
+      }
+
+      func NewBuilder(r *renderer.Renderer) *Builder {
+          return &Builder{renderer: r}
+      }
+
+      func (b *Builder) Build(key string, data map[string]string) string {
+          return b.renderer.Render(key, data)
+      }
+    notify/notifier/notifier.go: |
+      package notifier
+
+      import "myapp/notify/template"
+
+      type Notifier struct {
+          builder *template.Builder
+          channel string
+      }
+
+      func NewNotifier(b *template.Builder, channel string) *Notifier {
+          return &Notifier{builder: b, channel: channel}
+      }
+
+      func (n *Notifier) Send(key string, data map[string]string) string {
+          msg := n.builder.Build(key, data)
+          return "[" + n.channel + "] " + msg
+      }
+    notify/archive/store.go: |
+      package archive
+
+      var GARBAGE_BAL3_011_ARCHIVE_MARKER_A = "archive"
+      var GARBAGE_BAL3_011_RETAIN_MARKER_B = 30
+
+      type Store struct{}
+
+      func (s *Store) Archive(msg string) {}
+    notify/archive/cleaner.go: |
+      package archive
+
+      var GARBAGE_BAL3_011_CLEANER_MARKER_C = "cleaner"
+      var GARBAGE_BAL3_011_TTL_MARKER_D = 90
+
+      type Cleaner struct{}
+
+      func (c *Cleaner) Clean() {}
+  changed_files:
+    notify/locale/translations.go: |
+      package locale
+
+      type Translations struct {
+          lang     string
+          entries  map[string]string
+          fallback *Translations
+      }
+
+      func NewTranslations(lang string, fallback *Translations) *Translations {
+          return &Translations{lang: lang, entries: make(map[string]string), fallback: fallback}
+      }
+
+      func (t *Translations) Set(key, value string) {
+          t.entries[key] = value
+      }
+
+      func (t *Translations) Get(key string) string {
+          if v, ok := t.entries[key]; ok {
+              return v
+          }
+          if t.fallback != nil {
+              return t.fallback.Get(key)
+          }
+          return key
+      }
+  commit_message: "Add fallback locale chain to translations"
+fragments:
+- id: translations_fallback
+  selector:
+    path: notify/locale/translations.go
+    anchor: "fallback *Translations"
+- id: translations_get_fallback
+  selector:
+    path: notify/locale/translations.go
+    anchor: "t.fallback.Get(key)"
+- id: renderer_render
+  selector:
+    path: notify/renderer/renderer.go
+    anchor: "func (r *Renderer) Render"
+- id: builder_build
+  selector:
+    path: notify/template/builder.go
+    anchor: "func (b *Builder) Build"
+- id: notifier_send
+  selector:
+    path: notify/notifier/notifier.go
+    anchor: "func (n *Notifier) Send"
+- id: no_archive_store
+  selector:
+    path: notify/archive/store.go
+- id: no_archive_cleaner
+  selector:
+    path: notify/archive/cleaner.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_011_ARCHIVE_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_011_RETAIN_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_011_CLEANER_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_011_TTL_MARKER_D
+oracle:
+  required:
+  - translations_fallback
+  - translations_get_fallback
+  - renderer_render
+  - builder_build
+  - notifier_send
+  allowed: []
+  forbidden:
+  - no_archive_store
+  - no_archive_cleaner
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

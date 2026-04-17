@@ -1,32 +1,194 @@
 name: internals_020_greek_letters_scientific_code
+tags:
+- lang:typescript
+- change:bug_fix
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
 repo:
   initial_files:
-    greek_science.py: |
-      def placeholder():
-          pass
-  changed_files:
-    greek_science.py: |
-      def calculate_Δ(θ, φ):
-          import math
-          return θ * math.cos(φ)
+    src/utils/array.ts: |
+      export function chunk<T>(arr: T[], size: number): T[][] {
+        const result: T[][] = [];
+        for (let i = 0; i < arr.length; i += size) {
+          result.push(arr.slice(i, i + size));
+        }
+        return result;
+      }
 
-      def compute_σ(μ, data):
-          return sum((x - μ)**2 for x in data)
-  commit_message: Update files
+      export function flatten<T>(arr: T[][]): T[] {
+        return arr.reduce((acc, cur) => acc.concat(cur), []);
+      }
+    src/processing/batch.ts: |
+      import { chunk } from '../utils/array';
+
+      export interface BatchOptions {
+        batchSize: number;
+        concurrency: number;
+      }
+
+      export async function processBatches<T, R>(
+        items: T[],
+        options: BatchOptions,
+        handler: (batch: T[]) => Promise<R[]>,
+      ): Promise<R[]> {
+        const batches = chunk(items, options.batchSize);
+        const results: R[] = [];
+        for (const batch of batches) {
+          const batchResults = await handler(batch);
+          results.push(...batchResults);
+        }
+        return results;
+      }
+    src/pipeline/stage.ts: |
+      import { processBatches, BatchOptions } from '../processing/batch';
+
+      export interface PipelineStage<T, R> {
+        name: string;
+        options: BatchOptions;
+        process: (item: T) => Promise<R>;
+      }
+
+      export async function runStage<T, R>(
+        stage: PipelineStage<T, R>,
+        items: T[],
+      ): Promise<R[]> {
+        return processBatches(items, stage.options, (batch) =>
+          Promise.all(batch.map(stage.process)),
+        );
+      }
+    src/jobs/pipelineJob.ts: |
+      import { runStage, PipelineStage } from '../pipeline/stage';
+
+      export async function executePipeline<T>(
+        stages: PipelineStage<T, T>[],
+        initialItems: T[],
+      ): Promise<T[]> {
+        let items = initialItems;
+        for (const stage of stages) {
+          items = await runStage(stage, items);
+        }
+        return items;
+      }
+    garbage/scheduler.ts: |
+      const GARBAGE_GRK020_SCHED_A = "scheduler_marker";
+      export function schedule(fn: () => void, delay: number): void {}
+    garbage/circuit.ts: |
+      const GARBAGE_GRK020_CIRCUIT_B = "circuit_marker";
+      export function withCircuitBreaker<T>(fn: () => T): T { return fn(); }
+    garbage/telemetry.ts: |
+      const GARBAGE_GRK020_TELEM_C = "telemetry_marker";
+      export function span(name: string): void {}
+  changed_files:
+    src/utils/array.ts: |
+      export function chunk<T>(arr: T[], size: number): T[][] {
+        if (size <= 0) throw new RangeError(`chunk size must be > 0, got ${size}`);
+        const result: T[][] = [];
+        for (let i = 0; i < arr.length; i += size) {
+          result.push(arr.slice(i, i + size));
+        }
+        return result;
+      }
+
+      export function flatten<T>(arr: T[][]): T[] {
+        return arr.reduce((acc, cur) => acc.concat(cur), []);
+      }
+    src/processing/batch.ts: |
+      import { chunk } from '../utils/array';
+
+      export interface BatchOptions {
+        batchSize: number;
+        concurrency: number;
+      }
+
+      export async function processBatches<T, R>(
+        items: T[],
+        options: BatchOptions,
+        handler: (batch: T[]) => Promise<R[]>,
+      ): Promise<R[]> {
+        const batches = chunk(items, options.batchSize);
+        const results: R[] = [];
+        for (const batch of batches) {
+          const batchResults = await handler(batch);
+          results.push(...batchResults);
+        }
+        return results;
+      }
+    src/pipeline/stage.ts: |
+      import { processBatches, BatchOptions } from '../processing/batch';
+
+      export interface PipelineStage<T, R> {
+        name: string;
+        options: BatchOptions;
+        process: (item: T) => Promise<R>;
+      }
+
+      export async function runStage<T, R>(
+        stage: PipelineStage<T, R>,
+        items: T[],
+      ): Promise<R[]> {
+        return processBatches(items, stage.options, (batch) =>
+          Promise.all(batch.map(stage.process)),
+        );
+      }
+    src/jobs/pipelineJob.ts: |
+      import { runStage, PipelineStage } from '../pipeline/stage';
+
+      export async function executePipeline<T>(
+        stages: PipelineStage<T, T>[],
+        initialItems: T[],
+      ): Promise<T[]> {
+        let items = initialItems;
+        for (const stage of stages) {
+          items = await runStage(stage, items);
+        }
+        return items;
+      }
+    garbage/scheduler.ts: |
+      const GARBAGE_GRK020_SCHED_A = "scheduler_marker";
+      export function schedule(fn: () => void, delay: number): void {}
+    garbage/circuit.ts: |
+      const GARBAGE_GRK020_CIRCUIT_B = "circuit_marker";
+      export function withCircuitBreaker<T>(fn: () => T): T { return fn(); }
+    garbage/telemetry.ts: |
+      const GARBAGE_GRK020_TELEM_C = "telemetry_marker";
+      export function span(name: string): void {}
+  commit_message: "fix: throw RangeError in chunk when size <= 0"
 fragments:
-- id: greek_science_file
+- id: chunk_range_error
   selector:
-    path: greek_science.py
-- id: req_global_0
+    path: src/utils/array.ts
+    anchor: "if (size <= 0) throw new RangeError"
+- id: batch_calls_chunk
   selector:
-    anchor: 'def calculate_Δ(θ, φ):'
-- id: req_global_1
+    path: src/processing/batch.ts
+    anchor: "chunk(items, options.batchSize)"
+- id: stage_calls_batches
   selector:
-    anchor: 'def compute_σ(μ, data):'
+    path: src/pipeline/stage.ts
+    anchor: "processBatches(items, stage.options"
+- id: job_calls_run_stage
+  selector:
+    path: src/jobs/pipelineJob.ts
+    anchor: "runStage(stage, items)"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_GRK020_SCHED_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_GRK020_CIRCUIT_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_GRK020_TELEM_C
 oracle:
   required:
-  - greek_science_file
-  - req_global_0
-  - req_global_1
+  - chunk_range_error
+  - batch_calls_chunk
+  - stage_calls_batches
+  - job_calls_run_stage
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

@@ -1,0 +1,121 @@
+name: bal4_3hop_064_go_api_logic_cache_config
+tags:
+- lang:go
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:trivial
+repo:
+  initial_files:
+    pkg/config/settings.go: |
+      package config
+
+      func GetTTL() int {
+          return 300
+      }
+    pkg/cache/lru.go: |
+      package cache
+
+      import "myapp/pkg/config"
+
+      func Lookup(key string) int {
+          return config.GetTTL()
+      }
+    pkg/logic/pricing.go: |
+      package logic
+
+      import "myapp/pkg/cache"
+
+      func Price(id string) int {
+          return cache.Lookup(id)
+      }
+    pkg/api/product.go: |
+      package api
+
+      import "myapp/pkg/logic"
+
+      func ProductPrice(id string) int {
+          return logic.Price(id)
+      }
+    pkg/garbage/pad.go: |
+      package garbage
+
+      var GARBAGE_064_PAD_A = "a"
+      var GARBAGE_064_PAD_B = "b"
+
+      func GarbagePad() string { return "" }
+  changed_files:
+    pkg/config/settings.go: |
+      package config
+
+      func GetTTL() int {
+          return 300
+      }
+
+      func GetMaxSize() int {
+          return 1024
+      }
+    pkg/cache/lru.go: |
+      package cache
+
+      import "myapp/pkg/config"
+
+      func Lookup(key string) int {
+          return config.GetTTL()
+      }
+    pkg/logic/pricing.go: |
+      package logic
+
+      import "myapp/pkg/cache"
+
+      func Price(id string) int {
+          return cache.Lookup(id)
+      }
+    pkg/api/product.go: |
+      package api
+
+      import "myapp/pkg/logic"
+
+      func ProductPrice(id string) int {
+          return logic.Price(id)
+      }
+    pkg/garbage/pad.go: |
+      package garbage
+
+      var GARBAGE_064_PAD_A = "a"
+      var GARBAGE_064_PAD_B = "b"
+
+      func GarbagePad() string { return "" }
+  commit_message: "add GetMaxSize config function"
+fragments:
+- id: get_max_size
+  selector:
+    path: pkg/config/settings.go
+    anchor: "func GetMaxSize"
+- id: get_ttl
+  selector:
+    path: pkg/config/settings.go
+    anchor: "func GetTTL"
+- id: lookup
+  selector:
+    path: pkg/cache/lru.go
+    anchor: "func Lookup"
+- id: no_garbage_pad
+  selector:
+    path: pkg/garbage/pad.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_064_PAD_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_064_PAD_B
+oracle:
+  required:
+  - get_max_size
+  - get_ttl
+  - lookup
+  allowed: []
+  forbidden:
+  - no_garbage_pad
+  - no_global_0
+  - no_global_1

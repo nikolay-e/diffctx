@@ -1,0 +1,124 @@
+name: bal_1hop_017_rust_service_calls_client
+tags:
+- lang:rust
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/client/http.rs: |
+      use std::collections::HashMap;
+
+      pub struct HttpClient {
+          base_url: String,
+      }
+
+      impl HttpClient {
+          pub fn new(base_url: &str) -> Self {
+              HttpClient {
+                  base_url: base_url.to_string(),
+              }
+          }
+
+          pub fn get(&self, path: &str) -> Result<String, String> {
+              Ok(format!("GET {}{}", self.base_url, path))
+          }
+
+          pub fn post(&self, path: &str, body: &str) -> Result<String, String> {
+              Ok(format!("POST {}{} body={}", self.base_url, path, body))
+          }
+      }
+    src/service/weather.rs: |
+      use crate::client::http::HttpClient;
+
+      pub struct WeatherService {
+          client: HttpClient,
+      }
+
+      impl WeatherService {
+          pub fn new(client: HttpClient) -> Self {
+              WeatherService { client }
+          }
+
+          pub fn get_forecast(&self, city: &str) -> Result<String, String> {
+              let path = format!("/forecast?city={}", city);
+              self.client.get(&path)
+          }
+      }
+    src/config/app.rs: |
+      pub struct AppConfig {
+          pub port: u16,
+          pub debug: bool,
+      }
+
+      impl Default for AppConfig {
+          fn default() -> Self {
+              AppConfig {
+                  port: 8080,
+                  debug: false,
+              }
+          }
+      }
+  changed_files:
+    src/client/http.rs: |
+      use std::time::Duration;
+
+      pub struct HttpClient {
+          base_url: String,
+          timeout: Duration,
+      }
+
+      impl HttpClient {
+          pub fn new(base_url: &str) -> Self {
+              HttpClient {
+                  base_url: base_url.to_string(),
+                  timeout: Duration::from_secs(30),
+              }
+          }
+
+          pub fn with_timeout(mut self, timeout: Duration) -> Self {
+              self.timeout = timeout;
+              self
+          }
+
+          pub fn get(&self, path: &str) -> Result<String, String> {
+              if self.base_url.is_empty() {
+                  return Err("base_url is empty".to_string());
+              }
+              Ok(format!("GET {}{} timeout={}s", self.base_url, path, self.timeout.as_secs()))
+          }
+
+          pub fn post(&self, path: &str, body: &str) -> Result<String, String> {
+              if self.base_url.is_empty() {
+                  return Err("base_url is empty".to_string());
+              }
+              Ok(format!("POST {}{} body={}", self.base_url, path, body))
+          }
+      }
+  commit_message: "fix: add timeout and empty URL validation to HttpClient"
+fragments:
+- id: client_timeout_field
+  selector:
+    path: src/client/http.rs
+    anchor: "timeout: Duration"
+- id: client_empty_check
+  selector:
+    path: src/client/http.rs
+    anchor: "base_url.is_empty()"
+- id: service_calls_get
+  selector:
+    path: src/service/weather.rs
+    anchor: "self.client.get(&path)"
+- id: unrelated_config
+  selector:
+    path: src/config/app.rs
+    anchor: "pub struct AppConfig"
+oracle:
+  required:
+  - client_timeout_field
+  - service_calls_get
+  allowed:
+  - client_empty_check
+  forbidden:
+  - unrelated_config

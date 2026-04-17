@@ -1,0 +1,245 @@
+name: bal_crossmod_029_kotlin_parser_to_compiler
+tags:
+- lang:kotlin
+- change:multi_file
+- change:new_function
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/kotlin/parser/AstNode.kt: |
+      package parser
+
+      sealed class AstNode
+
+      data class NumberLiteral(val value: Double) : AstNode()
+
+      data class BinaryOp(
+          val left: AstNode,
+          val operator: String,
+          val right: AstNode
+      ) : AstNode()
+
+      data class Identifier(val name: String) : AstNode()
+    src/main/kotlin/parser/ExpressionParser.kt: |
+      package parser
+
+      class ExpressionParser {
+          fun parse(tokens: List<String>): AstNode {
+              if (tokens.size == 1) {
+                  val tok = tokens[0]
+                  return tok.toDoubleOrNull()?.let { NumberLiteral(it) }
+                      ?: Identifier(tok)
+              }
+              val opIdx = tokens.indexOfFirst { it in listOf("+", "-", "*", "/") }
+              return BinaryOp(
+                  left = parse(tokens.subList(0, opIdx)),
+                  operator = tokens[opIdx],
+                  right = parse(tokens.subList(opIdx + 1, tokens.size))
+              )
+          }
+      }
+    src/main/kotlin/compiler/CodeGenerator.kt: |
+      package compiler
+
+      import parser.AstNode
+      import parser.NumberLiteral
+      import parser.BinaryOp
+      import parser.Identifier
+
+      class CodeGenerator {
+          fun generate(node: AstNode): String = when (node) {
+              is NumberLiteral -> "PUSH ${node.value}"
+              is Identifier -> "LOAD ${node.name}"
+              is BinaryOp -> {
+                  val left = generate(node.left)
+                  val right = generate(node.right)
+                  val op = when (node.operator) {
+                      "+" -> "ADD"
+                      "-" -> "SUB"
+                      "*" -> "MUL"
+                      "/" -> "DIV"
+                      else -> error("Unknown op: ${node.operator}")
+                  }
+                  "$left\n$right\n$op"
+              }
+          }
+      }
+    src/main/kotlin/compiler/Optimizer.kt: |
+      package compiler
+
+      import parser.AstNode
+      import parser.NumberLiteral
+      import parser.BinaryOp
+
+      class Optimizer {
+          fun optimize(node: AstNode): AstNode = when (node) {
+              is BinaryOp -> {
+                  val left = optimize(node.left)
+                  val right = optimize(node.right)
+                  if (left is NumberLiteral && right is NumberLiteral) {
+                      val result = when (node.operator) {
+                          "+" -> left.value + right.value
+                          "-" -> left.value - right.value
+                          "*" -> left.value * right.value
+                          "/" -> left.value / right.value
+                          else -> return BinaryOp(left, node.operator, right)
+                      }
+                      NumberLiteral(result)
+                  } else {
+                      BinaryOp(left, node.operator, right)
+                  }
+              }
+              else -> node
+          }
+      }
+    src/main/kotlin/repl/ReplShell.kt: |
+      package repl
+
+      object ReplShell {
+          fun start() {
+              println("REPL started. Type 'exit' to quit.")
+          }
+
+          fun evaluate(input: String): String {
+              return "=> $input"
+          }
+      }
+  changed_files:
+    src/main/kotlin/parser/AstNode.kt: |
+      package parser
+
+      sealed class AstNode
+
+      data class NumberLiteral(val value: Double) : AstNode()
+
+      data class StringLiteral(val value: String) : AstNode()
+
+      data class BinaryOp(
+          val left: AstNode,
+          val operator: String,
+          val right: AstNode
+      ) : AstNode()
+
+      data class Identifier(val name: String) : AstNode()
+    src/main/kotlin/parser/ExpressionParser.kt: |
+      package parser
+
+      class ExpressionParser {
+          fun parse(tokens: List<String>): AstNode {
+              if (tokens.size == 1) {
+                  val tok = tokens[0]
+                  if (tok.startsWith("\"") && tok.endsWith("\"")) {
+                      return StringLiteral(tok.removeSurrounding("\""))
+                  }
+                  return tok.toDoubleOrNull()?.let { NumberLiteral(it) }
+                      ?: Identifier(tok)
+              }
+              val opIdx = tokens.indexOfFirst { it in listOf("+", "-", "*", "/") }
+              return BinaryOp(
+                  left = parse(tokens.subList(0, opIdx)),
+                  operator = tokens[opIdx],
+                  right = parse(tokens.subList(opIdx + 1, tokens.size))
+              )
+          }
+      }
+    src/main/kotlin/compiler/CodeGenerator.kt: |
+      package compiler
+
+      import parser.AstNode
+      import parser.NumberLiteral
+      import parser.StringLiteral
+      import parser.BinaryOp
+      import parser.Identifier
+
+      class CodeGenerator {
+          fun generate(node: AstNode): String = when (node) {
+              is NumberLiteral -> "PUSH ${node.value}"
+              is StringLiteral -> "PUSH_STR \"${node.value}\""
+              is Identifier -> "LOAD ${node.name}"
+              is BinaryOp -> {
+                  val left = generate(node.left)
+                  val right = generate(node.right)
+                  val op = when (node.operator) {
+                      "+" -> "ADD"
+                      "-" -> "SUB"
+                      "*" -> "MUL"
+                      "/" -> "DIV"
+                      else -> error("Unknown op: ${node.operator}")
+                  }
+                  "$left\n$right\n$op"
+              }
+          }
+      }
+    src/main/kotlin/compiler/Optimizer.kt: |
+      package compiler
+
+      import parser.AstNode
+      import parser.NumberLiteral
+      import parser.BinaryOp
+
+      class Optimizer {
+          fun optimize(node: AstNode): AstNode = when (node) {
+              is BinaryOp -> {
+                  val left = optimize(node.left)
+                  val right = optimize(node.right)
+                  if (left is NumberLiteral && right is NumberLiteral) {
+                      val result = when (node.operator) {
+                          "+" -> left.value + right.value
+                          "-" -> left.value - right.value
+                          "*" -> left.value * right.value
+                          "/" -> left.value / right.value
+                          else -> return BinaryOp(left, node.operator, right)
+                      }
+                      NumberLiteral(result)
+                  } else {
+                      BinaryOp(left, node.operator, right)
+                  }
+              }
+              else -> node
+          }
+      }
+    src/main/kotlin/repl/ReplShell.kt: |
+      package repl
+
+      object ReplShell {
+          fun start() {
+              println("REPL started. Type 'exit' to quit.")
+          }
+
+          fun evaluate(input: String): String {
+              return "=> $input"
+          }
+      }
+  commit_message: "feat: add string literal support to parser and codegen"
+fragments:
+- id: string_literal_node
+  selector:
+    path: src/main/kotlin/parser/AstNode.kt
+    anchor: "data class StringLiteral"
+- id: parser_handles_string
+  selector:
+    path: src/main/kotlin/parser/ExpressionParser.kt
+    anchor: "StringLiteral(tok.removeSurrounding"
+- id: codegen_string_case
+  selector:
+    path: src/main/kotlin/compiler/CodeGenerator.kt
+    anchor: "is StringLiteral"
+- id: optimizer_uses_ast
+  selector:
+    path: src/main/kotlin/compiler/Optimizer.kt
+    anchor: "fun optimize(node: AstNode)"
+- id: no_repl
+  selector:
+    path: src/main/kotlin/repl/ReplShell.kt
+    anchor: "object ReplShell"
+oracle:
+  required:
+  - string_literal_node
+  - parser_handles_string
+  - codegen_string_case
+  allowed:
+  - optimizer_uses_ast
+  forbidden:
+  - no_repl

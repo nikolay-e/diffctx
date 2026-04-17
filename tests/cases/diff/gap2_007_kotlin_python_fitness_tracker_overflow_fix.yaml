@@ -1,0 +1,176 @@
+name: gap2_007_kotlin_python_fitness_tracker_overflow_fix
+tags:
+- lang:kotlin
+- lang:python
+- change:bug_fix
+- change:multi_file
+- context:same_file
+- distance:0hop
+- difficulty:easy
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    app/src/main/kotlin/fitness/HeartRateMonitor.kt: |
+      package fitness
+
+      class HeartRateMonitor {
+          private val readings = mutableListOf<Int>()
+          private val maxReadings = 1000
+
+          fun record(bpm: Int) {
+              readings.add(bpm)
+          }
+
+          fun averageBpm(): Int {
+              if (readings.isEmpty()) return 0
+              return readings.sum() / readings.size
+          }
+
+          fun peakBpm(): Int {
+              return readings.maxOrNull() ?: 0
+          }
+
+          fun isInZone(lower: Int, upper: Int): Boolean {
+              val avg = averageBpm()
+              return avg in lower..upper
+          }
+      }
+    analytics/heart_report.py: |
+      from typing import NamedTuple
+
+      class HeartZone(NamedTuple):
+          name: str
+          lower_bpm: int
+          upper_bpm: int
+
+      ZONES = [
+          HeartZone("rest", 40, 60),
+          HeartZone("fat_burn", 61, 120),
+          HeartZone("cardio", 121, 160),
+          HeartZone("peak", 161, 200),
+      ]
+
+      def classify_bpm(bpm: int) -> str:
+          for zone in ZONES:
+              if zone.lower_bpm <= bpm <= zone.upper_bpm:
+                  return zone.name
+          return "unknown"
+
+      def time_in_zones(readings: list[int]) -> dict[str, int]:
+          result: dict[str, int] = {}
+          for bpm in readings:
+              zone = classify_bpm(bpm)
+              result[zone] = result.get(zone, 0) + 1
+          return result
+    app/src/main/kotlin/fitness/GpsTracker.kt: |
+      package fitness
+
+      import kotlin.math.sqrt
+      import kotlin.math.pow
+
+      data class GpsPoint(val lat: Double, val lon: Double, val timestampMs: Long)
+
+      class GpsTracker {
+          private val points = mutableListOf<GpsPoint>()
+
+          fun addPoint(point: GpsPoint) {
+              points.add(point)
+          }
+
+          fun totalDistanceKm(): Double {
+              if (points.size < 2) return 0.0
+              var total = 0.0
+              for (i in 1 until points.size) {
+                  val dx = points[i].lat - points[i - 1].lat
+                  val dy = points[i].lon - points[i - 1].lon
+                  total += sqrt(dx.pow(2) + dy.pow(2)) * 111.0
+              }
+              return total
+          }
+      }
+  changed_files:
+    app/src/main/kotlin/fitness/HeartRateMonitor.kt: |
+      package fitness
+
+      class HeartRateMonitor {
+          private val readings = mutableListOf<Int>()
+          private val maxReadings = 1000
+
+          fun record(bpm: Int) {
+              if (readings.size >= maxReadings) {
+                  readings.removeAt(0)
+              }
+              readings.add(bpm)
+          }
+
+          fun averageBpm(): Int {
+              if (readings.isEmpty()) return 0
+              return readings.sum() / readings.size
+          }
+
+          fun peakBpm(): Int {
+              return readings.maxOrNull() ?: 0
+          }
+
+          fun isInZone(lower: Int, upper: Int): Boolean {
+              val avg = averageBpm()
+              return avg in lower..upper
+          }
+      }
+    analytics/heart_report.py: |
+      from typing import NamedTuple
+
+      class HeartZone(NamedTuple):
+          name: str
+          lower_bpm: int
+          upper_bpm: int
+
+      ZONES = [
+          HeartZone("rest", 40, 60),
+          HeartZone("fat_burn", 61, 120),
+          HeartZone("cardio", 121, 160),
+          HeartZone("peak", 161, 200),
+      ]
+
+      def classify_bpm(bpm: int) -> str:
+          for zone in ZONES:
+              if zone.lower_bpm <= bpm <= zone.upper_bpm:
+                  return zone.name
+          return "unknown"
+
+      def time_in_zones(readings: list[int]) -> dict[str, int]:
+          result: dict[str, int] = {}
+          for bpm in readings:
+              zone = classify_bpm(bpm)
+              result[zone] = result.get(zone, 0) + 1
+          return dict(sorted(result.items()))
+  commit_message: "fix: cap heart rate readings buffer and sort zone report"
+fragments:
+- id: record_cap_fix
+  selector:
+    path: app/src/main/kotlin/fitness/HeartRateMonitor.kt
+    anchor: "readings.size >= maxReadings"
+- id: record_method
+  selector:
+    path: app/src/main/kotlin/fitness/HeartRateMonitor.kt
+    anchor: "fun record"
+- id: zone_sorted_fix
+  selector:
+    path: analytics/heart_report.py
+    anchor: "dict(sorted(result.items()))"
+- id: no_gps
+  selector:
+    path: app/src/main/kotlin/fitness/GpsTracker.kt
+- id: no_gps_point
+  selector:
+    anchor: GpsPoint
+oracle:
+  required:
+  - record_cap_fix
+  - record_method
+  - zone_sorted_fix
+  allowed: []
+  forbidden:
+  - no_gps
+  - no_gps_point

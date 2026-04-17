@@ -68,6 +68,11 @@ def quotient_graph(pg: ProjectGraph, level: str = "directory") -> QuotientGraph:
         qg.nodes[key].fragment_count += 1
         qg.nodes[key].token_count += frag.token_count
 
+    _aggregate_edges(pg, qg, fid_to_group)
+    return qg
+
+
+def _aggregate_edges(pg: ProjectGraph, qg: QuotientGraph, fid_to_group: dict[FragmentId, str]) -> None:
     for src, nbrs in pg.graph.adjacency.items():
         src_key = fid_to_group.get(src)
         if src_key is None:
@@ -85,8 +90,6 @@ def quotient_graph(pg: ProjectGraph, level: str = "directory") -> QuotientGraph:
                     qg.edges[pair] = QuotientEdge(source=src_key, target=dst_key)
                 qg.edges[pair].weight += weight
                 qg.edges[pair].categories[cat] = qg.edges[pair].categories.get(cat, 0) + 1
-
-    return qg
 
 
 def to_mermaid(qg: QuotientGraph, top_n: int = 20) -> str:

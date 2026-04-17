@@ -1,0 +1,116 @@
+name: bal4_testctx_016_kotlin_inventory_test
+tags:
+- lang:kotlin
+- change:single_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/main/kotlin/store/Inventory.kt: |
+      package store
+
+      class Inventory {
+          private val stock = mutableMapOf<String, Int>()
+
+          fun addStock(productId: String, quantity: Int) {
+              stock[productId] = (stock[productId] ?: 0) + quantity
+          }
+
+          fun getStock(productId: String): Int {
+              return stock[productId] ?: 0
+          }
+      }
+    src/test/kotlin/store/InventoryTest.kt: |
+      package store
+
+      import org.junit.jupiter.api.Test
+      import org.junit.jupiter.api.Assertions.assertEquals
+
+      class InventoryTest {
+          private val inventory = Inventory()
+
+          @Test
+          fun testAddStock() {
+              inventory.addStock("sku-1", 10)
+              assertEquals(10, inventory.getStock("sku-1"))
+          }
+
+          @Test
+          fun testAddStockCumulative() {
+              inventory.addStock("sku-2", 5)
+              inventory.addStock("sku-2", 3)
+              assertEquals(8, inventory.getStock("sku-2"))
+          }
+
+          @Test
+          fun testGetStockMissing() {
+              assertEquals(0, inventory.getStock("nonexistent"))
+          }
+      }
+    src/main/kotlin/store/Pricing.kt: |
+      package store
+
+      class Pricing {
+          fun applyDiscount(price: Double, pct: Double): Double = price * (1 - pct / 100)
+      }
+    src/main/kotlin/store/Shipping.kt: |
+      package store
+
+      class Shipping {
+          fun estimateCost(weight: Double): Double = weight * 2.5
+      }
+  changed_files:
+    src/main/kotlin/store/Inventory.kt: |
+      package store
+
+      class Inventory {
+          private val stock = mutableMapOf<String, Int>()
+
+          fun addStock(productId: String, quantity: Int) {
+              stock[productId] = (stock[productId] ?: 0) + quantity
+          }
+
+          fun getStock(productId: String): Int {
+              return stock[productId] ?: 0
+          }
+
+          fun removeStock(productId: String, quantity: Int): Boolean {
+              val current = getStock(productId)
+              if (current < quantity) return false
+              stock[productId] = current - quantity
+              return true
+          }
+      }
+  commit_message: "feat: add removeStock to Inventory"
+fragments:
+- id: remove_stock_fn
+  selector:
+    path: src/main/kotlin/store/Inventory.kt
+    anchor: "fun removeStock(productId: String, quantity: Int): Boolean"
+- id: test_add_stock
+  selector:
+    path: src/test/kotlin/store/InventoryTest.kt
+    anchor: "fun testAddStock()"
+- id: test_class
+  selector:
+    path: src/test/kotlin/store/InventoryTest.kt
+    anchor: "class InventoryTest"
+- id: no_pricing
+  selector:
+    path: src/main/kotlin/store/Pricing.kt
+    anchor: "class Pricing"
+- id: no_shipping
+  selector:
+    path: src/main/kotlin/store/Shipping.kt
+    anchor: "class Shipping"
+oracle:
+  required:
+  - remove_stock_fn
+  - test_add_stock
+  - test_class
+  allowed: []
+  forbidden:
+  - no_pricing
+  - no_shipping

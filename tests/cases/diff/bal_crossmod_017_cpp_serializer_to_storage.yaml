@@ -1,0 +1,265 @@
+name: bal_crossmod_017_cpp_serializer_to_storage
+tags:
+- lang:cpp
+- change:multi_file
+- change:signature
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/serialization/binary_writer.hpp: |
+      #pragma once
+      #include <vector>
+      #include <string>
+      #include <cstdint>
+
+      namespace serialization {
+
+      class BinaryWriter {
+      public:
+          void write_int32(int32_t value);
+          void write_string(const std::string& value);
+          const std::vector<char>& data() const;
+      private:
+          std::vector<char> buffer_;
+      };
+
+      }
+    src/serialization/binary_writer.cpp: |
+      #include "binary_writer.hpp"
+      #include <cstring>
+
+      namespace serialization {
+
+      void BinaryWriter::write_int32(int32_t value) {
+          const char* bytes = reinterpret_cast<const char*>(&value);
+          buffer_.insert(buffer_.end(), bytes, bytes + sizeof(value));
+      }
+
+      void BinaryWriter::write_string(const std::string& value) {
+          write_int32(static_cast<int32_t>(value.size()));
+          buffer_.insert(buffer_.end(), value.begin(), value.end());
+      }
+
+      const std::vector<char>& BinaryWriter::data() const {
+          return buffer_;
+      }
+
+      }
+    src/serialization/binary_reader.hpp: |
+      #pragma once
+      #include <vector>
+      #include <string>
+      #include <cstdint>
+
+      namespace serialization {
+
+      class BinaryReader {
+      public:
+          explicit BinaryReader(const std::vector<char>& data);
+          int32_t read_int32();
+          std::string read_string();
+      private:
+          const std::vector<char>& data_;
+          size_t offset_;
+      };
+
+      }
+    src/storage/save_manager.hpp: |
+      #pragma once
+      #include <string>
+      #include "../serialization/binary_writer.hpp"
+      #include "../serialization/binary_reader.hpp"
+
+      namespace storage {
+
+      class SaveManager {
+      public:
+          void save(const std::string& path, const serialization::BinaryWriter& writer);
+          serialization::BinaryReader load(const std::string& path);
+      };
+
+      }
+    src/storage/save_manager.cpp: |
+      #include "save_manager.hpp"
+      #include <fstream>
+
+      namespace storage {
+
+      void SaveManager::save(const std::string& path, const serialization::BinaryWriter& writer) {
+          std::ofstream file(path, std::ios::binary);
+          auto& data = writer.data();
+          file.write(data.data(), data.size());
+      }
+
+      serialization::BinaryReader SaveManager::load(const std::string& path) {
+          static std::vector<char> buf;
+          std::ifstream file(path, std::ios::binary);
+          buf.assign(std::istreambuf_iterator<char>(file), {});
+          return serialization::BinaryReader(buf);
+      }
+
+      }
+    src/ui/save_dialog.hpp: |
+      #pragma once
+      #include <string>
+
+      namespace ui {
+
+      class SaveDialog {
+      public:
+          std::string prompt_save_path();
+          std::string prompt_load_path();
+      };
+
+      }
+  changed_files:
+    src/serialization/binary_writer.hpp: |
+      #pragma once
+      #include <vector>
+      #include <string>
+      #include <cstdint>
+
+      namespace serialization {
+
+      class BinaryWriter {
+      public:
+          void write_int32(int32_t value);
+          void write_int64(int64_t value);
+          void write_string(const std::string& value);
+          const std::vector<char>& data() const;
+          size_t size() const;
+      private:
+          std::vector<char> buffer_;
+      };
+
+      }
+    src/serialization/binary_writer.cpp: |
+      #include "binary_writer.hpp"
+      #include <cstring>
+
+      namespace serialization {
+
+      void BinaryWriter::write_int32(int32_t value) {
+          const char* bytes = reinterpret_cast<const char*>(&value);
+          buffer_.insert(buffer_.end(), bytes, bytes + sizeof(value));
+      }
+
+      void BinaryWriter::write_int64(int64_t value) {
+          const char* bytes = reinterpret_cast<const char*>(&value);
+          buffer_.insert(buffer_.end(), bytes, bytes + sizeof(value));
+      }
+
+      void BinaryWriter::write_string(const std::string& value) {
+          write_int32(static_cast<int32_t>(value.size()));
+          buffer_.insert(buffer_.end(), value.begin(), value.end());
+      }
+
+      const std::vector<char>& BinaryWriter::data() const {
+          return buffer_;
+      }
+
+      size_t BinaryWriter::size() const {
+          return buffer_.size();
+      }
+
+      }
+    src/serialization/binary_reader.hpp: |
+      #pragma once
+      #include <vector>
+      #include <string>
+      #include <cstdint>
+
+      namespace serialization {
+
+      class BinaryReader {
+      public:
+          explicit BinaryReader(const std::vector<char>& data);
+          int32_t read_int32();
+          std::string read_string();
+      private:
+          const std::vector<char>& data_;
+          size_t offset_;
+      };
+
+      }
+    src/storage/save_manager.hpp: |
+      #pragma once
+      #include <string>
+      #include "../serialization/binary_writer.hpp"
+      #include "../serialization/binary_reader.hpp"
+
+      namespace storage {
+
+      class SaveManager {
+      public:
+          void save(const std::string& path, const serialization::BinaryWriter& writer);
+          serialization::BinaryReader load(const std::string& path);
+      };
+
+      }
+    src/storage/save_manager.cpp: |
+      #include "save_manager.hpp"
+      #include <fstream>
+
+      namespace storage {
+
+      void SaveManager::save(const std::string& path, const serialization::BinaryWriter& writer) {
+          std::ofstream file(path, std::ios::binary);
+          auto& data = writer.data();
+          file.write(data.data(), data.size());
+      }
+
+      serialization::BinaryReader SaveManager::load(const std::string& path) {
+          static std::vector<char> buf;
+          std::ifstream file(path, std::ios::binary);
+          buf.assign(std::istreambuf_iterator<char>(file), {});
+          return serialization::BinaryReader(buf);
+      }
+
+      }
+    src/ui/save_dialog.hpp: |
+      #pragma once
+      #include <string>
+
+      namespace ui {
+
+      class SaveDialog {
+      public:
+          std::string prompt_save_path();
+          std::string prompt_load_path();
+      };
+
+      }
+  commit_message: "feat: add int64 support and size getter to binary writer"
+fragments:
+- id: write_int64_decl
+  selector:
+    path: src/serialization/binary_writer.hpp
+    anchor: "void write_int64(int64_t value)"
+- id: write_int64_impl
+  selector:
+    path: src/serialization/binary_writer.cpp
+    anchor: "void BinaryWriter::write_int64"
+- id: save_manager_uses_writer
+  selector:
+    path: src/storage/save_manager.cpp
+    anchor: "writer.data()"
+- id: save_manager_includes_writer
+  selector:
+    path: src/storage/save_manager.hpp
+    anchor: "#include \"../serialization/binary_writer.hpp\""
+- id: no_save_dialog
+  selector:
+    path: src/ui/save_dialog.hpp
+    anchor: "class SaveDialog"
+oracle:
+  required:
+  - write_int64_decl
+  - save_manager_uses_writer
+  allowed:
+  - write_int64_impl
+  - save_manager_includes_writer
+  forbidden:
+  - no_save_dialog

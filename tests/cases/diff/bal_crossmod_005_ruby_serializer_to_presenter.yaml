@@ -1,0 +1,113 @@
+name: bal_crossmod_005_ruby_serializer_to_presenter
+tags:
+- lang:ruby
+- change:single_file
+- change:new_function
+- context:cross_module
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    lib/serializers/order_serializer.rb: |
+      module Serializers
+        class OrderSerializer
+          def initialize(order)
+            @order = order
+          end
+
+          def to_hash
+            {
+              id: @order[:id],
+              total: @order[:total],
+              status: @order[:status]
+            }
+          end
+        end
+      end
+    lib/presenters/order_presenter.rb: |
+      require_relative '../serializers/order_serializer'
+      module Presenters
+        class OrderPresenter
+          def initialize(order)
+            @serializer = Serializers::OrderSerializer.new(order)
+          end
+
+          def as_json
+            @serializer.to_hash
+          end
+        end
+      end
+    lib/validators/order_validator.rb: |
+      module Validators
+        class OrderValidator
+          def self.valid?(order)
+            order[:total] && order[:total] > 0
+          end
+        end
+      end
+  changed_files:
+    lib/serializers/order_serializer.rb: |
+      module Serializers
+        class OrderSerializer
+          def initialize(order)
+            @order = order
+          end
+
+          def to_hash
+            {
+              id: @order[:id],
+              total: @order[:total],
+              status: @order[:status]
+            }
+          end
+
+          def to_summary
+            {
+              id: @order[:id],
+              status: @order[:status]
+            }
+          end
+        end
+      end
+    lib/presenters/order_presenter.rb: |
+      require_relative '../serializers/order_serializer'
+      module Presenters
+        class OrderPresenter
+          def initialize(order)
+            @serializer = Serializers::OrderSerializer.new(order)
+          end
+
+          def as_json
+            @serializer.to_hash
+          end
+        end
+      end
+    lib/validators/order_validator.rb: |
+      module Validators
+        class OrderValidator
+          def self.valid?(order)
+            order[:total] && order[:total] > 0
+          end
+        end
+      end
+  commit_message: "feat: add summary serialization for orders"
+fragments:
+- id: to_summary_method
+  selector:
+    path: lib/serializers/order_serializer.rb
+    anchor: "def to_summary"
+- id: presenter_uses_serializer
+  selector:
+    path: lib/presenters/order_presenter.rb
+    anchor: "Serializers::OrderSerializer.new"
+- id: no_validator
+  selector:
+    path: lib/validators/order_validator.rb
+    anchor: "def self.valid?"
+oracle:
+  required:
+  - to_summary_method
+  - presenter_uses_serializer
+  allowed: []
+  forbidden:
+  - no_validator

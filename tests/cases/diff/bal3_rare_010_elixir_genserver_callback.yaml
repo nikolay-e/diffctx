@@ -1,0 +1,197 @@
+name: bal3_rare_010_elixir_genserver_callback
+tags:
+- lang:elixir
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+xfail:
+  category: elixir-no-tree-sitter
+repo:
+  initial_files:
+    lib/counter.ex: |
+      defmodule Counter do
+        use GenServer
+
+        def start_link(initial \\ 0) do
+          GenServer.start_link(__MODULE__, initial, name: __MODULE__)
+        end
+
+        def increment do
+          GenServer.cast(__MODULE__, :increment)
+        end
+
+        def get_value do
+          GenServer.call(__MODULE__, :get)
+        end
+
+        @impl true
+        def init(initial) do
+          {:ok, initial}
+        end
+
+        @impl true
+        def handle_cast(:increment, state) do
+          {:noreply, state + 1}
+        end
+
+        @impl true
+        def handle_call(:get, _from, state) do
+          {:reply, state, state}
+        end
+      end
+    lib/stats.ex: |
+      defmodule Stats do
+        def current_count do
+          Counter.get_value()
+        end
+
+        def increment_and_report do
+          Counter.increment()
+          count = Counter.get_value()
+          "Count is now #{count}"
+        end
+      end
+    lib/web/router.ex: |
+      defmodule Web.Router do
+        def handle_request(path) do
+          case path do
+            "/count" -> {:ok, Stats.current_count()}
+            _ -> {:error, :not_found}
+          end
+        end
+      end
+    lib/mailer.ex: |
+      defmodule Mailer do
+        @garbage_rare_010_mail_a "smtp"
+        @garbage_rare_010_port_b 587
+
+        def send(to, body), do: {:sent, to, body}
+      end
+    lib/cache.ex: |
+      defmodule Cache do
+        @garbage_rare_010_cache_c "ets"
+        @garbage_rare_010_ttl_d 300
+
+        def get(key), do: nil
+        def put(key, value), do: :ok
+      end
+    lib/logger_helper.ex: |
+      defmodule LoggerHelper do
+        @garbage_rare_010_log_e "console"
+        @garbage_rare_010_level_f "debug"
+
+        def info(msg), do: IO.puts("INFO: #{msg}")
+      end
+  changed_files:
+    lib/counter.ex: |
+      defmodule Counter do
+        use GenServer
+
+        def start_link(opts \\ []) do
+          initial = Keyword.get(opts, :initial, 0)
+          step = Keyword.get(opts, :step, 1)
+          GenServer.start_link(__MODULE__, {initial, step}, name: __MODULE__)
+        end
+
+        def increment do
+          GenServer.cast(__MODULE__, :increment)
+        end
+
+        def decrement do
+          GenServer.cast(__MODULE__, :decrement)
+        end
+
+        def get_value do
+          GenServer.call(__MODULE__, :get)
+        end
+
+        def reset do
+          GenServer.cast(__MODULE__, :reset)
+        end
+
+        @impl true
+        def init({initial, step}) do
+          {:ok, %{value: initial, step: step, initial: initial}}
+        end
+
+        @impl true
+        def handle_cast(:increment, state) do
+          {:noreply, %{state | value: state.value + state.step}}
+        end
+
+        @impl true
+        def handle_cast(:decrement, state) do
+          {:noreply, %{state | value: state.value - state.step}}
+        end
+
+        @impl true
+        def handle_cast(:reset, state) do
+          {:noreply, %{state | value: state.initial}}
+        end
+
+        @impl true
+        def handle_call(:get, _from, state) do
+          {:reply, state.value, state}
+        end
+      end
+  commit_message: "add step, decrement, reset to Counter GenServer"
+fragments:
+- id: stats_uses_get
+  selector:
+    path: lib/stats.ex
+    anchor: "Counter.get_value()"
+- id: stats_uses_increment
+  selector:
+    path: lib/stats.ex
+    anchor: "Counter.increment()"
+- id: router_uses_stats
+  selector:
+    path: lib/web/router.ex
+    anchor: "Stats.current_count()"
+- id: no_mailer
+  selector:
+    path: lib/mailer.ex
+    anchor: "def send"
+- id: no_cache
+  selector:
+    path: lib/cache.ex
+    anchor: "def get(key)"
+- id: no_logger_helper
+  selector:
+    path: lib/logger_helper.ex
+    anchor: "def info(msg)"
+- id: no_global_0
+  selector:
+    anchor: garbage_rare_010_mail_a
+- id: no_global_1
+  selector:
+    anchor: garbage_rare_010_port_b
+- id: no_global_2
+  selector:
+    anchor: garbage_rare_010_cache_c
+- id: no_global_3
+  selector:
+    anchor: garbage_rare_010_ttl_d
+- id: no_global_4
+  selector:
+    anchor: garbage_rare_010_log_e
+- id: no_global_5
+  selector:
+    anchor: garbage_rare_010_level_f
+oracle:
+  required:
+  - stats_uses_get
+  - stats_uses_increment
+  allowed:
+  - router_uses_stats
+  forbidden:
+  - no_mailer
+  - no_cache
+  - no_logger_helper
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

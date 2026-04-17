@@ -1,0 +1,161 @@
+name: bal3_refactor_014_ruby_rename_class_across_files
+tags:
+- lang:ruby
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    lib/mailer.rb: |
+      class Mailer
+        def initialize(smtp_host)
+          @smtp_host = smtp_host
+        end
+
+        def deliver(to, subject, body)
+          { to: to, subject: subject, body: body, host: @smtp_host }
+        end
+      end
+    app/services/notification_service.rb: |
+      require_relative '../../lib/mailer'
+
+      class NotificationService
+        def initialize
+          @mailer = Mailer.new("smtp.example.com")
+        end
+
+        def notify_user(user_email, message)
+          @mailer.deliver(user_email, "Notification", message)
+        end
+      end
+    app/services/report_service.rb: |
+      require_relative '../../lib/mailer'
+
+      class ReportService
+        def initialize
+          @mailer = Mailer.new("smtp.example.com")
+        end
+
+        def send_report(admin_email, report_data)
+          @mailer.deliver(admin_email, "Weekly Report", report_data)
+        end
+      end
+    lib/cache/memory.rb: |
+      GARBAGE_R014_CACHE_A = "memory"
+
+      class MemoryCache
+        def get(key)
+          nil
+        end
+      end
+    lib/queue/worker.rb: |
+      GARBAGE_R014_QUEUE_B = "worker"
+
+      class QueueWorker
+        def process
+        end
+      end
+    lib/search/indexer.rb: |
+      GARBAGE_R014_SEARCH_C = "indexer"
+
+      class SearchIndexer
+        def index(doc)
+        end
+      end
+  changed_files:
+    lib/email_client.rb: |
+      class EmailClient
+        def initialize(smtp_host)
+          @smtp_host = smtp_host
+        end
+
+        def deliver(to, subject, body)
+          { to: to, subject: subject, body: body, host: @smtp_host }
+        end
+      end
+    app/services/notification_service.rb: |
+      require_relative '../../lib/email_client'
+
+      class NotificationService
+        def initialize
+          @email_client = EmailClient.new("smtp.example.com")
+        end
+
+        def notify_user(user_email, message)
+          @email_client.deliver(user_email, "Notification", message)
+        end
+      end
+    app/services/report_service.rb: |
+      require_relative '../../lib/email_client'
+
+      class ReportService
+        def initialize
+          @email_client = EmailClient.new("smtp.example.com")
+        end
+
+        def send_report(admin_email, report_data)
+          @email_client.deliver(admin_email, "Weekly Report", report_data)
+        end
+      end
+    lib/cache/memory.rb: |
+      GARBAGE_R014_CACHE_A = "memory"
+
+      class MemoryCache
+        def get(key)
+          nil
+        end
+      end
+    lib/queue/worker.rb: |
+      GARBAGE_R014_QUEUE_B = "worker"
+
+      class QueueWorker
+        def process
+        end
+      end
+    lib/search/indexer.rb: |
+      GARBAGE_R014_SEARCH_C = "indexer"
+
+      class SearchIndexer
+        def index(doc)
+        end
+      end
+  commit_message: "refactor: rename Mailer to EmailClient across codebase"
+fragments:
+- id: email_client_class
+  selector:
+    path: lib/email_client.rb
+    anchor: "class EmailClient"
+- id: notification_uses_client
+  selector:
+    path: app/services/notification_service.rb
+    anchor: "EmailClient.new"
+- id: report_uses_client
+  selector:
+    path: app/services/report_service.rb
+    anchor: "EmailClient.new"
+- id: notification_require
+  selector:
+    path: app/services/notification_service.rb
+    anchor: "require_relative '../../lib/email_client'"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_R014_CACHE_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_R014_QUEUE_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_R014_SEARCH_C
+oracle:
+  required:
+  - email_client_class
+  - notification_uses_client
+  - report_uses_client
+  allowed:
+  - notification_require
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

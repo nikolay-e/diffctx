@@ -1,0 +1,239 @@
+name: bal3_refactor_027_csharp_consolidate_duplicate_validation
+tags:
+- lang:csharp
+- change:multi_file
+- change:refactor
+- context:cross_module
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    Controllers/UserController.cs: |
+      using System.Text.RegularExpressions;
+
+      namespace App.Controllers
+      {
+          public class UserController
+          {
+              public bool Register(string email, string password)
+              {
+                  if (string.IsNullOrEmpty(email) || !Regex.IsMatch(email, @"^[^@]+@[^@]+\.[^@]+$"))
+                      return false;
+                  if (string.IsNullOrEmpty(password) || password.Length < 8)
+                      return false;
+                  return true;
+              }
+          }
+      }
+    Controllers/AccountController.cs: |
+      using System.Text.RegularExpressions;
+
+      namespace App.Controllers
+      {
+          public class AccountController
+          {
+              public bool UpdateEmail(string email)
+              {
+                  if (string.IsNullOrEmpty(email) || !Regex.IsMatch(email, @"^[^@]+@[^@]+\.[^@]+$"))
+                      return false;
+                  return true;
+              }
+
+              public bool ChangePassword(string password)
+              {
+                  if (string.IsNullOrEmpty(password) || password.Length < 8)
+                      return false;
+                  return true;
+              }
+          }
+      }
+    Services/AdminService.cs: |
+      using System.Text.RegularExpressions;
+
+      namespace App.Services
+      {
+          public class AdminService
+          {
+              public bool CreateAdmin(string email, string password)
+              {
+                  if (string.IsNullOrEmpty(email) || !Regex.IsMatch(email, @"^[^@]+@[^@]+\.[^@]+$"))
+                      return false;
+                  if (string.IsNullOrEmpty(password) || password.Length < 8)
+                      return false;
+                  return true;
+              }
+          }
+      }
+    Middleware/RateLimiter.cs: |
+      namespace App.Middleware
+      {
+          // GARBAGE_R027_RATE_A
+          public class RateLimiter
+          {
+              public bool Allow(string ip) => true;
+          }
+      }
+    Middleware/CorsHandler.cs: |
+      namespace App.Middleware
+      {
+          // GARBAGE_R027_CORS_B
+          public class CorsHandler
+          {
+              public bool IsAllowed(string origin) => true;
+          }
+      }
+    Middleware/Compression.cs: |
+      namespace App.Middleware
+      {
+          // GARBAGE_R027_GZIP_C
+          public class CompressionMiddleware
+          {
+              public byte[] Compress(byte[] data) => data;
+          }
+      }
+  changed_files:
+    Validation/InputValidator.cs: |
+      using System.Text.RegularExpressions;
+
+      namespace App.Validation
+      {
+          public static class InputValidator
+          {
+              public static bool IsValidEmail(string email) =>
+                  !string.IsNullOrEmpty(email) && Regex.IsMatch(email, @"^[^@]+@[^@]+\.[^@]+$");
+
+              public static bool IsValidPassword(string password) =>
+                  !string.IsNullOrEmpty(password) && password.Length >= 8;
+          }
+      }
+    Controllers/UserController.cs: |
+      using App.Validation;
+
+      namespace App.Controllers
+      {
+          public class UserController
+          {
+              public bool Register(string email, string password)
+              {
+                  if (!InputValidator.IsValidEmail(email))
+                      return false;
+                  if (!InputValidator.IsValidPassword(password))
+                      return false;
+                  return true;
+              }
+          }
+      }
+    Controllers/AccountController.cs: |
+      using App.Validation;
+
+      namespace App.Controllers
+      {
+          public class AccountController
+          {
+              public bool UpdateEmail(string email)
+              {
+                  if (!InputValidator.IsValidEmail(email))
+                      return false;
+                  return true;
+              }
+
+              public bool ChangePassword(string password)
+              {
+                  if (!InputValidator.IsValidPassword(password))
+                      return false;
+                  return true;
+              }
+          }
+      }
+    Services/AdminService.cs: |
+      using App.Validation;
+
+      namespace App.Services
+      {
+          public class AdminService
+          {
+              public bool CreateAdmin(string email, string password)
+              {
+                  if (!InputValidator.IsValidEmail(email))
+                      return false;
+                  if (!InputValidator.IsValidPassword(password))
+                      return false;
+                  return true;
+              }
+          }
+      }
+    Middleware/RateLimiter.cs: |
+      namespace App.Middleware
+      {
+          // GARBAGE_R027_RATE_A
+          public class RateLimiter
+          {
+              public bool Allow(string ip) => true;
+          }
+      }
+    Middleware/CorsHandler.cs: |
+      namespace App.Middleware
+      {
+          // GARBAGE_R027_CORS_B
+          public class CorsHandler
+          {
+              public bool IsAllowed(string origin) => true;
+          }
+      }
+    Middleware/Compression.cs: |
+      namespace App.Middleware
+      {
+          // GARBAGE_R027_GZIP_C
+          public class CompressionMiddleware
+          {
+              public byte[] Compress(byte[] data) => data;
+          }
+      }
+  commit_message: "refactor: consolidate duplicate email/password validation into InputValidator"
+fragments:
+- id: input_validator_class
+  selector:
+    path: Validation/InputValidator.cs
+    anchor: "public static class InputValidator"
+- id: is_valid_email
+  selector:
+    path: Validation/InputValidator.cs
+    anchor: "public static bool IsValidEmail"
+- id: is_valid_password
+  selector:
+    path: Validation/InputValidator.cs
+    anchor: "public static bool IsValidPassword"
+- id: user_controller_uses
+  selector:
+    path: Controllers/UserController.cs
+    anchor: "InputValidator.IsValidEmail(email)"
+- id: account_controller_uses
+  selector:
+    path: Controllers/AccountController.cs
+    anchor: "InputValidator.IsValidEmail(email)"
+- id: admin_service_uses
+  selector:
+    path: Services/AdminService.cs
+    anchor: "InputValidator.IsValidPassword(password)"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_R027_RATE_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_R027_CORS_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_R027_GZIP_C
+oracle:
+  required:
+  - input_validator_class
+  - is_valid_email
+  - is_valid_password
+  - user_controller_uses
+  - account_controller_uses
+  - admin_service_uses
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

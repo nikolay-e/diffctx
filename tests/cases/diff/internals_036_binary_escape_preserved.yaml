@@ -1,23 +1,200 @@
 name: internals_036_binary_escape_preserved
+tags:
+- lang:cpp
+- change:single_file
+- context:cross_module
+- distance:2hop
+- difficulty:medium
 repo:
   initial_files:
-    binary_escape.py: |
-      x = 0
+    include/compress/codec.h: |
+      #pragma once
+      #include <cstdint>
+      #include <vector>
+
+      namespace compress {
+
+      enum class Algorithm {
+          none,
+          zstd,
+          lz4,
+      };
+
+      struct CodecConfig {
+          Algorithm algorithm;
+          int level;
+      };
+
+      class Codec {
+      public:
+          explicit Codec(const CodecConfig& cfg);
+          std::vector<uint8_t> compress(const uint8_t* data, size_t len) const;
+          std::vector<uint8_t> decompress(const uint8_t* data, size_t len) const;
+      private:
+          CodecConfig cfg_;
+      };
+
+      }
+    src/storage/blob_store.cpp: |
+      #include "compress/codec.h"
+      #include <vector>
+
+      namespace storage {
+
+      class BlobStore {
+          compress::Codec codec_;
+      public:
+          explicit BlobStore(const compress::CodecConfig& cfg) : codec_(cfg) {}
+
+          std::vector<uint8_t> put(const uint8_t* data, size_t len) {
+              return codec_.compress(data, len);
+          }
+
+          std::vector<uint8_t> get(const uint8_t* blob, size_t len) {
+              return codec_.decompress(blob, len);
+          }
+      };
+
+      }
+    src/cache/object_cache.cpp: |
+      #include "compress/codec.h"
+
+      namespace cache {
+
+      class ObjectCache {
+          compress::CodecConfig codec_cfg_;
+      public:
+          explicit ObjectCache(const compress::CodecConfig& cfg) : codec_cfg_(cfg) {}
+
+          compress::CodecConfig codec_config() const { return codec_cfg_; }
+      };
+
+      }
+    garbage/crypto.cpp: |
+      // GARBAGE_BIN036_CRYPTO_A = "crypto_marker"
+      namespace crypto { void hash(const uint8_t* d, size_t n) {} }
+    garbage/checksum.cpp: |
+      // GARBAGE_BIN036_CHECK_B = "checksum_marker"
+      namespace checksum { uint32_t crc32(const uint8_t* d, size_t n) { return 0; } }
+    garbage/logger.cpp: |
+      // GARBAGE_BIN036_LOG_C = "logger_marker"
+      namespace logger { void log(const char* msg) {} }
   changed_files:
-    binary_escape.py: |
-      binary = b"\x00\x01\x02"
-      valid_name = "test"
-  commit_message: Update files
+    include/compress/codec.h: |
+      #pragma once
+      #include <cstdint>
+      #include <vector>
+
+      namespace compress {
+
+      enum class Algorithm {
+          none,
+          zstd,
+          lz4,
+          snappy,
+      };
+
+      struct CodecConfig {
+          Algorithm algorithm;
+          int level;
+          bool checksum_enabled;
+      };
+
+      class Codec {
+      public:
+          explicit Codec(const CodecConfig& cfg);
+          std::vector<uint8_t> compress(const uint8_t* data, size_t len) const;
+          std::vector<uint8_t> decompress(const uint8_t* data, size_t len) const;
+          size_t max_compressed_size(size_t src_len) const;
+      private:
+          CodecConfig cfg_;
+      };
+
+      }
+    src/storage/blob_store.cpp: |
+      #include "compress/codec.h"
+      #include <vector>
+
+      namespace storage {
+
+      class BlobStore {
+          compress::Codec codec_;
+      public:
+          explicit BlobStore(const compress::CodecConfig& cfg) : codec_(cfg) {}
+
+          std::vector<uint8_t> put(const uint8_t* data, size_t len) {
+              return codec_.compress(data, len);
+          }
+
+          std::vector<uint8_t> get(const uint8_t* blob, size_t len) {
+              return codec_.decompress(blob, len);
+          }
+      };
+
+      }
+    src/cache/object_cache.cpp: |
+      #include "compress/codec.h"
+
+      namespace cache {
+
+      class ObjectCache {
+          compress::CodecConfig codec_cfg_;
+      public:
+          explicit ObjectCache(const compress::CodecConfig& cfg) : codec_cfg_(cfg) {}
+
+          compress::CodecConfig codec_config() const { return codec_cfg_; }
+      };
+
+      }
+    garbage/crypto.cpp: |
+      // GARBAGE_BIN036_CRYPTO_A = "crypto_marker"
+      namespace crypto { void hash(const uint8_t* d, size_t n) {} }
+    garbage/checksum.cpp: |
+      // GARBAGE_BIN036_CHECK_B = "checksum_marker"
+      namespace checksum { uint32_t crc32(const uint8_t* d, size_t n) { return 0; } }
+    garbage/logger.cpp: |
+      // GARBAGE_BIN036_LOG_C = "logger_marker"
+      namespace logger { void log(const char* msg) {} }
+  commit_message: "feat: add snappy algorithm, checksum_enabled flag and max_compressed_size"
 fragments:
-- id: binary_escape_file
+- id: algorithm_snappy
   selector:
-    path: binary_escape.py
-- id: req_global_0
+    path: include/compress/codec.h
+    anchor: "snappy,"
+- id: checksum_enabled_field
   selector:
-    anchor: binary = b"\x00\x01\x02"
+    path: include/compress/codec.h
+    anchor: "checksum_enabled"
+- id: max_compressed_size_method
+  selector:
+    path: include/compress/codec.h
+    anchor: "max_compressed_size"
+- id: blob_store_uses_codec
+  selector:
+    path: src/storage/blob_store.cpp
+    anchor: "compress::CodecConfig"
+- id: object_cache_uses_codec
+  selector:
+    path: src/cache/object_cache.cpp
+    anchor: "compress::CodecConfig"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_BIN036_CRYPTO_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_BIN036_CHECK_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_BIN036_LOG_C
 oracle:
   required:
-  - binary_escape_file
-  - req_global_0
+  - algorithm_snappy
+  - checksum_enabled_field
+  - max_compressed_size_method
+  - blob_store_uses_codec
+  - object_cache_uses_codec
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

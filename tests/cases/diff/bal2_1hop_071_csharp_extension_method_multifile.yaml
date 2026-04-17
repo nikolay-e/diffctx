@@ -1,0 +1,254 @@
+name: bal2_1hop_071_csharp_extension_method_multifile
+tags:
+- lang:csharp
+- change:multi_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: csharp-no-tree-sitter
+repo:
+  initial_files:
+    src/Extensions/StringExtensions.cs: |
+      using System;
+      using System.Linq;
+
+      namespace App.Extensions
+      {
+          public static class StringExtensions
+          {
+              public static string ToSlug(this string input)
+              {
+                  return input.ToLower().Replace(" ", "-");
+              }
+
+              public static string Truncate(this string input, int maxLength)
+              {
+                  if (input.Length <= maxLength) return input;
+                  return input.Substring(0, maxLength) + "...";
+              }
+          }
+      }
+    src/Services/BlogService.cs: |
+      using System;
+      using System.Collections.Generic;
+      using App.Extensions;
+
+      namespace App.Services
+      {
+          public class BlogService
+          {
+              public string CreateSlug(string title)
+              {
+                  return title.ToSlug();
+              }
+
+              public string Preview(string content)
+              {
+                  return content.Truncate(200);
+              }
+          }
+      }
+    src/Services/SeoService.cs: |
+      using System;
+      using App.Extensions;
+
+      namespace App.Services
+      {
+          public class SeoService
+          {
+              public string GenerateMetaTitle(string title)
+              {
+                  return title.Truncate(60);
+              }
+
+              public string GenerateUrlPath(string title)
+              {
+                  return $"/blog/{title.ToSlug()}";
+              }
+          }
+      }
+    src/Controllers/BlogController.cs: |
+      using System;
+      using App.Services;
+      using Microsoft.AspNetCore.Mvc;
+
+      namespace App.Controllers
+      {
+          [ApiController]
+          [Route("api/blog")]
+          public class BlogController : ControllerBase
+          {
+              private readonly BlogService _blogService;
+              private readonly SeoService _seoService;
+
+              public BlogController(BlogService blogService, SeoService seoService)
+              {
+                  _blogService = blogService;
+                  _seoService = seoService;
+              }
+
+              [HttpGet("slug")]
+              public IActionResult GetSlug(string title)
+              {
+                  return Ok(_blogService.CreateSlug(title));
+              }
+          }
+      }
+    src/Helpers/UrlHelper.cs: |
+      using System;
+      using App.Extensions;
+
+      namespace App.Helpers
+      {
+          public class UrlHelper
+          {
+              public string Normalize(string url)
+              {
+                  return url.ToSlug();
+              }
+          }
+      }
+    garbage/Crypto/HashService.cs: |
+      using System;
+      GARBAGE_071_HASH_ALG_A = "sha256";
+      GARBAGE_071_SALT_LEN_B = 16;
+
+      namespace App.Crypto
+      {
+          public class HashService
+          {
+              GARBAGE_071_ITERATIONS_C = 10000;
+
+              public string Hash(string input) { return input; }
+          }
+      }
+    garbage/Rate/ThrottleManager.cs: |
+      using System;
+      GARBAGE_071_THROTTLE_D = "sliding";
+      GARBAGE_071_WINDOW_E = 60;
+
+      namespace App.Rate
+      {
+          public class ThrottleManager
+          {
+              GARBAGE_071_LIMIT_F = 100;
+
+              public bool Allow(string key) { return true; }
+          }
+      }
+    garbage/Storage/BlobStore.cs: |
+      using System;
+      GARBAGE_071_BLOB_PROVIDER_G = "s3";
+      GARBAGE_071_REGION_H = "us-east-1";
+
+      namespace App.Storage
+      {
+          public class BlobStore
+          {
+              GARBAGE_071_MAX_SIZE_I = 10485760;
+              GARBAGE_071_MULTIPART_J = true;
+
+              public void Upload(string key, byte[] data) { }
+          }
+      }
+  changed_files:
+    src/Extensions/StringExtensions.cs: |
+      using System;
+      using System.Linq;
+      using System.Text.RegularExpressions;
+
+      namespace App.Extensions
+      {
+          public static class StringExtensions
+          {
+              public static string ToSlug(this string input)
+              {
+                  var slug = input.ToLower().Replace(" ", "-");
+                  slug = Regex.Replace(slug, @"[^a-z0-9\-]", "");
+                  slug = Regex.Replace(slug, @"-+", "-").Trim('-');
+                  return slug;
+              }
+
+              public static string Truncate(this string input, int maxLength)
+              {
+                  if (input.Length <= maxLength) return input;
+                  return input.Substring(0, maxLength) + "...";
+              }
+
+              public static string RemoveHtml(this string input)
+              {
+                  return Regex.Replace(input, @"<[^>]+>", "");
+              }
+          }
+      }
+    src/Services/BlogService.cs: |
+      using System;
+      using System.Collections.Generic;
+      using App.Extensions;
+
+      namespace App.Services
+      {
+          public class BlogService
+          {
+              public string CreateSlug(string title)
+              {
+                  return title.ToSlug();
+              }
+
+              public string Preview(string content)
+              {
+                  return content.RemoveHtml().Truncate(200);
+              }
+          }
+      }
+  commit_message: "Improve slug sanitization and add HTML stripping to blog preview"
+fragments:
+- id: seo_generate_url
+  selector:
+    path: src/Services/SeoService.cs
+    anchor: "title.ToSlug()"
+- id: seo_meta_title
+  selector:
+    path: src/Services/SeoService.cs
+    anchor: "title.Truncate(60)"
+- id: url_helper_normalize
+  selector:
+    path: src/Helpers/UrlHelper.cs
+    anchor: "url.ToSlug()"
+- id: controller_get_slug
+  selector:
+    path: src/Controllers/BlogController.cs
+    anchor: "_blogService.CreateSlug(title)"
+- id: no_hash_service
+  selector:
+    path: garbage/Crypto/HashService.cs
+- id: no_throttle_manager
+  selector:
+    path: garbage/Rate/ThrottleManager.cs
+- id: no_blob_store
+  selector:
+    path: garbage/Storage/BlobStore.cs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_071_HASH_ALG_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_071_THROTTLE_D
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_071_BLOB_PROVIDER_G
+oracle:
+  required:
+  - seo_generate_url
+  - seo_meta_title
+  - url_helper_normalize
+  - controller_get_slug
+  allowed: []
+  forbidden:
+  - no_hash_service
+  - no_throttle_manager
+  - no_blob_store
+  - no_global_0
+  - no_global_1
+  - no_global_2

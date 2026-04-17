@@ -1,183 +1,138 @@
 name: json_011_launch_json
+tags:
+- lang:python
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:2hop
+- difficulty:medium
 repo:
   initial_files:
-    config/launch.json: |
-      {
-        "version": "0.2.0",
-        "configurations": [
-          {
-            "type": "node",
-            "request": "launch",
-            "name": "Launch Server",
-            "program": "${workspaceFolder}/src/index.js",
-            "console": "integratedTerminal",
-            "skipFiles": ["<node_internals>/**"]
-          }
-        ]
-      }
-    src/index.js: |
-      const express = require('express');
-      const { connectDatabase } = require('./database');
-      const { setupRoutes } = require('./routes');
+    src/upload/validator.py: |
+      ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+      MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024
 
-      const app = express();
-      const PORT = process.env.PORT || 3000;
+      def is_allowed_extension(filename: str) -> bool:
+          suffix = filename.rsplit(".", 1)
+          return f".{suffix[-1].lower()}" in ALLOWED_EXTENSIONS if len(suffix) > 1 else False
 
-      app.use(express.json());
-      app.use(express.urlencoded({ extended: true }));
+      def is_within_size_limit(size_bytes: int) -> bool:
+          return size_bytes <= MAX_FILE_SIZE_BYTES
+    src/upload/processor.py: |
+      from src.upload.validator import is_allowed_extension, is_within_size_limit
 
-      async function bootstrap() {
-          await connectDatabase();
-          setupRoutes(app);
-          app.listen(PORT, () => {
-              console.log(`Server listening on port ${PORT}`);
-          });
-      }
+      def process_upload(filename: str, content: bytes) -> dict:
+          if not is_allowed_extension(filename):
+              return {"error": "unsupported file type", "status": 415}
+          if not is_within_size_limit(len(content)):
+              return {"error": "file too large", "status": 413}
+          return {"status": 200, "filename": filename, "size": len(content)}
+    src/api/upload_endpoint.py: |
+      from src.upload.processor import process_upload
 
-      bootstrap().catch((err) => {
-          console.error('Failed to start server:', err);
-          process.exit(1);
-      });
+      def handle_upload(filename: str, content: bytes) -> dict:
+          return process_upload(filename, content)
+    garbage/auth.py: |
+      GARBAGE_JSON011_A = "auth_marker"
 
-      module.exports = { app, bootstrap };
-    src/routes.js: |
-      const { getUsers, createUser } = require('./handlers');
+      def noop():
+          pass
+    garbage/logger.py: |
+      GARBAGE_JSON011_B = "log_marker"
 
-      function setupRoutes(app) {
-          app.get('/api/users', getUsers);
-          app.post('/api/users', createUser);
-          app.get('/api/health', (req, res) => {
-              res.json({ status: 'ok', timestamp: new Date().toISOString() });
-          });
-      }
+      def noop():
+          pass
+    garbage/mailer.py: |
+      GARBAGE_JSON011_C = "smtp_marker"
 
-      module.exports = { setupRoutes };
-    src/middleware/cors.js: |
-      function corsMiddleware(req, res, next) {
-          res.header('Access-Control-Allow-Origin', '*');
-          res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
-          res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-          if (req.method === 'OPTIONS') {
-              return res.sendStatus(200);
-          }
-          next();
-      }
-
-      module.exports = { corsMiddleware };
-    src/middleware/logger.js: |
-      function requestLogger(req, res, next) {
-          const start = Date.now();
-          res.on('finish', () => {
-              const duration = Date.now() - start;
-              console.log(`${req.method} ${req.path} ${res.statusCode} ${duration}ms`);
-          });
-          next();
-      }
-
-      module.exports = { requestLogger };
+      def noop():
+          pass
   changed_files:
-    config/launch.json: |
-      {
-        "version": "0.2.0",
-        "configurations": [
-          {
-            "type": "node",
-            "request": "launch",
-            "name": "Launch Server",
-            "program": "${workspaceFolder}/src/server.js",
-            "console": "integratedTerminal",
-            "skipFiles": ["<node_internals>/**"],
-            "env": {"NODE_ENV": "development", "LOG_LEVEL": "debug"}
-          }
-        ]
-      }
-    src/index.js: |
-      const express = require('express');
-      const { connectDatabase } = require('./database');
-      const { setupRoutes } = require('./routes');
+    src/upload/validator.py: |
+      ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"}
+      MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
+      ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml"}
 
-      const app = express();
-      const PORT = process.env.PORT || 3000;
+      def is_allowed_extension(filename: str) -> bool:
+          suffix = filename.rsplit(".", 1)
+          return f".{suffix[-1].lower()}" in ALLOWED_EXTENSIONS if len(suffix) > 1 else False
 
-      app.use(express.json());
-      app.use(express.urlencoded({ extended: true }));
+      def is_within_size_limit(size_bytes: int) -> bool:
+          return size_bytes <= MAX_FILE_SIZE_BYTES
 
-      async function bootstrap() {
-          await connectDatabase();
-          setupRoutes(app);
-          app.listen(PORT, () => {
-              console.log(`Server listening on port ${PORT}`);
-          });
-      }
+      def is_allowed_mime_type(mime_type: str) -> bool:
+          return mime_type in ALLOWED_MIME_TYPES
+    src/upload/processor.py: |
+      from src.upload.validator import is_allowed_extension, is_within_size_limit, is_allowed_mime_type
 
-      bootstrap().catch((err) => {
-          console.error('Failed to start server:', err);
-          process.exit(1);
-      });
+      def process_upload(filename: str, content: bytes, mime_type: str = "") -> dict:
+          if not is_allowed_extension(filename):
+              return {"error": "unsupported file type", "status": 415}
+          if mime_type and not is_allowed_mime_type(mime_type):
+              return {"error": "unsupported MIME type", "status": 415}
+          if not is_within_size_limit(len(content)):
+              return {"error": "file too large", "status": 413}
+          return {"status": 200, "filename": filename, "size": len(content)}
+    src/api/upload_endpoint.py: |
+      from src.upload.processor import process_upload
 
-      module.exports = { app, bootstrap };
-    src/routes.js: |
-      const { getUsers, createUser } = require('./handlers');
+      def handle_upload(filename: str, content: bytes, mime_type: str = "") -> dict:
+          return process_upload(filename, content, mime_type)
+    garbage/auth.py: |
+      GARBAGE_JSON011_A = "auth_marker"
 
-      function setupRoutes(app) {
-          app.get('/api/users', getUsers);
-          app.post('/api/users', createUser);
-          app.get('/api/health', (req, res) => {
-              res.json({ status: 'ok', timestamp: new Date().toISOString() });
-          });
-      }
+      def noop():
+          pass
+    garbage/logger.py: |
+      GARBAGE_JSON011_B = "log_marker"
 
-      module.exports = { setupRoutes };
-    src/middleware/cors.js: |
-      function corsMiddleware(req, res, next) {
-          res.header('Access-Control-Allow-Origin', '*');
-          res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
-          res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-          if (req.method === 'OPTIONS') {
-              return res.sendStatus(200);
-          }
-          next();
-      }
+      def noop():
+          pass
+    garbage/mailer.py: |
+      GARBAGE_JSON011_C = "smtp_marker"
 
-      module.exports = { corsMiddleware };
-    src/middleware/logger.js: |
-      function requestLogger(req, res, next) {
-          const start = Date.now();
-          res.on('finish', () => {
-              const duration = Date.now() - start;
-              console.log(`${req.method} ${req.path} ${res.statusCode} ${duration}ms`);
-          });
-          next();
-      }
-
-      module.exports = { requestLogger };
-  commit_message: Update files
+      def noop():
+          pass
+  commit_message: "feat: add SVG support, increase size limit, add MIME type validation"
 fragments:
-- id: launch_file
+- id: validator_mime_fn
   selector:
-    path: config/launch.json
-- id: req_global_0
+    path: src/upload/validator.py
+    anchor: "def is_allowed_mime_type("
+- id: validator_svg_extension
   selector:
-    anchor: src/server.js
-- id: req_global_1
+    path: src/upload/validator.py
+    anchor: '".svg"'
+- id: processor_mime_param
   selector:
-    anchor: NODE_ENV
-- id: no_global_0
+    path: src/upload/processor.py
+    anchor: "mime_type: str = \"\""
+- id: processor_imports_mime
   selector:
-    anchor: corsMiddleware
-- id: no_global_1
+    path: src/upload/processor.py
+    anchor: "from src.upload.validator import is_allowed_extension, is_within_size_limit, is_allowed_mime_type"
+- id: endpoint_mime_param
   selector:
-    anchor: Access-Control-Allow-Origin
-- id: no_global_2
+    path: src/api/upload_endpoint.py
+    anchor: "mime_type: str = \"\""
+- id: no_garbage_a
   selector:
-    anchor: requestLogger
+    anchor: GARBAGE_JSON011_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_JSON011_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_JSON011_C
 oracle:
   required:
-  - launch_file
-  - req_global_0
-  - req_global_1
-  allowed: []
+  - validator_mime_fn
+  - validator_svg_extension
+  - processor_mime_param
+  - processor_imports_mime
+  allowed:
+  - endpoint_mime_param
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

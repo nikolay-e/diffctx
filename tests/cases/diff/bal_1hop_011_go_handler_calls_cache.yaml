@@ -1,0 +1,97 @@
+name: bal_1hop_011_go_handler_calls_cache
+tags:
+- lang:kotlin
+- change:bug_fix
+- change:single_file
+- context:same_file
+- distance:0hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/finance/InterestAccrual.kt: |
+      import java.math.BigDecimal
+      import java.math.RoundingMode
+
+      data class LoanAccount(val principal: BigDecimal, val annualRatePct: Double, val daysPast: Int)
+
+      class InterestAccrual {
+          fun dailyInterest(account: LoanAccount): BigDecimal {
+              val rate = BigDecimal(account.annualRatePct / 360)  // BUG: should be /365
+              return account.principal.multiply(rate).setScale(4, RoundingMode.HALF_UP)
+          }
+
+          fun accruedInterest(account: LoanAccount): BigDecimal {
+              return dailyInterest(account).multiply(BigDecimal(account.daysPast))
+          }
+
+          fun totalOwed(account: LoanAccount): BigDecimal {
+              return account.principal.add(accruedInterest(account))
+          }
+      }
+    garbage/LoanOrigination.kt: |
+      // GARBAGE_FIN_A = "loan_origination_marker"
+    garbage/CreditScore.kt: |
+      // GARBAGE_FIN_B = "credit_score_marker"
+    garbage/CollateralValuation.kt: |
+      // GARBAGE_FIN_C = "collateral_valuation_marker"
+    garbage/DebtRecovery.kt: |
+      // GARBAGE_FIN_D = "debt_recovery_marker"
+  changed_files:
+    src/finance/InterestAccrual.kt: |
+      import java.math.BigDecimal
+      import java.math.RoundingMode
+
+      data class LoanAccount(val principal: BigDecimal, val annualRatePct: Double, val daysPast: Int)
+
+      class InterestAccrual {
+          fun dailyInterest(account: LoanAccount): BigDecimal {
+              val rate = BigDecimal(account.annualRatePct / 365)
+              return account.principal.multiply(rate).setScale(4, RoundingMode.HALF_UP)
+          }
+
+          fun accruedInterest(account: LoanAccount): BigDecimal {
+              return dailyInterest(account).multiply(BigDecimal(account.daysPast))
+          }
+
+          fun totalOwed(account: LoanAccount): BigDecimal {
+              return account.principal.add(accruedInterest(account))
+          }
+      }
+    garbage/LoanOrigination.kt: |
+      // GARBAGE_FIN_A = "loan_origination_marker"
+    garbage/CreditScore.kt: |
+      // GARBAGE_FIN_B = "credit_score_marker"
+    garbage/CollateralValuation.kt: |
+      // GARBAGE_FIN_C = "collateral_valuation_marker"
+    garbage/DebtRecovery.kt: |
+      // GARBAGE_FIN_D = "debt_recovery_marker"
+  commit_message: "fix: use 365-day year convention in daily interest calculation"
+fragments:
+- id: daily_interest
+  selector:
+    anchor: "fun dailyInterest(account: LoanAccount)"
+- id: accrued_interest
+  selector:
+    anchor: "fun accruedInterest(account: LoanAccount)"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_FIN_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_FIN_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_FIN_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_FIN_D
+oracle:
+  required:
+  - daily_interest
+  allowed:
+  - accrued_interest
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

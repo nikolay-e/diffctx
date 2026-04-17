@@ -1,0 +1,134 @@
+name: bal_rare_030_clojure_protocol_multimethod
+tags:
+- lang:clojure
+- change:single_file
+- context:import_chain
+- distance:2hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/config/schema.clj: |
+      (ns config.schema)
+
+      (def required-keys [:db-host :db-port :db-name :app-port])
+
+      (defn validate [cfg]
+        (every? #(contains? cfg %) required-keys))
+    src/config/loader.clj: |
+      (ns config.loader
+        (:require [config.schema :as schema]))
+
+      (defn load-config [env-map]
+        (let [cfg {:db-host  (get env-map "DB_HOST" "localhost")
+                   :db-port  (Integer/parseInt (get env-map "DB_PORT" "5432"))
+                   :db-name  (get env-map "DB_NAME" "app")
+                   :app-port (Integer/parseInt (get env-map "APP_PORT" "8080"))}]
+          (when (schema/validate cfg)
+            cfg)))
+    src/app/server.clj: |
+      (ns app.server
+        (:require [config.loader :as cfg]))
+
+      (defn start [env]
+        (let [config (cfg/load-config env)]
+          (println "Starting on port" (:app-port config))))
+    garbage/indexer.clj: |
+      (ns garbage.indexer)
+
+      (def ^:const GARBAGE_RARE030_A "es_marker")
+      (def ^:const GARBAGE_RARE030_B "shard_marker")
+
+      (defn index-doc [id doc]
+        GARBAGE_RARE030_A)
+    garbage/reporter.clj: |
+      (ns garbage.reporter)
+
+      (def ^:const GARBAGE_RARE030_C "pdf_marker")
+      (def ^:const GARBAGE_RARE030_D "template_marker")
+
+      (defn generate-report [data]
+        GARBAGE_RARE030_C)
+    garbage/mailer.clj: |
+      (ns garbage.mailer)
+
+      (def ^:const GARBAGE_RARE030_E "smtp_marker")
+
+      (defn send-email [to subject body]
+        GARBAGE_RARE030_E)
+  changed_files:
+    src/config/loader.clj: |
+      (ns config.loader
+        (:require [config.schema :as schema]))
+
+      (defn load-config [env-map]
+        (let [cfg {:db-host  (get env-map "DB_HOST" "localhost")
+                   :db-port  (Integer/parseInt (get env-map "DB_PORT" "5432"))
+                   :db-name  (get env-map "DB_NAME" "app")
+                   :app-port (Integer/parseInt (get env-map "APP_PORT" "8080"))
+                   :log-level (get env-map "LOG_LEVEL" "info")}]
+          (when (schema/validate cfg)
+            cfg)))
+    garbage/indexer.clj: |
+      (ns garbage.indexer)
+
+      (def ^:const GARBAGE_RARE030_A "es_marker")
+      (def ^:const GARBAGE_RARE030_B "shard_marker")
+
+      (defn index-doc [id doc]
+        GARBAGE_RARE030_A)
+    garbage/reporter.clj: |
+      (ns garbage.reporter)
+
+      (def ^:const GARBAGE_RARE030_C "pdf_marker")
+      (def ^:const GARBAGE_RARE030_D "template_marker")
+
+      (defn generate-report [data]
+        GARBAGE_RARE030_C)
+    garbage/mailer.clj: |
+      (ns garbage.mailer)
+
+      (def ^:const GARBAGE_RARE030_E "smtp_marker")
+
+      (defn send-email [to subject body]
+        GARBAGE_RARE030_E)
+  commit_message: "feat: add log-level to config loader"
+fragments:
+- id: loader_log_level
+  selector:
+    path: src/config/loader.clj
+    anchor: ":log-level"
+- id: schema_validate
+  selector:
+    path: src/config/schema.clj
+    anchor: "(defn validate"
+- id: server_uses_config
+  selector:
+    path: src/app/server.clj
+    anchor: "(cfg/load-config"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_RARE030_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_RARE030_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_RARE030_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_RARE030_D
+- id: no_garbage_e
+  selector:
+    anchor: GARBAGE_RARE030_E
+oracle:
+  required:
+  - loader_log_level
+  - schema_validate
+  allowed:
+  - server_uses_config
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d
+  - no_garbage_e

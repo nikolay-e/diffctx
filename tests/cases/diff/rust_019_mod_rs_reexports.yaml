@@ -1,318 +1,189 @@
 name: rust_019_mod_rs_reexports
+tags:
+- lang:cpp
+- change:new_function
+- change:single_file
+- context:cross_module
+- distance:1hop
+- difficulty:easy
 repo:
   initial_files:
-    src/lib/mod.rs: |
-      mod utils;
-      mod helpers;
+    include/infra/circuit_breaker.hpp: |
+      #pragma once
+      #include <chrono>
+      #include <functional>
+      #include <stdexcept>
 
-      pub use utils::format;
-      pub use helpers::process;
+      namespace infra {
 
-      pub fn version() -> &'static str {
-          "1.0.0"
-      }
-    src/lib/utils.rs: |
-      pub fn format(s: &str) -> String {
-          s.to_uppercase()
-      }
+      enum class CircuitState { CLOSED, OPEN, HALF_OPEN };
 
-      pub fn sanitize(s: &str) -> String {
-          s.chars().filter(|c| c.is_alphanumeric()).collect()
-      }
+      class CircuitBreaker {
+      public:
+          explicit CircuitBreaker(int failure_threshold, std::chrono::seconds reset_timeout);
 
-      pub struct Formatter {
-          prefix: String,
-      }
-
-      impl Formatter {
-          pub fn new(prefix: &str) -> Self {
-              Self { prefix: prefix.to_string() }
-          }
-
-          pub fn format(&self, s: &str) -> String {
-              format!("{}{}", self.prefix, s)
-          }
-      }
-    src/lib/helpers.rs: |
-      pub fn process(data: &[u8]) -> Vec<u8> {
-          data.to_vec()
-      }
-
-      pub fn transform(data: &[u8]) -> Vec<u8> {
-          data.iter().map(|b| b.wrapping_add(1)).collect()
-      }
-
-      pub struct Processor {
-          buffer_size: usize,
-      }
-
-      impl Processor {
-          pub fn new(buffer_size: usize) -> Self {
-              Self { buffer_size }
-          }
-
-          pub fn process(&self, data: &[u8]) -> Vec<u8> {
-              data.chunks(self.buffer_size)
-                  .flat_map(|chunk| chunk.to_vec())
-                  .collect()
-          }
-      }
-    src/lib/hasher.rs: |
-      use std::collections::hash_map::DefaultHasher;
-      use std::hash::{Hash, Hasher};
-
-      pub fn hash_string(s: &str) -> u64 {
-          let mut hasher = DefaultHasher::new();
-          s.hash(&mut hasher);
-          hasher.finish()
-      }
-
-      pub fn hash_bytes(data: &[u8]) -> u64 {
-          let mut hasher = DefaultHasher::new();
-          data.hash(&mut hasher);
-          hasher.finish()
-      }
-
-      pub struct ContentHasher {
-          seed: u64,
-      }
-
-      impl ContentHasher {
-          pub fn new(seed: u64) -> Self {
-              Self { seed }
-          }
-
-          pub fn digest(&self, data: &[u8]) -> u64 {
-              let base = hash_bytes(data);
-              base.wrapping_add(self.seed)
-          }
-      }
-    src/lib/differ.rs: |
-      pub enum DiffOp {
-          Insert(String),
-          Delete(String),
-          Equal(String),
-      }
-
-      pub fn diff_lines(old: &str, new: &str) -> Vec<DiffOp> {
-          let old_lines: Vec<&str> = old.lines().collect();
-          let new_lines: Vec<&str> = new.lines().collect();
-          let mut ops = Vec::new();
-          for line in &old_lines {
-              if !new_lines.contains(line) {
-                  ops.push(DiffOp::Delete(line.to_string()));
+          template<typename Fn>
+          auto call(Fn&& fn) -> decltype(fn()) {
+              if (state_ == CircuitState::OPEN) {
+                  throw std::runtime_error("circuit open");
+              }
+              try {
+                  auto result = fn();
+                  on_success();
+                  return result;
+              } catch (...) {
+                  on_failure();
+                  throw;
               }
           }
-          for line in &new_lines {
-              if !old_lines.contains(line) {
-                  ops.push(DiffOp::Insert(line.to_string()));
-              }
+
+          CircuitState state() const { return state_; }
+
+      private:
+          void on_success();
+          void on_failure();
+
+          int failure_threshold_;
+          int failure_count_ = 0;
+          CircuitState state_ = CircuitState::CLOSED;
+          std::chrono::seconds reset_timeout_;
+      };
+
+      } // namespace infra
+    src/infra/http_client.cpp: |
+      #include "infra/circuit_breaker.hpp"
+      #include <string>
+
+      namespace infra {
+
+      class HttpClient {
+      public:
+          HttpClient(const std::string& base_url, CircuitBreaker* breaker)
+              : base_url_(base_url), breaker_(breaker) {}
+
+          std::string get(const std::string& path) {
+              return breaker_->call([&]() {
+                  return do_get(base_url_ + path);
+              });
           }
-          ops
-      }
+
+      private:
+          std::string do_get(const std::string& url);
+          std::string base_url_;
+          CircuitBreaker* breaker_;
+      };
+
+      } // namespace infra
+    garbage/metrics_collector.cpp: |
+      // GARBAGE_INF_A = "metrics_collector_marker"
+    garbage/config_store.cpp: |
+      // GARBAGE_INF_B = "config_store_marker"
+    garbage/event_bus.cpp: |
+      // GARBAGE_INF_C = "event_bus_marker"
   changed_files:
-    src/lib/mod.rs: |
-      mod utils;
-      mod helpers;
+    include/infra/circuit_breaker.hpp: |
+      #pragma once
+      #include <chrono>
+      #include <functional>
+      #include <stdexcept>
 
-      pub use utils::format;
-      pub use utils::format_lower;
-      pub use utils::sanitize;
-      pub use helpers::process;
-      pub use helpers::transform;
+      namespace infra {
 
-      pub fn version() -> &'static str {
-          "1.1.0"
-      }
+      enum class CircuitState { CLOSED, OPEN, HALF_OPEN };
 
-      pub fn info() -> String {
-          format!("Library v{}", version())
-      }
-    src/lib/utils.rs: |
-      pub fn format(s: &str) -> String {
-          s.to_uppercase()
-      }
+      class CircuitBreaker {
+      public:
+          explicit CircuitBreaker(int failure_threshold, std::chrono::seconds reset_timeout);
 
-      pub fn format_lower(s: &str) -> String {
-          s.to_lowercase()
-      }
-
-      pub fn format_title(s: &str) -> String {
-          s.split_whitespace()
-              .map(|word| {
-                  let mut chars = word.chars();
-                  match chars.next() {
-                      None => String::new(),
-                      Some(first) => first.to_uppercase().chain(chars).collect(),
-                  }
-              })
-              .collect::<Vec<_>>()
-              .join(" ")
-      }
-
-      pub fn sanitize(s: &str) -> String {
-          s.chars().filter(|c| c.is_alphanumeric()).collect()
-      }
-
-      pub fn slugify(s: &str) -> String {
-          s.to_lowercase()
-              .chars()
-              .map(|c| if c.is_alphanumeric() { c } else { '-' })
-              .collect::<String>()
-              .split('-')
-              .filter(|s| !s.is_empty())
-              .collect::<Vec<_>>()
-              .join("-")
-      }
-
-      pub struct Formatter {
-          prefix: String,
-          suffix: String,
-      }
-
-      impl Formatter {
-          pub fn new(prefix: &str) -> Self {
-              Self {
-                  prefix: prefix.to_string(),
-                  suffix: String::new(),
+          template<typename Fn>
+          auto call(Fn&& fn) -> decltype(fn()) {
+              if (state_ == CircuitState::OPEN) {
+                  throw std::runtime_error("circuit open");
+              }
+              try {
+                  auto result = fn();
+                  on_success();
+                  return result;
+              } catch (...) {
+                  on_failure();
+                  throw;
               }
           }
 
-          pub fn with_suffix(prefix: &str, suffix: &str) -> Self {
-              Self {
-                  prefix: prefix.to_string(),
-                  suffix: suffix.to_string(),
-              }
+          CircuitState state() const { return state_; }
+          int failure_count() const { return failure_count_; }
+          void reset();
+
+      private:
+          void on_success();
+          void on_failure();
+
+          int failure_threshold_;
+          int failure_count_ = 0;
+          CircuitState state_ = CircuitState::CLOSED;
+          std::chrono::seconds reset_timeout_;
+      };
+
+      } // namespace infra
+    src/infra/http_client.cpp: |
+      #include "infra/circuit_breaker.hpp"
+      #include <string>
+
+      namespace infra {
+
+      class HttpClient {
+      public:
+          HttpClient(const std::string& base_url, CircuitBreaker* breaker)
+              : base_url_(base_url), breaker_(breaker) {}
+
+          std::string get(const std::string& path) {
+              return breaker_->call([&]() {
+                  return do_get(base_url_ + path);
+              });
           }
 
-          pub fn format(&self, s: &str) -> String {
-              format!("{}{}{}", self.prefix, s, self.suffix)
-          }
-      }
-    src/lib/helpers.rs: |
-      pub fn process(data: &[u8]) -> Vec<u8> {
-          data.to_vec()
-      }
-
-      pub fn transform(data: &[u8]) -> Vec<u8> {
-          data.iter().map(|b| b.wrapping_add(1)).collect()
-      }
-
-      pub struct Processor {
-          buffer_size: usize,
-      }
-
-      impl Processor {
-          pub fn new(buffer_size: usize) -> Self {
-              Self { buffer_size }
+          void reset_breaker() {
+              breaker_->reset();
           }
 
-          pub fn process(&self, data: &[u8]) -> Vec<u8> {
-              data.chunks(self.buffer_size)
-                  .flat_map(|chunk| chunk.to_vec())
-                  .collect()
-          }
-      }
-    src/lib/hasher.rs: |
-      use std::collections::hash_map::DefaultHasher;
-      use std::hash::{Hash, Hasher};
+      private:
+          std::string do_get(const std::string& url);
+          std::string base_url_;
+          CircuitBreaker* breaker_;
+      };
 
-      pub fn hash_string(s: &str) -> u64 {
-          let mut hasher = DefaultHasher::new();
-          s.hash(&mut hasher);
-          hasher.finish()
-      }
-
-      pub fn hash_bytes(data: &[u8]) -> u64 {
-          let mut hasher = DefaultHasher::new();
-          data.hash(&mut hasher);
-          hasher.finish()
-      }
-
-      pub struct ContentHasher {
-          seed: u64,
-      }
-
-      impl ContentHasher {
-          pub fn new(seed: u64) -> Self {
-              Self { seed }
-          }
-
-          pub fn digest(&self, data: &[u8]) -> u64 {
-              let base = hash_bytes(data);
-              base.wrapping_add(self.seed)
-          }
-      }
-    src/lib/differ.rs: |
-      pub enum DiffOp {
-          Insert(String),
-          Delete(String),
-          Equal(String),
-      }
-
-      pub fn diff_lines(old: &str, new: &str) -> Vec<DiffOp> {
-          let old_lines: Vec<&str> = old.lines().collect();
-          let new_lines: Vec<&str> = new.lines().collect();
-          let mut ops = Vec::new();
-          for line in &old_lines {
-              if !new_lines.contains(line) {
-                  ops.push(DiffOp::Delete(line.to_string()));
-              }
-          }
-          for line in &new_lines {
-              if !old_lines.contains(line) {
-                  ops.push(DiffOp::Insert(line.to_string()));
-              }
-          }
-          ops
-      }
-  commit_message: Update files
+      } // namespace infra
+    garbage/metrics_collector.cpp: |
+      // GARBAGE_INF_A = "metrics_collector_marker"
+    garbage/config_store.cpp: |
+      // GARBAGE_INF_B = "config_store_marker"
+    garbage/event_bus.cpp: |
+      // GARBAGE_INF_C = "event_bus_marker"
+  commit_message: "feat: add reset() and failure_count() to CircuitBreaker"
 fragments:
-- id: mod_file
+- id: circuit_reset
   selector:
-    path: src/lib/mod.rs
-- id: utils_file
+    path: include/infra/circuit_breaker.hpp
+    anchor: "void reset();"
+- id: http_reset_breaker
   selector:
-    path: src/lib/utils.rs
-- id: req_global_0
+    path: src/infra/http_client.cpp
+    anchor: "void reset_breaker"
+- id: no_garbage_a
   selector:
-    anchor: pub use utils::format_lower;
-- id: req_global_1
+    anchor: GARBAGE_INF_A
+- id: no_garbage_b
   selector:
-    anchor: pub fn info() -> String {
-- id: no_hasher
+    anchor: GARBAGE_INF_B
+- id: no_garbage_c
   selector:
-    path: src/lib/hasher.rs
-- id: no_differ
-  selector:
-    path: src/lib/differ.rs
-- id: no_global_0
-  selector:
-    anchor: ContentHasher
-- id: no_global_1
-  selector:
-    anchor: DiffOp
-- id: no_global_2
-  selector:
-    anchor: diff_lines
-- id: no_global_3
-  selector:
-    anchor: hasher.rs
-- id: no_global_4
-  selector:
-    anchor: differ.rs
+    anchor: GARBAGE_INF_C
 oracle:
   required:
-  - mod_file
-  - utils_file
-  - req_global_0
-  - req_global_1
-  allowed: []
+  - circuit_reset
+  allowed:
+  - http_reset_breaker
   forbidden:
-  - no_hasher
-  - no_differ
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

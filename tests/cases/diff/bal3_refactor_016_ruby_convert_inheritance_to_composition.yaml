@@ -1,0 +1,188 @@
+name: bal3_refactor_016_ruby_convert_inheritance_to_composition
+tags:
+- lang:ruby
+- change:multi_file
+- change:refactor
+- context:cross_module
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    app/services/base_service.rb: |
+      class BaseService
+        def log(message)
+          puts "[#{self.class.name}] #{message}"
+        end
+
+        def track(event)
+          puts "TRACK: #{event}"
+        end
+
+        def validate!(params)
+          raise "invalid" if params.nil? || params.empty?
+        end
+      end
+    app/services/payment_service.rb: |
+      require_relative 'base_service'
+
+      class PaymentService < BaseService
+        def charge(user_id, amount)
+          validate!(user_id: user_id, amount: amount)
+          log("Charging #{user_id} amount #{amount}")
+          track("payment_charged")
+          { success: true, amount: amount }
+        end
+      end
+    app/services/subscription_service.rb: |
+      require_relative 'base_service'
+
+      class SubscriptionService < BaseService
+        def subscribe(user_id, plan)
+          validate!(user_id: user_id, plan: plan)
+          log("Subscribing #{user_id} to #{plan}")
+          track("subscription_created")
+          { user_id: user_id, plan: plan }
+        end
+      end
+    lib/storage/s3.rb: |
+      GARBAGE_R016_S3_A = "s3_storage"
+
+      class S3Storage
+        def upload(key, data)
+        end
+      end
+    lib/storage/local.rb: |
+      GARBAGE_R016_LOCAL_B = "local_storage"
+
+      class LocalStorage
+        def save(path, data)
+        end
+      end
+    lib/encryption/aes.rb: |
+      GARBAGE_R016_AES_C = "aes_encrypt"
+
+      class AesEncryptor
+        def encrypt(data)
+          data
+        end
+      end
+  changed_files:
+    app/services/service_logger.rb: |
+      class ServiceLogger
+        def initialize(service_name)
+          @service_name = service_name
+        end
+
+        def log(message)
+          puts "[#{@service_name}] #{message}"
+        end
+
+        def track(event)
+          puts "TRACK: #{event}"
+        end
+      end
+    app/services/service_validator.rb: |
+      class ServiceValidator
+        def validate!(params)
+          raise "invalid" if params.nil? || params.empty?
+        end
+      end
+    app/services/payment_service.rb: |
+      require_relative 'service_logger'
+      require_relative 'service_validator'
+
+      class PaymentService
+        def initialize
+          @logger = ServiceLogger.new("PaymentService")
+          @validator = ServiceValidator.new
+        end
+
+        def charge(user_id, amount)
+          @validator.validate!(user_id: user_id, amount: amount)
+          @logger.log("Charging #{user_id} amount #{amount}")
+          @logger.track("payment_charged")
+          { success: true, amount: amount }
+        end
+      end
+    app/services/subscription_service.rb: |
+      require_relative 'service_logger'
+      require_relative 'service_validator'
+
+      class SubscriptionService
+        def initialize
+          @logger = ServiceLogger.new("SubscriptionService")
+          @validator = ServiceValidator.new
+        end
+
+        def subscribe(user_id, plan)
+          @validator.validate!(user_id: user_id, plan: plan)
+          @logger.log("Subscribing #{user_id} to #{plan}")
+          @logger.track("subscription_created")
+          { user_id: user_id, plan: plan }
+        end
+      end
+    lib/storage/s3.rb: |
+      GARBAGE_R016_S3_A = "s3_storage"
+
+      class S3Storage
+        def upload(key, data)
+        end
+      end
+    lib/storage/local.rb: |
+      GARBAGE_R016_LOCAL_B = "local_storage"
+
+      class LocalStorage
+        def save(path, data)
+        end
+      end
+    lib/encryption/aes.rb: |
+      GARBAGE_R016_AES_C = "aes_encrypt"
+
+      class AesEncryptor
+        def encrypt(data)
+          data
+        end
+      end
+  commit_message: "refactor: replace BaseService inheritance with composition"
+fragments:
+- id: service_logger_class
+  selector:
+    path: app/services/service_logger.rb
+    anchor: "class ServiceLogger"
+- id: service_validator_class
+  selector:
+    path: app/services/service_validator.rb
+    anchor: "class ServiceValidator"
+- id: payment_composition
+  selector:
+    path: app/services/payment_service.rb
+    anchor: "@logger = ServiceLogger.new"
+- id: subscription_composition
+  selector:
+    path: app/services/subscription_service.rb
+    anchor: "@logger = ServiceLogger.new"
+- id: payment_no_inheritance
+  selector:
+    path: app/services/payment_service.rb
+    anchor: "class PaymentService"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_R016_S3_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_R016_LOCAL_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_R016_AES_C
+oracle:
+  required:
+  - service_logger_class
+  - service_validator_class
+  - payment_composition
+  - subscription_composition
+  allowed:
+  - payment_no_inheritance
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

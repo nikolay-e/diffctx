@@ -1,0 +1,208 @@
+name: python_064_deep_import_chain_3hop
+tags:
+- lang:python
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    core/types.py: |
+      from dataclasses import dataclass
+
+      @dataclass
+      class Metric:
+          name: str
+          value: float
+          unit: str
+
+      @dataclass
+      class Alert:
+          metric: Metric
+          threshold: float
+          triggered: bool
+    core/calculator.py: |
+      from core.types import Metric
+
+      def compute_average(metrics: list[Metric]) -> float:
+          if not metrics:
+              return 0.0
+          return sum(m.value for m in metrics) / len(metrics)
+
+      def compute_max(metrics: list[Metric]) -> Metric:
+          return max(metrics, key=lambda m: m.value)
+    services/aggregator.py: |
+      from core.calculator import compute_average, compute_max
+      from core.types import Metric
+
+      class MetricAggregator:
+          def __init__(self):
+              self.buffer: list[Metric] = []
+
+          def add(self, metric: Metric):
+              self.buffer.append(metric)
+
+          def summarize(self) -> dict:
+              return {
+                  "average": compute_average(self.buffer),
+                  "peak": compute_max(self.buffer).value if self.buffer else 0,
+                  "count": len(self.buffer),
+              }
+    api/endpoints.py: |
+      from services.aggregator import MetricAggregator
+      from core.types import Metric
+
+      aggregator = MetricAggregator()
+
+      def post_metric(name: str, value: float, unit: str):
+          m = Metric(name=name, value=value, unit=unit)
+          aggregator.add(m)
+          return {"status": "ok"}
+
+      def get_summary():
+          return aggregator.summarize()
+    utils/formatting.py: |
+      def format_number(value: float, precision: int = 2) -> str:
+          return f"{value:.{precision}f}"
+
+      def format_percentage(value: float) -> str:
+          return f"{value * 100:.1f}%"
+    utils/cache.py: |
+      class SimpleCache:
+          def __init__(self, max_size: int = 100):
+              self.store: dict = {}
+              self.max_size = max_size
+
+          def get(self, key: str):
+              return self.store.get(key)
+
+          def set(self, key: str, value):
+              if len(self.store) >= self.max_size:
+                  oldest = next(iter(self.store))
+                  del self.store[oldest]
+              self.store[key] = value
+  changed_files:
+    core/types.py: |
+      from dataclasses import dataclass
+      from datetime import datetime
+
+      @dataclass
+      class Metric:
+          name: str
+          value: float
+          unit: str
+          timestamp: datetime | None = None
+
+      @dataclass
+      class Alert:
+          metric: Metric
+          threshold: float
+          triggered: bool
+    core/calculator.py: |
+      from core.types import Metric
+
+      def compute_average(metrics: list[Metric]) -> float:
+          if not metrics:
+              return 0.0
+          return sum(m.value for m in metrics) / len(metrics)
+
+      def compute_max(metrics: list[Metric]) -> Metric:
+          return max(metrics, key=lambda m: m.value)
+    services/aggregator.py: |
+      from core.calculator import compute_average, compute_max
+      from core.types import Metric
+
+      class MetricAggregator:
+          def __init__(self):
+              self.buffer: list[Metric] = []
+
+          def add(self, metric: Metric):
+              self.buffer.append(metric)
+
+          def summarize(self) -> dict:
+              return {
+                  "average": compute_average(self.buffer),
+                  "peak": compute_max(self.buffer).value if self.buffer else 0,
+                  "count": len(self.buffer),
+              }
+    api/endpoints.py: |
+      from services.aggregator import MetricAggregator
+      from core.types import Metric
+
+      aggregator = MetricAggregator()
+
+      def post_metric(name: str, value: float, unit: str):
+          m = Metric(name=name, value=value, unit=unit)
+          aggregator.add(m)
+          return {"status": "ok"}
+
+      def get_summary():
+          return aggregator.summarize()
+    utils/formatting.py: |
+      def format_number(value: float, precision: int = 2) -> str:
+          return f"{value:.{precision}f}"
+
+      def format_percentage(value: float) -> str:
+          return f"{value * 100:.1f}%"
+    utils/cache.py: |
+      class SimpleCache:
+          def __init__(self, max_size: int = 100):
+              self.store: dict = {}
+              self.max_size = max_size
+
+          def get(self, key: str):
+              return self.store.get(key)
+
+          def set(self, key: str, value):
+              if len(self.store) >= self.max_size:
+                  oldest = next(iter(self.store))
+                  del self.store[oldest]
+              self.store[key] = value
+  commit_message: "feat(types): add timestamp to Metric dataclass"
+fragments:
+- id: metric_timestamp
+  selector:
+    path: core/types.py
+    anchor: "timestamp: datetime | None = None"
+- id: calculator_uses_metric
+  selector:
+    path: core/calculator.py
+    anchor: "from core.types import Metric"
+- id: aggregator_uses_calculator
+  selector:
+    path: services/aggregator.py
+    anchor: "from core.calculator import compute_average"
+- id: endpoints_uses_aggregator
+  selector:
+    path: api/endpoints.py
+    anchor: "from services.aggregator import MetricAggregator"
+- id: endpoints_creates_metric
+  selector:
+    path: api/endpoints.py
+    anchor: "m = Metric(name=name, value=value, unit=unit)"
+- id: no_formatting
+  selector:
+    path: utils/formatting.py
+- id: no_cache
+  selector:
+    path: utils/cache.py
+- id: no_format_number
+  selector:
+    anchor: format_number
+- id: no_simple_cache
+  selector:
+    anchor: SimpleCache
+oracle:
+  required:
+  - metric_timestamp
+  - calculator_uses_metric
+  - aggregator_uses_calculator
+  - endpoints_uses_aggregator
+  - endpoints_creates_metric
+  allowed: []
+  forbidden:
+  - no_formatting
+  - no_cache
+  - no_format_number
+  - no_simple_cache

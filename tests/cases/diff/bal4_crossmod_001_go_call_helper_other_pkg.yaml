@@ -1,0 +1,135 @@
+name: bal4_crossmod_001_go_call_helper_other_pkg
+tags:
+- lang:go
+- change:single_file
+- context:cross_module
+- distance:1hop
+- difficulty:trivial
+repo:
+  initial_files:
+    pkg/auth/token.go: |
+      package auth
+
+      import "pkg/crypto"
+
+      func ValidateToken(raw string) bool {
+          hash := crypto.SHA256(raw)
+          return hash != ""
+      }
+    pkg/crypto/hash.go: |
+      package crypto
+
+      import "crypto/sha256"
+      import "encoding/hex"
+
+      func SHA256(data string) string {
+          h := sha256.Sum256([]byte(data))
+          return hex.EncodeToString(h[:])
+      }
+    pkg/logging/logger.go: |
+      package logging
+
+      import "fmt"
+
+      var GARBAGE_001_LOGGER_A = "logger"
+      var GARBAGE_001_FORMAT_B = "text"
+
+      func Info(msg string) {
+          fmt.Println("[INFO]", msg)
+      }
+
+      func Error(msg string) {
+          fmt.Println("[ERROR]", msg)
+      }
+    garbage_config.go: |
+      package config
+
+      var GARBAGE_001_CFG_C = "default"
+      var GARBAGE_001_ENV_D = "prod"
+
+      func LoadConfig() string {
+          return GARBAGE_001_CFG_C
+      }
+  changed_files:
+    pkg/auth/token.go: |
+      package auth
+
+      import "pkg/crypto"
+
+      func ValidateToken(raw string) bool {
+          hash := crypto.SHA256(raw)
+          return hash != ""
+      }
+
+      func RefreshToken(raw string) string {
+          return crypto.SHA256(raw + ":refresh")
+      }
+    pkg/crypto/hash.go: |
+      package crypto
+
+      import "crypto/sha256"
+      import "encoding/hex"
+
+      func SHA256(data string) string {
+          h := sha256.Sum256([]byte(data))
+          return hex.EncodeToString(h[:])
+      }
+    pkg/logging/logger.go: |
+      package logging
+
+      import "fmt"
+
+      var GARBAGE_001_LOGGER_A = "logger"
+      var GARBAGE_001_FORMAT_B = "text"
+
+      func Info(msg string) {
+          fmt.Println("[INFO]", msg)
+      }
+
+      func Error(msg string) {
+          fmt.Println("[ERROR]", msg)
+      }
+    garbage_config.go: |
+      package config
+
+      var GARBAGE_001_CFG_C = "default"
+      var GARBAGE_001_ENV_D = "prod"
+
+      func LoadConfig() string {
+          return GARBAGE_001_CFG_C
+      }
+  commit_message: "add RefreshToken to auth package"
+fragments:
+- id: crypto_sha256
+  selector:
+    path: pkg/crypto/hash.go
+    anchor: "func SHA256(data string) string"
+- id: no_logging
+  selector:
+    path: pkg/logging/logger.go
+- id: no_garbage_config
+  selector:
+    path: garbage_config.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_001_LOGGER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_001_FORMAT_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_001_CFG_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_001_ENV_D
+oracle:
+  required:
+  - crypto_sha256
+  allowed: []
+  forbidden:
+  - no_logging
+  - no_garbage_config
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

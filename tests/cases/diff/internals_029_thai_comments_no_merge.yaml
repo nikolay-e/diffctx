@@ -1,23 +1,72 @@
 name: internals_029_thai_comments_no_merge
+tags:
+- lang:lua
+- change:bug_fix
+- change:single_file
+- context:same_file
+- distance:0hop
+- difficulty:trivial
 repo:
   initial_files:
-    thai_comments.py: |
-      x = 0
+    src/inventory.lua: |
+      local M = {}
+
+      function M.deduct_stock(item_id, quantity)
+          M.stock[item_id] = M.stock[item_id] - quantity
+      end
+
+      M.stock = {}
+
+      return M
+    garbage/INT029_network.lua: |
+      -- INT029_GARBAGE_A = "network_marker"
+    garbage/INT029_config.lua: |
+      -- INT029_GARBAGE_B = "config_marker"
+    garbage/INT029_logger.lua: |
+      -- INT029_GARBAGE_C = "logger_marker"
   changed_files:
-    thai_comments.py: |
-      # นี่คือความคิดเห็น
-      result = calculate(value)
-  commit_message: Update files
+    src/inventory.lua: |
+      local M = {}
+
+      function M.deduct_stock(item_id, quantity)
+          if not M.stock[item_id] then
+              return false, "item not found"
+          end
+          if M.stock[item_id] < quantity then
+              return false, "insufficient stock"
+          end
+          M.stock[item_id] = M.stock[item_id] - quantity
+          return true
+      end
+
+      M.stock = {}
+
+      return M
+    garbage/INT029_network.lua: |
+      -- INT029_GARBAGE_A = "network_marker"
+    garbage/INT029_config.lua: |
+      -- INT029_GARBAGE_B = "config_marker"
+    garbage/INT029_logger.lua: |
+      -- INT029_GARBAGE_C = "logger_marker"
+  commit_message: "fix: guard deduct_stock against missing item and insufficient stock"
 fragments:
-- id: thai_comments_file
+- id: deduct_stock_func
   selector:
-    path: thai_comments.py
-- id: req_global_0
+    anchor: "function M.deduct_stock"
+- id: no_garbage_a
   selector:
-    anchor: result = calculate(value)
+    anchor: INT029_GARBAGE_A
+- id: no_garbage_b
+  selector:
+    anchor: INT029_GARBAGE_B
+- id: no_garbage_c
+  selector:
+    anchor: INT029_GARBAGE_C
 oracle:
   required:
-  - thai_comments_file
-  - req_global_0
+  - deduct_stock_func
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

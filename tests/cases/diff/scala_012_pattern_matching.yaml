@@ -1,133 +1,135 @@
 name: scala_012_pattern_matching
+tags:
+- lang:clojure
+- change:single_file
+- context:import_chain
+- distance:2hop
+- difficulty:medium
 repo:
   initial_files:
-    User.scala: |
-      case class User(name: String, age: Int, email: Option[String])
-    UserValidator.scala: |
-      class UserValidator {}
-    EmailParser.scala: |
-      class EmailParser {
-        def parse(email: String): Option[(String, String)] = email.split("@") match {
-          case Array(local, domain) if local.nonEmpty && domain.contains(".") =>
-            Some((local, domain))
-          case _ => None
-        }
+    src/report/aggregator.clj: |
+      (ns report.aggregator)
 
-        def extractDomain(email: String): Option[String] = parse(email).map(_._2)
+      (defn sum-by [coll key-fn]
+        (reduce + (map key-fn coll)))
 
-        def isValidFormat(email: String): Boolean = parse(email).isDefined
-      }
-    AgePolicy.scala: |
-      class AgePolicy(minAge: Int, maxAge: Int) {
-        def isAllowed(age: Int): Boolean = age >= minAge && age <= maxAge
+      (defn group-by-field [coll key-fn]
+        (group-by key-fn coll))
 
-        def category(age: Int): String = age match {
-          case a if a < 13 => "child"
-          case a if a < 18 => "teenager"
-          case a if a < 65 => "adult"
-          case _           => "senior"
-        }
+      (defn count-by [coll key-fn]
+        (reduce-kv (fn [m k v] (assoc m k (count v)))
+                   {}
+                   (group-by-field coll key-fn)))
+    src/report/builder.clj: |
+      (ns report.builder
+        (:require [report.aggregator :as agg]))
 
-        def requiresConsent(age: Int): Boolean = age < minAge
-      }
+      (defn build-summary [records field-fn]
+        {:total    (count records)
+         :sum      (agg/sum-by records field-fn)
+         :by-group (agg/count-by records field-fn)})
+    src/api/report_handler.clj: |
+      (ns api.report-handler
+        (:require [report.builder :as rb]))
+
+      (defn handle-report [records field-fn]
+        {:status 200 :body (rb/build-summary records field-fn)})
+    garbage/cache.clj: |
+      (ns garbage.cache)
+
+      (def ^:const GARBAGE_SCALA012_A "redis_marker")
+      (def ^:const GARBAGE_SCALA012_B "ttl_marker")
+
+      (defn get-cached [k]
+        GARBAGE_SCALA012_A)
+    garbage/export.clj: |
+      (ns garbage.export)
+
+      (def ^:const GARBAGE_SCALA012_C "csv_marker")
+      (def ^:const GARBAGE_SCALA012_D "xlsx_marker")
+
+      (defn export-csv [data]
+        GARBAGE_SCALA012_C)
+    garbage/email.clj: |
+      (ns garbage.email)
+
+      (def ^:const GARBAGE_SCALA012_E "smtp_marker")
+
+      (defn send-report [recipient report]
+        GARBAGE_SCALA012_E)
   changed_files:
-    User.scala: |
-      case class User(name: String, age: Int, email: Option[String])
-    UserValidator.scala: |
-      class UserValidator {
-        def validate(user: User): String = user match {
-          case User(name, _, _) if name.isEmpty =>
-            "Name cannot be empty"
-          case User(_, age, _) if age < 0 =>
-            "Age cannot be negative"
-          case User(name, age, Some(email)) if email.contains("@") =>
-            s"Valid user: $name, $age, $email"
-          case User(name, age, None) =>
-            s"Valid user without email: $name, $age"
-          case _ =>
-            "Invalid user"
-        }
+    src/report/builder.clj: |
+      (ns report.builder
+        (:require [report.aggregator :as agg]))
 
-        def extractEmail(user: User): String = user match {
-          case User(_, _, Some(email)) => email
-          case User(name, _, None) => s"$name@default.com"
-        }
-      }
-    EmailParser.scala: |
-      class EmailParser {
-        def parse(email: String): Option[(String, String)] = email.split("@") match {
-          case Array(local, domain) if local.nonEmpty && domain.contains(".") =>
-            Some((local, domain))
-          case _ => None
-        }
+      (defn build-summary [records field-fn]
+        {:total    (count records)
+         :sum      (agg/sum-by records field-fn)
+         :by-group (agg/count-by records field-fn)})
 
-        def extractDomain(email: String): Option[String] = parse(email).map(_._2)
+      (defn build-top-n [records field-fn n]
+        (take n (sort-by (comp - field-fn) records)))
+    garbage/cache.clj: |
+      (ns garbage.cache)
 
-        def isValidFormat(email: String): Boolean = parse(email).isDefined
-      }
-    AgePolicy.scala: |
-      class AgePolicy(minAge: Int, maxAge: Int) {
-        def isAllowed(age: Int): Boolean = age >= minAge && age <= maxAge
+      (def ^:const GARBAGE_SCALA012_A "redis_marker")
+      (def ^:const GARBAGE_SCALA012_B "ttl_marker")
 
-        def category(age: Int): String = age match {
-          case a if a < 13 => "child"
-          case a if a < 18 => "teenager"
-          case a if a < 65 => "adult"
-          case _           => "senior"
-        }
+      (defn get-cached [k]
+        GARBAGE_SCALA012_A)
+    garbage/export.clj: |
+      (ns garbage.export)
 
-        def requiresConsent(age: Int): Boolean = age < minAge
-      }
-  commit_message: Update files
+      (def ^:const GARBAGE_SCALA012_C "csv_marker")
+      (def ^:const GARBAGE_SCALA012_D "xlsx_marker")
+
+      (defn export-csv [data]
+        GARBAGE_SCALA012_C)
+    garbage/email.clj: |
+      (ns garbage.email)
+
+      (def ^:const GARBAGE_SCALA012_E "smtp_marker")
+
+      (defn send-report [recipient report]
+        GARBAGE_SCALA012_E)
+  commit_message: "feat: add build-top-n to report builder"
 fragments:
-- id: uservalidator
+- id: builder_top_n
   selector:
-    path: UserValidator.scala
-    anchor: 'def validate(user: User): String = user match {'
-- id: uservalidator_1
+    path: src/report/builder.clj
+    anchor: "(defn build-top-n"
+- id: aggregator_sum_by
   selector:
-    path: UserValidator.scala
-    anchor: 'def extractEmail(user: User): String = user match {'
-- id: user
+    path: src/report/aggregator.clj
+    anchor: "(defn sum-by"
+- id: handler_uses_builder
   selector:
-    path: User.scala
-    anchor: 'case class User(name: String, age: Int, email: Option[String])'
-- id: no_emailparser
+    path: src/api/report_handler.clj
+    anchor: "(rb/build-summary"
+- id: no_garbage_a
   selector:
-    path: EmailParser.scala
-- id: no_agepolicy
+    anchor: GARBAGE_SCALA012_A
+- id: no_garbage_b
   selector:
-    path: AgePolicy.scala
-- id: no_global_0
+    anchor: GARBAGE_SCALA012_B
+- id: no_garbage_c
   selector:
-    anchor: EmailParser
-- id: no_global_1
+    anchor: GARBAGE_SCALA012_C
+- id: no_garbage_d
   selector:
-    anchor: extractDomain
-- id: no_global_2
+    anchor: GARBAGE_SCALA012_D
+- id: no_garbage_e
   selector:
-    anchor: isValidFormat
-- id: no_global_3
-  selector:
-    anchor: AgePolicy
-- id: no_global_4
-  selector:
-    anchor: category
-- id: no_global_5
-  selector:
-    anchor: requiresConsent
+    anchor: GARBAGE_SCALA012_E
 oracle:
   required:
-  - uservalidator
-  - uservalidator_1
-  - user
-  allowed: []
+  - builder_top_n
+  - aggregator_sum_by
+  allowed:
+  - handler_uses_builder
   forbidden:
-  - no_emailparser
-  - no_agepolicy
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d
+  - no_garbage_e

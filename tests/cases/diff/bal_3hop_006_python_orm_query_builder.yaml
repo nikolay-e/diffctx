@@ -1,0 +1,157 @@
+name: bal_3hop_006_python_orm_query_builder
+tags:
+- lang:python
+- change:single_file
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    orm/column.py: |
+      class Column:
+          def __init__(self, name: str, col_type: str, nullable: bool = True):
+              self.name = name
+              self.col_type = col_type
+              self.nullable = nullable
+          def to_sql(self) -> str:
+              null_str = "NULL" if self.nullable else "NOT NULL"
+              return f"{self.name} {self.col_type} {null_str}"
+    orm/table.py: |
+      from orm.column import Column
+      class Table:
+          def __init__(self, name: str, columns: list[Column]):
+              self.name = name
+              self.columns = columns
+          def column_names(self) -> list[str]:
+              return [c.name for c in self.columns]
+    orm/query.py: |
+      from orm.table import Table
+      class QueryBuilder:
+          def __init__(self, table: Table):
+              self.table = table
+              self.conditions: list[str] = []
+          def where(self, condition: str) -> "QueryBuilder":
+              self.conditions.append(condition)
+              return self
+          def select(self, *cols: str) -> str:
+              col_str = ", ".join(cols) if cols else "*"
+              sql = f"SELECT {col_str} FROM {self.table.name}"
+              if self.conditions:
+                  sql += " WHERE " + " AND ".join(self.conditions)
+              return sql
+    api/repository.py: |
+      from orm.query import QueryBuilder
+      from orm.table import Table
+      from orm.column import Column
+      users_table = Table("users", [
+          Column("id", "INTEGER", nullable=False),
+          Column("email", "VARCHAR(255)", nullable=False),
+          Column("name", "VARCHAR(100)"),
+      ])
+      def find_user_by_email(email: str) -> str:
+          qb = QueryBuilder(users_table)
+          return qb.where(f"email = '{email}'").select("id", "name")
+    utils/string_helpers.py: |
+      def snake_to_camel(name: str) -> str:
+          parts = name.split("_")
+          return parts[0] + "".join(p.capitalize() for p in parts[1:])
+    migrations/runner.py: |
+      class MigrationRunner:
+          def __init__(self, migrations_dir: str):
+              self.migrations_dir = migrations_dir
+          def run_pending(self):
+              pass
+  changed_files:
+    orm/column.py: |
+      class Column:
+          def __init__(self, name: str, col_type: str, nullable: bool = True):
+              self.name = name
+              self.col_type = col_type
+              self.nullable = nullable
+          def to_sql(self) -> str:
+              parts = [self.name, self.col_type]
+              if not self.nullable:
+                  parts.append("NOT NULL")
+              return " ".join(parts)
+    orm/table.py: |
+      from orm.column import Column
+      class Table:
+          def __init__(self, name: str, columns: list[Column]):
+              self.name = name
+              self.columns = columns
+          def column_names(self) -> list[str]:
+              return [c.name for c in self.columns]
+    orm/query.py: |
+      from orm.table import Table
+      class QueryBuilder:
+          def __init__(self, table: Table):
+              self.table = table
+              self.conditions: list[str] = []
+          def where(self, condition: str) -> "QueryBuilder":
+              self.conditions.append(condition)
+              return self
+          def select(self, *cols: str) -> str:
+              col_str = ", ".join(cols) if cols else "*"
+              sql = f"SELECT {col_str} FROM {self.table.name}"
+              if self.conditions:
+                  sql += " WHERE " + " AND ".join(self.conditions)
+              return sql
+    api/repository.py: |
+      from orm.query import QueryBuilder
+      from orm.table import Table
+      from orm.column import Column
+      users_table = Table("users", [
+          Column("id", "INTEGER", nullable=False),
+          Column("email", "VARCHAR(255)", nullable=False),
+          Column("name", "VARCHAR(100)"),
+      ])
+      def find_user_by_email(email: str) -> str:
+          qb = QueryBuilder(users_table)
+          return qb.where(f"email = '{email}'").select("id", "name")
+    utils/string_helpers.py: |
+      def snake_to_camel(name: str) -> str:
+          parts = name.split("_")
+          return parts[0] + "".join(p.capitalize() for p in parts[1:])
+    migrations/runner.py: |
+      class MigrationRunner:
+          def __init__(self, migrations_dir: str):
+              self.migrations_dir = migrations_dir
+          def run_pending(self):
+              pass
+  commit_message: "fix: omit NULL keyword for nullable columns in to_sql"
+fragments:
+- id: column_to_sql_fix
+  selector:
+    path: orm/column.py
+    anchor: "def to_sql(self) -> str"
+- id: table_uses_column
+  selector:
+    path: orm/table.py
+    anchor: "from orm.column import Column"
+- id: query_uses_table
+  selector:
+    path: orm/query.py
+    anchor: "from orm.table import Table"
+- id: repo_uses_query
+  selector:
+    path: api/repository.py
+    anchor: "from orm.query import QueryBuilder"
+- id: no_string_helpers
+  selector:
+    path: utils/string_helpers.py
+    anchor: "def snake_to_camel"
+- id: no_migrations
+  selector:
+    path: migrations/runner.py
+    anchor: "class MigrationRunner"
+oracle:
+  required:
+  - column_to_sql_fix
+  - table_uses_column
+  - query_uses_table
+  - repo_uses_query
+  allowed: []
+  forbidden:
+  - no_string_helpers
+  - no_migrations

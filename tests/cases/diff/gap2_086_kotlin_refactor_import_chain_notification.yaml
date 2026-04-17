@@ -1,0 +1,234 @@
+name: gap2_086_kotlin_refactor_import_chain_notification
+tags:
+- lang:typescript
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/notifications/dispatcher.ts: |
+      import { NotificationChannel } from './channel';
+      import { NotificationPayload } from './payload';
+
+      export class NotificationDispatcher {
+          private channels: NotificationChannel[] = [];
+
+          addChannel(channel: NotificationChannel): void {
+              this.channels.push(channel);
+          }
+
+          async dispatch(payload: NotificationPayload): Promise<void> {
+              await Promise.all(this.channels.map(ch => ch.send(payload)));
+          }
+      }
+    src/notifications/channel.ts: |
+      import { NotificationPayload } from './payload';
+
+      export interface NotificationChannel {
+          send(payload: NotificationPayload): Promise<void>;
+      }
+
+      export class EmailChannel implements NotificationChannel {
+          async send(payload: NotificationPayload): Promise<void> {
+              console.log(`Email: ${payload.title} to ${payload.recipient}`);
+          }
+      }
+
+      export class SmsChannel implements NotificationChannel {
+          async send(payload: NotificationPayload): Promise<void> {
+              console.log(`SMS: ${payload.body} to ${payload.recipient}`);
+          }
+      }
+    src/notifications/payload.ts: |
+      export interface NotificationPayload {
+          recipient: string;
+          title: string;
+          body: string;
+      }
+    src/app/alert_service.ts: |
+      import { NotificationDispatcher } from '../notifications/dispatcher';
+      import { NotificationPayload } from '../notifications/payload';
+
+      export class AlertService {
+          constructor(private dispatcher: NotificationDispatcher) {}
+
+          async sendAlert(userId: string, message: string): Promise<void> {
+              const payload: NotificationPayload = {
+                  recipient: userId,
+                  title: 'Alert',
+                  body: message,
+              };
+              await this.dispatcher.dispatch(payload);
+          }
+      }
+    src/billing/invoicer.ts: |
+      export const GARBAGE_GAP086_A = 'invoice_prefix_v1';
+
+      export class Invoicer {
+          generate(amount: number): string {
+              return `INV-${amount}`;
+          }
+      }
+    src/billing/payment.ts: |
+      export const GARBAGE_GAP086_B = 'payment_gateway_v2';
+      export const GARBAGE_GAP086_C = 100;
+
+      export class PaymentProcessor {
+          charge(amount: number): boolean { return amount > 0; }
+      }
+    src/reporting/summary.ts: |
+      export const GARBAGE_GAP086_D = 'weekly_report';
+
+      export class SummaryReporter {
+          generate(): string { return 'Summary report'; }
+      }
+  changed_files:
+    src/notifications/dispatcher.ts: |
+      import { NotificationChannel, ChannelResult } from './channel';
+      import { NotificationPayload } from './payload';
+
+      export class NotificationDispatcher {
+          private channels: NotificationChannel[] = [];
+
+          addChannel(channel: NotificationChannel): void {
+              this.channels.push(channel);
+          }
+
+          async dispatch(payload: NotificationPayload): Promise<ChannelResult[]> {
+              return Promise.all(this.channels.map(ch => ch.send(payload)));
+          }
+
+          async dispatchFirst(payload: NotificationPayload): Promise<ChannelResult | null> {
+              for (const ch of this.channels) {
+                  const result = await ch.send(payload);
+                  if (result.success) return result;
+              }
+              return null;
+          }
+      }
+    src/notifications/channel.ts: |
+      import { NotificationPayload } from './payload';
+
+      export interface ChannelResult {
+          channelName: string;
+          success: boolean;
+          error?: string;
+      }
+
+      export interface NotificationChannel {
+          send(payload: NotificationPayload): Promise<ChannelResult>;
+      }
+
+      export class EmailChannel implements NotificationChannel {
+          async send(payload: NotificationPayload): Promise<ChannelResult> {
+              console.log(`Email: ${payload.title} to ${payload.recipient}`);
+              return { channelName: 'email', success: true };
+          }
+      }
+
+      export class SmsChannel implements NotificationChannel {
+          async send(payload: NotificationPayload): Promise<ChannelResult> {
+              console.log(`SMS: ${payload.body} to ${payload.recipient}`);
+              return { channelName: 'sms', success: true };
+          }
+      }
+    src/notifications/payload.ts: |
+      export interface NotificationPayload {
+          recipient: string;
+          title: string;
+          body: string;
+      }
+    src/app/alert_service.ts: |
+      import { NotificationDispatcher } from '../notifications/dispatcher';
+      import { NotificationPayload } from '../notifications/payload';
+      import { ChannelResult } from '../notifications/channel';
+
+      export class AlertService {
+          constructor(private dispatcher: NotificationDispatcher) {}
+
+          async sendAlert(userId: string, message: string): Promise<ChannelResult[]> {
+              const payload: NotificationPayload = {
+                  recipient: userId,
+                  title: 'Alert',
+                  body: message,
+              };
+              return this.dispatcher.dispatch(payload);
+          }
+      }
+    src/billing/invoicer.ts: |
+      export const GARBAGE_GAP086_A = 'invoice_prefix_v1';
+
+      export class Invoicer {
+          generate(amount: number): string {
+              return `INV-${amount}`;
+          }
+      }
+    src/billing/payment.ts: |
+      export const GARBAGE_GAP086_B = 'payment_gateway_v2';
+      export const GARBAGE_GAP086_C = 100;
+
+      export class PaymentProcessor {
+          charge(amount: number): boolean { return amount > 0; }
+      }
+    src/reporting/summary.ts: |
+      export const GARBAGE_GAP086_D = 'weekly_report';
+
+      export class SummaryReporter {
+          generate(): string { return 'Summary report'; }
+      }
+  commit_message: "refactor: add ChannelResult return type to notification channels"
+fragments:
+- id: channel_result_interface
+  selector:
+    path: src/notifications/channel.ts
+    anchor: "export interface ChannelResult"
+- id: notification_channel_interface
+  selector:
+    path: src/notifications/channel.ts
+    anchor: "export interface NotificationChannel"
+- id: dispatcher_dispatch
+  selector:
+    path: src/notifications/dispatcher.ts
+    anchor: "async dispatch"
+- id: alert_service_send
+  selector:
+    path: src/app/alert_service.ts
+    anchor: "async sendAlert"
+- id: no_invoicer
+  selector:
+    path: src/billing/invoicer.ts
+- id: no_payment
+  selector:
+    path: src/billing/payment.ts
+- id: no_summary
+  selector:
+    path: src/reporting/summary.ts
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP086_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GAP086_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GAP086_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GAP086_D
+oracle:
+  required:
+  - channel_result_interface
+  - notification_channel_interface
+  - dispatcher_dispatch
+  - alert_service_send
+  allowed: []
+  forbidden:
+  - no_invoicer
+  - no_payment
+  - no_summary
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

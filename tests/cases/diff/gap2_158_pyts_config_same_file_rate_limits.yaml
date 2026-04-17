@@ -1,0 +1,103 @@
+name: gap2_158_pyts_config_same_file_rate_limits
+tags:
+- change:config
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+- lang:python
+- lang:typescript
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    server/limits.py: |
+      RATE_LIMITS = {
+          "api": 100,
+          "auth": 10,
+          "upload": 5,
+      }
+
+      def get_limit(endpoint: str) -> int:
+          return RATE_LIMITS.get(endpoint, 60)
+    client/limits.ts: |
+      export const rateLimits: Record<string, number> = {
+        api: 100,
+        auth: 10,
+        upload: 5,
+      };
+
+      export function getRetryDelay(endpoint: string): number {
+        const limit = rateLimits[endpoint] ?? 60;
+        return Math.ceil(60000 / limit);
+      }
+    server/database.py: |
+      POOL_SIZE = 10
+      TIMEOUT_SEC = 30
+
+      class ConnectionPool:
+          def __init__(self):
+              self._connections: list = []
+
+          def acquire(self) -> object:
+              return self._connections.pop() if self._connections else None
+
+          def release(self, conn: object) -> None:
+              self._connections.append(conn)
+  changed_files:
+    server/limits.py: |
+      RATE_LIMITS = {
+          "api": 200,
+          "auth": 10,
+          "upload": 5,
+          "search": 30,
+      }
+
+      def get_limit(endpoint: str) -> int:
+          return RATE_LIMITS.get(endpoint, 60)
+    client/limits.ts: |
+      export const rateLimits: Record<string, number> = {
+        api: 200,
+        auth: 10,
+        upload: 5,
+        search: 30,
+      };
+
+      export function getRetryDelay(endpoint: string): number {
+        const limit = rateLimits[endpoint] ?? 60;
+        return Math.ceil(60000 / limit);
+      }
+  commit_message: "config: bump api rate limit and add search endpoint"
+fragments:
+- id: py_api_200
+  selector:
+    path: server/limits.py
+    anchor: '"api": 200'
+- id: py_search_limit
+  selector:
+    path: server/limits.py
+    anchor: '"search": 30'
+- id: ts_api_200
+  selector:
+    path: client/limits.ts
+    anchor: "api: 200"
+- id: ts_search_limit
+  selector:
+    path: client/limits.ts
+    anchor: "search: 30"
+- id: no_database
+  selector:
+    path: server/database.py
+- id: no_pool_size
+  selector:
+    anchor: POOL_SIZE
+oracle:
+  required:
+  - py_api_200
+  - py_search_limit
+  - ts_api_200
+  - ts_search_limit
+  allowed: []
+  forbidden:
+  - no_database
+  - no_pool_size

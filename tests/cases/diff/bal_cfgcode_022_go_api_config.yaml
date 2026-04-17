@@ -1,0 +1,134 @@
+name: bal_cfgcode_022_go_api_config
+tags:
+- lang:go
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    config/api.json: |
+      {
+        "listen_addr": ":8080",
+        "read_timeout": 5,
+        "write_timeout": 10,
+        "max_body_size": 1048576
+      }
+    internal/server/server.go: |
+      package server
+
+      import (
+        "encoding/json"
+        "os"
+      )
+
+      type APIConfig struct {
+        ListenAddr  string `json:"listen_addr"`
+        ReadTimeout int    `json:"read_timeout"`
+        WriteTimeout int   `json:"write_timeout"`
+        MaxBodySize int64  `json:"max_body_size"`
+      }
+
+      func LoadAPIConfig() (*APIConfig, error) {
+        data, err := os.ReadFile("config/api.json")
+        if err != nil {
+          return nil, err
+        }
+        var cfg APIConfig
+        if err := json.Unmarshal(data, &cfg); err != nil {
+          return nil, err
+        }
+        return &cfg, nil
+      }
+    internal/auth/auth.go: |
+      package auth
+
+      var GARBAGE_CFGCODE_022_AUTH_A = "jwt"
+      var GARBAGE_CFGCODE_022_AUTH_B = 3600
+
+      func ValidateToken(token string) bool {
+        return token != ""
+      }
+  changed_files:
+    config/api.json: |
+      {
+        "listen_addr": ":443",
+        "read_timeout": 10,
+        "write_timeout": 30,
+        "max_body_size": 10485760,
+        "tls_cert": "/etc/ssl/cert.pem",
+        "tls_key": "/etc/ssl/key.pem"
+      }
+    internal/server/server.go: |
+      package server
+
+      import (
+        "encoding/json"
+        "os"
+      )
+
+      type APIConfig struct {
+        ListenAddr  string `json:"listen_addr"`
+        ReadTimeout int    `json:"read_timeout"`
+        WriteTimeout int   `json:"write_timeout"`
+        MaxBodySize int64  `json:"max_body_size"`
+      }
+
+      func LoadAPIConfig() (*APIConfig, error) {
+        data, err := os.ReadFile("config/api.json")
+        if err != nil {
+          return nil, err
+        }
+        var cfg APIConfig
+        if err := json.Unmarshal(data, &cfg); err != nil {
+          return nil, err
+        }
+        return &cfg, nil
+      }
+    internal/auth/auth.go: |
+      package auth
+
+      var GARBAGE_CFGCODE_022_AUTH_A = "jwt"
+      var GARBAGE_CFGCODE_022_AUTH_B = 3600
+
+      func ValidateToken(token string) bool {
+        return token != ""
+      }
+  commit_message: "config: HTTPS with TLS certificates"
+fragments:
+- id: config_listen
+  selector:
+    path: config/api.json
+    anchor: '":443"'
+- id: config_tls
+  selector:
+    path: config/api.json
+    anchor: "tls_cert"
+- id: server_reads_config
+  selector:
+    path: internal/server/server.go
+    anchor: 'os.ReadFile("config/api.json")'
+- id: server_unmarshal
+  selector:
+    path: internal/server/server.go
+    anchor: "json.Unmarshal"
+- id: no_auth
+  selector:
+    path: internal/auth/auth.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_022_AUTH_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_022_AUTH_B
+oracle:
+  required:
+  - config_listen
+  - config_tls
+  - server_reads_config
+  allowed: []
+  forbidden:
+  - no_auth
+  - no_global_0
+  - no_global_1

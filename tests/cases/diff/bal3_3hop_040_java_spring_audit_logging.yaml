@@ -1,0 +1,147 @@
+name: bal3_3hop_040_java_spring_audit_logging
+tags:
+- lang:java
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/app/audit/AuditRecord.java: |
+      package com.app.audit;
+
+      public class AuditRecord {
+          private String action;
+          private String userId;
+          public AuditRecord(String action, String userId) {
+              this.action = action;
+              this.userId = userId;
+          }
+          public String getAction() { return action; }
+          public String getUserId() { return userId; }
+      }
+    src/main/java/com/app/audit/AuditWriter.java: |
+      package com.app.audit;
+
+      import java.util.ArrayList;
+      import java.util.List;
+
+      public class AuditWriter {
+          private final List<AuditRecord> log = new ArrayList<>();
+          public void write(AuditRecord record) {
+              log.add(record);
+          }
+          public List<AuditRecord> getLog() {
+              return new ArrayList<>(log);
+          }
+      }
+    src/main/java/com/app/service/AuditService.java: |
+      package com.app.service;
+
+      import com.app.audit.AuditWriter;
+      import com.app.audit.AuditRecord;
+
+      public class AuditService {
+          private final AuditWriter writer;
+          public AuditService(AuditWriter writer) {
+              this.writer = writer;
+          }
+          public void log(String action, String userId) {
+              writer.write(new AuditRecord(action, userId));
+          }
+      }
+    src/main/java/com/app/web/AuditController.java: |
+      package com.app.web;
+
+      import com.app.service.AuditService;
+
+      public class AuditController {
+          private final AuditService auditService;
+          public AuditController(AuditService auditService) {
+              this.auditService = auditService;
+          }
+          public String record(String action, String userId) {
+              auditService.log(action, userId);
+              return "recorded";
+          }
+      }
+    src/main/java/com/app/util/FileWriter.java: |
+      package com.app.util;
+
+      public class FileWriter {
+          public static String GARBAGE_040_FILE_MARKER_A = "file";
+          public static String GARBAGE_040_PATH_MARKER_B = "/tmp";
+          public static void write(String path, String content) {}
+      }
+    src/main/java/com/app/util/Compressor.java: |
+      package com.app.util;
+
+      public class Compressor {
+          public static String GARBAGE_040_COMP_MARKER_C = "gzip";
+          public static int GARBAGE_040_LEVEL_MARKER_D = 6;
+          public static byte[] compress(byte[] data) { return data; }
+      }
+  changed_files:
+    src/main/java/com/app/audit/AuditRecord.java: |
+      package com.app.audit;
+
+      import java.time.Instant;
+
+      public class AuditRecord {
+          private String action;
+          private String userId;
+          private Instant timestamp;
+          private String ipAddress;
+          public AuditRecord(String action, String userId, String ipAddress) {
+              this.action = action;
+              this.userId = userId;
+              this.timestamp = Instant.now();
+              this.ipAddress = ipAddress;
+          }
+          public String getAction() { return action; }
+          public String getUserId() { return userId; }
+          public Instant getTimestamp() { return timestamp; }
+          public String getIpAddress() { return ipAddress; }
+      }
+  commit_message: "feat: add timestamp and IP tracking to AuditRecord"
+fragments:
+- id: record_timestamp
+  selector:
+    path: src/main/java/com/app/audit/AuditRecord.java
+    anchor: "private Instant timestamp"
+- id: record_ip_address
+  selector:
+    path: src/main/java/com/app/audit/AuditRecord.java
+    anchor: "private String ipAddress"
+- id: writer_uses_record
+  selector:
+    path: src/main/java/com/app/audit/AuditWriter.java
+    anchor: "write(AuditRecord record)"
+- id: service_imports_writer
+  selector:
+    path: src/main/java/com/app/service/AuditService.java
+    anchor: "import com.app.audit.AuditWriter"
+- id: controller_imports_service
+  selector:
+    path: src/main/java/com/app/web/AuditController.java
+    anchor: "import com.app.service.AuditService"
+- id: no_file_writer
+  selector:
+    path: src/main/java/com/app/util/FileWriter.java
+    anchor: "GARBAGE_040_FILE_MARKER_A"
+- id: no_compressor
+  selector:
+    path: src/main/java/com/app/util/Compressor.java
+    anchor: "GARBAGE_040_COMP_MARKER_C"
+oracle:
+  required:
+  - record_timestamp
+  - record_ip_address
+  - writer_uses_record
+  - service_imports_writer
+  - controller_imports_service
+  allowed: []
+  forbidden:
+  - no_file_writer
+  - no_compressor

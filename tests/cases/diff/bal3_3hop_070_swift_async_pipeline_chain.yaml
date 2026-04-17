@@ -1,0 +1,192 @@
+name: bal3_3hop_070_swift_async_pipeline_chain
+tags:
+- lang:swift
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    Sources/Storage/FileStore.swift: |
+      import Foundation
+
+      actor FileStore {
+          private var files: [String: Data] = [:]
+          func read(key: String) async -> Data? {
+              return files[key]
+          }
+          func write(key: String, data: Data) async {
+              files[key] = data
+          }
+      }
+    Sources/Processing/ImageProcessor.swift: |
+      import Foundation
+      import Storage
+
+      class ImageProcessor {
+          private let store: FileStore
+          init(store: FileStore) {
+              self.store = store
+          }
+          func process(imageId: String) async -> Data? {
+              return await store.read(key: imageId)
+          }
+      }
+    Sources/Upload/UploadManager.swift: |
+      import Foundation
+      import Processing
+
+      class UploadManager {
+          private let processor: ImageProcessor
+          init(processor: ImageProcessor) {
+              self.processor = processor
+          }
+          func upload(imageId: String) async -> Bool {
+              guard let _ = await processor.process(imageId: imageId) else {
+                  return false
+              }
+              return true
+          }
+      }
+    Sources/ViewModels/GalleryViewModel.swift: |
+      import Foundation
+      import Upload
+
+      class GalleryViewModel {
+          private let uploader: UploadManager
+          init(uploader: UploadManager) {
+              self.uploader = uploader
+          }
+          func uploadImage(id: String) async -> Bool {
+              return await uploader.upload(imageId: id)
+          }
+      }
+    Sources/Filters/BlurFilter.swift: |
+      import Foundation
+      let GARBAGE_070_BLUR_A = "filter"
+      let GARBAGE_070_RADIUS_B = 5
+
+      class BlurFilter {
+          func apply(data: Data) -> Data { return data }
+      }
+    Sources/Filters/SharpenFilter.swift: |
+      import Foundation
+      let GARBAGE_070_SHARPEN_C = "filter"
+      let GARBAGE_070_AMOUNT_D = 2
+
+      class SharpenFilter {
+          func apply(data: Data) -> Data { return data }
+      }
+  changed_files:
+    Sources/Storage/FileStore.swift: |
+      import Foundation
+
+      actor FileStore {
+          private var files: [String: Data] = [:]
+          func read(key: String) async -> Data? {
+              return files[key]
+          }
+          func write(key: String, data: Data) async {
+              files[key] = data
+          }
+          func exists(key: String) async -> Bool {
+              return files[key] != nil
+          }
+      }
+    Sources/Processing/ImageProcessor.swift: |
+      import Foundation
+      import Storage
+
+      class ImageProcessor {
+          private let store: FileStore
+          init(store: FileStore) {
+              self.store = store
+          }
+          func process(imageId: String) async -> Data? {
+              guard await store.exists(key: imageId) else {
+                  return nil
+              }
+              return await store.read(key: imageId)
+          }
+      }
+    Sources/Upload/UploadManager.swift: |
+      import Foundation
+      import Processing
+
+      class UploadManager {
+          private let processor: ImageProcessor
+          init(processor: ImageProcessor) {
+              self.processor = processor
+          }
+          func upload(imageId: String) async -> Bool {
+              guard let _ = await processor.process(imageId: imageId) else {
+                  return false
+              }
+              return true
+          }
+      }
+    Sources/ViewModels/GalleryViewModel.swift: |
+      import Foundation
+      import Upload
+
+      class GalleryViewModel {
+          private let uploader: UploadManager
+          init(uploader: UploadManager) {
+              self.uploader = uploader
+          }
+          func uploadImage(id: String) async -> Bool {
+              return await uploader.upload(imageId: id)
+          }
+      }
+    Sources/Filters/BlurFilter.swift: |
+      import Foundation
+      let GARBAGE_070_BLUR_A = "filter"
+      let GARBAGE_070_RADIUS_B = 5
+
+      class BlurFilter {
+          func apply(data: Data) -> Data { return data }
+      }
+    Sources/Filters/SharpenFilter.swift: |
+      import Foundation
+      let GARBAGE_070_SHARPEN_C = "filter"
+      let GARBAGE_070_AMOUNT_D = 2
+
+      class SharpenFilter {
+          func apply(data: Data) -> Data { return data }
+      }
+  commit_message: "fix: check file existence before reading in ImageProcessor"
+fragments:
+- id: store_exists
+  selector:
+    path: Sources/Storage/FileStore.swift
+    anchor: "func exists(key: String)"
+- id: processor_guard_exists
+  selector:
+    path: Sources/Processing/ImageProcessor.swift
+    anchor: "guard await store.exists"
+- id: upload_imports_processing
+  selector:
+    path: Sources/Upload/UploadManager.swift
+    anchor: "import Processing"
+- id: gallery_imports_upload
+  selector:
+    path: Sources/ViewModels/GalleryViewModel.swift
+    anchor: "import Upload"
+- id: no_blur
+  selector:
+    path: Sources/Filters/BlurFilter.swift
+    anchor: "GARBAGE_070_BLUR_A"
+- id: no_sharpen
+  selector:
+    path: Sources/Filters/SharpenFilter.swift
+    anchor: "GARBAGE_070_SHARPEN_C"
+oracle:
+  required:
+  - store_exists
+  - processor_guard_exists
+  - upload_imports_processing
+  - gallery_imports_upload
+  allowed: []
+  forbidden:
+  - no_blur
+  - no_sharpen

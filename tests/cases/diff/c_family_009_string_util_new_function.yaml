@@ -1,0 +1,125 @@
+name: c_family_009_string_util_new_function
+tags:
+- lang:c
+- change:multi_file
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    string_utils.h: |
+      #ifndef STRING_UTILS_H
+      #define STRING_UTILS_H
+      int str_len(const char *s);
+      char *str_dup(const char *s);
+      #endif
+    string_utils.c: |
+      #include "string_utils.h"
+      #include <stdlib.h>
+      #include <string.h>
+      int str_len(const char *s) {
+          int n = 0;
+          while (s[n]) n++;
+          return n;
+      }
+      char *str_dup(const char *s) {
+          char *d = malloc(str_len(s) + 1);
+          strcpy(d, s);
+          return d;
+      }
+    parser.c: |
+      #include "string_utils.h"
+      void parse_token(char *token) {
+          int len = str_len(token);
+          /* process token of length len */
+      }
+    C_NOISE_009_io.h: |
+      #ifndef C_NOISE_009_IO_H
+      #define C_NOISE_009_IO_H
+      int C_NOISE_009_read_line(char *buf, int max);
+      void C_NOISE_009_write_line(const char *s);
+      #endif
+    C_NOISE_009_io.c: |
+      #include "C_NOISE_009_io.h"
+      int C_NOISE_009_read_line(char *buf, int max) { return 0; }
+      void C_NOISE_009_write_line(const char *s) {}
+  changed_files:
+    string_utils.h: |
+      #ifndef STRING_UTILS_H
+      #define STRING_UTILS_H
+      int str_len(const char *s);
+      char *str_dup(const char *s);
+      char *str_trim(char *s);
+      #endif
+    string_utils.c: |
+      #include "string_utils.h"
+      #include <stdlib.h>
+      #include <string.h>
+      #include <ctype.h>
+      int str_len(const char *s) {
+          int n = 0;
+          while (s[n]) n++;
+          return n;
+      }
+      char *str_dup(const char *s) {
+          char *d = malloc(str_len(s) + 1);
+          strcpy(d, s);
+          return d;
+      }
+      char *str_trim(char *s) {
+          while (isspace((unsigned char)*s)) s++;
+          char *end = s + str_len(s) - 1;
+          while (end > s && isspace((unsigned char)*end)) *end-- = '\0';
+          return s;
+      }
+    parser.c: |
+      #include "string_utils.h"
+      void parse_token(char *token) {
+          token = str_trim(token);
+          int len = str_len(token);
+          /* process trimmed token of length len */
+      }
+    C_NOISE_009_io.h: |
+      #ifndef C_NOISE_009_IO_H
+      #define C_NOISE_009_IO_H
+      int C_NOISE_009_read_line(char *buf, int max);
+      void C_NOISE_009_write_line(const char *s);
+      #endif
+    C_NOISE_009_io.c: |
+      #include "C_NOISE_009_io.h"
+      int C_NOISE_009_read_line(char *buf, int max) { return 0; }
+      void C_NOISE_009_write_line(const char *s) {}
+  commit_message: "feat: add str_trim to string_utils and use it in parser"
+fragments:
+- id: string_utils_h
+  selector:
+    path: string_utils.h
+    anchor: "str_trim"
+- id: string_utils_c
+  selector:
+    path: string_utils.c
+    anchor: "char *str_trim(char *s)"
+- id: parser_c
+  selector:
+    path: parser.c
+    anchor: "str_trim(token)"
+- id: no_io_h
+  selector:
+    anchor: C_NOISE_009_read_line
+- id: no_io_c
+  selector:
+    path: C_NOISE_009_io.c
+- id: no_global_write
+  selector:
+    anchor: C_NOISE_009_write_line
+oracle:
+  required:
+  - string_utils_h
+  - string_utils_c
+  - parser_c
+  allowed: []
+  forbidden:
+  - no_io_h
+  - no_io_c
+  - no_global_write

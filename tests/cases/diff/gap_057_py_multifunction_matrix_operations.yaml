@@ -1,0 +1,203 @@
+name: gap_057_py_multifunction_matrix_operations
+tags:
+- lang:python
+- change:multi_file
+- change:new_function
+- change:new_function
+- change:new_function
+- change:new_function
+- change:new_function
+- change:signature
+- context:same_file
+- distance:0hop
+- difficulty:medium
+repo:
+  initial_files:
+    linalg/matrix.py: |
+      from typing import Optional
+
+      class Matrix:
+          def __init__(self, rows: list[list[float]]):
+              self._rows = rows
+              self._nrows = len(rows)
+              self._ncols = len(rows[0]) if rows else 0
+
+          def shape(self) -> tuple[int, int]:
+              return (self._nrows, self._ncols)
+
+          def get(self, row: int, col: int) -> float:
+              return self._rows[row][col]
+
+          def set(self, row: int, col: int, value: float) -> None:
+              self._rows[row][col] = value
+
+          def add(self, other: "Matrix") -> "Matrix":
+              result = []
+              for i in range(self._nrows):
+                  row = []
+                  for j in range(self._ncols):
+                      row.append(self._rows[i][j] + other._rows[i][j])
+                  result.append(row)
+              return Matrix(result)
+
+          def scale(self, factor: float) -> "Matrix":
+              return Matrix([
+                  [cell * factor for cell in row]
+                  for row in self._rows
+              ])
+    linalg/utils.py: |
+      from linalg.matrix import Matrix
+
+      def identity(size: int) -> Matrix:
+          rows = []
+          for i in range(size):
+              row = [0.0] * size
+              row[i] = 1.0
+              rows.append(row)
+          return Matrix(rows)
+
+      def zeros(nrows: int, ncols: int) -> Matrix:
+          return Matrix([[0.0] * ncols for _ in range(nrows)])
+    linalg/io.py: |
+      from linalg.matrix import Matrix
+
+      def to_string(matrix: Matrix) -> str:
+          rows, cols = matrix.shape()
+          lines = []
+          for i in range(rows):
+              vals = [f"{matrix.get(i, j):.4f}" for j in range(cols)]
+              lines.append(" ".join(vals))
+          return "\n".join(lines)
+  changed_files:
+    linalg/matrix.py: |
+      from typing import Optional
+      import math
+
+      class Matrix:
+          def __init__(self, rows: list[list[float]]):
+              self._rows = rows
+              self._nrows = len(rows)
+              self._ncols = len(rows[0]) if rows else 0
+
+          def shape(self) -> tuple[int, int]:
+              return (self._nrows, self._ncols)
+
+          def get(self, row: int, col: int) -> float:
+              return self._rows[row][col]
+
+          def set(self, row: int, col: int, value: float) -> None:
+              self._rows[row][col] = value
+
+          def add(self, other: "Matrix") -> "Matrix":
+              result = []
+              for i in range(self._nrows):
+                  row = []
+                  for j in range(self._ncols):
+                      row.append(self._rows[i][j] + other._rows[i][j])
+                  result.append(row)
+              return Matrix(result)
+
+          def subtract(self, other: "Matrix") -> "Matrix":
+              result = []
+              for i in range(self._nrows):
+                  row = []
+                  for j in range(self._ncols):
+                      row.append(self._rows[i][j] - other._rows[i][j])
+                  result.append(row)
+              return Matrix(result)
+
+          def multiply(self, other: "Matrix") -> "Matrix":
+              result = []
+              for i in range(self._nrows):
+                  row = []
+                  for j in range(other._ncols):
+                      total = 0.0
+                      for k in range(self._ncols):
+                          total += self._rows[i][k] * other._rows[k][j]
+                      row.append(total)
+                  result.append(row)
+              return Matrix(result)
+
+          def transpose(self) -> "Matrix":
+              result = []
+              for j in range(self._ncols):
+                  row = [self._rows[i][j] for i in range(self._nrows)]
+                  result.append(row)
+              return Matrix(result)
+
+          def trace(self) -> float:
+              return sum(self._rows[i][i] for i in range(min(self._nrows, self._ncols)))
+
+          def frobenius_norm(self) -> float:
+              total = 0.0
+              for row in self._rows:
+                  for val in row:
+                      total += val * val
+              return math.sqrt(total)
+
+          def scale(self, factor: float) -> "Matrix":
+              return Matrix([
+                  [cell * factor for cell in row]
+                  for row in self._rows
+              ])
+    linalg/utils.py: |
+      from linalg.matrix import Matrix
+
+      def identity(size: int) -> Matrix:
+          rows = []
+          for i in range(size):
+              row = [0.0] * size
+              row[i] = 1.0
+              rows.append(row)
+          return Matrix(rows)
+
+      def zeros(nrows: int, ncols: int) -> Matrix:
+          return Matrix([[0.0] * ncols for _ in range(nrows)])
+    linalg/io.py: |
+      from linalg.matrix import Matrix
+
+      def to_string(matrix: Matrix) -> str:
+          rows, cols = matrix.shape()
+          lines = []
+          for i in range(rows):
+              vals = [f"{matrix.get(i, j):.4f}" for j in range(cols)]
+              lines.append(" ".join(vals))
+          return "\n".join(lines)
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: subtract_method
+  selector:
+    path: linalg/matrix.py
+    anchor: 'def subtract(self, other: "Matrix") -> "Matrix":'
+- id: multiply_method
+  selector:
+    path: linalg/matrix.py
+    anchor: 'def multiply(self, other: "Matrix") -> "Matrix":'
+- id: transpose_method
+  selector:
+    path: linalg/matrix.py
+    anchor: 'def transpose(self) -> "Matrix":'
+- id: trace_method
+  selector:
+    path: linalg/matrix.py
+    anchor: "def trace(self) -> float:"
+- id: frobenius_method
+  selector:
+    path: linalg/matrix.py
+    anchor: "def frobenius_norm(self) -> float:"
+- id: math_import
+  selector:
+    path: linalg/matrix.py
+    anchor: "import math"
+oracle:
+  required:
+  - subtract_method
+  - multiply_method
+  - transpose_method
+  - trace_method
+  - frobenius_method
+  - math_import
+  allowed: []
+  forbidden: []

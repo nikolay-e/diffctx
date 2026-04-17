@@ -1,0 +1,272 @@
+name: bal2_testctx_009_go_concurrent_map
+tags:
+- lang:go
+- change:signature
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    pkg/safemap/safemap.go: |
+      package safemap
+
+      import "sync"
+
+      type SafeMap struct {
+          mu   sync.RWMutex
+          data map[string]interface{}
+      }
+
+      func New() *SafeMap {
+          return &SafeMap{data: make(map[string]interface{})}
+      }
+
+      func (m *SafeMap) Get(key string) (interface{}, bool) {
+          m.mu.RLock()
+          defer m.mu.RUnlock()
+          val, ok := m.data[key]
+          return val, ok
+      }
+
+      func (m *SafeMap) Set(key string, value interface{}) {
+          m.mu.Lock()
+          defer m.mu.Unlock()
+          m.data[key] = value
+      }
+    pkg/safemap/safemap_test.go: |
+      package safemap
+
+      import "testing"
+
+      func TestGetSet(t *testing.T) {
+          m := New()
+          m.Set("hello", "world")
+          val, ok := m.Get("hello")
+          if !ok || val != "world" {
+              t.Fatal("expected world")
+          }
+      }
+
+      func TestGetMissing(t *testing.T) {
+          m := New()
+          _, ok := m.Get("missing")
+          if ok {
+              t.Fatal("expected not found")
+          }
+      }
+    pkg/safemap/bench_test.go: |
+      package safemap
+
+      GARBAGE_BAL2_009_BENCH_A = "bench"
+
+      import "testing"
+
+      func BenchmarkSet(b *testing.B) {
+          m := New()
+          for i := 0; i < b.N; i++ {
+              m.Set("key", i)
+          }
+      }
+    pkg/counter/counter.go: |
+      package counter
+
+      GARBAGE_BAL2_009_COUNTER_B = "counter"
+      GARBAGE_BAL2_009_COUNTER_MARKER_C = true
+
+      import "sync/atomic"
+
+      type Counter struct {
+          val int64
+      }
+
+      func (c *Counter) Inc() {
+          atomic.AddInt64(&c.val, 1)
+      }
+    pkg/pool/pool.go: |
+      package pool
+
+      GARBAGE_BAL2_009_POOL_D = "pool"
+
+      import "sync"
+
+      type ObjectPool struct {
+          pool sync.Pool
+      }
+  changed_files:
+    pkg/safemap/safemap.go: |
+      package safemap
+
+      import "sync"
+
+      type SafeMap struct {
+          mu   sync.RWMutex
+          data map[string]interface{}
+      }
+
+      func New() *SafeMap {
+          return &SafeMap{data: make(map[string]interface{})}
+      }
+
+      func (m *SafeMap) Get(key string) (interface{}, bool) {
+          m.mu.RLock()
+          defer m.mu.RUnlock()
+          val, ok := m.data[key]
+          return val, ok
+      }
+
+      func (m *SafeMap) Set(key string, value interface{}) {
+          m.mu.Lock()
+          defer m.mu.Unlock()
+          m.data[key] = value
+      }
+
+      func (m *SafeMap) Delete(key string) bool {
+          m.mu.Lock()
+          defer m.mu.Unlock()
+          if _, ok := m.data[key]; !ok {
+              return false
+          }
+          delete(m.data, key)
+          return true
+      }
+
+      func (m *SafeMap) Len() int {
+          m.mu.RLock()
+          defer m.mu.RUnlock()
+          return len(m.data)
+      }
+    pkg/safemap/safemap_test.go: |
+      package safemap
+
+      import "testing"
+
+      func TestGetSet(t *testing.T) {
+          m := New()
+          m.Set("hello", "world")
+          val, ok := m.Get("hello")
+          if !ok || val != "world" {
+              t.Fatal("expected world")
+          }
+      }
+
+      func TestGetMissing(t *testing.T) {
+          m := New()
+          _, ok := m.Get("missing")
+          if ok {
+              t.Fatal("expected not found")
+          }
+      }
+
+      func TestDelete(t *testing.T) {
+          m := New()
+          m.Set("key", "val")
+          ok := m.Delete("key")
+          if !ok {
+              t.Fatal("expected successful delete")
+          }
+          _, found := m.Get("key")
+          if found {
+              t.Fatal("key should be gone")
+          }
+      }
+
+      func TestLen(t *testing.T) {
+          m := New()
+          m.Set("a", 1)
+          m.Set("b", 2)
+          if m.Len() != 2 {
+              t.Fatalf("expected len 2, got %d", m.Len())
+          }
+      }
+    pkg/safemap/bench_test.go: |
+      package safemap
+
+      GARBAGE_BAL2_009_BENCH_A = "bench"
+
+      import "testing"
+
+      func BenchmarkSet(b *testing.B) {
+          m := New()
+          for i := 0; i < b.N; i++ {
+              m.Set("key", i)
+          }
+      }
+    pkg/counter/counter.go: |
+      package counter
+
+      GARBAGE_BAL2_009_COUNTER_B = "counter"
+      GARBAGE_BAL2_009_COUNTER_MARKER_C = true
+
+      import "sync/atomic"
+
+      type Counter struct {
+          val int64
+      }
+
+      func (c *Counter) Inc() {
+          atomic.AddInt64(&c.val, 1)
+      }
+    pkg/pool/pool.go: |
+      package pool
+
+      GARBAGE_BAL2_009_POOL_D = "pool"
+
+      import "sync"
+
+      type ObjectPool struct {
+          pool sync.Pool
+      }
+  commit_message: "Add Delete and Len methods to SafeMap"
+fragments:
+- id: safemap_delete
+  selector:
+    path: pkg/safemap/safemap.go
+    anchor: "func (m *SafeMap) Delete(key string) bool"
+- id: safemap_len
+  selector:
+    path: pkg/safemap/safemap.go
+    anchor: "func (m *SafeMap) Len() int"
+- id: test_delete
+  selector:
+    path: pkg/safemap/safemap_test.go
+    anchor: "func TestDelete"
+- id: test_len
+  selector:
+    path: pkg/safemap/safemap_test.go
+    anchor: "func TestLen"
+- id: no_bench
+  selector:
+    path: pkg/safemap/bench_test.go
+- id: no_counter
+  selector:
+    path: pkg/counter/counter.go
+- id: no_pool
+  selector:
+    path: pkg/pool/pool.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL2_009_BENCH_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL2_009_COUNTER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL2_009_COUNTER_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL2_009_POOL_D
+oracle:
+  required:
+  - safemap_delete
+  - safemap_len
+  - test_delete
+  - test_len
+  allowed: []
+  forbidden:
+  - no_bench
+  - no_counter
+  - no_pool
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

@@ -1,0 +1,158 @@
+name: gap2_101_shell_config_cross_module_cron_scheduler
+tags:
+- change:config
+- change:single_file
+- context:cross_module
+- difficulty:easy
+- distance:0hop
+- lang:shell
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    etc/scheduler.conf: |
+      SCHEDULE_INTERVAL=300
+      MAX_RETRIES=3
+      LOG_DIR="/var/log/scheduler"
+      PIDFILE="/var/run/scheduler.pid"
+      WORKER_COUNT=2
+    bin/scheduler.sh: |
+      #!/usr/bin/env bash
+      source etc/scheduler.conf
+
+      start_scheduler() {
+          echo "Starting with interval=$SCHEDULE_INTERVAL retries=$MAX_RETRIES"
+          echo $$ > "$PIDFILE"
+          mkdir -p "$LOG_DIR"
+      }
+
+      run_loop() {
+          while true; do
+              process_jobs
+              sleep "$SCHEDULE_INTERVAL"
+          done
+      }
+    bin/monitor.sh: |
+      #!/usr/bin/env bash
+      source etc/scheduler.conf
+
+      check_pid() {
+          if [[ -f "$PIDFILE" ]]; then
+              kill -0 "$(cat "$PIDFILE")" 2>/dev/null
+          fi
+      }
+
+      report_status() {
+          local log_count
+          log_count=$(find "$LOG_DIR" -name "*.log" | wc -l)
+          echo "Logs: $log_count"
+      }
+    lib/notify.sh: |
+      #!/usr/bin/env bash
+      TRAP_GAP2_101_NOTIFY_A="notification_handler"
+      TRAP_GAP2_101_CHANNEL_B="slack"
+
+      send_alert() {
+          local message="$1"
+          echo "ALERT: $message"
+      }
+
+      send_summary() {
+          local report="$1"
+          echo "SUMMARY: $report"
+      }
+  changed_files:
+    etc/scheduler.conf: |
+      SCHEDULE_INTERVAL=60
+      MAX_RETRIES=5
+      LOG_DIR="/var/log/scheduler"
+      PIDFILE="/var/run/scheduler.pid"
+      WORKER_COUNT=4
+      TIMEOUT=30
+    bin/scheduler.sh: |
+      #!/usr/bin/env bash
+      source etc/scheduler.conf
+
+      start_scheduler() {
+          echo "Starting with interval=$SCHEDULE_INTERVAL retries=$MAX_RETRIES"
+          echo $$ > "$PIDFILE"
+          mkdir -p "$LOG_DIR"
+      }
+
+      run_loop() {
+          while true; do
+              process_jobs
+              sleep "$SCHEDULE_INTERVAL"
+          done
+      }
+    bin/monitor.sh: |
+      #!/usr/bin/env bash
+      source etc/scheduler.conf
+
+      check_pid() {
+          if [[ -f "$PIDFILE" ]]; then
+              kill -0 "$(cat "$PIDFILE")" 2>/dev/null
+          fi
+      }
+
+      report_status() {
+          local log_count
+          log_count=$(find "$LOG_DIR" -name "*.log" | wc -l)
+          echo "Logs: $log_count"
+      }
+    lib/notify.sh: |
+      #!/usr/bin/env bash
+      TRAP_GAP2_101_NOTIFY_A="notification_handler"
+      TRAP_GAP2_101_CHANNEL_B="slack"
+
+      send_alert() {
+          local message="$1"
+          echo "ALERT: $message"
+      }
+
+      send_summary() {
+          local report="$1"
+          echo "SUMMARY: $report"
+      }
+  commit_message: Update files
+fragments:
+- id: conf_interval
+  selector:
+    path: etc/scheduler.conf
+    anchor: SCHEDULE_INTERVAL=60
+- id: conf_retries
+  selector:
+    path: etc/scheduler.conf
+    anchor: MAX_RETRIES=5
+- id: conf_timeout
+  selector:
+    path: etc/scheduler.conf
+    anchor: TIMEOUT=30
+- id: scheduler_source
+  selector:
+    path: bin/scheduler.sh
+    anchor: source etc/scheduler.conf
+- id: no_notify
+  selector:
+    path: lib/notify.sh
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_101_NOTIFY_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_101_CHANNEL_B
+- id: no_global_2
+  selector:
+    anchor: send_alert
+oracle:
+  required:
+  - conf_interval
+  - conf_retries
+  - conf_timeout
+  - scheduler_source
+  allowed: []
+  forbidden:
+  - no_notify
+  - no_global_0
+  - no_global_1
+  - no_global_2

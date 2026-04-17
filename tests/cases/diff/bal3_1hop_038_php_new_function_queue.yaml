@@ -1,0 +1,275 @@
+name: bal3_1hop_038_php_new_function_queue
+tags:
+- lang:php
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: php-no-tree-sitter
+repo:
+  initial_files:
+    src/Queue/MessageQueue.php: |
+      <?php
+      namespace App\Queue;
+
+      class MessageQueue
+      {
+          private array $messages = [];
+
+          public function push(string $channel, array $message): void
+          {
+              $this->messages[$channel][] = $message;
+          }
+
+          public function pop(string $channel): ?array
+          {
+              if (empty($this->messages[$channel])) {
+                  return null;
+              }
+              return array_shift($this->messages[$channel]);
+          }
+      }
+    src/Workers/EmailWorker.php: |
+      <?php
+      namespace App\Workers;
+
+      use App\Queue\MessageQueue;
+
+      class EmailWorker
+      {
+          private MessageQueue $queue;
+
+          public function __construct(MessageQueue $queue)
+          {
+              $this->queue = $queue;
+          }
+
+          public function process(): ?array
+          {
+              return $this->queue->pop('email');
+          }
+
+          public function enqueue(string $to, string $subject): void
+          {
+              $this->queue->push('email', ['to' => $to, 'subject' => $subject]);
+          }
+      }
+    src/Workers/SmsWorker.php: |
+      <?php
+      namespace App\Workers;
+
+      use App\Queue\MessageQueue;
+
+      class SmsWorker
+      {
+          private MessageQueue $queue;
+
+          public function __construct(MessageQueue $queue)
+          {
+              $this->queue = $queue;
+          }
+
+          public function process(): ?array
+          {
+              return $this->queue->pop('sms');
+          }
+
+          public function enqueue(string $phone, string $body): void
+          {
+              $this->queue->push('sms', ['phone' => $phone, 'body' => $body]);
+          }
+      }
+    src/Workers/PushWorker.php: |
+      <?php
+      namespace App\Workers;
+
+      use App\Queue\MessageQueue;
+
+      class PushWorker
+      {
+          private MessageQueue $queue;
+
+          public function __construct(MessageQueue $queue)
+          {
+              $this->queue = $queue;
+          }
+
+          public function process(): ?array
+          {
+              return $this->queue->pop('push');
+          }
+      }
+    src/Workers/WebhookWorker.php: |
+      <?php
+      namespace App\Workers;
+
+      use App\Queue\MessageQueue;
+
+      class WebhookWorker
+      {
+          private MessageQueue $queue;
+
+          public function __construct(MessageQueue $queue)
+          {
+              $this->queue = $queue;
+          }
+
+          public function process(): ?array
+          {
+              return $this->queue->pop('webhook');
+          }
+
+          public function enqueue(string $url, array $payload): void
+          {
+              $this->queue->push('webhook', ['url' => $url, 'payload' => $payload]);
+          }
+      }
+    src/Database/Migration.php: |
+      <?php
+      namespace App\Database;
+
+      GARBAGE_BAL3_038_MIGRATE_A = 'migrate';
+      GARBAGE_BAL3_038_VERSION_B = 1;
+
+      class Migration
+      {
+          public function up(): void
+          {
+          }
+      }
+    src/Database/Seeder.php: |
+      <?php
+      namespace App\Database;
+
+      GARBAGE_BAL3_038_SEED_C = 'seeder';
+      GARBAGE_BAL3_038_ROWS_D = 100;
+
+      class Seeder
+      {
+          public function run(): void
+          {
+          }
+      }
+    src/Database/Connection.php: |
+      <?php
+      namespace App\Database;
+
+      GARBAGE_BAL3_038_CONN_E = 'connection';
+      GARBAGE_BAL3_038_DSN_F = 'sqlite::memory:';
+
+      class Connection
+      {
+          public function connect(): void
+          {
+          }
+      }
+  changed_files:
+    src/Queue/MessageQueue.php: |
+      <?php
+      namespace App\Queue;
+
+      class MessageQueue
+      {
+          private array $messages = [];
+          private array $deadLetters = [];
+
+          public function push(string $channel, array $message): void
+          {
+              $this->messages[$channel][] = $message;
+          }
+
+          public function pop(string $channel): ?array
+          {
+              if (empty($this->messages[$channel])) {
+                  return null;
+              }
+              return array_shift($this->messages[$channel]);
+          }
+
+          public function pushDeadLetter(string $channel, array $message, string $reason): void
+          {
+              $this->deadLetters[$channel][] = [
+                  'message' => $message,
+                  'reason' => $reason,
+                  'timestamp' => time(),
+              ];
+          }
+
+          public function getDeadLetters(string $channel): array
+          {
+              return $this->deadLetters[$channel] ?? [];
+          }
+
+          public function size(string $channel): int
+          {
+              return count($this->messages[$channel] ?? []);
+          }
+      }
+  commit_message: "Add dead letter queue and size method to MessageQueue"
+fragments:
+- id: email_worker
+  selector:
+    path: src/Workers/EmailWorker.php
+    anchor: "use App\\Queue\\MessageQueue"
+- id: email_pop
+  selector:
+    path: src/Workers/EmailWorker.php
+    anchor: "queue->pop"
+- id: sms_worker
+  selector:
+    path: src/Workers/SmsWorker.php
+    anchor: "use App\\Queue\\MessageQueue"
+- id: push_worker
+  selector:
+    path: src/Workers/PushWorker.php
+    anchor: "use App\\Queue\\MessageQueue"
+- id: webhook_worker
+  selector:
+    path: src/Workers/WebhookWorker.php
+    anchor: "use App\\Queue\\MessageQueue"
+- id: no_migration
+  selector:
+    path: src/Database/Migration.php
+- id: no_seeder
+  selector:
+    path: src/Database/Seeder.php
+- id: no_connection
+  selector:
+    path: src/Database/Connection.php
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_038_MIGRATE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_038_VERSION_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_038_SEED_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_038_ROWS_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL3_038_CONN_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL3_038_DSN_F
+oracle:
+  required:
+  - email_worker
+  - email_pop
+  - sms_worker
+  - push_worker
+  - webhook_worker
+  allowed: []
+  forbidden:
+  - no_migration
+  - no_seeder
+  - no_connection
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

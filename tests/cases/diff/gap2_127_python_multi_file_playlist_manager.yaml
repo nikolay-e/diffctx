@@ -1,0 +1,147 @@
+name: gap2_127_python_multi_file_playlist_manager
+tags:
+- change:multi_file
+- change:new_function
+- change:signature
+- context:same_file
+- difficulty:medium
+- distance:0hop
+- lang:python
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    music/track.py: |
+      from dataclasses import dataclass
+
+      @dataclass
+      class Track:
+          track_id: str
+          title: str
+          artist: str
+          duration_secs: int
+
+          def display_name(self) -> str:
+              return f"{self.artist} - {self.title}"
+    music/playlist.py: |
+      from typing import List
+      from music.track import Track
+
+      class Playlist:
+          def __init__(self, name: str):
+              self.name = name
+              self._tracks: List[Track] = []
+
+          def add(self, track: Track) -> None:
+              self._tracks.append(track)
+
+          def total_duration(self) -> int:
+              return sum(t.duration_secs for t in self._tracks)
+
+          def track_count(self) -> int:
+              return len(self._tracks)
+    music/equalizer.py: |
+      TRAP_GAP2_127_EQ_A = "equalizer_noise"
+      TRAP_GAP2_127_EQ_B = [0, 0, 0, 0, 0]
+
+      PRESETS = {"flat": [0]*5, "bass": [6, 4, 0, -2, -4]}
+
+      def apply_preset(name):
+          return PRESETS.get(name, PRESETS["flat"])
+    music/lyrics.py: |
+      TRAP_GAP2_127_LYR_C = "lyrics_noise"
+      TRAP_GAP2_127_LYR_D = "genius"
+
+      def fetch_lyrics(track_id):
+          return ""
+  changed_files:
+    music/track.py: |
+      from dataclasses import dataclass
+      from typing import Optional
+
+      @dataclass
+      class Track:
+          track_id: str
+          title: str
+          artist: str
+          duration_secs: int
+          genre: Optional[str] = None
+
+          def display_name(self) -> str:
+              return f"{self.artist} - {self.title}"
+
+          def is_long(self, threshold: int = 300) -> bool:
+              return self.duration_secs > threshold
+    music/playlist.py: |
+      from typing import List, Optional
+      from music.track import Track
+
+      class Playlist:
+          def __init__(self, name: str):
+              self.name = name
+              self._tracks: List[Track] = []
+
+          def add(self, track: Track) -> None:
+              self._tracks.append(track)
+
+          def total_duration(self) -> int:
+              return sum(t.duration_secs for t in self._tracks)
+
+          def track_count(self) -> int:
+              return len(self._tracks)
+
+          def filter_by_genre(self, genre: str) -> List[Track]:
+              return [t for t in self._tracks if t.genre == genre]
+
+          def longest_track(self) -> Optional[Track]:
+              if not self._tracks:
+                  return None
+              return max(self._tracks, key=lambda t: t.duration_secs)
+fragments:
+- id: genre_field
+  selector:
+    path: music/track.py
+    anchor: "genre: Optional[str] = None"
+- id: is_long
+  selector:
+    path: music/track.py
+    anchor: "def is_long(self, threshold: int = 300) -> bool:"
+- id: filter_genre
+  selector:
+    path: music/playlist.py
+    anchor: "def filter_by_genre(self, genre: str) -> List[Track]:"
+- id: longest
+  selector:
+    path: music/playlist.py
+    anchor: "def longest_track(self) -> Optional[Track]:"
+- id: no_equalizer
+  selector:
+    path: music/equalizer.py
+- id: no_lyrics
+  selector:
+    path: music/lyrics.py
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_127_EQ_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_127_EQ_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP2_127_LYR_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP2_127_LYR_D
+oracle:
+  required:
+  - genre_field
+  - is_long
+  - filter_genre
+  - longest
+  forbidden:
+  - no_equalizer
+  - no_lyrics
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

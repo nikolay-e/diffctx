@@ -1,0 +1,219 @@
+name: bal2_1hop_061_csharp_service_interface_change
+tags:
+- lang:csharp
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: csharp-no-tree-sitter
+repo:
+  initial_files:
+    src/Services/IPaymentService.cs: |
+      using System;
+      using System.Threading.Tasks;
+
+      namespace App.Services
+      {
+          public interface IPaymentService
+          {
+              Task<bool> ProcessPayment(decimal amount, string currency);
+              Task<bool> RefundPayment(string transactionId);
+          }
+      }
+    src/Services/PaymentService.cs: |
+      using System;
+      using System.Threading.Tasks;
+      using App.Services;
+
+      namespace App.Services
+      {
+          public class PaymentService : IPaymentService
+          {
+              public async Task<bool> ProcessPayment(decimal amount, string currency)
+              {
+                  if (amount <= 0) return false;
+                  await Task.Delay(100);
+                  return true;
+              }
+
+              public async Task<bool> RefundPayment(string transactionId)
+              {
+                  if (string.IsNullOrEmpty(transactionId)) return false;
+                  await Task.Delay(50);
+                  return true;
+              }
+          }
+      }
+    src/Controllers/PaymentController.cs: |
+      using System;
+      using System.Threading.Tasks;
+      using App.Services;
+      using Microsoft.AspNetCore.Mvc;
+
+      namespace App.Controllers
+      {
+          [ApiController]
+          [Route("api/payments")]
+          public class PaymentController : ControllerBase
+          {
+              private readonly IPaymentService _paymentService;
+
+              public PaymentController(IPaymentService paymentService)
+              {
+                  _paymentService = paymentService;
+              }
+
+              [HttpPost("process")]
+              public async Task<IActionResult> Process(decimal amount, string currency)
+              {
+                  var result = await _paymentService.ProcessPayment(amount, currency);
+                  return result ? Ok() : BadRequest();
+              }
+
+              [HttpPost("refund")]
+              public async Task<IActionResult> Refund(string transactionId)
+              {
+                  var result = await _paymentService.RefundPayment(transactionId);
+                  return result ? Ok() : BadRequest();
+              }
+          }
+      }
+    src/Models/PaymentRequest.cs: |
+      using System;
+
+      namespace App.Models
+      {
+          public class PaymentRequest
+          {
+              public decimal Amount { get; set; }
+              public string Currency { get; set; }
+              public string Description { get; set; }
+          }
+      }
+    garbage/Analytics/ReportEngine.cs: |
+      using System;
+      using System.Collections.Generic;
+      GARBAGE_061_REPORT_ENGINE_A = "report";
+      GARBAGE_061_ANALYTICS_MARKER_B = true;
+
+      namespace App.Analytics
+      {
+          public class ReportEngine
+          {
+              GARBAGE_061_ENGINE_STATE_C = "idle";
+
+              public string GenerateReport(List<string> data)
+              {
+                  return string.Join(",", data);
+              }
+          }
+      }
+    garbage/Logging/AuditLogger.cs: |
+      using System;
+      GARBAGE_061_AUDIT_LOG_D = "audit";
+      GARBAGE_061_LOG_LEVEL_E = "info";
+
+      namespace App.Logging
+      {
+          public class AuditLogger
+          {
+              GARBAGE_061_BUFFER_SIZE_F = 1024;
+
+              public void Log(string message)
+              {
+                  Console.WriteLine(message);
+              }
+          }
+      }
+    garbage/Cache/MemoryCache.cs: |
+      using System;
+      using System.Collections.Generic;
+      GARBAGE_061_CACHE_TYPE_G = "memory";
+      GARBAGE_061_TTL_MARKER_H = 3600;
+
+      namespace App.Cache
+      {
+          public class MemoryCache
+          {
+              GARBAGE_061_MAX_SIZE_I = 100;
+              GARBAGE_061_EVICTION_J = "lru";
+
+              public object Get(string key) { return null; }
+              public void Set(string key, object value) { }
+          }
+      }
+  changed_files:
+    src/Services/IPaymentService.cs: |
+      using System;
+      using System.Threading.Tasks;
+
+      namespace App.Services
+      {
+          public interface IPaymentService
+          {
+              Task<PaymentResult> ProcessPayment(decimal amount, string currency, string idempotencyKey);
+              Task<PaymentResult> RefundPayment(string transactionId, decimal amount);
+          }
+
+          public class PaymentResult
+          {
+              public bool Success { get; set; }
+              public string TransactionId { get; set; }
+              public string ErrorMessage { get; set; }
+          }
+      }
+  commit_message: "Add idempotency key and structured result to payment interface"
+fragments:
+- id: payment_service_process
+  selector:
+    path: src/Services/PaymentService.cs
+    anchor: "public async Task<bool> ProcessPayment(decimal amount, string currency)"
+- id: payment_service_refund
+  selector:
+    path: src/Services/PaymentService.cs
+    anchor: "public async Task<bool> RefundPayment(string transactionId)"
+- id: controller_process
+  selector:
+    path: src/Controllers/PaymentController.cs
+    anchor: "await _paymentService.ProcessPayment(amount, currency)"
+- id: controller_refund
+  selector:
+    path: src/Controllers/PaymentController.cs
+    anchor: "await _paymentService.RefundPayment(transactionId)"
+- id: no_report_engine
+  selector:
+    path: garbage/Analytics/ReportEngine.cs
+- id: no_audit_logger
+  selector:
+    path: garbage/Logging/AuditLogger.cs
+- id: no_memory_cache
+  selector:
+    path: garbage/Cache/MemoryCache.cs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_061_REPORT_ENGINE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_061_ANALYTICS_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_061_CACHE_TYPE_G
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_061_AUDIT_LOG_D
+oracle:
+  required:
+  - payment_service_process
+  - payment_service_refund
+  - controller_process
+  - controller_refund
+  allowed: []
+  forbidden:
+  - no_report_engine
+  - no_audit_logger
+  - no_memory_cache
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

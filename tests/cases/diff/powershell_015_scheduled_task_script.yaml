@@ -1,0 +1,100 @@
+name: powershell_015_scheduled_task_script
+tags:
+- lang:powershell
+- change:single_file
+- change:config
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    task-config.psd1: |
+      @{
+          TaskName        = "NightlyCleanup"
+          TriggerTime     = "02:00"
+          RepeatIntervalH = 24
+          MaxRunTimeMins  = 30
+          RunAsUser       = "SYSTEM"
+      }
+    task-runner.ps1: |
+      $cfg = Import-PowerShellDataFile ./task-config.psd1
+
+      $action  = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-File `"C:\Scripts\cleanup.ps1`""
+      $trigger = New-ScheduledTaskTrigger -Daily -At $cfg.TriggerTime
+      $settings = New-ScheduledTaskSettingsSet `
+          -ExecutionTimeLimit (New-TimeSpan -Minutes $cfg.MaxRunTimeMins) `
+          -MultipleInstances IgnoreNew
+
+      Register-ScheduledTask `
+          -TaskName $cfg.TaskName `
+          -Action   $action `
+          -Trigger  $trigger `
+          -Settings $settings `
+          -RunLevel Highest `
+          -Force
+      Write-Output "Task '$($cfg.TaskName)' registered at $($cfg.TriggerTime)"
+    PS_NOISE_015_NugetUtils.psm1: |
+      function PS_NOISE_015_Install-NugetPackage {
+          param([string]$PackageName, [string]$Version, [string]$OutputDir)
+          nuget install $PackageName -Version $Version -OutputDirectory $OutputDir -NonInteractive
+      }
+      Export-ModuleMember -Function PS_NOISE_015_Install-NugetPackage
+    PS_NOISE_015_HyperVUtils.psm1: |
+      function PS_NOISE_015_New-LabVm {
+          param([string]$VmName, [long]$MemoryBytes, [int]$CpuCount)
+          New-VM -Name $VmName -MemoryStartupBytes $MemoryBytes -Generation 2
+          Set-VMProcessor -VMName $VmName -Count $CpuCount
+      }
+      Export-ModuleMember -Function PS_NOISE_015_New-LabVm
+  changed_files:
+    task-config.psd1: |
+      @{
+          TaskName        = "NightlyCleanup"
+          TriggerTime     = "03:30"
+          RepeatIntervalH = 24
+          MaxRunTimeMins  = 60
+          RunAsUser       = "SYSTEM"
+          WakeToRun       = $true
+      }
+  commit_message: "config: shift task trigger to 03:30, extend max run time, enable wake-to-run"
+fragments:
+- id: config_trigger_time
+  selector:
+    path: task-config.psd1
+    anchor: TriggerTime
+- id: config_max_run_time
+  selector:
+    path: task-config.psd1
+    anchor: MaxRunTimeMins
+- id: config_wake_to_run
+  selector:
+    path: task-config.psd1
+    anchor: WakeToRun
+- id: task_runner
+  selector:
+    path: task-runner.ps1
+    anchor: Import-PowerShellDataFile
+- id: no_nuget_utils
+  selector:
+    path: PS_NOISE_015_NugetUtils.psm1
+- id: no_hyperv_utils
+  selector:
+    path: PS_NOISE_015_HyperVUtils.psm1
+- id: no_global_0
+  selector:
+    anchor: PS_NOISE_015_Install-NugetPackage
+- id: no_global_1
+  selector:
+    anchor: PS_NOISE_015_New-LabVm
+oracle:
+  required:
+  - config_trigger_time
+  - config_max_run_time
+  - config_wake_to_run
+  - task_runner
+  allowed: []
+  forbidden:
+  - no_nuget_utils
+  - no_hyperv_utils
+  - no_global_0
+  - no_global_1

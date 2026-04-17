@@ -1,0 +1,172 @@
+name: gap2_193_python_multi_file_crossmod_satellite_telemetry
+tags:
+- change:multi_file
+- change:new_function
+- change:new_function
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+- lang:python
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    telemetry/decoder.py: |
+      from telemetry.frame import TelemetryFrame
+      from telemetry.checksum import verify_crc
+
+      class PacketDecoder:
+          def __init__(self, channel_id: str):
+              self.channel_id = channel_id
+
+          def decode(self, raw_bytes: bytes) -> TelemetryFrame:
+              if not verify_crc(raw_bytes):
+                  raise ValueError("CRC mismatch")
+              timestamp = int.from_bytes(raw_bytes[:4], 'big')
+              payload = raw_bytes[4:-2]
+              return TelemetryFrame(timestamp, payload)
+    telemetry/frame.py: |
+      class TelemetryFrame:
+          def __init__(self, timestamp: int, payload: bytes):
+              self.timestamp = timestamp
+              self.payload = payload
+
+          def size(self) -> int:
+              return len(self.payload)
+
+          def hex_payload(self) -> str:
+              return self.payload.hex()
+    telemetry/checksum.py: |
+      def verify_crc(data: bytes) -> bool:
+          if len(data) < 3:
+              return False
+          body = data[:-2]
+          expected = int.from_bytes(data[-2:], 'big')
+          computed = sum(body) & 0xFFFF
+          return computed == expected
+
+      def compute_crc(data: bytes) -> int:
+          return sum(data) & 0xFFFF
+    telemetry/aggregator.py: |
+      from telemetry.frame import TelemetryFrame
+
+      class SignalAggregator:
+          def __init__(self):
+              self._frames: list[TelemetryFrame] = []
+
+          def ingest(self, frame: TelemetryFrame) -> None:
+              self._frames.append(frame)
+
+          def average_size(self) -> float:
+              if not self._frames:
+                  return 0.0
+              return sum(f.size() for f in self._frames) / len(self._frames)
+    telemetry/orbit_predictor.py: |
+      TRAP_GAP2_193_ORBIT_A = "orbit_noise"
+      TRAP_GAP2_193_ORBIT_B = 999
+
+      class OrbitPredictor:
+          def __init__(self, tle_line1: str, tle_line2: str):
+              self.tle1 = tle_line1
+              self.tle2 = tle_line2
+
+          def next_pass_elevation(self) -> float:
+              return 45.0
+    telemetry/ground_station.py: |
+      TRAP_GAP2_193_GND_C = "ground_noise"
+      TRAP_GAP2_193_GND_D = 0
+
+      class GroundStation:
+          def __init__(self, callsign: str):
+              self.callsign = callsign
+
+          def uplink(self, command: str) -> bool:
+              return True
+  changed_files:
+    telemetry/decoder.py: |
+      from telemetry.frame import TelemetryFrame
+      from telemetry.checksum import verify_crc
+
+      class PacketDecoder:
+          def __init__(self, channel_id: str):
+              self.channel_id = channel_id
+
+          def decode(self, raw_bytes: bytes) -> TelemetryFrame:
+              if not verify_crc(raw_bytes):
+                  raise ValueError("CRC mismatch")
+              timestamp = int.from_bytes(raw_bytes[:4], 'big')
+              payload = raw_bytes[4:-2]
+              return TelemetryFrame(timestamp, payload)
+
+          def decode_batch(self, packets: list[bytes]) -> list[TelemetryFrame]:
+              frames = []
+              for pkt in packets:
+                  try:
+                      frames.append(self.decode(pkt))
+                  except ValueError:
+                      continue
+              return frames
+    telemetry/aggregator.py: |
+      from telemetry.frame import TelemetryFrame
+
+      class SignalAggregator:
+          def __init__(self):
+              self._frames: list[TelemetryFrame] = []
+
+          def ingest(self, frame: TelemetryFrame) -> None:
+              self._frames.append(frame)
+
+          def average_size(self) -> float:
+              if not self._frames:
+                  return 0.0
+              return sum(f.size() for f in self._frames) / len(self._frames)
+
+          def filter_by_min_size(self, min_bytes: int) -> list[TelemetryFrame]:
+              return [f for f in self._frames if f.size() >= min_bytes]
+  commit_message: "feat: add batch decode and size filtering for telemetry"
+fragments:
+- id: decode_batch
+  selector:
+    path: telemetry/decoder.py
+    anchor: "def decode_batch"
+- id: filter_by_min_size
+  selector:
+    path: telemetry/aggregator.py
+    anchor: "def filter_by_min_size"
+- id: frame_class
+  selector:
+    path: telemetry/frame.py
+    anchor: class TelemetryFrame
+- id: frame_size
+  selector:
+    path: telemetry/frame.py
+    anchor: "def size"
+- id: verify_crc
+  selector:
+    path: telemetry/checksum.py
+    anchor: "def verify_crc"
+- id: no_orbit
+  selector:
+    path: telemetry/orbit_predictor.py
+- id: no_ground
+  selector:
+    path: telemetry/ground_station.py
+- id: no_trap_0
+  selector:
+    anchor: TRAP_GAP2_193_ORBIT_A
+- id: no_trap_1
+  selector:
+    anchor: TRAP_GAP2_193_GND_C
+oracle:
+  required:
+  - decode_batch
+  - filter_by_min_size
+  - frame_class
+  - verify_crc
+  allowed:
+  - frame_size
+  forbidden:
+  - no_orbit
+  - no_ground
+  - no_trap_0
+  - no_trap_1

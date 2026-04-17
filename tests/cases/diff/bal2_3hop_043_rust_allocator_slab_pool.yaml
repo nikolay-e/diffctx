@@ -1,0 +1,198 @@
+name: bal2_3hop_043_rust_allocator_slab_pool
+tags:
+- lang:rust
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/alloc/block.rs: |
+      #[derive(Debug, Clone)]
+      pub struct Block {
+          pub offset: usize,
+          pub size: usize,
+          pub free: bool,
+      }
+
+      impl Block {
+          pub fn new(offset: usize, size: usize) -> Self {
+              Self { offset, size, free: true }
+          }
+
+          pub fn allocate(&mut self) {
+              self.free = false;
+          }
+
+          pub fn deallocate(&mut self) {
+              self.free = true;
+          }
+      }
+    src/alloc/slab.rs: |
+      use crate::alloc::block::Block;
+
+      pub struct Slab {
+          blocks: Vec<Block>,
+          block_size: usize,
+      }
+
+      impl Slab {
+          pub fn new(count: usize, block_size: usize) -> Self {
+              let blocks = (0..count)
+                  .map(|i| Block::new(i * block_size, block_size))
+                  .collect();
+              Self { blocks, block_size }
+          }
+
+          pub fn alloc(&mut self) -> Option<usize> {
+              for block in &mut self.blocks {
+                  if block.free {
+                      block.allocate();
+                      return Some(block.offset);
+                  }
+              }
+              None
+          }
+
+          pub fn free(&mut self, offset: usize) {
+              for block in &mut self.blocks {
+                  if block.offset == offset {
+                      block.deallocate();
+                      return;
+                  }
+              }
+          }
+      }
+    src/alloc/pool.rs: |
+      use crate::alloc::slab::Slab;
+
+      pub struct MemoryPool {
+          slabs: Vec<Slab>,
+      }
+
+      impl MemoryPool {
+          pub fn new() -> Self {
+              Self { slabs: Vec::new() }
+          }
+
+          pub fn add_slab(&mut self, slab: Slab) {
+              self.slabs.push(slab);
+          }
+
+          pub fn allocate(&mut self) -> Option<usize> {
+              for slab in &mut self.slabs {
+                  if let Some(offset) = slab.alloc() {
+                      return Some(offset);
+                  }
+              }
+              None
+          }
+      }
+    src/runtime/heap.rs: |
+      use crate::alloc::pool::MemoryPool;
+
+      pub struct HeapManager {
+          pool: MemoryPool,
+          allocations: usize,
+      }
+
+      impl HeapManager {
+          pub fn new(pool: MemoryPool) -> Self {
+              Self { pool, allocations: 0 }
+          }
+
+          pub fn alloc(&mut self) -> Option<usize> {
+              let result = self.pool.allocate();
+              if result.is_some() {
+                  self.allocations += 1;
+              }
+              result
+          }
+      }
+    src/alloc/buddy.rs: |
+      GARBAGE_043_BUDDY_MARKER_A = "buddy_alloc";
+      GARBAGE_043_SPLIT_MARKER_B = 2;
+
+      pub struct BuddyAllocator {
+          min_size: usize,
+      }
+    src/debug/stats.rs: |
+      GARBAGE_043_STATS_MARKER_C = "alloc_stats";
+      GARBAGE_043_PEAK_MARKER_D = 0;
+
+      pub struct AllocStats {
+          total: usize,
+          peak: usize,
+      }
+    src/gc/collector.rs: |
+      GARBAGE_043_GC_MARKER_E = "mark_sweep";
+      GARBAGE_043_CYCLE_MARKER_F = 100;
+
+      pub struct GarbageCollector {
+          threshold: usize,
+      }
+  changed_files:
+    src/alloc/block.rs: |
+      #[derive(Debug, Clone)]
+      pub struct Block {
+          pub offset: usize,
+          pub size: usize,
+          pub free: bool,
+          pub generation: u32,
+      }
+
+      impl Block {
+          pub fn new(offset: usize, size: usize) -> Self {
+              Self { offset, size, free: true, generation: 0 }
+          }
+
+          pub fn allocate(&mut self) {
+              self.free = false;
+              self.generation += 1;
+          }
+
+          pub fn deallocate(&mut self) {
+              self.free = true;
+          }
+      }
+  commit_message: "feat: add generation counter to allocation blocks"
+fragments:
+- id: block_generation
+  selector:
+    path: src/alloc/block.rs
+    anchor: "pub generation: u32"
+- id: slab_alloc
+  selector:
+    path: src/alloc/slab.rs
+    anchor: "pub fn alloc"
+- id: pool_allocate
+  selector:
+    path: src/alloc/pool.rs
+    anchor: "pub fn allocate"
+- id: heap_alloc
+  selector:
+    path: src/runtime/heap.rs
+    anchor: "pub fn alloc"
+- id: no_buddy
+  selector:
+    path: src/alloc/buddy.rs
+    anchor: "GARBAGE_043_BUDDY_MARKER_A"
+- id: no_stats
+  selector:
+    path: src/debug/stats.rs
+    anchor: "GARBAGE_043_STATS_MARKER_C"
+- id: no_gc
+  selector:
+    path: src/gc/collector.rs
+    anchor: "GARBAGE_043_GC_MARKER_E"
+oracle:
+  required:
+  - block_generation
+  - slab_alloc
+  - pool_allocate
+  - heap_alloc
+  allowed: []
+  forbidden:
+  - no_buddy
+  - no_stats
+  - no_gc

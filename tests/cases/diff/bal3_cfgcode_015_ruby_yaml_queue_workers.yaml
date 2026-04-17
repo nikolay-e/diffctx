@@ -1,0 +1,147 @@
+name: bal3_cfgcode_015_ruby_yaml_queue_workers
+tags:
+- lang:rust
+- change:bug_fix
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/http/client.rs: |
+      use std::time::Duration;
+
+      pub struct HttpClient {
+          base_url: String,
+          timeout: Duration,
+      }
+
+      impl HttpClient {
+          pub fn new(base_url: &str) -> Self {
+              HttpClient {
+                  base_url: base_url.to_string(),
+                  timeout: Duration::from_secs(30),
+              }
+          }
+
+          pub fn get(&self, path: &str) -> Result<String, String> {
+              // BUG: base_url and path concatenated without separator check
+              let url = format!("{}{}", self.base_url, path);
+              Ok(url)
+          }
+
+          pub fn post(&self, path: &str, body: &str) -> Result<String, String> {
+              let url = format!("{}{}", self.base_url, path);
+              Ok(format!("POST {} body={}", url, body))
+          }
+      }
+    src/api/weather.rs: |
+      use crate::http::client::HttpClient;
+
+      pub struct WeatherApi {
+          client: HttpClient,
+      }
+
+      impl WeatherApi {
+          pub fn new(base_url: &str) -> Self {
+              WeatherApi { client: HttpClient::new(base_url) }
+          }
+
+          pub fn fetch_forecast(&self, city: &str) -> Result<String, String> {
+              self.client.get(&format!("/forecast/{}", city))
+          }
+      }
+    garbage/auth.rs: |
+      // GARBAGE_HCLI_A = "auth_marker"
+      pub fn get_bearer() -> &'static str { "token" }
+    garbage/retry.rs: |
+      // GARBAGE_HCLI_B = "retry_marker"
+      pub fn with_retry<F: Fn() -> bool>(f: F, _n: u8) -> bool { f() }
+    garbage/logger.rs: |
+      // GARBAGE_HCLI_C = "logger_marker"
+      pub fn log(_msg: &str) {}
+  changed_files:
+    src/http/client.rs: |
+      use std::time::Duration;
+
+      pub struct HttpClient {
+          base_url: String,
+          timeout: Duration,
+      }
+
+      impl HttpClient {
+          pub fn new(base_url: &str) -> Self {
+              let normalized = base_url.trim_end_matches('/').to_string();
+              HttpClient {
+                  base_url: normalized,
+                  timeout: Duration::from_secs(30),
+              }
+          }
+
+          pub fn get(&self, path: &str) -> Result<String, String> {
+              let path = path.trim_start_matches('/');
+              let url = format!("{}/{}", self.base_url, path);
+              Ok(url)
+          }
+
+          pub fn post(&self, path: &str, body: &str) -> Result<String, String> {
+              let path = path.trim_start_matches('/');
+              let url = format!("{}/{}", self.base_url, path);
+              Ok(format!("POST {} body={}", url, body))
+          }
+      }
+    src/api/weather.rs: |
+      use crate::http::client::HttpClient;
+
+      pub struct WeatherApi {
+          client: HttpClient,
+      }
+
+      impl WeatherApi {
+          pub fn new(base_url: &str) -> Self {
+              WeatherApi { client: HttpClient::new(base_url) }
+          }
+
+          pub fn fetch_forecast(&self, city: &str) -> Result<String, String> {
+              self.client.get(&format!("/forecast/{}", city))
+          }
+      }
+    garbage/auth.rs: |
+      // GARBAGE_HCLI_A = "auth_marker"
+      pub fn get_bearer() -> &'static str { "token" }
+    garbage/retry.rs: |
+      // GARBAGE_HCLI_B = "retry_marker"
+      pub fn with_retry<F: Fn() -> bool>(f: F, _n: u8) -> bool { f() }
+    garbage/logger.rs: |
+      // GARBAGE_HCLI_C = "logger_marker"
+      pub fn log(_msg: &str) {}
+  commit_message: "fix: normalize URL separator in HttpClient::get and ::new"
+fragments:
+- id: trim_trailing_slash
+  selector:
+    anchor: "let normalized = base_url.trim_end_matches('/')"
+- id: trim_leading_slash
+  selector:
+    anchor: "let path = path.trim_start_matches('/')"
+- id: weather_uses_client
+  selector:
+    anchor: "use crate::http::client::HttpClient"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_HCLI_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_HCLI_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_HCLI_C
+oracle:
+  required:
+  - trim_trailing_slash
+  - trim_leading_slash
+  - weather_uses_client
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

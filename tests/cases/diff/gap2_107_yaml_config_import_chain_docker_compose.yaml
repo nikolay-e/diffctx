@@ -1,0 +1,126 @@
+name: gap2_107_yaml_config_import_chain_docker_compose
+tags:
+- change:config
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:0hop
+- lang:yaml
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    docker-compose.yaml: |
+      version: "3.9"
+      services:
+        web:
+          build: ./web
+          ports:
+          - "3000:3000"
+          environment:
+            DATABASE_URL: postgres://db:5432/app
+          depends_on:
+          - db
+        db:
+          image: postgres:15
+          environment:
+            POSTGRES_DB: app
+            POSTGRES_PASSWORD: secret
+          volumes:
+          - pgdata:/var/lib/postgresql/data
+      volumes:
+        pgdata:
+    web/Dockerfile: |
+      FROM node:20-alpine
+      WORKDIR /app
+      COPY package*.json ./
+      RUN npm ci
+      COPY . .
+      EXPOSE 3000
+      CMD ["node", "server.js"]
+    monitoring/prometheus.yaml: |
+      TRAP_GAP2_107_PROM_A: "prometheus_config"
+      TRAP_GAP2_107_SCRAPE_B: 15
+      global:
+        scrape_interval: 15s
+      scrape_configs:
+      - job_name: web
+        static_configs:
+        - targets: ["web:3000"]
+  changed_files:
+    docker-compose.yaml: |
+      version: "3.9"
+      services:
+        web:
+          build: ./web
+          ports:
+          - "3000:3000"
+          environment:
+            DATABASE_URL: postgres://db:5432/app
+            REDIS_URL: redis://cache:6379
+          depends_on:
+          - db
+          - cache
+        db:
+          image: postgres:16
+          environment:
+            POSTGRES_DB: app
+            POSTGRES_PASSWORD: secret
+          volumes:
+          - pgdata:/var/lib/postgresql/data
+        cache:
+          image: redis:7-alpine
+          ports:
+          - "6379:6379"
+      volumes:
+        pgdata:
+    web/Dockerfile: |
+      FROM node:20-alpine
+      WORKDIR /app
+      COPY package*.json ./
+      RUN npm ci
+      COPY . .
+      EXPOSE 3000
+      CMD ["node", "server.js"]
+    monitoring/prometheus.yaml: |
+      TRAP_GAP2_107_PROM_A: "prometheus_config"
+      TRAP_GAP2_107_SCRAPE_B: 15
+      global:
+        scrape_interval: 15s
+      scrape_configs:
+      - job_name: web
+        static_configs:
+        - targets: ["web:3000"]
+  commit_message: Update files
+fragments:
+- id: compose_redis_url
+  selector:
+    path: docker-compose.yaml
+    anchor: "REDIS_URL: redis://cache:6379"
+- id: compose_cache_service
+  selector:
+    path: docker-compose.yaml
+    anchor: "image: redis:7-alpine"
+- id: compose_pg_upgrade
+  selector:
+    path: docker-compose.yaml
+    anchor: "image: postgres:16"
+- id: no_prometheus
+  selector:
+    path: monitoring/prometheus.yaml
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_107_PROM_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_107_SCRAPE_B
+oracle:
+  required:
+  - compose_redis_url
+  - compose_cache_service
+  - compose_pg_upgrade
+  allowed: []
+  forbidden:
+  - no_prometheus
+  - no_global_0
+  - no_global_1

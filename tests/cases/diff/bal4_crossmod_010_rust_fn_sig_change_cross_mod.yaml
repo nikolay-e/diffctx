@@ -1,0 +1,143 @@
+name: bal4_crossmod_010_rust_fn_sig_change_cross_mod
+tags:
+- lang:rust
+- change:signature
+- context:cross_module
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/math/calc.rs: |
+      pub fn add(a: i32, b: i32) -> i32 {
+          a + b
+      }
+
+      pub fn multiply(a: i32, b: i32) -> i32 {
+          a * b
+      }
+    src/engine/compute.rs: |
+      use crate::math::calc;
+
+      pub fn sum_list(values: &[i32]) -> i32 {
+          let mut total = 0;
+          for v in values {
+              total = calc::add(total, *v);
+          }
+          total
+      }
+
+      pub fn product_list(values: &[i32]) -> i32 {
+          let mut result = 1;
+          for v in values {
+              result = calc::multiply(result, *v);
+          }
+          result
+      }
+    src/render/display.rs: |
+      use crate::math::calc;
+
+      pub fn show_sum(a: i32, b: i32) -> String {
+          format!("{} + {} = {}", a, b, calc::add(a, b))
+      }
+    src/io/reader.rs: |
+      pub const GARBAGE_010_BUF_A: usize = 4096;
+      pub const GARBAGE_010_ENC_B: &str = "utf-8";
+
+      pub fn read_line() -> String {
+          String::new()
+      }
+    garbage_logger.rs: |
+      pub const GARBAGE_010_LEVEL_C: &str = "debug";
+      pub const GARBAGE_010_FILE_D: &str = "app.log";
+
+      pub fn log(msg: &str) {}
+  changed_files:
+    src/math/calc.rs: |
+      pub fn add(a: i64, b: i64) -> i64 {
+          a + b
+      }
+
+      pub fn multiply(a: i64, b: i64) -> i64 {
+          a * b
+      }
+    src/engine/compute.rs: |
+      use crate::math::calc;
+
+      pub fn sum_list(values: &[i32]) -> i32 {
+          let mut total = 0;
+          for v in values {
+              total = calc::add(total, *v);
+          }
+          total
+      }
+
+      pub fn product_list(values: &[i32]) -> i32 {
+          let mut result = 1;
+          for v in values {
+              result = calc::multiply(result, *v);
+          }
+          result
+      }
+    src/render/display.rs: |
+      use crate::math::calc;
+
+      pub fn show_sum(a: i32, b: i32) -> String {
+          format!("{} + {} = {}", a, b, calc::add(a, b))
+      }
+    src/io/reader.rs: |
+      pub const GARBAGE_010_BUF_A: usize = 4096;
+      pub const GARBAGE_010_ENC_B: &str = "utf-8";
+
+      pub fn read_line() -> String {
+          String::new()
+      }
+    garbage_logger.rs: |
+      pub const GARBAGE_010_LEVEL_C: &str = "debug";
+      pub const GARBAGE_010_FILE_D: &str = "app.log";
+
+      pub fn log(msg: &str) {}
+  commit_message: "change calc functions from i32 to i64"
+fragments:
+- id: engine_sum
+  selector:
+    path: src/engine/compute.rs
+    anchor: "pub fn sum_list(values: &[i32])"
+- id: engine_product
+  selector:
+    path: src/engine/compute.rs
+    anchor: "pub fn product_list(values: &[i32])"
+- id: render_show_sum
+  selector:
+    path: src/render/display.rs
+    anchor: "pub fn show_sum(a: i32, b: i32)"
+- id: no_reader
+  selector:
+    path: src/io/reader.rs
+- id: no_garbage_logger
+  selector:
+    path: garbage_logger.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_010_BUF_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_010_ENC_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_010_LEVEL_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_010_FILE_D
+oracle:
+  required:
+  - engine_sum
+  - engine_product
+  - render_show_sum
+  allowed: []
+  forbidden:
+  - no_reader
+  - no_garbage_logger
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

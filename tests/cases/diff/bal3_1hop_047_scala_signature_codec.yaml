@@ -1,0 +1,195 @@
+name: bal3_1hop_047_scala_signature_codec
+tags:
+- lang:scala
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: scala-no-tree-sitter
+repo:
+  initial_files:
+    src/main/scala/codec/JsonCodec.scala: |
+      package codec
+
+      trait JsonCodec[T] {
+        def encode(value: T): String
+        def decode(json: String): T
+      }
+
+      object JsonCodec {
+        def stringCodec: JsonCodec[String] = new JsonCodec[String] {
+          def encode(value: String): String = s""""$value""""
+          def decode(json: String): String = json.stripPrefix("\"").stripSuffix("\"")
+        }
+      }
+    src/main/scala/api/UserEndpoint.scala: |
+      package api
+
+      import codec.JsonCodec
+
+      class UserEndpoint(codec: JsonCodec[String]) {
+        def getUser(id: Int): String = {
+          codec.encode(s"user_$id")
+        }
+
+        def parseUser(json: String): String = {
+          codec.decode(json)
+        }
+      }
+    src/main/scala/api/ProductEndpoint.scala: |
+      package api
+
+      import codec.JsonCodec
+
+      class ProductEndpoint(codec: JsonCodec[String]) {
+        def getProduct(id: Int): String = {
+          codec.encode(s"product_$id")
+        }
+      }
+    src/main/scala/api/OrderEndpoint.scala: |
+      package api
+
+      import codec.JsonCodec
+
+      class OrderEndpoint(codec: JsonCodec[String]) {
+        def getOrder(id: Int): String = {
+          codec.encode(s"order_$id")
+        }
+
+        def parseOrder(json: String): String = {
+          codec.decode(json)
+        }
+      }
+    src/main/scala/api/SearchEndpoint.scala: |
+      package api
+
+      import codec.JsonCodec
+
+      class SearchEndpoint(codec: JsonCodec[String]) {
+        def search(query: String): String = {
+          codec.encode(query)
+        }
+      }
+    src/main/scala/db/ConnectionPool.scala: |
+      package db
+
+      object ConnectionPool {
+        val GARBAGE_BAL3_047_POOL_A = "pool"
+        val GARBAGE_BAL3_047_SIZE_B = 10
+
+        def getConnection(): String = "conn"
+      }
+    src/main/scala/db/Migration.scala: |
+      package db
+
+      object Migration {
+        val GARBAGE_BAL3_047_MIG_C = "migration"
+        val GARBAGE_BAL3_047_VER_D = 1
+
+        def migrate(): Unit = ()
+      }
+    src/main/scala/db/SchemaValidator.scala: |
+      package db
+
+      object SchemaValidator {
+        val GARBAGE_BAL3_047_SCHEMA_E = "schema"
+        val GARBAGE_BAL3_047_STRICT_F = true
+
+        def validate(): Boolean = true
+      }
+  changed_files:
+    src/main/scala/codec/JsonCodec.scala: |
+      package codec
+
+      trait JsonCodec[T] {
+        def encode(value: T, pretty: Boolean = false): String
+        def decode(json: String, strict: Boolean = true): T
+      }
+
+      object JsonCodec {
+        def stringCodec: JsonCodec[String] = new JsonCodec[String] {
+          def encode(value: String, pretty: Boolean = false): String = {
+            val encoded = s""""$value""""
+            if (pretty) s"{\n  \"value\": $encoded\n}" else encoded
+          }
+
+          def decode(json: String, strict: Boolean = true): String = {
+            val stripped = json.stripPrefix("\"").stripSuffix("\"")
+            if (strict && stripped.isEmpty) throw new IllegalArgumentException("Empty value")
+            stripped
+          }
+        }
+
+        def intCodec: JsonCodec[Int] = new JsonCodec[Int] {
+          def encode(value: Int, pretty: Boolean = false): String = value.toString
+          def decode(json: String, strict: Boolean = true): Int = json.trim.toInt
+        }
+      }
+  commit_message: "Add pretty print, strict mode, and int codec to JsonCodec"
+fragments:
+- id: user_endpoint
+  selector:
+    path: src/main/scala/api/UserEndpoint.scala
+    anchor: "import codec.JsonCodec"
+- id: user_encode
+  selector:
+    path: src/main/scala/api/UserEndpoint.scala
+    anchor: "codec.encode"
+- id: product_endpoint
+  selector:
+    path: src/main/scala/api/ProductEndpoint.scala
+    anchor: "import codec.JsonCodec"
+- id: order_endpoint
+  selector:
+    path: src/main/scala/api/OrderEndpoint.scala
+    anchor: "import codec.JsonCodec"
+- id: search_endpoint
+  selector:
+    path: src/main/scala/api/SearchEndpoint.scala
+    anchor: "import codec.JsonCodec"
+- id: no_pool
+  selector:
+    path: src/main/scala/db/ConnectionPool.scala
+- id: no_migration
+  selector:
+    path: src/main/scala/db/Migration.scala
+- id: no_schema
+  selector:
+    path: src/main/scala/db/SchemaValidator.scala
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_047_POOL_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_047_SIZE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_047_MIG_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_047_VER_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL3_047_SCHEMA_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL3_047_STRICT_F
+oracle:
+  required:
+  - user_endpoint
+  - user_encode
+  - product_endpoint
+  - order_endpoint
+  - search_endpoint
+  allowed: []
+  forbidden:
+  - no_pool
+  - no_migration
+  - no_schema
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

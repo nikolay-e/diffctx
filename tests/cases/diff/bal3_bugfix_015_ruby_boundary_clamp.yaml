@@ -1,0 +1,82 @@
+name: bal3_bugfix_015_ruby_boundary_clamp
+tags:
+- lang:ruby
+- change:single_file
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    lib/color.rb: |
+      class Color
+        attr_reader :r, :g, :b
+
+        def initialize(r, g, b)
+          @r = r
+          @g = g
+          @b = b
+        end
+
+        def brighten(amount)
+          Color.new(@r + amount, @g + amount, @b + amount)
+        end
+
+        def to_hex
+          format('#%02x%02x%02x', @r, @g, @b)
+        end
+      end
+    lib/theme.rb: |
+      require_relative 'color'
+
+      class Theme
+        def highlight(base_color)
+          base_color.brighten(50)
+        end
+      end
+    lib/assets.rb: |
+      module Assets
+        def self.load(path)
+          File.read(path)
+        end
+      end
+  changed_files:
+    lib/color.rb: |
+      class Color
+        attr_reader :r, :g, :b
+
+        def initialize(r, g, b)
+          @r = r.clamp(0, 255)
+          @g = g.clamp(0, 255)
+          @b = b.clamp(0, 255)
+        end
+
+        def brighten(amount)
+          Color.new(@r + amount, @g + amount, @b + amount)
+        end
+
+        def to_hex
+          format('#%02x%02x%02x', @r, @g, @b)
+        end
+      end
+  commit_message: "fix: clamp RGB values to 0-255 range in constructor"
+fragments:
+- id: clamp_fix
+  selector:
+    path: lib/color.rb
+    anchor: "@r = r.clamp(0, 255)"
+- id: theme_calls_brighten
+  selector:
+    path: lib/theme.rb
+    anchor: "base_color.brighten(50)"
+- id: no_assets
+  selector:
+    path: lib/assets.rb
+    anchor: "def self.load"
+oracle:
+  required:
+  - clamp_fix
+  - theme_calls_brighten
+  allowed: []
+  forbidden:
+  - no_assets

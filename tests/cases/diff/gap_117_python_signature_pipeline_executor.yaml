@@ -1,0 +1,93 @@
+name: gap_117_python_signature_pipeline_executor
+tags:
+- lang:python
+- change:signature
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:1hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/pipeline/executor.py: |
+      from src.pipeline.stage import Stage
+
+      class PipelineExecutor:
+          def __init__(self):
+              self._stages: list[Stage] = []
+
+          def add_stage(self, stage: Stage) -> None:
+              self._stages.append(stage)
+
+          def run(self, data: dict) -> dict:
+              result = data
+              for stage in self._stages:
+                  result = stage.process(result)
+              return result
+    src/pipeline/stage.py: |
+      class Stage:
+          def __init__(self, name: str, transformer):
+              self.name = name
+              self._transformer = transformer
+
+          def process(self, data: dict) -> dict:
+              return self._transformer(data)
+
+          def label(self) -> str:
+              return f"stage:{self.name}"
+    src/pipeline/logging_sink.py: |
+      class LoggingSink:
+          def __init__(self, filepath: str):
+              self._filepath = filepath
+              self._buffer: list[str] = []
+
+          def write(self, message: str) -> None:
+              self._buffer.append(message)
+
+          def flush(self) -> int:
+              count = len(self._buffer)
+              self._buffer.clear()
+              return count
+  changed_files:
+    src/pipeline/executor.py: |
+      from src.pipeline.stage import Stage
+
+      class PipelineExecutor:
+          def __init__(self):
+              self._stages: list[Stage] = []
+
+          def add_stage(self, stage: Stage) -> None:
+              self._stages.append(stage)
+
+          def run(self, data: dict, stop_on_error: bool = False) -> dict:
+              result = data
+              for stage in self._stages:
+                  try:
+                      result = stage.process(result)
+                  except Exception:
+                      if stop_on_error:
+                          break
+              return result
+fragments:
+- id: executor_run
+  selector:
+    path: src/pipeline/executor.py
+    anchor: "def run(self, data: dict, stop_on_error"
+- id: stage_process
+  selector:
+    path: src/pipeline/stage.py
+    anchor: "def process(self, data: dict)"
+- id: no_logging_sink
+  selector:
+    path: src/pipeline/logging_sink.py
+- id: no_logging_class
+  selector:
+    anchor: LoggingSink
+oracle:
+  required:
+  - executor_run
+  - stage_process
+  forbidden:
+  - no_logging_sink
+  - no_logging_class

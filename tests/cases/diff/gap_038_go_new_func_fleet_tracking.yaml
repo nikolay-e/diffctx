@@ -1,0 +1,266 @@
+name: gap_038_go_new_func_fleet_tracking
+tags:
+- change:multi_file
+- change:new_function
+- context:cross_module
+- difficulty:medium
+- distance:2hop
+- lang:go
+repo:
+  initial_files:
+    internal/geo/point.go: |
+      package geo
+
+      import "math"
+
+      type Point struct {
+          Lat float64
+          Lng float64
+      }
+
+      func Distance(a, b Point) float64 {
+          dlat := (b.Lat - a.Lat) * math.Pi / 180
+          dlng := (b.Lng - a.Lng) * math.Pi / 180
+          x := math.Sin(dlat/2)*math.Sin(dlat/2) +
+              math.Cos(a.Lat*math.Pi/180)*math.Cos(b.Lat*math.Pi/180)*
+                  math.Sin(dlng/2)*math.Sin(dlng/2)
+          return 6371 * 2 * math.Atan2(math.Sqrt(x), math.Sqrt(1-x))
+      }
+    internal/fleet/vehicle.go: |
+      package fleet
+
+      import "internal/geo"
+
+      type Vehicle struct {
+          ID       string
+          Position geo.Point
+          Speed    float64
+      }
+
+      func NewVehicle(id string, lat, lng float64) *Vehicle {
+          return &Vehicle{
+              ID:       id,
+              Position: geo.Point{Lat: lat, Lng: lng},
+          }
+      }
+
+      func (v *Vehicle) UpdatePosition(lat, lng float64, speed float64) {
+          v.Position = geo.Point{Lat: lat, Lng: lng}
+          v.Speed = speed
+      }
+    internal/fleet/dispatcher.go: |
+      package fleet
+
+      import "internal/geo"
+
+      type Dispatcher struct {
+          Vehicles []*Vehicle
+      }
+
+      func NewDispatcher() *Dispatcher {
+          return &Dispatcher{}
+      }
+
+      func (d *Dispatcher) Register(v *Vehicle) {
+          d.Vehicles = append(d.Vehicles, v)
+      }
+
+      func (d *Dispatcher) Nearest(target geo.Point) *Vehicle {
+          var best *Vehicle
+          bestDist := 1e18
+          for _, v := range d.Vehicles {
+              dist := geo.Distance(v.Position, target)
+              if dist < bestDist {
+                  bestDist = dist
+                  best = v
+              }
+          }
+          return best
+      }
+    internal/maintenance/schedule.go: |
+      package maintenance
+
+      var GARBAGE_GAP_038_MAINT_A = "schedule_marker"
+      var GARBAGE_GAP_038_INTERVAL_B = 5000
+
+      func NeedsService(odometer int) bool {
+          return odometer%GARBAGE_GAP_038_INTERVAL_B == 0
+      }
+    internal/fuel/tracker.go: |
+      package fuel
+
+      var GARBAGE_GAP_038_FUEL_C = "consumption_marker"
+      var GARBAGE_GAP_038_UNIT_D = "liters"
+
+      func Consumption(distanceKm float64, liters float64) float64 {
+          if distanceKm == 0 {
+              return 0
+          }
+          return liters / distanceKm * 100
+      }
+  changed_files:
+    internal/geo/point.go: |
+      package geo
+
+      import "math"
+
+      type Point struct {
+          Lat float64
+          Lng float64
+      }
+
+      func Distance(a, b Point) float64 {
+          dlat := (b.Lat - a.Lat) * math.Pi / 180
+          dlng := (b.Lng - a.Lng) * math.Pi / 180
+          x := math.Sin(dlat/2)*math.Sin(dlat/2) +
+              math.Cos(a.Lat*math.Pi/180)*math.Cos(b.Lat*math.Pi/180)*
+                  math.Sin(dlng/2)*math.Sin(dlng/2)
+          return 6371 * 2 * math.Atan2(math.Sqrt(x), math.Sqrt(1-x))
+      }
+
+      type Geofence struct {
+          Center Point
+          Radius float64
+      }
+
+      func (g *Geofence) Contains(p Point) bool {
+          return Distance(g.Center, p) <= g.Radius
+      }
+    internal/fleet/vehicle.go: |
+      package fleet
+
+      import "internal/geo"
+
+      type Vehicle struct {
+          ID       string
+          Position geo.Point
+          Speed    float64
+      }
+
+      func NewVehicle(id string, lat, lng float64) *Vehicle {
+          return &Vehicle{
+              ID:       id,
+              Position: geo.Point{Lat: lat, Lng: lng},
+          }
+      }
+
+      func (v *Vehicle) UpdatePosition(lat, lng float64, speed float64) {
+          v.Position = geo.Point{Lat: lat, Lng: lng}
+          v.Speed = speed
+      }
+
+      func (v *Vehicle) InsideGeofence(fence *geo.Geofence) bool {
+          return fence.Contains(v.Position)
+      }
+    internal/fleet/dispatcher.go: |
+      package fleet
+
+      import "internal/geo"
+
+      type Dispatcher struct {
+          Vehicles []*Vehicle
+      }
+
+      func NewDispatcher() *Dispatcher {
+          return &Dispatcher{}
+      }
+
+      func (d *Dispatcher) Register(v *Vehicle) {
+          d.Vehicles = append(d.Vehicles, v)
+      }
+
+      func (d *Dispatcher) Nearest(target geo.Point) *Vehicle {
+          var best *Vehicle
+          bestDist := 1e18
+          for _, v := range d.Vehicles {
+              dist := geo.Distance(v.Position, target)
+              if dist < bestDist {
+                  bestDist = dist
+                  best = v
+              }
+          }
+          return best
+      }
+
+      func (d *Dispatcher) VehiclesInZone(fence *geo.Geofence) []*Vehicle {
+          var result []*Vehicle
+          for _, v := range d.Vehicles {
+              if v.InsideGeofence(fence) {
+                  result = append(result, v)
+              }
+          }
+          return result
+      }
+    internal/maintenance/schedule.go: |
+      package maintenance
+
+      var GARBAGE_GAP_038_MAINT_A = "schedule_marker"
+      var GARBAGE_GAP_038_INTERVAL_B = 5000
+
+      func NeedsService(odometer int) bool {
+          return odometer%GARBAGE_GAP_038_INTERVAL_B == 0
+      }
+    internal/fuel/tracker.go: |
+      package fuel
+
+      var GARBAGE_GAP_038_FUEL_C = "consumption_marker"
+      var GARBAGE_GAP_038_UNIT_D = "liters"
+
+      func Consumption(distanceKm float64, liters float64) float64 {
+          if distanceKm == 0 {
+              return 0
+          }
+          return liters / distanceKm * 100
+      }
+  commit_message: "add geofence support for fleet zone tracking"
+fixtures:
+  auto_garbage: true
+fragments:
+- id: geofence_struct
+  selector:
+    path: internal/geo/point.go
+    anchor: "type Geofence struct"
+- id: geofence_contains
+  selector:
+    path: internal/geo/point.go
+    anchor: "func (g *Geofence) Contains"
+- id: vehicle_inside
+  selector:
+    path: internal/fleet/vehicle.go
+    anchor: "func (v *Vehicle) InsideGeofence"
+- id: dispatcher_zone
+  selector:
+    path: internal/fleet/dispatcher.go
+    anchor: "func (d *Dispatcher) VehiclesInZone"
+- id: no_maintenance
+  selector:
+    path: internal/maintenance/schedule.go
+- id: no_fuel
+  selector:
+    path: internal/fuel/tracker.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_038_MAINT_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GAP_038_INTERVAL_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GAP_038_FUEL_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GAP_038_UNIT_D
+oracle:
+  required:
+  - geofence_struct
+  - geofence_contains
+  - vehicle_inside
+  - dispatcher_zone
+  allowed: []
+  forbidden:
+  - no_maintenance
+  - no_fuel
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

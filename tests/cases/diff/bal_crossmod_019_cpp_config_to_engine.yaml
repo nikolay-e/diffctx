@@ -1,0 +1,240 @@
+name: bal_crossmod_019_cpp_config_to_engine
+tags:
+- lang:cpp
+- change:single_file
+- change:signature
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/config/audio_config.hpp: |
+      #pragma once
+
+      namespace config {
+
+      struct AudioConfig {
+          float master_volume;
+          float music_volume;
+          float sfx_volume;
+          int sample_rate;
+      };
+
+      AudioConfig default_audio_config();
+
+      }
+    src/config/audio_config.cpp: |
+      #include "audio_config.hpp"
+
+      namespace config {
+
+      AudioConfig default_audio_config() {
+          return {1.0f, 0.7f, 0.8f, 44100};
+      }
+
+      }
+    src/audio/mixer.hpp: |
+      #pragma once
+      #include "../config/audio_config.hpp"
+
+      namespace audio {
+
+      class Mixer {
+      public:
+          explicit Mixer(const config::AudioConfig& cfg);
+          void set_master_volume(float vol);
+          float effective_music_volume() const;
+          float effective_sfx_volume() const;
+      private:
+          config::AudioConfig config_;
+      };
+
+      }
+    src/audio/mixer.cpp: |
+      #include "mixer.hpp"
+
+      namespace audio {
+
+      Mixer::Mixer(const config::AudioConfig& cfg) : config_(cfg) {}
+
+      void Mixer::set_master_volume(float vol) {
+          config_.master_volume = vol;
+      }
+
+      float Mixer::effective_music_volume() const {
+          return config_.master_volume * config_.music_volume;
+      }
+
+      float Mixer::effective_sfx_volume() const {
+          return config_.master_volume * config_.sfx_volume;
+      }
+
+      }
+    src/engine/game_engine.hpp: |
+      #pragma once
+      #include "../audio/mixer.hpp"
+
+      namespace engine {
+
+      class GameEngine {
+      public:
+          explicit GameEngine(audio::Mixer& mixer);
+          void initialize();
+      private:
+          audio::Mixer& mixer_;
+      };
+
+      }
+    src/engine/game_engine.cpp: |
+      #include "game_engine.hpp"
+
+      namespace engine {
+
+      GameEngine::GameEngine(audio::Mixer& mixer) : mixer_(mixer) {}
+
+      void GameEngine::initialize() {
+          mixer_.set_master_volume(1.0f);
+      }
+
+      }
+    src/ui/settings_menu.hpp: |
+      #pragma once
+
+      namespace ui {
+
+      class SettingsMenu {
+      public:
+          void render();
+          void handle_input(int key);
+      };
+
+      }
+  changed_files:
+    src/config/audio_config.hpp: |
+      #pragma once
+
+      namespace config {
+
+      struct AudioConfig {
+          float master_volume;
+          float music_volume;
+          float sfx_volume;
+          float voice_volume;
+          int sample_rate;
+      };
+
+      AudioConfig default_audio_config();
+
+      }
+    src/config/audio_config.cpp: |
+      #include "audio_config.hpp"
+
+      namespace config {
+
+      AudioConfig default_audio_config() {
+          return {1.0f, 0.7f, 0.8f, 0.9f, 44100};
+      }
+
+      }
+    src/audio/mixer.hpp: |
+      #pragma once
+      #include "../config/audio_config.hpp"
+
+      namespace audio {
+
+      class Mixer {
+      public:
+          explicit Mixer(const config::AudioConfig& cfg);
+          void set_master_volume(float vol);
+          float effective_music_volume() const;
+          float effective_sfx_volume() const;
+      private:
+          config::AudioConfig config_;
+      };
+
+      }
+    src/audio/mixer.cpp: |
+      #include "mixer.hpp"
+
+      namespace audio {
+
+      Mixer::Mixer(const config::AudioConfig& cfg) : config_(cfg) {}
+
+      void Mixer::set_master_volume(float vol) {
+          config_.master_volume = vol;
+      }
+
+      float Mixer::effective_music_volume() const {
+          return config_.master_volume * config_.music_volume;
+      }
+
+      float Mixer::effective_sfx_volume() const {
+          return config_.master_volume * config_.sfx_volume;
+      }
+
+      }
+    src/engine/game_engine.hpp: |
+      #pragma once
+      #include "../audio/mixer.hpp"
+
+      namespace engine {
+
+      class GameEngine {
+      public:
+          explicit GameEngine(audio::Mixer& mixer);
+          void initialize();
+      private:
+          audio::Mixer& mixer_;
+      };
+
+      }
+    src/engine/game_engine.cpp: |
+      #include "game_engine.hpp"
+
+      namespace engine {
+
+      GameEngine::GameEngine(audio::Mixer& mixer) : mixer_(mixer) {}
+
+      void GameEngine::initialize() {
+          mixer_.set_master_volume(1.0f);
+      }
+
+      }
+    src/ui/settings_menu.hpp: |
+      #pragma once
+
+      namespace ui {
+
+      class SettingsMenu {
+      public:
+          void render();
+          void handle_input(int key);
+      };
+
+      }
+  commit_message: "feat: add voice volume channel to audio config"
+fragments:
+- id: voice_volume_field
+  selector:
+    path: src/config/audio_config.hpp
+    anchor: "float voice_volume"
+- id: mixer_uses_config
+  selector:
+    path: src/audio/mixer.hpp
+    anchor: "config::AudioConfig config_"
+- id: engine_uses_mixer
+  selector:
+    path: src/engine/game_engine.hpp
+    anchor: "audio::Mixer& mixer_"
+- id: no_settings_menu
+  selector:
+    path: src/ui/settings_menu.hpp
+    anchor: "class SettingsMenu"
+oracle:
+  required:
+  - voice_volume_field
+  - mixer_uses_config
+  - engine_uses_mixer
+  allowed: []
+  forbidden:
+  - no_settings_menu

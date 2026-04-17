@@ -1,0 +1,136 @@
+name: gap2_176_perl_multi_file_easy_csv_processor
+tags:
+- change:multi_file
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:perl
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    lib/CsvReader.pm: |
+      package CsvReader;
+      use strict;
+      use warnings;
+
+      sub new {
+          my ($class, $separator) = @_;
+          $separator //= ',';
+          return bless { sep => $separator, rows => [] }, $class;
+      }
+
+      sub parse {
+          my ($self, $text) = @_;
+          for my $line (split /\n/, $text) {
+              push @{$self->{rows}}, [split /\Q$self->{sep}\E/, $line];
+          }
+      }
+
+      sub row_count { return scalar @{$_[0]->{rows}}; }
+
+      1;
+    lib/CsvWriter.pm: |
+      package CsvWriter;
+      use strict;
+      use warnings;
+
+      sub new {
+          my ($class, $separator) = @_;
+          $separator //= ',';
+          return bless { sep => $separator }, $class;
+      }
+
+      sub format_row {
+          my ($self, @fields) = @_;
+          return join($self->{sep}, @fields);
+      }
+
+      1;
+    lib/XmlExporter.pm: |
+      package XmlExporter;
+      use strict;
+      use warnings;
+
+      sub export {
+          my ($data) = @_;
+          return '<root></root>';
+      }
+
+      1;
+  changed_files:
+    lib/CsvReader.pm: |
+      package CsvReader;
+      use strict;
+      use warnings;
+
+      sub new {
+          my ($class, $separator) = @_;
+          $separator //= ',';
+          return bless { sep => $separator, rows => [], headers => [] }, $class;
+      }
+
+      sub parse {
+          my ($self, $text, %opts) = @_;
+          my @lines = split /\n/, $text;
+          if ($opts{has_header} && @lines) {
+              $self->{headers} = [split /\Q$self->{sep}\E/, shift @lines];
+          }
+          for my $line (@lines) {
+              push @{$self->{rows}}, [split /\Q$self->{sep}\E/, $line];
+          }
+      }
+
+      sub headers { return @{$_[0]->{headers}}; }
+      sub row_count { return scalar @{$_[0]->{rows}}; }
+
+      1;
+    lib/CsvWriter.pm: |
+      package CsvWriter;
+      use strict;
+      use warnings;
+
+      sub new {
+          my ($class, $separator) = @_;
+          $separator //= ',';
+          return bless { sep => $separator }, $class;
+      }
+
+      sub format_row {
+          my ($self, @fields) = @_;
+          return join($self->{sep}, map { $self->_quote($_) } @fields);
+      }
+
+      sub _quote {
+          my ($self, $val) = @_;
+          if ($val =~ /[\Q$self->{sep}\E"\n]/) {
+              $val =~ s/"/""/g;
+              return qq("$val");
+          }
+          return $val;
+      }
+
+      1;
+fragments:
+- id: header_parse
+  selector:
+    path: lib/CsvReader.pm
+    anchor: has_header
+- id: headers_method
+  selector:
+    path: lib/CsvReader.pm
+    anchor: sub headers
+- id: quote_method
+  selector:
+    path: lib/CsvWriter.pm
+    anchor: sub _quote
+- id: no_xml
+  selector:
+    path: lib/XmlExporter.pm
+oracle:
+  required:
+  - header_parse
+  - headers_method
+  - quote_method
+  forbidden:
+  - no_xml

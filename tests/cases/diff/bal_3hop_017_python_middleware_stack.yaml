@@ -1,0 +1,156 @@
+name: bal_3hop_017_python_middleware_stack
+tags:
+- lang:python
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    middleware/context.py: |
+      class RequestContext:
+          def __init__(self, path: str, method: str, headers: dict):
+              self.path = path
+              self.method = method
+              self.headers = headers
+              self.metadata: dict = {}
+          def set_meta(self, key: str, value):
+              self.metadata[key] = value
+    middleware/handler.py: |
+      from middleware.context import RequestContext
+      class MiddlewareHandler:
+          def __init__(self, name: str):
+              self.name = name
+          def process(self, ctx: RequestContext) -> RequestContext:
+              ctx.set_meta(f"processed_by_{self.name}", True)
+              return ctx
+    middleware/chain.py: |
+      from middleware.handler import MiddlewareHandler
+      from middleware.context import RequestContext
+      class MiddlewareChain:
+          def __init__(self):
+              self.handlers: list[MiddlewareHandler] = []
+          def add(self, handler: MiddlewareHandler):
+              self.handlers.append(handler)
+          def execute(self, ctx: RequestContext) -> RequestContext:
+              for handler in self.handlers:
+                  ctx = handler.process(ctx)
+              return ctx
+    server/application.py: |
+      from middleware.chain import MiddlewareChain
+      from middleware.handler import MiddlewareHandler
+      from middleware.context import RequestContext
+      class Application:
+          def __init__(self):
+              self.chain = MiddlewareChain()
+          def use(self, name: str):
+              self.chain.add(MiddlewareHandler(name))
+          def handle_request(self, path: str, method: str, headers: dict) -> dict:
+              ctx = RequestContext(path, method, headers)
+              result = self.chain.execute(ctx)
+              return result.metadata
+    utils/response.py: |
+      class Response:
+          def __init__(self, status: int, body: str):
+              self.status = status
+              self.body = body
+          def to_dict(self) -> dict:
+              return {"status": self.status, "body": self.body}
+    config/middleware_config.py: |
+      MIDDLEWARE_ORDER = ["auth", "logging", "cors", "rate_limit"]
+  changed_files:
+    middleware/context.py: |
+      from typing import Optional
+      class RequestContext:
+          def __init__(self, path: str, method: str, headers: dict,
+                       body: Optional[bytes] = None):
+              self.path = path
+              self.method = method
+              self.headers = headers
+              self.body = body
+              self.metadata: dict = {}
+              self.aborted = False
+          def set_meta(self, key: str, value):
+              self.metadata[key] = value
+          def abort(self, reason: str):
+              self.aborted = True
+              self.metadata["abort_reason"] = reason
+    middleware/handler.py: |
+      from middleware.context import RequestContext
+      class MiddlewareHandler:
+          def __init__(self, name: str):
+              self.name = name
+          def process(self, ctx: RequestContext) -> RequestContext:
+              ctx.set_meta(f"processed_by_{self.name}", True)
+              return ctx
+    middleware/chain.py: |
+      from middleware.handler import MiddlewareHandler
+      from middleware.context import RequestContext
+      class MiddlewareChain:
+          def __init__(self):
+              self.handlers: list[MiddlewareHandler] = []
+          def add(self, handler: MiddlewareHandler):
+              self.handlers.append(handler)
+          def execute(self, ctx: RequestContext) -> RequestContext:
+              for handler in self.handlers:
+                  ctx = handler.process(ctx)
+              return ctx
+    server/application.py: |
+      from middleware.chain import MiddlewareChain
+      from middleware.handler import MiddlewareHandler
+      from middleware.context import RequestContext
+      class Application:
+          def __init__(self):
+              self.chain = MiddlewareChain()
+          def use(self, name: str):
+              self.chain.add(MiddlewareHandler(name))
+          def handle_request(self, path: str, method: str, headers: dict) -> dict:
+              ctx = RequestContext(path, method, headers)
+              result = self.chain.execute(ctx)
+              return result.metadata
+    utils/response.py: |
+      class Response:
+          def __init__(self, status: int, body: str):
+              self.status = status
+              self.body = body
+          def to_dict(self) -> dict:
+              return {"status": self.status, "body": self.body}
+    config/middleware_config.py: |
+      MIDDLEWARE_ORDER = ["auth", "logging", "cors", "rate_limit"]
+  commit_message: "feat: add body, abort support to RequestContext"
+fragments:
+- id: context_body_abort
+  selector:
+    path: middleware/context.py
+    anchor: "body: Optional[bytes] = None"
+- id: handler_uses_context
+  selector:
+    path: middleware/handler.py
+    anchor: "from middleware.context import RequestContext"
+- id: chain_uses_handler
+  selector:
+    path: middleware/chain.py
+    anchor: "from middleware.handler import MiddlewareHandler"
+- id: app_uses_chain
+  selector:
+    path: server/application.py
+    anchor: "from middleware.chain import MiddlewareChain"
+- id: no_response
+  selector:
+    path: utils/response.py
+    anchor: "class Response"
+- id: no_middleware_config
+  selector:
+    path: config/middleware_config.py
+    anchor: "MIDDLEWARE_ORDER"
+oracle:
+  required:
+  - context_body_abort
+  - handler_uses_context
+  - chain_uses_handler
+  - app_uses_chain
+  allowed: []
+  forbidden:
+  - no_response
+  - no_middleware_config

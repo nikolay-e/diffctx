@@ -1,0 +1,195 @@
+name: bal3_3hop_007_go_scheduler_queue_worker_task
+tags:
+- lang:go
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    internal/task/task.go: |
+      package task
+
+      type Task struct {
+          ID      string
+          Payload string
+          Status  string
+      }
+
+      func NewTask(id, payload string) *Task {
+          return &Task{ID: id, Payload: payload, Status: "pending"}
+      }
+
+      func (t *Task) MarkDone() {
+          t.Status = "done"
+      }
+    internal/worker/worker.go: |
+      package worker
+
+      import "myapp/internal/task"
+
+      type Worker struct {
+          id string
+      }
+
+      func NewWorker(id string) *Worker {
+          return &Worker{id: id}
+      }
+
+      func (w *Worker) Process(t *task.Task) error {
+          t.MarkDone()
+          return nil
+      }
+    internal/queue/queue.go: |
+      package queue
+
+      import "myapp/internal/worker"
+
+      type Queue struct {
+          workers []*worker.Worker
+          pending []string
+      }
+
+      func NewQueue(workers []*worker.Worker) *Queue {
+          return &Queue{workers: workers}
+      }
+
+      func (q *Queue) Enqueue(taskID string) {
+          q.pending = append(q.pending, taskID)
+      }
+
+      func (q *Queue) Size() int {
+          return len(q.pending)
+      }
+    internal/scheduler/scheduler.go: |
+      package scheduler
+
+      import "myapp/internal/queue"
+
+      type Scheduler struct {
+          queue    *queue.Queue
+          interval int
+      }
+
+      func NewScheduler(q *queue.Queue, interval int) *Scheduler {
+          return &Scheduler{queue: q, interval: interval}
+      }
+
+      func (s *Scheduler) Schedule(taskID string) {
+          s.queue.Enqueue(taskID)
+      }
+
+      func (s *Scheduler) Pending() int {
+          return s.queue.Size()
+      }
+    internal/config/env.go: |
+      package config
+
+      var GARBAGE_BAL3_007_ENV_MARKER_A = "env"
+      var GARBAGE_BAL3_007_PORT_MARKER_B = 8080
+
+      func GetEnv(key string) string {
+          return ""
+      }
+    internal/config/flags.go: |
+      package config
+
+      var GARBAGE_BAL3_007_FLAG_MARKER_C = "flags"
+      var GARBAGE_BAL3_007_VERBOSE_MARKER_D = false
+
+      func ParseFlags() {}
+  changed_files:
+    internal/task/task.go: |
+      package task
+
+      type Priority int
+
+      const (
+          Low    Priority = 0
+          Medium Priority = 1
+          High   Priority = 2
+      )
+
+      type Task struct {
+          ID       string
+          Payload  string
+          Status   string
+          Priority Priority
+      }
+
+      func NewTask(id, payload string, priority Priority) *Task {
+          return &Task{ID: id, Payload: payload, Status: "pending", Priority: priority}
+      }
+
+      func (t *Task) MarkDone() {
+          t.Status = "done"
+      }
+
+      func (t *Task) IsHighPriority() bool {
+          return t.Priority == High
+      }
+  commit_message: "Add priority levels to task system"
+fragments:
+- id: task_priority_type
+  selector:
+    path: internal/task/task.go
+    anchor: "type Priority int"
+- id: task_priority_field
+  selector:
+    path: internal/task/task.go
+    anchor: "Priority Priority"
+- id: task_new_sig
+  selector:
+    path: internal/task/task.go
+    anchor: "func NewTask(id, payload string, priority Priority)"
+- id: task_is_high
+  selector:
+    path: internal/task/task.go
+    anchor: "func (t *Task) IsHighPriority"
+- id: worker_process
+  selector:
+    path: internal/worker/worker.go
+    anchor: "func (w *Worker) Process"
+- id: queue_enqueue
+  selector:
+    path: internal/queue/queue.go
+    anchor: "func (q *Queue) Enqueue"
+- id: scheduler_schedule
+  selector:
+    path: internal/scheduler/scheduler.go
+    anchor: "func (s *Scheduler) Schedule"
+- id: no_env
+  selector:
+    path: internal/config/env.go
+- id: no_flags
+  selector:
+    path: internal/config/flags.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_007_ENV_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_007_PORT_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_007_FLAG_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_007_VERBOSE_MARKER_D
+oracle:
+  required:
+  - task_priority_type
+  - task_priority_field
+  - task_new_sig
+  - task_is_high
+  - worker_process
+  - queue_enqueue
+  - scheduler_schedule
+  allowed: []
+  forbidden:
+  - no_env
+  - no_flags
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

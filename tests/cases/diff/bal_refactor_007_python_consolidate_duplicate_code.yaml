@@ -1,0 +1,142 @@
+name: bal_refactor_007_python_consolidate_duplicate_code
+tags:
+- lang:kotlin
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:easy
+repo:
+  initial_files:
+    util/StringUtil.kt: |
+      package util
+
+      object StringUtil {
+          // BUG: does not handle null-equivalent blank strings
+          fun normalize(input: String): String {
+              return input.trim().lowercase()
+          }
+      }
+    domain/UserProfile.kt: |
+      package domain
+
+      import util.StringUtil
+
+      data class UserProfile(val rawName: String) {
+          val name: String get() = StringUtil.normalize(rawName)
+      }
+    service/ProfileService.kt: |
+      package service
+
+      import domain.UserProfile
+
+      class ProfileService {
+          fun buildProfile(rawName: String): UserProfile {
+              return UserProfile(rawName)
+          }
+      }
+    api/ProfileController.kt: |
+      package api
+
+      import service.ProfileService
+
+      class ProfileController(private val svc: ProfileService) {
+          fun handleCreate(rawName: String): String {
+              val profile = svc.buildProfile(rawName)
+              return profile.name
+          }
+      }
+    garbage/Mailer.kt: |
+      // GARBAGE_KREF_A = "mailer_marker"
+      class Mailer { fun send(to: String) {} }
+    garbage/Logger.kt: |
+      // GARBAGE_KREF_B = "logger_marker"
+      object Logger { fun log(msg: String) {} }
+    garbage/Config.kt: |
+      // GARBAGE_KREF_C = "config_marker"
+      data class Config(val host: String)
+  changed_files:
+    util/StringUtil.kt: |
+      package util
+
+      object StringUtil {
+          fun normalize(input: String): String {
+              if (input.isBlank()) return ""
+              return input.trim().lowercase()
+          }
+      }
+    domain/UserProfile.kt: |
+      package domain
+
+      import util.StringUtil
+
+      data class UserProfile(val rawName: String) {
+          val name: String get() = StringUtil.normalize(rawName)
+      }
+    service/ProfileService.kt: |
+      package service
+
+      import domain.UserProfile
+
+      class ProfileService {
+          fun buildProfile(rawName: String): UserProfile {
+              return UserProfile(rawName)
+          }
+      }
+    api/ProfileController.kt: |
+      package api
+
+      import service.ProfileService
+
+      class ProfileController(private val svc: ProfileService) {
+          fun handleCreate(rawName: String): String {
+              val profile = svc.buildProfile(rawName)
+              return profile.name
+          }
+      }
+    garbage/Mailer.kt: |
+      // GARBAGE_KREF_A = "mailer_marker"
+      class Mailer { fun send(to: String) {} }
+    garbage/Logger.kt: |
+      // GARBAGE_KREF_B = "logger_marker"
+      object Logger { fun log(msg: String) {} }
+    garbage/Config.kt: |
+      // GARBAGE_KREF_C = "config_marker"
+      data class Config(val host: String)
+  commit_message: "fix: handle blank strings in StringUtil.normalize"
+fragments:
+- id: normalize_blank_check
+  selector:
+    anchor: "if (input.isBlank()) return \"\""
+- id: string_util_obj
+  selector:
+    anchor: "object StringUtil"
+- id: user_profile_imports_util
+  selector:
+    anchor: "import util.StringUtil"
+- id: profile_service_imports_domain
+  selector:
+    anchor: "import domain.UserProfile"
+- id: controller_imports_service
+  selector:
+    anchor: "import service.ProfileService"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_KREF_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_KREF_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_KREF_C
+oracle:
+  required:
+  - normalize_blank_check
+  - string_util_obj
+  - user_profile_imports_util
+  allowed:
+  - profile_service_imports_domain
+  - controller_imports_service
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

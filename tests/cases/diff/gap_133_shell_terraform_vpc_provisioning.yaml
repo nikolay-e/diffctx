@@ -1,0 +1,187 @@
+name: gap_133_shell_terraform_vpc_provisioning
+tags:
+- lang:shell
+- lang:terraform
+- change:multi_file
+- context:same_file
+- difficulty:medium
+- distance:0hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    infra/modules/vpc/main.tf: |
+      resource "aws_vpc" "main" {
+        cidr_block           = var.vpc_cidr
+        enable_dns_support   = true
+        enable_dns_hostnames = true
+
+        tags = {
+          Name        = "${var.environment}-vpc"
+          Environment = var.environment
+        }
+      }
+
+      resource "aws_subnet" "public" {
+        count             = length(var.public_subnet_cidrs)
+        vpc_id            = aws_vpc.main.id
+        cidr_block        = var.public_subnet_cidrs[count.index]
+        availability_zone = var.availability_zones[count.index]
+
+        tags = {
+          Name = "${var.environment}-public-${count.index}"
+        }
+      }
+
+      resource "aws_internet_gateway" "main" {
+        vpc_id = aws_vpc.main.id
+
+        tags = {
+          Name = "${var.environment}-igw"
+        }
+      }
+    infra/modules/vpc/variables.tf: |
+      variable "vpc_cidr" {
+        type    = string
+        default = "10.0.0.0/16"
+      }
+
+      variable "environment" {
+        type = string
+      }
+
+      variable "public_subnet_cidrs" {
+        type    = list(string)
+        default = ["10.0.1.0/24", "10.0.2.0/24"]
+      }
+
+      variable "availability_zones" {
+        type    = list(string)
+        default = ["us-east-1a", "us-east-1b"]
+      }
+    scripts/deploy-vpc.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      ENVIRONMENT="${1:?Usage: deploy-vpc.sh <environment>}"
+      TF_DIR="infra/modules/vpc"
+
+      terraform -chdir="$TF_DIR" init -backend-config="key=${ENVIRONMENT}/vpc.tfstate"
+      terraform -chdir="$TF_DIR" plan -var="environment=$ENVIRONMENT" -out=tfplan
+      terraform -chdir="$TF_DIR" apply tfplan
+
+      VPC_ID=$(terraform -chdir="$TF_DIR" output -raw vpc_id)
+      echo "Deployed VPC: $VPC_ID"
+    infra/modules/rds/main.tf: |
+      resource "aws_db_instance" "primary" {
+        allocated_storage    = var.storage_gb
+        engine               = "postgres"
+        engine_version       = "15.4"
+        instance_class       = var.instance_class
+        db_name              = var.db_name
+        username             = var.master_username
+        password             = var.master_password
+        skip_final_snapshot  = true
+
+        tags = {
+          Name = "${var.environment}-rds"
+        }
+      }
+  changed_files:
+    infra/modules/vpc/main.tf: |
+      resource "aws_vpc" "main" {
+        cidr_block           = var.vpc_cidr
+        enable_dns_support   = true
+        enable_dns_hostnames = true
+
+        tags = {
+          Name        = "${var.environment}-vpc"
+          Environment = var.environment
+        }
+      }
+
+      resource "aws_subnet" "public" {
+        count             = length(var.public_subnet_cidrs)
+        vpc_id            = aws_vpc.main.id
+        cidr_block        = var.public_subnet_cidrs[count.index]
+        availability_zone = var.availability_zones[count.index]
+
+        tags = {
+          Name = "${var.environment}-public-${count.index}"
+        }
+      }
+
+      resource "aws_subnet" "private" {
+        count             = length(var.private_subnet_cidrs)
+        vpc_id            = aws_vpc.main.id
+        cidr_block        = var.private_subnet_cidrs[count.index]
+        availability_zone = var.availability_zones[count.index]
+
+        tags = {
+          Name = "${var.environment}-private-${count.index}"
+        }
+      }
+
+      resource "aws_internet_gateway" "main" {
+        vpc_id = aws_vpc.main.id
+
+        tags = {
+          Name = "${var.environment}-igw"
+        }
+      }
+
+      resource "aws_nat_gateway" "main" {
+        allocation_id = aws_eip.nat.id
+        subnet_id     = aws_subnet.public[0].id
+
+        tags = {
+          Name = "${var.environment}-nat"
+        }
+      }
+
+      resource "aws_eip" "nat" {
+        domain = "vpc"
+      }
+    scripts/deploy-vpc.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      ENVIRONMENT="${1:?Usage: deploy-vpc.sh <environment>}"
+      TF_DIR="infra/modules/vpc"
+      PLAN_FILE="/tmp/vpc-${ENVIRONMENT}.tfplan"
+
+      terraform -chdir="$TF_DIR" init -backend-config="key=${ENVIRONMENT}/vpc.tfstate"
+      terraform -chdir="$TF_DIR" plan -var="environment=$ENVIRONMENT" -out="$PLAN_FILE"
+      terraform -chdir="$TF_DIR" apply "$PLAN_FILE"
+
+      VPC_ID=$(terraform -chdir="$TF_DIR" output -raw vpc_id)
+      NAT_IP=$(terraform -chdir="$TF_DIR" output -raw nat_gateway_ip)
+      echo "Deployed VPC: $VPC_ID NAT: $NAT_IP"
+      rm -f "$PLAN_FILE"
+fragments:
+- id: private_subnet
+  selector:
+    path: infra/modules/vpc/main.tf
+    anchor: aws_subnet.private
+- id: nat_gateway
+  selector:
+    path: infra/modules/vpc/main.tf
+    anchor: aws_nat_gateway
+- id: deploy_script
+  selector:
+    path: scripts/deploy-vpc.sh
+    anchor: NAT_IP
+- id: no_rds
+  selector:
+    path: infra/modules/rds/main.tf
+- id: no_db_instance
+  selector:
+    anchor: aws_db_instance
+oracle:
+  required:
+  - private_subnet
+  - nat_gateway
+  - deploy_script
+  forbidden:
+  - no_rds
+  - no_db_instance

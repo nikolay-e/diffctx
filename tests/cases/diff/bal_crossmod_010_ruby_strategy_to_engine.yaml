@@ -1,0 +1,144 @@
+name: bal_crossmod_010_ruby_strategy_to_engine
+tags:
+- lang:ruby
+- change:multi_file
+- change:new_function
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    lib/strategies/pricing_strategy.rb: |
+      module Strategies
+        class PricingStrategy
+          def calculate(base_price, quantity)
+            base_price * quantity
+          end
+        end
+      end
+    lib/strategies/discount_strategy.rb: |
+      module Strategies
+        class DiscountStrategy
+          def apply(total, discount_percent)
+            total * (1 - discount_percent / 100.0)
+          end
+        end
+      end
+    lib/engine/checkout_engine.rb: |
+      require_relative '../strategies/pricing_strategy'
+      require_relative '../strategies/discount_strategy'
+      module Engine
+        class CheckoutEngine
+          def initialize
+            @pricing = Strategies::PricingStrategy.new
+            @discount = Strategies::DiscountStrategy.new
+          end
+
+          def compute_total(items, discount_percent)
+            subtotal = items.sum { |i| @pricing.calculate(i[:price], i[:qty]) }
+            @discount.apply(subtotal, discount_percent)
+          end
+        end
+      end
+    lib/reports/sales_report.rb: |
+      module Reports
+        class SalesReport
+          def generate(orders)
+            total = orders.sum { |o| o[:total] }
+            { count: orders.size, total: total }
+          end
+        end
+      end
+    lib/config/tax_config.rb: |
+      module Config
+        class TaxConfig
+          TAX_RATES = { 'US' => 0.08, 'EU' => 0.20, 'UK' => 0.20 }.freeze
+
+          def self.rate_for(region)
+            TAX_RATES.fetch(region, 0.0)
+          end
+        end
+      end
+  changed_files:
+    lib/strategies/pricing_strategy.rb: |
+      module Strategies
+        class PricingStrategy
+          def calculate(base_price, quantity)
+            base_price * quantity
+          end
+
+          def calculate_with_tax(base_price, quantity, tax_rate)
+            subtotal = base_price * quantity
+            subtotal * (1 + tax_rate)
+          end
+        end
+      end
+    lib/strategies/discount_strategy.rb: |
+      module Strategies
+        class DiscountStrategy
+          def apply(total, discount_percent)
+            total * (1 - discount_percent / 100.0)
+          end
+        end
+      end
+    lib/engine/checkout_engine.rb: |
+      require_relative '../strategies/pricing_strategy'
+      require_relative '../strategies/discount_strategy'
+      module Engine
+        class CheckoutEngine
+          def initialize
+            @pricing = Strategies::PricingStrategy.new
+            @discount = Strategies::DiscountStrategy.new
+          end
+
+          def compute_total(items, discount_percent)
+            subtotal = items.sum { |i| @pricing.calculate(i[:price], i[:qty]) }
+            @discount.apply(subtotal, discount_percent)
+          end
+        end
+      end
+    lib/reports/sales_report.rb: |
+      module Reports
+        class SalesReport
+          def generate(orders)
+            total = orders.sum { |o| o[:total] }
+            { count: orders.size, total: total }
+          end
+        end
+      end
+    lib/config/tax_config.rb: |
+      module Config
+        class TaxConfig
+          TAX_RATES = { 'US' => 0.08, 'EU' => 0.20, 'UK' => 0.20 }.freeze
+
+          def self.rate_for(region)
+            TAX_RATES.fetch(region, 0.0)
+          end
+        end
+      end
+  commit_message: "feat: add tax-aware pricing calculation"
+fragments:
+- id: calculate_with_tax
+  selector:
+    path: lib/strategies/pricing_strategy.rb
+    anchor: "def calculate_with_tax"
+- id: engine_uses_pricing
+  selector:
+    path: lib/engine/checkout_engine.rb
+    anchor: "@pricing.calculate"
+- id: tax_rates
+  selector:
+    path: lib/config/tax_config.rb
+    anchor: "TAX_RATES"
+- id: no_sales_report
+  selector:
+    path: lib/reports/sales_report.rb
+    anchor: "def generate"
+oracle:
+  required:
+  - calculate_with_tax
+  - engine_uses_pricing
+  - tax_rates
+  allowed: []
+  forbidden:
+  - no_sales_report

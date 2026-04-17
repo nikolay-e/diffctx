@@ -1,0 +1,166 @@
+name: bal4_3hop_091_scala_akka_event_sourcing
+tags:
+- lang:scala
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/events/DomainEvent.scala: |
+      package events
+
+      sealed trait DomainEvent {
+        def entityId: String
+        def timestamp: Long
+      }
+
+      case class OrderPlaced(entityId: String, timestamp: Long, amount: Double) extends DomainEvent
+      case class OrderCancelled(entityId: String, timestamp: Long, reason: String) extends DomainEvent
+    src/main/scala/aggregate/OrderAggregate.scala: |
+      package aggregate
+
+      import events.{DomainEvent, OrderPlaced, OrderCancelled}
+
+      class OrderAggregate(id: String) {
+        private var total: Double = 0.0
+        private var cancelled: Boolean = false
+
+        def applyEvent(event: DomainEvent): Unit = event match {
+          case OrderPlaced(_, _, amount) => total += amount
+          case OrderCancelled(_, _, _) => cancelled = true
+        }
+
+        def isActive: Boolean = !cancelled
+        def currentTotal: Double = total
+      }
+    src/main/scala/projection/OrderProjection.scala: |
+      package projection
+
+      import aggregate.OrderAggregate
+      import events.DomainEvent
+
+      class OrderProjection {
+        private val aggregates = scala.collection.mutable.Map.empty[String, OrderAggregate]
+
+        def process(event: DomainEvent): Unit = {
+          val agg = aggregates.getOrElseUpdate(event.entityId, new OrderAggregate(event.entityId))
+          agg.applyEvent(event)
+        }
+
+        def activeOrders: Seq[String] = aggregates.filter(_._2.isActive).keys.toSeq
+      }
+    src/main/scala/api/OrderQueryService.scala: |
+      package api
+
+      import projection.OrderProjection
+      import events.DomainEvent
+
+      class OrderQueryService(projection: OrderProjection) {
+        def listActive: Seq[String] = projection.activeOrders
+
+        def handleEvent(event: DomainEvent): Unit = {
+          projection.process(event)
+        }
+      }
+    src/main/scala/util/JsonCodec.scala: |
+      package util
+
+      object JsonCodec {
+        val GARBAGE_091_CODEC_A = "json-codec"
+        val GARBAGE_091_CODEC_B = "binary-codec"
+
+        def encode(value: Any): String = value.toString
+        def decode(raw: String): Any = raw
+      }
+    src/main/scala/util/MetricsCollector.scala: |
+      package util
+
+      object MetricsCollector {
+        val GARBAGE_091_METRIC_C = "counter"
+        val GARBAGE_091_METRIC_D = "histogram"
+
+        def record(name: String, value: Double): Unit = ()
+      }
+    src/main/scala/util/RetryPolicy.scala: |
+      package util
+
+      object RetryPolicy {
+        val GARBAGE_091_RETRY_E = "exponential"
+
+        def withRetries[T](attempts: Int)(block: => T): T = block
+      }
+    src/main/scala/util/Scheduler.scala: |
+      package util
+
+      object Scheduler {
+        val GARBAGE_091_SCHED_F = "cron"
+
+        def scheduleOnce(delayMs: Long)(task: => Unit): Unit = task
+      }
+  changed_files:
+    src/main/scala/events/DomainEvent.scala: |
+      package events
+
+      sealed trait DomainEvent {
+        def entityId: String
+        def timestamp: Long
+      }
+
+      case class OrderPlaced(entityId: String, timestamp: Long, amount: Double) extends DomainEvent
+      case class OrderCancelled(entityId: String, timestamp: Long, reason: String) extends DomainEvent
+      case class OrderRefunded(entityId: String, timestamp: Long, refundAmount: Double) extends DomainEvent
+  commit_message: "feat: add OrderRefunded event to domain model"
+fragments:
+- id: domain_event_refund
+  selector:
+    path: src/main/scala/events/DomainEvent.scala
+    anchor: "OrderRefunded"
+- id: aggregate_apply
+  selector:
+    path: src/main/scala/aggregate/OrderAggregate.scala
+    anchor: "import events."
+- id: projection_process
+  selector:
+    path: src/main/scala/projection/OrderProjection.scala
+    anchor: "import aggregate.OrderAggregate"
+- id: query_service
+  selector:
+    path: src/main/scala/api/OrderQueryService.scala
+    anchor: "import projection.OrderProjection"
+- id: no_json_codec
+  selector:
+    path: src/main/scala/util/JsonCodec.scala
+    anchor: "GARBAGE_091_CODEC_A"
+- id: no_metrics
+  selector:
+    path: src/main/scala/util/MetricsCollector.scala
+    anchor: "GARBAGE_091_METRIC_C"
+- id: no_retry
+  selector:
+    path: src/main/scala/util/RetryPolicy.scala
+    anchor: "GARBAGE_091_RETRY_E"
+- id: no_scheduler
+  selector:
+    path: src/main/scala/util/Scheduler.scala
+    anchor: "GARBAGE_091_SCHED_F"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_091_CODEC_B
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_091_METRIC_D
+oracle:
+  required:
+  - domain_event_refund
+  - aggregate_apply
+  - projection_process
+  - query_service
+  allowed: []
+  forbidden:
+  - no_json_codec
+  - no_metrics
+  - no_retry
+  - no_scheduler
+  - no_global_0
+  - no_global_1

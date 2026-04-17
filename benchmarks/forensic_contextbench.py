@@ -193,7 +193,6 @@ def _print_nontrivial_report(
     nontrivial: set[str],
     nontrivial_hits: set[str],
     nontrivial_missed: set[str],
-    repo_dir: Path,
     fragmented: set[str],
     universe: set[str],
     sel_dump: set[str],
@@ -280,7 +279,7 @@ def evaluate_one(inst: dict, budget: int) -> dict:
     print(f"\n[PIPELINE STAGES]\n  {candidates_info}")
     print(f"  universe: {len(universe)}  fragmented: {len(fragmented)}  selected: {len(sel_dump)}")
 
-    _print_nontrivial_report(nontrivial, nontrivial_hits, nontrivial_missed, repo_dir, fragmented, universe, sel_dump)
+    _print_nontrivial_report(nontrivial, nontrivial_hits, nontrivial_missed, fragmented, universe, sel_dump)
 
     extra = selected - gold_set
     if extra:

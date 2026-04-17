@@ -1,0 +1,200 @@
+name: gap_195_zig_same_file_tokenizer_keywords
+tags:
+- lang:zig
+- change:multi_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+repo:
+  initial_files:
+    src/lexer.zig: |
+      pub const TokenKind = enum {
+          identifier,
+          number,
+          string,
+          plus,
+          minus,
+          star,
+          slash,
+          eof,
+      };
+
+      pub const Token = struct {
+          kind: TokenKind,
+          start: usize,
+          len: usize,
+      };
+
+      pub fn tokenize(source: []const u8) Token {
+          if (source.len == 0) {
+              return Token{ .kind = .eof, .start = 0, .len = 0 };
+          }
+          const ch = source[0];
+          if (ch >= '0' and ch <= '9') {
+              return Token{ .kind = .number, .start = 0, .len = 1 };
+          }
+          if (ch == '+') return Token{ .kind = .plus, .start = 0, .len = 1 };
+          if (ch == '-') return Token{ .kind = .minus, .start = 0, .len = 1 };
+          if (ch == '*') return Token{ .kind = .star, .start = 0, .len = 1 };
+          if (ch == '/') return Token{ .kind = .slash, .start = 0, .len = 1 };
+          return Token{ .kind = .identifier, .start = 0, .len = 1 };
+      }
+    src/parser.zig: |
+      const lex = @import("lexer.zig");
+
+      pub const Expr = struct {
+          op: lex.TokenKind,
+          left: ?*Expr,
+          right: ?*Expr,
+      };
+
+      pub fn parseExpression(source: []const u8) Expr {
+          const tok = lex.tokenize(source);
+          return Expr{ .op = tok.kind, .left = null, .right = null };
+      }
+    src/formatter.zig: |
+      const TRAP_GAP_195_FMT_MARKER_A: []const u8 = "formatter_noise";
+      const TRAP_GAP_195_FMT_FLAG_B: bool = true;
+
+      pub fn formatOutput(data: []const u8) []const u8 {
+          return data;
+      }
+
+      pub fn indent(level: u32) []const u8 {
+          _ = level;
+          return "  ";
+      }
+    src/diagnostic.zig: |
+      const TRAP_GAP_195_DIAG_MARKER_C: []const u8 = "diagnostic_noise";
+      const TRAP_GAP_195_DIAG_FLAG_D: u32 = 0;
+
+      pub fn reportError(line: u32, col: u32, msg: []const u8) void {
+          _ = line;
+          _ = col;
+          _ = msg;
+      }
+  changed_files:
+    src/lexer.zig: |
+      pub const TokenKind = enum {
+          identifier,
+          number,
+          string,
+          plus,
+          minus,
+          star,
+          slash,
+          lparen,
+          rparen,
+          eof,
+      };
+
+      pub const Token = struct {
+          kind: TokenKind,
+          start: usize,
+          len: usize,
+      };
+
+      pub fn tokenize(source: []const u8) Token {
+          if (source.len == 0) {
+              return Token{ .kind = .eof, .start = 0, .len = 0 };
+          }
+          const ch = source[0];
+          if (ch >= '0' and ch <= '9') {
+              return Token{ .kind = .number, .start = 0, .len = 1 };
+          }
+          if (ch == '+') return Token{ .kind = .plus, .start = 0, .len = 1 };
+          if (ch == '-') return Token{ .kind = .minus, .start = 0, .len = 1 };
+          if (ch == '*') return Token{ .kind = .star, .start = 0, .len = 1 };
+          if (ch == '/') return Token{ .kind = .slash, .start = 0, .len = 1 };
+          if (ch == '(') return Token{ .kind = .lparen, .start = 0, .len = 1 };
+          if (ch == ')') return Token{ .kind = .rparen, .start = 0, .len = 1 };
+          return Token{ .kind = .identifier, .start = 0, .len = 1 };
+      }
+    src/parser.zig: |
+      const lex = @import("lexer.zig");
+
+      pub const Expr = struct {
+          op: lex.TokenKind,
+          left: ?*Expr,
+          right: ?*Expr,
+      };
+
+      pub fn parseExpression(source: []const u8) Expr {
+          const tok = lex.tokenize(source);
+          return Expr{ .op = tok.kind, .left = null, .right = null };
+      }
+
+      pub fn parseGrouped(source: []const u8) Expr {
+          const tok = lex.tokenize(source);
+          if (tok.kind == .lparen) {
+              return parseExpression(source[1..]);
+          }
+          return Expr{ .op = tok.kind, .left = null, .right = null };
+      }
+    src/formatter.zig: |
+      const TRAP_GAP_195_FMT_MARKER_A: []const u8 = "formatter_noise";
+      const TRAP_GAP_195_FMT_FLAG_B: bool = true;
+
+      pub fn formatOutput(data: []const u8) []const u8 {
+          return data;
+      }
+
+      pub fn indent(level: u32) []const u8 {
+          _ = level;
+          return "  ";
+      }
+    src/diagnostic.zig: |
+      const TRAP_GAP_195_DIAG_MARKER_C: []const u8 = "diagnostic_noise";
+      const TRAP_GAP_195_DIAG_FLAG_D: u32 = 0;
+
+      pub fn reportError(line: u32, col: u32, msg: []const u8) void {
+          _ = line;
+          _ = col;
+          _ = msg;
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: lexer_lparen
+  selector:
+    path: src/lexer.zig
+    anchor: lparen
+- id: lexer_rparen
+  selector:
+    path: src/lexer.zig
+    anchor: rparen
+- id: parser_grouped
+  selector:
+    path: src/parser.zig
+    anchor: "pub fn parseGrouped"
+- id: no_formatter
+  selector:
+    path: src/formatter.zig
+- id: no_diagnostic
+  selector:
+    path: src/diagnostic.zig
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP_195_FMT_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP_195_FMT_FLAG_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP_195_DIAG_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP_195_DIAG_FLAG_D
+oracle:
+  required:
+  - lexer_lparen
+  - parser_grouped
+  allowed: []
+  forbidden:
+  - no_formatter
+  - no_diagnostic
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

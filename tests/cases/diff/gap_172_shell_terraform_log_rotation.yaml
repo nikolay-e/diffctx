@@ -1,0 +1,91 @@
+name: gap_172_shell_terraform_log_rotation
+tags:
+- change:config
+- change:single_file
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:shell
+- lang:terraform
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    scripts/rotate-logs.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      LOG_DIR="/var/log/warehouse"
+      MAX_SIZE_MB=100
+      ARCHIVE_DIR="${LOG_DIR}/archive"
+
+      mkdir -p "$ARCHIVE_DIR"
+
+      for logfile in "${LOG_DIR}"/*.log; do
+        SIZE_MB=$(du -m "$logfile" | cut -f1)
+        if [ "$SIZE_MB" -gt "$MAX_SIZE_MB" ]; then
+          BASENAME=$(basename "$logfile")
+          gzip -c "$logfile" > "${ARCHIVE_DIR}/${BASENAME}.$(date +%s).gz"
+          truncate -s 0 "$logfile"
+        fi
+      done
+    scripts/cloudwatch.tf: |
+      resource "aws_cloudwatch_log_group" "warehouse" {
+        name              = "/warehouse/app"
+        retention_in_days = 90
+      }
+
+      resource "aws_cloudwatch_log_stream" "main" {
+        name           = "app-stream"
+        log_group_name = aws_cloudwatch_log_group.warehouse.name
+      }
+    scripts/health-check.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health)
+      if [ "$HTTP_CODE" -ne 200 ]; then
+        echo "Health check failed: $HTTP_CODE"
+        exit 1
+      fi
+  changed_files:
+    scripts/rotate-logs.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      LOG_DIR="/var/log/warehouse"
+      MAX_SIZE_MB=50
+      ARCHIVE_DIR="${LOG_DIR}/archive"
+
+      mkdir -p "$ARCHIVE_DIR"
+
+      for logfile in "${LOG_DIR}"/*.log; do
+        SIZE_MB=$(du -m "$logfile" | cut -f1)
+        if [ "$SIZE_MB" -gt "$MAX_SIZE_MB" ]; then
+          BASENAME=$(basename "$logfile")
+          gzip -c "$logfile" > "${ARCHIVE_DIR}/${BASENAME}.$(date +%s).gz"
+          truncate -s 0 "$logfile"
+        fi
+      done
+fragments:
+- id: max_size
+  selector:
+    path: scripts/rotate-logs.sh
+    anchor: MAX_SIZE_MB=50
+- id: gzip_archive
+  selector:
+    path: scripts/rotate-logs.sh
+    anchor: gzip -c
+- id: no_cloudwatch
+  selector:
+    path: scripts/cloudwatch.tf
+- id: no_health
+  selector:
+    path: scripts/health-check.sh
+oracle:
+  required:
+  - max_size
+  - gzip_archive
+  forbidden:
+  - no_cloudwatch
+  - no_health

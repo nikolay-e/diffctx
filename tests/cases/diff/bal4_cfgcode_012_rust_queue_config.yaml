@@ -1,0 +1,194 @@
+name: bal4_cfgcode_012_rust_queue_config
+tags:
+- lang:rust
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    queue.toml: |
+      [queue]
+      broker = "redis://localhost:6379"
+      concurrency = 4
+      retry_max = 3
+      retry_delay_secs = 60
+      dead_letter = "failed_jobs"
+    src/queue/config.rs: |
+      use std::fs;
+      use toml::Value;
+
+      pub struct QueueConfig {
+          pub broker: String,
+          pub concurrency: usize,
+          pub retry_max: u32,
+          pub retry_delay: u64,
+          pub dead_letter: String,
+      }
+
+      impl QueueConfig {
+          pub fn load() -> Self {
+              let raw = fs::read_to_string("queue.toml").unwrap();
+              let cfg: Value = raw.parse().unwrap();
+              let q = &cfg["queue"];
+              QueueConfig {
+                  broker: q["broker"].as_str().unwrap().to_string(),
+                  concurrency: q["concurrency"].as_integer().unwrap() as usize,
+                  retry_max: q["retry_max"].as_integer().unwrap() as u32,
+                  retry_delay: q["retry_delay_secs"].as_integer().unwrap() as u64,
+                  dead_letter: q["dead_letter"].as_str().unwrap().to_string(),
+              }
+          }
+      }
+    src/queue/worker.rs: |
+      use super::config::QueueConfig;
+
+      pub struct Worker {
+          config: QueueConfig,
+      }
+
+      impl Worker {
+          pub fn new() -> Self {
+              Worker { config: QueueConfig::load() }
+          }
+          pub fn concurrency(&self) -> usize {
+              self.config.concurrency
+          }
+          pub fn should_retry(&self, attempt: u32) -> bool {
+              attempt < self.config.retry_max
+          }
+      }
+    src/queue/dispatcher.rs: |
+      use super::config::QueueConfig;
+
+      pub struct Dispatcher {
+          config: QueueConfig,
+      }
+
+      impl Dispatcher {
+          pub fn new() -> Self {
+              Dispatcher { config: QueueConfig::load() }
+          }
+          pub fn broker_url(&self) -> &str {
+              &self.config.broker
+          }
+          pub fn dead_letter_queue(&self) -> &str {
+              &self.config.dead_letter
+          }
+      }
+    src/queue/monitor.rs: |
+      use super::config::QueueConfig;
+
+      pub fn print_queue_stats() {
+          let cfg = QueueConfig::load();
+          println!("Broker: {}", cfg.broker);
+          println!("Concurrency: {}", cfg.concurrency);
+          println!("Dead letter: {}", cfg.dead_letter);
+      }
+    garbage_http.rs: |
+      const GARBAGE_CFGCODE_012_HTTP_A: &str = "hyper";
+      const GARBAGE_CFGCODE_012_HTTP_B: u64 = 30;
+      pub struct HttpClient {
+          pub timeout: u64,
+      }
+      const GARBAGE_CFGCODE_012_HTTP_C: usize = 100;
+      const GARBAGE_CFGCODE_012_HTTP_D: bool = true;
+    garbage_crypto.rs: |
+      const GARBAGE_CFGCODE_012_CRYPT_E: &str = "aes256";
+      const GARBAGE_CFGCODE_012_CRYPT_F: usize = 32;
+      pub fn encrypt(data: &[u8]) -> Vec<u8> {
+          data.to_vec()
+      }
+      const GARBAGE_CFGCODE_012_CRYPT_G: &str = "gcm";
+      const GARBAGE_CFGCODE_012_CRYPT_H: usize = 12;
+    garbage_migration.rs: |
+      const GARBAGE_CFGCODE_012_MIG_I: &str = "v2";
+      const GARBAGE_CFGCODE_012_MIG_J: u32 = 42;
+  changed_files:
+    queue.toml: |
+      [queue]
+      broker = "amqp://mq.prod.internal:5672"
+      concurrency = 16
+      retry_max = 5
+      retry_delay_secs = 120
+      dead_letter = "dlq_production"
+      prefetch = 10
+  commit_message: "switch queue to rabbitmq and increase concurrency"
+fragments:
+- id: queue_config
+  selector:
+    path: queue.toml
+    anchor: "amqp://mq.prod.internal"
+- id: config_loader
+  selector:
+    path: src/queue/config.rs
+    anchor: "queue.toml"
+- id: worker
+  selector:
+    path: src/queue/worker.rs
+    anchor: "concurrency"
+- id: dispatcher
+  selector:
+    path: src/queue/dispatcher.rs
+    anchor: "broker_url"
+- id: no_http
+  selector:
+    path: garbage_http.rs
+- id: no_crypto
+  selector:
+    path: garbage_crypto.rs
+- id: no_migration
+  selector:
+    path: garbage_migration.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_012_HTTP_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_012_HTTP_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_012_CRYPT_E
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_012_CRYPT_F
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CFGCODE_012_MIG_I
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CFGCODE_012_MIG_J
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_CFGCODE_012_HTTP_C
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_CFGCODE_012_HTTP_D
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_CFGCODE_012_CRYPT_G
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_CFGCODE_012_CRYPT_H
+oracle:
+  required:
+  - queue_config
+  - config_loader
+  - worker
+  - dispatcher
+  allowed: []
+  forbidden:
+  - no_http
+  - no_crypto
+  - no_migration
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

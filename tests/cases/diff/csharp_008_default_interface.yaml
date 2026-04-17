@@ -1,130 +1,133 @@
 name: csharp_008_default_interface
+tags:
+- lang:rust
+- change:bug_fix
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
 repo:
   initial_files:
-    Interfaces/IProcessor.cs: |
-      namespace MyApp.Interfaces;
+    src/config/loader.rs: |
+      use std::collections::HashMap;
 
-      public interface IProcessor
-      {
-          void Process(string data);
+      pub struct ConfigLoader {
+          values: HashMap<String, String>,
+      }
 
-          void ProcessBatch(string[] items)
-          {
-              foreach (var item in items)
-              {
-                  Process(item);
-              }
+      impl ConfigLoader {
+          pub fn from_env() -> Self {
+              ConfigLoader { values: HashMap::new() }
+          }
+
+          pub fn get(&self, key: &str) -> Option<&String> {
+              self.values.get(key)
+          }
+
+          pub fn get_or_default<'a>(&'a self, key: &str, default: &'a str) -> &'a str {
+              // BUG: returns default even when key is present but value is empty string
+              self.values.get(key).map(|s| s.as_str()).unwrap_or(default)
           }
       }
-    Services/DataProcessor.cs: |
-      namespace MyApp.Services;
+    src/server/bootstrap.rs: |
+      use crate::config::loader::ConfigLoader;
 
-      public class DataProcessor { }
-    Unrelated/TelemetryCollector.cs: |
-      namespace MyApp.Unrelated;
-
-      public class TelemetryCollector
-      {
-          private const string GARBAGE_CS_008_TELEMETRY_A = "telemetry_collector_marker";
-
-          public void Collect(string metric) => _ = GARBAGE_CS_008_TELEMETRY_A + metric;
+      pub struct ServerConfig {
+          pub host: String,
+          pub port: u16,
       }
-    Unrelated/CircuitBreaker.cs: |
-      namespace MyApp.Unrelated;
 
-      public class CircuitBreaker
-      {
-          public const string GARBAGE_CS_008_CIRCUIT_BREAKER_B = "circuit_breaker_marker";
-
-          public bool IsOpen() => GARBAGE_CS_008_CIRCUIT_BREAKER_B.Length > 0;
+      impl ServerConfig {
+          pub fn from_loader(loader: &ConfigLoader) -> Self {
+              let host = loader.get_or_default("HOST", "localhost").to_string();
+              let port: u16 = loader.get_or_default("PORT", "8080").parse().unwrap_or(8080);
+              ServerConfig { host, port }
+          }
       }
+    garbage/watcher.rs: |
+      // GARBAGE_CONF_A = "watcher_marker"
+      pub fn watch_file(_path: &str) {}
+    garbage/secrets.rs: |
+      // GARBAGE_CONF_B = "secrets_marker"
+      pub fn fetch_secret(_name: &str) -> Option<String> { None }
+    garbage/registry.rs: |
+      // GARBAGE_CONF_C = "registry_marker"
+      pub struct Registry { pub name: String }
   changed_files:
-    Interfaces/IProcessor.cs: |
-      namespace MyApp.Interfaces;
+    src/config/loader.rs: |
+      use std::collections::HashMap;
 
-      public interface IProcessor
-      {
-          void Process(string data);
+      pub struct ConfigLoader {
+          values: HashMap<String, String>,
+      }
 
-          void ProcessBatch(string[] items)
-          {
-              foreach (var item in items)
-              {
-                  Process(item);
+      impl ConfigLoader {
+          pub fn from_env() -> Self {
+              ConfigLoader { values: HashMap::new() }
+          }
+
+          pub fn get(&self, key: &str) -> Option<&String> {
+              self.values.get(key)
+          }
+
+          pub fn get_or_default<'a>(&'a self, key: &str, default: &'a str) -> &'a str {
+              match self.values.get(key) {
+                  Some(v) if !v.is_empty() => v.as_str(),
+                  _ => default,
               }
           }
       }
-    Services/DataProcessor.cs: |
-      using MyApp.Interfaces;
+    src/server/bootstrap.rs: |
+      use crate::config::loader::ConfigLoader;
 
-      namespace MyApp.Services;
+      pub struct ServerConfig {
+          pub host: String,
+          pub port: u16,
+      }
 
-      public class DataProcessor : IProcessor
-      {
-          public void Process(string data)
-          {
-              Console.WriteLine($"Processing: {data}");
-          }
-
-          public void Run(string[] items)
-          {
-              IProcessor processor = this;
-              processor.ProcessBatch(items);
+      impl ServerConfig {
+          pub fn from_loader(loader: &ConfigLoader) -> Self {
+              let host = loader.get_or_default("HOST", "localhost").to_string();
+              let port: u16 = loader.get_or_default("PORT", "8080").parse().unwrap_or(8080);
+              ServerConfig { host, port }
           }
       }
-    Unrelated/TelemetryCollector.cs: |
-      namespace MyApp.Unrelated;
-
-      public class TelemetryCollector
-      {
-          private const string GARBAGE_CS_008_TELEMETRY_A = "telemetry_collector_marker";
-
-          public void Collect(string metric) => _ = GARBAGE_CS_008_TELEMETRY_A + metric;
-      }
-    Unrelated/CircuitBreaker.cs: |
-      namespace MyApp.Unrelated;
-
-      public class CircuitBreaker
-      {
-          public const string GARBAGE_CS_008_CIRCUIT_BREAKER_B = "circuit_breaker_marker";
-
-          public bool IsOpen() => GARBAGE_CS_008_CIRCUIT_BREAKER_B.Length > 0;
-      }
-  commit_message: Update files
+    garbage/watcher.rs: |
+      // GARBAGE_CONF_A = "watcher_marker"
+      pub fn watch_file(_path: &str) {}
+    garbage/secrets.rs: |
+      // GARBAGE_CONF_B = "secrets_marker"
+      pub fn fetch_secret(_name: &str) -> Option<String> { None }
+    garbage/registry.rs: |
+      // GARBAGE_CONF_C = "registry_marker"
+      pub struct Registry { pub name: String }
+  commit_message: "fix: skip empty-string values in get_or_default"
 fragments:
-- id: dataprocessor_file
+- id: get_or_default_fix
   selector:
-    path: Services/DataProcessor.cs
-- id: req_global_0
+    anchor: "Some(v) if !v.is_empty() => v.as_str()"
+- id: get_or_default_func
   selector:
-    anchor: using MyApp.Interfaces;
-- id: req_global_1
+    anchor: "pub fn get_or_default<'a>"
+- id: bootstrap_uses_loader
   selector:
-    anchor: 'public class DataProcessor : IProcessor'
-- id: no_global_0
+    anchor: "use crate::config::loader::ConfigLoader"
+- id: no_garbage_a
   selector:
-    anchor: GARBAGE_CS_008_CIRCUIT_BREAKER_B
-- id: no_global_1
+    anchor: GARBAGE_CONF_A
+- id: no_garbage_b
   selector:
-    anchor: GARBAGE_CS_008_CIRCUIT_BREAKER_B.Length
-- id: no_global_2
+    anchor: GARBAGE_CONF_B
+- id: no_garbage_c
   selector:
-    anchor: GARBAGE_CS_008_TELEMETRY_A
-- id: no_global_3
-  selector:
-    anchor: CircuitBreaker.cs
-- id: no_global_4
-  selector:
-    anchor: TelemetryCollector.cs
+    anchor: GARBAGE_CONF_C
 oracle:
   required:
-  - dataprocessor_file
-  - req_global_0
-  - req_global_1
+  - get_or_default_fix
+  - get_or_default_func
+  - bootstrap_uses_loader
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

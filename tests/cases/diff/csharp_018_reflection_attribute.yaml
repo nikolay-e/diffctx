@@ -1,128 +1,436 @@
 name: csharp_018_reflection_attribute
+tags:
+- lang:rust
+- change:bug_fix
+- change:multi_file
+- context:test_file
+- distance:2hop
+- difficulty:hard
 repo:
   initial_files:
-    Attributes/RouteAttribute.cs: |
-      namespace MyApp.Attributes;
+    src/parser/lexer.rs: |
+      #[derive(Debug, PartialEq, Clone)]
+      pub enum Token {
+          Number(f64),
+          Plus,
+          Minus,
+          Star,
+          Slash,
+          LParen,
+          RParen,
+          Eof,
+      }
 
-      [AttributeUsage(AttributeTargets.Method)]
-      public class RouteAttribute : Attribute
-      {
-          public string Path { get; }
+      pub struct Lexer {
+          input: Vec<char>,
+          pos: usize,
+      }
 
-          public RouteAttribute(string path)
-          {
-              Path = path;
+      impl Lexer {
+          pub fn new(input: &str) -> Self {
+              Lexer { input: input.chars().collect(), pos: 0 }
+          }
+
+          pub fn next_token(&mut self) -> Token {
+              while self.pos < self.input.len() && self.input[self.pos].is_whitespace() {
+                  self.pos += 1;
+              }
+              if self.pos >= self.input.len() {
+                  return Token::Eof;
+              }
+              let ch = self.input[self.pos];
+              self.pos += 1;
+              match ch {
+                  '+' => Token::Plus,
+                  '-' => Token::Minus,
+                  '*' => Token::Star,
+                  '/' => Token::Slash,
+                  '(' => Token::LParen,
+                  ')' => Token::RParen,
+                  c if c.is_ascii_digit() || c == '.' => {
+                      let mut s = c.to_string();
+                      while self.pos < self.input.len()
+                          && (self.input[self.pos].is_ascii_digit() || self.input[self.pos] == '.')
+                      {
+                          s.push(self.input[self.pos]);
+                          self.pos += 1;
+                      }
+                      Token::Number(s.parse().unwrap_or(0.0))
+                  }
+                  _ => Token::Eof,
+              }
           }
       }
-    Services/Router.cs: |
-      namespace MyApp.Services;
+    src/parser/ast.rs: |
+      use crate::parser::lexer::{Lexer, Token};
 
-      public class Router { }
-    Unrelated/BlobStorage.cs: |
-      namespace MyApp.Unrelated;
-
-      public class BlobStorage
-      {
-          private const string GARBAGE_CS_018_BLOB_STORAGE_A = "blob_storage_marker";
-
-          public void Upload(byte[] data) => _ = GARBAGE_CS_018_BLOB_STORAGE_A;
+      #[derive(Debug)]
+      pub enum Expr {
+          Number(f64),
+          BinOp { op: char, left: Box<Expr>, right: Box<Expr> },
       }
-    Unrelated/CdnManager.cs: |
-      namespace MyApp.Unrelated;
 
-      public class CdnManager
-      {
-          public const string GARBAGE_CS_018_CDN_MANAGER_B = "cdn_manager_marker";
-
-          public string GetUrl(string path) => GARBAGE_CS_018_CDN_MANAGER_B + path;
+      pub struct Parser {
+          lexer: Lexer,
+          current: Token,
       }
-  changed_files:
-    Attributes/RouteAttribute.cs: |
-      namespace MyApp.Attributes;
 
-      [AttributeUsage(AttributeTargets.Method)]
-      public class RouteAttribute : Attribute
-      {
-          public string Path { get; }
+      impl Parser {
+          pub fn new(input: &str) -> Self {
+              let mut lexer = Lexer::new(input);
+              let current = lexer.next_token();
+              Parser { lexer, current }
+          }
 
-          public RouteAttribute(string path)
-          {
-              Path = path;
+          pub fn parse_expr(&mut self) -> Expr {
+              self.parse_additive()
+          }
+
+          fn parse_additive(&mut self) -> Expr {
+              let mut left = self.parse_multiplicative();
+              loop {
+                  let op = match &self.current {
+                      Token::Plus => '+',
+                      Token::Minus => '-',
+                      _ => break,
+                  };
+                  self.advance();
+                  let right = self.parse_multiplicative();
+                  left = Expr::BinOp { op, left: Box::new(left), right: Box::new(right) };
+              }
+              left
+          }
+
+          fn parse_multiplicative(&mut self) -> Expr {
+              let mut left = self.parse_primary();
+              loop {
+                  let op = match &self.current {
+                      Token::Star => '*',
+                      Token::Slash => '/',
+                      _ => break,
+                  };
+                  self.advance();
+                  let right = self.parse_primary();
+                  left = Expr::BinOp { op, left: Box::new(left), right: Box::new(right) };
+              }
+              left
+          }
+
+          fn parse_primary(&mut self) -> Expr {
+              match &self.current.clone() {
+                  Token::Number(n) => { let v = *n; self.advance(); Expr::Number(v) }
+                  _ => Expr::Number(0.0),
+              }
+          }
+
+          fn advance(&mut self) {
+              self.current = self.lexer.next_token();
           }
       }
-    Services/Router.cs: |
-      using System.Reflection;
-      using MyApp.Attributes;
+    src/evaluator/eval.rs: |
+      use crate::parser::ast::Expr;
 
-      namespace MyApp.Services;
-
-      public class Router
-      {
-          public Dictionary<string, MethodInfo> BuildRoutes(Type controllerType)
-          {
-              var routes = new Dictionary<string, MethodInfo>();
-
-              foreach (var method in controllerType.GetMethods())
-              {
-                  var attr = method.GetCustomAttribute<RouteAttribute>();
-                  if (attr != null)
-                  {
-                      routes[attr.Path] = method;
+      pub fn evaluate(expr: &Expr) -> f64 {
+          match expr {
+              Expr::Number(n) => *n,
+              Expr::BinOp { op, left, right } => {
+                  let l = evaluate(left);
+                  let r = evaluate(right);
+                  match op {
+                      '+' => l + r,
+                      '-' => l - r,
+                      '*' => l * r,
+                      '/' => l / r,
+                      _ => 0.0,
                   }
               }
-
-              return routes;
           }
       }
-    Unrelated/BlobStorage.cs: |
-      namespace MyApp.Unrelated;
+    tests/eval_integration.rs: |
+      use crate::parser::ast::Parser;
+      use crate::evaluator::eval::evaluate;
 
-      public class BlobStorage
-      {
-          private const string GARBAGE_CS_018_BLOB_STORAGE_A = "blob_storage_marker";
-
-          public void Upload(byte[] data) => _ = GARBAGE_CS_018_BLOB_STORAGE_A;
+      #[test]
+      fn eval_simple_addition() {
+          let mut p = Parser::new("1 + 2");
+          let expr = p.parse_expr();
+          assert_eq!(evaluate(&expr), 3.0);
       }
-    Unrelated/CdnManager.cs: |
-      namespace MyApp.Unrelated;
 
-      public class CdnManager
-      {
-          public const string GARBAGE_CS_018_CDN_MANAGER_B = "cdn_manager_marker";
-
-          public string GetUrl(string path) => GARBAGE_CS_018_CDN_MANAGER_B + path;
+      #[test]
+      fn eval_precedence_mul_over_add() {
+          let mut p = Parser::new("2 + 3 * 4");
+          let expr = p.parse_expr();
+          assert_eq!(evaluate(&expr), 14.0);
       }
-  commit_message: Update files
+
+      #[test]
+      fn eval_division() {
+          let mut p = Parser::new("10 / 4");
+          let expr = p.parse_expr();
+          assert_eq!(evaluate(&expr), 2.5);
+      }
+    src/io/reader.rs: |
+      // GARBAGE_CS18_A = "io_reader_unrelated"
+      pub fn read_line(prompt: &str) -> String {
+          String::new()
+      }
+    src/io/writer.rs: |
+      // GARBAGE_CS18_B = "io_writer_unrelated"
+      pub fn write_output(data: &str) {
+          println!("{}", data);
+      }
+    src/format/pretty.rs: |
+      // GARBAGE_CS18_C = "pretty_format_unrelated"
+      pub fn pretty_print(value: f64) -> String {
+          format!("{:.2}", value)
+      }
+  changed_files:
+    src/parser/lexer.rs: |
+      #[derive(Debug, PartialEq, Clone)]
+      pub enum Token {
+          Number(f64),
+          Plus,
+          Minus,
+          Star,
+          Slash,
+          LParen,
+          RParen,
+          Eof,
+      }
+
+      pub struct Lexer {
+          input: Vec<char>,
+          pos: usize,
+      }
+
+      impl Lexer {
+          pub fn new(input: &str) -> Self {
+              Lexer { input: input.chars().collect(), pos: 0 }
+          }
+
+          pub fn next_token(&mut self) -> Token {
+              while self.pos < self.input.len() && self.input[self.pos].is_whitespace() {
+                  self.pos += 1;
+              }
+              if self.pos >= self.input.len() {
+                  return Token::Eof;
+              }
+              let ch = self.input[self.pos];
+              self.pos += 1;
+              match ch {
+                  '+' => Token::Plus,
+                  '-' => Token::Minus,
+                  '*' => Token::Star,
+                  '/' => Token::Slash,
+                  '(' => Token::LParen,
+                  ')' => Token::RParen,
+                  c if c.is_ascii_digit() || c == '.' => {
+                      let mut s = c.to_string();
+                      while self.pos < self.input.len()
+                          && (self.input[self.pos].is_ascii_digit() || self.input[self.pos] == '.')
+                      {
+                          s.push(self.input[self.pos]);
+                          self.pos += 1;
+                      }
+                      Token::Number(s.parse().unwrap_or(0.0))
+                  }
+                  _ => Token::Eof,
+              }
+          }
+      }
+    src/parser/ast.rs: |
+      use crate::parser::lexer::{Lexer, Token};
+
+      #[derive(Debug)]
+      pub enum Expr {
+          Number(f64),
+          BinOp { op: char, left: Box<Expr>, right: Box<Expr> },
+      }
+
+      pub struct Parser {
+          lexer: Lexer,
+          current: Token,
+      }
+
+      impl Parser {
+          pub fn new(input: &str) -> Self {
+              let mut lexer = Lexer::new(input);
+              let current = lexer.next_token();
+              Parser { lexer, current }
+          }
+
+          pub fn parse_expr(&mut self) -> Expr {
+              self.parse_additive()
+          }
+
+          fn parse_additive(&mut self) -> Expr {
+              let mut left = self.parse_multiplicative();
+              loop {
+                  let op = match &self.current {
+                      Token::Plus => '+',
+                      Token::Minus => '-',
+                      _ => break,
+                  };
+                  self.advance();
+                  let right = self.parse_multiplicative();
+                  left = Expr::BinOp { op, left: Box::new(left), right: Box::new(right) };
+              }
+              left
+          }
+
+          fn parse_multiplicative(&mut self) -> Expr {
+              let mut left = self.parse_primary();
+              loop {
+                  let op = match &self.current {
+                      Token::Star => '*',
+                      Token::Slash => '/',
+                      _ => break,
+                  };
+                  self.advance();
+                  let right = self.parse_primary();
+                  left = Expr::BinOp { op, left: Box::new(left), right: Box::new(right) };
+              }
+              left
+          }
+
+          fn parse_primary(&mut self) -> Expr {
+              match self.current.clone() {
+                  Token::Number(n) => { let v = n; self.advance(); Expr::Number(v) }
+                  Token::LParen => {
+                      self.advance();
+                      let expr = self.parse_expr();
+                      if self.current == Token::RParen {
+                          self.advance();
+                      }
+                      expr
+                  }
+                  _ => Expr::Number(0.0),
+              }
+          }
+
+          fn advance(&mut self) {
+              self.current = self.lexer.next_token();
+          }
+      }
+    src/evaluator/eval.rs: |
+      use crate::parser::ast::Expr;
+
+      pub fn evaluate(expr: &Expr) -> Result<f64, String> {
+          match expr {
+              Expr::Number(n) => Ok(*n),
+              Expr::BinOp { op, left, right } => {
+                  let l = evaluate(left)?;
+                  let r = evaluate(right)?;
+                  match op {
+                      '+' => Ok(l + r),
+                      '-' => Ok(l - r),
+                      '*' => Ok(l * r),
+                      '/' => {
+                          if r == 0.0 {
+                              Err("division by zero".to_string())
+                          } else {
+                              Ok(l / r)
+                          }
+                      }
+                      _ => Err(format!("unknown operator: {}", op)),
+                  }
+              }
+          }
+      }
+    tests/eval_integration.rs: |
+      use crate::parser::ast::Parser;
+      use crate::evaluator::eval::evaluate;
+
+      #[test]
+      fn eval_simple_addition() {
+          let mut p = Parser::new("1 + 2");
+          let expr = p.parse_expr();
+          assert_eq!(evaluate(&expr).unwrap(), 3.0);
+      }
+
+      #[test]
+      fn eval_precedence_mul_over_add() {
+          let mut p = Parser::new("2 + 3 * 4");
+          let expr = p.parse_expr();
+          assert_eq!(evaluate(&expr).unwrap(), 14.0);
+      }
+
+      #[test]
+      fn eval_division() {
+          let mut p = Parser::new("10 / 4");
+          let expr = p.parse_expr();
+          assert_eq!(evaluate(&expr).unwrap(), 2.5);
+      }
+
+      #[test]
+      fn eval_division_by_zero_returns_error() {
+          let mut p = Parser::new("5 / 0");
+          let expr = p.parse_expr();
+          assert!(evaluate(&expr).is_err());
+      }
+
+      #[test]
+      fn eval_parenthesized_expression() {
+          let mut p = Parser::new("(2 + 3) * 4");
+          let expr = p.parse_expr();
+          assert_eq!(evaluate(&expr).unwrap(), 20.0);
+      }
+    src/io/reader.rs: |
+      // GARBAGE_CS18_A = "io_reader_unrelated"
+      pub fn read_line(prompt: &str) -> String {
+          String::new()
+      }
+    src/io/writer.rs: |
+      // GARBAGE_CS18_B = "io_writer_unrelated"
+      pub fn write_output(data: &str) {
+          println!("{}", data);
+      }
+    src/format/pretty.rs: |
+      // GARBAGE_CS18_C = "pretty_format_unrelated"
+      pub fn pretty_print(value: f64) -> String {
+          format!("{:.2}", value)
+      }
+  commit_message: "fix: evaluate returns Result, guard division by zero, support parentheses"
 fragments:
-- id: router_file
+- id: eval_returns_result
   selector:
-    path: Services/Router.cs
-- id: req_global_0
+    path: src/evaluator/eval.rs
+    anchor: "pub fn evaluate"
+- id: division_by_zero_guard
   selector:
-    anchor: using System.Reflection;
-- id: req_global_1
+    path: src/evaluator/eval.rs
+    anchor: "division by zero"
+- id: parse_primary_parens
   selector:
-    anchor: public Dictionary<string, MethodInfo> BuildRoutes(Type controllerType)
-- id: no_global_0
+    path: src/parser/ast.rs
+    anchor: "Token::LParen"
+- id: test_division_by_zero
   selector:
-    anchor: GARBAGE_CS_018_BLOB_STORAGE_A
-- id: no_global_1
+    path: tests/eval_integration.rs
+    anchor: "eval_division_by_zero_returns_error"
+- id: test_parenthesized
   selector:
-    anchor: GARBAGE_CS_018_CDN_MANAGER_B
-- id: no_global_2
+    path: tests/eval_integration.rs
+    anchor: "eval_parenthesized_expression"
+- id: no_garbage_a
   selector:
-    anchor: BlobStorage.cs
-- id: no_global_3
+    anchor: GARBAGE_CS18_A
+- id: no_garbage_b
   selector:
-    anchor: CdnManager.cs
+    anchor: GARBAGE_CS18_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_CS18_C
 oracle:
   required:
-  - router_file
-  - req_global_0
-  - req_global_1
-  allowed: []
+  - eval_returns_result
+  - division_by_zero_guard
+  - test_division_by_zero
+  allowed:
+  - parse_primary_parens
+  - test_parenthesized
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

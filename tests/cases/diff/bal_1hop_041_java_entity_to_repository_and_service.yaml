@@ -1,0 +1,171 @@
+name: bal_1hop_041_java_entity_to_repository_and_service
+tags:
+- lang:java
+- change:signature
+- change:multi_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/hr/entity/Employee.java: |
+      package com.hr.entity;
+      public class Employee {
+          private String id;
+          private String name;
+          private String department;
+          public Employee(String id, String name, String department) {
+              this.id = id;
+              this.name = name;
+              this.department = department;
+          }
+          public String getId() { return id; }
+          public String getName() { return name; }
+          public String getDepartment() { return department; }
+      }
+    src/main/java/com/hr/repo/EmployeeRepository.java: |
+      package com.hr.repo;
+      import com.hr.entity.Employee;
+      import java.util.ArrayList;
+      import java.util.List;
+      import java.util.Optional;
+      public class EmployeeRepository {
+          private final List<Employee> employees = new ArrayList<>();
+          public void save(Employee emp) {
+              employees.add(emp);
+          }
+          public Optional<Employee> findById(String id) {
+              return employees.stream()
+                  .filter(e -> e.getId().equals(id))
+                  .findFirst();
+          }
+          public List<Employee> findByDepartment(String dept) {
+              return employees.stream()
+                  .filter(e -> e.getDepartment().equals(dept))
+                  .collect(java.util.stream.Collectors.toList());
+          }
+      }
+    src/main/java/com/hr/service/EmployeeService.java: |
+      package com.hr.service;
+      import com.hr.entity.Employee;
+      import com.hr.repo.EmployeeRepository;
+      public class EmployeeService {
+          private final EmployeeRepository repo;
+          public EmployeeService(EmployeeRepository repo) { this.repo = repo; }
+          public Employee hire(String id, String name, String department) {
+              Employee emp = new Employee(id, name, department);
+              repo.save(emp);
+              return emp;
+          }
+          public String getEmployeeName(String id) {
+              return repo.findById(id)
+                  .map(Employee::getName)
+                  .orElse("Unknown");
+          }
+      }
+    src/main/java/com/hr/payroll/PayrollCalculator.java: |
+      package com.hr.payroll;
+      public class PayrollCalculator {
+          public double calculateSalary(double basePay, double bonus) {
+              return basePay + bonus;
+          }
+          public double calculateTax(double salary, double rate) {
+              return salary * rate;
+          }
+      }
+    src/main/java/com/hr/email/EmailNotifier.java: |
+      package com.hr.email;
+      public class EmailNotifier {
+          public void sendWelcome(String email, String name) {
+              System.out.println("Welcome " + name + " at " + email);
+          }
+      }
+    src/main/java/com/hr/util/IdGenerator.java: |
+      package com.hr.util;
+      import java.util.concurrent.atomic.AtomicLong;
+      public class IdGenerator {
+          private static final AtomicLong counter = new AtomicLong(0);
+          public static String next() {
+              return "EMP-" + counter.incrementAndGet();
+          }
+      }
+  changed_files:
+    src/main/java/com/hr/entity/Employee.java: |
+      package com.hr.entity;
+      import java.time.LocalDate;
+      public class Employee {
+          private String id;
+          private String name;
+          private String department;
+          private LocalDate hireDate;
+          private boolean active;
+          public Employee(String id, String name, String department) {
+              this.id = id;
+              this.name = name;
+              this.department = department;
+              this.hireDate = LocalDate.now();
+              this.active = true;
+          }
+          public String getId() { return id; }
+          public String getName() { return name; }
+          public String getDepartment() { return department; }
+          public LocalDate getHireDate() { return hireDate; }
+          public boolean isActive() { return active; }
+          public void deactivate() { this.active = false; }
+      }
+  commit_message: "feat: add hireDate and active status to Employee entity"
+fragments:
+- id: entity_hire_date
+  selector:
+    path: Employee.java
+    anchor: "hireDate"
+- id: entity_active
+  selector:
+    path: Employee.java
+    anchor: "isActive"
+- id: entity_deactivate
+  selector:
+    path: Employee.java
+    anchor: "deactivate"
+- id: repo_uses_entity
+  selector:
+    path: EmployeeRepository.java
+    anchor: "Employee"
+- id: repo_find_by_dept
+  selector:
+    path: EmployeeRepository.java
+    anchor: "findByDepartment"
+- id: service_uses_entity
+  selector:
+    path: EmployeeService.java
+    anchor: "new Employee(id, name, department)"
+- id: service_get_name
+  selector:
+    path: EmployeeService.java
+    anchor: "Employee::getName"
+- id: no_payroll
+  selector:
+    path: PayrollCalculator.java
+    anchor: "PayrollCalculator"
+- id: no_email
+  selector:
+    path: EmailNotifier.java
+    anchor: "EmailNotifier"
+- id: no_id_gen
+  selector:
+    path: IdGenerator.java
+    anchor: "IdGenerator"
+oracle:
+  required:
+  - entity_hire_date
+  - entity_active
+  - repo_uses_entity
+  - service_uses_entity
+  allowed:
+  - entity_deactivate
+  - repo_find_by_dept
+  - service_get_name
+  forbidden:
+  - no_payroll
+  - no_email
+  - no_id_gen

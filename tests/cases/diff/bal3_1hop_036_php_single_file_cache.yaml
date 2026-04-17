@@ -1,0 +1,282 @@
+name: bal3_1hop_036_php_single_file_cache
+tags:
+- lang:php
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: php-no-tree-sitter
+repo:
+  initial_files:
+    src/Cache/CacheManager.php: |
+      <?php
+      namespace App\Cache;
+
+      class CacheManager
+      {
+          private array $store = [];
+
+          public function get(string $key): mixed
+          {
+              return $this->store[$key] ?? null;
+          }
+
+          public function set(string $key, mixed $value): void
+          {
+              $this->store[$key] = $value;
+          }
+
+          public function delete(string $key): void
+          {
+              unset($this->store[$key]);
+          }
+      }
+    src/Services/ProductCatalog.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Cache\CacheManager;
+
+      class ProductCatalog
+      {
+          private CacheManager $cache;
+
+          public function __construct(CacheManager $cache)
+          {
+              $this->cache = $cache;
+          }
+
+          public function getProduct(int $id): ?array
+          {
+              $cached = $this->cache->get("product_{$id}");
+              if ($cached !== null) {
+                  return $cached;
+              }
+              $product = ['id' => $id, 'name' => 'Widget'];
+              $this->cache->set("product_{$id}", $product);
+              return $product;
+          }
+      }
+    src/Services/SessionManager.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Cache\CacheManager;
+
+      class SessionManager
+      {
+          private CacheManager $cache;
+
+          public function __construct(CacheManager $cache)
+          {
+              $this->cache = $cache;
+          }
+
+          public function getSession(string $token): ?array
+          {
+              return $this->cache->get("session_{$token}");
+          }
+
+          public function createSession(string $token, array $data): void
+          {
+              $this->cache->set("session_{$token}", $data);
+          }
+
+          public function destroySession(string $token): void
+          {
+              $this->cache->delete("session_{$token}");
+          }
+      }
+    src/Services/RateLimitStore.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Cache\CacheManager;
+
+      class RateLimitStore
+      {
+          private CacheManager $cache;
+
+          public function __construct(CacheManager $cache)
+          {
+              $this->cache = $cache;
+          }
+
+          public function increment(string $ip): int
+          {
+              $count = $this->cache->get("rate_{$ip}") ?? 0;
+              $count++;
+              $this->cache->set("rate_{$ip}", $count);
+              return $count;
+          }
+      }
+    src/Services/FeatureFlagService.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Cache\CacheManager;
+
+      class FeatureFlagService
+      {
+          private CacheManager $cache;
+
+          public function __construct(CacheManager $cache)
+          {
+              $this->cache = $cache;
+          }
+
+          public function isEnabled(string $flag): bool
+          {
+              return (bool)$this->cache->get("flag_{$flag}");
+          }
+
+          public function toggle(string $flag, bool $state): void
+          {
+              $this->cache->set("flag_{$flag}", $state);
+          }
+      }
+    src/Queue/JobRunner.php: |
+      <?php
+      namespace App\Queue;
+
+      GARBAGE_BAL3_036_JOB_A = 'job';
+      GARBAGE_BAL3_036_QUEUE_B = 'default';
+
+      class JobRunner
+      {
+          public function run(string $job): void
+          {
+          }
+      }
+    src/Queue/WorkerPool.php: |
+      <?php
+      namespace App\Queue;
+
+      GARBAGE_BAL3_036_WORKER_C = 'worker';
+      GARBAGE_BAL3_036_POOL_D = 4;
+
+      class WorkerPool
+      {
+          public function spawn(int $count): void
+          {
+          }
+      }
+    src/Queue/Scheduler.php: |
+      <?php
+      namespace App\Queue;
+
+      GARBAGE_BAL3_036_SCHED_E = 'scheduler';
+      GARBAGE_BAL3_036_CRON_F = '* * * * *';
+
+      class Scheduler
+      {
+          public function schedule(string $cron, callable $task): void
+          {
+          }
+      }
+  changed_files:
+    src/Cache/CacheManager.php: |
+      <?php
+      namespace App\Cache;
+
+      class CacheManager
+      {
+          private array $store = [];
+          private array $ttl = [];
+
+          public function get(string $key): mixed
+          {
+              if (isset($this->ttl[$key]) && time() > $this->ttl[$key]) {
+                  $this->delete($key);
+                  return null;
+              }
+              return $this->store[$key] ?? null;
+          }
+
+          public function set(string $key, mixed $value, int $ttlSeconds = 0): void
+          {
+              $this->store[$key] = $value;
+              if ($ttlSeconds > 0) {
+                  $this->ttl[$key] = time() + $ttlSeconds;
+              }
+          }
+
+          public function delete(string $key): void
+          {
+              unset($this->store[$key], $this->ttl[$key]);
+          }
+
+          public function flush(): void
+          {
+              $this->store = [];
+              $this->ttl = [];
+          }
+      }
+  commit_message: "Add TTL support and flush to CacheManager"
+fragments:
+- id: product_catalog
+  selector:
+    path: src/Services/ProductCatalog.php
+    anchor: "use App\\Cache\\CacheManager"
+- id: product_cache_usage
+  selector:
+    path: src/Services/ProductCatalog.php
+    anchor: "cache->set"
+- id: session_manager
+  selector:
+    path: src/Services/SessionManager.php
+    anchor: "use App\\Cache\\CacheManager"
+- id: rate_limit_store
+  selector:
+    path: src/Services/RateLimitStore.php
+    anchor: "use App\\Cache\\CacheManager"
+- id: feature_flag
+  selector:
+    path: src/Services/FeatureFlagService.php
+    anchor: "use App\\Cache\\CacheManager"
+- id: no_job_runner
+  selector:
+    path: src/Queue/JobRunner.php
+- id: no_worker_pool
+  selector:
+    path: src/Queue/WorkerPool.php
+- id: no_scheduler
+  selector:
+    path: src/Queue/Scheduler.php
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_036_JOB_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_036_QUEUE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_036_WORKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_036_POOL_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL3_036_SCHED_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL3_036_CRON_F
+oracle:
+  required:
+  - product_catalog
+  - product_cache_usage
+  - session_manager
+  - rate_limit_store
+  - feature_flag
+  allowed: []
+  forbidden:
+  - no_job_runner
+  - no_worker_pool
+  - no_scheduler
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

@@ -1,0 +1,192 @@
+name: bal2_testctx_045_csharp_address_formatter
+tags:
+- lang:csharp
+- change:signature
+- context:test_file
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/Formatting/AddressFormatter.cs: |
+      using System;
+
+      namespace App.Formatting
+      {
+          public class Address
+          {
+              public string Street { get; set; }
+              public string City { get; set; }
+              public string State { get; set; }
+              public string ZipCode { get; set; }
+          }
+
+          public class AddressFormatter
+          {
+              public string Format(Address address)
+              {
+                  return $"{address.Street}, {address.City}, {address.State} {address.ZipCode}";
+              }
+
+              public bool IsValid(Address address)
+              {
+                  return !string.IsNullOrWhiteSpace(address.Street)
+                      && !string.IsNullOrWhiteSpace(address.City)
+                      && !string.IsNullOrWhiteSpace(address.ZipCode);
+              }
+          }
+      }
+    Tests/AddressFormatterTests.cs: |
+      using Xunit;
+      using App.Formatting;
+
+      namespace App.Tests
+      {
+          public class AddressFormatterTests
+          {
+              private readonly AddressFormatter _formatter = new AddressFormatter();
+
+              [Fact]
+              public void Format_CompleteAddress_ReturnsFormattedString()
+              {
+                  var addr = new Address
+                  {
+                      Street = "123 Main St",
+                      City = "Springfield",
+                      State = "IL",
+                      ZipCode = "62704"
+                  };
+                  Assert.Contains("Springfield", _formatter.Format(addr));
+              }
+
+              [Fact]
+              public void IsValid_MissingStreet_ReturnsFalse()
+              {
+                  var addr = new Address { City = "Test", ZipCode = "12345" };
+                  Assert.False(_formatter.IsValid(addr));
+              }
+
+              [Fact]
+              public void IsValid_CompleteAddress_ReturnsTrue()
+              {
+                  var addr = new Address
+                  {
+                      Street = "1 Elm",
+                      City = "Town",
+                      State = "CA",
+                      ZipCode = "90210"
+                  };
+                  Assert.True(_formatter.IsValid(addr));
+              }
+          }
+      }
+    src/Formatting/PhoneFormatter.cs: |
+      using System;
+
+      namespace App.Formatting
+      {
+          public class PhoneFormatter
+          {
+              public string Format(string phone)
+              {
+                  if (phone.Length == 10)
+                      return $"({phone[..3]}) {phone[3..6]}-{phone[6..]}";
+                  return phone;
+              }
+          }
+      }
+    src/Models/Customer.cs: |
+      using System;
+
+      namespace App.Models
+      {
+          public class Customer
+          {
+              public string Id { get; set; }
+              public string Name { get; set; }
+              public string Email { get; set; }
+          }
+      }
+  changed_files:
+    src/Formatting/AddressFormatter.cs: |
+      using System;
+
+      namespace App.Formatting
+      {
+          public class Address
+          {
+              public string Street { get; set; }
+              public string City { get; set; }
+              public string State { get; set; }
+              public string ZipCode { get; set; }
+              public string Country { get; set; }
+          }
+
+          public class AddressFormatter
+          {
+              public string Format(Address address, bool includeCountry = false)
+              {
+                  var result = $"{address.Street}, {address.City}, {address.State} {address.ZipCode}";
+                  if (includeCountry && !string.IsNullOrWhiteSpace(address.Country))
+                      result += $", {address.Country}";
+                  return result;
+              }
+
+              public bool IsValid(Address address)
+              {
+                  return !string.IsNullOrWhiteSpace(address.Street)
+                      && !string.IsNullOrWhiteSpace(address.City)
+                      && !string.IsNullOrWhiteSpace(address.ZipCode);
+              }
+
+              public string FormatMultiLine(Address address)
+              {
+                  return $"{address.Street}\n{address.City}, {address.State} {address.ZipCode}";
+              }
+          }
+      }
+  commit_message: "feat: add country field, optional country in format, multiline"
+fragments:
+- id: format_with_country
+  selector:
+    path: src/Formatting/AddressFormatter.cs
+    anchor: "bool includeCountry = false"
+- id: country_field
+  selector:
+    path: src/Formatting/AddressFormatter.cs
+    anchor: "public string Country"
+- id: format_multiline
+  selector:
+    path: src/Formatting/AddressFormatter.cs
+    anchor: "public string FormatMultiLine"
+- id: test_imports
+  selector:
+    path: Tests/AddressFormatterTests.cs
+    anchor: "using App.Formatting"
+- id: test_format
+  selector:
+    path: Tests/AddressFormatterTests.cs
+    anchor: "Format_CompleteAddress_ReturnsFormattedString"
+- id: test_valid
+  selector:
+    path: Tests/AddressFormatterTests.cs
+    anchor: "IsValid_CompleteAddress_ReturnsTrue"
+- id: no_phone_formatter
+  selector:
+    path: src/Formatting/PhoneFormatter.cs
+    anchor: "class PhoneFormatter"
+- id: no_customer
+  selector:
+    path: src/Models/Customer.cs
+    anchor: "class Customer"
+oracle:
+  required:
+  - format_with_country
+  - format_multiline
+  - test_imports
+  allowed:
+  - country_field
+  - test_format
+  - test_valid
+  forbidden:
+  - no_phone_formatter
+  - no_customer

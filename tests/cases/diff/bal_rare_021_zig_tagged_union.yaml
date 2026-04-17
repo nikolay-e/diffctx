@@ -1,0 +1,246 @@
+name: bal_rare_021_zig_tagged_union
+tags:
+- lang:zig
+- change:multi_file
+- change:signature
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/value.zig: |
+      const std = @import("std");
+
+      pub const Value = union(enum) {
+          int_val: i64,
+          float_val: f64,
+          bool_val: bool,
+
+          pub fn isNumeric(self: Value) bool {
+              return switch (self) {
+                  .int_val, .float_val => true,
+                  else => false,
+              };
+          }
+
+          pub fn toFloat(self: Value) f64 {
+              return switch (self) {
+                  .int_val => |v| @intToFloat(f64, v),
+                  .float_val => |v| v,
+                  .bool_val => |v| if (v) 1.0 else 0.0,
+              };
+          }
+      };
+    src/eval.zig: |
+      const Value = @import("value.zig").Value;
+
+      pub const Op = enum { add, sub, mul, div };
+
+      pub fn evaluate(op: Op, a: Value, b: Value) Value {
+          const fa = a.toFloat();
+          const fb = b.toFloat();
+          const result = switch (op) {
+              .add => fa + fb,
+              .sub => fa - fb,
+              .mul => fa * fb,
+              .div => if (fb != 0) fa / fb else 0.0,
+          };
+          return Value{ .float_val = result };
+      }
+    src/repl.zig: |
+      const std = @import("std");
+      const Value = @import("value.zig").Value;
+      const eval = @import("eval.zig");
+
+      pub fn run() void {
+          const a = Value{ .int_val = 10 };
+          const b = Value{ .float_val = 3.5 };
+          const result = eval.evaluate(.add, a, b);
+          std.debug.print("Result: {}\n", .{result.toFloat()});
+      }
+    src/main.zig: |
+      const repl = @import("repl.zig");
+
+      pub fn main() !void {
+          repl.run();
+      }
+    garbage_format.zig: |
+      const GARBAGE_RARE_021_INDENT_A: u32 = 4;
+      const GARBAGE_RARE_021_WIDTH_B: u32 = 80;
+
+      fn garbage_format() void {
+          _ = GARBAGE_RARE_021_INDENT_A;
+      }
+
+      const GARBAGE_RARE_021_TABS_C: bool = false;
+    garbage_color.zig: |
+      const GARBAGE_RARE_021_RED_D: u32 = 0xFF0000;
+      const GARBAGE_RARE_021_GREEN_E: u32 = 0x00FF00;
+
+      fn garbage_color() void {
+          _ = GARBAGE_RARE_021_RED_D;
+      }
+
+      const GARBAGE_RARE_021_ALPHA_F: f32 = 1.0;
+  changed_files:
+    src/value.zig: |
+      const std = @import("std");
+
+      pub const Value = union(enum) {
+          int_val: i64,
+          float_val: f64,
+          bool_val: bool,
+          str_val: []const u8,
+
+          pub fn isNumeric(self: Value) bool {
+              return switch (self) {
+                  .int_val, .float_val => true,
+                  else => false,
+              };
+          }
+
+          pub fn isString(self: Value) bool {
+              return self == .str_val;
+          }
+
+          pub fn toFloat(self: Value) f64 {
+              return switch (self) {
+                  .int_val => |v| @intToFloat(f64, v),
+                  .float_val => |v| v,
+                  .bool_val => |v| if (v) 1.0 else 0.0,
+                  .str_val => 0.0,
+              };
+          }
+
+          pub fn format(self: Value, buf: []u8) []const u8 {
+              return switch (self) {
+                  .int_val => |v| std.fmt.bufPrint(buf, "{}", .{v}) catch "?",
+                  .float_val => |v| std.fmt.bufPrint(buf, "{d:.2}", .{v}) catch "?",
+                  .bool_val => |v| if (v) "true" else "false",
+                  .str_val => |v| v,
+              };
+          }
+      };
+    src/eval.zig: |
+      const Value = @import("value.zig").Value;
+
+      pub const Op = enum { add, sub, mul, div, concat };
+
+      pub fn evaluate(op: Op, a: Value, b: Value) Value {
+          if (op == .concat) {
+              return Value{ .str_val = "concatenated" };
+          }
+          const fa = a.toFloat();
+          const fb = b.toFloat();
+          const result = switch (op) {
+              .add => fa + fb,
+              .sub => fa - fb,
+              .mul => fa * fb,
+              .div => if (fb != 0) fa / fb else 0.0,
+              .concat => unreachable,
+          };
+          return Value{ .float_val = result };
+      }
+    src/repl.zig: |
+      const std = @import("std");
+      const Value = @import("value.zig").Value;
+      const eval = @import("eval.zig");
+
+      pub fn run() void {
+          const a = Value{ .int_val = 10 };
+          const b = Value{ .float_val = 3.5 };
+          const result = eval.evaluate(.add, a, b);
+          var buf: [64]u8 = undefined;
+          std.debug.print("Result: {s}\n", .{result.format(&buf)});
+      }
+    src/main.zig: |
+      const repl = @import("repl.zig");
+
+      pub fn main() !void {
+          repl.run();
+      }
+    garbage_format.zig: |
+      const GARBAGE_RARE_021_INDENT_A: u32 = 4;
+      const GARBAGE_RARE_021_WIDTH_B: u32 = 80;
+
+      fn garbage_format() void {
+          _ = GARBAGE_RARE_021_INDENT_A;
+      }
+
+      const GARBAGE_RARE_021_TABS_C: bool = false;
+    garbage_color.zig: |
+      const GARBAGE_RARE_021_RED_D: u32 = 0xFF0000;
+      const GARBAGE_RARE_021_GREEN_E: u32 = 0x00FF00;
+
+      fn garbage_color() void {
+          _ = GARBAGE_RARE_021_RED_D;
+      }
+
+      const GARBAGE_RARE_021_ALPHA_F: f32 = 1.0;
+  commit_message: "feat: add string variant and format method to Value union"
+fragments:
+- id: str_val_variant
+  selector:
+    path: src/value.zig
+    anchor: "str_val: []const u8"
+- id: is_string_fn
+  selector:
+    path: src/value.zig
+    anchor: "pub fn isString"
+- id: format_fn
+  selector:
+    path: src/value.zig
+    anchor: "pub fn format(self: Value, buf: []u8)"
+- id: eval_concat_op
+  selector:
+    path: src/eval.zig
+    anchor: "concat"
+- id: repl_uses_format
+  selector:
+    path: src/repl.zig
+    anchor: "result.format(&buf)"
+- id: no_main
+  selector:
+    path: src/main.zig
+- id: no_garbage_format
+  selector:
+    path: garbage_format.zig
+- id: no_garbage_color
+  selector:
+    path: garbage_color.zig
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_RARE_021_INDENT_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_RARE_021_WIDTH_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_RARE_021_TABS_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_RARE_021_RED_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_RARE_021_GREEN_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_RARE_021_ALPHA_F
+oracle:
+  required:
+  - str_val_variant
+  - is_string_fn
+  - format_fn
+  - eval_concat_op
+  - repl_uses_format
+  allowed: []
+  forbidden:
+  - no_main
+  - no_garbage_format
+  - no_garbage_color
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

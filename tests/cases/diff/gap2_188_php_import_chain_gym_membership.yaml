@@ -1,0 +1,184 @@
+name: gap2_188_php_import_chain_gym_membership
+tags:
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:2hop
+- lang:php
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/Gym/MembershipManager.php: |
+      <?php
+
+      namespace App\Gym;
+
+      use App\Gym\Plan\PlanRegistry;
+
+      class MembershipManager
+      {
+          private PlanRegistry $plans;
+          private array $members = [];
+
+          public function __construct(PlanRegistry $plans)
+          {
+              $this->plans = $plans;
+          }
+
+          public function enroll(string $memberName, string $planId): bool
+          {
+              $plan = $this->plans->find($planId);
+              if ($plan === null) {
+                  return false;
+              }
+              $this->members[$memberName] = $planId;
+              return true;
+          }
+
+          public function activeMemberCount(): int
+          {
+              return count($this->members);
+          }
+      }
+    src/Gym/Plan/PlanRegistry.php: |
+      <?php
+
+      namespace App\Gym\Plan;
+
+      use App\Gym\Plan\PriceTier;
+
+      class PlanRegistry
+      {
+          private array $plans = [];
+
+          public function register(string $id, PriceTier $tier): void
+          {
+              $this->plans[$id] = $tier;
+          }
+
+          public function find(string $id): ?PriceTier
+          {
+              return $this->plans[$id] ?? null;
+          }
+      }
+    src/Gym/Plan/PriceTier.php: |
+      <?php
+
+      namespace App\Gym\Plan;
+
+      class PriceTier
+      {
+          private string $label;
+          private float $monthlyRate;
+
+          public function __construct(string $label, float $monthlyRate)
+          {
+              $this->label = $label;
+              $this->monthlyRate = $monthlyRate;
+          }
+
+          public function label(): string
+          {
+              return $this->label;
+          }
+
+          public function rate(): float
+          {
+              return $this->monthlyRate;
+          }
+      }
+    src/Equipment/LockerAssigner.php: |
+      <?php
+
+      namespace App\Equipment;
+
+      class LockerAssigner
+      {
+          private int $totalLockers;
+
+          public function __construct(int $totalLockers)
+          {
+              $this->totalLockers = $totalLockers;
+          }
+
+          public function assign(string $memberId): int
+          {
+              return crc32($memberId) % $this->totalLockers;
+          }
+      }
+  changed_files:
+    src/Gym/MembershipManager.php: |
+      <?php
+
+      namespace App\Gym;
+
+      use App\Gym\Plan\PlanRegistry;
+
+      class MembershipManager
+      {
+          private PlanRegistry $plans;
+          private array $members = [];
+
+          public function __construct(PlanRegistry $plans)
+          {
+              $this->plans = $plans;
+          }
+
+          public function enroll(string $memberName, string $planId): bool
+          {
+              $plan = $this->plans->find($planId);
+              if ($plan === null) {
+                  return false;
+              }
+              $this->members[$memberName] = $planId;
+              return true;
+          }
+
+          public function freeze(string $memberName): bool
+          {
+              if (!isset($this->members[$memberName])) {
+                  return false;
+              }
+              $this->members[$memberName] = 'frozen';
+              return true;
+          }
+
+          public function activeMemberCount(): int
+          {
+              $count = 0;
+              foreach ($this->members as $status) {
+                  if ($status !== 'frozen') {
+                      $count++;
+                  }
+              }
+              return $count;
+          }
+      }
+  commit_message: "feat: add membership freeze capability"
+fragments:
+- id: freeze_method
+  selector:
+    path: src/Gym/MembershipManager.php
+    anchor: "public function freeze"
+- id: plan_registry_find
+  selector:
+    path: src/Gym/Plan/PlanRegistry.php
+    anchor: "public function find"
+- id: price_tier_class
+  selector:
+    path: src/Gym/Plan/PriceTier.php
+    anchor: class PriceTier
+- id: no_equipment
+  selector:
+    path: src/Equipment/LockerAssigner.php
+- id: no_locker
+  selector:
+    anchor: LockerAssigner
+oracle:
+  required:
+  - freeze_method
+  - plan_registry_find
+  forbidden:
+  - no_equipment
+  - no_locker

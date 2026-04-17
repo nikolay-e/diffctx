@@ -1,0 +1,244 @@
+name: bal3_3hop_075_php_exception_handler_chain
+tags:
+- lang:php
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/Exceptions/AppException.php: |
+      <?php
+      namespace App\Exceptions;
+
+      class AppException extends \RuntimeException {
+          private string $errorCode;
+          public function __construct(string $message, string $errorCode) {
+              parent::__construct($message);
+              $this->errorCode = $errorCode;
+          }
+          public function getErrorCode(): string {
+              return $this->errorCode;
+          }
+      }
+    src/Exceptions/Handler.php: |
+      <?php
+      namespace App\Exceptions;
+
+      use App\Exceptions\AppException;
+
+      class Handler {
+          public function handle(\Throwable $e): array {
+              if ($e instanceof AppException) {
+                  return ['error' => $e->getMessage(), 'code' => $e->getErrorCode()];
+              }
+              return ['error' => 'Internal Server Error', 'code' => 'INTERNAL'];
+          }
+      }
+    src/Http/ResponseFactory.php: |
+      <?php
+      namespace App\Http;
+
+      use App\Exceptions\Handler;
+
+      class ResponseFactory {
+          private Handler $handler;
+          public function __construct(Handler $handler) {
+              $this->handler = $handler;
+          }
+          public function fromException(\Throwable $e): array {
+              $error = $this->handler->handle($e);
+              return ['status' => 500, 'body' => $error];
+          }
+      }
+    src/Kernel/ErrorMiddleware.php: |
+      <?php
+      namespace App\Kernel;
+
+      use App\Http\ResponseFactory;
+
+      class ErrorMiddleware {
+          private ResponseFactory $factory;
+          public function __construct(ResponseFactory $factory) {
+              $this->factory = $factory;
+          }
+          public function catch(\Throwable $e): array {
+              return $this->factory->fromException($e);
+          }
+      }
+    src/Kernel/Application.php: |
+      <?php
+      namespace App\Kernel;
+
+      use App\Kernel\ErrorMiddleware;
+
+      class Application {
+          private ErrorMiddleware $errorMiddleware;
+          public function __construct(ErrorMiddleware $errorMiddleware) {
+              $this->errorMiddleware = $errorMiddleware;
+          }
+          public function handleError(\Throwable $e): array {
+              return $this->errorMiddleware->catch($e);
+          }
+      }
+    src/Config/DatabaseConfig.php: |
+      <?php
+      namespace App\Config;
+      define('GARBAGE_075_DB_A', 'mysql');
+      define('GARBAGE_075_HOST_B', 'localhost');
+
+      class DatabaseConfig {
+          public string $host = 'localhost';
+      }
+    src/Config/CacheConfig.php: |
+      <?php
+      namespace App\Config;
+      define('GARBAGE_075_CACHE_C', 'redis');
+      define('GARBAGE_075_PORT_D', 6379);
+
+      class CacheConfig {
+          public int $ttl = 3600;
+      }
+  changed_files:
+    src/Exceptions/AppException.php: |
+      <?php
+      namespace App\Exceptions;
+
+      class AppException extends \RuntimeException {
+          private string $errorCode;
+          private int $httpStatus;
+          public function __construct(string $message, string $errorCode, int $httpStatus = 500) {
+              parent::__construct($message);
+              $this->errorCode = $errorCode;
+              $this->httpStatus = $httpStatus;
+          }
+          public function getErrorCode(): string {
+              return $this->errorCode;
+          }
+          public function getHttpStatus(): int {
+              return $this->httpStatus;
+          }
+      }
+    src/Exceptions/Handler.php: |
+      <?php
+      namespace App\Exceptions;
+
+      use App\Exceptions\AppException;
+
+      class Handler {
+          public function handle(\Throwable $e): array {
+              if ($e instanceof AppException) {
+                  return [
+                      'error' => $e->getMessage(),
+                      'code' => $e->getErrorCode(),
+                      'status' => $e->getHttpStatus(),
+                  ];
+              }
+              return ['error' => 'Internal Server Error', 'code' => 'INTERNAL', 'status' => 500];
+          }
+      }
+    src/Http/ResponseFactory.php: |
+      <?php
+      namespace App\Http;
+
+      use App\Exceptions\Handler;
+
+      class ResponseFactory {
+          private Handler $handler;
+          public function __construct(Handler $handler) {
+              $this->handler = $handler;
+          }
+          public function fromException(\Throwable $e): array {
+              $error = $this->handler->handle($e);
+              return ['status' => $error['status'], 'body' => $error];
+          }
+      }
+    src/Kernel/ErrorMiddleware.php: |
+      <?php
+      namespace App\Kernel;
+
+      use App\Http\ResponseFactory;
+
+      class ErrorMiddleware {
+          private ResponseFactory $factory;
+          public function __construct(ResponseFactory $factory) {
+              $this->factory = $factory;
+          }
+          public function catch(\Throwable $e): array {
+              return $this->factory->fromException($e);
+          }
+      }
+    src/Kernel/Application.php: |
+      <?php
+      namespace App\Kernel;
+
+      use App\Kernel\ErrorMiddleware;
+
+      class Application {
+          private ErrorMiddleware $errorMiddleware;
+          public function __construct(ErrorMiddleware $errorMiddleware) {
+              $this->errorMiddleware = $errorMiddleware;
+          }
+          public function handleError(\Throwable $e): array {
+              return $this->errorMiddleware->catch($e);
+          }
+      }
+    src/Config/DatabaseConfig.php: |
+      <?php
+      namespace App\Config;
+      define('GARBAGE_075_DB_A', 'mysql');
+      define('GARBAGE_075_HOST_B', 'localhost');
+
+      class DatabaseConfig {
+          public string $host = 'localhost';
+      }
+    src/Config/CacheConfig.php: |
+      <?php
+      namespace App\Config;
+      define('GARBAGE_075_CACHE_C', 'redis');
+      define('GARBAGE_075_PORT_D', 6379);
+
+      class CacheConfig {
+          public int $ttl = 3600;
+      }
+  commit_message: "fix: propagate HTTP status code through exception handling chain"
+fragments:
+- id: exception_http_status
+  selector:
+    path: src/Exceptions/AppException.php
+    anchor: "private int $httpStatus"
+- id: handler_uses_status
+  selector:
+    path: src/Exceptions/Handler.php
+    anchor: "getHttpStatus()"
+- id: factory_uses_handler
+  selector:
+    path: src/Http/ResponseFactory.php
+    anchor: "use App\\Exceptions\\Handler"
+- id: middleware_uses_factory
+  selector:
+    path: src/Kernel/ErrorMiddleware.php
+    anchor: "use App\\Http\\ResponseFactory"
+- id: app_uses_middleware
+  selector:
+    path: src/Kernel/Application.php
+    anchor: "use App\\Kernel\\ErrorMiddleware"
+- id: no_db_config
+  selector:
+    path: src/Config/DatabaseConfig.php
+    anchor: "GARBAGE_075_DB_A"
+- id: no_cache_config
+  selector:
+    path: src/Config/CacheConfig.php
+    anchor: "GARBAGE_075_CACHE_C"
+oracle:
+  required:
+  - exception_http_status
+  - handler_uses_status
+  - factory_uses_handler
+  - middleware_uses_factory
+  - app_uses_middleware
+  allowed: []
+  forbidden:
+  - no_db_config
+  - no_cache_config

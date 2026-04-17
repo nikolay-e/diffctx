@@ -1,0 +1,93 @@
+name: html_004_form_action_endpoint
+tags:
+- lang:html
+- lang:javascript
+- change:multi_file
+- context:cross_module
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    form.html: |
+      <!DOCTYPE html>
+      <html lang="en">
+      <body>
+        <form id="contact-form" action="/api/contact" method="POST">
+          <input type="text" name="name" required>
+          <input type="email" name="email" required>
+          <textarea name="message"></textarea>
+          <button type="submit">Send</button>
+        </form>
+        <script src="routes.js"></script>
+      </body>
+      </html>
+    routes.js: |
+      const express = require('express');
+      const router = express.Router();
+      router.post('/api/contact', async (req, res) => {
+        const { name, email, message } = req.body;
+        await sendEmail({ to: 'support@example.com', from: email, subject: name, body: message });
+        res.json({ ok: true });
+      });
+      module.exports = router;
+    HTML_NOISE_004_gallery.html: |
+      <!-- HTML_NOISE_004_gallery_page -->
+      <section class="HTML_NOISE_004_gallery_grid">Photos</section>
+    HTML_NOISE_004_blog.html: |
+      <!-- HTML_NOISE_004_blog_page -->
+      <article class="HTML_NOISE_004_blog_post">Blog post content</article>
+  changed_files:
+    form.html: |
+      <!DOCTYPE html>
+      <html lang="en">
+      <body>
+        <form id="contact-form" action="/api/v2/contact" method="POST">
+          <input type="text" name="name" required>
+          <input type="email" name="email" required>
+          <textarea name="message"></textarea>
+          <button type="submit">Send</button>
+        </form>
+        <script src="routes.js"></script>
+      </body>
+      </html>
+    routes.js: |
+      const express = require('express');
+      const router = express.Router();
+      router.post('/api/v2/contact', async (req, res) => {
+        const { name, email, message } = req.body;
+        await sendEmail({ to: 'support@example.com', from: email, subject: name, body: message });
+        res.json({ ok: true });
+      });
+      module.exports = router;
+  commit_message: "feat: migrate contact form endpoint to /api/v2/contact"
+fragments:
+- id: form_action_updated
+  selector:
+    path: form.html
+    anchor: "/api/v2/contact"
+- id: route_handler_updated
+  selector:
+    path: routes.js
+    anchor: "'/api/v2/contact'"
+- id: no_gallery
+  selector:
+    path: HTML_NOISE_004_gallery.html
+- id: no_blog
+  selector:
+    path: HTML_NOISE_004_blog.html
+- id: no_global_0
+  selector:
+    anchor: HTML_NOISE_004_gallery_grid
+- id: no_global_1
+  selector:
+    anchor: HTML_NOISE_004_blog_post
+oracle:
+  required:
+  - form_action_updated
+  - route_handler_updated
+  allowed: []
+  forbidden:
+  - no_gallery
+  - no_blog
+  - no_global_0
+  - no_global_1

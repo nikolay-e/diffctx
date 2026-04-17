@@ -1,0 +1,115 @@
+name: bal_3hop_001_python_deep_model_chain
+tags:
+- lang:python
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    models/base.py: |
+      class BaseModel:
+          def __init__(self, id: str):
+              self.id = id
+          def validate(self) -> bool:
+              return bool(self.id)
+    models/user.py: |
+      from models.base import BaseModel
+      class User(BaseModel):
+          def __init__(self, id: str, name: str):
+              super().__init__(id)
+              self.name = name
+    services/user_service.py: |
+      from models.user import User
+      class UserService:
+          def create(self, name: str) -> User:
+              return User(id="new", name=name)
+    api/routes.py: |
+      from services.user_service import UserService
+      svc = UserService()
+      def create_user(name: str):
+          return svc.create(name)
+    utils/cache.py: |
+      class Cache:
+          def __init__(self):
+              self.store = {}
+          def get(self, key):
+              return self.store.get(key)
+    utils/logger.py: |
+      import logging
+      logger = logging.getLogger("app")
+      def log_info(msg: str):
+          logger.info(msg)
+  changed_files:
+    models/base.py: |
+      from datetime import datetime
+      class BaseModel:
+          def __init__(self, id: str):
+              self.id = id
+              self.created_at = datetime.utcnow()
+          def validate(self) -> bool:
+              return bool(self.id)
+    models/user.py: |
+      from models.base import BaseModel
+      class User(BaseModel):
+          def __init__(self, id: str, name: str):
+              super().__init__(id)
+              self.name = name
+    services/user_service.py: |
+      from models.user import User
+      class UserService:
+          def create(self, name: str) -> User:
+              return User(id="new", name=name)
+    api/routes.py: |
+      from services.user_service import UserService
+      svc = UserService()
+      def create_user(name: str):
+          return svc.create(name)
+    utils/cache.py: |
+      class Cache:
+          def __init__(self):
+              self.store = {}
+          def get(self, key):
+              return self.store.get(key)
+    utils/logger.py: |
+      import logging
+      logger = logging.getLogger("app")
+      def log_info(msg: str):
+          logger.info(msg)
+  commit_message: "feat: add created_at timestamp to BaseModel"
+fragments:
+- id: base_created_at
+  selector:
+    path: models/base.py
+    anchor: "self.created_at = datetime.utcnow()"
+- id: user_inherits_base
+  selector:
+    path: models/user.py
+    anchor: "from models.base import BaseModel"
+- id: service_creates_user
+  selector:
+    path: services/user_service.py
+    anchor: "from models.user import User"
+- id: api_calls_service
+  selector:
+    path: api/routes.py
+    anchor: "from services.user_service import UserService"
+- id: no_cache
+  selector:
+    path: utils/cache.py
+    anchor: "class Cache"
+- id: no_logger
+  selector:
+    path: utils/logger.py
+    anchor: "def log_info"
+oracle:
+  required:
+  - base_created_at
+  - user_inherits_base
+  - service_creates_user
+  - api_calls_service
+  allowed: []
+  forbidden:
+  - no_cache
+  - no_logger

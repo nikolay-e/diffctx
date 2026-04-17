@@ -1,0 +1,172 @@
+name: gap2_027_js_new_func_playlist_shuffle
+tags:
+- change:new_function
+- change:single_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:javascript
+repo:
+  initial_files:
+    src/audio/track.js: |
+      function createTrack(id, title, durationSec) {
+        return { id, title, durationSec, played: false };
+      }
+
+      function formatDuration(seconds) {
+        const min = Math.floor(seconds / 60);
+        const sec = seconds % 60;
+        return `${min}:${String(sec).padStart(2, "0")}`;
+      }
+
+      module.exports = { createTrack, formatDuration };
+    src/audio/playlist.js: |
+      const { createTrack } = require("./track");
+
+      function buildPlaylist(rawTracks) {
+        return rawTracks.map((t) => createTrack(t.id, t.title, t.duration));
+      }
+
+      function totalDuration(playlist) {
+        return playlist.reduce((sum, t) => sum + t.durationSec, 0);
+      }
+
+      module.exports = { buildPlaylist, totalDuration };
+    src/audio/player.js: |
+      const { buildPlaylist, totalDuration } = require("./playlist");
+
+      function playNext(queue) {
+        if (queue.length === 0) return null;
+        const track = queue.shift();
+        track.played = true;
+        return track;
+      }
+
+      module.exports = { playNext };
+    src/audio/equalizer.js: |
+      const TRAP_GAP2027_PRESET_A = "flat";
+      const TRAP_GAP2027_BANDS_B = 10;
+
+      function applyPreset(preset) {
+        return { preset, gain: new Array(TRAP_GAP2027_BANDS_B).fill(0) };
+      }
+
+      module.exports = { applyPreset };
+    src/audio/visualizer.js: |
+      const TRAP_GAP2027_FPS_C = 60;
+      const TRAP_GAP2027_MODE_D = "bars";
+
+      function renderFrame(frequencies) {
+        return frequencies.map((f) => Math.round(f * 100));
+      }
+
+      module.exports = { renderFrame };
+  changed_files:
+    src/audio/playlist.js: |
+      const { createTrack } = require("./track");
+
+      function buildPlaylist(rawTracks) {
+        return rawTracks.map((t) => createTrack(t.id, t.title, t.duration));
+      }
+
+      function totalDuration(playlist) {
+        return playlist.reduce((sum, t) => sum + t.durationSec, 0);
+      }
+
+      function shuffle(playlist) {
+        const copy = [...playlist];
+        for (let i = copy.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [copy[i], copy[j]] = [copy[j], copy[i]];
+        }
+        return copy;
+      }
+
+      module.exports = { buildPlaylist, totalDuration, shuffle };
+    src/audio/track.js: |
+      function createTrack(id, title, durationSec) {
+        return { id, title, durationSec, played: false };
+      }
+
+      function formatDuration(seconds) {
+        const min = Math.floor(seconds / 60);
+        const sec = seconds % 60;
+        return `${min}:${String(sec).padStart(2, "0")}`;
+      }
+
+      module.exports = { createTrack, formatDuration };
+    src/audio/player.js: |
+      const { buildPlaylist, totalDuration } = require("./playlist");
+
+      function playNext(queue) {
+        if (queue.length === 0) return null;
+        const track = queue.shift();
+        track.played = true;
+        return track;
+      }
+
+      module.exports = { playNext };
+    src/audio/equalizer.js: |
+      const TRAP_GAP2027_PRESET_A = "flat";
+      const TRAP_GAP2027_BANDS_B = 10;
+
+      function applyPreset(preset) {
+        return { preset, gain: new Array(TRAP_GAP2027_BANDS_B).fill(0) };
+      }
+
+      module.exports = { applyPreset };
+    src/audio/visualizer.js: |
+      const TRAP_GAP2027_FPS_C = 60;
+      const TRAP_GAP2027_MODE_D = "bars";
+
+      function renderFrame(frequencies) {
+        return frequencies.map((f) => Math.round(f * 100));
+      }
+
+      module.exports = { renderFrame };
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: shuffle_func
+  selector:
+    path: src/audio/playlist.js
+    anchor: function shuffle(playlist) {
+- id: shuffle_swap
+  selector:
+    path: src/audio/playlist.js
+    anchor: "[copy[i], copy[j]] = [copy[j], copy[i]]"
+- id: create_track_import
+  selector:
+    path: src/audio/playlist.js
+    anchor: 'const { createTrack } = require("./track")'
+- id: no_equalizer
+  selector:
+    path: src/audio/equalizer.js
+- id: no_visualizer
+  selector:
+    path: src/audio/visualizer.js
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2027_PRESET_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2027_BANDS_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP2027_FPS_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP2027_MODE_D
+oracle:
+  required:
+  - shuffle_func
+  - shuffle_swap
+  allowed: []
+  forbidden:
+  - no_equalizer
+  - no_visualizer
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

@@ -1,0 +1,100 @@
+name: bal4_0hop_001_haskell_new_filter
+tags:
+- lang:haskell
+- change:single_file
+- change:new_function
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/Filter.hs: |
+      module Filter where
+
+      import Data.List (nub)
+
+      removeDups :: [Int] -> [Int]
+      removeDups = nub
+    src/garbage_sort.hs: |
+      module GarbageSort where
+
+      GARBAGE_B4H001_SORT_A = "sort"
+      GARBAGE_B4H001_SORT_B = True
+
+      garbageSort :: [Int] -> [Int]
+      garbageSort xs = xs
+    src/garbage_math.hs: |
+      module GarbageMath where
+
+      GARBAGE_B4H001_MATH_C = 42
+      GARBAGE_B4H001_MATH_D = "math"
+
+      garbageAdd :: Int -> Int -> Int
+      garbageAdd x y = x + y
+  changed_files:
+    src/Filter.hs: |
+      module Filter where
+
+      import Data.List (nub)
+
+      removeDups :: [Int] -> [Int]
+      removeDups = nub
+
+      filterPositive :: [Int] -> [Int]
+      filterPositive = filter (> 0)
+    src/garbage_sort.hs: |
+      module GarbageSort where
+
+      GARBAGE_B4H001_SORT_A = "sort"
+      GARBAGE_B4H001_SORT_B = True
+
+      garbageSort :: [Int] -> [Int]
+      garbageSort xs = xs
+    src/garbage_math.hs: |
+      module GarbageMath where
+
+      GARBAGE_B4H001_MATH_C = 42
+      GARBAGE_B4H001_MATH_D = "math"
+
+      garbageAdd :: Int -> Int -> Int
+      garbageAdd x y = x + y
+  commit_message: "feat: add filterPositive function"
+fragments:
+- id: new_filter
+  selector:
+    path: src/Filter.hs
+    anchor: "filterPositive :: [Int] -> [Int]"
+- id: new_filter_body
+  selector:
+    path: src/Filter.hs
+    anchor: "filterPositive = filter (> 0)"
+- id: no_garbage_sort
+  selector:
+    path: src/garbage_sort.hs
+- id: no_garbage_math
+  selector:
+    path: src/garbage_math.hs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_B4H001_SORT_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_B4H001_SORT_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_B4H001_MATH_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_B4H001_MATH_D
+oracle:
+  required:
+  - new_filter
+  - new_filter_body
+  allowed: []
+  forbidden:
+  - no_garbage_sort
+  - no_garbage_math
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

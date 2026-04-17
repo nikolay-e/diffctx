@@ -1,0 +1,147 @@
+name: bal_hard_007_scala_repository_pattern
+tags:
+- lang:scala
+- change:multi_file
+- change:signature
+- context:cross_module
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/model/Product.scala: |
+      package model
+      case class Product(id: String, name: String, price: Double)
+    src/main/scala/repository/ProductRepo.scala: |
+      package repository
+      import model.Product
+      trait ProductRepo {
+        def findById(id: String): Option[Product]
+        def findAll(): List[Product]
+        def save(product: Product): Unit
+      }
+    src/main/scala/repository/InMemoryProductRepo.scala: |
+      package repository
+      import model.Product
+      import scala.collection.mutable
+      class InMemoryProductRepo extends ProductRepo {
+        private val store = mutable.Map[String, Product]()
+        def findById(id: String): Option[Product] = store.get(id)
+        def findAll(): List[Product] = store.values.toList
+        def save(product: Product): Unit = store(product.id) = product
+      }
+    src/main/scala/service/ProductService.scala: |
+      package service
+      import model.Product
+      import repository.ProductRepo
+      class ProductService(repo: ProductRepo) {
+        def getProduct(id: String): Option[Product] = repo.findById(id)
+        def listProducts(): List[Product] = repo.findAll()
+        def createProduct(id: String, name: String, price: Double): Product = {
+          val product = Product(id, name, price)
+          repo.save(product)
+          product
+        }
+      }
+    src/main/scala/api/ProductApi.scala: |
+      package api
+      import service.ProductService
+      class ProductApi(service: ProductService) {
+        def getById(id: String): String = {
+          service.getProduct(id).map(p => s"${p.name}: ${p.price}").getOrElse("Not found")
+        }
+        def listAll(): String = {
+          service.listProducts().map(p => s"${p.name}: ${p.price}").mkString(", ")
+        }
+      }
+    src/main/scala/util/Validator.scala: |
+      package util
+      object Validator {
+        def isValidPrice(price: Double): Boolean = price > 0
+        def isValidName(name: String): Boolean = name.nonEmpty
+      }
+    src/main/scala/util/Formatter.scala: |
+      package util
+      object Formatter {
+        def currency(value: Double): String = f"$$$value%.2f"
+      }
+  changed_files:
+    src/main/scala/model/Product.scala: |
+      package model
+      case class Product(id: String, name: String, price: Double, category: String = "general")
+    src/main/scala/repository/ProductRepo.scala: |
+      package repository
+      import model.Product
+      trait ProductRepo {
+        def findById(id: String): Option[Product]
+        def findAll(): List[Product]
+        def findByCategory(category: String): List[Product]
+        def save(product: Product): Unit
+      }
+    src/main/scala/repository/InMemoryProductRepo.scala: |
+      package repository
+      import model.Product
+      import scala.collection.mutable
+      class InMemoryProductRepo extends ProductRepo {
+        private val store = mutable.Map[String, Product]()
+        def findById(id: String): Option[Product] = store.get(id)
+        def findAll(): List[Product] = store.values.toList
+        def findByCategory(category: String): List[Product] = store.values.filter(_.category == category).toList
+        def save(product: Product): Unit = store(product.id) = product
+      }
+    src/main/scala/service/ProductService.scala: |
+      package service
+      import model.Product
+      import repository.ProductRepo
+      class ProductService(repo: ProductRepo) {
+        def getProduct(id: String): Option[Product] = repo.findById(id)
+        def listProducts(): List[Product] = repo.findAll()
+        def listByCategory(category: String): List[Product] = repo.findByCategory(category)
+        def createProduct(id: String, name: String, price: Double): Product = {
+          val product = Product(id, name, price)
+          repo.save(product)
+          product
+        }
+      }
+  commit_message: "feat: add category field and findByCategory"
+fragments:
+- id: product_category_field
+  selector:
+    path: Product.scala
+    anchor: 'category: String = "general"'
+- id: repo_find_by_category
+  selector:
+    path: ProductRepo.scala
+    anchor: "def findByCategory(category: String)"
+- id: inmemory_find_by_category
+  selector:
+    path: InMemoryProductRepo.scala
+    anchor: "_.category == category"
+- id: service_list_by_category
+  selector:
+    path: ProductService.scala
+    anchor: "def listByCategory"
+- id: api_get_by_id
+  selector:
+    path: ProductApi.scala
+    anchor: "service.getProduct(id)"
+- id: no_validator
+  selector:
+    path: util/Validator.scala
+- id: no_formatter
+  selector:
+    path: util/Formatter.scala
+- id: no_currency
+  selector:
+    anchor: "def currency"
+oracle:
+  required:
+  - product_category_field
+  - repo_find_by_category
+  - inmemory_find_by_category
+  - service_list_by_category
+  - api_get_by_id
+  allowed: []
+  forbidden:
+  - no_validator
+  - no_formatter
+  - no_currency

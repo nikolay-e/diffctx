@@ -1,0 +1,208 @@
+name: bal_3hop_034_typescript_event_emitter_pipeline
+tags:
+- lang:typescript
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/events/types.ts: |
+      export interface AppEvent {
+        type: string;
+        payload: Record<string, unknown>;
+        timestamp: number;
+      }
+
+      export type EventHandler = (event: AppEvent) => void;
+    src/events/emitter.ts: |
+      import { AppEvent, EventHandler } from './types';
+
+      export class EventEmitter {
+        private handlers: Map<string, EventHandler[]> = new Map();
+
+        on(type: string, handler: EventHandler): void {
+          const list = this.handlers.get(type) || [];
+          list.push(handler);
+          this.handlers.set(type, list);
+        }
+
+        emit(event: AppEvent): void {
+          const list = this.handlers.get(event.type) || [];
+          list.forEach(h => h(event));
+        }
+      }
+    src/services/eventBus.ts: |
+      import { EventEmitter } from '../events/emitter';
+      import { AppEvent } from '../events/types';
+
+      export class EventBus {
+        private emitter = new EventEmitter();
+
+        publish(type: string, payload: Record<string, unknown>): void {
+          const event: AppEvent = { type, payload, timestamp: Date.now() };
+          this.emitter.emit(event);
+        }
+
+        subscribe(type: string, handler: (event: AppEvent) => void): void {
+          this.emitter.on(type, handler);
+        }
+      }
+    src/controllers/order.ts: |
+      import { EventBus } from '../services/eventBus';
+
+      export class OrderController {
+        constructor(private bus: EventBus) {}
+
+        placeOrder(orderId: string, total: number): void {
+          this.bus.publish('order.placed', { orderId, total });
+        }
+
+        cancelOrder(orderId: string): void {
+          this.bus.publish('order.cancelled', { orderId });
+        }
+      }
+    src/utils/retry.ts: |
+      GARBAGE_034_RETRY_MARKER_A = "retry";
+      GARBAGE_034_BACKOFF_MARKER_B = 1000;
+
+      export function retry<T>(fn: () => Promise<T>, attempts: number): Promise<T> {
+        return fn();
+      }
+    src/utils/queue.ts: |
+      GARBAGE_034_QUEUE_MARKER_C = "queue";
+      GARBAGE_034_SIZE_MARKER_D = 100;
+
+      export class SimpleQueue<T> {
+        private items: T[] = [];
+        enqueue(item: T): void { this.items.push(item); }
+        dequeue(): T | undefined { return this.items.shift(); }
+      }
+  changed_files:
+    src/events/types.ts: |
+      export interface AppEvent {
+        type: string;
+        payload: Record<string, unknown>;
+        timestamp: number;
+        correlationId: string;
+      }
+
+      export type EventHandler = (event: AppEvent) => void;
+
+      export function createCorrelationId(): string {
+        return Math.random().toString(36).substring(2, 15);
+      }
+    src/events/emitter.ts: |
+      import { AppEvent, EventHandler } from './types';
+
+      export class EventEmitter {
+        private handlers: Map<string, EventHandler[]> = new Map();
+
+        on(type: string, handler: EventHandler): void {
+          const list = this.handlers.get(type) || [];
+          list.push(handler);
+          this.handlers.set(type, list);
+        }
+
+        emit(event: AppEvent): void {
+          const list = this.handlers.get(event.type) || [];
+          list.forEach(h => h(event));
+        }
+      }
+    src/services/eventBus.ts: |
+      import { EventEmitter } from '../events/emitter';
+      import { AppEvent, createCorrelationId } from '../events/types';
+
+      export class EventBus {
+        private emitter = new EventEmitter();
+
+        publish(type: string, payload: Record<string, unknown>): void {
+          const event: AppEvent = {
+            type,
+            payload,
+            timestamp: Date.now(),
+            correlationId: createCorrelationId(),
+          };
+          this.emitter.emit(event);
+        }
+
+        subscribe(type: string, handler: (event: AppEvent) => void): void {
+          this.emitter.on(type, handler);
+        }
+      }
+    src/controllers/order.ts: |
+      import { EventBus } from '../services/eventBus';
+
+      export class OrderController {
+        constructor(private bus: EventBus) {}
+
+        placeOrder(orderId: string, total: number): void {
+          this.bus.publish('order.placed', { orderId, total });
+        }
+
+        cancelOrder(orderId: string): void {
+          this.bus.publish('order.cancelled', { orderId });
+        }
+      }
+    src/utils/retry.ts: |
+      GARBAGE_034_RETRY_MARKER_A = "retry";
+      GARBAGE_034_BACKOFF_MARKER_B = 1000;
+
+      export function retry<T>(fn: () => Promise<T>, attempts: number): Promise<T> {
+        return fn();
+      }
+    src/utils/queue.ts: |
+      GARBAGE_034_QUEUE_MARKER_C = "queue";
+      GARBAGE_034_SIZE_MARKER_D = 100;
+
+      export class SimpleQueue<T> {
+        private items: T[] = [];
+        enqueue(item: T): void { this.items.push(item); }
+        dequeue(): T | undefined { return this.items.shift(); }
+      }
+  commit_message: "feat: add correlationId to AppEvent"
+fragments:
+- id: event_correlation_field
+  selector:
+    path: src/events/types.ts
+    anchor: "correlationId: string"
+- id: create_correlation_fn
+  selector:
+    path: src/events/types.ts
+    anchor: "export function createCorrelationId"
+- id: emitter_imports_types
+  selector:
+    path: src/events/emitter.ts
+    anchor: "import { AppEvent, EventHandler } from './types'"
+- id: bus_uses_correlation
+  selector:
+    path: src/services/eventBus.ts
+    anchor: "correlationId: createCorrelationId()"
+- id: controller_imports_bus
+  selector:
+    path: src/controllers/order.ts
+    anchor: "import { EventBus } from '../services/eventBus'"
+- id: controller_place_order
+  selector:
+    path: src/controllers/order.ts
+    anchor: "placeOrder(orderId: string, total: number)"
+- id: no_retry
+  selector:
+    path: src/utils/retry.ts
+    anchor: "GARBAGE_034_RETRY_MARKER_A"
+- id: no_queue
+  selector:
+    path: src/utils/queue.ts
+    anchor: "GARBAGE_034_QUEUE_MARKER_C"
+oracle:
+  required:
+  - event_correlation_field
+  - create_correlation_fn
+  - emitter_imports_types
+  - bus_uses_correlation
+  - controller_imports_bus
+  - controller_place_order
+  allowed: []
+  forbidden:
+  - no_retry
+  - no_queue

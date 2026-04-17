@@ -1,0 +1,284 @@
+name: bal_1hop_028_rust_compiler_calls_ast
+tags:
+- lang:rust
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/ast/node.rs: |
+      #[derive(Debug, Clone)]
+      pub enum AstNode {
+          IntLiteral(i64),
+          StringLiteral(String),
+          BinaryExpr {
+              op: BinOp,
+              left: Box<AstNode>,
+              right: Box<AstNode>,
+          },
+          FunctionCall {
+              name: String,
+              args: Vec<AstNode>,
+          },
+          Identifier(String),
+      }
+
+      #[derive(Debug, Clone)]
+      pub enum BinOp {
+          Add,
+          Sub,
+          Mul,
+          Div,
+      }
+
+      impl AstNode {
+          pub fn is_literal(&self) -> bool {
+              matches!(self, AstNode::IntLiteral(_) | AstNode::StringLiteral(_))
+          }
+      }
+    src/ast/visitor.rs: |
+      use super::node::AstNode;
+
+      pub trait Visitor {
+          fn visit_node(&mut self, node: &AstNode);
+      }
+
+      pub fn walk(node: &AstNode, visitor: &mut dyn Visitor) {
+          visitor.visit_node(node);
+          match node {
+              AstNode::BinaryExpr { left, right, .. } => {
+                  walk(left, visitor);
+                  walk(right, visitor);
+              }
+              AstNode::FunctionCall { args, .. } => {
+                  for arg in args {
+                      walk(arg, visitor);
+                  }
+              }
+              _ => {}
+          }
+      }
+    src/compiler/codegen.rs: |
+      use crate::ast::node::{AstNode, BinOp};
+
+      pub struct CodeGenerator {
+          output: Vec<String>,
+      }
+
+      impl CodeGenerator {
+          pub fn new() -> Self {
+              CodeGenerator { output: Vec::new() }
+          }
+
+          pub fn generate(&mut self, node: &AstNode) -> String {
+              match node {
+                  AstNode::IntLiteral(n) => format!("PUSH {}", n),
+                  AstNode::StringLiteral(s) => format!("PUSH_STR \"{}\"", s),
+                  AstNode::Identifier(name) => format!("LOAD {}", name),
+                  AstNode::BinaryExpr { op, left, right } => {
+                      let l = self.generate(left);
+                      let r = self.generate(right);
+                      let op_code = match op {
+                          BinOp::Add => "ADD",
+                          BinOp::Sub => "SUB",
+                          BinOp::Mul => "MUL",
+                          BinOp::Div => "DIV",
+                      };
+                      format!("{}\n{}\n{}", l, r, op_code)
+                  }
+                  AstNode::FunctionCall { name, args } => {
+                      let arg_code: Vec<String> = args.iter()
+                          .map(|a| self.generate(a))
+                          .collect();
+                      format!("{}\nCALL {} {}", arg_code.join("\n"), name, args.len())
+                  }
+              }
+          }
+      }
+    src/optimizer/constant_fold.rs: |
+      use crate::ast::node::{AstNode, BinOp};
+
+      pub fn fold_constants(node: &AstNode) -> AstNode {
+          match node {
+              AstNode::BinaryExpr { op, left, right } => {
+                  let l = fold_constants(left);
+                  let r = fold_constants(right);
+                  if let (AstNode::IntLiteral(a), AstNode::IntLiteral(b)) = (&l, &r) {
+                      let result = match op {
+                          BinOp::Add => a + b,
+                          BinOp::Sub => a - b,
+                          BinOp::Mul => a * b,
+                          BinOp::Div => a / b,
+                      };
+                      return AstNode::IntLiteral(result);
+                  }
+                  AstNode::BinaryExpr {
+                      op: op.clone(),
+                      left: Box::new(l),
+                      right: Box::new(r),
+                  }
+              }
+              other => other.clone(),
+          }
+      }
+    src/runtime/vm.rs: |
+      pub struct VM {
+          stack: Vec<i64>,
+          ip: usize,
+      }
+
+      impl VM {
+          pub fn new() -> Self {
+              VM { stack: Vec::new(), ip: 0 }
+          }
+
+          pub fn push(&mut self, val: i64) {
+              self.stack.push(val);
+          }
+
+          pub fn pop(&mut self) -> Option<i64> {
+              self.stack.pop()
+          }
+      }
+    src/error/diagnostic.rs: |
+      pub struct Diagnostic {
+          pub message: String,
+          pub line: usize,
+          pub col: usize,
+      }
+
+      impl Diagnostic {
+          pub fn error(msg: &str, line: usize, col: usize) -> Self {
+              Diagnostic {
+                  message: msg.to_string(),
+                  line,
+                  col,
+              }
+          }
+      }
+  changed_files:
+    src/ast/node.rs: |
+      #[derive(Debug, Clone)]
+      pub enum AstNode {
+          IntLiteral(i64),
+          FloatLiteral(f64),
+          StringLiteral(String),
+          BoolLiteral(bool),
+          BinaryExpr {
+              op: BinOp,
+              left: Box<AstNode>,
+              right: Box<AstNode>,
+          },
+          UnaryExpr {
+              op: UnaryOp,
+              operand: Box<AstNode>,
+          },
+          FunctionCall {
+              name: String,
+              args: Vec<AstNode>,
+          },
+          LetBinding {
+              name: String,
+              value: Box<AstNode>,
+          },
+          Identifier(String),
+          Block(Vec<AstNode>),
+      }
+
+      #[derive(Debug, Clone)]
+      pub enum BinOp {
+          Add,
+          Sub,
+          Mul,
+          Div,
+          Mod,
+          Eq,
+          NotEq,
+          Lt,
+          Gt,
+      }
+
+      #[derive(Debug, Clone)]
+      pub enum UnaryOp {
+          Neg,
+          Not,
+      }
+
+      impl AstNode {
+          pub fn is_literal(&self) -> bool {
+              matches!(self, AstNode::IntLiteral(_) | AstNode::FloatLiteral(_)
+                  | AstNode::StringLiteral(_) | AstNode::BoolLiteral(_))
+          }
+
+          pub fn is_expression(&self) -> bool {
+              matches!(self, AstNode::BinaryExpr { .. } | AstNode::UnaryExpr { .. }
+                  | AstNode::FunctionCall { .. } | AstNode::Identifier(_))
+          }
+      }
+  commit_message: "feat: add float/bool literals, unary ops, let bindings and blocks"
+fragments:
+- id: float_literal
+  selector:
+    path: src/ast/node.rs
+    anchor: "FloatLiteral(f64)"
+- id: unary_expr
+  selector:
+    path: src/ast/node.rs
+    anchor: "UnaryExpr"
+- id: let_binding
+  selector:
+    path: src/ast/node.rs
+    anchor: "LetBinding"
+- id: block_variant
+  selector:
+    path: src/ast/node.rs
+    anchor: "Block(Vec<AstNode>)"
+- id: unary_op_enum
+  selector:
+    path: src/ast/node.rs
+    anchor: "pub enum UnaryOp"
+- id: comparison_ops
+  selector:
+    path: src/ast/node.rs
+    anchor: "Eq,"
+- id: codegen_matches_node
+  selector:
+    path: src/compiler/codegen.rs
+    anchor: "match node"
+- id: codegen_binop_match
+  selector:
+    path: src/compiler/codegen.rs
+    anchor: "match op"
+- id: visitor_walks_binary
+  selector:
+    path: src/ast/visitor.rs
+    anchor: "AstNode::BinaryExpr"
+- id: optimizer_fold
+  selector:
+    path: src/optimizer/constant_fold.rs
+    anchor: "pub fn fold_constants"
+- id: unrelated_vm
+  selector:
+    path: src/runtime/vm.rs
+    anchor: "pub struct VM"
+- id: unrelated_diagnostic
+  selector:
+    path: src/error/diagnostic.rs
+    anchor: "pub struct Diagnostic"
+oracle:
+  required:
+  - float_literal
+  - unary_expr
+  - let_binding
+  - codegen_matches_node
+  allowed:
+  - block_variant
+  - unary_op_enum
+  - comparison_ops
+  - codegen_binop_match
+  - visitor_walks_binary
+  - optimizer_fold
+  forbidden:
+  - unrelated_vm
+  - unrelated_diagnostic

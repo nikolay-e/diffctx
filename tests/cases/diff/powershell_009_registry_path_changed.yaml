@@ -1,0 +1,82 @@
+name: powershell_009_registry_path_changed
+tags:
+- lang:powershell
+- change:single_file
+- change:config
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    constants.ps1: |
+      $Script:AppRegistryRoot = "HKLM:\SOFTWARE\MyCompany\AppV1"
+      $Script:LicenseKeyName  = "LicenseKey"
+      $Script:InstallPathName = "InstallPath"
+    Read-AppRegistry.ps1: |
+      . ./constants.ps1
+
+      function Get-AppLicenseKey {
+          $value = Get-ItemProperty -Path $Script:AppRegistryRoot -Name $Script:LicenseKeyName -ErrorAction SilentlyContinue
+          return $value.$Script:LicenseKeyName
+      }
+
+      function Get-AppInstallPath {
+          $value = Get-ItemProperty -Path $Script:AppRegistryRoot -Name $Script:InstallPathName -ErrorAction SilentlyContinue
+          return $value.$Script:InstallPathName
+      }
+
+      $license = Get-AppLicenseKey
+      $installPath = Get-AppInstallPath
+      Write-Output "License: $license | Path: $installPath"
+    PS_NOISE_009_SchedulerUtils.psm1: |
+      function PS_NOISE_009_Register-DailyTask {
+          param([string]$TaskName, [string]$ScriptPath, [string]$TriggerTime)
+          $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-File `"$ScriptPath`""
+          $trigger = New-ScheduledTaskTrigger -Daily -At $TriggerTime
+          Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Force
+      }
+      Export-ModuleMember -Function PS_NOISE_009_Register-DailyTask
+    PS_NOISE_009_CleanupUtils.psm1: |
+      function PS_NOISE_009_Remove-OldTempFiles {
+          param([int]$DaysOld = 7)
+          $cutoff = (Get-Date).AddDays(-$DaysOld)
+          Get-ChildItem $env:TEMP -File | Where-Object { $_.LastWriteTime -lt $cutoff } | Remove-Item -Force
+      }
+      Export-ModuleMember -Function PS_NOISE_009_Remove-OldTempFiles
+  changed_files:
+    constants.ps1: |
+      $Script:AppRegistryRoot = "HKLM:\SOFTWARE\MyCompany\AppV2"
+      $Script:LicenseKeyName  = "LicenseKey"
+      $Script:InstallPathName = "InstallPath"
+  commit_message: "config: migrate registry root from AppV1 to AppV2"
+fragments:
+- id: constants_registry_root
+  selector:
+    path: constants.ps1
+    anchor: AppRegistryRoot
+- id: read_app_registry
+  selector:
+    path: Read-AppRegistry.ps1
+    anchor: Script:AppRegistryRoot
+- id: no_scheduler_utils
+  selector:
+    path: PS_NOISE_009_SchedulerUtils.psm1
+- id: no_cleanup_utils
+  selector:
+    path: PS_NOISE_009_CleanupUtils.psm1
+- id: no_global_0
+  selector:
+    anchor: PS_NOISE_009_Register-DailyTask
+- id: no_global_1
+  selector:
+    anchor: PS_NOISE_009_Remove-OldTempFiles
+oracle:
+  required:
+  - constants_registry_root
+  - read_app_registry
+  allowed: []
+  forbidden:
+  - no_scheduler_utils
+  - no_cleanup_utils
+  - no_global_0
+  - no_global_1

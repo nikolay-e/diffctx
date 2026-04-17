@@ -1,0 +1,199 @@
+name: bal2_3hop_009_java_validation_chain
+tags:
+- lang:java
+- change:single_file
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/app/validation/Rule.java: |
+      package com.app.validation;
+
+      public interface Rule {
+          boolean check(String value);
+          String errorMessage();
+      }
+    src/main/java/com/app/validation/EmailRule.java: |
+      package com.app.validation;
+
+      import com.app.validation.Rule;
+
+      public class EmailRule implements Rule {
+          public boolean check(String value) {
+              return value.contains("@");
+          }
+          public String errorMessage() {
+              return "Invalid email";
+          }
+      }
+    src/main/java/com/app/validation/Validator.java: |
+      package com.app.validation;
+
+      import com.app.validation.EmailRule;
+      import com.app.validation.Rule;
+      import java.util.ArrayList;
+      import java.util.List;
+
+      public class Validator {
+          private final List<Rule> rules = new ArrayList<>();
+          public Validator() {
+              rules.add(new EmailRule());
+          }
+          public List<String> validate(String value) {
+              List<String> errors = new ArrayList<>();
+              for (Rule r : rules) {
+                  if (!r.check(value)) {
+                      errors.add(r.errorMessage());
+                  }
+              }
+              return errors;
+          }
+      }
+    src/main/java/com/app/form/RegistrationForm.java: |
+      package com.app.form;
+
+      import com.app.validation.Validator;
+      import java.util.List;
+
+      public class RegistrationForm {
+          private final Validator validator;
+          public RegistrationForm(Validator validator) {
+              this.validator = validator;
+          }
+          public boolean submit(String email) {
+              List<String> errors = validator.validate(email);
+              return errors.isEmpty();
+          }
+      }
+    src/main/java/com/app/util/Sanitizer.java: |
+      package com.app.util;
+
+      public class Sanitizer {
+          public static String stripHtml(String input) {
+              return input.replaceAll("<[^>]*>", "");
+          }
+      }
+    src/main/java/com/app/util/Hasher.java: |
+      package com.app.util;
+
+      public class Hasher {
+          public static int hash(String input) {
+              return input.hashCode();
+          }
+      }
+  changed_files:
+    src/main/java/com/app/validation/Rule.java: |
+      package com.app.validation;
+
+      public interface Rule {
+          boolean check(String value);
+          String errorMessage();
+          default int priority() { return 0; }
+      }
+    src/main/java/com/app/validation/EmailRule.java: |
+      package com.app.validation;
+
+      import com.app.validation.Rule;
+
+      public class EmailRule implements Rule {
+          public boolean check(String value) {
+              return value != null && value.contains("@") && value.contains(".");
+          }
+          public String errorMessage() {
+              return "Invalid email";
+          }
+          public int priority() { return 10; }
+      }
+    src/main/java/com/app/validation/Validator.java: |
+      package com.app.validation;
+
+      import com.app.validation.EmailRule;
+      import com.app.validation.Rule;
+      import java.util.ArrayList;
+      import java.util.List;
+
+      public class Validator {
+          private final List<Rule> rules = new ArrayList<>();
+          public Validator() {
+              rules.add(new EmailRule());
+          }
+          public List<String> validate(String value) {
+              List<String> errors = new ArrayList<>();
+              for (Rule r : rules) {
+                  if (!r.check(value)) {
+                      errors.add(r.errorMessage());
+                  }
+              }
+              return errors;
+          }
+      }
+    src/main/java/com/app/form/RegistrationForm.java: |
+      package com.app.form;
+
+      import com.app.validation.Validator;
+      import java.util.List;
+
+      public class RegistrationForm {
+          private final Validator validator;
+          public RegistrationForm(Validator validator) {
+              this.validator = validator;
+          }
+          public boolean submit(String email) {
+              List<String> errors = validator.validate(email);
+              return errors.isEmpty();
+          }
+      }
+    src/main/java/com/app/util/Sanitizer.java: |
+      package com.app.util;
+
+      public class Sanitizer {
+          public static String stripHtml(String input) {
+              return input.replaceAll("<[^>]*>", "");
+          }
+      }
+    src/main/java/com/app/util/Hasher.java: |
+      package com.app.util;
+
+      public class Hasher {
+          public static int hash(String input) {
+              return input.hashCode();
+          }
+      }
+  commit_message: "fix: stricter email validation with null check and dot"
+fragments:
+- id: rule_priority
+  selector:
+    path: src/main/java/com/app/validation/Rule.java
+    anchor: "default int priority()"
+- id: email_imports_rule
+  selector:
+    path: src/main/java/com/app/validation/EmailRule.java
+    anchor: "import com.app.validation.Rule"
+- id: validator_imports_email
+  selector:
+    path: src/main/java/com/app/validation/Validator.java
+    anchor: "import com.app.validation.EmailRule"
+- id: form_imports_validator
+  selector:
+    path: src/main/java/com/app/form/RegistrationForm.java
+    anchor: "import com.app.validation.Validator"
+- id: no_sanitizer
+  selector:
+    path: src/main/java/com/app/util/Sanitizer.java
+    anchor: "class Sanitizer"
+- id: no_hasher
+  selector:
+    path: src/main/java/com/app/util/Hasher.java
+    anchor: "class Hasher"
+oracle:
+  required:
+  - rule_priority
+  - email_imports_rule
+  - validator_imports_email
+  - form_imports_validator
+  allowed: []
+  forbidden:
+  - no_sanitizer
+  - no_hasher

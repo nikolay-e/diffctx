@@ -1,0 +1,126 @@
+name: gap_032_python_sig_change_log_formatter
+tags:
+- change:signature
+- change:single_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:python
+repo:
+  initial_files:
+    logging_lib/formatter.py: |
+      from datetime import datetime
+
+      def format_entry(level: str, message: str) -> str:
+          ts = datetime.utcnow().isoformat()
+          return f"[{ts}] {level.upper()}: {message}"
+
+      def format_error(message: str, exc_type: str) -> str:
+          base = format_entry("ERROR", message)
+          return f"{base} ({exc_type})"
+    logging_lib/handler.py: |
+      from logging_lib.formatter import format_entry, format_error
+
+      class LogHandler:
+          def __init__(self):
+              self.buffer: list[str] = []
+
+          def info(self, message: str) -> None:
+              self.buffer.append(format_entry("INFO", message))
+
+          def error(self, message: str, exc_type: str = "Exception") -> None:
+              self.buffer.append(format_error(message, exc_type))
+
+          def flush(self) -> list[str]:
+              entries = list(self.buffer)
+              self.buffer.clear()
+              return entries
+    logging_lib/middleware.py: |
+      from logging_lib.handler import LogHandler
+
+      class RequestLogger:
+          def __init__(self):
+              self.handler = LogHandler()
+
+          def log_request(self, method: str, path: str, status: int) -> None:
+              self.handler.info(f"{method} {path} -> {status}")
+
+          def log_error(self, method: str, path: str, error: str) -> None:
+              self.handler.error(f"{method} {path} failed: {error}")
+
+          def collect(self) -> list[str]:
+              return self.handler.flush()
+    logging_lib/rotation.py: |
+      GARBAGE_GAP_032_ROTATE_A = "rotation_marker"
+      GARBAGE_GAP_032_SIZE_B = 10485760
+
+      def should_rotate(file_size: int, max_size: int) -> bool:
+          return file_size >= max_size
+    logging_lib/transport.py: |
+      GARBAGE_GAP_032_TRANS_C = "syslog_marker"
+      GARBAGE_GAP_032_PROTO_D = "udp"
+
+      def send_syslog(host: str, port: int, message: str) -> bool:
+          return True
+  changed_files:
+    logging_lib/formatter.py: |
+      from datetime import datetime
+
+      def format_entry(level: str, message: str, context: dict | None = None) -> str:
+          ts = datetime.utcnow().isoformat()
+          base = f"[{ts}] {level.upper()}: {message}"
+          if context:
+              pairs = " ".join(f"{k}={v}" for k, v in sorted(context.items()))
+              return f"{base} | {pairs}"
+          return base
+
+      def format_error(message: str, exc_type: str) -> str:
+          base = format_entry("ERROR", message)
+          return f"{base} ({exc_type})"
+  commit_message: "add structured context dict to format_entry"
+fixtures:
+  auto_garbage: true
+fragments:
+- id: formatter_entry
+  selector:
+    path: logging_lib/formatter.py
+    anchor: "def format_entry"
+- id: handler_info
+  selector:
+    path: logging_lib/handler.py
+    anchor: "def info"
+- id: middleware_log_request
+  selector:
+    path: logging_lib/middleware.py
+    anchor: "def log_request"
+- id: no_rotation
+  selector:
+    path: logging_lib/rotation.py
+- id: no_transport
+  selector:
+    path: logging_lib/transport.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_032_ROTATE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GAP_032_SIZE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GAP_032_TRANS_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GAP_032_PROTO_D
+oracle:
+  required:
+  - formatter_entry
+  - handler_info
+  - middleware_log_request
+  allowed: []
+  forbidden:
+  - no_rotation
+  - no_transport
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

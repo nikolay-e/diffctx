@@ -1,0 +1,175 @@
+name: bal_3hop_023_python_template_engine
+tags:
+- lang:python
+- change:single_file
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    template/token.py: |
+      class Token:
+          TEXT = "text"
+          VAR = "var"
+          BLOCK = "block"
+          def __init__(self, token_type: str, value: str):
+              self.token_type = token_type
+              self.value = value
+          def is_variable(self) -> bool:
+              return self.token_type == self.VAR
+    template/lexer.py: |
+      import re
+      from template.token import Token
+      class Lexer:
+          def __init__(self):
+              self.var_pattern = re.compile(r'\{\{(\w+)\}\}')
+          def tokenize(self, template: str) -> list[Token]:
+              tokens = []
+              last_end = 0
+              for match in self.var_pattern.finditer(template):
+                  if match.start() > last_end:
+                      tokens.append(Token(Token.TEXT, template[last_end:match.start()]))
+                  tokens.append(Token(Token.VAR, match.group(1)))
+                  last_end = match.end()
+              if last_end < len(template):
+                  tokens.append(Token(Token.TEXT, template[last_end:]))
+              return tokens
+    template/renderer.py: |
+      from template.lexer import Lexer
+      from template.token import Token
+      class Renderer:
+          def __init__(self):
+              self.lexer = Lexer()
+          def render(self, template: str, context: dict) -> str:
+              tokens = self.lexer.tokenize(template)
+              parts = []
+              for token in tokens:
+                  if token.is_variable():
+                      parts.append(str(context.get(token.value, "")))
+                  else:
+                      parts.append(token.value)
+              return "".join(parts)
+    app/email_sender.py: |
+      from template.renderer import Renderer
+      class EmailSender:
+          def __init__(self):
+              self.renderer = Renderer()
+              self.sent: list[dict] = []
+          def send(self, to: str, template: str, context: dict) -> dict:
+              body = self.renderer.render(template, context)
+              email = {"to": to, "body": body}
+              self.sent.append(email)
+              return email
+    utils/html_escape.py: |
+      import html
+      def escape(text: str) -> str:
+          return html.escape(text)
+      def unescape(text: str) -> str:
+          return html.unescape(text)
+    config/templates.py: |
+      WELCOME_TEMPLATE = "Hello {{name}}, welcome to {{service}}!"
+      RESET_TEMPLATE = "Click here to reset: {{link}}"
+  changed_files:
+    template/token.py: |
+      class Token:
+          TEXT = "text"
+          VAR = "var"
+          BLOCK = "block"
+          FILTER = "filter"
+          def __init__(self, token_type: str, value: str, filters: list[str] = None):
+              self.token_type = token_type
+              self.value = value
+              self.filters = filters or []
+          def is_variable(self) -> bool:
+              return self.token_type == self.VAR
+          def has_filters(self) -> bool:
+              return len(self.filters) > 0
+    template/lexer.py: |
+      import re
+      from template.token import Token
+      class Lexer:
+          def __init__(self):
+              self.var_pattern = re.compile(r'\{\{(\w+)\}\}')
+          def tokenize(self, template: str) -> list[Token]:
+              tokens = []
+              last_end = 0
+              for match in self.var_pattern.finditer(template):
+                  if match.start() > last_end:
+                      tokens.append(Token(Token.TEXT, template[last_end:match.start()]))
+                  tokens.append(Token(Token.VAR, match.group(1)))
+                  last_end = match.end()
+              if last_end < len(template):
+                  tokens.append(Token(Token.TEXT, template[last_end:]))
+              return tokens
+    template/renderer.py: |
+      from template.lexer import Lexer
+      from template.token import Token
+      class Renderer:
+          def __init__(self):
+              self.lexer = Lexer()
+          def render(self, template: str, context: dict) -> str:
+              tokens = self.lexer.tokenize(template)
+              parts = []
+              for token in tokens:
+                  if token.is_variable():
+                      parts.append(str(context.get(token.value, "")))
+                  else:
+                      parts.append(token.value)
+              return "".join(parts)
+    app/email_sender.py: |
+      from template.renderer import Renderer
+      class EmailSender:
+          def __init__(self):
+              self.renderer = Renderer()
+              self.sent: list[dict] = []
+          def send(self, to: str, template: str, context: dict) -> dict:
+              body = self.renderer.render(template, context)
+              email = {"to": to, "body": body}
+              self.sent.append(email)
+              return email
+    utils/html_escape.py: |
+      import html
+      def escape(text: str) -> str:
+          return html.escape(text)
+      def unescape(text: str) -> str:
+          return html.unescape(text)
+    config/templates.py: |
+      WELCOME_TEMPLATE = "Hello {{name}}, welcome to {{service}}!"
+      RESET_TEMPLATE = "Click here to reset: {{link}}"
+  commit_message: "feat: add filter support to Token"
+fragments:
+- id: token_filters
+  selector:
+    path: template/token.py
+    anchor: "def has_filters(self) -> bool"
+- id: lexer_uses_token
+  selector:
+    path: template/lexer.py
+    anchor: "from template.token import Token"
+- id: renderer_uses_lexer
+  selector:
+    path: template/renderer.py
+    anchor: "from template.lexer import Lexer"
+- id: email_uses_renderer
+  selector:
+    path: app/email_sender.py
+    anchor: "from template.renderer import Renderer"
+- id: no_html_escape
+  selector:
+    path: utils/html_escape.py
+    anchor: "def escape"
+- id: no_templates_config
+  selector:
+    path: config/templates.py
+    anchor: "WELCOME_TEMPLATE"
+oracle:
+  required:
+  - token_filters
+  - lexer_uses_token
+  - renderer_uses_lexer
+  - email_uses_renderer
+  allowed: []
+  forbidden:
+  - no_html_escape
+  - no_templates_config

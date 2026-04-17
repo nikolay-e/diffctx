@@ -1,0 +1,182 @@
+name: bal4_3hop_001_ruby_ecommerce_cart
+tags:
+- lang:ruby
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:trivial
+repo:
+  initial_files:
+    lib/pricing/tax.rb: |
+      module Pricing
+        class Tax
+          def self.rate(region)
+            { "US" => 0.08, "EU" => 0.20 }.fetch(region, 0.0)
+          end
+        end
+      end
+    lib/pricing/calculator.rb: |
+      require_relative 'tax'
+      module Pricing
+        class Calculator
+          def total(amount, region)
+            amount + amount * Tax.rate(region)
+          end
+        end
+      end
+    lib/cart/line_item.rb: |
+      require_relative '../pricing/calculator'
+      module Cart
+        class LineItem
+          attr_reader :price, :qty
+          def initialize(price, qty)
+            @price = price
+            @qty = qty
+          end
+          def subtotal(region)
+            Pricing::Calculator.new.total(price * qty, region)
+          end
+        end
+      end
+    lib/cart/checkout.rb: |
+      require_relative 'line_item'
+      module Cart
+        class Checkout
+          def initialize(items, region)
+            @items = items
+            @region = region
+          end
+          def grand_total
+            @items.sum { |i| i.subtotal(@region) }
+          end
+        end
+      end
+    lib/utils/formatter.rb: |
+      module Utils
+        GARBAGE_001_FORMATTER_A = "fmt"
+        class Formatter
+          GARBAGE_001_STYLE_B = true
+          def self.currency(val)
+            "$#{val}"
+          end
+        end
+      end
+    lib/utils/logger.rb: |
+      module Utils
+        GARBAGE_001_LOGGER_C = "log"
+        GARBAGE_001_LEVEL_D = "info"
+        class Logger
+          def self.info(msg)
+            puts msg
+          end
+        end
+      end
+  changed_files:
+    lib/pricing/tax.rb: |
+      module Pricing
+        class Tax
+          def self.rate(region)
+            { "US" => 0.08, "EU" => 0.20, "UK" => 0.20 }.fetch(region, 0.0)
+          end
+        end
+      end
+    lib/pricing/calculator.rb: |
+      require_relative 'tax'
+      module Pricing
+        class Calculator
+          def total(amount, region)
+            amount + amount * Tax.rate(region)
+          end
+        end
+      end
+    lib/cart/line_item.rb: |
+      require_relative '../pricing/calculator'
+      module Cart
+        class LineItem
+          attr_reader :price, :qty
+          def initialize(price, qty)
+            @price = price
+            @qty = qty
+          end
+          def subtotal(region)
+            Pricing::Calculator.new.total(price * qty, region)
+          end
+        end
+      end
+    lib/cart/checkout.rb: |
+      require_relative 'line_item'
+      module Cart
+        class Checkout
+          def initialize(items, region)
+            @items = items
+            @region = region
+          end
+          def grand_total
+            @items.sum { |i| i.subtotal(@region) }
+          end
+        end
+      end
+    lib/utils/formatter.rb: |
+      module Utils
+        GARBAGE_001_FORMATTER_A = "fmt"
+        class Formatter
+          GARBAGE_001_STYLE_B = true
+          def self.currency(val)
+            "$#{val}"
+          end
+        end
+      end
+    lib/utils/logger.rb: |
+      module Utils
+        GARBAGE_001_LOGGER_C = "log"
+        GARBAGE_001_LEVEL_D = "info"
+        class Logger
+          def self.info(msg)
+            puts msg
+          end
+        end
+      end
+  commit_message: "feat: add UK tax region"
+fragments:
+- id: tax_uk_rate
+  selector:
+    path: lib/pricing/tax.rb
+    anchor: "UK"
+- id: calc_uses_tax
+  selector:
+    path: lib/pricing/calculator.rb
+    anchor: "require_relative 'tax'"
+- id: line_item_uses_calc
+  selector:
+    path: lib/cart/line_item.rb
+    anchor: "require_relative '../pricing/calculator'"
+- id: checkout_uses_line_item
+  selector:
+    path: lib/cart/checkout.rb
+    anchor: "require_relative 'line_item'"
+- id: no_formatter
+  selector:
+    path: lib/utils/formatter.rb
+    anchor: "GARBAGE_001_FORMATTER_A"
+- id: no_logger
+  selector:
+    path: lib/utils/logger.rb
+    anchor: "GARBAGE_001_LOGGER_C"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_001_STYLE_B
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_001_LEVEL_D
+oracle:
+  required:
+  - tax_uk_rate
+  - calc_uses_tax
+  - line_item_uses_calc
+  - checkout_uses_line_item
+  allowed: []
+  forbidden:
+  - no_formatter
+  - no_logger
+  - no_global_0
+  - no_global_1

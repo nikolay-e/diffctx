@@ -1,0 +1,245 @@
+name: bal2_1hop_062_csharp_repository_pattern_update
+tags:
+- lang:csharp
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: csharp-no-tree-sitter
+repo:
+  initial_files:
+    src/Data/IUserRepository.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Threading.Tasks;
+
+      namespace App.Data
+      {
+          public interface IUserRepository
+          {
+              Task<User> GetById(int id);
+              Task<IEnumerable<User>> GetAll();
+              Task Add(User user);
+              Task Delete(int id);
+          }
+      }
+    src/Data/UserRepository.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Linq;
+      using System.Threading.Tasks;
+      using App.Data;
+
+      namespace App.Data
+      {
+          public class UserRepository : IUserRepository
+          {
+              private readonly List<User> _users = new List<User>();
+
+              public Task<User> GetById(int id)
+              {
+                  return Task.FromResult(_users.FirstOrDefault(u => u.Id == id));
+              }
+
+              public Task<IEnumerable<User>> GetAll()
+              {
+                  return Task.FromResult(_users.AsEnumerable());
+              }
+
+              public Task Add(User user)
+              {
+                  _users.Add(user);
+                  return Task.CompletedTask;
+              }
+
+              public Task Delete(int id)
+              {
+                  _users.RemoveAll(u => u.Id == id);
+                  return Task.CompletedTask;
+              }
+          }
+      }
+    src/Services/UserService.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Threading.Tasks;
+      using App.Data;
+
+      namespace App.Services
+      {
+          public class UserService
+          {
+              private readonly IUserRepository _repository;
+
+              public UserService(IUserRepository repository)
+              {
+                  _repository = repository;
+              }
+
+              public async Task<User> FindUser(int id)
+              {
+                  return await _repository.GetById(id);
+              }
+
+              public async Task<IEnumerable<User>> ListUsers()
+              {
+                  return await _repository.GetAll();
+              }
+
+              public async Task CreateUser(User user)
+              {
+                  await _repository.Add(user);
+              }
+          }
+      }
+    src/Models/User.cs: |
+      using System;
+
+      namespace App.Data
+      {
+          public class User
+          {
+              public int Id { get; set; }
+              public string Name { get; set; }
+              public string Email { get; set; }
+          }
+      }
+    src/Controllers/UserController.cs: |
+      using System;
+      using System.Threading.Tasks;
+      using App.Services;
+      using Microsoft.AspNetCore.Mvc;
+
+      namespace App.Controllers
+      {
+          [ApiController]
+          [Route("api/users")]
+          public class UserController : ControllerBase
+          {
+              private readonly UserService _userService;
+
+              public UserController(UserService userService)
+              {
+                  _userService = userService;
+              }
+
+              [HttpGet("{id}")]
+              public async Task<IActionResult> Get(int id)
+              {
+                  var user = await _userService.FindUser(id);
+                  return user != null ? Ok(user) : NotFound();
+              }
+          }
+      }
+    garbage/Notifications/EmailSender.cs: |
+      using System;
+      GARBAGE_062_EMAIL_SENDER_A = "smtp";
+      GARBAGE_062_TEMPLATE_MARKER_B = "default";
+
+      namespace App.Notifications
+      {
+          public class EmailSender
+          {
+              GARBAGE_062_RETRY_COUNT_C = 3;
+
+              public void Send(string to, string subject, string body) { }
+          }
+      }
+    garbage/Queue/MessageBroker.cs: |
+      using System;
+      GARBAGE_062_BROKER_TYPE_D = "rabbitmq";
+      GARBAGE_062_EXCHANGE_E = "direct";
+
+      namespace App.Queue
+      {
+          public class MessageBroker
+          {
+              GARBAGE_062_PREFETCH_F = 10;
+
+              public void Publish(string queue, string message) { }
+          }
+      }
+    garbage/Config/AppSettings.cs: |
+      using System;
+      GARBAGE_062_SETTINGS_G = "config";
+      GARBAGE_062_ENVIRONMENT_H = "production";
+
+      namespace App.Config
+      {
+          public class AppSettings
+          {
+              GARBAGE_062_VERSION_I = "1.0";
+              GARBAGE_062_DEBUG_J = false;
+
+              public string ConnectionString { get; set; }
+          }
+      }
+  changed_files:
+    src/Data/IUserRepository.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Threading.Tasks;
+
+      namespace App.Data
+      {
+          public interface IUserRepository
+          {
+              Task<User> GetById(int id);
+              Task<IEnumerable<User>> GetAll();
+              Task<IEnumerable<User>> Search(string query, int pageSize, int page);
+              Task Add(User user);
+              Task Update(User user);
+              Task Delete(int id);
+          }
+      }
+  commit_message: "Add search and update methods to user repository"
+fragments:
+- id: user_repo_getbyid
+  selector:
+    path: src/Data/UserRepository.cs
+    anchor: "public Task<User> GetById(int id)"
+- id: user_repo_getall
+  selector:
+    path: src/Data/UserRepository.cs
+    anchor: "public Task<IEnumerable<User>> GetAll()"
+- id: user_service_find
+  selector:
+    path: src/Services/UserService.cs
+    anchor: "await _repository.GetById(id)"
+- id: user_service_list
+  selector:
+    path: src/Services/UserService.cs
+    anchor: "await _repository.GetAll()"
+- id: no_email_sender
+  selector:
+    path: garbage/Notifications/EmailSender.cs
+- id: no_message_broker
+  selector:
+    path: garbage/Queue/MessageBroker.cs
+- id: no_app_settings
+  selector:
+    path: garbage/Config/AppSettings.cs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_062_EMAIL_SENDER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_062_BROKER_TYPE_D
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_062_SETTINGS_G
+oracle:
+  required:
+  - user_repo_getbyid
+  - user_repo_getall
+  - user_service_find
+  - user_service_list
+  allowed: []
+  forbidden:
+  - no_email_sender
+  - no_message_broker
+  - no_app_settings
+  - no_global_0
+  - no_global_1
+  - no_global_2

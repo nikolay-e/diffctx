@@ -1,0 +1,209 @@
+name: gap_054_pyts_bugfix_timezone_offset
+tags:
+- lang:rust
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/queue/consumer.rs: |
+      use crate::message::envelope::Envelope;
+
+      pub struct Consumer {
+          queue_name: String,
+          prefetch: usize,
+          processed: u64,
+          failed: u64,
+      }
+
+      impl Consumer {
+          pub fn new(queue_name: &str, prefetch: usize) -> Self {
+              Consumer {
+                  queue_name: queue_name.to_string(),
+                  prefetch,
+                  processed: 0,
+                  failed: 0,
+              }
+          }
+
+          pub fn handle(&mut self, envelope: &Envelope) -> Result<(), String> {
+              match self.process_envelope(envelope) {
+                  Ok(_) => {
+                      self.processed += 1;
+                      Ok(())
+                  }
+                  Err(e) => {
+                      // BUG: failed counter never incremented
+                      Err(e)
+                  }
+              }
+          }
+
+          fn process_envelope(&self, envelope: &Envelope) -> Result<(), String> {
+              if envelope.payload.is_empty() {
+                  return Err("empty payload".to_string());
+              }
+              Ok(())
+          }
+
+          pub fn stats(&self) -> (u64, u64) {
+              (self.processed, self.failed)
+          }
+      }
+    src/message/envelope.rs: |
+      pub struct Envelope {
+          pub id: String,
+          pub payload: Vec<u8>,
+          pub retry_count: u32,
+      }
+
+      impl Envelope {
+          pub fn new(id: &str, payload: Vec<u8>) -> Self {
+              Envelope { id: id.to_string(), payload, retry_count: 0 }
+          }
+
+          pub fn with_retry(mut self, count: u32) -> Self {
+              self.retry_count = count;
+              self
+          }
+      }
+    src/monitoring/reporter.rs: |
+      use crate::queue::consumer::Consumer;
+
+      pub fn report_health(consumer: &Consumer) -> String {
+          let (processed, failed) = consumer.stats();
+          format!("processed={} failed={}", processed, failed)
+      }
+    garbage/dlq.rs: |
+      // GARBAGE_GAP054_DLQ_A = "dead_letter_queue_marker"
+    garbage/backpressure.rs: |
+      // GARBAGE_GAP054_BP_B = "backpressure_marker"
+    garbage/serializer.rs: |
+      // GARBAGE_GAP054_SER_C = "serializer_marker"
+    garbage/circuit_breaker.rs: |
+      // GARBAGE_GAP054_CB_D = "circuit_breaker_marker"
+  changed_files:
+    src/queue/consumer.rs: |
+      use crate::message::envelope::Envelope;
+
+      pub struct Consumer {
+          queue_name: String,
+          prefetch: usize,
+          processed: u64,
+          failed: u64,
+      }
+
+      impl Consumer {
+          pub fn new(queue_name: &str, prefetch: usize) -> Self {
+              Consumer {
+                  queue_name: queue_name.to_string(),
+                  prefetch,
+                  processed: 0,
+                  failed: 0,
+              }
+          }
+
+          pub fn handle(&mut self, envelope: &Envelope) -> Result<(), String> {
+              match self.process_envelope(envelope) {
+                  Ok(_) => {
+                      self.processed += 1;
+                      Ok(())
+                  }
+                  Err(e) => {
+                      self.failed += 1;
+                      Err(e)
+                  }
+              }
+          }
+
+          fn process_envelope(&self, envelope: &Envelope) -> Result<(), String> {
+              if envelope.payload.is_empty() {
+                  return Err("empty payload".to_string());
+              }
+              Ok(())
+          }
+
+          pub fn stats(&self) -> (u64, u64) {
+              (self.processed, self.failed)
+          }
+      }
+    src/message/envelope.rs: |
+      pub struct Envelope {
+          pub id: String,
+          pub payload: Vec<u8>,
+          pub retry_count: u32,
+      }
+
+      impl Envelope {
+          pub fn new(id: &str, payload: Vec<u8>) -> Self {
+              Envelope { id: id.to_string(), payload, retry_count: 0 }
+          }
+
+          pub fn with_retry(mut self, count: u32) -> Self {
+              self.retry_count = count;
+              self
+          }
+      }
+    src/monitoring/reporter.rs: |
+      use crate::queue::consumer::Consumer;
+
+      pub fn report_health(consumer: &Consumer) -> String {
+          let (processed, failed) = consumer.stats();
+          format!("processed={} failed={}", processed, failed)
+      }
+    garbage/dlq.rs: |
+      // GARBAGE_GAP054_DLQ_A = "dead_letter_queue_marker"
+    garbage/backpressure.rs: |
+      // GARBAGE_GAP054_BP_B = "backpressure_marker"
+    garbage/serializer.rs: |
+      // GARBAGE_GAP054_SER_C = "serializer_marker"
+    garbage/circuit_breaker.rs: |
+      // GARBAGE_GAP054_CB_D = "circuit_breaker_marker"
+  commit_message: "fix: increment failed counter on consumer handle error"
+fragments:
+- id: failed_increment
+  selector:
+    path: src/queue/consumer.rs
+    anchor: "self.failed += 1;"
+- id: consumer_stats
+  selector:
+    path: src/queue/consumer.rs
+    anchor: "pub fn stats(&self) -> (u64, u64) {"
+- id: reporter_calls_stats
+  selector:
+    path: src/monitoring/reporter.rs
+    anchor: "consumer.stats()"
+- id: reporter_format
+  selector:
+    path: src/monitoring/reporter.rs
+    anchor: "format!(\"processed={} failed={}\", processed, failed)"
+- id: envelope_struct
+  selector:
+    path: src/message/envelope.rs
+    anchor: "pub struct Envelope {"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_GAP054_DLQ_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_GAP054_BP_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_GAP054_SER_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_GAP054_CB_D
+oracle:
+  required:
+  - failed_increment
+  - consumer_stats
+  - reporter_calls_stats
+  allowed:
+  - reporter_format
+  - envelope_struct
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

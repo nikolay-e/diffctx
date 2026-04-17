@@ -1,0 +1,91 @@
+name: bal3_bugfix_013_ruby_empty_array_guard
+tags:
+- lang:ruby
+- change:single_file
+- change:bug_fix
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    lib/math/stats.rb: |
+      module Math
+        class Stats
+          def self.mean(values)
+            values.sum.to_f / values.length
+          end
+
+          def self.variance(values)
+            avg = mean(values)
+            values.map { |v| (v - avg) ** 2 }.sum / values.length
+          end
+        end
+      end
+    lib/services/analyzer.rb: |
+      require_relative '../math/stats'
+
+      class Analyzer
+        def compute(data)
+          { mean: Math::Stats.mean(data), variance: Math::Stats.variance(data) }
+        end
+      end
+    lib/controllers/dashboard.rb: |
+      require_relative '../services/analyzer'
+
+      class Dashboard
+        def initialize
+          @analyzer = Analyzer.new
+        end
+
+        def show(data)
+          @analyzer.compute(data)
+        end
+      end
+    lib/helpers/formatter.rb: |
+      module Formatter
+        def self.round(value, decimals = 2)
+          value.round(decimals)
+        end
+      end
+  changed_files:
+    lib/math/stats.rb: |
+      module Math
+        class Stats
+          def self.mean(values)
+            return 0.0 if values.empty?
+            values.sum.to_f / values.length
+          end
+
+          def self.variance(values)
+            return 0.0 if values.empty?
+            avg = mean(values)
+            values.map { |v| (v - avg) ** 2 }.sum / values.length
+          end
+        end
+      end
+  commit_message: "fix: guard against empty array in mean and variance"
+fragments:
+- id: mean_guard
+  selector:
+    path: lib/math/stats.rb
+    anchor: "return 0.0 if values.empty?"
+- id: analyzer_calls_stats
+  selector:
+    path: lib/services/analyzer.rb
+    anchor: "Math::Stats.mean(data)"
+- id: dashboard_calls_analyzer
+  selector:
+    path: lib/controllers/dashboard.rb
+    anchor: "@analyzer.compute(data)"
+- id: no_formatter
+  selector:
+    path: lib/helpers/formatter.rb
+    anchor: "def self.round"
+oracle:
+  required:
+  - mean_guard
+  - analyzer_calls_stats
+  - dashboard_calls_analyzer
+  allowed: []
+  forbidden:
+  - no_formatter

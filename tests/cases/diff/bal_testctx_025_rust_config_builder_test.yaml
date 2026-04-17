@@ -1,0 +1,144 @@
+name: bal_testctx_025_rust_config_builder_test
+tags:
+- lang:rust
+- change:single_file
+- change:signature
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/config.rs: |
+      #[derive(Debug, Clone)]
+      pub struct Config {
+          pub host: String,
+          pub port: u16,
+          pub workers: usize,
+      }
+
+      impl Config {
+          pub fn new(host: &str, port: u16) -> Self {
+              Config {
+                  host: host.to_string(),
+                  port,
+                  workers: 4,
+              }
+          }
+      }
+    tests/test_config.rs: |
+      use crate::config::Config;
+
+      #[test]
+      fn test_default_workers() {
+          let cfg = Config::new("localhost", 8080);
+          assert_eq!(cfg.workers, 4);
+      }
+
+      #[test]
+      fn test_host_and_port() {
+          let cfg = Config::new("0.0.0.0", 3000);
+          assert_eq!(cfg.host, "0.0.0.0");
+          assert_eq!(cfg.port, 3000);
+      }
+    src/server.rs: |
+      pub struct Server {
+          addr: String,
+          running: bool,
+      }
+
+      impl Server {
+          pub fn new(addr: &str) -> Self {
+              Server { addr: addr.to_string(), running: false }
+          }
+
+          pub fn start(&mut self) {
+              self.running = true;
+          }
+
+          pub fn is_running(&self) -> bool {
+              self.running
+          }
+      }
+  changed_files:
+    src/config.rs: |
+      #[derive(Debug, Clone)]
+      pub struct Config {
+          pub host: String,
+          pub port: u16,
+          pub workers: usize,
+          pub max_connections: usize,
+      }
+
+      pub struct ConfigBuilder {
+          host: String,
+          port: u16,
+          workers: usize,
+          max_connections: usize,
+      }
+
+      impl ConfigBuilder {
+          pub fn new(host: &str, port: u16) -> Self {
+              ConfigBuilder {
+                  host: host.to_string(),
+                  port,
+                  workers: 4,
+                  max_connections: 1024,
+              }
+          }
+
+          pub fn workers(mut self, n: usize) -> Self {
+              self.workers = n;
+              self
+          }
+
+          pub fn max_connections(mut self, n: usize) -> Self {
+              self.max_connections = n;
+              self
+          }
+
+          pub fn build(self) -> Config {
+              Config {
+                  host: self.host,
+                  port: self.port,
+                  workers: self.workers,
+                  max_connections: self.max_connections,
+              }
+          }
+      }
+
+      impl Config {
+          pub fn new(host: &str, port: u16) -> Self {
+              ConfigBuilder::new(host, port).build()
+          }
+      }
+  commit_message: "feat: add ConfigBuilder with max_connections"
+fragments:
+- id: config_builder_struct
+  selector:
+    path: src/config.rs
+    anchor: "pub struct ConfigBuilder"
+- id: builder_build_fn
+  selector:
+    path: src/config.rs
+    anchor: "pub fn build(self)"
+- id: test_imports_config
+  selector:
+    path: tests/test_config.rs
+    anchor: "use crate::config::Config"
+- id: test_default_workers
+  selector:
+    path: tests/test_config.rs
+    anchor: "fn test_default_workers"
+- id: no_server
+  selector:
+    path: src/server.rs
+    anchor: "pub struct Server"
+oracle:
+  required:
+  - config_builder_struct
+  - builder_build_fn
+  - test_imports_config
+  allowed:
+  - test_default_workers
+  forbidden:
+  - no_server

@@ -1,0 +1,108 @@
+name: gap2_004_python_weather_temperature_unit_fix
+tags:
+- lang:python
+- change:bug_fix
+- change:multi_file
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    weather/converter.py: |
+      from weather.constants import KELVIN_OFFSET
+
+      def celsius_to_fahrenheit(celsius: float) -> float:
+          return celsius * 9 / 5 + 32
+
+      def kelvin_to_celsius(kelvin: float) -> float:
+          return kelvin + KELVIN_OFFSET
+
+      def fahrenheit_to_celsius(fahrenheit: float) -> float:
+          return (fahrenheit - 32) * 5 / 9
+    weather/constants.py: |
+      KELVIN_OFFSET = -273.15
+      ABSOLUTE_ZERO_F = -459.67
+      STANDARD_PRESSURE_HPA = 1013.25
+    weather/forecast.py: |
+      from weather.converter import celsius_to_fahrenheit
+
+      class ForecastReport:
+          def __init__(self, city: str, temps_celsius: list[float]):
+              self.city = city
+              self.temps_celsius = temps_celsius
+
+          def average_celsius(self) -> float:
+              return sum(self.temps_celsius) / len(self.temps_celsius)
+
+          def max_fahrenheit(self) -> float:
+              return celsius_to_fahrenheit(max(self.temps_celsius))
+    weather/alerts.py: |
+      class WeatherAlert:
+          def __init__(self, severity: str, message: str):
+              self.severity = severity
+              self.message = message
+
+          def is_critical(self) -> bool:
+              return self.severity == "extreme"
+
+          def format_alert(self) -> str:
+              return f"[{self.severity.upper()}] {self.message}"
+  changed_files:
+    weather/converter.py: |
+      from weather.constants import KELVIN_OFFSET
+
+      def celsius_to_fahrenheit(celsius: float) -> float:
+          return celsius * 9 / 5 + 32
+
+      def kelvin_to_celsius(kelvin: float) -> float:
+          return kelvin + KELVIN_OFFSET
+
+      def fahrenheit_to_celsius(fahrenheit: float) -> float:
+          return (fahrenheit - 32) * 5 / 9
+
+      def kelvin_to_fahrenheit(kelvin: float) -> float:
+          return celsius_to_fahrenheit(kelvin_to_celsius(kelvin))
+    weather/forecast.py: |
+      from weather.converter import celsius_to_fahrenheit, kelvin_to_fahrenheit
+
+      class ForecastReport:
+          def __init__(self, city: str, temps_celsius: list[float]):
+              self.city = city
+              self.temps_celsius = temps_celsius
+
+          def average_celsius(self) -> float:
+              return sum(self.temps_celsius) / len(self.temps_celsius)
+
+          def max_fahrenheit(self) -> float:
+              return celsius_to_fahrenheit(max(self.temps_celsius))
+  commit_message: "fix: add kelvin_to_fahrenheit conversion function"
+fragments:
+- id: kelvin_to_fahrenheit
+  selector:
+    path: weather/converter.py
+    anchor: "def kelvin_to_fahrenheit"
+- id: kelvin_to_celsius
+  selector:
+    path: weather/converter.py
+    anchor: "def kelvin_to_celsius"
+- id: celsius_to_fahrenheit
+  selector:
+    path: weather/converter.py
+    anchor: "def celsius_to_fahrenheit"
+- id: no_alerts
+  selector:
+    path: weather/alerts.py
+- id: no_weather_alert
+  selector:
+    anchor: WeatherAlert
+oracle:
+  required:
+  - kelvin_to_fahrenheit
+  - kelvin_to_celsius
+  - celsius_to_fahrenheit
+  allowed: []
+  forbidden:
+  - no_alerts
+  - no_weather_alert

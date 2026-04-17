@@ -1,0 +1,213 @@
+name: bal3_1hop_025_ruby_repository_pattern
+tags:
+- lang:ruby
+- change:multi_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    lib/db/connection.rb: |
+      module Db
+        class Connection
+          attr_reader :host, :port, :database
+
+          def initialize(host:, port:, database:)
+            @host = host
+            @port = port
+            @database = database
+          end
+
+          def query(sql)
+            []
+          end
+
+          def execute(sql)
+            true
+          end
+        end
+      end
+    lib/repositories/user_repository.rb: |
+      require_relative '../db/connection'
+
+      module Repositories
+        class UserRepository
+          def initialize(connection)
+            @conn = connection
+          end
+
+          def find(id)
+            @conn.query("SELECT * FROM users WHERE id = #{id}").first
+          end
+
+          def all
+            @conn.query("SELECT * FROM users")
+          end
+        end
+      end
+    lib/repositories/order_repository.rb: |
+      require_relative '../db/connection'
+
+      module Repositories
+        class OrderRepository
+          def initialize(connection)
+            @conn = connection
+          end
+
+          def find_by_user(user_id)
+            @conn.query("SELECT * FROM orders WHERE user_id = #{user_id}")
+          end
+        end
+      end
+    lib/repositories/product_repository.rb: |
+      require_relative '../db/connection'
+
+      module Repositories
+        class ProductRepository
+          def initialize(connection)
+            @conn = connection
+          end
+
+          def find(id)
+            @conn.query("SELECT * FROM products WHERE id = #{id}").first
+          end
+
+          def search(term)
+            @conn.query("SELECT * FROM products WHERE name LIKE '%#{term}%'")
+          end
+        end
+      end
+    lib/tasks/backup.rb: |
+      GARBAGE_025_BACKUP_A = "backup"
+
+      module Tasks
+        class Backup
+          def run(path)
+            "backed up to #{path}"
+          end
+        end
+      end
+    lib/tasks/deploy.rb: |
+      GARBAGE_025_DEPLOY_B = "deploy"
+
+      module Tasks
+        class Deploy
+          def run(env)
+            "deployed to #{env}"
+          end
+        end
+      end
+    lib/tasks/seed.rb: |
+      GARBAGE_025_SEED_C = "seed"
+
+      module Tasks
+        class Seed
+          def run
+            "seeded"
+          end
+        end
+      end
+  changed_files:
+    lib/db/connection.rb: |
+      module Db
+        class Connection
+          attr_reader :host, :port, :database, :pool_size
+
+          def initialize(host:, port:, database:, pool_size: 5)
+            @host = host
+            @port = port
+            @database = database
+            @pool_size = pool_size
+            @transaction_active = false
+          end
+
+          def query(sql, params = [])
+            []
+          end
+
+          def execute(sql, params = [])
+            true
+          end
+
+          def transaction
+            @transaction_active = true
+            yield
+            @transaction_active = false
+          rescue => e
+            @transaction_active = false
+            raise e
+          end
+
+          def in_transaction?
+            @transaction_active
+          end
+        end
+      end
+  commit_message: "feat: add pool_size, parameterized queries, and transactions"
+fragments:
+- id: pool_size_attr
+  selector:
+    path: lib/db/connection.rb
+    anchor: ":pool_size"
+- id: pool_size_param
+  selector:
+    path: lib/db/connection.rb
+    anchor: "pool_size: 5"
+- id: query_params
+  selector:
+    path: lib/db/connection.rb
+    anchor: "def query(sql, params = [])"
+- id: transaction_method
+  selector:
+    path: lib/db/connection.rb
+    anchor: "def transaction"
+- id: user_repo_queries
+  selector:
+    path: lib/repositories/user_repository.rb
+    anchor: "@conn.query(\"SELECT * FROM users WHERE id"
+- id: order_repo_queries
+  selector:
+    path: lib/repositories/order_repository.rb
+    anchor: "@conn.query(\"SELECT * FROM orders"
+- id: product_repo_queries
+  selector:
+    path: lib/repositories/product_repository.rb
+    anchor: "@conn.query(\"SELECT * FROM products WHERE id"
+- id: unrelated_backup
+  selector:
+    path: lib/tasks/backup.rb
+    anchor: "class Backup"
+- id: unrelated_deploy
+  selector:
+    path: lib/tasks/deploy.rb
+    anchor: "class Deploy"
+- id: unrelated_seed
+  selector:
+    path: lib/tasks/seed.rb
+    anchor: "class Seed"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_025_BACKUP_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_025_DEPLOY_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_025_SEED_C
+oracle:
+  required:
+  - pool_size_attr
+  - query_params
+  - transaction_method
+  - user_repo_queries
+  allowed:
+  - pool_size_param
+  - order_repo_queries
+  - product_repo_queries
+  forbidden:
+  - unrelated_backup
+  - unrelated_deploy
+  - unrelated_seed
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

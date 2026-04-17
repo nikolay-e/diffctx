@@ -1,0 +1,175 @@
+name: gap_196_zig_same_file_config_validator
+tags:
+- lang:zig
+- change:multi_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+repo:
+  initial_files:
+    src/config.zig: |
+      pub const Config = struct {
+          host: []const u8,
+          port: u16,
+          max_connections: u32,
+          timeout_ms: u64,
+
+          pub fn isValid(self: Config) bool {
+              if (self.port == 0) return false;
+              if (self.max_connections == 0) return false;
+              if (self.timeout_ms < 100) return false;
+              return true;
+          }
+
+          pub fn defaultConfig() Config {
+              return Config{
+                  .host = "0.0.0.0",
+                  .port = 8080,
+                  .max_connections = 100,
+                  .timeout_ms = 5000,
+              };
+          }
+      };
+    src/env.zig: |
+      const std = @import("std");
+
+      pub fn getEnvOrDefault(key: []const u8, default: []const u8) []const u8 {
+          _ = key;
+          return default;
+      }
+
+      pub fn requireEnv(key: []const u8) ![]const u8 {
+          _ = key;
+          return error.EnvNotFound;
+      }
+    src/telemetry.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_196_TELEM_MARKER_A: []const u8 = "telemetry_noise";
+      const TRAP_GAP_196_TELEM_FLAG_B: u64 = 0;
+
+      pub fn sendMetric(name: []const u8, value: f64) void {
+          _ = name;
+          _ = value;
+      }
+
+      pub fn flush() void {}
+    src/retry.zig: |
+      const TRAP_GAP_196_RETRY_MARKER_C: []const u8 = "retry_noise";
+      const TRAP_GAP_196_RETRY_FLAG_D: u32 = 3;
+
+      pub fn withRetry(max_attempts: u32, delay_ms: u64) void {
+          _ = max_attempts;
+          _ = delay_ms;
+      }
+  changed_files:
+    src/config.zig: |
+      pub const Config = struct {
+          host: []const u8,
+          port: u16,
+          max_connections: u32,
+          timeout_ms: u64,
+          tls_enabled: bool,
+
+          pub fn isValid(self: Config) bool {
+              if (self.port == 0) return false;
+              if (self.max_connections == 0) return false;
+              if (self.timeout_ms < 100) return false;
+              if (self.tls_enabled and self.port == 80) return false;
+              return true;
+          }
+
+          pub fn defaultConfig() Config {
+              return Config{
+                  .host = "0.0.0.0",
+                  .port = 8080,
+                  .max_connections = 100,
+                  .timeout_ms = 5000,
+                  .tls_enabled = false,
+              };
+          }
+      };
+    src/env.zig: |
+      const std = @import("std");
+
+      pub fn getEnvOrDefault(key: []const u8, default: []const u8) []const u8 {
+          _ = key;
+          return default;
+      }
+
+      pub fn requireEnv(key: []const u8) ![]const u8 {
+          _ = key;
+          return error.EnvNotFound;
+      }
+
+      pub fn parsePort(raw: []const u8) u16 {
+          _ = raw;
+          return 8080;
+      }
+    src/telemetry.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_196_TELEM_MARKER_A: []const u8 = "telemetry_noise";
+      const TRAP_GAP_196_TELEM_FLAG_B: u64 = 0;
+
+      pub fn sendMetric(name: []const u8, value: f64) void {
+          _ = name;
+          _ = value;
+      }
+
+      pub fn flush() void {}
+    src/retry.zig: |
+      const TRAP_GAP_196_RETRY_MARKER_C: []const u8 = "retry_noise";
+      const TRAP_GAP_196_RETRY_FLAG_D: u32 = 3;
+
+      pub fn withRetry(max_attempts: u32, delay_ms: u64) void {
+          _ = max_attempts;
+          _ = delay_ms;
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: config_tls_field
+  selector:
+    path: src/config.zig
+    anchor: "tls_enabled: bool"
+- id: config_tls_check
+  selector:
+    path: src/config.zig
+    anchor: self.tls_enabled and self.port == 80
+- id: env_parse_port
+  selector:
+    path: src/env.zig
+    anchor: "pub fn parsePort"
+- id: no_telemetry
+  selector:
+    path: src/telemetry.zig
+- id: no_retry
+  selector:
+    path: src/retry.zig
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP_196_TELEM_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP_196_TELEM_FLAG_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP_196_RETRY_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP_196_RETRY_FLAG_D
+oracle:
+  required:
+  - config_tls_field
+  - config_tls_check
+  - env_parse_port
+  allowed: []
+  forbidden:
+  - no_telemetry
+  - no_retry
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

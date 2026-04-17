@@ -1,0 +1,234 @@
+name: bal3_3hop_020_rust_pipeline_stage_transform_parser
+tags:
+- lang:rust
+- change:multi_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/parser/line_parser.rs: |
+      pub struct LineParser {
+          delimiter: char,
+      }
+
+      impl LineParser {
+          pub fn new(delimiter: char) -> Self {
+              Self { delimiter }
+          }
+
+          pub fn parse(&self, input: &str) -> Vec<String> {
+              input.split(self.delimiter).map(|s| s.trim().to_string()).collect()
+          }
+      }
+    src/parser/mod.rs: |
+      pub mod line_parser;
+    src/transform/mapper.rs: |
+      use crate::parser::line_parser::LineParser;
+
+      pub struct Mapper {
+          parser: LineParser,
+          prefix: String,
+      }
+
+      impl Mapper {
+          pub fn new(parser: LineParser, prefix: &str) -> Self {
+              Self { parser, prefix: prefix.to_string() }
+          }
+
+          pub fn map_line(&self, input: &str) -> Vec<String> {
+              self.parser.parse(input)
+                  .into_iter()
+                  .map(|s| format!("{}{}", self.prefix, s))
+                  .collect()
+          }
+      }
+    src/transform/mod.rs: |
+      pub mod mapper;
+    src/stage/processor.rs: |
+      use crate::transform::mapper::Mapper;
+
+      pub struct Processor {
+          mapper: Mapper,
+      }
+
+      impl Processor {
+          pub fn new(mapper: Mapper) -> Self {
+              Self { mapper }
+          }
+
+          pub fn process(&self, lines: &[String]) -> Vec<String> {
+              let mut result = Vec::new();
+              for line in lines {
+                  result.extend(self.mapper.map_line(line));
+              }
+              result
+          }
+      }
+    src/stage/mod.rs: |
+      pub mod processor;
+    src/pipeline/engine.rs: |
+      use crate::stage::processor::Processor;
+
+      pub struct Engine {
+          stages: Vec<Processor>,
+      }
+
+      impl Engine {
+          pub fn new() -> Self {
+              Self { stages: Vec::new() }
+          }
+
+          pub fn add_stage(&mut self, stage: Processor) {
+              self.stages.push(stage);
+          }
+
+          pub fn run(&self, input: &[String]) -> Vec<String> {
+              let mut data = input.to_vec();
+              for stage in &self.stages {
+                  data = stage.process(&data);
+              }
+              data
+          }
+      }
+    src/pipeline/mod.rs: |
+      pub mod engine;
+    src/output/writer.rs: |
+      pub static GARBAGE_BAL3_020_WRITER_MARKER_A: &str = "writer";
+      pub static GARBAGE_BAL3_020_BUFFER_MARKER_B: usize = 4096;
+
+      pub struct Writer;
+      impl Writer {
+          pub fn write(&self, _data: &[String]) {}
+      }
+    src/output/formatter.rs: |
+      pub static GARBAGE_BAL3_020_FORMATTER_MARKER_C: &str = "formatter";
+      pub static GARBAGE_BAL3_020_INDENT_MARKER_D: usize = 2;
+
+      pub struct Formatter;
+      impl Formatter {
+          pub fn format(&self, _data: &[String]) -> String {
+              String::new()
+          }
+      }
+    src/output/mod.rs: |
+      pub mod writer;
+      pub mod formatter;
+    src/lib.rs: |
+      pub mod parser;
+      pub mod transform;
+      pub mod stage;
+      pub mod pipeline;
+      pub mod output;
+  changed_files:
+    src/parser/line_parser.rs: |
+      pub struct LineParser {
+          delimiter: char,
+          skip_empty: bool,
+      }
+
+      impl LineParser {
+          pub fn new(delimiter: char, skip_empty: bool) -> Self {
+              Self { delimiter, skip_empty }
+          }
+
+          pub fn parse(&self, input: &str) -> Vec<String> {
+              let parts: Vec<String> = input.split(self.delimiter)
+                  .map(|s| s.trim().to_string())
+                  .collect();
+              if self.skip_empty {
+                  parts.into_iter().filter(|s| !s.is_empty()).collect()
+              } else {
+                  parts
+              }
+          }
+      }
+    src/pipeline/engine.rs: |
+      use crate::stage::processor::Processor;
+
+      pub struct Engine {
+          stages: Vec<Processor>,
+          name: String,
+      }
+
+      impl Engine {
+          pub fn new(name: &str) -> Self {
+              Self { stages: Vec::new(), name: name.to_string() }
+          }
+
+          pub fn add_stage(&mut self, stage: Processor) {
+              self.stages.push(stage);
+          }
+
+          pub fn run(&self, input: &[String]) -> Vec<String> {
+              let mut data = input.to_vec();
+              for stage in &self.stages {
+                  data = stage.process(&data);
+              }
+              data
+          }
+
+          pub fn stage_count(&self) -> usize {
+              self.stages.len()
+          }
+      }
+  commit_message: "Add skip_empty to parser and engine name"
+fragments:
+- id: parser_skip_empty
+  selector:
+    path: src/parser/line_parser.rs
+    anchor: "skip_empty: bool"
+- id: parser_filter
+  selector:
+    path: src/parser/line_parser.rs
+    anchor: "filter(|s| !s.is_empty())"
+- id: mapper_map
+  selector:
+    path: src/transform/mapper.rs
+    anchor: "pub fn map_line"
+- id: processor_process
+  selector:
+    path: src/stage/processor.rs
+    anchor: "pub fn process"
+- id: engine_name
+  selector:
+    path: src/pipeline/engine.rs
+    anchor: "name: String"
+- id: engine_stage_count
+  selector:
+    path: src/pipeline/engine.rs
+    anchor: "pub fn stage_count"
+- id: no_writer
+  selector:
+    path: src/output/writer.rs
+- id: no_formatter
+  selector:
+    path: src/output/formatter.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_020_WRITER_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_020_BUFFER_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_020_FORMATTER_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_020_INDENT_MARKER_D
+oracle:
+  required:
+  - parser_skip_empty
+  - parser_filter
+  - mapper_map
+  - processor_process
+  - engine_name
+  - engine_stage_count
+  allowed: []
+  forbidden:
+  - no_writer
+  - no_formatter
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

@@ -1,0 +1,151 @@
+name: gap_096_rust_same_file_trivial_stopwatch
+tags:
+- lang:rust
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+repo:
+  initial_files:
+    src/stopwatch.rs: |
+      pub struct Stopwatch {
+          elapsed_ms: u64,
+          running: bool,
+      }
+
+      impl Stopwatch {
+          pub fn new() -> Self {
+              Stopwatch { elapsed_ms: 0, running: false }
+          }
+
+          pub fn start(&mut self) {
+              self.running = true;
+          }
+
+          pub fn stop(&mut self) {
+              self.running = false;
+          }
+
+          pub fn is_running(&self) -> bool {
+              self.running
+          }
+
+          pub fn elapsed(&self) -> u64 {
+              self.elapsed_ms
+          }
+      }
+    src/countdown.rs: |
+      pub struct Countdown {
+          remaining_ms: u64,
+      }
+
+      impl Countdown {
+          pub fn new(duration_ms: u64) -> Self {
+              Countdown { remaining_ms: duration_ms }
+          }
+
+          pub fn tick(&mut self, delta_ms: u64) {
+              self.remaining_ms = self.remaining_ms.saturating_sub(delta_ms);
+          }
+
+          pub fn is_finished(&self) -> bool {
+              self.remaining_ms == 0
+          }
+
+          pub fn remaining(&self) -> u64 {
+              self.remaining_ms
+          }
+      }
+    src/scheduler.rs: |
+      pub struct ScheduledTask {
+          name: String,
+          interval_ms: u64,
+          last_run: u64,
+      }
+
+      impl ScheduledTask {
+          pub fn new(name: &str, interval_ms: u64) -> Self {
+              ScheduledTask {
+                  name: name.to_string(),
+                  interval_ms,
+                  last_run: 0,
+              }
+          }
+
+          pub fn should_run(&self, current_time: u64) -> bool {
+              current_time - self.last_run >= self.interval_ms
+          }
+
+          pub fn mark_run(&mut self, current_time: u64) {
+              self.last_run = current_time;
+          }
+      }
+  changed_files:
+    src/stopwatch.rs: |
+      pub struct Stopwatch {
+          elapsed_ms: u64,
+          running: bool,
+          lap_times: Vec<u64>,
+      }
+
+      impl Stopwatch {
+          pub fn new() -> Self {
+              Stopwatch { elapsed_ms: 0, running: false, lap_times: Vec::new() }
+          }
+
+          pub fn start(&mut self) {
+              self.running = true;
+          }
+
+          pub fn stop(&mut self) {
+              self.running = false;
+          }
+
+          pub fn lap(&mut self) {
+              self.lap_times.push(self.elapsed_ms);
+          }
+
+          pub fn is_running(&self) -> bool {
+              self.running
+          }
+
+          pub fn elapsed(&self) -> u64 {
+              self.elapsed_ms
+          }
+
+          pub fn laps(&self) -> &[u64] {
+              &self.lap_times
+          }
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: stopwatch_file
+  selector:
+    path: stopwatch.rs
+- id: req_lap
+  selector:
+    anchor: "pub fn lap("
+- id: req_laps
+  selector:
+    anchor: "pub fn laps("
+- id: no_countdown
+  selector:
+    path: countdown.rs
+- id: no_scheduler
+  selector:
+    path: scheduler.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_096_A
+oracle:
+  required:
+  - stopwatch_file
+  - req_lap
+  - req_laps
+  allowed: []
+  forbidden:
+  - no_countdown
+  - no_scheduler
+  - no_global_0

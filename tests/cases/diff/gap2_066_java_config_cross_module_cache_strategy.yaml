@@ -1,0 +1,194 @@
+name: gap2_066_java_config_cross_module_cache_strategy
+tags:
+- lang:cpp
+- change:single_file
+- context:cross_module
+- distance:2hop
+- difficulty:medium
+repo:
+  initial_files:
+    include/render/pipeline.h: |
+      #pragma once
+      #include <vector>
+      #include <string>
+
+      namespace render {
+
+      struct PipelineConfig {
+          int width;
+          int height;
+          int msaa_samples;
+          bool vsync;
+      };
+
+      class Pipeline {
+      public:
+          explicit Pipeline(const PipelineConfig& cfg);
+          void begin_frame();
+          void end_frame();
+          void draw_mesh(const std::string& mesh_id);
+      private:
+          PipelineConfig cfg_;
+      };
+
+      }
+    src/scene/renderer.cpp: |
+      #include "render/pipeline.h"
+      #include <memory>
+
+      namespace scene {
+
+      class SceneRenderer {
+          std::unique_ptr<render::Pipeline> pipeline_;
+      public:
+          explicit SceneRenderer(const render::PipelineConfig& cfg)
+              : pipeline_(std::make_unique<render::Pipeline>(cfg)) {}
+
+          void render_frame(const std::vector<std::string>& meshes) {
+              pipeline_->begin_frame();
+              for (const auto& m : meshes) pipeline_->draw_mesh(m);
+              pipeline_->end_frame();
+          }
+      };
+
+      }
+    src/ui/viewport.cpp: |
+      #include "render/pipeline.h"
+
+      namespace ui {
+
+      class Viewport {
+          render::PipelineConfig cfg_;
+      public:
+          explicit Viewport(int w, int h)
+              : cfg_{w, h, 4, true} {}
+
+          render::PipelineConfig config() const { return cfg_; }
+      };
+
+      }
+    garbage/audio.cpp: |
+      // GARBAGE_JAV066_AUDIO_A = "audio_marker"
+      namespace audio { void init() {} }
+    garbage/physics.cpp: |
+      // GARBAGE_JAV066_PHYSICS_B = "physics_marker"
+      namespace physics { void step(float dt) {} }
+    garbage/scripting.cpp: |
+      // GARBAGE_JAV066_SCRIPT_C = "scripting_marker"
+      namespace scripting { void execute(const char* code) {} }
+  changed_files:
+    include/render/pipeline.h: |
+      #pragma once
+      #include <vector>
+      #include <string>
+
+      namespace render {
+
+      struct PipelineConfig {
+          int width;
+          int height;
+          int msaa_samples;
+          bool vsync;
+          float render_scale;
+          bool hdr_enabled;
+      };
+
+      class Pipeline {
+      public:
+          explicit Pipeline(const PipelineConfig& cfg);
+          void begin_frame();
+          void end_frame();
+          void draw_mesh(const std::string& mesh_id);
+          void set_render_scale(float scale);
+      private:
+          PipelineConfig cfg_;
+      };
+
+      }
+    src/scene/renderer.cpp: |
+      #include "render/pipeline.h"
+      #include <memory>
+
+      namespace scene {
+
+      class SceneRenderer {
+          std::unique_ptr<render::Pipeline> pipeline_;
+      public:
+          explicit SceneRenderer(const render::PipelineConfig& cfg)
+              : pipeline_(std::make_unique<render::Pipeline>(cfg)) {}
+
+          void render_frame(const std::vector<std::string>& meshes) {
+              pipeline_->begin_frame();
+              for (const auto& m : meshes) pipeline_->draw_mesh(m);
+              pipeline_->end_frame();
+          }
+      };
+
+      }
+    src/ui/viewport.cpp: |
+      #include "render/pipeline.h"
+
+      namespace ui {
+
+      class Viewport {
+          render::PipelineConfig cfg_;
+      public:
+          explicit Viewport(int w, int h)
+              : cfg_{w, h, 4, true, 1.0f, false} {}
+
+          render::PipelineConfig config() const { return cfg_; }
+      };
+
+      }
+    garbage/audio.cpp: |
+      // GARBAGE_JAV066_AUDIO_A = "audio_marker"
+      namespace audio { void init() {} }
+    garbage/physics.cpp: |
+      // GARBAGE_JAV066_PHYSICS_B = "physics_marker"
+      namespace physics { void step(float dt) {} }
+    garbage/scripting.cpp: |
+      // GARBAGE_JAV066_SCRIPT_C = "scripting_marker"
+      namespace scripting { void execute(const char* code) {} }
+  commit_message: "feat: add render_scale and hdr_enabled to PipelineConfig"
+fragments:
+- id: pipeline_config_new_fields
+  selector:
+    path: include/render/pipeline.h
+    anchor: "render_scale"
+- id: hdr_enabled_field
+  selector:
+    path: include/render/pipeline.h
+    anchor: "hdr_enabled"
+- id: set_render_scale_method
+  selector:
+    path: include/render/pipeline.h
+    anchor: "void set_render_scale"
+- id: scene_renderer_uses_config
+  selector:
+    path: src/scene/renderer.cpp
+    anchor: "render::PipelineConfig"
+- id: viewport_uses_config
+  selector:
+    path: src/ui/viewport.cpp
+    anchor: "1.0f, false"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_JAV066_AUDIO_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_JAV066_PHYSICS_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_JAV066_SCRIPT_C
+oracle:
+  required:
+  - pipeline_config_new_fields
+  - hdr_enabled_field
+  - set_render_scale_method
+  - scene_renderer_uses_config
+  - viewport_uses_config
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

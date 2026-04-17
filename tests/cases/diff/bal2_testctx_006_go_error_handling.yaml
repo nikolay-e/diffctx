@@ -1,0 +1,228 @@
+name: bal2_testctx_006_go_error_handling
+tags:
+- lang:go
+- change:signature
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    internal/parser/json.go: |
+      package parser
+
+      import "encoding/json"
+
+      type Config struct {
+          Host string
+          Port int
+      }
+
+      func ParseConfig(data []byte) Config {
+          var cfg Config
+          json.Unmarshal(data, &cfg)
+          return cfg
+      }
+    internal/parser/json_test.go: |
+      package parser
+
+      import "testing"
+
+      func TestParseConfig(t *testing.T) {
+          data := []byte(`{"Host":"localhost","Port":8080}`)
+          cfg := ParseConfig(data)
+          if cfg.Host != "localhost" {
+              t.Fatalf("expected localhost, got %s", cfg.Host)
+          }
+          if cfg.Port != 8080 {
+              t.Fatalf("expected 8080, got %d", cfg.Port)
+          }
+      }
+    internal/parser/yaml.go: |
+      package parser
+
+      GARBAGE_BAL2_006_YAML_A = "yaml"
+      GARBAGE_BAL2_006_YAML_MARKER_B = true
+
+      type YAMLParser struct {
+          strict bool
+      }
+
+      func NewYAMLParser(strict bool) *YAMLParser {
+          return &YAMLParser{strict: strict}
+      }
+    internal/parser/xml.go: |
+      package parser
+
+      GARBAGE_BAL2_006_XML_C = "xml"
+
+      type XMLParser struct{}
+
+      func NewXMLParser() *XMLParser {
+          return &XMLParser{}
+      }
+    internal/loader/file.go: |
+      package loader
+
+      GARBAGE_BAL2_006_LOADER_D = "loader"
+      GARBAGE_BAL2_006_FILE_MARKER_E = true
+
+      import "os"
+
+      func ReadFile(path string) ([]byte, error) {
+          return os.ReadFile(path)
+      }
+  changed_files:
+    internal/parser/json.go: |
+      package parser
+
+      import (
+          "encoding/json"
+          "fmt"
+      )
+
+      type Config struct {
+          Host string
+          Port int
+      }
+
+      func ParseConfig(data []byte) (Config, error) {
+          var cfg Config
+          if err := json.Unmarshal(data, &cfg); err != nil {
+              return Config{}, fmt.Errorf("parse config: %w", err)
+          }
+          if cfg.Host == "" {
+              return Config{}, fmt.Errorf("host is required")
+          }
+          return cfg, nil
+      }
+    internal/parser/json_test.go: |
+      package parser
+
+      import "testing"
+
+      func TestParseConfig(t *testing.T) {
+          data := []byte(`{"Host":"localhost","Port":8080}`)
+          cfg, err := ParseConfig(data)
+          if err != nil {
+              t.Fatalf("unexpected error: %v", err)
+          }
+          if cfg.Host != "localhost" {
+              t.Fatalf("expected localhost, got %s", cfg.Host)
+          }
+          if cfg.Port != 8080 {
+              t.Fatalf("expected 8080, got %d", cfg.Port)
+          }
+      }
+
+      func TestParseConfigInvalid(t *testing.T) {
+          data := []byte(`{bad json}`)
+          _, err := ParseConfig(data)
+          if err == nil {
+              t.Fatal("expected error for invalid JSON")
+          }
+      }
+
+      func TestParseConfigMissingHost(t *testing.T) {
+          data := []byte(`{"Port":8080}`)
+          _, err := ParseConfig(data)
+          if err == nil {
+              t.Fatal("expected error for missing host")
+          }
+      }
+    internal/parser/yaml.go: |
+      package parser
+
+      GARBAGE_BAL2_006_YAML_A = "yaml"
+      GARBAGE_BAL2_006_YAML_MARKER_B = true
+
+      type YAMLParser struct {
+          strict bool
+      }
+
+      func NewYAMLParser(strict bool) *YAMLParser {
+          return &YAMLParser{strict: strict}
+      }
+    internal/parser/xml.go: |
+      package parser
+
+      GARBAGE_BAL2_006_XML_C = "xml"
+
+      type XMLParser struct{}
+
+      func NewXMLParser() *XMLParser {
+          return &XMLParser{}
+      }
+    internal/loader/file.go: |
+      package loader
+
+      GARBAGE_BAL2_006_LOADER_D = "loader"
+      GARBAGE_BAL2_006_FILE_MARKER_E = true
+
+      import "os"
+
+      func ReadFile(path string) ([]byte, error) {
+          return os.ReadFile(path)
+      }
+  commit_message: "Add error handling to ParseConfig"
+fragments:
+- id: parse_config
+  selector:
+    path: internal/parser/json.go
+    anchor: "func ParseConfig(data []byte) (Config, error)"
+- id: parse_config_validation
+  selector:
+    path: internal/parser/json.go
+    anchor: "host is required"
+- id: test_parse_config
+  selector:
+    path: internal/parser/json_test.go
+    anchor: "func TestParseConfig(t *testing.T)"
+- id: test_invalid
+  selector:
+    path: internal/parser/json_test.go
+    anchor: "func TestParseConfigInvalid"
+- id: test_missing_host
+  selector:
+    path: internal/parser/json_test.go
+    anchor: "func TestParseConfigMissingHost"
+- id: no_yaml
+  selector:
+    path: internal/parser/yaml.go
+- id: no_xml
+  selector:
+    path: internal/parser/xml.go
+- id: no_loader
+  selector:
+    path: internal/loader/file.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL2_006_YAML_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL2_006_YAML_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL2_006_XML_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL2_006_LOADER_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL2_006_FILE_MARKER_E
+oracle:
+  required:
+  - parse_config
+  - parse_config_validation
+  - test_parse_config
+  - test_invalid
+  - test_missing_host
+  allowed: []
+  forbidden:
+  - no_yaml
+  - no_xml
+  - no_loader
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

@@ -1,0 +1,220 @@
+name: bal3_1hop_018_ruby_cache_store
+tags:
+- lang:ruby
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    lib/cache/memory_store.rb: |
+      module Cache
+        class MemoryStore
+          def initialize
+            @data = {}
+          end
+
+          def read(key)
+            @data[key]
+          end
+
+          def write(key, value)
+            @data[key] = value
+          end
+
+          def delete(key)
+            @data.delete(key)
+          end
+        end
+      end
+    lib/api/sessions_controller.rb: |
+      require_relative '../cache/memory_store'
+
+      module Api
+        class SessionsController
+          def initialize(cache)
+            @cache = cache
+          end
+
+          def create(user_id, token)
+            @cache.write("session:#{user_id}", token)
+          end
+
+          def validate(user_id)
+            @cache.read("session:#{user_id}")
+          end
+
+          def destroy(user_id)
+            @cache.delete("session:#{user_id}")
+          end
+        end
+      end
+    lib/api/rate_limiter.rb: |
+      require_relative '../cache/memory_store'
+
+      module Api
+        class RateLimiter
+          def initialize(cache, max_requests: 100)
+            @cache = cache
+            @max_requests = max_requests
+          end
+
+          def allowed?(client_ip)
+            count = @cache.read("rate:#{client_ip}") || 0
+            return false if count >= @max_requests
+            @cache.write("rate:#{client_ip}", count + 1)
+            true
+          end
+        end
+      end
+    lib/api/feature_flags.rb: |
+      require_relative '../cache/memory_store'
+
+      module Api
+        class FeatureFlags
+          def initialize(cache)
+            @cache = cache
+          end
+
+          def enabled?(flag_name)
+            @cache.read("flag:#{flag_name}") == true
+          end
+
+          def toggle(flag_name, value)
+            @cache.write("flag:#{flag_name}", value)
+          end
+        end
+      end
+    lib/workers/image_resizer.rb: |
+      GARBAGE_018_RESIZER_A = "resizer"
+
+      module Workers
+        class ImageResizer
+          def resize(path, width, height)
+            "resized"
+          end
+        end
+      end
+    lib/workers/pdf_generator.rb: |
+      GARBAGE_018_PDF_B = "pdf"
+
+      module Workers
+        class PdfGenerator
+          def generate(html)
+            "pdf_bytes"
+          end
+        end
+      end
+    lib/workers/csv_exporter.rb: |
+      GARBAGE_018_CSV_C = "csv"
+
+      module Workers
+        class CsvExporter
+          def export(rows)
+            rows.map { |r| r.join(",") }.join("\n")
+          end
+        end
+      end
+  changed_files:
+    lib/cache/memory_store.rb: |
+      module Cache
+        class MemoryStore
+          def initialize(default_ttl: nil)
+            @data = {}
+            @expiry = {}
+            @default_ttl = default_ttl
+          end
+
+          def read(key)
+            if @expiry[key] && Time.now > @expiry[key]
+              delete(key)
+              return nil
+            end
+            @data[key]
+          end
+
+          def write(key, value, ttl: nil)
+            @data[key] = value
+            effective_ttl = ttl || @default_ttl
+            @expiry[key] = Time.now + effective_ttl if effective_ttl
+          end
+
+          def delete(key)
+            @data.delete(key)
+            @expiry.delete(key)
+          end
+
+          def clear
+            @data.clear
+            @expiry.clear
+          end
+        end
+      end
+  commit_message: "fix: add TTL expiration and clear method to MemoryStore"
+fragments:
+- id: default_ttl_param
+  selector:
+    path: lib/cache/memory_store.rb
+    anchor: "default_ttl: nil"
+- id: expiry_check
+  selector:
+    path: lib/cache/memory_store.rb
+    anchor: "Time.now > @expiry[key]"
+- id: write_ttl_param
+  selector:
+    path: lib/cache/memory_store.rb
+    anchor: "def write(key, value, ttl: nil)"
+- id: clear_method
+  selector:
+    path: lib/cache/memory_store.rb
+    anchor: "def clear"
+- id: sessions_reads_cache
+  selector:
+    path: lib/api/sessions_controller.rb
+    anchor: "@cache.read("
+- id: rate_limiter_reads_cache
+  selector:
+    path: lib/api/rate_limiter.rb
+    anchor: "@cache.read("
+- id: feature_flags_reads_cache
+  selector:
+    path: lib/api/feature_flags.rb
+    anchor: "@cache.read("
+- id: unrelated_resizer
+  selector:
+    path: lib/workers/image_resizer.rb
+    anchor: "class ImageResizer"
+- id: unrelated_pdf
+  selector:
+    path: lib/workers/pdf_generator.rb
+    anchor: "class PdfGenerator"
+- id: unrelated_csv
+  selector:
+    path: lib/workers/csv_exporter.rb
+    anchor: "class CsvExporter"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_018_RESIZER_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_018_PDF_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_018_CSV_C
+oracle:
+  required:
+  - default_ttl_param
+  - expiry_check
+  - write_ttl_param
+  - sessions_reads_cache
+  allowed:
+  - clear_method
+  - rate_limiter_reads_cache
+  - feature_flags_reads_cache
+  forbidden:
+  - unrelated_resizer
+  - unrelated_pdf
+  - unrelated_csv
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

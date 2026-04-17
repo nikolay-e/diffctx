@@ -1,0 +1,213 @@
+name: bal3_3hop_012_go_migrator_planner_differ_snapshot
+tags:
+- lang:go
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    migrate/snapshot/schema.go: |
+      package snapshot
+
+      type Column struct {
+          Name string
+          Type string
+      }
+
+      type TableSnapshot struct {
+          Name    string
+          Columns []Column
+      }
+
+      func NewTableSnapshot(name string, cols []Column) *TableSnapshot {
+          return &TableSnapshot{Name: name, Columns: cols}
+      }
+
+      func (ts *TableSnapshot) HasColumn(name string) bool {
+          for _, c := range ts.Columns {
+              if c.Name == name {
+                  return true
+              }
+          }
+          return false
+      }
+    migrate/differ/differ.go: |
+      package differ
+
+      import "myapp/migrate/snapshot"
+
+      type Differ struct {
+          current *snapshot.TableSnapshot
+          target  *snapshot.TableSnapshot
+      }
+
+      func NewDiffer(current, target *snapshot.TableSnapshot) *Differ {
+          return &Differ{current: current, target: target}
+      }
+
+      func (d *Differ) AddedColumns() []snapshot.Column {
+          var added []snapshot.Column
+          for _, col := range d.target.Columns {
+              if !d.current.HasColumn(col.Name) {
+                  added = append(added, col)
+              }
+          }
+          return added
+      }
+    migrate/planner/planner.go: |
+      package planner
+
+      import "myapp/migrate/differ"
+
+      type MigrationStep struct {
+          SQL string
+      }
+
+      type Planner struct {
+          differ *differ.Differ
+      }
+
+      func NewPlanner(d *differ.Differ) *Planner {
+          return &Planner{differ: d}
+      }
+
+      func (p *Planner) Plan() []MigrationStep {
+          var steps []MigrationStep
+          for _, col := range p.differ.AddedColumns() {
+              steps = append(steps, MigrationStep{
+                  SQL: "ALTER TABLE ADD COLUMN " + col.Name + " " + col.Type,
+              })
+          }
+          return steps
+      }
+    migrate/migrator/migrator.go: |
+      package migrator
+
+      import "myapp/migrate/planner"
+
+      type Migrator struct {
+          planner *planner.Planner
+      }
+
+      func NewMigrator(p *planner.Planner) *Migrator {
+          return &Migrator{planner: p}
+      }
+
+      func (m *Migrator) Execute() []string {
+          steps := m.planner.Plan()
+          var executed []string
+          for _, s := range steps {
+              executed = append(executed, s.SQL)
+          }
+          return executed
+      }
+    migrate/rollback/rollback.go: |
+      package rollback
+
+      var GARBAGE_BAL3_012_ROLLBACK_MARKER_A = "rollback"
+      var GARBAGE_BAL3_012_UNDO_MARKER_B = true
+
+      type Rollback struct{}
+
+      func (r *Rollback) Undo() {}
+    migrate/seed/seeder.go: |
+      package seed
+
+      var GARBAGE_BAL3_012_SEED_MARKER_C = "seed"
+      var GARBAGE_BAL3_012_FIXTURE_MARKER_D = "test"
+
+      type Seeder struct{}
+
+      func (s *Seeder) Seed() {}
+  changed_files:
+    migrate/snapshot/schema.go: |
+      package snapshot
+
+      type Column struct {
+          Name     string
+          Type     string
+          Nullable bool
+      }
+
+      type TableSnapshot struct {
+          Name    string
+          Columns []Column
+      }
+
+      func NewTableSnapshot(name string, cols []Column) *TableSnapshot {
+          return &TableSnapshot{Name: name, Columns: cols}
+      }
+
+      func (ts *TableSnapshot) HasColumn(name string) bool {
+          for _, c := range ts.Columns {
+              if c.Name == name {
+                  return true
+              }
+          }
+          return false
+      }
+
+      func (ts *TableSnapshot) ColumnByName(name string) *Column {
+          for i := range ts.Columns {
+              if ts.Columns[i].Name == name {
+                  return &ts.Columns[i]
+              }
+          }
+          return nil
+      }
+  commit_message: "Add nullable field and column lookup to snapshot"
+fragments:
+- id: column_nullable
+  selector:
+    path: migrate/snapshot/schema.go
+    anchor: "Nullable bool"
+- id: column_by_name
+  selector:
+    path: migrate/snapshot/schema.go
+    anchor: "func (ts *TableSnapshot) ColumnByName"
+- id: differ_added
+  selector:
+    path: migrate/differ/differ.go
+    anchor: "func (d *Differ) AddedColumns"
+- id: planner_plan
+  selector:
+    path: migrate/planner/planner.go
+    anchor: "func (p *Planner) Plan"
+- id: migrator_execute
+  selector:
+    path: migrate/migrator/migrator.go
+    anchor: "func (m *Migrator) Execute"
+- id: no_rollback
+  selector:
+    path: migrate/rollback/rollback.go
+- id: no_seeder
+  selector:
+    path: migrate/seed/seeder.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_012_ROLLBACK_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_012_UNDO_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_012_SEED_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_012_FIXTURE_MARKER_D
+oracle:
+  required:
+  - column_nullable
+  - column_by_name
+  - differ_added
+  - planner_plan
+  - migrator_execute
+  allowed: []
+  forbidden:
+  - no_rollback
+  - no_seeder
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

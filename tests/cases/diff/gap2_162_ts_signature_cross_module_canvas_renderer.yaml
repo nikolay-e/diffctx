@@ -1,0 +1,106 @@
+name: gap2_162_ts_signature_cross_module_canvas_renderer
+tags:
+- change:signature
+- change:single_file
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+- lang:typescript
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/engine/scene.ts: |
+      import { ShapeFactory, Shape } from "../shapes/shapeFactory";
+
+      export class Scene {
+        private shapes: Shape[] = [];
+        constructor(private factory: ShapeFactory) {}
+
+        addCircle(x: number, y: number, r: number): void {
+          this.shapes.push(this.factory.createCircle(x, y, r));
+        }
+
+        render(): string[] {
+          return this.shapes.map(s => s.draw());
+        }
+      }
+    src/shapes/shapeFactory.ts: |
+      export interface Shape {
+        draw(): string;
+      }
+
+      export class ShapeFactory {
+        createCircle(x: number, y: number, radius: number): Shape {
+          return { draw: () => `circle(${x},${y},${radius})` };
+        }
+
+        createRect(x: number, y: number, w: number, h: number): Shape {
+          return { draw: () => `rect(${x},${y},${w},${h})` };
+        }
+      }
+    src/utils/colorPalette.ts: |
+      export const PALETTE = {
+        red: "#ff0000",
+        green: "#00ff00",
+        blue: "#0000ff",
+      };
+
+      export function hexToRgb(hex: string): [number, number, number] {
+        const val = parseInt(hex.slice(1), 16);
+        return [(val >> 16) & 255, (val >> 8) & 255, val & 255];
+      }
+  changed_files:
+    src/shapes/shapeFactory.ts: |
+      export interface Shape {
+        draw(): string;
+        boundingBox(): { x: number; y: number; w: number; h: number };
+      }
+
+      export interface StrokeOptions {
+        color: string;
+        width: number;
+      }
+
+      export class ShapeFactory {
+        createCircle(x: number, y: number, radius: number, stroke?: StrokeOptions): Shape {
+          return {
+            draw: () => `circle(${x},${y},${radius})`,
+            boundingBox: () => ({ x: x - radius, y: y - radius, w: radius * 2, h: radius * 2 }),
+          };
+        }
+
+        createRect(x: number, y: number, w: number, h: number, stroke?: StrokeOptions): Shape {
+          return {
+            draw: () => `rect(${x},${y},${w},${h})`,
+            boundingBox: () => ({ x, y, w, h }),
+          };
+        }
+      }
+fragments:
+- id: bounding_box
+  selector:
+    path: src/shapes/shapeFactory.ts
+    anchor: boundingBox
+- id: stroke_options
+  selector:
+    path: src/shapes/shapeFactory.ts
+    anchor: StrokeOptions
+- id: create_circle_sig
+  selector:
+    path: src/shapes/shapeFactory.ts
+    anchor: "createCircle(x: number, y: number, radius: number, stroke"
+- id: no_color
+  selector:
+    path: src/utils/colorPalette.ts
+- id: no_scene
+  selector:
+    path: src/engine/scene.ts
+    anchor: addCircle
+oracle:
+  required:
+  - bounding_box
+  - stroke_options
+  - create_circle_sig
+  forbidden:
+  - no_color

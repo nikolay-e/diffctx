@@ -1,0 +1,171 @@
+name: gap_106_rust_single_file_task_scheduler
+tags:
+- lang:rust
+- change:single_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/scheduler/queue.rs: |
+      use crate::scheduler::task::Task;
+      use crate::scheduler::priority::PriorityLevel;
+
+      pub struct TaskQueue {
+          tasks: Vec<Task>,
+          capacity: usize,
+      }
+
+      impl TaskQueue {
+          pub fn new(capacity: usize) -> Self {
+              Self {
+                  tasks: Vec::new(),
+                  capacity,
+              }
+          }
+
+          pub fn enqueue(&mut self, task: Task) -> bool {
+              if self.tasks.len() >= self.capacity {
+                  return false;
+              }
+              self.tasks.push(task);
+              true
+          }
+
+          pub fn dequeue(&mut self) -> Option<Task> {
+              if self.tasks.is_empty() {
+                  return None;
+              }
+              Some(self.tasks.remove(0))
+          }
+      }
+    src/scheduler/task.rs: |
+      use crate::scheduler::priority::PriorityLevel;
+
+      pub struct Task {
+          pub id: String,
+          pub priority: PriorityLevel,
+          pub payload: Vec<u8>,
+      }
+
+      impl Task {
+          pub fn new(id: &str, priority: PriorityLevel, payload: Vec<u8>) -> Self {
+              Self {
+                  id: id.to_string(),
+                  priority,
+                  payload,
+              }
+          }
+
+          pub fn is_high_priority(&self) -> bool {
+              matches!(self.priority, PriorityLevel::Critical | PriorityLevel::High)
+          }
+      }
+    src/scheduler/priority.rs: |
+      #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+      pub enum PriorityLevel {
+          Low,
+          Normal,
+          High,
+          Critical,
+      }
+
+      impl PriorityLevel {
+          pub fn weight(&self) -> u32 {
+              match self {
+                  Self::Low => 1,
+                  Self::Normal => 5,
+                  Self::High => 10,
+                  Self::Critical => 50,
+              }
+          }
+      }
+    src/scheduler/logging.rs: |
+      pub struct SchedulerLog {
+          entries: Vec<String>,
+      }
+
+      impl SchedulerLog {
+          pub fn new() -> Self {
+              Self { entries: Vec::new() }
+          }
+
+          pub fn append(&mut self, message: &str) {
+              self.entries.push(message.to_string());
+          }
+
+          pub fn drain(&mut self) -> Vec<String> {
+              std::mem::take(&mut self.entries)
+          }
+      }
+  changed_files:
+    src/scheduler/queue.rs: |
+      use crate::scheduler::task::Task;
+      use crate::scheduler::priority::PriorityLevel;
+
+      pub struct TaskQueue {
+          tasks: Vec<Task>,
+          capacity: usize,
+      }
+
+      impl TaskQueue {
+          pub fn new(capacity: usize) -> Self {
+              Self {
+                  tasks: Vec::new(),
+                  capacity,
+              }
+          }
+
+          pub fn enqueue(&mut self, task: Task) -> bool {
+              if self.tasks.len() >= self.capacity {
+                  return false;
+              }
+              self.tasks.push(task);
+              self.tasks.sort_by(|a, b| b.priority.weight().cmp(&a.priority.weight()));
+              true
+          }
+
+          pub fn dequeue(&mut self) -> Option<Task> {
+              if self.tasks.is_empty() {
+                  return None;
+              }
+              Some(self.tasks.remove(0))
+          }
+
+          pub fn peek_priority(&self) -> Option<PriorityLevel> {
+              self.tasks.first().map(|t| t.priority)
+          }
+      }
+fragments:
+- id: queue_enqueue
+  selector:
+    path: src/scheduler/queue.rs
+    anchor: "pub fn enqueue"
+- id: queue_peek
+  selector:
+    path: src/scheduler/queue.rs
+    anchor: "pub fn peek_priority"
+- id: priority_weight
+  selector:
+    path: src/scheduler/priority.rs
+    anchor: "pub fn weight"
+- id: task_priority_field
+  selector:
+    path: src/scheduler/task.rs
+    anchor: "pub priority: PriorityLevel"
+- id: no_logging
+  selector:
+    path: src/scheduler/logging.rs
+- id: no_scheduler_log
+  selector:
+    anchor: SchedulerLog
+oracle:
+  required:
+  - queue_enqueue
+  - queue_peek
+  - priority_weight
+  forbidden:
+  - no_logging
+  - no_scheduler_log

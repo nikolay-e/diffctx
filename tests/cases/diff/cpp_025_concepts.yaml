@@ -1,574 +1,170 @@
 name: cpp_025_concepts
+tags:
+- lang:cpp
+- change:new_function
+- change:single_file
+- context:cross_module
+- distance:1hop
+- difficulty:easy
 repo:
   initial_files:
-    include/concepts/concepts.hpp: |
+    include/cloud/storage_backend.hpp: |
       #pragma once
-      #include <concepts>
-      #include <type_traits>
-      #include <iterator>
-
-      namespace app::concepts {
-
-      template<typename T>
-      concept Numeric = std::integral<T> || std::floating_point<T>;
-
-      template<typename T>
-      concept Addable = requires(T a, T b) {
-          { a + b } -> std::convertible_to<T>;
-      };
-
-      template<typename T>
-      concept Comparable = requires(T a, T b) {
-          { a < b } -> std::convertible_to<bool>;
-          { a > b } -> std::convertible_to<bool>;
-          { a == b } -> std::convertible_to<bool>;
-          { a != b } -> std::convertible_to<bool>;
-      };
-
-      template<typename T>
-      concept Printable = requires(T t, std::ostream& os) {
-          { os << t } -> std::same_as<std::ostream&>;
-      };
-
-      template<typename T>
-      concept Container = requires(T t) {
-          typename T::value_type;
-          typename T::iterator;
-          { t.begin() } -> std::input_or_output_iterator;
-          { t.end() } -> std::input_or_output_iterator;
-          { t.size() } -> std::convertible_to<std::size_t>;
-      };
-
-      template<typename T>
-      concept Hashable = requires(T t) {
-          { std::hash<T>{}(t) } -> std::convertible_to<std::size_t>;
-      };
-
-      template<typename T>
-      concept Stringifiable = requires(T t) {
-          { t.to_string() } -> std::convertible_to<std::string>;
-      };
-
-      template<Numeric T>
-      T square(T value) {
-          return value * value;
-      }
-
-      template<Numeric T>
-      T cube(T value) {
-          return value * value * value;
-      }
-
-      template<Addable T>
-      T add(T a, T b) {
-          return a + b;
-      }
-
-      template<Comparable T>
-      const T& maximum(const T& a, const T& b) {
-          return (a > b) ? a : b;
-      }
-
-      template<Comparable T>
-      const T& minimum(const T& a, const T& b) {
-          return (a < b) ? a : b;
-      }
-
-      }
-    include/unrelated/protocol_handler.hpp: |
-      #pragma once
-      // GARBAGE_CPP_PROTOCOL_266_001
-      #define GARBAGE_CPP_PROTOCOL_VERSION_266_002 2
-
-      namespace app::unrelated::protocol {
-
-      // GARBAGE_CPP_PROTOCOL_MSG_266_003
-      struct ProtocolMessage {
-          int type;
-          size_t length;
-          // GARBAGE_CPP_PROTOCOL_DATA_266_004
-          char data[1024];
-      };
-
-      // GARBAGE_CPP_PROTOCOL_HANDLER_266_005
-      class ProtocolHandler {
-      public:
-          // GARBAGE_CPP_PROTOCOL_PARSE_266_006
-          ProtocolMessage parse(const char* buffer, size_t len) {
-              // GARBAGE_CPP_PROTOCOL_PARSE_IMPL_266_007
-              return ProtocolMessage{};
-          }
-
-          // GARBAGE_CPP_PROTOCOL_SERIALIZE_266_008
-          size_t serialize(const ProtocolMessage& msg, char* buffer) {
-              // GARBAGE_CPP_PROTOCOL_SER_IMPL_266_009
-              return 0;
-          }
-
-          // GARBAGE_CPP_PROTOCOL_VALIDATE_266_010
-          bool validate(const ProtocolMessage& msg) {
-              // GARBAGE_CPP_PROTOCOL_VAL_IMPL_266_011
-              return false;
-          }
-      };
-
-      }
-    src/unrelated/certificate_store.cpp: |
-      // GARBAGE_CPP_CERT_266_012
-      #include <cstddef>
-
-      namespace app::unrelated::cert {
-
-      // GARBAGE_CPP_CERT_INFO_266_013
-      struct CertificateInfo {
-          const char* subject;
-          const char* issuer;
-          // GARBAGE_CPP_CERT_EXPIRY_266_014
-          long expiryDate;
-      };
-
-      // GARBAGE_CPP_CERT_STORE_266_015
-      class CertificateStore {
-      public:
-          // GARBAGE_CPP_CERT_ADD_266_016
-          bool addCertificate(const char* pemData) {
-              // GARBAGE_CPP_CERT_ADD_IMPL_266_017
-              return false;
-          }
-
-          // GARBAGE_CPP_CERT_VERIFY_266_018
-          bool verifyCertificate(const char* certData) {
-              // GARBAGE_CPP_CERT_VERIFY_IMPL_266_019
-              return false;
-          }
-
-          // GARBAGE_CPP_CERT_REMOVE_266_020
-          void removeCertificate(const char* fingerprint) {
-              // GARBAGE_CPP_CERT_REMOVE_IMPL_266_021
-          }
-      };
-
-      }
-    src/calc.cpp: |
-      #include <iostream>
-      int main() { return 0; }
-  changed_files:
-    include/concepts/concepts.hpp: |
-      #pragma once
-      #include <concepts>
-      #include <type_traits>
-      #include <iterator>
-
-      namespace app::concepts {
-
-      template<typename T>
-      concept Numeric = std::integral<T> || std::floating_point<T>;
-
-      template<typename T>
-      concept Addable = requires(T a, T b) {
-          { a + b } -> std::convertible_to<T>;
-      };
-
-      template<typename T>
-      concept Comparable = requires(T a, T b) {
-          { a < b } -> std::convertible_to<bool>;
-          { a > b } -> std::convertible_to<bool>;
-          { a == b } -> std::convertible_to<bool>;
-          { a != b } -> std::convertible_to<bool>;
-      };
-
-      template<typename T>
-      concept Printable = requires(T t, std::ostream& os) {
-          { os << t } -> std::same_as<std::ostream&>;
-      };
-
-      template<typename T>
-      concept Container = requires(T t) {
-          typename T::value_type;
-          typename T::iterator;
-          { t.begin() } -> std::input_or_output_iterator;
-          { t.end() } -> std::input_or_output_iterator;
-          { t.size() } -> std::convertible_to<std::size_t>;
-      };
-
-      template<typename T>
-      concept Hashable = requires(T t) {
-          { std::hash<T>{}(t) } -> std::convertible_to<std::size_t>;
-      };
-
-      template<typename T>
-      concept Stringifiable = requires(T t) {
-          { t.to_string() } -> std::convertible_to<std::string>;
-      };
-
-      template<Numeric T>
-      T square(T value) {
-          return value * value;
-      }
-
-      template<Numeric T>
-      T cube(T value) {
-          return value * value * value;
-      }
-
-      template<Addable T>
-      T add(T a, T b) {
-          return a + b;
-      }
-
-      template<Comparable T>
-      const T& maximum(const T& a, const T& b) {
-          return (a > b) ? a : b;
-      }
-
-      template<Comparable T>
-      const T& minimum(const T& a, const T& b) {
-          return (a < b) ? a : b;
-      }
-
-      }
-    include/unrelated/protocol_handler.hpp: |
-      #pragma once
-      // GARBAGE_CPP_PROTOCOL_266_001
-      #define GARBAGE_CPP_PROTOCOL_VERSION_266_002 2
-
-      namespace app::unrelated::protocol {
-
-      // GARBAGE_CPP_PROTOCOL_MSG_266_003
-      struct ProtocolMessage {
-          int type;
-          size_t length;
-          // GARBAGE_CPP_PROTOCOL_DATA_266_004
-          char data[1024];
-      };
-
-      // GARBAGE_CPP_PROTOCOL_HANDLER_266_005
-      class ProtocolHandler {
-      public:
-          // GARBAGE_CPP_PROTOCOL_PARSE_266_006
-          ProtocolMessage parse(const char* buffer, size_t len) {
-              // GARBAGE_CPP_PROTOCOL_PARSE_IMPL_266_007
-              return ProtocolMessage{};
-          }
-
-          // GARBAGE_CPP_PROTOCOL_SERIALIZE_266_008
-          size_t serialize(const ProtocolMessage& msg, char* buffer) {
-              // GARBAGE_CPP_PROTOCOL_SER_IMPL_266_009
-              return 0;
-          }
-
-          // GARBAGE_CPP_PROTOCOL_VALIDATE_266_010
-          bool validate(const ProtocolMessage& msg) {
-              // GARBAGE_CPP_PROTOCOL_VAL_IMPL_266_011
-              return false;
-          }
-      };
-
-      }
-    src/unrelated/certificate_store.cpp: |
-      // GARBAGE_CPP_CERT_266_012
-      #include <cstddef>
-
-      namespace app::unrelated::cert {
-
-      // GARBAGE_CPP_CERT_INFO_266_013
-      struct CertificateInfo {
-          const char* subject;
-          const char* issuer;
-          // GARBAGE_CPP_CERT_EXPIRY_266_014
-          long expiryDate;
-      };
-
-      // GARBAGE_CPP_CERT_STORE_266_015
-      class CertificateStore {
-      public:
-          // GARBAGE_CPP_CERT_ADD_266_016
-          bool addCertificate(const char* pemData) {
-              // GARBAGE_CPP_CERT_ADD_IMPL_266_017
-              return false;
-          }
-
-          // GARBAGE_CPP_CERT_VERIFY_266_018
-          bool verifyCertificate(const char* certData) {
-              // GARBAGE_CPP_CERT_VERIFY_IMPL_266_019
-              return false;
-          }
-
-          // GARBAGE_CPP_CERT_REMOVE_266_020
-          void removeCertificate(const char* fingerprint) {
-              // GARBAGE_CPP_CERT_REMOVE_IMPL_266_021
-          }
-      };
-
-      }
-    src/calc.cpp: |
-      #include "concepts/concepts.hpp"
-      #include <iostream>
-      #include <vector>
       #include <string>
-      #include <cmath>
-      #include <numeric>
+      #include <vector>
+      #include <cstdint>
 
-      namespace app::calc {
+      namespace cloud {
 
-      template<concepts::Numeric T>
-      class Calculator {
+      class StorageBackend {
       public:
-          T add(T a, T b) const { return a + b; }
-          T subtract(T a, T b) const { return a - b; }
-          T multiply(T a, T b) const { return a * b; }
-          T divide(T a, T b) const { return a / b; }
+          virtual ~StorageBackend() = default;
 
-          T power(T base, int exp) const {
-              T result = 1;
-              for (int i = 0; i < exp; ++i) {
-                  result *= base;
-              }
-              return result;
-          }
-
-          T squareRoot(T value) const requires std::floating_point<T> {
-              return std::sqrt(value);
-          }
+          virtual bool put(const std::string& key, const std::vector<uint8_t>& data) = 0;
+          virtual std::vector<uint8_t> get(const std::string& key) = 0;
+          virtual bool remove(const std::string& key) = 0;
+          virtual bool exists(const std::string& key) const = 0;
       };
 
-      template<concepts::Numeric T>
-      class Statistics {
+      class LocalStorageBackend : public StorageBackend {
       public:
-          template<concepts::Container C>
-          requires std::same_as<typename C::value_type, T>
-          T sum(const C& container) const {
-              T total = 0;
-              for (const auto& val : container) {
-                  total += val;
-              }
-              return total;
-          }
+          explicit LocalStorageBackend(const std::string& root_dir);
 
-          template<concepts::Container C>
-          requires std::same_as<typename C::value_type, T>
-          double mean(const C& container) const {
-              if (container.size() == 0) return 0.0;
-              return static_cast<double>(sum(container)) / container.size();
-          }
+          bool put(const std::string& key, const std::vector<uint8_t>& data) override;
+          std::vector<uint8_t> get(const std::string& key) override;
+          bool remove(const std::string& key) override;
+          bool exists(const std::string& key) const override;
 
-          template<concepts::Container C>
-          requires std::same_as<typename C::value_type, T> && concepts::Comparable<T>
-          T findMax(const C& container) const {
-              T maxVal = *container.begin();
-              for (const auto& val : container) {
-                  maxVal = concepts::maximum(maxVal, val);
-              }
-              return maxVal;
-          }
-
-          template<concepts::Container C>
-          requires std::same_as<typename C::value_type, T> && concepts::Comparable<T>
-          T findMin(const C& container) const {
-              T minVal = *container.begin();
-              for (const auto& val : container) {
-                  minVal = concepts::minimum(minVal, val);
-              }
-              return minVal;
-          }
+      private:
+          std::string root_dir_;
       };
 
-      template<concepts::Printable T>
-      void printValue(const T& value) {
-          std::cout << "Value: " << value << "\n";
-      }
+      } // namespace cloud
+    src/cloud/replication_service.cpp: |
+      #include "cloud/storage_backend.hpp"
+      #include <stdexcept>
 
-      template<concepts::Container C>
-      void printContainer(const C& container) {
-          std::cout << "Container [" << container.size() << " elements]: ";
-          for (const auto& elem : container) {
-              std::cout << elem << " ";
-          }
-          std::cout << "\n";
-      }
+      namespace cloud {
 
-      template<concepts::Addable T>
-      T sumTwo(const T& a, const T& b) {
-          return concepts::add(a, b);
-      }
+      class ReplicationService {
+      public:
+          ReplicationService(StorageBackend* primary, StorageBackend* replica)
+              : primary_(primary), replica_(replica) {}
 
-      struct Point {
-          double x, y;
-
-          Point operator+(const Point& other) const {
-              return Point{x + other.x, y + other.y};
+          bool replicate(const std::string& key) {
+              auto data = primary_->get(key);
+              return replica_->put(key, data);
           }
 
-          bool operator<(const Point& other) const {
-              return (x * x + y * y) < (other.x * other.x + other.y * other.y);
-          }
-
-          bool operator>(const Point& other) const {
-              return (x * x + y * y) > (other.x * other.x + other.y * other.y);
-          }
-
-          bool operator==(const Point& other) const {
-              return x == other.x && y == other.y;
-          }
-
-          bool operator!=(const Point& other) const {
-              return !(*this == other);
-          }
+      private:
+          StorageBackend* primary_;
+          StorageBackend* replica_;
       };
 
-      std::ostream& operator<<(std::ostream& os, const Point& p) {
-          return os << "(" << p.x << ", " << p.y << ")";
-      }
+      } // namespace cloud
+    garbage/cdn_cache.cpp: |
+      // GARBAGE_CLD_A = "cdn_cache_marker"
+    garbage/auth_proxy.cpp: |
+      // GARBAGE_CLD_B = "auth_proxy_marker"
+    garbage/load_balancer.cpp: |
+      // GARBAGE_CLD_C = "load_balancer_marker"
+  changed_files:
+    include/cloud/storage_backend.hpp: |
+      #pragma once
+      #include <string>
+      #include <vector>
+      #include <cstdint>
 
-      }
+      namespace cloud {
 
-      int main() {
-          app::calc::Calculator<int> intCalc;
-          std::cout << "Integer calculations:\n";
-          std::cout << "5 + 3 = " << intCalc.add(5, 3) << "\n";
-          std::cout << "10 - 4 = " << intCalc.subtract(10, 4) << "\n";
-          std::cout << "2^8 = " << intCalc.power(2, 8) << "\n";
-          std::cout << "square(7) = " << app::concepts::square(7) << "\n";
-          std::cout << "cube(3) = " << app::concepts::cube(3) << "\n";
+      class StorageBackend {
+      public:
+          virtual ~StorageBackend() = default;
 
-          app::calc::Calculator<double> doubleCalc;
-          std::cout << "\nDouble calculations:\n";
-          std::cout << "3.14 * 2 = " << doubleCalc.multiply(3.14, 2.0) << "\n";
-          std::cout << "sqrt(16) = " << doubleCalc.squareRoot(16.0) << "\n";
+          virtual bool put(const std::string& key, const std::vector<uint8_t>& data) = 0;
+          virtual std::vector<uint8_t> get(const std::string& key) = 0;
+          virtual bool remove(const std::string& key) = 0;
+          virtual bool exists(const std::string& key) const = 0;
+          virtual std::vector<std::string> list_keys(const std::string& prefix) const = 0;
+      };
 
-          std::vector<int> numbers{1, 5, 3, 9, 2, 8, 4, 7, 6};
-          app::calc::Statistics<int> stats;
+      class LocalStorageBackend : public StorageBackend {
+      public:
+          explicit LocalStorageBackend(const std::string& root_dir);
 
-          std::cout << "\nStatistics:\n";
-          std::cout << "Sum: " << stats.sum(numbers) << "\n";
-          std::cout << "Mean: " << stats.mean(numbers) << "\n";
-          std::cout << "Max: " << stats.findMax(numbers) << "\n";
-          std::cout << "Min: " << stats.findMin(numbers) << "\n";
+          bool put(const std::string& key, const std::vector<uint8_t>& data) override;
+          std::vector<uint8_t> get(const std::string& key) override;
+          bool remove(const std::string& key) override;
+          bool exists(const std::string& key) const override;
+          std::vector<std::string> list_keys(const std::string& prefix) const override;
 
-          std::cout << "\nPrinting values:\n";
-          app::calc::printValue(42);
-          app::calc::printValue(3.14159);
-          app::calc::printValue("Hello, Concepts!");
+      private:
+          std::string root_dir_;
+      };
 
-          std::cout << "\nPrinting container:\n";
-          app::calc::printContainer(numbers);
+      } // namespace cloud
+    src/cloud/replication_service.cpp: |
+      #include "cloud/storage_backend.hpp"
+      #include <stdexcept>
 
-          app::calc::Point p1{1.0, 2.0};
-          app::calc::Point p2{3.0, 4.0};
-          auto p3 = app::calc::sumTwo(p1, p2);
-          std::cout << "\nPoint addition: " << p1 << " + " << p2 << " = " << p3 << "\n";
+      namespace cloud {
 
-          std::cout << "Maximum point: " << app::concepts::maximum(p1, p2) << "\n";
+      class ReplicationService {
+      public:
+          ReplicationService(StorageBackend* primary, StorageBackend* replica)
+              : primary_(primary), replica_(replica) {}
 
-          return 0;
-      }
-  commit_message: Update files
+          bool replicate(const std::string& key) {
+              auto data = primary_->get(key);
+              return replica_->put(key, data);
+          }
+
+          size_t replicate_prefix(const std::string& prefix) {
+              auto keys = primary_->list_keys(prefix);
+              size_t count = 0;
+              for (const auto& key : keys) {
+                  if (replicate(key)) ++count;
+              }
+              return count;
+          }
+
+      private:
+          StorageBackend* primary_;
+          StorageBackend* replica_;
+      };
+
+      } // namespace cloud
+    garbage/cdn_cache.cpp: |
+      // GARBAGE_CLD_A = "cdn_cache_marker"
+    garbage/auth_proxy.cpp: |
+      // GARBAGE_CLD_B = "auth_proxy_marker"
+    garbage/load_balancer.cpp: |
+      // GARBAGE_CLD_C = "load_balancer_marker"
+  commit_message: "feat: add list_keys to StorageBackend interface and LocalStorageBackend"
 fragments:
-- id: calc_file
+- id: list_keys_interface
   selector:
-    path: src/calc.cpp
-- id: req_global_0
+    path: include/cloud/storage_backend.hpp
+    anchor: "virtual std::vector<std::string> list_keys"
+- id: replicate_prefix
   selector:
-    anchor: namespace app::calc {
-- id: req_global_1
+    path: src/cloud/replication_service.cpp
+    anchor: "size_t replicate_prefix"
+- id: no_garbage_a
   selector:
-    anchor: T subtract(T a, T b) const { return a - b; }
-- id: no_global_0
+    anchor: GARBAGE_CLD_A
+- id: no_garbage_b
   selector:
-    anchor: GARBAGE_CPP_CERT_266_012
-- id: no_global_1
+    anchor: GARBAGE_CLD_B
+- id: no_garbage_c
   selector:
-    anchor: GARBAGE_CPP_CERT_ADD_266_016
-- id: no_global_2
-  selector:
-    anchor: GARBAGE_CPP_CERT_ADD_IMPL_266_017
-- id: no_global_3
-  selector:
-    anchor: GARBAGE_CPP_CERT_EXPIRY_266_014
-- id: no_global_4
-  selector:
-    anchor: GARBAGE_CPP_CERT_INFO_266_013
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_CPP_CERT_REMOVE_266_020
-- id: no_global_6
-  selector:
-    anchor: GARBAGE_CPP_CERT_REMOVE_IMPL_266_021
-- id: no_global_7
-  selector:
-    anchor: GARBAGE_CPP_CERT_STORE_266_015
-- id: no_global_8
-  selector:
-    anchor: GARBAGE_CPP_CERT_VERIFY_266_018
-- id: no_global_9
-  selector:
-    anchor: GARBAGE_CPP_CERT_VERIFY_IMPL_266_019
-- id: no_global_10
-  selector:
-    anchor: GARBAGE_CPP_PROTOCOL_266_001
-- id: no_global_11
-  selector:
-    anchor: GARBAGE_CPP_PROTOCOL_DATA_266_004
-- id: no_global_12
-  selector:
-    anchor: GARBAGE_CPP_PROTOCOL_HANDLER_266_005
-- id: no_global_13
-  selector:
-    anchor: GARBAGE_CPP_PROTOCOL_MSG_266_003
-- id: no_global_14
-  selector:
-    anchor: GARBAGE_CPP_PROTOCOL_PARSE_266_006
-- id: no_global_15
-  selector:
-    anchor: GARBAGE_CPP_PROTOCOL_PARSE_IMPL_266_007
-- id: no_global_16
-  selector:
-    anchor: GARBAGE_CPP_PROTOCOL_SERIALIZE_266_008
-- id: no_global_17
-  selector:
-    anchor: GARBAGE_CPP_PROTOCOL_SER_IMPL_266_009
-- id: no_global_18
-  selector:
-    anchor: GARBAGE_CPP_PROTOCOL_VALIDATE_266_010
-- id: no_global_19
-  selector:
-    anchor: GARBAGE_CPP_PROTOCOL_VAL_IMPL_266_011
-- id: no_global_20
-  selector:
-    anchor: GARBAGE_CPP_PROTOCOL_VERSION_266_002
-- id: no_global_21
-  selector:
-    anchor: certificate_store.cpp
-- id: no_global_22
-  selector:
-    anchor: protocol_handler.hpp
+    anchor: GARBAGE_CLD_C
 oracle:
   required:
-  - calc_file
-  - req_global_0
-  - req_global_1
-  allowed: []
+  - list_keys_interface
+  allowed:
+  - replicate_prefix
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
-  - no_global_8
-  - no_global_9
-  - no_global_10
-  - no_global_11
-  - no_global_12
-  - no_global_13
-  - no_global_14
-  - no_global_15
-  - no_global_16
-  - no_global_17
-  - no_global_18
-  - no_global_19
-  - no_global_20
-  - no_global_21
-  - no_global_22
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

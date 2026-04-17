@@ -1,0 +1,80 @@
+name: css_021_css_counter_style
+tags:
+- lang:css
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    counters.css: |
+      @counter-style circled-decimal {
+        system: fixed;
+        symbols: ① ② ③ ④ ⑤ ⑥ ⑦ ⑧ ⑨ ⑩;
+        suffix: " ";
+      }
+      @counter-style dash-list {
+        system: cyclic;
+        symbols: "–";
+        suffix: " ";
+      }
+    list.css: |
+      @import "counters.css";
+      .steps-list {
+        list-style: circled-decimal;
+        padding-left: 24px;
+      }
+      .notes-list {
+        list-style: dash-list;
+        padding-left: 16px;
+      }
+    CSS_NOISE_021_newsletter.css: |
+      .CSS_NOISE_021_newsletter_banner { background: #fef3c7; padding: 12px 24px; }
+      .CSS_NOISE_021_newsletter_input { flex: 1; border: 1px solid #d1d5db; border-radius: 4px; }
+    CSS_NOISE_021_cookie.css: |
+      .CSS_NOISE_021_cookie_banner { position: fixed; bottom: 0; width: 100%; background: #1f2937; color: #fff; }
+      .CSS_NOISE_021_cookie_accept { background: #6366f1; color: #fff; }
+  changed_files:
+    counters.css: |
+      @counter-style circled-decimal {
+        system: fixed;
+        symbols: ① ② ③ ④ ⑤ ⑥ ⑦ ⑧ ⑨ ⑩ ⑪ ⑫ ⑬ ⑭ ⑮;
+        suffix: " ";
+      }
+      @counter-style dash-list {
+        system: cyclic;
+        symbols: "–";
+        suffix: " ";
+      }
+  commit_message: "style: extend circled-decimal counter to support up to 15 items"
+fragments:
+- id: counter_symbols_extended
+  selector:
+    path: counters.css
+    anchor: circled-decimal
+- id: list_imports_counters
+  selector:
+    path: list.css
+    anchor: counters.css
+- id: no_newsletter
+  selector:
+    path: CSS_NOISE_021_newsletter.css
+- id: no_cookie
+  selector:
+    path: CSS_NOISE_021_cookie.css
+- id: no_global_0
+  selector:
+    anchor: CSS_NOISE_021_newsletter_banner
+- id: no_global_1
+  selector:
+    anchor: CSS_NOISE_021_cookie_banner
+oracle:
+  required:
+  - counter_symbols_extended
+  - list_imports_counters
+  allowed: []
+  forbidden:
+  - no_newsletter
+  - no_cookie
+  - no_global_0
+  - no_global_1

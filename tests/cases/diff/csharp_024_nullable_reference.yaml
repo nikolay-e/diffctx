@@ -1,121 +1,146 @@
 name: csharp_024_nullable_reference
+tags:
+- lang:typescript
+- change:multi_file
+- context:same_file
+- distance:0hop
+- difficulty:trivial
 repo:
   initial_files:
-    Models/Configuration.cs: |
-      namespace MyApp.Models;
+    src/components/Modal.tsx: |
+      import React from 'react';
 
-      public class Configuration
-      {
-          public string? ConnectionString { get; set; }
-          public int? Port { get; set; }
-          public string Environment { get; set; } = "Development";
+      interface ModalProps {
+        title: string;
+        children: React.ReactNode;
+        onClose: () => void;
       }
-    Services/ConfigService.cs: |
-      namespace MyApp.Services;
 
-      public class ConfigService { }
-    Unrelated/FileWatcher.cs: |
-      namespace MyApp.Unrelated;
+      export const Modal: React.FC<ModalProps> = ({ title, children, onClose }) => (
+        <div className="modal">
+          <div className="modal-header">
+            <h2>{title}</h2>
+            <button onClick={onClose}>x</button>
+          </div>
+          <div className="modal-body">{children}</div>
+        </div>
+      );
+    src/components/Badge.tsx: |
+      import React from 'react';
 
-      public class FileWatcher
-      {
-          private const string GARBAGE_CS_024_FILE_WATCHER_A = "file_watcher_marker";
-
-          public void Watch(string path) => _ = GARBAGE_CS_024_FILE_WATCHER_A + path;
+      interface BadgeProps {
+        text: string;
+        color: string;
       }
-    Unrelated/CleanupService.cs: |
-      namespace MyApp.Unrelated;
 
-      public class CleanupService
-      {
-          public const string GARBAGE_CS_024_CLEANUP_SERVICE_B = "cleanup_service_marker";
-
-          public void Cleanup() => _ = GARBAGE_CS_024_CLEANUP_SERVICE_B;
-      }
+      export const Badge: React.FC<BadgeProps> = ({ text, color }) => (
+        <span className={`badge badge-${color}`}>{text}</span>
+      );
+    garbage/theme.ts: |
+      const GARBAGE_CS024_THEME_A = "theme_marker";
+      export const primaryColor = "#007bff";
+    garbage/icons.ts: |
+      const GARBAGE_CS024_ICONS_B = "icons_marker";
+      export function getIcon(name: string): string { return name; }
+    garbage/router.ts: |
+      const GARBAGE_CS024_ROUTER_C = "router_marker";
+      export function navigate(path: string): void {}
   changed_files:
-    Models/Configuration.cs: |
-      namespace MyApp.Models;
+    src/components/Modal.tsx: |
+      import React from 'react';
 
-      public class Configuration
-      {
-          public string? ConnectionString { get; set; }
-          public int? Port { get; set; }
-          public string Environment { get; set; } = "Development";
+      interface ModalProps {
+        title: string;
+        children: React.ReactNode;
+        onClose: () => void;
+        size?: 'sm' | 'md' | 'lg';
+        closeOnBackdrop?: boolean;
       }
-    Services/ConfigService.cs: |
-      using MyApp.Models;
 
-      namespace MyApp.Services;
+      export const Modal: React.FC<ModalProps> = ({
+        title,
+        children,
+        onClose,
+        size = 'md',
+        closeOnBackdrop = true,
+      }) => (
+        <div
+          className={`modal modal-${size}`}
+          onClick={closeOnBackdrop ? onClose : undefined}
+        >
+          <div className="modal-header" onClick={(e) => e.stopPropagation()}>
+            <h2>{title}</h2>
+            <button onClick={onClose}>x</button>
+          </div>
+          <div className="modal-body">{children}</div>
+        </div>
+      );
+    src/components/Badge.tsx: |
+      import React from 'react';
 
-      public class ConfigService
-      {
-          private readonly Configuration _config;
-
-          public ConfigService(Configuration config)
-          {
-              _config = config;
-          }
-
-          public string GetConnectionString()
-          {
-              return _config.ConnectionString
-                  ?? throw new InvalidOperationException("Connection string not configured");
-          }
-
-          public int GetPort()
-          {
-              return _config.Port ?? 8080;
-          }
+      interface BadgeProps {
+        text: string;
+        color: string;
+        size?: 'sm' | 'md' | 'lg';
+        rounded?: boolean;
       }
-    Unrelated/FileWatcher.cs: |
-      namespace MyApp.Unrelated;
 
-      public class FileWatcher
-      {
-          private const string GARBAGE_CS_024_FILE_WATCHER_A = "file_watcher_marker";
-
-          public void Watch(string path) => _ = GARBAGE_CS_024_FILE_WATCHER_A + path;
-      }
-    Unrelated/CleanupService.cs: |
-      namespace MyApp.Unrelated;
-
-      public class CleanupService
-      {
-          public const string GARBAGE_CS_024_CLEANUP_SERVICE_B = "cleanup_service_marker";
-
-          public void Cleanup() => _ = GARBAGE_CS_024_CLEANUP_SERVICE_B;
-      }
-  commit_message: Update files
+      export const Badge: React.FC<BadgeProps> = ({
+        text,
+        color,
+        size = 'md',
+        rounded = false,
+      }) => (
+        <span
+          className={`badge badge-${color} badge-${size}${rounded ? ' badge-pill' : ''}`}
+        >
+          {text}
+        </span>
+      );
+    garbage/theme.ts: |
+      const GARBAGE_CS024_THEME_A = "theme_marker";
+      export const primaryColor = "#007bff";
+    garbage/icons.ts: |
+      const GARBAGE_CS024_ICONS_B = "icons_marker";
+      export function getIcon(name: string): string { return name; }
+    garbage/router.ts: |
+      const GARBAGE_CS024_ROUTER_C = "router_marker";
+      export function navigate(path: string): void {}
+  commit_message: "feat: add size/closeOnBackdrop to Modal and size/rounded to Badge"
 fragments:
-- id: configservice_file
+- id: modal_size_prop
   selector:
-    path: Services/ConfigService.cs
-- id: req_global_0
+    path: src/components/Modal.tsx
+    anchor: "size?: 'sm' | 'md' | 'lg'"
+- id: modal_close_on_backdrop
   selector:
-    anchor: using MyApp.Models;
-- id: req_global_1
+    path: src/components/Modal.tsx
+    anchor: "closeOnBackdrop"
+- id: badge_size_prop
   selector:
-    anchor: public string GetConnectionString()
-- id: no_global_0
+    path: src/components/Badge.tsx
+    anchor: "size?: 'sm' | 'md' | 'lg'"
+- id: badge_rounded_prop
   selector:
-    anchor: GARBAGE_CS_024_CLEANUP_SERVICE_B
-- id: no_global_1
+    path: src/components/Badge.tsx
+    anchor: "rounded?: boolean"
+- id: no_garbage_a
   selector:
-    anchor: GARBAGE_CS_024_FILE_WATCHER_A
-- id: no_global_2
+    anchor: GARBAGE_CS024_THEME_A
+- id: no_garbage_b
   selector:
-    anchor: CleanupService.cs
-- id: no_global_3
+    anchor: GARBAGE_CS024_ICONS_B
+- id: no_garbage_c
   selector:
-    anchor: FileWatcher.cs
+    anchor: GARBAGE_CS024_ROUTER_C
 oracle:
   required:
-  - configservice_file
-  - req_global_0
-  - req_global_1
+  - modal_size_prop
+  - modal_close_on_backdrop
+  - badge_size_prop
+  - badge_rounded_prop
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

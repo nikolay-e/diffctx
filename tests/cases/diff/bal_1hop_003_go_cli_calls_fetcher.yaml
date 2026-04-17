@@ -1,0 +1,109 @@
+name: bal_1hop_003_go_cli_calls_fetcher
+tags:
+- lang:go
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    pkg/fetcher/http.go: |
+      package fetcher
+
+      import (
+          "io"
+          "net/http"
+      )
+
+      func FetchURL(url string) (string, error) {
+          resp, err := http.Get(url)
+          if err != nil {
+              return "", err
+          }
+          defer resp.Body.Close()
+          body, err := io.ReadAll(resp.Body)
+          if err != nil {
+              return "", err
+          }
+          return string(body), nil
+      }
+    cmd/crawler/main.go: |
+      package main
+
+      import (
+          "fmt"
+          "os"
+          "mycrawler/pkg/fetcher"
+      )
+
+      func main() {
+          if len(os.Args) < 2 {
+              fmt.Fprintln(os.Stderr, "usage: crawler <url>")
+              os.Exit(1)
+          }
+          content, err := fetcher.FetchURL(os.Args[1])
+          if err != nil {
+              fmt.Fprintln(os.Stderr, err)
+              os.Exit(1)
+          }
+          fmt.Println(content)
+      }
+    pkg/parser/html.go: |
+      package parser
+
+      import "strings"
+
+      func ExtractTitle(html string) string {
+          start := strings.Index(html, "<title>")
+          end := strings.Index(html, "</title>")
+          if start == -1 || end == -1 {
+              return ""
+          }
+          return html[start+7 : end]
+      }
+  changed_files:
+    pkg/fetcher/http.go: |
+      package fetcher
+
+      import (
+          "fmt"
+          "io"
+          "net/http"
+      )
+
+      func FetchURL(url string) (string, error) {
+          resp, err := http.Get(url)
+          if err != nil {
+              return "", err
+          }
+          defer resp.Body.Close()
+          if resp.StatusCode >= 400 {
+              return "", fmt.Errorf("HTTP %d for %s", resp.StatusCode, url)
+          }
+          body, err := io.ReadAll(resp.Body)
+          if err != nil {
+              return "", err
+          }
+          return string(body), nil
+      }
+  commit_message: "fix: check HTTP status code before reading body"
+fragments:
+- id: fetch_status_check
+  selector:
+    path: pkg/fetcher/http.go
+    anchor: "resp.StatusCode >= 400"
+- id: cli_calls_fetch
+  selector:
+    path: cmd/crawler/main.go
+    anchor: "fetcher.FetchURL(os.Args[1])"
+- id: unrelated_parser
+  selector:
+    path: pkg/parser/html.go
+    anchor: "func ExtractTitle"
+oracle:
+  required:
+  - fetch_status_check
+  - cli_calls_fetch
+  allowed: []
+  forbidden:
+  - unrelated_parser

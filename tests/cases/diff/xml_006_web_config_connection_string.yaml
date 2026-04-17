@@ -1,0 +1,138 @@
+name: xml_006_web_config_connection_string
+tags:
+- lang:xml
+- lang:csharp
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    Web.config: |
+      <?xml version="1.0" encoding="utf-8"?>
+      <configuration>
+        <connectionStrings>
+          <add name="DefaultConnection"
+               connectionString="Server=localhost;Database=LegacyDb;Integrated Security=True"
+               providerName="System.Data.SqlClient"/>
+        </connectionStrings>
+        <appSettings>
+          <add key="PageSize" value="20"/>
+        </appSettings>
+      </configuration>
+    DataAccess/CustomerRepository.cs: |
+      using System.Configuration;
+      using System.Data.SqlClient;
+      namespace DataAccess;
+      public class CustomerRepository
+      {
+          private readonly string _connStr;
+          public CustomerRepository()
+          {
+              _connStr = ConfigurationManager.ConnectionStrings["DefaultConnection"].ConnectionString;
+          }
+          public Customer FindById(int id)
+          {
+              using var conn = new SqlConnection(_connStr);
+              conn.Open();
+              using var cmd = conn.CreateCommand();
+              cmd.CommandText = "SELECT * FROM Customers WHERE Id = @id";
+              cmd.Parameters.AddWithValue("@id", id);
+              using var reader = cmd.ExecuteReader();
+              return reader.Read() ? Map(reader) : null;
+          }
+          private static Customer Map(SqlDataReader r) =>
+              new Customer { Id = (int)r["Id"], Name = (string)r["Name"] };
+      }
+    DataAccess/OrderRepository.cs: |
+      using System.Configuration;
+      using System.Data.SqlClient;
+      namespace DataAccess;
+      public class OrderRepository
+      {
+          private readonly string _connStr;
+          public OrderRepository()
+          {
+              _connStr = ConfigurationManager.ConnectionStrings["DefaultConnection"].ConnectionString;
+          }
+          public void Save(Order order)
+          {
+              using var conn = new SqlConnection(_connStr);
+              conn.Open();
+              using var cmd = conn.CreateCommand();
+              cmd.CommandText = "INSERT INTO Orders (CustomerId, Total) VALUES (@cid, @total)";
+              cmd.Parameters.AddWithValue("@cid", order.CustomerId);
+              cmd.Parameters.AddWithValue("@total", order.Total);
+              cmd.ExecuteNonQuery();
+          }
+      }
+    XML_NOISE_006_nlog.config: |
+      <?xml version="1.0" encoding="utf-8"?>
+      <nlog xmlns="http://www.nlog-project.org/schemas/NLog.xsd">
+        <!-- XML_NOISE_006_NLOG_TARGET -->
+        <targets>
+          <target xsi:type="File" name="XML_NOISE_006_FileTarget" fileName="logs/app.log"/>
+        </targets>
+        <rules>
+          <logger name="*" minlevel="Info" writeTo="XML_NOISE_006_FileTarget"/>
+        </rules>
+      </nlog>
+    garbage/CacheHelper.cs: |
+      // XML_NOISE_006_CacheHelper = "in_memory_cache_helper_marker"
+    garbage/EmailDispatcher.cs: |
+      // XML_NOISE_006_EmailDispatcher = "smtp_dispatcher_marker"
+  changed_files:
+    Web.config: |
+      <?xml version="1.0" encoding="utf-8"?>
+      <configuration>
+        <connectionStrings>
+          <add name="DefaultConnection"
+               connectionString="Server=prod-db.example.com;Database=AppDb;User Id=appuser;Password=s3cr3t"
+               providerName="System.Data.SqlClient"/>
+        </connectionStrings>
+        <appSettings>
+          <add key="PageSize" value="20"/>
+        </appSettings>
+      </configuration>
+  commit_message: "config: switch connection string to production database server"
+fragments:
+- id: web_config_connstr
+  selector:
+    path: Web.config
+    anchor: prod-db.example.com
+- id: customer_repository
+  selector:
+    path: DataAccess/CustomerRepository.cs
+    anchor: DefaultConnection
+- id: order_repository
+  selector:
+    path: DataAccess/OrderRepository.cs
+    anchor: DefaultConnection
+- id: no_nlog_config
+  selector:
+    path: XML_NOISE_006_nlog.config
+- id: no_cache_helper
+  selector:
+    path: garbage/CacheHelper.cs
+- id: no_global_0
+  selector:
+    anchor: XML_NOISE_006_NLOG_TARGET
+- id: no_global_1
+  selector:
+    anchor: XML_NOISE_006_FileTarget
+- id: no_global_2
+  selector:
+    anchor: XML_NOISE_006_CacheHelper
+oracle:
+  required:
+  - web_config_connstr
+  - customer_repository
+  - order_repository
+  allowed: []
+  forbidden:
+  - no_nlog_config
+  - no_cache_helper
+  - no_global_0
+  - no_global_1
+  - no_global_2

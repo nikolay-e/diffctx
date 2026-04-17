@@ -1,0 +1,69 @@
+name: bal_testctx_001_python_calculator_test
+tags:
+- lang:python
+- change:single_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/calculator.py: |
+      def add(a: int, b: int) -> int:
+          return a + b
+
+      def subtract(a: int, b: int) -> int:
+          return a - b
+    tests/test_calculator.py: |
+      from src.calculator import add, subtract
+
+      def test_add():
+          assert add(2, 3) == 5
+
+      def test_subtract():
+          assert subtract(5, 3) == 2
+    src/formatter.py: |
+      def format_result(value: int) -> str:
+          return f"Result: {value}"
+  changed_files:
+    src/calculator.py: |
+      def add(a: int, b: int) -> int:
+          return a + b
+
+      def subtract(a: int, b: int) -> int:
+          return a - b
+
+      def multiply(a: int, b: int) -> int:
+          return a * b
+    tests/test_calculator.py: |
+      from src.calculator import add, subtract
+
+      def test_add():
+          assert add(2, 3) == 5
+
+      def test_subtract():
+          assert subtract(5, 3) == 2
+    src/formatter.py: |
+      def format_result(value: int) -> str:
+          return f"Result: {value}"
+  commit_message: "feat: add multiply function"
+fragments:
+- id: multiply_fn
+  selector:
+    path: src/calculator.py
+    anchor: "def multiply(a: int, b: int)"
+- id: test_imports_calc
+  selector:
+    path: tests/test_calculator.py
+    anchor: "from src.calculator import add"
+- id: no_formatter
+  selector:
+    path: src/formatter.py
+    anchor: "def format_result"
+oracle:
+  required:
+  - multiply_fn
+  - test_imports_calc
+  allowed: []
+  forbidden:
+  - no_formatter

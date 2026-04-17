@@ -1,0 +1,229 @@
+name: bal_3hop_049_go_cli_config_loader
+tags:
+- lang:go
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    internal/config/types.go: |
+      package config
+
+      type AppConfig struct {
+        Host string
+        Port int
+        Debug bool
+      }
+
+      func DefaultConfig() AppConfig {
+        return AppConfig{Host: "localhost", Port: 8080, Debug: false}
+      }
+    internal/config/loader.go: |
+      package config
+
+      import "os"
+
+      func LoadFromEnv() AppConfig {
+        cfg := DefaultConfig()
+        if host := os.Getenv("APP_HOST"); host != "" {
+          cfg.Host = host
+        }
+        return cfg
+      }
+    internal/server/server.go: |
+      package server
+
+      import (
+        "fmt"
+        "internal/config"
+      )
+
+      type Server struct {
+        cfg config.AppConfig
+      }
+
+      func NewServer(cfg config.AppConfig) *Server {
+        return &Server{cfg: cfg}
+      }
+
+      func (s *Server) Start() {
+        fmt.Printf("Starting on %s:%d\n", s.cfg.Host, s.cfg.Port)
+      }
+    cmd/app/main.go: |
+      package main
+
+      import (
+        "internal/config"
+        "internal/server"
+      )
+
+      func main() {
+        cfg := config.LoadFromEnv()
+        srv := server.NewServer(cfg)
+        srv.Start()
+      }
+    internal/util/strings.go: |
+      package util
+
+      var GARBAGE_049_STRINGS_MARKER_A = "strings"
+      var GARBAGE_049_TRIM_MARKER_B = true
+
+      func TrimAll(s string) string { return s }
+    internal/util/math.go: |
+      package util
+
+      var GARBAGE_049_MATH_MARKER_C = "math"
+      var GARBAGE_049_ABS_MARKER_D = true
+
+      func Abs(n int) int {
+        if n < 0 { return -n }
+        return n
+      }
+  changed_files:
+    internal/config/types.go: |
+      package config
+
+      type LogLevel string
+
+      const (
+        LogDebug LogLevel = "debug"
+        LogInfo  LogLevel = "info"
+        LogWarn  LogLevel = "warn"
+        LogError LogLevel = "error"
+      )
+
+      type AppConfig struct {
+        Host     string
+        Port     int
+        Debug    bool
+        LogLevel LogLevel
+        MaxConns int
+      }
+
+      func DefaultConfig() AppConfig {
+        return AppConfig{Host: "localhost", Port: 8080, Debug: false, LogLevel: LogInfo, MaxConns: 100}
+      }
+    internal/config/loader.go: |
+      package config
+
+      import (
+        "os"
+        "strconv"
+      )
+
+      func LoadFromEnv() AppConfig {
+        cfg := DefaultConfig()
+        if host := os.Getenv("APP_HOST"); host != "" {
+          cfg.Host = host
+        }
+        if level := os.Getenv("LOG_LEVEL"); level != "" {
+          cfg.LogLevel = LogLevel(level)
+        }
+        if maxConns := os.Getenv("MAX_CONNS"); maxConns != "" {
+          if n, err := strconv.Atoi(maxConns); err == nil {
+            cfg.MaxConns = n
+          }
+        }
+        return cfg
+      }
+    internal/server/server.go: |
+      package server
+
+      import (
+        "fmt"
+        "internal/config"
+      )
+
+      type Server struct {
+        cfg config.AppConfig
+      }
+
+      func NewServer(cfg config.AppConfig) *Server {
+        return &Server{cfg: cfg}
+      }
+
+      func (s *Server) Start() {
+        fmt.Printf("Starting on %s:%d (log=%s, maxConns=%d)\n", s.cfg.Host, s.cfg.Port, s.cfg.LogLevel, s.cfg.MaxConns)
+      }
+    cmd/app/main.go: |
+      package main
+
+      import (
+        "internal/config"
+        "internal/server"
+      )
+
+      func main() {
+        cfg := config.LoadFromEnv()
+        srv := server.NewServer(cfg)
+        srv.Start()
+      }
+    internal/util/strings.go: |
+      package util
+
+      var GARBAGE_049_STRINGS_MARKER_A = "strings"
+      var GARBAGE_049_TRIM_MARKER_B = true
+
+      func TrimAll(s string) string { return s }
+    internal/util/math.go: |
+      package util
+
+      var GARBAGE_049_MATH_MARKER_C = "math"
+      var GARBAGE_049_ABS_MARKER_D = true
+
+      func Abs(n int) int {
+        if n < 0 { return -n }
+        return n
+      }
+  commit_message: "feat: add log level and max connections config"
+fragments:
+- id: log_level_type
+  selector:
+    path: internal/config/types.go
+    anchor: "type LogLevel string"
+- id: config_log_level_field
+  selector:
+    path: internal/config/types.go
+    anchor: "LogLevel LogLevel"
+- id: config_max_conns
+  selector:
+    path: internal/config/types.go
+    anchor: "MaxConns int"
+- id: loader_reads_log_level
+  selector:
+    path: internal/config/loader.go
+    anchor: "LOG_LEVEL"
+- id: server_prints_log_level
+  selector:
+    path: internal/server/server.go
+    anchor: "s.cfg.LogLevel"
+- id: main_imports_config
+  selector:
+    path: cmd/app/main.go
+    anchor: "internal/config"
+- id: main_imports_server
+  selector:
+    path: cmd/app/main.go
+    anchor: "internal/server"
+- id: no_strings
+  selector:
+    path: internal/util/strings.go
+    anchor: "GARBAGE_049_STRINGS_MARKER_A"
+- id: no_math
+  selector:
+    path: internal/util/math.go
+    anchor: "GARBAGE_049_MATH_MARKER_C"
+oracle:
+  required:
+  - log_level_type
+  - config_log_level_field
+  - config_max_conns
+  - loader_reads_log_level
+  - server_prints_log_level
+  - main_imports_config
+  - main_imports_server
+  allowed: []
+  forbidden:
+  - no_strings
+  - no_math

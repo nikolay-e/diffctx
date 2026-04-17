@@ -1,0 +1,211 @@
+name: bal3_testctx_018_csharp_expression_eval_test
+tags:
+- lang:csharp
+- change:single_file
+- change:refactor
+- context:test_file
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/ExpressionEvaluator.cs: |
+      namespace Calc;
+
+      using System;
+      using System.Collections.Generic;
+
+      public class ExpressionEvaluator
+      {
+          public double Evaluate(string expression)
+          {
+              var parts = expression.Split(' ');
+              if (parts.Length != 3)
+                  throw new FormatException("Expected: operand operator operand");
+              var left = double.Parse(parts[0]);
+              var op = parts[1];
+              var right = double.Parse(parts[2]);
+              return op switch
+              {
+                  "+" => left + right,
+                  "-" => left - right,
+                  "*" => left * right,
+                  "/" => right != 0 ? left / right : throw new DivideByZeroException(),
+                  _ => throw new NotSupportedException($"Unknown operator: {op}")
+              };
+          }
+      }
+    tests/ExpressionEvaluatorTests.cs: |
+      using Xunit;
+      using Calc;
+
+      public class ExpressionEvaluatorTests
+      {
+          private readonly ExpressionEvaluator _eval = new();
+
+          [Fact]
+          public void Evaluate_Addition()
+          {
+              Assert.Equal(7.0, _eval.Evaluate("3 + 4"));
+          }
+
+          [Fact]
+          public void Evaluate_Subtraction()
+          {
+              Assert.Equal(1.0, _eval.Evaluate("5 - 4"));
+          }
+
+          [Fact]
+          public void Evaluate_Multiplication()
+          {
+              Assert.Equal(12.0, _eval.Evaluate("3 * 4"));
+          }
+
+          [Fact]
+          public void Evaluate_Division()
+          {
+              Assert.Equal(2.5, _eval.Evaluate("5 / 2"));
+          }
+
+          [Fact]
+          public void Evaluate_DivisionByZero_Throws()
+          {
+              Assert.Throws<System.DivideByZeroException>(() => _eval.Evaluate("5 / 0"));
+          }
+
+          [Fact]
+          public void Evaluate_InvalidFormat_Throws()
+          {
+              Assert.Throws<System.FormatException>(() => _eval.Evaluate("bad"));
+          }
+      }
+    src/Formatter.cs: |
+      namespace Calc;
+
+      public class Formatter
+      {
+          public string FormatResult(double value, int decimals)
+          {
+              return value.ToString($"F{decimals}");
+          }
+      }
+    src/History.cs: |
+      namespace Calc;
+
+      using System.Collections.Generic;
+
+      public class History
+      {
+          private readonly List<string> _entries = new();
+
+          public void Add(string entry) => _entries.Add(entry);
+          public IReadOnlyList<string> GetAll() => _entries.AsReadOnly();
+          public void Clear() => _entries.Clear();
+      }
+    src/Constants.cs: |
+      namespace Calc;
+
+      public static class Constants
+      {
+          public const double Pi = 3.14159265358979;
+          public const double E = 2.71828182845905;
+      }
+  changed_files:
+    src/ExpressionEvaluator.cs: |
+      namespace Calc;
+
+      using System;
+      using System.Collections.Generic;
+
+      public class ExpressionEvaluator
+      {
+          private readonly Dictionary<string, Func<double, double, double>> _operators = new()
+          {
+              ["+"] = (a, b) => a + b,
+              ["-"] = (a, b) => a - b,
+              ["*"] = (a, b) => a * b,
+              ["/"] = (a, b) => b != 0 ? a / b : throw new DivideByZeroException(),
+              ["%"] = (a, b) => b != 0 ? a % b : throw new DivideByZeroException(),
+              ["^"] = (a, b) => Math.Pow(a, b),
+          };
+
+          public void RegisterOperator(string symbol, Func<double, double, double> func)
+          {
+              _operators[symbol] = func;
+          }
+
+          public double Evaluate(string expression)
+          {
+              var parts = expression.Split(' ');
+              if (parts.Length != 3)
+                  throw new FormatException("Expected: operand operator operand");
+              var left = double.Parse(parts[0]);
+              var op = parts[1];
+              var right = double.Parse(parts[2]);
+              if (!_operators.TryGetValue(op, out var func))
+                  throw new NotSupportedException($"Unknown operator: {op}");
+              return func(left, right);
+          }
+
+          public IReadOnlyCollection<string> SupportedOperators => _operators.Keys;
+      }
+  commit_message: "refactor: operator registry pattern, add modulo and power"
+fragments:
+- id: operators_dict
+  selector:
+    path: src/ExpressionEvaluator.cs
+    anchor: "_operators = new()"
+- id: modulo_operator
+  selector:
+    path: src/ExpressionEvaluator.cs
+    anchor: "[\"%%\"] = (a, b) =>"
+- id: power_operator
+  selector:
+    path: src/ExpressionEvaluator.cs
+    anchor: "[\"^\"] = (a, b) => Math.Pow"
+- id: register_operator
+  selector:
+    path: src/ExpressionEvaluator.cs
+    anchor: "public void RegisterOperator(string symbol"
+- id: supported_operators
+  selector:
+    path: src/ExpressionEvaluator.cs
+    anchor: "public IReadOnlyCollection<string> SupportedOperators"
+- id: test_addition
+  selector:
+    path: tests/ExpressionEvaluatorTests.cs
+    anchor: "public void Evaluate_Addition()"
+- id: test_division
+  selector:
+    path: tests/ExpressionEvaluatorTests.cs
+    anchor: "public void Evaluate_Division()"
+- id: test_div_by_zero
+  selector:
+    path: tests/ExpressionEvaluatorTests.cs
+    anchor: "public void Evaluate_DivisionByZero_Throws()"
+- id: no_formatter
+  selector:
+    path: src/Formatter.cs
+    anchor: "public class Formatter"
+- id: no_history
+  selector:
+    path: src/History.cs
+    anchor: "public class History"
+- id: no_constants
+  selector:
+    path: src/Constants.cs
+    anchor: "public static class Constants"
+oracle:
+  required:
+  - operators_dict
+  - register_operator
+  - test_addition
+  - test_division
+  allowed:
+  - modulo_operator
+  - power_operator
+  - supported_operators
+  - test_div_by_zero
+  forbidden:
+  - no_formatter
+  - no_history
+  - no_constants

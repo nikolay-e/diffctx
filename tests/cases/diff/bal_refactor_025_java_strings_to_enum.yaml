@@ -1,0 +1,163 @@
+name: bal_refactor_025_java_strings_to_enum
+tags:
+- lang:ruby
+- change:bug_fix
+- change:single_file
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    app/models/order.rb: |
+      class Order
+        STATUSES = %w[pending processing shipped delivered cancelled].freeze
+
+        attr_reader :id, :status, :total
+
+        def initialize(id:, total:)
+          @id = id
+          @total = total
+          @status = "pending"
+        end
+
+        def transition_to(new_status)
+          unless STATUSES.include?(new_status)
+            raise ArgumentError, "invalid status: #{new_status}"
+          end
+          @status = new_status
+        end
+
+        def shippable?
+          status == "processing"
+        end
+
+        def cancellable?
+          %w[pending processing].include?(status)
+        end
+
+        def calculate_tax
+          total * 0.2
+        end
+
+        def total_with_tax
+          total + calculate_tax
+        end
+      end
+    garbage/audit_log.rb: |
+      # GARBAGE_RF25_A = "audit_log_unrelated"
+      class AuditLog
+        def record(entity, action)
+          nil
+        end
+      end
+    garbage/mailer.rb: |
+      # GARBAGE_RF25_B = "mailer_unrelated"
+      class OrderMailer
+        def deliver(order, template)
+          nil
+        end
+      end
+    garbage/report.rb: |
+      # GARBAGE_RF25_C = "report_unrelated"
+      class SalesReport
+        def generate(from_date, to_date)
+          []
+        end
+      end
+  changed_files:
+    app/models/order.rb: |
+      class Order
+        STATUSES = %w[pending processing shipped delivered cancelled].freeze
+        VALID_TRANSITIONS = {
+          "pending"    => %w[processing cancelled],
+          "processing" => %w[shipped cancelled],
+          "shipped"    => %w[delivered],
+          "delivered"  => [],
+          "cancelled"  => [],
+        }.freeze
+
+        attr_reader :id, :status, :total
+
+        def initialize(id:, total:)
+          @id = id
+          @total = total
+          @status = "pending"
+        end
+
+        def transition_to(new_status)
+          unless VALID_TRANSITIONS.fetch(status, []).include?(new_status)
+            raise ArgumentError, "cannot transition from #{status} to #{new_status}"
+          end
+          @status = new_status
+        end
+
+        def shippable?
+          status == "processing"
+        end
+
+        def cancellable?
+          VALID_TRANSITIONS[status]&.include?("cancelled") || false
+        end
+
+        def calculate_tax
+          total * 0.2
+        end
+
+        def total_with_tax
+          total + calculate_tax
+        end
+      end
+    garbage/audit_log.rb: |
+      # GARBAGE_RF25_A = "audit_log_unrelated"
+      class AuditLog
+        def record(entity, action)
+          nil
+        end
+      end
+    garbage/mailer.rb: |
+      # GARBAGE_RF25_B = "mailer_unrelated"
+      class OrderMailer
+        def deliver(order, template)
+          nil
+        end
+      end
+    garbage/report.rb: |
+      # GARBAGE_RF25_C = "report_unrelated"
+      class SalesReport
+        def generate(from_date, to_date)
+          []
+        end
+      end
+  commit_message: "fix: enforce valid state transitions via VALID_TRANSITIONS table in Order"
+fragments:
+- id: valid_transitions_table
+  selector:
+    path: app/models/order.rb
+    anchor: "VALID_TRANSITIONS"
+- id: transition_to_method
+  selector:
+    path: app/models/order.rb
+    anchor: "def transition_to"
+- id: cancellable_uses_table
+  selector:
+    path: app/models/order.rb
+    anchor: "def cancellable?"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_RF25_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_RF25_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_RF25_C
+oracle:
+  required:
+  - valid_transitions_table
+  - transition_to_method
+  allowed:
+  - cancellable_uses_table
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

@@ -1,0 +1,204 @@
+name: bal_cfgcode_009_python_queue_settings
+tags:
+- lang:python
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    config/queue.yaml: |
+      queue:
+        broker: "amqp://localhost:5672"
+        backend: "redis://localhost:6379/0"
+        concurrency: 4
+        prefetch_multiplier: 1
+        queues:
+          default:
+            priority: 0
+          critical:
+            priority: 9
+    src/worker.py: |
+      import yaml
+
+      class Worker:
+          def __init__(self):
+              with open("config/queue.yaml") as f:
+                  data = yaml.safe_load(f)
+              self.cfg = data["queue"]
+              self.broker = self.cfg["broker"]
+              self.backend = self.cfg["backend"]
+              self.concurrency = self.cfg["concurrency"]
+
+          def get_queue_priority(self, name):
+              return self.cfg["queues"].get(name, {}).get("priority", 0)
+    src/tasks.py: |
+      import yaml
+
+      def get_broker_url():
+          with open("config/queue.yaml") as f:
+              data = yaml.safe_load(f)
+          return data["queue"]["broker"]
+
+      def enqueue(task_name, args):
+          broker = get_broker_url()
+          return broker, task_name, args
+    src/reporting.py: |
+      GARBAGE_CFGCODE_009_REPORT_A = "pdf"
+      GARBAGE_CFGCODE_009_REPORT_B = "monthly"
+
+      class ReportGenerator:
+          def generate(self, data):
+              return data
+    src/search.py: |
+      GARBAGE_CFGCODE_009_SEARCH_C = "elastic"
+      GARBAGE_CFGCODE_009_SEARCH_D = 9200
+
+      def search_index(query):
+          return []
+    garbage_deploy.py: |
+      GARBAGE_CFGCODE_009_DEPLOY_E = "kubernetes"
+      GARBAGE_CFGCODE_009_DEPLOY_F = "default"
+
+      def deploy(image):
+          pass
+  changed_files:
+    config/queue.yaml: |
+      queue:
+        broker: "amqp://rabbitmq.prod:5672"
+        backend: "redis://redis.prod:6379/0"
+        concurrency: 16
+        prefetch_multiplier: 4
+        queues:
+          default:
+            priority: 0
+          critical:
+            priority: 9
+          bulk:
+            priority: 3
+            rate_limit: "100/m"
+        retry_policy:
+          max_retries: 5
+          retry_backoff: true
+    src/worker.py: |
+      import yaml
+
+      class Worker:
+          def __init__(self):
+              with open("config/queue.yaml") as f:
+                  data = yaml.safe_load(f)
+              self.cfg = data["queue"]
+              self.broker = self.cfg["broker"]
+              self.backend = self.cfg["backend"]
+              self.concurrency = self.cfg["concurrency"]
+
+          def get_queue_priority(self, name):
+              return self.cfg["queues"].get(name, {}).get("priority", 0)
+    src/tasks.py: |
+      import yaml
+
+      def get_broker_url():
+          with open("config/queue.yaml") as f:
+              data = yaml.safe_load(f)
+          return data["queue"]["broker"]
+
+      def enqueue(task_name, args):
+          broker = get_broker_url()
+          return broker, task_name, args
+    src/reporting.py: |
+      GARBAGE_CFGCODE_009_REPORT_A = "pdf"
+      GARBAGE_CFGCODE_009_REPORT_B = "monthly"
+
+      class ReportGenerator:
+          def generate(self, data):
+              return data
+    src/search.py: |
+      GARBAGE_CFGCODE_009_SEARCH_C = "elastic"
+      GARBAGE_CFGCODE_009_SEARCH_D = 9200
+
+      def search_index(query):
+          return []
+    garbage_deploy.py: |
+      GARBAGE_CFGCODE_009_DEPLOY_E = "kubernetes"
+      GARBAGE_CFGCODE_009_DEPLOY_F = "default"
+
+      def deploy(image):
+          pass
+  commit_message: "config: production queue settings with bulk queue and retries"
+fragments:
+- id: config_broker
+  selector:
+    path: config/queue.yaml
+    anchor: "rabbitmq.prod:5672"
+- id: config_concurrency
+  selector:
+    path: config/queue.yaml
+    anchor: "concurrency: 16"
+- id: config_retry
+  selector:
+    path: config/queue.yaml
+    anchor: "max_retries: 5"
+- id: config_bulk
+  selector:
+    path: config/queue.yaml
+    anchor: "rate_limit:"
+- id: worker_reads_broker
+  selector:
+    path: src/worker.py
+    anchor: 'self.cfg["broker"]'
+- id: worker_reads_queues
+  selector:
+    path: src/worker.py
+    anchor: 'self.cfg["queues"]'
+- id: tasks_reads_broker
+  selector:
+    path: src/tasks.py
+    anchor: '["queue"]["broker"]'
+- id: no_reporting
+  selector:
+    path: src/reporting.py
+- id: no_search
+  selector:
+    path: src/search.py
+- id: no_deploy
+  selector:
+    path: garbage_deploy.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_009_REPORT_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_009_REPORT_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_009_SEARCH_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_009_SEARCH_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CFGCODE_009_DEPLOY_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CFGCODE_009_DEPLOY_F
+oracle:
+  required:
+  - config_broker
+  - config_concurrency
+  - config_retry
+  - config_bulk
+  - worker_reads_broker
+  - worker_reads_queues
+  - tasks_reads_broker
+  allowed: []
+  forbidden:
+  - no_reporting
+  - no_search
+  - no_deploy
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

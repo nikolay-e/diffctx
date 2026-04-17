@@ -1,0 +1,219 @@
+name: bal3_refactor_026_csharp_rename_across_files
+tags:
+- lang:csharp
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    Models/DataRecord.cs: |
+      namespace App.Models
+      {
+          public class DataRecord
+          {
+              public int Id { get; set; }
+              public string Name { get; set; }
+              public string Value { get; set; }
+
+              public DataRecord(int id, string name, string value)
+              {
+                  Id = id;
+                  Name = name;
+                  Value = value;
+              }
+          }
+      }
+    Repositories/DataRecordRepository.cs: |
+      using App.Models;
+      using System.Collections.Generic;
+      using System.Linq;
+
+      namespace App.Repositories
+      {
+          public class DataRecordRepository
+          {
+              private readonly List<DataRecord> _records = new();
+
+              public void Add(DataRecord record) => _records.Add(record);
+
+              public DataRecord FindById(int id) =>
+                  _records.FirstOrDefault(r => r.Id == id);
+
+              public List<DataRecord> GetAll() => _records.ToList();
+          }
+      }
+    Services/DataRecordService.cs: |
+      using App.Models;
+      using App.Repositories;
+
+      namespace App.Services
+      {
+          public class DataRecordService
+          {
+              private readonly DataRecordRepository _repository;
+
+              public DataRecordService(DataRecordRepository repository)
+              {
+                  _repository = repository;
+              }
+
+              public void Create(string name, string value)
+              {
+                  var record = new DataRecord(0, name, value);
+                  _repository.Add(record);
+              }
+          }
+      }
+    Utils/Compression.cs: |
+      namespace App.Utils
+      {
+          // GARBAGE_R026_COMPRESS_A
+          public class Compression
+          {
+              public byte[] Compress(byte[] data) => data;
+          }
+      }
+    Utils/Encryption.cs: |
+      namespace App.Utils
+      {
+          // GARBAGE_R026_ENCRYPT_B
+          public class Encryption
+          {
+              public byte[] Encrypt(byte[] data) => data;
+          }
+      }
+    Utils/Hashing.cs: |
+      namespace App.Utils
+      {
+          // GARBAGE_R026_HASH_C
+          public class Hashing
+          {
+              public string Hash(string input) => input;
+          }
+      }
+  changed_files:
+    Models/ConfigEntry.cs: |
+      namespace App.Models
+      {
+          public class ConfigEntry
+          {
+              public int Id { get; set; }
+              public string Name { get; set; }
+              public string Value { get; set; }
+
+              public ConfigEntry(int id, string name, string value)
+              {
+                  Id = id;
+                  Name = name;
+                  Value = value;
+              }
+          }
+      }
+    Repositories/ConfigEntryRepository.cs: |
+      using App.Models;
+      using System.Collections.Generic;
+      using System.Linq;
+
+      namespace App.Repositories
+      {
+          public class ConfigEntryRepository
+          {
+              private readonly List<ConfigEntry> _entries = new();
+
+              public void Add(ConfigEntry entry) => _entries.Add(entry);
+
+              public ConfigEntry FindById(int id) =>
+                  _entries.FirstOrDefault(e => e.Id == id);
+
+              public List<ConfigEntry> GetAll() => _entries.ToList();
+          }
+      }
+    Services/ConfigEntryService.cs: |
+      using App.Models;
+      using App.Repositories;
+
+      namespace App.Services
+      {
+          public class ConfigEntryService
+          {
+              private readonly ConfigEntryRepository _repository;
+
+              public ConfigEntryService(ConfigEntryRepository repository)
+              {
+                  _repository = repository;
+              }
+
+              public void Create(string name, string value)
+              {
+                  var entry = new ConfigEntry(0, name, value);
+                  _repository.Add(entry);
+              }
+          }
+      }
+    Utils/Compression.cs: |
+      namespace App.Utils
+      {
+          // GARBAGE_R026_COMPRESS_A
+          public class Compression
+          {
+              public byte[] Compress(byte[] data) => data;
+          }
+      }
+    Utils/Encryption.cs: |
+      namespace App.Utils
+      {
+          // GARBAGE_R026_ENCRYPT_B
+          public class Encryption
+          {
+              public byte[] Encrypt(byte[] data) => data;
+          }
+      }
+    Utils/Hashing.cs: |
+      namespace App.Utils
+      {
+          // GARBAGE_R026_HASH_C
+          public class Hashing
+          {
+              public string Hash(string input) => input;
+          }
+      }
+  commit_message: "refactor: rename DataRecord to ConfigEntry across codebase"
+fragments:
+- id: config_entry_class
+  selector:
+    path: Models/ConfigEntry.cs
+    anchor: "public class ConfigEntry"
+- id: repo_uses_config_entry
+  selector:
+    path: Repositories/ConfigEntryRepository.cs
+    anchor: "public class ConfigEntryRepository"
+- id: repo_add_method
+  selector:
+    path: Repositories/ConfigEntryRepository.cs
+    anchor: "public void Add(ConfigEntry entry)"
+- id: service_uses_config_entry
+  selector:
+    path: Services/ConfigEntryService.cs
+    anchor: "new ConfigEntry(0, name, value)"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_R026_COMPRESS_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_R026_ENCRYPT_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_R026_HASH_C
+oracle:
+  required:
+  - config_entry_class
+  - repo_uses_config_entry
+  - repo_add_method
+  - service_uses_config_entry
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

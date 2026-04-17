@@ -1,0 +1,178 @@
+name: bal2_3hop_034_rust_embedded_sensor_pipeline
+tags:
+- lang:rust
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/hal/adc.rs: |
+      pub struct AdcReading {
+          pub channel: u8,
+          pub raw_value: u16,
+      }
+
+      impl AdcReading {
+          pub fn new(channel: u8, raw_value: u16) -> Self {
+              Self { channel, raw_value }
+          }
+
+          pub fn to_voltage(&self) -> f32 {
+              (self.raw_value as f32 / 4095.0) * 3.3
+          }
+      }
+    src/drivers/temperature.rs: |
+      use crate::hal::adc::AdcReading;
+
+      pub struct TemperatureSensor {
+          channel: u8,
+      }
+
+      impl TemperatureSensor {
+          pub fn new(channel: u8) -> Self {
+              Self { channel }
+          }
+
+          pub fn read_celsius(&self, reading: &AdcReading) -> f32 {
+              let voltage = reading.to_voltage();
+              (voltage - 0.5) * 100.0
+          }
+      }
+    src/processing/filter.rs: |
+      use crate::drivers::temperature::TemperatureSensor;
+      use crate::hal::adc::AdcReading;
+
+      pub struct MovingAverage {
+          buffer: Vec<f32>,
+          size: usize,
+          sensor: TemperatureSensor,
+      }
+
+      impl MovingAverage {
+          pub fn new(size: usize, sensor: TemperatureSensor) -> Self {
+              Self { buffer: Vec::new(), size, sensor }
+          }
+
+          pub fn push(&mut self, reading: &AdcReading) -> f32 {
+              let value = self.sensor.read_celsius(reading);
+              self.buffer.push(value);
+              if self.buffer.len() > self.size {
+                  self.buffer.remove(0);
+              }
+              self.buffer.iter().sum::<f32>() / self.buffer.len() as f32
+          }
+      }
+    src/app/monitor.rs: |
+      use crate::processing::filter::MovingAverage;
+      use crate::hal::adc::AdcReading;
+
+      pub struct TemperatureMonitor {
+          avg: MovingAverage,
+          threshold: f32,
+      }
+
+      impl TemperatureMonitor {
+          pub fn new(avg: MovingAverage, threshold: f32) -> Self {
+              Self { avg, threshold }
+          }
+
+          pub fn check(&mut self, reading: &AdcReading) -> bool {
+              let temp = self.avg.push(reading);
+              temp > self.threshold
+          }
+      }
+    src/hal/gpio.rs: |
+      GARBAGE_034_GPIO_MARKER_A = "pin_config";
+      GARBAGE_034_PIN_MARKER_B = 13;
+
+      pub struct GpioPin {
+          pin: u8,
+          high: bool,
+      }
+
+      impl GpioPin {
+          pub fn set_high(&mut self) { self.high = true; }
+          pub fn set_low(&mut self) { self.high = false; }
+      }
+    src/hal/uart.rs: |
+      GARBAGE_034_UART_MARKER_C = "serial";
+      GARBAGE_034_BAUD_MARKER_D = 115200;
+
+      pub struct Uart {
+          baud_rate: u32,
+      }
+
+      impl Uart {
+          pub fn new(baud_rate: u32) -> Self {
+              Self { baud_rate }
+          }
+      }
+    src/drivers/led.rs: |
+      GARBAGE_034_LED_MARKER_E = "indicator";
+      GARBAGE_034_BLINK_MARKER_F = 500;
+
+      pub struct Led {
+          on: bool,
+      }
+
+      impl Led {
+          pub fn toggle(&mut self) { self.on = !self.on; }
+      }
+  changed_files:
+    src/hal/adc.rs: |
+      pub struct AdcReading {
+          pub channel: u8,
+          pub raw_value: u16,
+      }
+
+      impl AdcReading {
+          pub fn new(channel: u8, raw_value: u16) -> Self {
+              Self { channel, raw_value }
+          }
+
+          pub fn to_voltage(&self) -> f32 {
+              (self.raw_value as f32 / 4096.0) * 3.3
+          }
+      }
+  commit_message: "fix: correct ADC divisor from 4095 to 4096"
+fragments:
+- id: adc_voltage_fix
+  selector:
+    path: src/hal/adc.rs
+    anchor: "4096.0"
+- id: temp_read_celsius
+  selector:
+    path: src/drivers/temperature.rs
+    anchor: "pub fn read_celsius"
+- id: filter_push
+  selector:
+    path: src/processing/filter.rs
+    anchor: "pub fn push"
+- id: monitor_check
+  selector:
+    path: src/app/monitor.rs
+    anchor: "pub fn check"
+- id: no_gpio
+  selector:
+    path: src/hal/gpio.rs
+    anchor: "GARBAGE_034_GPIO_MARKER_A"
+- id: no_uart
+  selector:
+    path: src/hal/uart.rs
+    anchor: "GARBAGE_034_UART_MARKER_C"
+- id: no_led
+  selector:
+    path: src/drivers/led.rs
+    anchor: "GARBAGE_034_LED_MARKER_E"
+oracle:
+  required:
+  - adc_voltage_fix
+  - temp_read_celsius
+  - filter_push
+  - monitor_check
+  allowed: []
+  forbidden:
+  - no_gpio
+  - no_uart
+  - no_led

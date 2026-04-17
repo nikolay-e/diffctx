@@ -1,0 +1,182 @@
+name: bal_rare_005_elixir_pipeline_transform
+tags:
+- lang:elixir
+- change:multi_file
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    lib/etl/extractor.ex: |
+      defmodule ETL.Extractor do
+        def extract_csv(path) do
+          path
+          |> File.read!()
+          |> String.split("\n")
+          |> Enum.map(&String.split(&1, ","))
+        end
+      end
+    lib/etl/transformer.ex: |
+      defmodule ETL.Transformer do
+        alias ETL.Extractor
+
+        def transform(path) do
+          path
+          |> Extractor.extract_csv()
+          |> Enum.map(fn [name, age] -> %{name: name, age: String.to_integer(age)} end)
+          |> Enum.filter(fn %{age: age} -> age >= 18 end)
+        end
+      end
+    lib/etl/loader.ex: |
+      defmodule ETL.Loader do
+        alias ETL.Transformer
+
+        def load(path) do
+          records = Transformer.transform(path)
+          Enum.each(records, fn record ->
+            IO.puts("Loading: #{record.name}")
+          end)
+          {:ok, length(records)}
+        end
+      end
+    garbage_mailer.ex: |
+      defmodule GarbageMailer do
+        @garbage_rare_005_from_a "noreply@example.com"
+        @garbage_rare_005_provider_b :sendgrid
+
+        def deliver(to, subject) do
+          {:ok, @garbage_rare_005_from_a}
+        end
+
+        @garbage_rare_005_retries_c 3
+      end
+    garbage_telemetry.ex: |
+      defmodule GarbageTelemetry do
+        @garbage_rare_005_event_d :request
+        @garbage_rare_005_sample_e 0.1
+
+        def emit(event) do
+          @garbage_rare_005_event_d
+        end
+
+        @garbage_rare_005_buffer_f 1000
+      end
+  changed_files:
+    lib/etl/extractor.ex: |
+      defmodule ETL.Extractor do
+        def extract_csv(path, opts \\ []) do
+          delimiter = Keyword.get(opts, :delimiter, ",")
+          skip_header = Keyword.get(opts, :skip_header, false)
+
+          rows =
+            path
+            |> File.read!()
+            |> String.split("\n")
+            |> Enum.map(&String.split(&1, delimiter))
+
+          if skip_header, do: tl(rows), else: rows
+        end
+      end
+    lib/etl/transformer.ex: |
+      defmodule ETL.Transformer do
+        alias ETL.Extractor
+
+        def transform(path, opts \\ []) do
+          path
+          |> Extractor.extract_csv(opts)
+          |> Enum.map(fn [name, age | _rest] -> %{name: name, age: String.to_integer(age)} end)
+          |> Enum.filter(fn %{age: age} -> age >= 18 end)
+        end
+      end
+    lib/etl/loader.ex: |
+      defmodule ETL.Loader do
+        alias ETL.Transformer
+
+        def load(path) do
+          records = Transformer.transform(path)
+          Enum.each(records, fn record ->
+            IO.puts("Loading: #{record.name}")
+          end)
+          {:ok, length(records)}
+        end
+      end
+    garbage_mailer.ex: |
+      defmodule GarbageMailer do
+        @garbage_rare_005_from_a "noreply@example.com"
+        @garbage_rare_005_provider_b :sendgrid
+
+        def deliver(to, subject) do
+          {:ok, @garbage_rare_005_from_a}
+        end
+
+        @garbage_rare_005_retries_c 3
+      end
+    garbage_telemetry.ex: |
+      defmodule GarbageTelemetry do
+        @garbage_rare_005_event_d :request
+        @garbage_rare_005_sample_e 0.1
+
+        def emit(event) do
+          @garbage_rare_005_event_d
+        end
+
+        @garbage_rare_005_buffer_f 1000
+      end
+  commit_message: "feat: add options to CSV extractor for delimiter and header skip"
+fragments:
+- id: extractor_opts
+  selector:
+    path: lib/etl/extractor.ex
+    anchor: "def extract_csv(path, opts"
+- id: extractor_delimiter
+  selector:
+    path: lib/etl/extractor.ex
+    anchor: "Keyword.get(opts, :delimiter"
+- id: transformer_passes_opts
+  selector:
+    path: lib/etl/transformer.ex
+    anchor: "Extractor.extract_csv(opts)"
+- id: no_loader
+  selector:
+    path: lib/etl/loader.ex
+- id: no_garbage_mailer
+  selector:
+    path: garbage_mailer.ex
+- id: no_garbage_telemetry
+  selector:
+    path: garbage_telemetry.ex
+- id: no_global_0
+  selector:
+    anchor: garbage_rare_005_from_a
+- id: no_global_1
+  selector:
+    anchor: garbage_rare_005_provider_b
+- id: no_global_2
+  selector:
+    anchor: garbage_rare_005_retries_c
+- id: no_global_3
+  selector:
+    anchor: garbage_rare_005_event_d
+- id: no_global_4
+  selector:
+    anchor: garbage_rare_005_sample_e
+- id: no_global_5
+  selector:
+    anchor: garbage_rare_005_buffer_f
+oracle:
+  required:
+  - extractor_opts
+  - extractor_delimiter
+  - transformer_passes_opts
+  allowed: []
+  forbidden:
+  - no_loader
+  - no_garbage_mailer
+  - no_garbage_telemetry
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

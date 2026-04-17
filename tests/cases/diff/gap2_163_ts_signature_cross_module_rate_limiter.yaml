@@ -1,0 +1,118 @@
+name: gap2_163_ts_signature_cross_module_rate_limiter
+tags:
+- change:signature
+- change:single_file
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+- lang:typescript
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/api/gateway.ts: |
+      import { RateLimiter } from "../middleware/rateLimiter";
+
+      export class ApiGateway {
+        constructor(private limiter: RateLimiter) {}
+
+        handleRequest(clientId: string): boolean {
+          return this.limiter.allow(clientId);
+        }
+      }
+    src/middleware/rateLimiter.ts: |
+      export class RateLimiter {
+        private counts: Map<string, number> = new Map();
+        private limit: number;
+
+        constructor(limit: number) {
+          this.limit = limit;
+        }
+
+        allow(clientId: string): boolean {
+          const current = this.counts.get(clientId) ?? 0;
+          if (current >= this.limit) return false;
+          this.counts.set(clientId, current + 1);
+          return true;
+        }
+
+        reset(clientId: string): void {
+          this.counts.delete(clientId);
+        }
+      }
+    src/middleware/cors.ts: |
+      export interface CorsConfig {
+        origins: string[];
+        methods: string[];
+      }
+
+      export function applyCors(config: CorsConfig): Record<string, string> {
+        return {
+          "Access-Control-Allow-Origin": config.origins.join(","),
+          "Access-Control-Allow-Methods": config.methods.join(","),
+        };
+      }
+  changed_files:
+    src/middleware/rateLimiter.ts: |
+      export interface RateLimitPolicy {
+        maxRequests: number;
+        windowMs: number;
+        burstAllowance: number;
+      }
+
+      export class RateLimiter {
+        private buckets: Map<string, { count: number; windowStart: number }> = new Map();
+        private policy: RateLimitPolicy;
+
+        constructor(policy: RateLimitPolicy) {
+          this.policy = policy;
+        }
+
+        allow(clientId: string, now: number = Date.now()): boolean {
+          const bucket = this.buckets.get(clientId);
+          if (!bucket || now - bucket.windowStart > this.policy.windowMs) {
+            this.buckets.set(clientId, { count: 1, windowStart: now });
+            return true;
+          }
+          const effectiveLimit = this.policy.maxRequests + this.policy.burstAllowance;
+          if (bucket.count >= effectiveLimit) return false;
+          bucket.count++;
+          return true;
+        }
+
+        reset(clientId: string): void {
+          this.buckets.delete(clientId);
+        }
+
+        remaining(clientId: string): number {
+          const bucket = this.buckets.get(clientId);
+          if (!bucket) return this.policy.maxRequests;
+          return Math.max(0, this.policy.maxRequests - bucket.count);
+        }
+      }
+fragments:
+- id: policy_interface
+  selector:
+    path: src/middleware/rateLimiter.ts
+    anchor: RateLimitPolicy
+- id: allow_sig
+  selector:
+    path: src/middleware/rateLimiter.ts
+    anchor: "allow(clientId: string, now: number"
+- id: remaining_method
+  selector:
+    path: src/middleware/rateLimiter.ts
+    anchor: "remaining(clientId"
+- id: no_cors
+  selector:
+    path: src/middleware/cors.ts
+- id: no_gateway
+  selector:
+    path: src/api/gateway.ts
+oracle:
+  required:
+  - policy_interface
+  - allow_sig
+  - remaining_method
+  forbidden:
+  - no_cors

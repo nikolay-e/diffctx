@@ -1,0 +1,155 @@
+name: bal_hard_008_scala_stream_processing
+tags:
+- lang:scala
+- change:multi_file
+- change:bug_fix
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/stream/Source.scala: |
+      package stream
+      trait Source[A] {
+        def poll(): Option[A]
+        def hasMore: Boolean
+      }
+    src/main/scala/stream/ListSource.scala: |
+      package stream
+      class ListSource[A](items: List[A]) extends Source[A] {
+        private var remaining = items
+        def poll(): Option[A] = remaining match {
+          case head :: tail => remaining = tail; Some(head)
+          case Nil => None
+        }
+        def hasMore: Boolean = remaining.nonEmpty
+      }
+    src/main/scala/stream/Processor.scala: |
+      package stream
+      class Processor[A, B](transform: A => B) {
+        def process(input: A): B = transform(input)
+      }
+    src/main/scala/stream/Sink.scala: |
+      package stream
+      trait Sink[A] {
+        def consume(value: A): Unit
+      }
+    src/main/scala/stream/ConsoleSink.scala: |
+      package stream
+      class ConsoleSink[A] extends Sink[A] {
+        def consume(value: A): Unit = println(value)
+      }
+    src/main/scala/stream/Pipeline.scala: |
+      package stream
+      class Pipeline[A, B](source: Source[A], processor: Processor[A, B], sink: Sink[B]) {
+        def run(): Int = {
+          var count = 0
+          while (source.hasMore) {
+            source.poll().foreach { item =>
+              sink.consume(processor.process(item))
+              count += 1
+            }
+          }
+          count
+        }
+      }
+    src/main/scala/app/StreamApp.scala: |
+      package app
+      import stream._
+      object StreamApp {
+        def main(args: Array[String]): Unit = {
+          val source = new ListSource(List("hello", "world"))
+          val processor = new Processor[String, String](_.toUpperCase)
+          val sink = new ConsoleSink[String]()
+          val pipeline = new Pipeline(source, processor, sink)
+          pipeline.run()
+        }
+      }
+    src/main/scala/util/Timer.scala: |
+      package util
+      object Timer {
+        def time[A](block: => A): (A, Long) = {
+          val start = System.nanoTime()
+          val result = block
+          (result, System.nanoTime() - start)
+        }
+      }
+  changed_files:
+    src/main/scala/stream/Processor.scala: |
+      package stream
+      class Processor[A, B](transform: A => B) {
+        def process(input: A): B = transform(input)
+        def processWithFilter(input: A, predicate: B => Boolean): Option[B] = {
+          val result = transform(input)
+          if (predicate(result)) Some(result) else None
+        }
+      }
+    src/main/scala/stream/Pipeline.scala: |
+      package stream
+      class Pipeline[A, B](source: Source[A], processor: Processor[A, B], sink: Sink[B], filter: Option[B => Boolean] = None) {
+        def run(): Int = {
+          var count = 0
+          while (source.hasMore) {
+            source.poll().foreach { item =>
+              val output = filter match {
+                case Some(pred) => processor.processWithFilter(item, pred)
+                case None => Some(processor.process(item))
+              }
+              output.foreach { value =>
+                sink.consume(value)
+                count += 1
+              }
+            }
+          }
+          count
+        }
+      }
+  commit_message: "feat: add optional filter to stream pipeline"
+fragments:
+- id: processor_with_filter
+  selector:
+    path: Processor.scala
+    anchor: "def processWithFilter"
+- id: pipeline_filter_param
+  selector:
+    path: Pipeline.scala
+    anchor: "filter: Option[B => Boolean]"
+- id: pipeline_uses_filter
+  selector:
+    path: Pipeline.scala
+    anchor: "processor.processWithFilter(item, pred)"
+- id: source_trait
+  selector:
+    path: Source.scala
+    anchor: "trait Source[A]"
+- id: sink_trait
+  selector:
+    path: Sink.scala
+    anchor: "trait Sink[A]"
+- id: app_creates_pipeline
+  selector:
+    path: StreamApp.scala
+    anchor: "new Pipeline(source, processor, sink)"
+- id: no_timer
+  selector:
+    path: util/Timer.scala
+- id: no_console_sink_body
+  selector:
+    path: ConsoleSink.scala
+    anchor: "println(value)"
+- id: no_time_method
+  selector:
+    anchor: "def time[A]"
+oracle:
+  required:
+  - processor_with_filter
+  - pipeline_filter_param
+  - pipeline_uses_filter
+  - source_trait
+  - sink_trait
+  - app_creates_pipeline
+  allowed: []
+  forbidden:
+  - no_timer
+  - no_console_sink_body
+  - no_time_method

@@ -1,0 +1,139 @@
+name: gap2_016_java_test_file_currency_converter
+tags:
+- lang:java
+- change:single_file
+- context:test_file
+- distance:2hop
+- difficulty:easy
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/main/java/com/travel/currency/CurrencyConverter.java: |
+      package com.travel.currency;
+
+      import java.util.Map;
+
+      public class CurrencyConverter {
+          private final Map<String, Double> ratesToUsd;
+
+          public CurrencyConverter(Map<String, Double> ratesToUsd) {
+              this.ratesToUsd = ratesToUsd;
+          }
+
+          public double convert(double amount, String from, String to) {
+              double inUsd = amount / ratesToUsd.get(from);
+              return inUsd * ratesToUsd.get(to);
+          }
+
+          public boolean supports(String currency) {
+              return ratesToUsd.containsKey(currency);
+          }
+      }
+    src/main/java/com/travel/currency/RateProvider.java: |
+      package com.travel.currency;
+
+      import java.util.HashMap;
+      import java.util.Map;
+
+      public class RateProvider {
+          public Map<String, Double> fetchRates() {
+              Map<String, Double> rates = new HashMap<>();
+              rates.put("USD", 1.0);
+              rates.put("EUR", 0.92);
+              rates.put("GBP", 0.79);
+              rates.put("JPY", 149.5);
+              return rates;
+          }
+      }
+    src/test/java/com/travel/currency/CurrencyConverterTest.java: |
+      package com.travel.currency;
+
+      import org.junit.jupiter.api.Test;
+      import java.util.Map;
+      import static org.junit.jupiter.api.Assertions.*;
+
+      class CurrencyConverterTest {
+          private final CurrencyConverter converter = new CurrencyConverter(
+              Map.of("USD", 1.0, "EUR", 0.92, "GBP", 0.79)
+          );
+
+          @Test
+          void convertUsdToEur() {
+              double result = converter.convert(100, "USD", "EUR");
+              assertEquals(92.0, result, 0.01);
+          }
+
+          @Test
+          void supportsKnownCurrency() {
+              assertTrue(converter.supports("EUR"));
+          }
+      }
+    src/main/java/com/travel/booking/FlightSearch.java: |
+      package com.travel.booking;
+
+      import java.util.List;
+
+      public class FlightSearch {
+          public List<String> search(String origin, String destination, String date) {
+              return List.of(origin + "-" + destination + "-" + date);
+          }
+
+          public double cheapest(List<Double> prices) {
+              return prices.stream().mapToDouble(Double::doubleValue).min().orElse(0.0);
+          }
+      }
+  changed_files:
+    src/main/java/com/travel/currency/CurrencyConverter.java: |
+      package com.travel.currency;
+
+      import java.util.Map;
+
+      public class CurrencyConverter {
+          private final Map<String, Double> ratesToUsd;
+
+          public CurrencyConverter(Map<String, Double> ratesToUsd) {
+              this.ratesToUsd = ratesToUsd;
+          }
+
+          public double convert(double amount, String from, String to) {
+              if (!supports(from) || !supports(to)) {
+                  throw new IllegalArgumentException("Unsupported currency: " + from + " or " + to);
+              }
+              double inUsd = amount / ratesToUsd.get(from);
+              return Math.round(inUsd * ratesToUsd.get(to) * 100.0) / 100.0;
+          }
+
+          public boolean supports(String currency) {
+              return ratesToUsd.containsKey(currency);
+          }
+      }
+  commit_message: "feat: add validation and rounding to currency conversion"
+fragments:
+- id: convert_validation
+  selector:
+    path: src/main/java/com/travel/currency/CurrencyConverter.java
+    anchor: "Unsupported currency"
+- id: convert_rounding
+  selector:
+    path: src/main/java/com/travel/currency/CurrencyConverter.java
+    anchor: "Math.round"
+- id: test_uses_converter
+  selector:
+    path: src/test/java/com/travel/currency/CurrencyConverterTest.java
+    anchor: "new CurrencyConverter"
+- id: no_flight_search
+  selector:
+    path: src/main/java/com/travel/booking/FlightSearch.java
+- id: no_flight_class
+  selector:
+    anchor: FlightSearch
+oracle:
+  required:
+  - convert_validation
+  - convert_rounding
+  - test_uses_converter
+  allowed: []
+  forbidden:
+  - no_flight_search
+  - no_flight_class

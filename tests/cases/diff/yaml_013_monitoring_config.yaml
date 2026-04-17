@@ -1,153 +1,198 @@
 name: yaml_013_monitoring_config
+tags:
+- lang:java
+- change:multi_file
+- change:refactor
+- context:cross_module
+- distance:1hop
+- difficulty:medium
 repo:
   initial_files:
-    config/monitoring.yaml: |
-      metrics:
-        enabled: true
-        port: 9090
-    src/metrics.py: |
-      from prometheus_client import start_http_server, Counter, Histogram
+    src/main/java/com/gaming/MatchmakingService.java: |
+      package com.gaming;
 
-      REQUEST_COUNT = Counter("requests_total", "Total requests")
-      REQUEST_LATENCY = Histogram("request_latency_seconds", "Request latency")
+      import java.util.List;
 
-      def start_metrics_server(port: int = 9090):
-          start_http_server(port)
+      public class MatchmakingService {
+          private final PlayerRepository players;
 
-      def record_request(method: str, path: str, duration: float):
-          REQUEST_COUNT.inc()
-          REQUEST_LATENCY.observe(duration)
-    config/alerting.yaml: |
-      alerting:
-        receivers:
-          - name: slack
-            webhook_url: https://hooks.slack.com/services/xxx
-          - name: pagerduty
-            routing_key: pd-service-key
-        rules:
-          - alert: HighErrorRate
-            expr: rate(errors_total[5m]) > 0.1
-            for: 5m
-            severity: critical
-    src/health_check.py: |
-      from datetime import datetime
+          public MatchmakingService(PlayerRepository players) {
+              this.players = players;
+          }
 
-      class HealthCheck:
-          def __init__(self):
-              self._checks: dict[str, callable] = {}
-              self.start_time = datetime.utcnow()
-
-          def register(self, name: str, check_fn):
-              self._checks[name] = check_fn
-
-          def run(self) -> dict:
-              results = {}
-              for name, check_fn in self._checks.items():
-                  try:
-                      check_fn()
-                      results[name] = "healthy"
-                  except Exception as e:
-                      results[name] = f"unhealthy: {e}"
-              return {
-                  "status": "healthy" if all(v == "healthy" for v in results.values()) else "unhealthy",
-                  "checks": results,
-                  "uptime_seconds": (datetime.utcnow() - self.start_time).total_seconds(),
+          public Match createMatch(String playerId, String gameMode) {
+              if (playerId == null || playerId.isBlank()) {
+                  throw new IllegalArgumentException("Player ID required");
               }
+              if (!isSupportedMode(gameMode)) {
+                  throw new IllegalArgumentException("Unsupported mode: " + gameMode);
+              }
+              Player player = players.findById(playerId);
+              if (player == null || !player.isOnline()) {
+                  throw new IllegalStateException("Player not available: " + playerId);
+              }
+              return new Match(playerId, gameMode);
+          }
+
+          private boolean isSupportedMode(String mode) {
+              return "ranked".equals(mode) || "casual".equals(mode) || "tournament".equals(mode);
+          }
+      }
+    src/main/java/com/gaming/SpectatorService.java: |
+      package com.gaming;
+
+      public class SpectatorService {
+          private final PlayerRepository players;
+
+          public SpectatorService(PlayerRepository players) {
+              this.players = players;
+          }
+
+          public void addSpectator(String matchId, String spectatorId) {
+              if (spectatorId == null || spectatorId.isBlank()) {
+                  throw new IllegalArgumentException("Spectator ID required");
+              }
+              Player spectator = players.findById(spectatorId);
+              if (spectator == null || !spectator.isOnline()) {
+                  throw new IllegalStateException("Spectator not available: " + spectatorId);
+              }
+              System.out.println("Spectator " + spectatorId + " joined match " + matchId);
+          }
+      }
+    src/main/java/com/gaming/PlayerRepository.java: |
+      package com.gaming;
+
+      public interface PlayerRepository {
+          Player findById(String playerId);
+      }
+    garbage/AchievementService.java: |
+      // GARBAGE_YAML13_ACH_A = "achievement_service_marker"
+    garbage/LeaderboardService.java: |
+      // GARBAGE_YAML13_LEAD_B = "leaderboard_service_marker"
+    garbage/TournamentBracket.java: |
+      // GARBAGE_YAML13_TOUR_C = "tournament_bracket_marker"
   changed_files:
-    config/monitoring.yaml: |
-      metrics:
-        enabled: true
-        port: 8080
-        path: /metrics
-    src/metrics.py: |
-      from prometheus_client import start_http_server, Counter, Histogram
+    src/main/java/com/gaming/MatchmakingService.java: |
+      package com.gaming;
 
-      REQUEST_COUNT = Counter("requests_total", "Total requests")
-      REQUEST_LATENCY = Histogram("request_latency_seconds", "Request latency")
+      import com.gaming.validation.PlayerAvailabilityChecker;
 
-      def start_metrics_server(port: int = 9090):
-          start_http_server(port)
+      public class MatchmakingService {
+          private final PlayerAvailabilityChecker availabilityChecker;
 
-      def record_request(method: str, path: str, duration: float):
-          REQUEST_COUNT.inc()
-          REQUEST_LATENCY.observe(duration)
-    config/alerting.yaml: |
-      alerting:
-        receivers:
-          - name: slack
-            webhook_url: https://hooks.slack.com/services/xxx
-          - name: pagerduty
-            routing_key: pd-service-key
-        rules:
-          - alert: HighErrorRate
-            expr: rate(errors_total[5m]) > 0.1
-            for: 5m
-            severity: critical
-    src/health_check.py: |
-      from datetime import datetime
+          public MatchmakingService(PlayerAvailabilityChecker availabilityChecker) {
+              this.availabilityChecker = availabilityChecker;
+          }
 
-      class HealthCheck:
-          def __init__(self):
-              self._checks: dict[str, callable] = {}
-              self.start_time = datetime.utcnow()
-
-          def register(self, name: str, check_fn):
-              self._checks[name] = check_fn
-
-          def run(self) -> dict:
-              results = {}
-              for name, check_fn in self._checks.items():
-                  try:
-                      check_fn()
-                      results[name] = "healthy"
-                  except Exception as e:
-                      results[name] = f"unhealthy: {e}"
-              return {
-                  "status": "healthy" if all(v == "healthy" for v in results.values()) else "unhealthy",
-                  "checks": results,
-                  "uptime_seconds": (datetime.utcnow() - self.start_time).total_seconds(),
+          public Match createMatch(String playerId, String gameMode) {
+              if (!isSupportedMode(gameMode)) {
+                  throw new IllegalArgumentException("Unsupported mode: " + gameMode);
               }
-  commit_message: Update files
+              availabilityChecker.requireAvailable(playerId);
+              return new Match(playerId, gameMode);
+          }
+
+          private boolean isSupportedMode(String mode) {
+              return "ranked".equals(mode) || "casual".equals(mode) || "tournament".equals(mode);
+          }
+      }
+    src/main/java/com/gaming/SpectatorService.java: |
+      package com.gaming;
+
+      import com.gaming.validation.PlayerAvailabilityChecker;
+
+      public class SpectatorService {
+          private final PlayerAvailabilityChecker availabilityChecker;
+
+          public SpectatorService(PlayerAvailabilityChecker availabilityChecker) {
+              this.availabilityChecker = availabilityChecker;
+          }
+
+          public void addSpectator(String matchId, String spectatorId) {
+              availabilityChecker.requireAvailable(spectatorId);
+              System.out.println("Spectator " + spectatorId + " joined match " + matchId);
+          }
+      }
+    src/main/java/com/gaming/validation/PlayerAvailabilityChecker.java: |
+      package com.gaming.validation;
+
+      import com.gaming.Player;
+      import com.gaming.PlayerRepository;
+
+      public class PlayerAvailabilityChecker {
+          private final PlayerRepository players;
+
+          public PlayerAvailabilityChecker(PlayerRepository players) {
+              this.players = players;
+          }
+
+          public void requireAvailable(String playerId) {
+              if (playerId == null || playerId.isBlank()) {
+                  throw new IllegalArgumentException("Player ID required");
+              }
+              Player player = players.findById(playerId);
+              if (player == null || !player.isOnline()) {
+                  throw new IllegalStateException("Player not available: " + playerId);
+              }
+          }
+      }
+    src/main/java/com/gaming/PlayerRepository.java: |
+      package com.gaming;
+
+      public interface PlayerRepository {
+          Player findById(String playerId);
+      }
+    garbage/AchievementService.java: |
+      // GARBAGE_YAML13_ACH_A = "achievement_service_marker"
+    garbage/LeaderboardService.java: |
+      // GARBAGE_YAML13_LEAD_B = "leaderboard_service_marker"
+    garbage/TournamentBracket.java: |
+      // GARBAGE_YAML13_TOUR_C = "tournament_bracket_marker"
+  commit_message: "refactor: extract PlayerAvailabilityChecker used by MatchmakingService and SpectatorService"
 fragments:
-- id: metrics
+- id: matchmaking_uses_checker
   selector:
-    path: src/metrics.py
-    anchor: start_http_server(port)
-- id: metrics_1
+    path: src/main/java/com/gaming/MatchmakingService.java
+    anchor: "private final PlayerAvailabilityChecker availabilityChecker;"
+- id: matchmaking_require_call
   selector:
-    path: src/metrics.py
-    anchor: 'port: int = 9090'
-- id: no_alerting
+    path: src/main/java/com/gaming/MatchmakingService.java
+    anchor: "availabilityChecker.requireAvailable(playerId);"
+- id: spectator_uses_checker
   selector:
-    path: config/alerting.yaml
-- id: no_health_check
+    path: src/main/java/com/gaming/SpectatorService.java
+    anchor: "import com.gaming.validation.PlayerAvailabilityChecker;"
+- id: checker_class
   selector:
-    path: src/health_check.py
-- id: no_global_0
+    path: src/main/java/com/gaming/validation/PlayerAvailabilityChecker.java
+    anchor: "public class PlayerAvailabilityChecker {"
+- id: checker_require_method
   selector:
-    anchor: HighErrorRate
-- id: no_global_1
+    path: src/main/java/com/gaming/validation/PlayerAvailabilityChecker.java
+    anchor: "public void requireAvailable(String playerId) {"
+- id: unrelated_repo
   selector:
-    anchor: pagerduty
-- id: no_global_2
+    path: src/main/java/com/gaming/PlayerRepository.java
+    anchor: "Player findById(String playerId);"
+- id: no_garbage_a
   selector:
-    anchor: routing_key
-- id: no_global_3
+    anchor: GARBAGE_YAML13_ACH_A
+- id: no_garbage_b
   selector:
-    anchor: HealthCheck
-- id: no_global_4
+    anchor: GARBAGE_YAML13_LEAD_B
+- id: no_garbage_c
   selector:
-    anchor: uptime_seconds
+    anchor: GARBAGE_YAML13_TOUR_C
 oracle:
   required:
-  - metrics
-  - metrics_1
-  allowed: []
+  - matchmaking_uses_checker
+  - matchmaking_require_call
+  - checker_class
+  - checker_require_method
+  allowed:
+  - spectator_uses_checker
   forbidden:
-  - no_alerting
-  - no_health_check
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
+  - unrelated_repo
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

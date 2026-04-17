@@ -1,4 +1,12 @@
 name: docker_007_compose_depends_on
+tags:
+- lang:python
+- lang:shell
+- change:single_file
+- change:config
+- context:cross_module
+- distance:2hop
+- difficulty:hard
 repo:
   initial_files:
     src/app.py: |

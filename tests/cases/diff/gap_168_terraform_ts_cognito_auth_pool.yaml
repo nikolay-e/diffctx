@@ -1,0 +1,133 @@
+name: gap_168_terraform_ts_cognito_auth_pool
+tags:
+- change:config
+- change:single_file
+- context:cross_module
+- difficulty:medium
+- distance:2hop
+- lang:terraform
+- lang:typescript
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    infra/cognito.tf: |
+      resource "aws_cognito_user_pool" "main" {
+        name = "app-users"
+
+        password_policy {
+          minimum_length    = 8
+          require_lowercase = true
+          require_uppercase = true
+          require_numbers   = true
+          require_symbols   = false
+        }
+
+        auto_verified_attributes = ["email"]
+      }
+
+      resource "aws_cognito_user_pool_client" "web" {
+        name         = "web-client"
+        user_pool_id = aws_cognito_user_pool.main.id
+
+        explicit_auth_flows = [
+          "ALLOW_USER_PASSWORD_AUTH",
+          "ALLOW_REFRESH_TOKEN_AUTH",
+        ]
+      }
+    web/src/auth/cognitoProvider.ts: |
+      export interface CognitoConfig {
+        userPoolId: string;
+        clientId: string;
+        requireSymbols: boolean;
+      }
+
+      export function validatePasswordPolicy(
+        password: string,
+        config: CognitoConfig
+      ): string[] {
+        const errors: string[] = [];
+        if (password.length < 8) errors.push("too_short");
+        if (!/[a-z]/.test(password)) errors.push("no_lowercase");
+        if (!/[A-Z]/.test(password)) errors.push("no_uppercase");
+        if (!/[0-9]/.test(password)) errors.push("no_number");
+        if (config.requireSymbols && !/[^a-zA-Z0-9]/.test(password)) {
+          errors.push("no_symbol");
+        }
+        return errors;
+      }
+    web/src/auth/tokenStore.ts: |
+      export class TokenStore {
+        private accessToken: string | null = null;
+        private refreshToken: string | null = null;
+
+        setTokens(access: string, refresh: string): void {
+          this.accessToken = access;
+          this.refreshToken = refresh;
+        }
+
+        getAccessToken(): string | null {
+          return this.accessToken;
+        }
+
+        clear(): void {
+          this.accessToken = null;
+          this.refreshToken = null;
+        }
+      }
+    web/src/pages/dashboard.ts: |
+      export function renderDashboard(userName: string): string {
+        return `<h1>Welcome, ${userName}</h1>`;
+      }
+  changed_files:
+    infra/cognito.tf: |
+      resource "aws_cognito_user_pool" "main" {
+        name = "app-users"
+
+        password_policy {
+          minimum_length    = 12
+          require_lowercase = true
+          require_uppercase = true
+          require_numbers   = true
+          require_symbols   = true
+        }
+
+        auto_verified_attributes = ["email"]
+      }
+
+      resource "aws_cognito_user_pool_client" "web" {
+        name         = "web-client"
+        user_pool_id = aws_cognito_user_pool.main.id
+
+        explicit_auth_flows = [
+          "ALLOW_USER_PASSWORD_AUTH",
+          "ALLOW_REFRESH_TOKEN_AUTH",
+        ]
+      }
+fragments:
+- id: tf_password_policy
+  selector:
+    path: infra/cognito.tf
+    anchor: require_symbols
+- id: ts_validate_policy
+  selector:
+    path: web/src/auth/cognitoProvider.ts
+    anchor: validatePasswordPolicy
+- id: ts_require_symbols
+  selector:
+    path: web/src/auth/cognitoProvider.ts
+    anchor: requireSymbols
+- id: no_token_store
+  selector:
+    path: web/src/auth/tokenStore.ts
+- id: no_dashboard
+  selector:
+    path: web/src/pages/dashboard.ts
+oracle:
+  required:
+  - tf_password_policy
+  - ts_validate_policy
+  - ts_require_symbols
+  forbidden:
+  - no_token_store
+  - no_dashboard

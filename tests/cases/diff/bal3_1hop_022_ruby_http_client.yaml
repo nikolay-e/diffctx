@@ -1,0 +1,224 @@
+name: bal3_1hop_022_ruby_http_client
+tags:
+- lang:ruby
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    lib/http/client.rb: |
+      module Http
+        class Response
+          attr_reader :status, :body
+
+          def initialize(status:, body:)
+            @status = status
+            @body = body
+          end
+
+          def success?
+            status >= 200 && status < 300
+          end
+        end
+
+        class Client
+          def initialize(base_url)
+            @base_url = base_url
+          end
+
+          def get(path)
+            Response.new(status: 200, body: "GET #{@base_url}#{path}")
+          end
+
+          def post(path, body)
+            Response.new(status: 201, body: "POST #{@base_url}#{path}")
+          end
+        end
+      end
+    lib/integrations/github_api.rb: |
+      require_relative '../http/client'
+
+      module Integrations
+        class GithubApi
+          def initialize(token)
+            @client = Http::Client.new("https://api.github.com")
+            @token = token
+          end
+
+          def repos(user)
+            @client.get("/users/#{user}/repos")
+          end
+        end
+      end
+    lib/integrations/slack_api.rb: |
+      require_relative '../http/client'
+
+      module Integrations
+        class SlackApi
+          def initialize(webhook_url)
+            @client = Http::Client.new(webhook_url)
+          end
+
+          def notify(channel, message)
+            @client.post("/", { channel: channel, text: message })
+          end
+        end
+      end
+    lib/integrations/stripe_api.rb: |
+      require_relative '../http/client'
+
+      module Integrations
+        class StripeApi
+          def initialize(api_key)
+            @client = Http::Client.new("https://api.stripe.com")
+            @api_key = api_key
+          end
+
+          def create_charge(amount, currency)
+            @client.post("/v1/charges", { amount: amount, currency: currency })
+          end
+        end
+      end
+    lib/mailers/smtp_mailer.rb: |
+      GARBAGE_022_SMTP_A = "smtp"
+
+      module Mailers
+        class SmtpMailer
+          def send(to, subject, body)
+            "sent to #{to}"
+          end
+        end
+      end
+    lib/mailers/sendgrid_mailer.rb: |
+      GARBAGE_022_SENDGRID_B = "sendgrid"
+
+      module Mailers
+        class SendgridMailer
+          def send(to, subject, body)
+            "sent via sendgrid to #{to}"
+          end
+        end
+      end
+    lib/mailers/ses_mailer.rb: |
+      GARBAGE_022_SES_C = "ses"
+
+      module Mailers
+        class SesMailer
+          def send(to, subject, body)
+            "sent via ses to #{to}"
+          end
+        end
+      end
+  changed_files:
+    lib/http/client.rb: |
+      module Http
+        class Response
+          attr_reader :status, :body, :headers, :elapsed_ms
+
+          def initialize(status:, body:, headers: {}, elapsed_ms: 0)
+            @status = status
+            @body = body
+            @headers = headers
+            @elapsed_ms = elapsed_ms
+          end
+
+          def success?
+            status >= 200 && status < 300
+          end
+
+          def json
+            JSON.parse(body)
+          end
+        end
+
+        class Client
+          def initialize(base_url, timeout: 30, headers: {})
+            @base_url = base_url
+            @timeout = timeout
+            @default_headers = headers
+          end
+
+          def get(path, headers: {})
+            Response.new(status: 200, body: "GET #{@base_url}#{path}", headers: merged_headers(headers))
+          end
+
+          def post(path, body, headers: {})
+            Response.new(status: 201, body: "POST #{@base_url}#{path}", headers: merged_headers(headers))
+          end
+
+          private
+
+          def merged_headers(extra)
+            @default_headers.merge(extra)
+          end
+        end
+      end
+  commit_message: "feat: add timeout, default headers, Response#json, and elapsed_ms"
+fragments:
+- id: headers_attr
+  selector:
+    path: lib/http/client.rb
+    anchor: ":headers, :elapsed_ms"
+- id: timeout_param
+  selector:
+    path: lib/http/client.rb
+    anchor: "timeout: 30"
+- id: default_headers_param
+  selector:
+    path: lib/http/client.rb
+    anchor: "headers: {}"
+- id: json_method
+  selector:
+    path: lib/http/client.rb
+    anchor: "def json"
+- id: github_uses_client
+  selector:
+    path: lib/integrations/github_api.rb
+    anchor: "Http::Client.new(\"https://api.github.com\")"
+- id: slack_uses_client
+  selector:
+    path: lib/integrations/slack_api.rb
+    anchor: "Http::Client.new(webhook_url)"
+- id: stripe_uses_client
+  selector:
+    path: lib/integrations/stripe_api.rb
+    anchor: "Http::Client.new(\"https://api.stripe.com\")"
+- id: unrelated_smtp
+  selector:
+    path: lib/mailers/smtp_mailer.rb
+    anchor: "class SmtpMailer"
+- id: unrelated_sendgrid
+  selector:
+    path: lib/mailers/sendgrid_mailer.rb
+    anchor: "class SendgridMailer"
+- id: unrelated_ses
+  selector:
+    path: lib/mailers/ses_mailer.rb
+    anchor: "class SesMailer"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_022_SMTP_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_022_SENDGRID_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_022_SES_C
+oracle:
+  required:
+  - headers_attr
+  - timeout_param
+  - json_method
+  - github_uses_client
+  allowed:
+  - default_headers_param
+  - slack_uses_client
+  - stripe_uses_client
+  forbidden:
+  - unrelated_smtp
+  - unrelated_sendgrid
+  - unrelated_ses
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

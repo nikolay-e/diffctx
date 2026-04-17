@@ -1,0 +1,150 @@
+name: bal3_3hop_033_java_data_pipeline_transform
+tags:
+- lang:java
+- change:single_file
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/app/pipeline/Record.java: |
+      package com.app.pipeline;
+
+      public class Record {
+          private String key;
+          private String value;
+          public Record(String key, String value) {
+              this.key = key;
+              this.value = value;
+          }
+          public String getKey() { return key; }
+          public String getValue() { return value; }
+      }
+    src/main/java/com/app/pipeline/Transformer.java: |
+      package com.app.pipeline;
+
+      public class Transformer {
+          public Record transform(Record input) {
+              return new Record(input.getKey(), input.getValue().toUpperCase());
+          }
+      }
+    src/main/java/com/app/pipeline/Pipeline.java: |
+      package com.app.pipeline;
+
+      import java.util.List;
+      import java.util.stream.Collectors;
+
+      public class Pipeline {
+          private final Transformer transformer;
+          public Pipeline(Transformer transformer) {
+              this.transformer = transformer;
+          }
+          public List<Record> process(List<Record> records) {
+              return records.stream()
+                  .map(transformer::transform)
+                  .collect(Collectors.toList());
+          }
+      }
+    src/main/java/com/app/service/DataIngestionService.java: |
+      package com.app.service;
+
+      import com.app.pipeline.Pipeline;
+      import com.app.pipeline.Record;
+      import java.util.List;
+
+      public class DataIngestionService {
+          private final Pipeline pipeline;
+          public DataIngestionService(Pipeline pipeline) {
+              this.pipeline = pipeline;
+          }
+          public List<Record> ingest(List<Record> raw) {
+              return pipeline.process(raw);
+          }
+      }
+    src/main/java/com/app/web/IngestController.java: |
+      package com.app.web;
+
+      import com.app.service.DataIngestionService;
+      import com.app.pipeline.Record;
+      import java.util.List;
+
+      public class IngestController {
+          private final DataIngestionService service;
+          public IngestController(DataIngestionService service) {
+              this.service = service;
+          }
+          public int upload(List<Record> records) {
+              List<Record> result = service.ingest(records);
+              return result.size();
+          }
+      }
+    src/main/java/com/app/util/CsvParser.java: |
+      package com.app.util;
+
+      public class CsvParser {
+          public static String GARBAGE_033_CSV_MARKER_A = "csv";
+          public static String GARBAGE_033_DELIM_MARKER_B = ",";
+          public static String[] parse(String line) { return line.split(","); }
+      }
+    src/main/java/com/app/util/JsonMapper.java: |
+      package com.app.util;
+
+      public class JsonMapper {
+          public static String GARBAGE_033_JSON_MARKER_C = "json";
+          public static int GARBAGE_033_INDENT_MARKER_D = 2;
+          public static String toJson(Object obj) { return "{}"; }
+      }
+  changed_files:
+    src/main/java/com/app/pipeline/Transformer.java: |
+      package com.app.pipeline;
+
+      public class Transformer {
+          public Record transform(Record input) {
+              if (input.getValue() == null) {
+                  return new Record(input.getKey(), "");
+              }
+              return new Record(input.getKey(), input.getValue().trim().toUpperCase());
+          }
+      }
+  commit_message: "fix: handle null values and trim whitespace in Transformer"
+fragments:
+- id: transformer_null_check
+  selector:
+    path: src/main/java/com/app/pipeline/Transformer.java
+    anchor: "input.getValue() == null"
+- id: transformer_trim
+  selector:
+    path: src/main/java/com/app/pipeline/Transformer.java
+    anchor: "getValue().trim().toUpperCase()"
+- id: pipeline_uses_transformer
+  selector:
+    path: src/main/java/com/app/pipeline/Pipeline.java
+    anchor: "transformer::transform"
+- id: service_imports_pipeline
+  selector:
+    path: src/main/java/com/app/service/DataIngestionService.java
+    anchor: "import com.app.pipeline.Pipeline"
+- id: controller_imports_service
+  selector:
+    path: src/main/java/com/app/web/IngestController.java
+    anchor: "import com.app.service.DataIngestionService"
+- id: no_csv_parser
+  selector:
+    path: src/main/java/com/app/util/CsvParser.java
+    anchor: "GARBAGE_033_CSV_MARKER_A"
+- id: no_json_mapper
+  selector:
+    path: src/main/java/com/app/util/JsonMapper.java
+    anchor: "GARBAGE_033_JSON_MARKER_C"
+oracle:
+  required:
+  - transformer_null_check
+  - transformer_trim
+  - pipeline_uses_transformer
+  - service_imports_pipeline
+  - controller_imports_service
+  allowed: []
+  forbidden:
+  - no_csv_parser
+  - no_json_mapper

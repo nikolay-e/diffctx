@@ -1,4 +1,11 @@
 name: dbt_004_source_freshness
+tags:
+- lang:sql
+- change:single_file
+- change:config
+- context:cross_module
+- distance:2hop
+- difficulty:hard
 repo:
   initial_files:
     models/sources.yml: |

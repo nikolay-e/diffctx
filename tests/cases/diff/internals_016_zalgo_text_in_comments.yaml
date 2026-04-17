@@ -1,25 +1,318 @@
 name: internals_016_zalgo_text_in_comments
+tags:
+- lang:java
+- change:multi_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:hard
 repo:
   initial_files:
-    zalgo.py: |
-      def placeholder():
-          pass
+    src/main/java/com/content/media/MediaUploadService.java: |
+      package com.content.media;
+
+      import java.util.Set;
+
+      public class MediaUploadService {
+          private static final long MAX_SIZE_BYTES = 10L * 1024 * 1024;
+          private static final Set<String> ALLOWED_TYPES = Set.of("image/jpeg", "image/png", "image/gif", "video/mp4");
+
+          private final MediaStorage storage;
+
+          public MediaUploadService(MediaStorage storage) {
+              this.storage = storage;
+          }
+
+          public UploadResult upload(byte[] data, String contentType, String filename) {
+              if (data == null || data.length == 0) {
+                  return UploadResult.failure("data is required");
+              }
+              if (!ALLOWED_TYPES.contains(contentType)) {
+                  return UploadResult.failure("unsupported content type: " + contentType);
+              }
+              if (data.length > MAX_SIZE_BYTES) {
+                  return UploadResult.failure("file too large");
+              }
+              String key = storage.store(data, contentType, filename);
+              return UploadResult.success(key);
+          }
+      }
+    src/main/java/com/content/media/MediaStorage.java: |
+      package com.content.media;
+
+      public interface MediaStorage {
+          String store(byte[] data, String contentType, String filename);
+          byte[] retrieve(String key);
+          void delete(String key);
+      }
+    src/main/java/com/content/media/UploadResult.java: |
+      package com.content.media;
+
+      public class UploadResult {
+          private final boolean success;
+          private final String key;
+          private final String error;
+
+          private UploadResult(boolean success, String key, String error) {
+              this.success = success;
+              this.key = key;
+              this.error = error;
+          }
+
+          public static UploadResult success(String key) {
+              return new UploadResult(true, key, null);
+          }
+
+          public static UploadResult failure(String error) {
+              return new UploadResult(false, null, error);
+          }
+
+          public boolean isSuccess() { return success; }
+          public String getKey() { return key; }
+          public String getError() { return error; }
+      }
+    src/test/java/com/content/media/MediaUploadServiceTest.java: |
+      package com.content.media;
+
+      import org.junit.jupiter.api.Test;
+      import static org.junit.jupiter.api.Assertions.*;
+
+      class MediaUploadServiceTest {
+          private final InMemoryMediaStorage storage = new InMemoryMediaStorage();
+          private final MediaUploadService service = new MediaUploadService(storage);
+
+          @Test
+          void upload_validJpeg_succeeds() {
+              UploadResult result = service.upload(new byte[]{1, 2, 3}, "image/jpeg", "photo.jpg");
+              assertTrue(result.isSuccess());
+              assertNotNull(result.getKey());
+          }
+
+          @Test
+          void upload_unsupportedType_fails() {
+              UploadResult result = service.upload(new byte[]{1}, "text/html", "page.html");
+              assertFalse(result.isSuccess());
+              assertTrue(result.getError().contains("unsupported"));
+          }
+
+          @Test
+          void upload_emptyData_fails() {
+              UploadResult result = service.upload(new byte[]{}, "image/jpeg", "empty.jpg");
+              assertFalse(result.isSuccess());
+          }
+      }
+    src/main/java/com/content/tagging/TagService.java: |
+      package com.content.tagging;
+
+      // GARBAGE_ZAL16_A = "tag_service_unrelated"
+      public class TagService {
+          public java.util.List<String> getTagsForContent(Long contentId) {
+              return java.util.List.of();
+          }
+      }
+    src/main/java/com/content/search/SearchIndexer.java: |
+      package com.content.search;
+
+      // GARBAGE_ZAL16_B = "search_indexer_unrelated"
+      public class SearchIndexer {
+          public void index(Long contentId, String text) {}
+          public java.util.List<Long> search(String query) { return java.util.List.of(); }
+      }
+    src/main/java/com/content/cdn/CdnPurger.java: |
+      package com.content.cdn;
+
+      // GARBAGE_ZAL16_C = "cdn_purger_unrelated"
+      public class CdnPurger {
+          public void purge(String key) {}
+      }
   changed_files:
-    zalgo.py: |
-      # H̸̡̪̯ͨ͊̽̅̾̎Ȩ̬̩̾͛ͪ̈́̀́͘ ̈́̈͊ͅC̷̱̲̥͎̾́͆̀O̵̝̟̞͙͆̈̓̔M̴̨̰̱̾̅̑̕Ę̷̡͎̰̐̊̾S̴̨̺̟̈̿̀͝
-      def process_data(items):
-          return items
-  commit_message: Update files
+    src/main/java/com/content/media/MediaUploadService.java: |
+      package com.content.media;
+
+      import java.util.Set;
+
+      public class MediaUploadService {
+          private static final long MAX_SIZE_BYTES = 10L * 1024 * 1024;
+          private static final Set<String> ALLOWED_TYPES = Set.of("image/jpeg", "image/png", "image/gif", "video/mp4");
+
+          private final MediaStorage storage;
+
+          public MediaUploadService(MediaStorage storage) {
+              this.storage = storage;
+          }
+
+          public UploadResult upload(byte[] data, String contentType, String filename) {
+              if (data == null || data.length == 0) {
+                  return UploadResult.failure("data is required");
+              }
+              if (!ALLOWED_TYPES.contains(contentType)) {
+                  return UploadResult.failure("unsupported content type: " + contentType);
+              }
+              if (data.length > MAX_SIZE_BYTES) {
+                  return UploadResult.failure("file too large");
+              }
+              String key = storage.store(data, contentType, filename);
+              return UploadResult.success(key);
+          }
+
+          public UploadResult replace(String existingKey, byte[] data, String contentType, String filename) {
+              UploadResult uploadResult = upload(data, contentType, filename);
+              if (uploadResult.isSuccess()) {
+                  storage.delete(existingKey);
+              }
+              return uploadResult;
+          }
+
+          public void deleteMedia(String key) {
+              storage.delete(key);
+          }
+
+          public boolean isAllowedContentType(String contentType) {
+              return ALLOWED_TYPES.contains(contentType);
+          }
+      }
+    src/main/java/com/content/media/MediaStorage.java: |
+      package com.content.media;
+
+      public interface MediaStorage {
+          String store(byte[] data, String contentType, String filename);
+          byte[] retrieve(String key);
+          void delete(String key);
+      }
+    src/main/java/com/content/media/UploadResult.java: |
+      package com.content.media;
+
+      public class UploadResult {
+          private final boolean success;
+          private final String key;
+          private final String error;
+
+          private UploadResult(boolean success, String key, String error) {
+              this.success = success;
+              this.key = key;
+              this.error = error;
+          }
+
+          public static UploadResult success(String key) {
+              return new UploadResult(true, key, null);
+          }
+
+          public static UploadResult failure(String error) {
+              return new UploadResult(false, null, error);
+          }
+
+          public boolean isSuccess() { return success; }
+          public String getKey() { return key; }
+          public String getError() { return error; }
+      }
+    src/test/java/com/content/media/MediaUploadServiceTest.java: |
+      package com.content.media;
+
+      import org.junit.jupiter.api.Test;
+      import static org.junit.jupiter.api.Assertions.*;
+
+      class MediaUploadServiceTest {
+          private final InMemoryMediaStorage storage = new InMemoryMediaStorage();
+          private final MediaUploadService service = new MediaUploadService(storage);
+
+          @Test
+          void upload_validJpeg_succeeds() {
+              UploadResult result = service.upload(new byte[]{1, 2, 3}, "image/jpeg", "photo.jpg");
+              assertTrue(result.isSuccess());
+              assertNotNull(result.getKey());
+          }
+
+          @Test
+          void upload_unsupportedType_fails() {
+              UploadResult result = service.upload(new byte[]{1}, "text/html", "page.html");
+              assertFalse(result.isSuccess());
+              assertTrue(result.getError().contains("unsupported"));
+          }
+
+          @Test
+          void upload_emptyData_fails() {
+              UploadResult result = service.upload(new byte[]{}, "image/jpeg", "empty.jpg");
+              assertFalse(result.isSuccess());
+          }
+
+          @Test
+          void replace_uploadsNewAndDeletesOld() {
+              UploadResult first = service.upload(new byte[]{1}, "image/jpeg", "old.jpg");
+              String oldKey = first.getKey();
+              UploadResult replaced = service.replace(oldKey, new byte[]{2}, "image/jpeg", "new.jpg");
+              assertTrue(replaced.isSuccess());
+              assertNull(storage.retrieve(oldKey));
+          }
+
+          @Test
+          void isAllowedContentType_knownType_returnsTrue() {
+              assertTrue(service.isAllowedContentType("image/png"));
+          }
+
+          @Test
+          void isAllowedContentType_unknownType_returnsFalse() {
+              assertFalse(service.isAllowedContentType("application/pdf"));
+          }
+      }
+    src/main/java/com/content/tagging/TagService.java: |
+      package com.content.tagging;
+
+      // GARBAGE_ZAL16_A = "tag_service_unrelated"
+      public class TagService {
+          public java.util.List<String> getTagsForContent(Long contentId) {
+              return java.util.List.of();
+          }
+      }
+    src/main/java/com/content/search/SearchIndexer.java: |
+      package com.content.search;
+
+      // GARBAGE_ZAL16_B = "search_indexer_unrelated"
+      public class SearchIndexer {
+          public void index(Long contentId, String text) {}
+          public java.util.List<Long> search(String query) { return java.util.List.of(); }
+      }
+    src/main/java/com/content/cdn/CdnPurger.java: |
+      package com.content.cdn;
+
+      // GARBAGE_ZAL16_C = "cdn_purger_unrelated"
+      public class CdnPurger {
+          public void purge(String key) {}
+      }
+  commit_message: "feat: add replace, deleteMedia, isAllowedContentType to MediaUploadService"
 fragments:
-- id: zalgo_file
+- id: replace_method
   selector:
-    path: zalgo.py
-- id: req_global_0
+    path: src/main/java/com/content/media/MediaUploadService.java
+    anchor: "public UploadResult replace"
+- id: is_allowed_content_type
   selector:
-    anchor: 'def process_data(items):'
+    path: src/main/java/com/content/media/MediaUploadService.java
+    anchor: "public boolean isAllowedContentType"
+- id: test_replace_uploads_and_deletes
+  selector:
+    path: src/test/java/com/content/media/MediaUploadServiceTest.java
+    anchor: "replace_uploadsNewAndDeletesOld"
+- id: test_allowed_type_true
+  selector:
+    path: src/test/java/com/content/media/MediaUploadServiceTest.java
+    anchor: "isAllowedContentType_knownType_returnsTrue"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_ZAL16_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_ZAL16_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_ZAL16_C
 oracle:
   required:
-  - zalgo_file
-  - req_global_0
-  allowed: []
-  forbidden: []
+  - replace_method
+  - test_replace_uploads_and_deletes
+  allowed:
+  - is_allowed_content_type
+  - test_allowed_type_true
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

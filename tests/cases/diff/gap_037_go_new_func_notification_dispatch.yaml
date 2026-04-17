@@ -1,0 +1,228 @@
+name: gap_037_go_new_func_notification_dispatch
+tags:
+- change:multi_file
+- change:new_function
+- context:cross_module
+- difficulty:medium
+- distance:2hop
+- lang:go
+repo:
+  initial_files:
+    internal/notifier/channel.go: |
+      package notifier
+
+      type Channel struct {
+          Name     string
+          Endpoint string
+          Enabled  bool
+      }
+
+      func NewChannel(name string, endpoint string) *Channel {
+          return &Channel{Name: name, Endpoint: endpoint, Enabled: true}
+      }
+
+      func (c *Channel) Disable() {
+          c.Enabled = false
+      }
+    internal/notifier/sender.go: |
+      package notifier
+
+      type Sender struct {
+          Channels []*Channel
+      }
+
+      func NewSender(channels []*Channel) *Sender {
+          return &Sender{Channels: channels}
+      }
+
+      func (s *Sender) ActiveChannels() []*Channel {
+          var active []*Channel
+          for _, ch := range s.Channels {
+              if ch.Enabled {
+                  active = append(active, ch)
+              }
+          }
+          return active
+      }
+    internal/dispatch/router.go: |
+      package dispatch
+
+      import "internal/notifier"
+
+      type Router struct {
+          sender *notifier.Sender
+      }
+
+      func NewRouter(sender *notifier.Sender) *Router {
+          return &Router{sender: sender}
+      }
+
+      func (r *Router) Route(message string) int {
+          channels := r.sender.ActiveChannels()
+          return len(channels)
+      }
+    internal/billing/invoice.go: |
+      package billing
+
+      var GARBAGE_GAP_037_INV_A = "invoice_marker"
+      var GARBAGE_GAP_037_TAX_B = 0.21
+
+      func CalculateTotal(subtotal float64) float64 {
+          return subtotal * (1 + GARBAGE_GAP_037_TAX_B)
+      }
+    internal/audit/logger.go: |
+      package audit
+
+      var GARBAGE_GAP_037_LOG_C = "audit_marker"
+      var GARBAGE_GAP_037_RETAIN_D = 90
+
+      func Record(action string) {}
+  changed_files:
+    internal/notifier/channel.go: |
+      package notifier
+
+      type Channel struct {
+          Name     string
+          Endpoint string
+          Enabled  bool
+          Priority int
+      }
+
+      func NewChannel(name string, endpoint string) *Channel {
+          return &Channel{Name: name, Endpoint: endpoint, Enabled: true, Priority: 0}
+      }
+
+      func (c *Channel) Disable() {
+          c.Enabled = false
+      }
+
+      func (c *Channel) SetPriority(p int) {
+          c.Priority = p
+      }
+    internal/notifier/sender.go: |
+      package notifier
+
+      import "sort"
+
+      type Sender struct {
+          Channels []*Channel
+      }
+
+      func NewSender(channels []*Channel) *Sender {
+          return &Sender{Channels: channels}
+      }
+
+      func (s *Sender) ActiveChannels() []*Channel {
+          var active []*Channel
+          for _, ch := range s.Channels {
+              if ch.Enabled {
+                  active = append(active, ch)
+              }
+          }
+          return active
+      }
+
+      func (s *Sender) ActiveByPriority() []*Channel {
+          active := s.ActiveChannels()
+          sort.Slice(active, func(i, j int) bool {
+              return active[i].Priority > active[j].Priority
+          })
+          return active
+      }
+    internal/dispatch/router.go: |
+      package dispatch
+
+      import "internal/notifier"
+
+      type Router struct {
+          sender *notifier.Sender
+      }
+
+      func NewRouter(sender *notifier.Sender) *Router {
+          return &Router{sender: sender}
+      }
+
+      func (r *Router) Route(message string) int {
+          channels := r.sender.ActiveChannels()
+          return len(channels)
+      }
+
+      func (r *Router) RoutePrioritized(message string, maxChannels int) []string {
+          channels := r.sender.ActiveByPriority()
+          var names []string
+          for i, ch := range channels {
+              if i >= maxChannels {
+                  break
+              }
+              names = append(names, ch.Name)
+          }
+          return names
+      }
+    internal/billing/invoice.go: |
+      package billing
+
+      var GARBAGE_GAP_037_INV_A = "invoice_marker"
+      var GARBAGE_GAP_037_TAX_B = 0.21
+
+      func CalculateTotal(subtotal float64) float64 {
+          return subtotal * (1 + GARBAGE_GAP_037_TAX_B)
+      }
+    internal/audit/logger.go: |
+      package audit
+
+      var GARBAGE_GAP_037_LOG_C = "audit_marker"
+      var GARBAGE_GAP_037_RETAIN_D = 90
+
+      func Record(action string) {}
+  commit_message: "add priority-based notification routing"
+fixtures:
+  auto_garbage: true
+fragments:
+- id: channel_priority
+  selector:
+    path: internal/notifier/channel.go
+    anchor: "Priority int"
+- id: channel_set_priority
+  selector:
+    path: internal/notifier/channel.go
+    anchor: "func (c *Channel) SetPriority"
+- id: sender_by_priority
+  selector:
+    path: internal/notifier/sender.go
+    anchor: "func (s *Sender) ActiveByPriority"
+- id: router_prioritized
+  selector:
+    path: internal/dispatch/router.go
+    anchor: "func (r *Router) RoutePrioritized"
+- id: no_billing
+  selector:
+    path: internal/billing/invoice.go
+- id: no_audit
+  selector:
+    path: internal/audit/logger.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_037_INV_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GAP_037_TAX_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GAP_037_LOG_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GAP_037_RETAIN_D
+oracle:
+  required:
+  - channel_priority
+  - sender_by_priority
+  - router_prioritized
+  allowed:
+  - channel_set_priority
+  forbidden:
+  - no_billing
+  - no_audit
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

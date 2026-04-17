@@ -1,0 +1,322 @@
+name: bal_cfgcode_028_go_queue_config
+tags:
+- lang:go
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    config/queue.yaml: |
+      broker_url: "amqp://localhost:5672"
+      concurrency: 4
+      prefetch: 1
+      queues:
+        default:
+          priority: 0
+        critical:
+          priority: 9
+    internal/worker/worker.go: |
+      package worker
+
+      import (
+        "os"
+
+        "gopkg.in/yaml.v3"
+      )
+
+      type QueueConfig struct {
+        BrokerURL   string `yaml:"broker_url"`
+        Concurrency int    `yaml:"concurrency"`
+        Prefetch    int    `yaml:"prefetch"`
+        Queues      map[string]struct {
+          Priority int `yaml:"priority"`
+        } `yaml:"queues"`
+      }
+
+      func LoadQueueConfig() (*QueueConfig, error) {
+        data, err := os.ReadFile("config/queue.yaml")
+        if err != nil {
+          return nil, err
+        }
+        var cfg QueueConfig
+        yaml.Unmarshal(data, &cfg)
+        return &cfg, nil
+      }
+
+      func (c *QueueConfig) GetPriority(name string) int {
+        if q, ok := c.Queues[name]; ok {
+          return q.Priority
+        }
+        return 0
+      }
+    internal/producer/producer.go: |
+      package producer
+
+      import (
+        "os"
+
+        "gopkg.in/yaml.v3"
+      )
+
+      type brokerCfg struct {
+        BrokerURL string `yaml:"broker_url"`
+      }
+
+      func GetBrokerURL() string {
+        data, _ := os.ReadFile("config/queue.yaml")
+        var cfg brokerCfg
+        yaml.Unmarshal(data, &cfg)
+        return cfg.BrokerURL
+      }
+
+      func Publish(queue string, message []byte) error {
+        _ = GetBrokerURL()
+        return nil
+      }
+    internal/scheduler/cron.go: |
+      package scheduler
+
+      import (
+        "os"
+
+        "gopkg.in/yaml.v3"
+      )
+
+      type qCfg struct {
+        Concurrency int `yaml:"concurrency"`
+      }
+
+      func MaxConcurrency() int {
+        data, _ := os.ReadFile("config/queue.yaml")
+        var cfg qCfg
+        yaml.Unmarshal(data, &cfg)
+        return cfg.Concurrency
+      }
+    internal/search/indexer.go: |
+      package search
+
+      var GARBAGE_CFGCODE_028_SEARCH_A = "elastic"
+      var GARBAGE_CFGCODE_028_SEARCH_B = "http://localhost:9200"
+
+      func Index(doc string) error {
+        return nil
+      }
+    internal/notification/push.go: |
+      package notification
+
+      var GARBAGE_CFGCODE_028_PUSH_C = "fcm"
+      var GARBAGE_CFGCODE_028_PUSH_D = "key-placeholder"
+
+      func Send(token string, msg string) error {
+        return nil
+      }
+    garbage_backup.go: |
+      package main
+
+      var GARBAGE_CFGCODE_028_BACKUP_E = "s3"
+      var GARBAGE_CFGCODE_028_BACKUP_F = "daily"
+
+      func runBackup() {}
+  changed_files:
+    config/queue.yaml: |
+      broker_url: "amqp://rabbitmq.prod:5672"
+      concurrency: 32
+      prefetch: 8
+      queues:
+        default:
+          priority: 0
+        critical:
+          priority: 9
+        bulk:
+          priority: 3
+          rate_limit: 50
+      dead_letter:
+        enabled: true
+        max_retries: 5
+        ttl_seconds: 86400
+    internal/worker/worker.go: |
+      package worker
+
+      import (
+        "os"
+
+        "gopkg.in/yaml.v3"
+      )
+
+      type QueueConfig struct {
+        BrokerURL   string `yaml:"broker_url"`
+        Concurrency int    `yaml:"concurrency"`
+        Prefetch    int    `yaml:"prefetch"`
+        Queues      map[string]struct {
+          Priority int `yaml:"priority"`
+        } `yaml:"queues"`
+      }
+
+      func LoadQueueConfig() (*QueueConfig, error) {
+        data, err := os.ReadFile("config/queue.yaml")
+        if err != nil {
+          return nil, err
+        }
+        var cfg QueueConfig
+        yaml.Unmarshal(data, &cfg)
+        return &cfg, nil
+      }
+
+      func (c *QueueConfig) GetPriority(name string) int {
+        if q, ok := c.Queues[name]; ok {
+          return q.Priority
+        }
+        return 0
+      }
+    internal/producer/producer.go: |
+      package producer
+
+      import (
+        "os"
+
+        "gopkg.in/yaml.v3"
+      )
+
+      type brokerCfg struct {
+        BrokerURL string `yaml:"broker_url"`
+      }
+
+      func GetBrokerURL() string {
+        data, _ := os.ReadFile("config/queue.yaml")
+        var cfg brokerCfg
+        yaml.Unmarshal(data, &cfg)
+        return cfg.BrokerURL
+      }
+
+      func Publish(queue string, message []byte) error {
+        _ = GetBrokerURL()
+        return nil
+      }
+    internal/scheduler/cron.go: |
+      package scheduler
+
+      import (
+        "os"
+
+        "gopkg.in/yaml.v3"
+      )
+
+      type qCfg struct {
+        Concurrency int `yaml:"concurrency"`
+      }
+
+      func MaxConcurrency() int {
+        data, _ := os.ReadFile("config/queue.yaml")
+        var cfg qCfg
+        yaml.Unmarshal(data, &cfg)
+        return cfg.Concurrency
+      }
+    internal/search/indexer.go: |
+      package search
+
+      var GARBAGE_CFGCODE_028_SEARCH_A = "elastic"
+      var GARBAGE_CFGCODE_028_SEARCH_B = "http://localhost:9200"
+
+      func Index(doc string) error {
+        return nil
+      }
+    internal/notification/push.go: |
+      package notification
+
+      var GARBAGE_CFGCODE_028_PUSH_C = "fcm"
+      var GARBAGE_CFGCODE_028_PUSH_D = "key-placeholder"
+
+      func Send(token string, msg string) error {
+        return nil
+      }
+    garbage_backup.go: |
+      package main
+
+      var GARBAGE_CFGCODE_028_BACKUP_E = "s3"
+      var GARBAGE_CFGCODE_028_BACKUP_F = "daily"
+
+      func runBackup() {}
+  commit_message: "config: production queue with dead letter and bulk processing"
+fragments:
+- id: config_broker
+  selector:
+    path: config/queue.yaml
+    anchor: "rabbitmq.prod:5672"
+- id: config_concurrency
+  selector:
+    path: config/queue.yaml
+    anchor: "concurrency: 32"
+- id: config_dead_letter
+  selector:
+    path: config/queue.yaml
+    anchor: "dead_letter"
+- id: config_bulk
+  selector:
+    path: config/queue.yaml
+    anchor: "rate_limit: 50"
+- id: worker_reads_config
+  selector:
+    path: internal/worker/worker.go
+    anchor: 'os.ReadFile("config/queue.yaml")'
+- id: worker_uses_queues
+  selector:
+    path: internal/worker/worker.go
+    anchor: "c.Queues[name]"
+- id: producer_reads_broker
+  selector:
+    path: internal/producer/producer.go
+    anchor: "cfg.BrokerURL"
+- id: scheduler_reads_concurrency
+  selector:
+    path: internal/scheduler/cron.go
+    anchor: "cfg.Concurrency"
+- id: no_search
+  selector:
+    path: internal/search/indexer.go
+- id: no_notification
+  selector:
+    path: internal/notification/push.go
+- id: no_backup
+  selector:
+    path: garbage_backup.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_028_SEARCH_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_028_SEARCH_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_028_PUSH_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_028_PUSH_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CFGCODE_028_BACKUP_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CFGCODE_028_BACKUP_F
+oracle:
+  required:
+  - config_broker
+  - config_concurrency
+  - config_dead_letter
+  - config_bulk
+  - worker_reads_config
+  - worker_uses_queues
+  - producer_reads_broker
+  - scheduler_reads_concurrency
+  allowed: []
+  forbidden:
+  - no_search
+  - no_notification
+  - no_backup
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

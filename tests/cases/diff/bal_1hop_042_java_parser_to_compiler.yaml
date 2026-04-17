@@ -1,0 +1,173 @@
+name: bal_1hop_042_java_parser_to_compiler
+tags:
+- lang:java
+- change:bug_fix
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/lang/parser/ExpressionParser.java: |
+      package com.lang.parser;
+      import java.util.ArrayList;
+      import java.util.List;
+      public class ExpressionParser {
+          public List<String> tokenize(String expression) {
+              List<String> tokens = new ArrayList<>();
+              StringBuilder current = new StringBuilder();
+              for (char c : expression.toCharArray()) {
+                  if (c == '+' || c == '-' || c == '*' || c == '/') {
+                      if (current.length() > 0) {
+                          tokens.add(current.toString().trim());
+                          current.setLength(0);
+                      }
+                      tokens.add(String.valueOf(c));
+                  } else {
+                      current.append(c);
+                  }
+              }
+              if (current.length() > 0) {
+                  tokens.add(current.toString().trim());
+              }
+              return tokens;
+          }
+          public boolean isOperator(String token) {
+              return "+-*/".contains(token) && token.length() == 1;
+          }
+      }
+    src/main/java/com/lang/compiler/ExpressionCompiler.java: |
+      package com.lang.compiler;
+      import com.lang.parser.ExpressionParser;
+      import java.util.List;
+      public class ExpressionCompiler {
+          private final ExpressionParser parser;
+          public ExpressionCompiler(ExpressionParser parser) {
+              this.parser = parser;
+          }
+          public double evaluate(String expression) {
+              List<String> tokens = parser.tokenize(expression);
+              if (tokens.size() == 0) return 0;
+              double result = Double.parseDouble(tokens.get(0));
+              for (int i = 1; i < tokens.size() - 1; i += 2) {
+                  String op = tokens.get(i);
+                  double operand = Double.parseDouble(tokens.get(i + 1));
+                  if (parser.isOperator(op)) {
+                      switch (op) {
+                          case "+": result += operand; break;
+                          case "-": result -= operand; break;
+                          case "*": result *= operand; break;
+                          case "/": result /= operand; break;
+                      }
+                  }
+              }
+              return result;
+          }
+      }
+    src/main/java/com/lang/ast/AstNode.java: |
+      package com.lang.ast;
+      public class AstNode {
+          private final String type;
+          private final String value;
+          private AstNode left;
+          private AstNode right;
+          public AstNode(String type, String value) {
+              this.type = type;
+              this.value = value;
+          }
+          public String getType() { return type; }
+          public String getValue() { return value; }
+          public AstNode getLeft() { return left; }
+          public AstNode getRight() { return right; }
+          public void setLeft(AstNode left) { this.left = left; }
+          public void setRight(AstNode right) { this.right = right; }
+      }
+    src/main/java/com/lang/formatter/CodeFormatter.java: |
+      package com.lang.formatter;
+      public class CodeFormatter {
+          public String indent(String code, int spaces) {
+              String prefix = " ".repeat(spaces);
+              return code.lines()
+                  .map(line -> prefix + line)
+                  .reduce("", (a, b) -> a + "\n" + b)
+                  .trim();
+          }
+      }
+    src/main/java/com/lang/error/SyntaxError.java: |
+      package com.lang.error;
+      public class SyntaxError extends RuntimeException {
+          private final int position;
+          public SyntaxError(String message, int position) {
+              super(message + " at position " + position);
+              this.position = position;
+          }
+          public int getPosition() { return position; }
+      }
+  changed_files:
+    src/main/java/com/lang/parser/ExpressionParser.java: |
+      package com.lang.parser;
+      import java.util.ArrayList;
+      import java.util.List;
+      public class ExpressionParser {
+          public List<String> tokenize(String expression) {
+              List<String> tokens = new ArrayList<>();
+              StringBuilder current = new StringBuilder();
+              boolean lastWasOperator = true;
+              for (char c : expression.toCharArray()) {
+                  if ((c == '+' || c == '-' || c == '*' || c == '/') && !lastWasOperator) {
+                      if (current.length() > 0) {
+                          tokens.add(current.toString().trim());
+                          current.setLength(0);
+                      }
+                      tokens.add(String.valueOf(c));
+                      lastWasOperator = true;
+                  } else {
+                      current.append(c);
+                      lastWasOperator = false;
+                  }
+              }
+              if (current.length() > 0) {
+                  tokens.add(current.toString().trim());
+              }
+              return tokens;
+          }
+          public boolean isOperator(String token) {
+              return "+-*/".contains(token) && token.length() == 1;
+          }
+      }
+  commit_message: "fix: handle negative numbers in expression tokenizer"
+fragments:
+- id: parser_negative_fix
+  selector:
+    path: ExpressionParser.java
+    anchor: "lastWasOperator"
+- id: compiler_uses_parser
+  selector:
+    path: ExpressionCompiler.java
+    anchor: "parser.tokenize"
+- id: compiler_uses_is_operator
+  selector:
+    path: ExpressionCompiler.java
+    anchor: "parser.isOperator"
+- id: no_ast_node
+  selector:
+    path: AstNode.java
+    anchor: "AstNode"
+- id: no_formatter
+  selector:
+    path: CodeFormatter.java
+    anchor: "CodeFormatter"
+- id: no_syntax_error
+  selector:
+    path: SyntaxError.java
+    anchor: "SyntaxError"
+oracle:
+  required:
+  - parser_negative_fix
+  - compiler_uses_parser
+  - compiler_uses_is_operator
+  allowed: []
+  forbidden:
+  - no_ast_node
+  - no_formatter
+  - no_syntax_error

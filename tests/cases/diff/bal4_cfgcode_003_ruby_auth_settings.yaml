@@ -1,0 +1,150 @@
+name: bal4_cfgcode_003_ruby_auth_settings
+tags:
+- lang:ruby
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    config/auth.yml: |
+      auth:
+        provider: local
+        session_ttl: 1800
+        max_attempts: 5
+        lockout_duration: 300
+    app/middleware/authentication.rb: |
+      require 'yaml'
+      module Middleware
+        class Authentication
+          def initialize(app)
+            @app = app
+            @config = YAML.load_file('config/auth.yml')['auth']
+          end
+          def call(env)
+            return locked_response if locked?(env)
+            @app.call(env)
+          end
+          def max_attempts
+            @config['max_attempts']
+          end
+          def lockout_seconds
+            @config['lockout_duration']
+          end
+        end
+      end
+    app/models/session.rb: |
+      require 'yaml'
+      class Session
+        CONFIG = YAML.load_file('config/auth.yml')['auth']
+        def initialize(user_id)
+          @user_id = user_id
+          @ttl = CONFIG['session_ttl']
+        end
+        def expired?
+          Time.now - @created_at > @ttl
+        end
+      end
+    garbage_payment.rb: |
+      GARBAGE_CFGCODE_003_PAY_A = "stripe"
+      GARBAGE_CFGCODE_003_PAY_B = "usd"
+      class PaymentProcessor
+        GARBAGE_CFGCODE_003_PAY_C = 0.029
+        def charge(amount)
+          GARBAGE_CFGCODE_003_PAY_D = amount
+        end
+      end
+    garbage_search.rb: |
+      GARBAGE_CFGCODE_003_SEARCH_E = "elastic"
+      GARBAGE_CFGCODE_003_SEARCH_F = 9200
+      class SearchIndex
+        GARBAGE_CFGCODE_003_SEARCH_G = "default"
+        def query(q)
+          GARBAGE_CFGCODE_003_SEARCH_H = q
+        end
+      end
+    garbage_scheduler.rb: |
+      GARBAGE_CFGCODE_003_SCHED_I = "cron"
+      GARBAGE_CFGCODE_003_SCHED_J = 60
+  changed_files:
+    config/auth.yml: |
+      auth:
+        provider: oauth2
+        session_ttl: 3600
+        max_attempts: 3
+        lockout_duration: 900
+        mfa_required: true
+  commit_message: "switch to oauth2 and enforce mfa"
+fragments:
+- id: auth_config
+  selector:
+    path: config/auth.yml
+    anchor: "provider: oauth2"
+- id: authentication_middleware
+  selector:
+    path: app/middleware/authentication.rb
+    anchor: "max_attempts"
+- id: session_model
+  selector:
+    path: app/models/session.rb
+    anchor: "session_ttl"
+- id: no_payment
+  selector:
+    path: garbage_payment.rb
+- id: no_search
+  selector:
+    path: garbage_search.rb
+- id: no_scheduler
+  selector:
+    path: garbage_scheduler.rb
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_003_PAY_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_003_PAY_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_003_SEARCH_E
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_003_SEARCH_F
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CFGCODE_003_SCHED_I
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CFGCODE_003_SCHED_J
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_CFGCODE_003_PAY_C
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_CFGCODE_003_PAY_D
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_CFGCODE_003_SEARCH_G
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_CFGCODE_003_SEARCH_H
+oracle:
+  required:
+  - auth_config
+  - authentication_middleware
+  - session_model
+  allowed: []
+  forbidden:
+  - no_payment
+  - no_search
+  - no_scheduler
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

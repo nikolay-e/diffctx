@@ -1,0 +1,182 @@
+name: c_family_022_makefile_and_c
+tags:
+- lang:c
+- change:multi_file
+- change:new_function
+- context:cross_module
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    Makefile: |
+      CC = gcc
+      CFLAGS = -Wall -Wextra -std=c11
+
+      all: app
+
+      app: main.o codec.o
+      	$(CC) $(CFLAGS) -o app main.o codec.o
+
+      main.o: main.c codec.h
+      	$(CC) $(CFLAGS) -c main.c
+
+      codec.o: codec.c codec.h
+      	$(CC) $(CFLAGS) -c codec.c
+
+      clean:
+      	rm -f *.o app
+    codec.h: |
+      #ifndef CODEC_H
+      #define CODEC_H
+      int codec_encode(const char *input, char *output, int max_out);
+      int codec_decode(const char *input, char *output, int max_out);
+      #endif
+    codec.c: |
+      #include "codec.h"
+      #include <string.h>
+      int codec_encode(const char *input, char *output, int max_out) {
+          strncpy(output, input, max_out - 1);
+          output[max_out - 1] = '\0';
+          return (int)strlen(output);
+      }
+      int codec_decode(const char *input, char *output, int max_out) {
+          strncpy(output, input, max_out - 1);
+          output[max_out - 1] = '\0';
+          return (int)strlen(output);
+      }
+    main.c: |
+      #include "codec.h"
+      #include <stdio.h>
+      int main(void) {
+          char buf[256];
+          codec_encode("hello", buf, sizeof(buf));
+          printf("%s\n", buf);
+          return 0;
+      }
+    C_NOISE_022_watchdog.h: |
+      #ifndef C_NOISE_022_WATCHDOG_H
+      #define C_NOISE_022_WATCHDOG_H
+      void C_NOISE_022_watchdog_kick(void);
+      void C_NOISE_022_watchdog_disable(void);
+      #endif
+    C_NOISE_022_watchdog.c: |
+      #include "C_NOISE_022_watchdog.h"
+      void C_NOISE_022_watchdog_kick(void) {}
+      void C_NOISE_022_watchdog_disable(void) {}
+  changed_files:
+    Makefile: |
+      CC = gcc
+      CFLAGS = -Wall -Wextra -std=c11
+
+      all: app compress_tool
+
+      app: main.o codec.o
+      	$(CC) $(CFLAGS) -o app main.o codec.o
+
+      compress_tool: compress_main.o codec.o
+      	$(CC) $(CFLAGS) -o compress_tool compress_main.o codec.o
+
+      main.o: main.c codec.h
+      	$(CC) $(CFLAGS) -c main.c
+
+      compress_main.o: compress_main.c codec.h
+      	$(CC) $(CFLAGS) -c compress_main.c
+
+      codec.o: codec.c codec.h
+      	$(CC) $(CFLAGS) -c codec.c
+
+      clean:
+      	rm -f *.o app compress_tool
+    codec.h: |
+      #ifndef CODEC_H
+      #define CODEC_H
+      int codec_encode(const char *input, char *output, int max_out);
+      int codec_decode(const char *input, char *output, int max_out);
+      int codec_compress(const char *input, int in_len, char *output, int max_out);
+      #endif
+    codec.c: |
+      #include "codec.h"
+      #include <string.h>
+      int codec_encode(const char *input, char *output, int max_out) {
+          strncpy(output, input, max_out - 1);
+          output[max_out - 1] = '\0';
+          return (int)strlen(output);
+      }
+      int codec_decode(const char *input, char *output, int max_out) {
+          strncpy(output, input, max_out - 1);
+          output[max_out - 1] = '\0';
+          return (int)strlen(output);
+      }
+      int codec_compress(const char *input, int in_len, char *output, int max_out) {
+          /* stub: copy as-is */
+          int n = in_len < max_out ? in_len : max_out - 1;
+          memcpy(output, input, n);
+          output[n] = '\0';
+          return n;
+      }
+    compress_main.c: |
+      #include "codec.h"
+      #include <stdio.h>
+      int main(void) {
+          char buf[256];
+          int n = codec_compress("hello world", 11, buf, sizeof(buf));
+          printf("compressed %d bytes\n", n);
+          return 0;
+      }
+    main.c: |
+      #include "codec.h"
+      #include <stdio.h>
+      int main(void) {
+          char buf[256];
+          codec_encode("hello", buf, sizeof(buf));
+          printf("%s\n", buf);
+          return 0;
+      }
+    C_NOISE_022_watchdog.h: |
+      #ifndef C_NOISE_022_WATCHDOG_H
+      #define C_NOISE_022_WATCHDOG_H
+      void C_NOISE_022_watchdog_kick(void);
+      void C_NOISE_022_watchdog_disable(void);
+      #endif
+    C_NOISE_022_watchdog.c: |
+      #include "C_NOISE_022_watchdog.h"
+      void C_NOISE_022_watchdog_kick(void) {}
+      void C_NOISE_022_watchdog_disable(void) {}
+  commit_message: "feat: add codec_compress, compress_main.c, and compress_tool Makefile target"
+fragments:
+- id: makefile_compress_target
+  selector:
+    path: Makefile
+    anchor: compress_tool
+- id: codec_h_compress
+  selector:
+    path: codec.h
+    anchor: codec_compress
+- id: codec_c_compress
+  selector:
+    path: codec.c
+    anchor: "int codec_compress"
+- id: compress_main_c
+  selector:
+    path: compress_main.c
+    anchor: codec_compress
+- id: no_watchdog_h
+  selector:
+    anchor: C_NOISE_022_watchdog_kick
+- id: no_watchdog_c
+  selector:
+    path: C_NOISE_022_watchdog.c
+- id: no_global_disable
+  selector:
+    anchor: C_NOISE_022_watchdog_disable
+oracle:
+  required:
+  - makefile_compress_target
+  - codec_h_compress
+  - codec_c_compress
+  - compress_main_c
+  allowed: []
+  forbidden:
+  - no_watchdog_h
+  - no_watchdog_c
+  - no_global_disable

@@ -1,0 +1,131 @@
+name: gap2_179_php_signature_import_chain_tax_calculator
+tags:
+- change:signature
+- change:single_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:php
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/Billing/InvoiceService.php: |
+      <?php
+
+      namespace App\Billing;
+
+      use App\Billing\TaxCalculator;
+
+      class InvoiceService
+      {
+          private TaxCalculator $tax;
+
+          public function __construct(TaxCalculator $tax)
+          {
+              $this->tax = $tax;
+          }
+
+          public function totalFor(float $subtotal, string $region): float
+          {
+              return $subtotal + $this->tax->compute($subtotal, $region);
+          }
+      }
+    src/Billing/TaxCalculator.php: |
+      <?php
+
+      namespace App\Billing;
+
+      class TaxCalculator
+      {
+          private array $rates;
+
+          public function __construct(array $rates)
+          {
+              $this->rates = $rates;
+          }
+
+          public function compute(float $amount, string $region): float
+          {
+              $rate = $this->rates[$region] ?? 0.0;
+              return $amount * $rate;
+          }
+      }
+    src/Billing/DiscountEngine.php: |
+      <?php
+
+      namespace App\Billing;
+
+      class DiscountEngine
+      {
+          public function apply(float $total, float $percent): float
+          {
+              return $total * (1.0 - $percent / 100.0);
+          }
+      }
+  changed_files:
+    src/Billing/TaxCalculator.php: |
+      <?php
+
+      namespace App\Billing;
+
+      class TaxExemption
+      {
+          public string $category;
+          public string $reason;
+
+          public function __construct(string $category, string $reason)
+          {
+              $this->category = $category;
+              $this->reason = $reason;
+          }
+      }
+
+      class TaxCalculator
+      {
+          private array $rates;
+          private array $exemptions;
+
+          public function __construct(array $rates, array $exemptions = [])
+          {
+              $this->rates = $rates;
+              $this->exemptions = $exemptions;
+          }
+
+          public function compute(float $amount, string $region, string $category = 'general'): float
+          {
+              foreach ($this->exemptions as $ex) {
+                  if ($ex->category === $category) {
+                      return 0.0;
+                  }
+              }
+              $rate = $this->rates[$region] ?? 0.0;
+              return $amount * $rate;
+          }
+      }
+fragments:
+- id: tax_exemption
+  selector:
+    path: src/Billing/TaxCalculator.php
+    anchor: "class TaxExemption"
+- id: compute_sig
+  selector:
+    path: src/Billing/TaxCalculator.php
+    anchor: "public function compute(float $amount, string $region, string $category"
+- id: exemption_check
+  selector:
+    path: src/Billing/TaxCalculator.php
+    anchor: "exemptions as"
+- id: no_discount
+  selector:
+    path: src/Billing/DiscountEngine.php
+- id: no_invoice
+  selector:
+    path: src/Billing/InvoiceService.php
+oracle:
+  required:
+  - tax_exemption
+  - compute_sig
+  - exemption_check
+  forbidden:
+  - no_discount

@@ -1,0 +1,123 @@
+name: gap_030_python_sig_change_sensor_calibration
+tags:
+- change:signature
+- change:single_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:python
+repo:
+  initial_files:
+    sensors/calibration.py: |
+      from dataclasses import dataclass
+
+      @dataclass
+      class CalibrationProfile:
+          sensor_type: str
+          offset: float
+          scale: float
+
+      def apply_calibration(raw_value: float, profile: CalibrationProfile) -> float:
+          return (raw_value + profile.offset) * profile.scale
+    sensors/reader.py: |
+      from sensors.calibration import CalibrationProfile, apply_calibration
+
+      class SensorReader:
+          def __init__(self, sensor_id: str, profile: CalibrationProfile):
+              self.sensor_id = sensor_id
+              self.profile = profile
+              self.history: list[float] = []
+
+          def read(self, raw_value: float) -> float:
+              calibrated = apply_calibration(raw_value, self.profile)
+              self.history.append(calibrated)
+              return calibrated
+    sensors/aggregator.py: |
+      from sensors.reader import SensorReader
+      from sensors.calibration import CalibrationProfile
+
+      class SensorAggregator:
+          def __init__(self):
+              self.readers: list[SensorReader] = []
+
+          def add_sensor(self, sensor_id: str, profile: CalibrationProfile):
+              self.readers.append(SensorReader(sensor_id, profile))
+
+          def read_all(self, raw_values: dict[str, float]) -> dict[str, float]:
+              results = {}
+              for reader in self.readers:
+                  if reader.sensor_id in raw_values:
+                      results[reader.sensor_id] = reader.read(raw_values[reader.sensor_id])
+              return results
+    sensors/firmware.py: |
+      GARBAGE_GAP_030_FW_A = "firmware_marker"
+      GARBAGE_GAP_030_VER_B = "2.1.0"
+
+      def check_update(sensor_id: str) -> bool:
+          return False
+    sensors/diagnostics.py: |
+      GARBAGE_GAP_030_DIAG_C = "health_marker"
+      GARBAGE_GAP_030_INTERVAL_D = 60
+
+      def run_self_test(sensor_id: str) -> dict:
+          return {"status": "ok", "sensor_id": sensor_id}
+  changed_files:
+    sensors/calibration.py: |
+      from dataclasses import dataclass
+
+      @dataclass
+      class CalibrationProfile:
+          sensor_type: str
+          offset: float
+          scale: float
+
+      def apply_calibration(raw_value: float, profile: CalibrationProfile, ambient_temp: float = 20.0) -> float:
+          temp_compensation = 1.0 + (ambient_temp - 20.0) * 0.001
+          return (raw_value + profile.offset) * profile.scale * temp_compensation
+  commit_message: "add ambient temperature compensation to calibration"
+fixtures:
+  auto_garbage: true
+fragments:
+- id: calibration_func
+  selector:
+    path: sensors/calibration.py
+    anchor: "def apply_calibration"
+- id: reader_read
+  selector:
+    path: sensors/reader.py
+    anchor: "def read"
+- id: aggregator_read_all
+  selector:
+    path: sensors/aggregator.py
+    anchor: "def read_all"
+- id: no_firmware
+  selector:
+    path: sensors/firmware.py
+- id: no_diagnostics
+  selector:
+    path: sensors/diagnostics.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_030_FW_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GAP_030_VER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GAP_030_DIAG_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GAP_030_INTERVAL_D
+oracle:
+  required:
+  - calibration_func
+  - reader_read
+  - aggregator_read_all
+  allowed: []
+  forbidden:
+  - no_firmware
+  - no_diagnostics
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

@@ -1,0 +1,92 @@
+name: bal4_0hop_016_ocaml_new_function
+tags:
+- lang:ocaml
+- change:single_file
+- change:new_function
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/listutils.ml: |
+      let sum lst =
+        List.fold_left ( + ) 0 lst
+
+      let product lst =
+        List.fold_left ( * ) 1 lst
+    src/garbage_string.ml: |
+      let garbage_b4o016_str_a = "string"
+      let garbage_b4o016_str_b = true
+
+      let garbage_concat a b = a ^ b
+    src/garbage_option.ml: |
+      let garbage_b4o016_opt_c = "option"
+      let garbage_b4o016_opt_d = 0
+
+      let garbage_unwrap = function
+        | Some x -> x
+        | None -> 0
+  changed_files:
+    src/listutils.ml: |
+      let sum lst =
+        List.fold_left ( + ) 0 lst
+
+      let product lst =
+        List.fold_left ( * ) 1 lst
+
+      let average lst =
+        let s = sum lst in
+        let n = List.length lst in
+        if n = 0 then 0 else s / n
+    src/garbage_string.ml: |
+      let garbage_b4o016_str_a = "string"
+      let garbage_b4o016_str_b = true
+
+      let garbage_concat a b = a ^ b
+    src/garbage_option.ml: |
+      let garbage_b4o016_opt_c = "option"
+      let garbage_b4o016_opt_d = 0
+
+      let garbage_unwrap = function
+        | Some x -> x
+        | None -> 0
+  commit_message: "feat: add average function"
+fragments:
+- id: new_average
+  selector:
+    path: src/listutils.ml
+    anchor: "let average lst ="
+- id: uses_sum
+  selector:
+    path: src/listutils.ml
+    anchor: "let s = sum lst in"
+- id: no_garbage_string
+  selector:
+    path: src/garbage_string.ml
+- id: no_garbage_option
+  selector:
+    path: src/garbage_option.ml
+- id: no_global_0
+  selector:
+    anchor: garbage_b4o016_str_a
+- id: no_global_1
+  selector:
+    anchor: garbage_b4o016_str_b
+- id: no_global_2
+  selector:
+    anchor: garbage_b4o016_opt_c
+- id: no_global_3
+  selector:
+    anchor: garbage_b4o016_opt_d
+oracle:
+  required:
+  - new_average
+  - uses_sum
+  allowed: []
+  forbidden:
+  - no_garbage_string
+  - no_garbage_option
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

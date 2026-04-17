@@ -1,0 +1,203 @@
+name: gap2_115_lua_new_function_import_chain_state_machine
+tags:
+- change:new_function
+- change:single_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:lua
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    lib/state.lua: |
+      local M = {}
+
+      function M.create(initial)
+          return { current = initial, history = {} }
+      end
+
+      function M.transition(sm, next_state)
+          sm.history[#sm.history + 1] = sm.current
+          sm.current = next_state
+      end
+
+      function M.current(sm)
+          return sm.current
+      end
+
+      return M
+    lib/validator.lua: |
+      local state = require("lib.state")
+
+      local M = {}
+
+      function M.is_valid_transition(sm, next_state, allowed)
+          local cur = state.current(sm)
+          local key = cur .. "->" .. next_state
+          return allowed[key] == true
+      end
+
+      function M.safe_transition(sm, next_state, allowed)
+          if M.is_valid_transition(sm, next_state, allowed) then
+              state.transition(sm, next_state)
+              return true
+          end
+          return false
+      end
+
+      return M
+    app/workflow.lua: |
+      local validator = require("lib.validator")
+      local state = require("lib.state")
+
+      local M = {}
+
+      local transitions = {
+          ["draft->review"] = true,
+          ["review->approved"] = true,
+          ["review->rejected"] = true,
+          ["rejected->draft"] = true,
+      }
+
+      function M.create_document()
+          return state.create("draft")
+      end
+
+      function M.submit_for_review(doc)
+          return validator.safe_transition(doc, "review", transitions)
+      end
+
+      return M
+    lib/serializer.lua: |
+      local TRAP_GAP2_115_SER_A = "json_serializer"
+      local TRAP_GAP2_115_PRETTY_B = true
+
+      local M = {}
+
+      function M.encode(value)
+          return tostring(value)
+      end
+
+      function M.decode(str)
+          return str
+      end
+
+      return M
+  changed_files:
+    lib/state.lua: |
+      local M = {}
+
+      function M.create(initial)
+          return { current = initial, history = {} }
+      end
+
+      function M.transition(sm, next_state)
+          sm.history[#sm.history + 1] = sm.current
+          sm.current = next_state
+      end
+
+      function M.current(sm)
+          return sm.current
+      end
+
+      function M.rollback(sm)
+          if #sm.history == 0 then
+              return false
+          end
+          sm.current = sm.history[#sm.history]
+          sm.history[#sm.history] = nil
+          return true
+      end
+
+      return M
+    lib/validator.lua: |
+      local state = require("lib.state")
+
+      local M = {}
+
+      function M.is_valid_transition(sm, next_state, allowed)
+          local cur = state.current(sm)
+          local key = cur .. "->" .. next_state
+          return allowed[key] == true
+      end
+
+      function M.safe_transition(sm, next_state, allowed)
+          if M.is_valid_transition(sm, next_state, allowed) then
+              state.transition(sm, next_state)
+              return true
+          end
+          return false
+      end
+
+      return M
+    app/workflow.lua: |
+      local validator = require("lib.validator")
+      local state = require("lib.state")
+
+      local M = {}
+
+      local transitions = {
+          ["draft->review"] = true,
+          ["review->approved"] = true,
+          ["review->rejected"] = true,
+          ["rejected->draft"] = true,
+      }
+
+      function M.create_document()
+          return state.create("draft")
+      end
+
+      function M.submit_for_review(doc)
+          return validator.safe_transition(doc, "review", transitions)
+      end
+
+      return M
+    lib/serializer.lua: |
+      local TRAP_GAP2_115_SER_A = "json_serializer"
+      local TRAP_GAP2_115_PRETTY_B = true
+
+      local M = {}
+
+      function M.encode(value)
+          return tostring(value)
+      end
+
+      function M.decode(str)
+          return str
+      end
+
+      return M
+  commit_message: Update files
+fragments:
+- id: state_rollback
+  selector:
+    path: lib/state.lua
+    anchor: function M.rollback
+- id: rollback_history
+  selector:
+    path: lib/state.lua
+    anchor: sm.history[#sm.history]
+- id: validator_require
+  selector:
+    path: lib/validator.lua
+    anchor: require("lib.state")
+- id: no_serializer
+  selector:
+    path: lib/serializer.lua
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_115_SER_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_115_PRETTY_B
+oracle:
+  required:
+  - state_rollback
+  - rollback_history
+  - validator_require
+  allowed: []
+  forbidden:
+  - no_serializer
+  - no_global_0
+  - no_global_1

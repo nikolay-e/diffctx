@@ -1,0 +1,79 @@
+name: gap2_098_yaml_config_import_chain_renovate_schedule
+tags:
+- change:config
+- change:single_file
+- context:import_chain
+- difficulty:trivial
+- distance:0hop
+- lang:yaml
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    .github/renovate.json5: |
+      {
+        "extends": ["config:base"],
+        "schedule": ["every weekend"],
+        "labels": ["dependencies"],
+        "packageRules": [
+          {
+            "matchPackagePatterns": ["*"],
+            "automerge": false
+          }
+        ]
+      }
+    .github/dependabot.yml: |
+      version: 2
+      updates:
+        - package-ecosystem: npm
+          directory: /
+          schedule:
+            interval: weekly
+    .github/CODEOWNERS: |
+      TRAP_GAP2_098_OWNERS_A
+      TRAP_GAP2_098_OWNERS_B
+  changed_files:
+    .github/renovate.json5: |
+      {
+        "extends": ["config:base"],
+        "schedule": ["before 6am on Monday"],
+        "labels": ["dependencies", "automated"],
+        "packageRules": [
+          {
+            "matchPackagePatterns": ["*"],
+            "automerge": false
+          },
+          {
+            "matchPackagePatterns": ["eslint", "prettier"],
+            "automerge": true,
+            "automergeType": "branch"
+          }
+        ]
+      }
+  commit_message: Update files
+fragments:
+- id: schedule_change
+  selector:
+    path: .github/renovate.json5
+    anchor: "before 6am on Monday"
+- id: automerge_rule
+  selector:
+    path: .github/renovate.json5
+    anchor: "automergeType"
+- id: no_codeowners
+  selector:
+    path: .github/CODEOWNERS
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_098_OWNERS_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_098_OWNERS_B
+oracle:
+  required:
+  - schedule_change
+  - automerge_rule
+  forbidden:
+  - no_codeowners
+  - no_global_0
+  - no_global_1

@@ -1,0 +1,157 @@
+name: bal_hard_015_swift_event_bus
+tags:
+- lang:swift
+- change:multi_file
+- change:new_function
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    Sources/Events/Event.swift: |
+      protocol Event {
+          var name: String { get }
+      }
+    Sources/Events/EventBus.swift: |
+      class EventBus {
+          private var handlers: [String: [(Event) -> Void]] = [:]
+          func subscribe(eventName: String, handler: @escaping (Event) -> Void) {
+              handlers[eventName, default: []].append(handler)
+          }
+          func publish(event: Event) {
+              handlers[event.name]?.forEach { $0(event) }
+          }
+      }
+    Sources/Domain/UserCreatedEvent.swift: |
+      struct UserCreatedEvent: Event {
+          let name = "user.created"
+          let userId: String
+          let email: String
+      }
+    Sources/Domain/OrderPlacedEvent.swift: |
+      struct OrderPlacedEvent: Event {
+          let name = "order.placed"
+          let orderId: String
+          let total: Double
+      }
+    Sources/Handlers/EmailHandler.swift: |
+      class EmailHandler {
+          func onUserCreated(event: Event) {
+              guard let e = event as? UserCreatedEvent else { return }
+              print("Sending welcome email to \(e.email)")
+          }
+      }
+    Sources/Handlers/AnalyticsHandler.swift: |
+      class AnalyticsHandler {
+          func onOrderPlaced(event: Event) {
+              guard let e = event as? OrderPlacedEvent else { return }
+              print("Tracking order \(e.orderId) with total \(e.total)")
+          }
+      }
+    Sources/App/EventSetup.swift: |
+      class EventSetup {
+          static func configure(bus: EventBus) {
+              let email = EmailHandler()
+              let analytics = AnalyticsHandler()
+              bus.subscribe(eventName: "user.created", handler: email.onUserCreated)
+              bus.subscribe(eventName: "order.placed", handler: analytics.onOrderPlaced)
+          }
+      }
+    Sources/Helpers/Serializer.swift: |
+      struct Serializer {
+          static func toJSON(_ dict: [String: Any]) -> String {
+              return dict.map { "\"\($0.key)\": \"\($0.value)\"" }.joined(separator: ", ")
+          }
+      }
+  changed_files:
+    Sources/Events/EventBus.swift: |
+      class EventBus {
+          private var handlers: [String: [(Event) -> Void]] = [:]
+          private var history: [Event] = []
+          func subscribe(eventName: String, handler: @escaping (Event) -> Void) {
+              handlers[eventName, default: []].append(handler)
+          }
+          func publish(event: Event) {
+              history.append(event)
+              handlers[event.name]?.forEach { $0(event) }
+          }
+          func replayEvents(eventName: String, handler: (Event) -> Void) {
+              history.filter { $0.name == eventName }.forEach { handler($0) }
+          }
+      }
+    Sources/Domain/UserDeletedEvent.swift: |
+      struct UserDeletedEvent: Event {
+          let name = "user.deleted"
+          let userId: String
+          let reason: String
+      }
+    Sources/Handlers/AuditHandler.swift: |
+      class AuditHandler {
+          private var log: [String] = []
+          func onUserDeleted(event: Event) {
+              guard let e = event as? UserDeletedEvent else { return }
+              log.append("User \(e.userId) deleted: \(e.reason)")
+          }
+          func getLog() -> [String] { log }
+      }
+    Sources/App/EventSetup.swift: |
+      class EventSetup {
+          static func configure(bus: EventBus) {
+              let email = EmailHandler()
+              let analytics = AnalyticsHandler()
+              let audit = AuditHandler()
+              bus.subscribe(eventName: "user.created", handler: email.onUserCreated)
+              bus.subscribe(eventName: "order.placed", handler: analytics.onOrderPlaced)
+              bus.subscribe(eventName: "user.deleted", handler: audit.onUserDeleted)
+          }
+      }
+  commit_message: "feat: add event history replay and user deletion audit"
+fragments:
+- id: event_bus_history
+  selector:
+    path: EventBus.swift
+    anchor: "private var history"
+- id: event_bus_replay
+  selector:
+    path: EventBus.swift
+    anchor: "func replayEvents"
+- id: user_deleted_event
+  selector:
+    path: UserDeletedEvent.swift
+    anchor: "struct UserDeletedEvent"
+- id: audit_handler
+  selector:
+    path: AuditHandler.swift
+    anchor: "class AuditHandler"
+- id: setup_registers_audit
+  selector:
+    path: EventSetup.swift
+    anchor: "audit.onUserDeleted"
+- id: event_protocol
+  selector:
+    path: Event.swift
+    anchor: "protocol Event"
+- id: no_serializer
+  selector:
+    path: Helpers/Serializer.swift
+- id: no_analytics_body
+  selector:
+    path: AnalyticsHandler.swift
+    anchor: "Tracking order"
+- id: no_email_body
+  selector:
+    path: EmailHandler.swift
+    anchor: "Sending welcome email"
+oracle:
+  required:
+  - event_bus_history
+  - event_bus_replay
+  - user_deleted_event
+  - audit_handler
+  - setup_registers_audit
+  - event_protocol
+  allowed: []
+  forbidden:
+  - no_serializer
+  - no_analytics_body
+  - no_email_body

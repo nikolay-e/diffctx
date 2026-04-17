@@ -1,0 +1,134 @@
+name: gap2_005_kotlin_python_payment_gateway_null_fix
+tags:
+- lang:kotlin
+- lang:python
+- change:bug_fix
+- change:multi_file
+- context:same_file
+- distance:0hop
+- difficulty:easy
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    backend/src/main/kotlin/payment/TransactionProcessor.kt: |
+      package payment
+
+      data class Transaction(
+          val id: String,
+          val amount: Double,
+          val currency: String,
+          val merchantId: String?
+      )
+
+      class TransactionProcessor {
+          private val processed = mutableListOf<Transaction>()
+
+          fun process(transaction: Transaction): Boolean {
+              if (transaction.amount <= 0) return false
+              val merchant = transaction.merchantId!!
+              processed.add(transaction)
+              return true
+          }
+
+          fun getTotal(): Double {
+              return processed.sumOf { it.amount }
+          }
+      }
+    scripts/reconcile.py: |
+      import json
+      from pathlib import Path
+
+      def load_transactions(filepath: Path) -> list[dict]:
+          with open(filepath) as f:
+              return json.load(f)
+
+      def reconcile(expected: list[dict], actual: list[dict]) -> list[str]:
+          expected_ids = {t["id"] for t in expected}
+          actual_ids = {t["id"] for t in actual}
+          return list(expected_ids - actual_ids)
+
+      def total_amount(transactions: list[dict]) -> float:
+          return sum(t["amount"] for t in transactions)
+    backend/src/main/kotlin/payment/FraudDetector.kt: |
+      package payment
+
+      class FraudDetector(private val threshold: Double) {
+          fun isSuspicious(transaction: Transaction): Boolean {
+              return transaction.amount > threshold
+          }
+
+          fun flagged(transactions: List<Transaction>): List<Transaction> {
+              return transactions.filter { isSuspicious(it) }
+          }
+      }
+  changed_files:
+    backend/src/main/kotlin/payment/TransactionProcessor.kt: |
+      package payment
+
+      data class Transaction(
+          val id: String,
+          val amount: Double,
+          val currency: String,
+          val merchantId: String?
+      )
+
+      class TransactionProcessor {
+          private val processed = mutableListOf<Transaction>()
+
+          fun process(transaction: Transaction): Boolean {
+              if (transaction.amount <= 0) return false
+              val merchant = transaction.merchantId ?: return false
+              processed.add(transaction)
+              return true
+          }
+
+          fun getTotal(): Double {
+              return processed.sumOf { it.amount }
+          }
+      }
+    scripts/reconcile.py: |
+      import json
+      from pathlib import Path
+
+      def load_transactions(filepath: Path) -> list[dict]:
+          with open(filepath) as f:
+              return json.load(f)
+
+      def reconcile(expected: list[dict], actual: list[dict]) -> list[str]:
+          expected_ids = {t["id"] for t in expected}
+          actual_ids = {t["id"] for t in actual}
+          missing = sorted(expected_ids - actual_ids)
+          return missing
+
+      def total_amount(transactions: list[dict]) -> float:
+          return sum(t["amount"] for t in transactions)
+  commit_message: "fix: handle null merchantId and sort reconcile output"
+fragments:
+- id: processor_null_fix
+  selector:
+    path: backend/src/main/kotlin/payment/TransactionProcessor.kt
+    anchor: "transaction.merchantId ?: return false"
+- id: processor_process
+  selector:
+    path: backend/src/main/kotlin/payment/TransactionProcessor.kt
+    anchor: "fun process"
+- id: reconcile_sorted
+  selector:
+    path: scripts/reconcile.py
+    anchor: "missing = sorted"
+- id: no_fraud_detector
+  selector:
+    path: backend/src/main/kotlin/payment/FraudDetector.kt
+- id: no_fraud_class
+  selector:
+    anchor: FraudDetector
+oracle:
+  required:
+  - processor_null_fix
+  - processor_process
+  - reconcile_sorted
+  allowed: []
+  forbidden:
+  - no_fraud_detector
+  - no_fraud_class

@@ -1,0 +1,219 @@
+name: bal3_1hop_030_ruby_data_exporter
+tags:
+- lang:ruby
+- change:multi_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    lib/export/formatter.rb: |
+      module Export
+        class Formatter
+          attr_reader :delimiter
+
+          def initialize(delimiter: ',')
+            @delimiter = delimiter
+          end
+
+          def format_row(values)
+            values.join(@delimiter)
+          end
+
+          def format_header(columns)
+            columns.join(@delimiter)
+          end
+        end
+      end
+    lib/export/csv_exporter.rb: |
+      require_relative 'formatter'
+
+      module Export
+        class CsvExporter
+          def initialize(formatter)
+            @formatter = formatter
+          end
+
+          def export(columns, rows)
+            lines = [@formatter.format_header(columns)]
+            rows.each do |row|
+              lines << @formatter.format_row(row)
+            end
+            lines.join("\n")
+          end
+        end
+      end
+    lib/export/tsv_exporter.rb: |
+      require_relative 'formatter'
+
+      module Export
+        class TsvExporter
+          def initialize
+            @formatter = Formatter.new(delimiter: "\t")
+          end
+
+          def export(columns, rows)
+            lines = [@formatter.format_header(columns)]
+            rows.each { |row| lines << @formatter.format_row(row) }
+            lines.join("\n")
+          end
+        end
+      end
+    lib/export/report_exporter.rb: |
+      require_relative 'formatter'
+
+      module Export
+        class ReportExporter
+          def initialize(formatter, title:)
+            @formatter = formatter
+            @title = title
+          end
+
+          def export(columns, rows)
+            header = "# #{@title}\n"
+            header + @formatter.format_header(columns) + "\n" +
+              rows.map { |row| @formatter.format_row(row) }.join("\n")
+          end
+        end
+      end
+    lib/import/csv_importer.rb: |
+      GARBAGE_030_IMPORTER_A = "csv_importer"
+
+      module Import
+        class CsvImporter
+          def import(path)
+            []
+          end
+        end
+      end
+    lib/import/json_importer.rb: |
+      GARBAGE_030_JSON_B = "json_importer"
+
+      module Import
+        class JsonImporter
+          def import(path)
+            {}
+          end
+        end
+      end
+    lib/import/xml_importer.rb: |
+      GARBAGE_030_XML_C = "xml_importer"
+
+      module Import
+        class XmlImporter
+          def import(path)
+            {}
+          end
+        end
+      end
+  changed_files:
+    lib/export/formatter.rb: |
+      module Export
+        class Formatter
+          attr_reader :delimiter, :quote_char, :encoding
+
+          def initialize(delimiter: ',', quote_char: '"', encoding: 'UTF-8')
+            @delimiter = delimiter
+            @quote_char = quote_char
+            @encoding = encoding
+          end
+
+          def format_row(values)
+            values.map { |v| quote(v) }.join(@delimiter)
+          end
+
+          def format_header(columns)
+            columns.map { |c| quote(c.to_s.upcase) }.join(@delimiter)
+          end
+
+          def format_table(columns, rows)
+            lines = [format_header(columns)]
+            rows.each { |row| lines << format_row(row) }
+            lines.join("\n").encode(@encoding)
+          end
+
+          private
+
+          def quote(value)
+            str = value.to_s
+            if str.include?(@delimiter) || str.include?(@quote_char)
+              "#{@quote_char}#{str.gsub(@quote_char, @quote_char * 2)}#{@quote_char}"
+            else
+              str
+            end
+          end
+        end
+      end
+  commit_message: "feat: add quoting, encoding, format_table, and upcase headers"
+fragments:
+- id: quote_char_attr
+  selector:
+    path: lib/export/formatter.rb
+    anchor: ":quote_char, :encoding"
+- id: quote_char_param
+  selector:
+    path: lib/export/formatter.rb
+    anchor: "quote_char: '\"'"
+- id: encoding_param
+  selector:
+    path: lib/export/formatter.rb
+    anchor: "encoding: 'UTF-8'"
+- id: format_table_method
+  selector:
+    path: lib/export/formatter.rb
+    anchor: "def format_table(columns, rows)"
+- id: quote_method
+  selector:
+    path: lib/export/formatter.rb
+    anchor: "def quote(value)"
+- id: csv_exporter_calls_format
+  selector:
+    path: lib/export/csv_exporter.rb
+    anchor: "@formatter.format_row(row)"
+- id: tsv_exporter_calls_format
+  selector:
+    path: lib/export/tsv_exporter.rb
+    anchor: "@formatter.format_row(row)"
+- id: report_exporter_calls_format
+  selector:
+    path: lib/export/report_exporter.rb
+    anchor: "@formatter.format_row(row)"
+- id: unrelated_csv_import
+  selector:
+    path: lib/import/csv_importer.rb
+    anchor: "class CsvImporter"
+- id: unrelated_json_import
+  selector:
+    path: lib/import/json_importer.rb
+    anchor: "class JsonImporter"
+- id: unrelated_xml_import
+  selector:
+    path: lib/import/xml_importer.rb
+    anchor: "class XmlImporter"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_030_IMPORTER_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_030_JSON_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_030_XML_C
+oracle:
+  required:
+  - quote_char_attr
+  - encoding_param
+  - format_table_method
+  - csv_exporter_calls_format
+  allowed:
+  - quote_char_param
+  - quote_method
+  - tsv_exporter_calls_format
+  - report_exporter_calls_format
+  forbidden:
+  - unrelated_csv_import
+  - unrelated_json_import
+  - unrelated_xml_import
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

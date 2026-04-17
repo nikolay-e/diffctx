@@ -1,0 +1,116 @@
+name: gap2_155_python_import_chain_audio_equalizer
+tags:
+- change:new_function
+- change:signature
+- change:single_file
+- context:import_chain
+- difficulty:hard
+- distance:2hop
+- lang:python
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    audio/equalizer.py: |
+      from audio.filters import apply_band_filter
+
+      class Equalizer:
+          def __init__(self, bands: int = 10):
+              self.bands = bands
+              self._gains: list[float] = [0.0] * bands
+
+          def set_gain(self, band: int, db: float) -> None:
+              self._gains[band] = db
+
+          def process(self, samples: list[float]) -> list[float]:
+              result = samples[:]
+              for band, gain in enumerate(self._gains):
+                  if gain != 0.0:
+                      result = apply_band_filter(result, band, gain)
+              return result
+    audio/filters.py: |
+      from audio.coefficients import compute_biquad
+
+      def apply_band_filter(samples: list[float], band: int, gain_db: float) -> list[float]:
+          a, b = compute_biquad(band, gain_db)
+          return [s * b / a for s in samples]
+
+      def apply_lowpass(samples: list[float], cutoff_hz: float) -> list[float]:
+          factor = min(1.0, cutoff_hz / 20000.0)
+          return [s * factor for s in samples]
+    audio/coefficients.py: |
+      import math
+
+      CENTER_FREQUENCIES = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
+
+      def compute_biquad(band: int, gain_db: float) -> tuple[float, float]:
+          freq = CENTER_FREQUENCIES[band] if band < len(CENTER_FREQUENCIES) else 1000
+          a = 1.0 + 0.001 * freq
+          b = math.pow(10, gain_db / 20.0)
+          return a, b
+
+      def bandwidth_octaves(band: int) -> float:
+          return 1.0
+    audio/playback.py: |
+      BUFFER_SIZE = 4096
+      SAMPLE_RATE = 44100
+
+      class AudioPlayer:
+          def __init__(self):
+              self._playing = False
+
+          def play(self, samples: list[float]) -> None:
+              self._playing = True
+
+          def stop(self) -> None:
+              self._playing = False
+  changed_files:
+    audio/equalizer.py: |
+      from audio.filters import apply_band_filter, apply_lowpass
+
+      class Equalizer:
+          def __init__(self, bands: int = 10):
+              self.bands = bands
+              self._gains: list[float] = [0.0] * bands
+
+          def set_gain(self, band: int, db: float) -> None:
+              self._gains[band] = db
+
+          def process(self, samples: list[float]) -> list[float]:
+              result = samples[:]
+              for band, gain in enumerate(self._gains):
+                  if gain != 0.0:
+                      result = apply_band_filter(result, band, gain)
+              return result
+
+          def process_with_lowpass(self, samples: list[float], cutoff_hz: float) -> list[float]:
+              filtered = self.process(samples)
+              return apply_lowpass(filtered, cutoff_hz)
+  commit_message: "feat: add lowpass filter integration to equalizer"
+fragments:
+- id: eq_lowpass
+  selector:
+    path: audio/equalizer.py
+    anchor: "def process_with_lowpass"
+- id: filter_lowpass
+  selector:
+    path: audio/filters.py
+    anchor: "def apply_lowpass"
+- id: coeff_freqs
+  selector:
+    path: audio/coefficients.py
+    anchor: CENTER_FREQUENCIES
+- id: no_playback
+  selector:
+    path: audio/playback.py
+- id: no_buffer_size
+  selector:
+    anchor: BUFFER_SIZE
+oracle:
+  required:
+  - eq_lowpass
+  - filter_lowpass
+  - coeff_freqs
+  forbidden:
+  - no_playback
+  - no_buffer_size

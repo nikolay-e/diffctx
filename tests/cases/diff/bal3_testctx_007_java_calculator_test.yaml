@@ -1,0 +1,92 @@
+name: bal3_testctx_007_java_calculator_test
+tags:
+- lang:java
+- change:single_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/main/java/com/app/Calculator.java: |
+      package com.app;
+
+      public class Calculator {
+          public int add(int a, int b) {
+              return a + b;
+          }
+
+          public int subtract(int a, int b) {
+              return a - b;
+          }
+      }
+    src/test/java/com/app/CalculatorTest.java: |
+      package com.app;
+
+      import org.junit.jupiter.api.Test;
+      import static org.junit.jupiter.api.Assertions.*;
+
+      class CalculatorTest {
+          private final Calculator calc = new Calculator();
+
+          @Test
+          void testAdd() {
+              assertEquals(5, calc.add(2, 3));
+          }
+
+          @Test
+          void testSubtract() {
+              assertEquals(2, calc.subtract(5, 3));
+          }
+      }
+    src/main/java/com/app/Formatter.java: |
+      package com.app;
+
+      public class Formatter {
+          public String formatNumber(int value) {
+              return String.format("%,d", value);
+          }
+      }
+  changed_files:
+    src/main/java/com/app/Calculator.java: |
+      package com.app;
+
+      public class Calculator {
+          public int add(int a, int b) {
+              return a + b;
+          }
+
+          public int subtract(int a, int b) {
+              return a - b;
+          }
+
+          public int multiply(int a, int b) {
+              return a * b;
+          }
+      }
+  commit_message: "feat: add multiply method to Calculator"
+fragments:
+- id: multiply_method
+  selector:
+    path: src/main/java/com/app/Calculator.java
+    anchor: "public int multiply(int a, int b)"
+- id: test_imports_calc
+  selector:
+    path: src/test/java/com/app/CalculatorTest.java
+    anchor: "import org.junit.jupiter.api.Test"
+- id: test_add
+  selector:
+    path: src/test/java/com/app/CalculatorTest.java
+    anchor: "void testAdd()"
+- id: no_formatter
+  selector:
+    path: src/main/java/com/app/Formatter.java
+    anchor: "public String formatNumber"
+oracle:
+  required:
+  - multiply_method
+  - test_imports_calc
+  allowed:
+  - test_add
+  forbidden:
+  - no_formatter

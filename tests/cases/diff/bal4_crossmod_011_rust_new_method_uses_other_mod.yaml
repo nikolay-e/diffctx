@@ -1,0 +1,118 @@
+name: bal4_crossmod_011_rust_new_method_uses_other_mod
+tags:
+- lang:rust
+- change:new_function
+- context:cross_module
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/crypto/hasher.rs: |
+      pub fn hash_password(password: &str) -> String {
+          format!("hashed_{}", password)
+      }
+
+      pub fn verify_password(password: &str, hash: &str) -> bool {
+          hash == &format!("hashed_{}", password)
+      }
+    src/auth/login.rs: |
+      use crate::crypto::hasher;
+
+      pub fn authenticate(password: &str, stored_hash: &str) -> bool {
+          hasher::verify_password(password, stored_hash)
+      }
+    src/auth/session.rs: |
+      pub fn create_session(user_id: u64) -> String {
+          format!("session_{}", user_id)
+      }
+    src/config/env.rs: |
+      pub const GARBAGE_011_ENV_A: &str = "production";
+      pub const GARBAGE_011_DEBUG_B: bool = false;
+
+      pub fn is_prod() -> bool {
+          true
+      }
+    garbage_seed.rs: |
+      pub const GARBAGE_011_SEED_C: u64 = 42;
+      pub const GARBAGE_011_COUNT_D: u32 = 100;
+
+      pub fn seed_db() {}
+  changed_files:
+    src/crypto/hasher.rs: |
+      pub fn hash_password(password: &str) -> String {
+          format!("hashed_{}", password)
+      }
+
+      pub fn verify_password(password: &str, hash: &str) -> bool {
+          hash == &format!("hashed_{}", password)
+      }
+    src/auth/login.rs: |
+      use crate::crypto::hasher;
+
+      pub fn authenticate(password: &str, stored_hash: &str) -> bool {
+          hasher::verify_password(password, stored_hash)
+      }
+
+      pub fn register(password: &str) -> String {
+          hasher::hash_password(password)
+      }
+    src/auth/session.rs: |
+      pub fn create_session(user_id: u64) -> String {
+          format!("session_{}", user_id)
+      }
+    src/config/env.rs: |
+      pub const GARBAGE_011_ENV_A: &str = "production";
+      pub const GARBAGE_011_DEBUG_B: bool = false;
+
+      pub fn is_prod() -> bool {
+          true
+      }
+    garbage_seed.rs: |
+      pub const GARBAGE_011_SEED_C: u64 = 42;
+      pub const GARBAGE_011_COUNT_D: u32 = 100;
+
+      pub fn seed_db() {}
+  commit_message: "add register function to auth/login"
+fragments:
+- id: hasher_hash
+  selector:
+    path: src/crypto/hasher.rs
+    anchor: "pub fn hash_password(password: &str)"
+- id: hasher_verify
+  selector:
+    path: src/crypto/hasher.rs
+    anchor: "pub fn verify_password(password: &str, hash: &str)"
+- id: no_env
+  selector:
+    path: src/config/env.rs
+- id: no_session
+  selector:
+    path: src/auth/session.rs
+- id: no_garbage_seed
+  selector:
+    path: garbage_seed.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_011_ENV_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_011_DEBUG_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_011_SEED_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_011_COUNT_D
+oracle:
+  required:
+  - hasher_hash
+  - hasher_verify
+  allowed: []
+  forbidden:
+  - no_env
+  - no_session
+  - no_garbage_seed
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

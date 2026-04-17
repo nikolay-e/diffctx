@@ -1,0 +1,210 @@
+name: bal2_testctx_037_csharp_token_service
+tags:
+- lang:csharp
+- change:bug_fix
+- context:test_file
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/Auth/TokenService.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Auth
+      {
+          public class TokenService
+          {
+              private readonly Dictionary<string, (string UserId, DateTime Expiry)> _tokens = new();
+              private readonly TimeSpan _tokenLifetime;
+
+              public TokenService(TimeSpan tokenLifetime)
+              {
+                  _tokenLifetime = tokenLifetime;
+              }
+
+              public string CreateToken(string userId)
+              {
+                  var token = Guid.NewGuid().ToString("N");
+                  _tokens[token] = (userId, DateTime.UtcNow + _tokenLifetime);
+                  return token;
+              }
+
+              public string ValidateToken(string token)
+              {
+                  if (!_tokens.TryGetValue(token, out var entry))
+                      return null;
+                  return entry.UserId;
+              }
+
+              public void RevokeToken(string token)
+              {
+                  _tokens.Remove(token);
+              }
+          }
+      }
+    Tests/TokenServiceTests.cs: |
+      using Xunit;
+      using App.Auth;
+      using System;
+
+      namespace App.Tests
+      {
+          public class TokenServiceTests
+          {
+              [Fact]
+              public void CreateToken_ReturnsNonEmptyString()
+              {
+                  var svc = new TokenService(TimeSpan.FromHours(1));
+                  var token = svc.CreateToken("user1");
+                  Assert.False(string.IsNullOrEmpty(token));
+              }
+
+              [Fact]
+              public void ValidateToken_ValidToken_ReturnsUserId()
+              {
+                  var svc = new TokenService(TimeSpan.FromHours(1));
+                  var token = svc.CreateToken("user1");
+                  Assert.Equal("user1", svc.ValidateToken(token));
+              }
+
+              [Fact]
+              public void RevokeToken_InvalidatesToken()
+              {
+                  var svc = new TokenService(TimeSpan.FromHours(1));
+                  var token = svc.CreateToken("user1");
+                  svc.RevokeToken(token);
+                  Assert.Null(svc.ValidateToken(token));
+              }
+          }
+      }
+    src/Auth/PermissionManager.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Auth
+      {
+          public class PermissionManager
+          {
+              private readonly Dictionary<string, HashSet<string>> _permissions = new();
+
+              public void Grant(string userId, string permission)
+              {
+                  if (!_permissions.ContainsKey(userId))
+                      _permissions[userId] = new HashSet<string>();
+                  _permissions[userId].Add(permission);
+              }
+
+              public bool HasPermission(string userId, string permission)
+              {
+                  return _permissions.ContainsKey(userId) && _permissions[userId].Contains(permission);
+              }
+          }
+      }
+    src/Models/UserProfile.cs: |
+      using System;
+
+      namespace App.Models
+      {
+          public class UserProfile
+          {
+              public string Id { get; set; }
+              public string Name { get; set; }
+              public string Email { get; set; }
+          }
+      }
+  changed_files:
+    src/Auth/TokenService.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Auth
+      {
+          public class TokenService
+          {
+              private readonly Dictionary<string, (string UserId, DateTime Expiry)> _tokens = new();
+              private readonly TimeSpan _tokenLifetime;
+
+              public TokenService(TimeSpan tokenLifetime)
+              {
+                  _tokenLifetime = tokenLifetime;
+              }
+
+              public string CreateToken(string userId)
+              {
+                  var token = Guid.NewGuid().ToString("N");
+                  _tokens[token] = (userId, DateTime.UtcNow + _tokenLifetime);
+                  return token;
+              }
+
+              public string ValidateToken(string token)
+              {
+                  if (!_tokens.TryGetValue(token, out var entry))
+                      return null;
+                  if (entry.Expiry < DateTime.UtcNow)
+                  {
+                      _tokens.Remove(token);
+                      return null;
+                  }
+                  return entry.UserId;
+              }
+
+              public void RevokeToken(string token)
+              {
+                  _tokens.Remove(token);
+              }
+
+              public void RevokeAllForUser(string userId)
+              {
+                  var toRemove = new List<string>();
+                  foreach (var kvp in _tokens)
+                  {
+                      if (kvp.Value.UserId == userId)
+                          toRemove.Add(kvp.Key);
+                  }
+                  foreach (var key in toRemove)
+                      _tokens.Remove(key);
+              }
+          }
+      }
+  commit_message: "fix: check token expiry during validation, add bulk revoke"
+fragments:
+- id: validate_token_expiry
+  selector:
+    path: src/Auth/TokenService.cs
+    anchor: "entry.Expiry < DateTime.UtcNow"
+- id: revoke_all_fn
+  selector:
+    path: src/Auth/TokenService.cs
+    anchor: "public void RevokeAllForUser(string userId)"
+- id: test_imports
+  selector:
+    path: Tests/TokenServiceTests.cs
+    anchor: "using App.Auth"
+- id: test_validate
+  selector:
+    path: Tests/TokenServiceTests.cs
+    anchor: "ValidateToken_ValidToken_ReturnsUserId"
+- id: test_revoke
+  selector:
+    path: Tests/TokenServiceTests.cs
+    anchor: "RevokeToken_InvalidatesToken"
+- id: no_permission_mgr
+  selector:
+    path: src/Auth/PermissionManager.cs
+    anchor: "class PermissionManager"
+- id: no_user_profile
+  selector:
+    path: src/Models/UserProfile.cs
+    anchor: "class UserProfile"
+oracle:
+  required:
+  - validate_token_expiry
+  - revoke_all_fn
+  - test_imports
+  allowed:
+  - test_validate
+  - test_revoke
+  forbidden:
+  - no_permission_mgr
+  - no_user_profile

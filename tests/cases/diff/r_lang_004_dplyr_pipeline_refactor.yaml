@@ -1,0 +1,99 @@
+name: r_lang_004_dplyr_pipeline_refactor
+tags:
+- lang:r
+- change:single_file
+- change:refactor
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    R/data_prep.R: |
+      library(dplyr)
+
+      prepare_data <- function(raw) {
+        raw |>
+          filter(status == "active") |>
+          mutate(
+            revenue_k = revenue / 1000,
+            created_date = as.Date(created_at)
+          ) |>
+          select(id, name, revenue_k, created_date, region) |>
+          arrange(desc(revenue_k))
+      }
+    R/analysis.R: |
+      source("R/data_prep.R")
+      library(dplyr)
+
+      compute_regional_summary <- function(raw) {
+        prepped <- prepare_data(raw)
+        prepped |>
+          group_by(region) |>
+          summarise(
+            total_revenue = sum(revenue_k),
+            n_accounts = n(),
+            avg_revenue = mean(revenue_k)
+          )
+      }
+    R/R_NOISE_004_math_helpers.R: |
+      R_NOISE_004_geometric_mean <- function(x) {
+        exp(mean(log(x[x > 0])))
+      }
+      R_NOISE_004_winsorize <- function(x, probs = c(0.05, 0.95)) {
+        bounds <- quantile(x, probs, na.rm = TRUE)
+        pmin(pmax(x, bounds[1]), bounds[2])
+      }
+    R/R_NOISE_004_text_cleaning.R: |
+      R_NOISE_004_remove_punctuation <- function(s) {
+        gsub("[[:punct:]]", "", s)
+      }
+      R_NOISE_004_normalize_whitespace <- function(s) {
+        gsub("\\s+", " ", trimws(s))
+      }
+  changed_files:
+    R/data_prep.R: |
+      library(dplyr)
+
+      prepare_data <- function(raw) {
+        raw |>
+          filter(status == "active", !is.na(revenue)) |>
+          mutate(
+            revenue_k = revenue / 1000,
+            created_date = as.Date(created_at),
+            is_high_value = revenue_k > 100
+          ) |>
+          select(id, name, revenue_k, created_date, region, is_high_value) |>
+          arrange(desc(revenue_k))
+      }
+  commit_message: "Update files"
+fragments:
+- id: data_prep_changed
+  selector:
+    path: R/data_prep.R
+    anchor: is_high_value
+- id: analysis_calls_prepare
+  selector:
+    path: R/analysis.R
+    anchor: prepare_data
+- id: no_math_helpers
+  selector:
+    path: R/R_NOISE_004_math_helpers.R
+- id: no_text_cleaning
+  selector:
+    path: R/R_NOISE_004_text_cleaning.R
+- id: no_global_0
+  selector:
+    anchor: R_NOISE_004_geometric_mean
+- id: no_global_1
+  selector:
+    anchor: R_NOISE_004_remove_punctuation
+oracle:
+  required:
+  - data_prep_changed
+  - analysis_calls_prepare
+  allowed: []
+  forbidden:
+  - no_math_helpers
+  - no_text_cleaning
+  - no_global_0
+  - no_global_1

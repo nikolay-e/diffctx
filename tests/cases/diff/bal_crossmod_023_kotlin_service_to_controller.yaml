@@ -1,0 +1,108 @@
+name: bal_crossmod_023_kotlin_service_to_controller
+tags:
+- lang:kotlin
+- change:single_file
+- change:signature
+- context:cross_module
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/main/kotlin/service/AuthService.kt: |
+      package service
+
+      class AuthService {
+          private val tokens = mutableMapOf<String, String>()
+
+          fun login(username: String, password: String): String? {
+              if (password.length < 8) return null
+              val token = "tok_${username}_${System.currentTimeMillis()}"
+              tokens[token] = username
+              return token
+          }
+
+          fun validate(token: String): String? {
+              return tokens[token]
+          }
+      }
+    src/main/kotlin/controller/AuthController.kt: |
+      package controller
+
+      import service.AuthService
+
+      class AuthController(private val authService: AuthService) {
+          fun handleLogin(username: String, password: String): Map<String, Any> {
+              val token = authService.login(username, password)
+                  ?: return mapOf("error" to "Invalid credentials")
+              return mapOf("token" to token)
+          }
+      }
+    src/main/kotlin/middleware/CorsMiddleware.kt: |
+      package middleware
+
+      object CorsMiddleware {
+          fun headers(): Map<String, String> = mapOf(
+              "Access-Control-Allow-Origin" to "*",
+              "Access-Control-Allow-Methods" to "GET, POST, PUT, DELETE"
+          )
+      }
+  changed_files:
+    src/main/kotlin/service/AuthService.kt: |
+      package service
+
+      class AuthService {
+          private val tokens = mutableMapOf<String, String>()
+
+          fun login(username: String, password: String, rememberMe: Boolean = false): String? {
+              if (password.length < 8) return null
+              val token = "tok_${username}_${System.currentTimeMillis()}"
+              tokens[token] = username
+              return token
+          }
+
+          fun validate(token: String): String? {
+              return tokens[token]
+          }
+      }
+    src/main/kotlin/controller/AuthController.kt: |
+      package controller
+
+      import service.AuthService
+
+      class AuthController(private val authService: AuthService) {
+          fun handleLogin(username: String, password: String): Map<String, Any> {
+              val token = authService.login(username, password)
+                  ?: return mapOf("error" to "Invalid credentials")
+              return mapOf("token" to token)
+          }
+      }
+    src/main/kotlin/middleware/CorsMiddleware.kt: |
+      package middleware
+
+      object CorsMiddleware {
+          fun headers(): Map<String, String> = mapOf(
+              "Access-Control-Allow-Origin" to "*",
+              "Access-Control-Allow-Methods" to "GET, POST, PUT, DELETE"
+          )
+      }
+  commit_message: "feat: add rememberMe parameter to login"
+fragments:
+- id: login_remember_me
+  selector:
+    path: src/main/kotlin/service/AuthService.kt
+    anchor: "fun login(username: String, password: String, rememberMe: Boolean = false)"
+- id: controller_calls_login
+  selector:
+    path: src/main/kotlin/controller/AuthController.kt
+    anchor: "authService.login(username, password)"
+- id: no_cors
+  selector:
+    path: src/main/kotlin/middleware/CorsMiddleware.kt
+    anchor: "object CorsMiddleware"
+oracle:
+  required:
+  - login_remember_me
+  - controller_calls_login
+  allowed: []
+  forbidden:
+  - no_cors

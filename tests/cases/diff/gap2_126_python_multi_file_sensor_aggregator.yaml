@@ -1,0 +1,158 @@
+name: gap2_126_python_multi_file_sensor_aggregator
+tags:
+- change:multi_file
+- change:new_function
+- change:signature
+- context:same_file
+- difficulty:medium
+- distance:0hop
+- lang:python
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    sensors/reading.py: |
+      from dataclasses import dataclass
+      from datetime import datetime
+
+      @dataclass
+      class SensorReading:
+          sensor_id: str
+          value: float
+          timestamp: datetime
+
+      @dataclass
+      class AggregatedReading:
+          sensor_id: str
+          mean: float
+          count: int
+    sensors/aggregator.py: |
+      from typing import List, Dict
+      from sensors.reading import SensorReading, AggregatedReading
+
+      class SensorAggregator:
+          def __init__(self):
+              self._buffer: Dict[str, List[float]] = {}
+
+          def ingest(self, reading: SensorReading) -> None:
+              self._buffer.setdefault(reading.sensor_id, []).append(reading.value)
+
+          def flush(self) -> List[AggregatedReading]:
+              results = []
+              for sid, values in self._buffer.items():
+                  results.append(AggregatedReading(
+                      sensor_id=sid,
+                      mean=sum(values) / len(values),
+                      count=len(values),
+                  ))
+              self._buffer.clear()
+              return results
+    sensors/calibration.py: |
+      TRAP_GAP2_126_CAL_A = "calibration_noise"
+      TRAP_GAP2_126_CAL_B = 0.05
+
+      def apply_offset(value, offset):
+          return value + offset
+    sensors/alert.py: |
+      TRAP_GAP2_126_ALERT_C = "alert_noise"
+      TRAP_GAP2_126_ALERT_D = 100.0
+
+      def check_threshold(value, threshold):
+          return value > threshold
+  changed_files:
+    sensors/reading.py: |
+      from dataclasses import dataclass, field
+      from datetime import datetime
+      from typing import Optional
+
+      @dataclass
+      class SensorReading:
+          sensor_id: str
+          value: float
+          timestamp: datetime
+          unit: str = "celsius"
+
+      @dataclass
+      class AggregatedReading:
+          sensor_id: str
+          mean: float
+          count: int
+          min_value: Optional[float] = None
+          max_value: Optional[float] = None
+    sensors/aggregator.py: |
+      from typing import List, Dict
+      from sensors.reading import SensorReading, AggregatedReading
+
+      class SensorAggregator:
+          def __init__(self):
+              self._buffer: Dict[str, List[float]] = {}
+
+          def ingest(self, reading: SensorReading) -> None:
+              self._buffer.setdefault(reading.sensor_id, []).append(reading.value)
+
+          def flush(self) -> List[AggregatedReading]:
+              results = []
+              for sid, values in self._buffer.items():
+                  results.append(AggregatedReading(
+                      sensor_id=sid,
+                      mean=sum(values) / len(values),
+                      count=len(values),
+                      min_value=min(values),
+                      max_value=max(values),
+                  ))
+              self._buffer.clear()
+              return results
+
+          def peek(self, sensor_id: str) -> float:
+              values = self._buffer.get(sensor_id, [])
+              if not values:
+                  raise ValueError(f"No readings for {sensor_id}")
+              return values[-1]
+fragments:
+- id: unit_field
+  selector:
+    path: sensors/reading.py
+    anchor: "unit: str = \"celsius\""
+- id: min_max_fields
+  selector:
+    path: sensors/reading.py
+    anchor: "min_value: Optional[float] = None"
+- id: peek_method
+  selector:
+    path: sensors/aggregator.py
+    anchor: "def peek(self, sensor_id: str) -> float:"
+- id: aggregator_min
+  selector:
+    path: sensors/aggregator.py
+    anchor: min_value=min(values)
+- id: no_calibration
+  selector:
+    path: sensors/calibration.py
+- id: no_alert
+  selector:
+    path: sensors/alert.py
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_126_CAL_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_126_CAL_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP2_126_ALERT_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP2_126_ALERT_D
+oracle:
+  required:
+  - unit_field
+  - min_max_fields
+  - peek_method
+  - aggregator_min
+  forbidden:
+  - no_calibration
+  - no_alert
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

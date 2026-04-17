@@ -1,0 +1,89 @@
+name: css_017_css_module_composes
+tags:
+- lang:css
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    shared.module.css: |
+      .base {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 500;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .focusRing:focus-visible {
+        outline: 2px solid #6366f1;
+        outline-offset: 2px;
+      }
+    button.module.css: |
+      .button {
+        composes: base from "./shared.module.css";
+        composes: focusRing from "./shared.module.css";
+        padding: 8px 16px;
+        background: #6366f1;
+        color: #fff;
+        border: none;
+      }
+    CSS_NOISE_017_map.css: |
+      .CSS_NOISE_017_map_container { position: relative; width: 100%; height: 400px; }
+      .CSS_NOISE_017_map_controls { position: absolute; top: 8px; right: 8px; }
+    CSS_NOISE_017_upload.css: |
+      .CSS_NOISE_017_upload_zone { border: 2px dashed #d1d5db; border-radius: 8px; padding: 32px; }
+      .CSS_NOISE_017_upload_active { border-color: #6366f1; background: #eef2ff; }
+  changed_files:
+    shared.module.css: |
+      .base {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 500;
+        border-radius: 6px;
+        cursor: pointer;
+        user-select: none;
+      }
+      .focusRing:focus-visible {
+        outline: 2px solid #6366f1;
+        outline-offset: 2px;
+      }
+  commit_message: "style: increase base border-radius to 6px and add user-select: none"
+fragments:
+- id: base_border_radius
+  selector:
+    path: shared.module.css
+    anchor: "border-radius: 6px"
+- id: user_select_added
+  selector:
+    path: shared.module.css
+    anchor: user-select
+- id: button_composes_base
+  selector:
+    path: button.module.css
+    anchor: "composes: base from"
+- id: no_map
+  selector:
+    path: CSS_NOISE_017_map.css
+- id: no_upload
+  selector:
+    path: CSS_NOISE_017_upload.css
+- id: no_global_0
+  selector:
+    anchor: CSS_NOISE_017_map_container
+- id: no_global_1
+  selector:
+    anchor: CSS_NOISE_017_upload_zone
+oracle:
+  required:
+  - base_border_radius
+  - user_select_added
+  - button_composes_base
+  allowed: []
+  forbidden:
+  - no_map
+  - no_upload
+  - no_global_0
+  - no_global_1

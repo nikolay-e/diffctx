@@ -1,0 +1,165 @@
+name: gap_161_terraform_hard_vpc_module_chain
+tags:
+- change:config
+- change:multi_file
+- context:import_chain
+- difficulty:hard
+- distance:2hop
+- lang:terraform
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    infra/environments/production/main.tf: |
+      module "network" {
+        source = "../../modules/vpc"
+        cidr   = var.vpc_cidr
+        region = var.aws_region
+      }
+
+      module "compute" {
+        source     = "../../modules/ecs"
+        vpc_id     = module.network.vpc_id
+        subnet_ids = module.network.private_subnets
+      }
+    infra/environments/production/variables.tf: |
+      variable "vpc_cidr" {
+        type    = string
+        default = "10.0.0.0/16"
+      }
+
+      variable "aws_region" {
+        type    = string
+        default = "eu-west-1"
+      }
+    infra/modules/vpc/main.tf: |
+      resource "aws_vpc" "this" {
+        cidr_block           = var.cidr
+        enable_dns_support   = true
+        enable_dns_hostnames = true
+      }
+
+      resource "aws_subnet" "private" {
+        count             = 3
+        vpc_id            = aws_vpc.this.id
+        cidr_block        = cidrsubnet(var.cidr, 8, count.index)
+        availability_zone = data.aws_availability_zones.available.names[count.index]
+      }
+    infra/modules/vpc/variables.tf: |
+      variable "cidr" {
+        type = string
+      }
+
+      variable "region" {
+        type = string
+      }
+    infra/modules/vpc/outputs.tf: |
+      output "vpc_id" {
+        value = aws_vpc.this.id
+      }
+
+      output "private_subnets" {
+        value = aws_subnet.private[*].id
+      }
+    infra/modules/ecs/main.tf: |
+      resource "aws_ecs_cluster" "this" {
+        name = "app-cluster"
+      }
+
+      resource "aws_ecs_service" "app" {
+        name            = "app-service"
+        cluster         = aws_ecs_cluster.this.id
+        task_definition = aws_ecs_task_definition.app.arn
+        desired_count   = 2
+
+        network_configuration {
+          subnets = var.subnet_ids
+        }
+      }
+    infra/modules/ecs/variables.tf: |
+      variable "vpc_id" {
+        type = string
+      }
+
+      variable "subnet_ids" {
+        type = list(string)
+      }
+    infra/modules/rds/main.tf: |
+      resource "aws_db_instance" "postgres" {
+        engine         = "postgres"
+        instance_class = "db.t3.medium"
+        allocated_storage = 50
+      }
+  changed_files:
+    infra/environments/production/main.tf: |
+      module "network" {
+        source       = "../../modules/vpc"
+        cidr         = var.vpc_cidr
+        region       = var.aws_region
+        nat_enabled  = true
+      }
+
+      module "compute" {
+        source     = "../../modules/ecs"
+        vpc_id     = module.network.vpc_id
+        subnet_ids = module.network.private_subnets
+      }
+    infra/modules/vpc/main.tf: |
+      resource "aws_vpc" "this" {
+        cidr_block           = var.cidr
+        enable_dns_support   = true
+        enable_dns_hostnames = true
+      }
+
+      resource "aws_subnet" "private" {
+        count             = 3
+        vpc_id            = aws_vpc.this.id
+        cidr_block        = cidrsubnet(var.cidr, 8, count.index)
+        availability_zone = data.aws_availability_zones.available.names[count.index]
+      }
+
+      resource "aws_nat_gateway" "this" {
+        count         = var.nat_enabled ? 1 : 0
+        allocation_id = aws_eip.nat[0].id
+        subnet_id     = aws_subnet.private[0].id
+      }
+    infra/modules/vpc/variables.tf: |
+      variable "cidr" {
+        type = string
+      }
+
+      variable "region" {
+        type = string
+      }
+
+      variable "nat_enabled" {
+        type    = bool
+        default = false
+      }
+fragments:
+- id: prod_main
+  selector:
+    path: infra/environments/production/main.tf
+    anchor: nat_enabled
+- id: vpc_nat_gw
+  selector:
+    path: infra/modules/vpc/main.tf
+    anchor: aws_nat_gateway
+- id: vpc_nat_var
+  selector:
+    path: infra/modules/vpc/variables.tf
+    anchor: nat_enabled
+- id: no_rds
+  selector:
+    path: infra/modules/rds/main.tf
+- id: no_ecs
+  selector:
+    path: infra/modules/ecs/main.tf
+oracle:
+  required:
+  - prod_main
+  - vpc_nat_gw
+  - vpc_nat_var
+  forbidden:
+  - no_rds
+  - no_ecs

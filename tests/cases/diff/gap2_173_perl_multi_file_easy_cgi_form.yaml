@@ -1,0 +1,170 @@
+name: gap2_173_perl_multi_file_easy_cgi_form
+tags:
+- change:multi_file
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:perl
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    lib/FormValidator.pm: |
+      package FormValidator;
+      use strict;
+      use warnings;
+
+      sub new {
+          my ($class) = @_;
+          return bless { rules => {} }, $class;
+      }
+
+      sub add_rule {
+          my ($self, $field, $regex) = @_;
+          $self->{rules}{$field} = $regex;
+      }
+
+      sub validate {
+          my ($self, $params) = @_;
+          my @errors;
+          for my $field (keys %{$self->{rules}}) {
+              my $val = $params->{$field} // '';
+              unless ($val =~ $self->{rules}{$field}) {
+                  push @errors, "$field is invalid";
+              }
+          }
+          return @errors;
+      }
+
+      1;
+    lib/FormRenderer.pm: |
+      package FormRenderer;
+      use strict;
+      use warnings;
+
+      sub new {
+          my ($class) = @_;
+          return bless { fields => [] }, $class;
+      }
+
+      sub add_field {
+          my ($self, $name, $type) = @_;
+          push @{$self->{fields}}, { name => $name, type => $type };
+      }
+
+      sub render_html {
+          my ($self) = @_;
+          my $html = '<form>';
+          for my $f (@{$self->{fields}}) {
+              $html .= qq{<input type="$f->{type}" name="$f->{name}">};
+          }
+          $html .= '</form>';
+          return $html;
+      }
+
+      1;
+    lib/Mailer.pm: |
+      package Mailer;
+      use strict;
+      use warnings;
+
+      sub new {
+          my ($class, %args) = @_;
+          return bless { host => $args{host} }, $class;
+      }
+
+      sub send {
+          my ($self, $to, $subject, $body) = @_;
+          return 1;
+      }
+
+      1;
+  changed_files:
+    lib/FormValidator.pm: |
+      package FormValidator;
+      use strict;
+      use warnings;
+
+      sub new {
+          my ($class) = @_;
+          return bless { rules => {}, required => [] }, $class;
+      }
+
+      sub add_rule {
+          my ($self, $field, $regex) = @_;
+          $self->{rules}{$field} = $regex;
+      }
+
+      sub require_field {
+          my ($self, $field) = @_;
+          push @{$self->{required}}, $field;
+      }
+
+      sub validate {
+          my ($self, $params) = @_;
+          my @errors;
+          for my $field (@{$self->{required}}) {
+              unless (defined $params->{$field} && $params->{$field} ne '') {
+                  push @errors, "$field is required";
+              }
+          }
+          for my $field (keys %{$self->{rules}}) {
+              my $val = $params->{$field} // '';
+              unless ($val =~ $self->{rules}{$field}) {
+                  push @errors, "$field is invalid";
+              }
+          }
+          return @errors;
+      }
+
+      1;
+    lib/FormRenderer.pm: |
+      package FormRenderer;
+      use strict;
+      use warnings;
+
+      sub new {
+          my ($class) = @_;
+          return bless { fields => [] }, $class;
+      }
+
+      sub add_field {
+          my ($self, $name, $type, %opts) = @_;
+          push @{$self->{fields}}, { name => $name, type => $type, %opts };
+      }
+
+      sub render_html {
+          my ($self) = @_;
+          my $html = '<form>';
+          for my $f (@{$self->{fields}}) {
+              my $req = $f->{required} ? ' required' : '';
+              $html .= qq{<input type="$f->{type}" name="$f->{name}"$req>};
+          }
+          $html .= '</form>';
+          return $html;
+      }
+
+      1;
+fragments:
+- id: require_field
+  selector:
+    path: lib/FormValidator.pm
+    anchor: sub require_field
+- id: required_check
+  selector:
+    path: lib/FormValidator.pm
+    anchor: "is required"
+- id: add_field_opts
+  selector:
+    path: lib/FormRenderer.pm
+    anchor: "sub add_field"
+- id: no_mailer
+  selector:
+    path: lib/Mailer.pm
+oracle:
+  required:
+  - require_field
+  - required_check
+  - add_field_opts
+  forbidden:
+  - no_mailer

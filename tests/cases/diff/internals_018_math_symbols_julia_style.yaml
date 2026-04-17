@@ -1,26 +1,209 @@
 name: internals_018_math_symbols_julia_style
+tags:
+- lang:kotlin
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:easy
 repo:
   initial_files:
-    math_symbols.jl: |
-      x = 1
+    lib/src/main/kotlin/com/platform/crypto/HashUtil.kt: |
+      package com.platform.crypto
+
+      import java.security.MessageDigest
+
+      object HashUtil {
+          fun sha256(input: String): String {
+              val digest = MessageDigest.getInstance("SHA-256")
+              val bytes = digest.digest(input.toByteArray(Charsets.UTF_8))
+              return bytes.joinToString("") { "%02x".format(it) }
+          }
+
+          fun sha256Bytes(input: ByteArray): String {
+              val digest = MessageDigest.getInstance("SHA-256")
+              val bytes = digest.digest(input)
+              return bytes.joinToString("") { "%02x".format(it) }
+          }
+      }
+    lib/src/main/kotlin/com/platform/user/UserCredentials.kt: |
+      package com.platform.user
+
+      import com.platform.crypto.HashUtil
+
+      data class UserCredentials(
+          val username: String,
+          val passwordHash: String,
+      ) {
+          fun matches(plainPassword: String): Boolean {
+              return passwordHash == HashUtil.sha256(plainPassword)
+          }
+      }
+    lib/src/main/kotlin/com/platform/user/UserRepository.kt: |
+      package com.platform.user
+
+      interface UserRepository {
+          fun findByUsername(username: String): UserCredentials?
+          fun save(credentials: UserCredentials)
+      }
+    api/src/main/kotlin/com/platform/auth/AuthService.kt: |
+      package com.platform.auth
+
+      import com.platform.user.UserRepository
+      import com.platform.crypto.HashUtil
+
+      class AuthService(private val userRepo: UserRepository) {
+          fun login(username: String, password: String): Boolean {
+              val creds = userRepo.findByUsername(username) ?: return false
+              return creds.matches(password)
+          }
+
+          fun register(username: String, password: String) {
+              val hash = HashUtil.sha256(password)
+              userRepo.save(com.platform.user.UserCredentials(username, hash))
+          }
+      }
+    garbage/src/main/kotlin/com/platform/feature/FeatureToggle.kt: |
+      package com.platform.feature
+
+      // GARBAGE_MATH18_A = "feature_toggle_unrelated"
+      object FeatureToggle {
+          fun isEnabled(name: String): Boolean = false
+      }
+    garbage/src/main/kotlin/com/platform/rate/RateLimit.kt: |
+      package com.platform.rate
+
+      // GARBAGE_MATH18_B = "rate_limit_unrelated"
+      object RateLimit {
+          fun check(clientId: String): Boolean = true
+      }
+    garbage/src/main/kotlin/com/platform/telemetry/Metrics.kt: |
+      package com.platform.telemetry
+
+      // GARBAGE_MATH18_C = "telemetry_metrics_unrelated"
+      object Metrics {
+          fun increment(counter: String) {}
+          fun record(histogram: String, value: Double) {}
+      }
   changed_files:
-    math_symbols.jl: |
-      ∑ = sum
-      ∏ = prod
-      α = 0.5
-      β = 0.3
-      result = calculate(α, β)
-  commit_message: Update files
+    lib/src/main/kotlin/com/platform/crypto/HashUtil.kt: |
+      package com.platform.crypto
+
+      import java.security.MessageDigest
+      import java.util.Base64
+
+      object HashUtil {
+          fun sha256(input: String): String {
+              val digest = MessageDigest.getInstance("SHA-256")
+              val bytes = digest.digest(input.toByteArray(Charsets.UTF_8))
+              return bytes.joinToString("") { "%02x".format(it) }
+          }
+
+          fun sha256Bytes(input: ByteArray): String {
+              val digest = MessageDigest.getInstance("SHA-256")
+              val bytes = digest.digest(input)
+              return bytes.joinToString("") { "%02x".format(it) }
+          }
+
+          fun sha256WithSalt(input: String, salt: String): String {
+              return sha256("$salt:$input")
+          }
+      }
+    lib/src/main/kotlin/com/platform/user/UserCredentials.kt: |
+      package com.platform.user
+
+      import com.platform.crypto.HashUtil
+
+      data class UserCredentials(
+          val username: String,
+          val passwordHash: String,
+          val salt: String = "",
+      ) {
+          fun matches(plainPassword: String): Boolean {
+              return if (salt.isEmpty()) {
+                  passwordHash == HashUtil.sha256(plainPassword)
+              } else {
+                  passwordHash == HashUtil.sha256WithSalt(plainPassword, salt)
+              }
+          }
+      }
+    lib/src/main/kotlin/com/platform/user/UserRepository.kt: |
+      package com.platform.user
+
+      interface UserRepository {
+          fun findByUsername(username: String): UserCredentials?
+          fun save(credentials: UserCredentials)
+      }
+    api/src/main/kotlin/com/platform/auth/AuthService.kt: |
+      package com.platform.auth
+
+      import com.platform.user.UserRepository
+      import com.platform.crypto.HashUtil
+      import java.util.UUID
+
+      class AuthService(private val userRepo: UserRepository) {
+          fun login(username: String, password: String): Boolean {
+              val creds = userRepo.findByUsername(username) ?: return false
+              return creds.matches(password)
+          }
+
+          fun register(username: String, password: String) {
+              val salt = UUID.randomUUID().toString()
+              val hash = HashUtil.sha256WithSalt(password, salt)
+              userRepo.save(com.platform.user.UserCredentials(username, hash, salt))
+          }
+      }
+    garbage/src/main/kotlin/com/platform/feature/FeatureToggle.kt: |
+      package com.platform.feature
+
+      // GARBAGE_MATH18_A = "feature_toggle_unrelated"
+      object FeatureToggle {
+          fun isEnabled(name: String): Boolean = false
+      }
+    garbage/src/main/kotlin/com/platform/rate/RateLimit.kt: |
+      package com.platform.rate
+
+      // GARBAGE_MATH18_B = "rate_limit_unrelated"
+      object RateLimit {
+          fun check(clientId: String): Boolean = true
+      }
+    garbage/src/main/kotlin/com/platform/telemetry/Metrics.kt: |
+      package com.platform.telemetry
+
+      // GARBAGE_MATH18_C = "telemetry_metrics_unrelated"
+      object Metrics {
+          fun increment(counter: String) {}
+          fun record(histogram: String, value: Double) {}
+      }
+  commit_message: "fix: add salted hashing to password storage via sha256WithSalt"
 fragments:
-- id: math_symbols_file
+- id: sha256_with_salt
   selector:
-    path: math_symbols.jl
-- id: req_global_0
+    path: lib/src/main/kotlin/com/platform/crypto/HashUtil.kt
+    anchor: "fun sha256WithSalt"
+- id: credentials_matches_salted
   selector:
-    anchor: result = calculate(α, β)
+    path: lib/src/main/kotlin/com/platform/user/UserCredentials.kt
+    anchor: "salt.isEmpty()"
+- id: auth_service_register_salted
+  selector:
+    path: api/src/main/kotlin/com/platform/auth/AuthService.kt
+    anchor: "UUID.randomUUID"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_MATH18_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_MATH18_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_MATH18_C
 oracle:
   required:
-  - math_symbols_file
-  - req_global_0
+  - sha256_with_salt
+  - credentials_matches_salted
+  - auth_service_register_salted
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

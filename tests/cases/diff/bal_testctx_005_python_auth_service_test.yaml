@@ -1,0 +1,125 @@
+name: bal_testctx_005_python_auth_service_test
+tags:
+- lang:python
+- change:multi_file
+- change:bug_fix
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/auth.py: |
+      import hashlib
+      import secrets
+      from typing import Optional
+
+      class AuthService:
+          def __init__(self):
+              self._tokens: dict[str, str] = {}
+
+          def hash_password(self, password: str) -> str:
+              return hashlib.sha256(password.encode()).hexdigest()
+
+          def create_token(self, user_id: str) -> str:
+              token = secrets.token_hex(32)
+              self._tokens[token] = user_id
+              return token
+
+          def verify_token(self, token: str) -> Optional[str]:
+              return self._tokens.get(token)
+    tests/test_auth.py: |
+      from src.auth import AuthService
+
+      def test_hash_password_deterministic():
+          auth = AuthService()
+          h1 = auth.hash_password("secret")
+          h2 = auth.hash_password("secret")
+          assert h1 == h2
+
+      def test_create_and_verify_token():
+          auth = AuthService()
+          token = auth.create_token("user_1")
+          assert auth.verify_token(token) == "user_1"
+
+      def test_verify_invalid_token():
+          auth = AuthService()
+          assert auth.verify_token("invalid") is None
+    src/config.py: |
+      from dataclasses import dataclass
+
+      @dataclass
+      class AppConfig:
+          debug: bool = False
+          port: int = 8080
+          host: str = "0.0.0.0"
+    src/middleware.py: |
+      from typing import Callable
+
+      def logging_middleware(handler: Callable) -> Callable:
+          def wrapper(*args, **kwargs):
+              print("Request received")
+              return handler(*args, **kwargs)
+          return wrapper
+  changed_files:
+    src/auth.py: |
+      import hashlib
+      import secrets
+      from typing import Optional
+
+      class AuthService:
+          def __init__(self):
+              self._tokens: dict[str, str] = {}
+
+          def hash_password(self, password: str, salt: str = "") -> str:
+              salted = f"{salt}{password}"
+              return hashlib.sha256(salted.encode()).hexdigest()
+
+          def create_token(self, user_id: str) -> str:
+              token = secrets.token_hex(32)
+              self._tokens[token] = user_id
+              return token
+
+          def verify_token(self, token: str) -> Optional[str]:
+              return self._tokens.get(token)
+
+          def revoke_token(self, token: str) -> bool:
+              if token in self._tokens:
+                  del self._tokens[token]
+                  return True
+              return False
+  commit_message: "fix: add salt to password hashing, add token revocation"
+fragments:
+- id: hash_password_fn
+  selector:
+    path: src/auth.py
+    anchor: "def hash_password(self, password: str, salt"
+- id: revoke_token_fn
+  selector:
+    path: src/auth.py
+    anchor: "def revoke_token(self, token: str)"
+- id: test_imports_auth
+  selector:
+    path: tests/test_auth.py
+    anchor: "from src.auth import AuthService"
+- id: test_hash_deterministic
+  selector:
+    path: tests/test_auth.py
+    anchor: "def test_hash_password_deterministic"
+- id: no_config
+  selector:
+    path: src/config.py
+    anchor: "class AppConfig"
+- id: no_middleware
+  selector:
+    path: src/middleware.py
+    anchor: "def logging_middleware"
+oracle:
+  required:
+  - hash_password_fn
+  - revoke_token_fn
+  - test_imports_auth
+  allowed:
+  - test_hash_deterministic
+  forbidden:
+  - no_config
+  - no_middleware

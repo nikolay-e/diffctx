@@ -1,25 +1,184 @@
 name: internals_013_diff_with_unicode_content
+tags:
+- lang:julia
+- change:refactor
+- change:single_file
+- context:call_graph
+- distance:1hop
+- difficulty:hard
 repo:
   initial_files:
-    unicode_diff.py: |
-      def placeholder():
-          pass
+    src/Telemetry.jl: |
+      module Telemetry
+
+      export DeviceReading, aggregate_readings, latest_reading
+
+      struct DeviceReading
+          device_id::String
+          metric::String
+          value::Float64
+          ts::Int
+      end
+
+      function aggregate_readings(readings::Vector{DeviceReading}, metric::String)::Float64
+          matching = filter(r -> r.metric == metric, readings)
+          isempty(matching) && return 0.0
+          return sum(r.value for r in matching) / length(matching)
+      end
+
+      function latest_reading(readings::Vector{DeviceReading}, device_id::String)::Union{DeviceReading,Nothing}
+          matching = filter(r -> r.device_id == device_id, readings)
+          isempty(matching) && return nothing
+          return reduce((a, b) -> a.ts > b.ts ? a : b, matching)
+      end
+
+      end
+    src/Dashboard.jl: |
+      module Dashboard
+
+      include("Telemetry.jl")
+      using .Telemetry
+
+      function device_summary(readings::Vector{DeviceReading}, device_id::String)::Dict{String,Any}
+          last = latest_reading(readings, device_id)
+          return Dict("device" => device_id, "last_value" => last !== nothing ? last.value : nothing)
+      end
+
+      end
+    src/Alerting.jl: |
+      module Alerting
+
+      include("Telemetry.jl")
+      using .Telemetry
+
+      function check_threshold(readings::Vector{DeviceReading}, metric::String, threshold::Float64)::Bool
+          avg = aggregate_readings(readings, metric)
+          return avg > threshold
+      end
+
+      end
+    src/INT013_Auth.jl: |
+      module Auth
+
+      INT013_GARBAGE_A = "auth_marker"
+      INT013_GARBAGE_B = "jwt_secret"
+
+      function verify(token::String)::Bool
+          return length(token) > 0
+      end
+
+      end
+    src/INT013_Storage.jl: |
+      module Storage
+
+      INT013_GARBAGE_C = "storage_marker"
+      INT013_GARBAGE_D = "bucket_name"
+
+      function store(key::String, value::Any)
+          println("Storing $key")
+      end
+
+      end
   changed_files:
-    unicode_diff.py: |
-      def greet_user():
-          greeting_text = "Привет мир"
-          return greeting_text
-  commit_message: Update files
+    src/Telemetry.jl: |
+      module Telemetry
+
+      export DeviceReading, aggregate_readings, latest_reading, percentile
+
+      struct DeviceReading
+          device_id::String
+          metric::String
+          value::Float64
+          ts::Int
+          quality::Float64
+      end
+
+      function aggregate_readings(readings::Vector{DeviceReading}, metric::String)::Float64
+          matching = filter(r -> r.metric == metric && r.quality >= 0.8, readings)
+          isempty(matching) && return 0.0
+          return sum(r.value for r in matching) / length(matching)
+      end
+
+      function latest_reading(readings::Vector{DeviceReading}, device_id::String)::Union{DeviceReading,Nothing}
+          matching = filter(r -> r.device_id == device_id, readings)
+          isempty(matching) && return nothing
+          return reduce((a, b) -> a.ts > b.ts ? a : b, matching)
+      end
+
+      function percentile(readings::Vector{DeviceReading}, metric::String, pct::Float64)::Float64
+          vals = sort([r.value for r in readings if r.metric == metric])
+          isempty(vals) && return 0.0
+          idx = max(1, round(Int, pct / 100.0 * length(vals)))
+          return vals[idx]
+      end
+
+      end
+    src/INT013_Auth.jl: |
+      module Auth
+
+      INT013_GARBAGE_A = "auth_marker"
+      INT013_GARBAGE_B = "jwt_secret"
+
+      function verify(token::String)::Bool
+          return length(token) > 0
+      end
+
+      end
+    src/INT013_Storage.jl: |
+      module Storage
+
+      INT013_GARBAGE_C = "storage_marker"
+      INT013_GARBAGE_D = "bucket_name"
+
+      function store(key::String, value::Any)
+          println("Storing $key")
+      end
+
+      end
+  commit_message: "refactor: add quality field to DeviceReading, filter low-quality in aggregate, add percentile"
 fragments:
-- id: unicode_diff_file
+- id: telemetry_quality_field
   selector:
-    path: unicode_diff.py
-- id: req_global_0
+    path: src/Telemetry.jl
+    anchor: "quality::Float64"
+- id: telemetry_percentile
   selector:
-    anchor: 'def greet_user():'
+    path: src/Telemetry.jl
+    anchor: "function percentile(readings::Vector{DeviceReading}"
+- id: telemetry_quality_filter
+  selector:
+    path: src/Telemetry.jl
+    anchor: "r.quality >= 0.8"
+- id: dashboard_uses_latest
+  selector:
+    path: src/Dashboard.jl
+    anchor: "latest_reading(readings, device_id)"
+- id: alerting_uses_aggregate
+  selector:
+    path: src/Alerting.jl
+    anchor: "aggregate_readings(readings, metric)"
+- id: no_garbage_a
+  selector:
+    anchor: INT013_GARBAGE_A
+- id: no_garbage_b
+  selector:
+    anchor: INT013_GARBAGE_B
+- id: no_garbage_c
+  selector:
+    anchor: INT013_GARBAGE_C
+- id: no_garbage_d
+  selector:
+    anchor: INT013_GARBAGE_D
 oracle:
   required:
-  - unicode_diff_file
-  - req_global_0
+  - telemetry_quality_field
+  - telemetry_percentile
+  - telemetry_quality_filter
+  - dashboard_uses_latest
+  - alerting_uses_aggregate
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

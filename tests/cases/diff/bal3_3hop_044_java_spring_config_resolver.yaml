@@ -1,0 +1,164 @@
+name: bal3_3hop_044_java_spring_config_resolver
+tags:
+- lang:java
+- change:single_file
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/app/config/ConfigEntry.java: |
+      package com.app.config;
+
+      public class ConfigEntry {
+          private String key;
+          private String value;
+          public ConfigEntry(String key, String value) {
+              this.key = key;
+              this.value = value;
+          }
+          public String getKey() { return key; }
+          public String getValue() { return value; }
+      }
+    src/main/java/com/app/config/ConfigSource.java: |
+      package com.app.config;
+
+      import java.util.Map;
+      import java.util.HashMap;
+
+      public class ConfigSource {
+          private final Map<String, ConfigEntry> entries = new HashMap<>();
+          public void put(String key, String value) {
+              entries.put(key, new ConfigEntry(key, value));
+          }
+          public ConfigEntry get(String key) {
+              return entries.get(key);
+          }
+      }
+    src/main/java/com/app/config/ConfigResolver.java: |
+      package com.app.config;
+
+      import java.util.List;
+
+      public class ConfigResolver {
+          private final List<ConfigSource> sources;
+          public ConfigResolver(List<ConfigSource> sources) {
+              this.sources = sources;
+          }
+          public String resolve(String key) {
+              for (ConfigSource source : sources) {
+                  ConfigEntry entry = source.get(key);
+                  if (entry != null) return entry.getValue();
+              }
+              return null;
+          }
+      }
+    src/main/java/com/app/service/AppConfigService.java: |
+      package com.app.service;
+
+      import com.app.config.ConfigResolver;
+
+      public class AppConfigService {
+          private final ConfigResolver resolver;
+          public AppConfigService(ConfigResolver resolver) {
+              this.resolver = resolver;
+          }
+          public String getSetting(String key) {
+              return resolver.resolve(key);
+          }
+      }
+    src/main/java/com/app/web/SettingsController.java: |
+      package com.app.web;
+
+      import com.app.service.AppConfigService;
+
+      public class SettingsController {
+          private final AppConfigService configService;
+          public SettingsController(AppConfigService configService) {
+              this.configService = configService;
+          }
+          public String get(String key) {
+              String val = configService.getSetting(key);
+              return val != null ? val : "not_found";
+          }
+      }
+    src/main/java/com/app/util/EnvReader.java: |
+      package com.app.util;
+
+      public class EnvReader {
+          public static String GARBAGE_044_ENV_MARKER_A = "env";
+          public static String GARBAGE_044_SYS_MARKER_B = "sys";
+          public static String read(String name) { return ""; }
+      }
+    src/main/java/com/app/util/PropertyParser.java: |
+      package com.app.util;
+
+      public class PropertyParser {
+          public static String GARBAGE_044_PROP_MARKER_C = "prop";
+          public static String GARBAGE_044_SEP_MARKER_D = "=";
+          public static String[] parse(String line) { return line.split("="); }
+      }
+  changed_files:
+    src/main/java/com/app/config/ConfigEntry.java: |
+      package com.app.config;
+
+      public class ConfigEntry {
+          private String key;
+          private String value;
+          private boolean encrypted;
+          public ConfigEntry(String key, String value, boolean encrypted) {
+              this.key = key;
+              this.value = value;
+              this.encrypted = encrypted;
+          }
+          public String getKey() { return key; }
+          public String getValue() { return value; }
+          public boolean isEncrypted() { return encrypted; }
+      }
+  commit_message: "fix: add encrypted flag to ConfigEntry for secret detection"
+fragments:
+- id: entry_encrypted_field
+  selector:
+    path: src/main/java/com/app/config/ConfigEntry.java
+    anchor: "private boolean encrypted"
+- id: entry_is_encrypted
+  selector:
+    path: src/main/java/com/app/config/ConfigEntry.java
+    anchor: "isEncrypted"
+- id: source_uses_entry
+  selector:
+    path: src/main/java/com/app/config/ConfigSource.java
+    anchor: "new ConfigEntry(key, value)"
+- id: resolver_uses_source
+  selector:
+    path: src/main/java/com/app/config/ConfigResolver.java
+    anchor: "List<ConfigSource> sources"
+- id: service_imports_resolver
+  selector:
+    path: src/main/java/com/app/service/AppConfigService.java
+    anchor: "import com.app.config.ConfigResolver"
+- id: controller_imports_service
+  selector:
+    path: src/main/java/com/app/web/SettingsController.java
+    anchor: "import com.app.service.AppConfigService"
+- id: no_env_reader
+  selector:
+    path: src/main/java/com/app/util/EnvReader.java
+    anchor: "GARBAGE_044_ENV_MARKER_A"
+- id: no_property_parser
+  selector:
+    path: src/main/java/com/app/util/PropertyParser.java
+    anchor: "GARBAGE_044_PROP_MARKER_C"
+oracle:
+  required:
+  - entry_encrypted_field
+  - entry_is_encrypted
+  - source_uses_entry
+  - resolver_uses_source
+  - service_imports_resolver
+  allowed:
+  - controller_imports_service
+  forbidden:
+  - no_env_reader
+  - no_property_parser

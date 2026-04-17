@@ -1,0 +1,129 @@
+name: bal3_3hop_035_java_payment_gateway
+tags:
+- lang:java
+- change:single_file
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/app/payment/Transaction.java: |
+      package com.app.payment;
+
+      public class Transaction {
+          private String txId;
+          private double amount;
+          public Transaction(String txId, double amount) {
+              this.txId = txId;
+              this.amount = amount;
+          }
+          public String getTxId() { return txId; }
+          public double getAmount() { return amount; }
+      }
+    src/main/java/com/app/payment/Gateway.java: |
+      package com.app.payment;
+
+      public class Gateway {
+          public boolean charge(Transaction tx) {
+              System.out.println("Charging " + tx.getAmount());
+              return true;
+          }
+      }
+    src/main/java/com/app/service/PaymentService.java: |
+      package com.app.service;
+
+      import com.app.payment.Gateway;
+      import com.app.payment.Transaction;
+
+      public class PaymentService {
+          private final Gateway gateway;
+          public PaymentService(Gateway gateway) {
+              this.gateway = gateway;
+          }
+          public boolean pay(String txId, double amount) {
+              Transaction tx = new Transaction(txId, amount);
+              return gateway.charge(tx);
+          }
+      }
+    src/main/java/com/app/web/CheckoutController.java: |
+      package com.app.web;
+
+      import com.app.service.PaymentService;
+
+      public class CheckoutController {
+          private final PaymentService paymentService;
+          public CheckoutController(PaymentService paymentService) {
+              this.paymentService = paymentService;
+          }
+          public String checkout(String txId, double amount) {
+              boolean ok = paymentService.pay(txId, amount);
+              return ok ? "success" : "failed";
+          }
+      }
+    src/main/java/com/app/util/IdGenerator.java: |
+      package com.app.util;
+
+      public class IdGenerator {
+          public static String GARBAGE_035_ID_MARKER_A = "id";
+          public static String GARBAGE_035_SEQ_MARKER_B = "seq";
+          public static String next() { return "id-1"; }
+      }
+    src/main/java/com/app/util/MoneyFormat.java: |
+      package com.app.util;
+
+      public class MoneyFormat {
+          public static String GARBAGE_035_MONEY_MARKER_C = "money";
+          public static int GARBAGE_035_DECIMAL_MARKER_D = 2;
+          public static String format(double amount) { return "$" + amount; }
+      }
+  changed_files:
+    src/main/java/com/app/payment/Gateway.java: |
+      package com.app.payment;
+
+      public class Gateway {
+          public boolean charge(Transaction tx) {
+              System.out.println("Charging " + tx.getAmount());
+              return true;
+          }
+          public boolean refund(Transaction tx) {
+              System.out.println("Refunding " + tx.getAmount());
+              return true;
+          }
+      }
+  commit_message: "feat: add refund capability to payment Gateway"
+fragments:
+- id: gateway_refund_method
+  selector:
+    path: src/main/java/com/app/payment/Gateway.java
+    anchor: "public boolean refund"
+- id: gateway_uses_transaction
+  selector:
+    path: src/main/java/com/app/payment/Gateway.java
+    anchor: "tx.getAmount"
+- id: service_imports_gateway
+  selector:
+    path: src/main/java/com/app/service/PaymentService.java
+    anchor: "import com.app.payment.Gateway"
+- id: controller_imports_service
+  selector:
+    path: src/main/java/com/app/web/CheckoutController.java
+    anchor: "import com.app.service.PaymentService"
+- id: no_id_generator
+  selector:
+    path: src/main/java/com/app/util/IdGenerator.java
+    anchor: "GARBAGE_035_ID_MARKER_A"
+- id: no_money_format
+  selector:
+    path: src/main/java/com/app/util/MoneyFormat.java
+    anchor: "GARBAGE_035_MONEY_MARKER_C"
+oracle:
+  required:
+  - gateway_refund_method
+  - gateway_uses_transaction
+  - service_imports_gateway
+  - controller_imports_service
+  allowed: []
+  forbidden:
+  - no_id_generator
+  - no_money_format

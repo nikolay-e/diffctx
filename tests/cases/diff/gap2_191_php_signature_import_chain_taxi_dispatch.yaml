@@ -1,0 +1,176 @@
+name: gap2_191_php_signature_import_chain_taxi_dispatch
+tags:
+- change:signature
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:2hop
+- lang:php
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/Taxi/DispatchService.php: |
+      <?php
+
+      namespace App\Taxi;
+
+      use App\Taxi\Fleet\VehiclePool;
+
+      class DispatchService
+      {
+          private VehiclePool $pool;
+
+          public function __construct(VehiclePool $pool)
+          {
+              $this->pool = $pool;
+          }
+
+          public function assignRide(string $passengerId): ?string
+          {
+              $vehicle = $this->pool->nextAvailable();
+              if ($vehicle === null) {
+                  return null;
+              }
+              return $vehicle;
+          }
+
+          public function availableCount(): int
+          {
+              return $this->pool->freeCount();
+          }
+      }
+    src/Taxi/Fleet/VehiclePool.php: |
+      <?php
+
+      namespace App\Taxi\Fleet;
+
+      use App\Taxi\Fleet\Driver;
+
+      class VehiclePool
+      {
+          private array $drivers;
+
+          public function __construct(array $drivers)
+          {
+              $this->drivers = $drivers;
+          }
+
+          public function nextAvailable(): ?string
+          {
+              foreach ($this->drivers as $driver) {
+                  if ($driver->isOnDuty()) {
+                      return $driver->licenseId();
+                  }
+              }
+              return null;
+          }
+
+          public function freeCount(): int
+          {
+              $count = 0;
+              foreach ($this->drivers as $driver) {
+                  if ($driver->isOnDuty()) {
+                      $count++;
+                  }
+              }
+              return $count;
+          }
+      }
+    src/Taxi/Fleet/Driver.php: |
+      <?php
+
+      namespace App\Taxi\Fleet;
+
+      class Driver
+      {
+          private string $license;
+          private bool $onDuty;
+
+          public function __construct(string $license, bool $onDuty)
+          {
+              $this->license = $license;
+              $this->onDuty = $onDuty;
+          }
+
+          public function licenseId(): string
+          {
+              return $this->license;
+          }
+
+          public function isOnDuty(): bool
+          {
+              return $this->onDuty;
+          }
+      }
+    src/Accounting/FareCalculator.php: |
+      <?php
+
+      namespace App\Accounting;
+
+      class FareCalculator
+      {
+          public function compute(float $distanceKm, float $ratePerKm): float
+          {
+              return $distanceKm * $ratePerKm;
+          }
+      }
+  changed_files:
+    src/Taxi/DispatchService.php: |
+      <?php
+
+      namespace App\Taxi;
+
+      use App\Taxi\Fleet\VehiclePool;
+
+      class DispatchService
+      {
+          private VehiclePool $pool;
+
+          public function __construct(VehiclePool $pool)
+          {
+              $this->pool = $pool;
+          }
+
+          public function assignRide(string $passengerId, int $maxWaitMinutes = 10): ?string
+          {
+              $vehicle = $this->pool->nextAvailable();
+              if ($vehicle === null) {
+                  return null;
+              }
+              return $vehicle;
+          }
+
+          public function availableCount(): int
+          {
+              return $this->pool->freeCount();
+          }
+      }
+  commit_message: "feat: add max wait time to ride assignment"
+fragments:
+- id: assign_ride_sig
+  selector:
+    path: src/Taxi/DispatchService.php
+    anchor: "public function assignRide"
+- id: pool_next_available
+  selector:
+    path: src/Taxi/Fleet/VehiclePool.php
+    anchor: "public function nextAvailable"
+- id: driver_on_duty
+  selector:
+    path: src/Taxi/Fleet/Driver.php
+    anchor: "public function isOnDuty"
+- id: no_accounting
+  selector:
+    path: src/Accounting/FareCalculator.php
+- id: no_fare
+  selector:
+    anchor: FareCalculator
+oracle:
+  required:
+  - assign_ride_sig
+  - pool_next_available
+  - driver_on_duty
+  forbidden:
+  - no_accounting
+  - no_fare

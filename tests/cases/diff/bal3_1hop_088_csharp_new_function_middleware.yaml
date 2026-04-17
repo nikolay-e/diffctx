@@ -1,0 +1,326 @@
+name: bal3_1hop_088_csharp_new_function_middleware
+tags:
+- lang:csharp
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: csharp-no-tree-sitter
+repo:
+  initial_files:
+    src/Pipeline/IPipelineStep.cs: |
+      using System;
+
+      namespace App.Pipeline
+      {
+          public interface IPipelineStep<T>
+          {
+              T Execute(T input);
+          }
+      }
+    src/Pipeline/ValidationStep.cs: |
+      using System;
+      using App.Pipeline;
+
+      namespace App.Pipeline.Steps
+      {
+          public class ValidationStep : IPipelineStep<string>
+          {
+              public string Execute(string input)
+              {
+                  if (string.IsNullOrEmpty(input))
+                      throw new ArgumentException("Input cannot be empty");
+                  return input;
+              }
+          }
+      }
+    src/Pipeline/TransformStep.cs: |
+      using System;
+      using App.Pipeline;
+
+      namespace App.Pipeline.Steps
+      {
+          public class TransformStep : IPipelineStep<string>
+          {
+              public string Execute(string input)
+              {
+                  return input.ToUpper();
+              }
+          }
+      }
+    src/Pipeline/LoggingStep.cs: |
+      using System;
+      using App.Pipeline;
+
+      namespace App.Pipeline.Steps
+      {
+          public class LoggingStep : IPipelineStep<string>
+          {
+              public string Execute(string input)
+              {
+                  Console.WriteLine($"Processing: {input}");
+                  return input;
+              }
+          }
+      }
+    src/Pipeline/SanitizationStep.cs: |
+      using System;
+      using App.Pipeline;
+
+      namespace App.Pipeline.Steps
+      {
+          public class SanitizationStep : IPipelineStep<string>
+          {
+              public string Execute(string input)
+              {
+                  return input.Trim();
+              }
+          }
+      }
+    src/Pipeline/EnrichmentStep.cs: |
+      using System;
+      using App.Pipeline;
+
+      namespace App.Pipeline.Steps
+      {
+          public class EnrichmentStep : IPipelineStep<string>
+          {
+              public string Execute(string input)
+              {
+                  return $"[enriched] {input}";
+              }
+          }
+      }
+    src/Storage/BlobStorage.cs: |
+      using System;
+      GARBAGE_088_BLOB_CONTAINER_A = "data";
+      GARBAGE_088_BLOB_TIER_B = "hot";
+
+      namespace App.Storage
+      {
+          public class BlobStorage
+          {
+              public void Upload(string name, byte[] data) { }
+          }
+      }
+    src/Storage/TableStorage.cs: |
+      using System;
+      GARBAGE_088_TABLE_NAME_C = "records";
+      GARBAGE_088_PARTITION_KEY_D = "default";
+
+      namespace App.Storage
+      {
+          public class TableStorage
+          {
+              public void Insert(string key, string value) { }
+          }
+      }
+    src/FeatureManagement/ToggleService.cs: |
+      using System;
+      GARBAGE_088_TOGGLE_PREFIX_E = "feature.";
+      GARBAGE_088_DEFAULT_ON_F = false;
+
+      namespace App.FeatureManagement
+      {
+          public class ToggleService
+          {
+              public bool IsEnabled(string feature) { return false; }
+          }
+      }
+  changed_files:
+    src/Pipeline/IPipelineStep.cs: |
+      using System;
+      using System.Threading.Tasks;
+
+      namespace App.Pipeline
+      {
+          public interface IPipelineStep<T>
+          {
+              T Execute(T input);
+              Task<T> ExecuteAsync(T input);
+              bool CanExecute(T input);
+              string StepName { get; }
+          }
+      }
+    src/Pipeline/ValidationStep.cs: |
+      using System;
+      using App.Pipeline;
+
+      namespace App.Pipeline.Steps
+      {
+          public class ValidationStep : IPipelineStep<string>
+          {
+              public string Execute(string input)
+              {
+                  if (string.IsNullOrEmpty(input))
+                      throw new ArgumentException("Input cannot be empty");
+                  return input;
+              }
+          }
+      }
+    src/Pipeline/TransformStep.cs: |
+      using System;
+      using App.Pipeline;
+
+      namespace App.Pipeline.Steps
+      {
+          public class TransformStep : IPipelineStep<string>
+          {
+              public string Execute(string input)
+              {
+                  return input.ToUpper();
+              }
+          }
+      }
+    src/Pipeline/LoggingStep.cs: |
+      using System;
+      using App.Pipeline;
+
+      namespace App.Pipeline.Steps
+      {
+          public class LoggingStep : IPipelineStep<string>
+          {
+              public string Execute(string input)
+              {
+                  Console.WriteLine($"Processing: {input}");
+                  return input;
+              }
+          }
+      }
+    src/Pipeline/SanitizationStep.cs: |
+      using System;
+      using App.Pipeline;
+
+      namespace App.Pipeline.Steps
+      {
+          public class SanitizationStep : IPipelineStep<string>
+          {
+              public string Execute(string input)
+              {
+                  return input.Trim();
+              }
+          }
+      }
+    src/Pipeline/EnrichmentStep.cs: |
+      using System;
+      using App.Pipeline;
+
+      namespace App.Pipeline.Steps
+      {
+          public class EnrichmentStep : IPipelineStep<string>
+          {
+              public string Execute(string input)
+              {
+                  return $"[enriched] {input}";
+              }
+          }
+      }
+    src/Storage/BlobStorage.cs: |
+      using System;
+      GARBAGE_088_BLOB_CONTAINER_A = "data";
+      GARBAGE_088_BLOB_TIER_B = "hot";
+
+      namespace App.Storage
+      {
+          public class BlobStorage
+          {
+              public void Upload(string name, byte[] data) { }
+          }
+      }
+    src/Storage/TableStorage.cs: |
+      using System;
+      GARBAGE_088_TABLE_NAME_C = "records";
+      GARBAGE_088_PARTITION_KEY_D = "default";
+
+      namespace App.Storage
+      {
+          public class TableStorage
+          {
+              public void Insert(string key, string value) { }
+          }
+      }
+    src/FeatureManagement/ToggleService.cs: |
+      using System;
+      GARBAGE_088_TOGGLE_PREFIX_E = "feature.";
+      GARBAGE_088_DEFAULT_ON_F = false;
+
+      namespace App.FeatureManagement
+      {
+          public class ToggleService
+          {
+              public bool IsEnabled(string feature) { return false; }
+          }
+      }
+  commit_message: "feat: add ExecuteAsync, CanExecute and StepName to IPipelineStep"
+fragments:
+- id: validation_using
+  selector:
+    path: src/Pipeline/ValidationStep.cs
+    anchor: "using App.Pipeline"
+- id: validation_impl
+  selector:
+    path: src/Pipeline/ValidationStep.cs
+    anchor: "class ValidationStep : IPipelineStep<string>"
+- id: transform_using
+  selector:
+    path: src/Pipeline/TransformStep.cs
+    anchor: "using App.Pipeline"
+- id: logging_using
+  selector:
+    path: src/Pipeline/LoggingStep.cs
+    anchor: "using App.Pipeline"
+- id: sanitization_using
+  selector:
+    path: src/Pipeline/SanitizationStep.cs
+    anchor: "using App.Pipeline"
+- id: enrichment_using
+  selector:
+    path: src/Pipeline/EnrichmentStep.cs
+    anchor: "using App.Pipeline"
+- id: no_blob
+  selector:
+    path: src/Storage/BlobStorage.cs
+- id: no_table
+  selector:
+    path: src/Storage/TableStorage.cs
+- id: no_toggle
+  selector:
+    path: src/FeatureManagement/ToggleService.cs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_088_BLOB_CONTAINER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_088_BLOB_TIER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_088_TABLE_NAME_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_088_PARTITION_KEY_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_088_TOGGLE_PREFIX_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_088_DEFAULT_ON_F
+oracle:
+  required:
+  - validation_using
+  - validation_impl
+  - transform_using
+  - logging_using
+  - sanitization_using
+  - enrichment_using
+  allowed: []
+  forbidden:
+  - no_blob
+  - no_table
+  - no_toggle
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

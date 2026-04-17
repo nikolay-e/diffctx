@@ -1,138 +1,137 @@
 name: csharp_006_interface_implementation
+tags:
+- lang:rust
+- change:bug_fix
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
 repo:
   initial_files:
-    Interfaces/IRepository.cs: |
-      namespace MyApp.Interfaces;
-
-      public interface IRepository<T> where T : class
-      {
-          T? GetById(int id);
-          IEnumerable<T> GetAll();
-          void Save(T entity);
-          void Delete(int id);
-          bool Exists(int id);
+    src/retry/backoff.rs: |
+      pub struct ExponentialBackoff {
+          base_ms: u64,
+          max_ms: u64,
       }
-    Models/User.cs: |
-      namespace MyApp.Models;
 
-      public class User
-      {
-          public int Id { get; set; }
-          public string Name { get; set; } = string.Empty;
-          public string Email { get; set; } = string.Empty;
-          public bool IsActive { get; set; } = true;
+      impl ExponentialBackoff {
+          pub fn new(base_ms: u64, max_ms: u64) -> Self {
+              ExponentialBackoff { base_ms, max_ms }
+          }
+
+          pub fn delay_for_attempt(&self, attempt: u32) -> u64 {
+              // BUG: no cap applied; returns values above max_ms for large attempts
+              self.base_ms * 2u64.pow(attempt)
+          }
       }
-    Repositories/UserRepository.cs: |
-      namespace MyApp.Repositories;
+    src/client/http_retry.rs: |
+      use crate::retry::backoff::ExponentialBackoff;
 
-      public class UserRepository
-      {
+      pub struct RetryingClient {
+          backoff: ExponentialBackoff,
+          max_attempts: u32,
       }
-    Unrelated/BackupScheduler.cs: |
-      namespace MyApp.Unrelated;
 
-      public class BackupScheduler
-      {
-          private const string GARBAGE_CS_006_BACKUP_SCHEDULER_A = "backup_scheduler_marker";
+      impl RetryingClient {
+          pub fn new(base_ms: u64, max_ms: u64, max_attempts: u32) -> Self {
+              RetryingClient {
+                  backoff: ExponentialBackoff::new(base_ms, max_ms),
+                  max_attempts,
+              }
+          }
 
-          public void Schedule() => _ = GARBAGE_CS_006_BACKUP_SCHEDULER_A;
+          pub fn next_delay(&self, attempt: u32) -> Option<u64> {
+              if attempt >= self.max_attempts {
+                  return None;
+              }
+              Some(self.backoff.delay_for_attempt(attempt))
+          }
       }
-    Unrelated/MigrationRunner.cs: |
-      namespace MyApp.Unrelated;
-
-      public class MigrationRunner
-      {
-          public const string GARBAGE_CS_006_MIGRATION_RUNNER_B = "migration_runner_marker";
-
-          public void RunMigrations() => _ = GARBAGE_CS_006_MIGRATION_RUNNER_B;
-      }
+    garbage/circuit_breaker.rs: |
+      // GARBAGE_BKOF_A = "circuit_breaker_marker"
+      pub struct CircuitBreaker { pub threshold: u32 }
+    garbage/rate_limiter.rs: |
+      // GARBAGE_BKOF_B = "rate_limiter_marker"
+      pub fn is_allowed(_key: &str) -> bool { true }
+    garbage/timeout.rs: |
+      // GARBAGE_BKOF_C = "timeout_marker"
+      pub fn apply_timeout(_ms: u64) {}
   changed_files:
-    Interfaces/IRepository.cs: |
-      namespace MyApp.Interfaces;
-
-      public interface IRepository<T> where T : class
-      {
-          T? GetById(int id);
-          IEnumerable<T> GetAll();
-          void Save(T entity);
-          void Delete(int id);
-          bool Exists(int id);
+    src/retry/backoff.rs: |
+      pub struct ExponentialBackoff {
+          base_ms: u64,
+          max_ms: u64,
       }
-    Models/User.cs: |
-      namespace MyApp.Models;
 
-      public class User
-      {
-          public int Id { get; set; }
-          public string Name { get; set; } = string.Empty;
-          public string Email { get; set; } = string.Empty;
-          public bool IsActive { get; set; } = true;
+      impl ExponentialBackoff {
+          pub fn new(base_ms: u64, max_ms: u64) -> Self {
+              ExponentialBackoff { base_ms, max_ms }
+          }
+
+          pub fn delay_for_attempt(&self, attempt: u32) -> u64 {
+              let delay = self.base_ms.saturating_mul(2u64.saturating_pow(attempt));
+              delay.min(self.max_ms)
+          }
       }
-    Repositories/UserRepository.cs: |
-      using MyApp.Interfaces;
-      using MyApp.Models;
+    src/client/http_retry.rs: |
+      use crate::retry::backoff::ExponentialBackoff;
 
-      namespace MyApp.Repositories;
-
-      public class UserRepository : IRepository<User>
-      {
-          private readonly Dictionary<int, User> _users = new();
-
-          public User? GetById(int id) => _users.GetValueOrDefault(id);
-
-          public IEnumerable<User> GetAll() => _users.Values;
-
-          public void Save(User entity) => _users[entity.Id] = entity;
-
-          public void Delete(int id) => _users.Remove(id);
-
-          public bool Exists(int id) => _users.ContainsKey(id);
+      pub struct RetryingClient {
+          backoff: ExponentialBackoff,
+          max_attempts: u32,
       }
-    Unrelated/BackupScheduler.cs: |
-      namespace MyApp.Unrelated;
 
-      public class BackupScheduler
-      {
-          private const string GARBAGE_CS_006_BACKUP_SCHEDULER_A = "backup_scheduler_marker";
+      impl RetryingClient {
+          pub fn new(base_ms: u64, max_ms: u64, max_attempts: u32) -> Self {
+              RetryingClient {
+                  backoff: ExponentialBackoff::new(base_ms, max_ms),
+                  max_attempts,
+              }
+          }
 
-          public void Schedule() => _ = GARBAGE_CS_006_BACKUP_SCHEDULER_A;
+          pub fn next_delay(&self, attempt: u32) -> Option<u64> {
+              if attempt >= self.max_attempts {
+                  return None;
+              }
+              Some(self.backoff.delay_for_attempt(attempt))
+          }
       }
-    Unrelated/MigrationRunner.cs: |
-      namespace MyApp.Unrelated;
-
-      public class MigrationRunner
-      {
-          public const string GARBAGE_CS_006_MIGRATION_RUNNER_B = "migration_runner_marker";
-
-          public void RunMigrations() => _ = GARBAGE_CS_006_MIGRATION_RUNNER_B;
-      }
-  commit_message: Update files
+    garbage/circuit_breaker.rs: |
+      // GARBAGE_BKOF_A = "circuit_breaker_marker"
+      pub struct CircuitBreaker { pub threshold: u32 }
+    garbage/rate_limiter.rs: |
+      // GARBAGE_BKOF_B = "rate_limiter_marker"
+      pub fn is_allowed(_key: &str) -> bool { true }
+    garbage/timeout.rs: |
+      // GARBAGE_BKOF_C = "timeout_marker"
+      pub fn apply_timeout(_ms: u64) {}
+  commit_message: "fix: cap exponential delay at max_ms in ExponentialBackoff"
 fragments:
-- id: userrepository_file
+- id: delay_capped
   selector:
-    path: Repositories/UserRepository.cs
-- id: req_global_0
+    anchor: "delay.min(self.max_ms)"
+- id: saturating_mul
   selector:
-    anchor: 'public class UserRepository : IRepository<User>'
-- id: no_global_0
+    anchor: "self.base_ms.saturating_mul(2u64.saturating_pow(attempt))"
+- id: client_uses_backoff
   selector:
-    anchor: GARBAGE_CS_006_BACKUP_SCHEDULER_A
-- id: no_global_1
+    anchor: "use crate::retry::backoff::ExponentialBackoff"
+- id: no_garbage_a
   selector:
-    anchor: GARBAGE_CS_006_MIGRATION_RUNNER_B
-- id: no_global_2
+    anchor: GARBAGE_BKOF_A
+- id: no_garbage_b
   selector:
-    anchor: BackupScheduler.cs
-- id: no_global_3
+    anchor: GARBAGE_BKOF_B
+- id: no_garbage_c
   selector:
-    anchor: MigrationRunner.cs
+    anchor: GARBAGE_BKOF_C
 oracle:
   required:
-  - userrepository_file
-  - req_global_0
+  - delay_capped
+  - saturating_mul
+  - client_uses_backoff
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

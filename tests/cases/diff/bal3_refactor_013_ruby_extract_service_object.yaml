@@ -1,0 +1,183 @@
+name: bal3_refactor_013_ruby_extract_service_object
+tags:
+- lang:ruby
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    app/controllers/orders_controller.rb: |
+      class OrdersController
+        def create(params)
+          order = Order.new(params[:product_id], params[:quantity])
+          total = order.quantity * fetch_price(order.product_id)
+          order.total = total
+          order.status = "pending"
+          OrderRepository.save(order)
+          Mailer.send_confirmation(order)
+          order
+        end
+
+        private
+
+        def fetch_price(product_id)
+          Product.find(product_id).price
+        end
+      end
+    app/models/order.rb: |
+      class Order
+        attr_accessor :product_id, :quantity, :total, :status
+
+        def initialize(product_id, quantity)
+          @product_id = product_id
+          @quantity = quantity
+        end
+      end
+    app/models/product.rb: |
+      class Product
+        attr_reader :id, :name, :price
+
+        def initialize(id, name, price)
+          @id = id
+          @name = name
+          @price = price
+        end
+
+        def self.find(id)
+          new(id, "Widget", 9.99)
+        end
+      end
+    lib/analytics/tracker.rb: |
+      GARBAGE_R013_TRACKER_A = "analytics"
+
+      class AnalyticsTracker
+        def track(event)
+        end
+      end
+    lib/notifications/sms.rb: |
+      GARBAGE_R013_SMS_B = "sms"
+
+      class SmsSender
+        def send(phone, message)
+        end
+      end
+    lib/export/pdf.rb: |
+      GARBAGE_R013_PDF_C = "pdf"
+
+      class PdfExporter
+        def export(data)
+          ""
+        end
+      end
+  changed_files:
+    app/services/create_order_service.rb: |
+      class CreateOrderService
+        def call(product_id:, quantity:)
+          product = Product.find(product_id)
+          order = Order.new(product_id, quantity)
+          order.total = quantity * product.price
+          order.status = "pending"
+          OrderRepository.save(order)
+          Mailer.send_confirmation(order)
+          order
+        end
+      end
+    app/controllers/orders_controller.rb: |
+      class OrdersController
+        def create(params)
+          CreateOrderService.new.call(
+            product_id: params[:product_id],
+            quantity: params[:quantity]
+          )
+        end
+      end
+    app/models/order.rb: |
+      class Order
+        attr_accessor :product_id, :quantity, :total, :status
+
+        def initialize(product_id, quantity)
+          @product_id = product_id
+          @quantity = quantity
+        end
+      end
+    app/models/product.rb: |
+      class Product
+        attr_reader :id, :name, :price
+
+        def initialize(id, name, price)
+          @id = id
+          @name = name
+          @price = price
+        end
+
+        def self.find(id)
+          new(id, "Widget", 9.99)
+        end
+      end
+    lib/analytics/tracker.rb: |
+      GARBAGE_R013_TRACKER_A = "analytics"
+
+      class AnalyticsTracker
+        def track(event)
+        end
+      end
+    lib/notifications/sms.rb: |
+      GARBAGE_R013_SMS_B = "sms"
+
+      class SmsSender
+        def send(phone, message)
+        end
+      end
+    lib/export/pdf.rb: |
+      GARBAGE_R013_PDF_C = "pdf"
+
+      class PdfExporter
+        def export(data)
+          ""
+        end
+      end
+  commit_message: "refactor: extract order creation logic into service object"
+fragments:
+- id: service_class
+  selector:
+    path: app/services/create_order_service.rb
+    anchor: "class CreateOrderService"
+- id: service_call_method
+  selector:
+    path: app/services/create_order_service.rb
+    anchor: "def call(product_id:, quantity:)"
+- id: controller_delegates
+  selector:
+    path: app/controllers/orders_controller.rb
+    anchor: "CreateOrderService.new.call"
+- id: product_model
+  selector:
+    path: app/models/product.rb
+    anchor: "class Product"
+- id: order_model
+  selector:
+    path: app/models/order.rb
+    anchor: "class Order"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_R013_TRACKER_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_R013_SMS_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_R013_PDF_C
+oracle:
+  required:
+  - service_class
+  - service_call_method
+  - controller_delegates
+  allowed:
+  - product_model
+  - order_model
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

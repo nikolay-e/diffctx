@@ -4,6 +4,7 @@ import logging
 import os
 import signal
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -225,7 +226,7 @@ def build_diff_context(
 
     import threading
 
-    can_use_alarm = threading.current_thread() is threading.main_thread()
+    can_use_alarm = hasattr(signal, "SIGALRM") and threading.current_thread() is threading.main_thread()
 
     if can_use_alarm and timeout > 0:
 
@@ -267,20 +268,26 @@ def build_diff_context(
     )
 
 
-def _build_diff_context_inner(
+@dataclass
+class _DiscoveryResult:
+    hunks: list[Any]
+    diff_text: str
+    changed_files: list[Path]
+    discovered_files: list[Path]
+    all_fragments: list[Fragment]
+    preferred_revs: list[str]
+    config: PipelineConfig
+    timing: tuple[float, float, float]
+
+
+def _run_discovery(
     root_dir: Path,
     diff_range: str,
-    budget_tokens: int | None,
-    alpha: float,
-    tau: float,
-    no_content: bool,
     ignore_file: Path | None,
     no_default_ignores: bool,
-    full: bool,
     whitelist_file: Path | None,
     scoring_mode: str,
-) -> dict[str, Any]:
-
+) -> _DiscoveryResult | None:
     hunks = _git.parse_diff(root_dir, diff_range)
 
     base_rev, head_rev = split_diff_range(diff_range)
@@ -294,15 +301,20 @@ def _build_diff_context_inner(
 
     if not hunks:
         logger.warning("no diff hunks found — empty diff or parse failure")
-        return _empty_tree(root_dir)
+        return None
 
     diff_text = _git.get_diff_text(root_dir, diff_range)
     expansion_concepts = concepts_from_diff_text(diff_text)
     if untracked:
         expansion_concepts = _enrich_concepts(expansion_concepts, untracked)
 
-    changed_files = _resolve_changed_files(root_dir, diff_range, untracked, combined_spec, wl_spec)
+    if head_rev and not os.environ.get("DIFFCTX_NO_COMMIT_SIGNAL"):
+        commit_msg = _git.get_commit_message(root_dir, head_rev)
+        if commit_msg:
+            msg_concepts = concepts_from_diff_text(commit_msg)
+            expansion_concepts = frozenset(expansion_concepts | msg_concepts)
 
+    changed_files = _resolve_changed_files(root_dir, diff_range, untracked, combined_spec, wl_spec)
     preferred_revs = _build_preferred_revs(base_rev, head_rev)
 
     t0 = time.perf_counter()
@@ -317,7 +329,6 @@ def _build_diff_context_inner(
         t1 = time.perf_counter()
 
         file_cache = _build_file_cache(all_candidate_files)
-
         mode = ScoringMode(os.environ.get("DIFFCTX_SCORING", scoring_mode))
         config = PipelineConfig.from_mode(mode, n_candidate_files=len(all_candidate_files))
 
@@ -354,6 +365,45 @@ def _build_diff_context_inner(
         fragmented = {str(f.path.relative_to(root_dir)) for f in all_fragments}
         (_dump / "fragmented.txt").write_text("\n".join(sorted(fragmented)) + "\n")
         (_dump / "candidates.txt").write_text(f"candidates={len(all_candidate_files)} discovered={len(discovered_files)}\n")
+
+    return _DiscoveryResult(
+        hunks=hunks,
+        diff_text=diff_text,
+        changed_files=changed_files,
+        discovered_files=discovered_files,
+        all_fragments=all_fragments,
+        preferred_revs=preferred_revs,
+        config=config,
+        timing=(t0, t1, t2),
+    )
+
+
+def _build_diff_context_inner(
+    root_dir: Path,
+    diff_range: str,
+    budget_tokens: int | None,
+    alpha: float,
+    tau: float,
+    no_content: bool,
+    ignore_file: Path | None,
+    no_default_ignores: bool,
+    full: bool,
+    whitelist_file: Path | None,
+    scoring_mode: str,
+) -> dict[str, Any]:
+
+    dr = _run_discovery(root_dir, diff_range, ignore_file, no_default_ignores, whitelist_file, scoring_mode)
+    if dr is None:
+        return _empty_tree(root_dir)
+
+    hunks = dr.hunks
+    diff_text = dr.diff_text
+    all_fragments = dr.all_fragments
+    changed_files = dr.changed_files
+    discovered_files = dr.discovered_files
+    preferred_revs = dr.preferred_revs
+    config = dr.config
+    t0, t1, t2 = dr.timing
 
     _assign_token_counts(all_fragments)
 
@@ -398,9 +448,10 @@ def _build_diff_context_inner(
     t5 = time.perf_counter()
     logger.debug("diffctx: timing — graph+select %.3fs", t5 - t4)
 
-    if dump_dir:
+    _dump_dir = os.environ.get("DIFFCTX_DUMP_DIR")
+    if _dump_dir:
         sel_paths = {str(f.path.relative_to(root_dir)) for f in selected}
-        (Path(dump_dir) / "selected.txt").write_text("\n".join(sorted(sel_paths)) + "\n")
+        (Path(_dump_dir) / "selected.txt").write_text("\n".join(sorted(sel_paths)) + "\n")
 
     if no_content:
         for frag in selected:

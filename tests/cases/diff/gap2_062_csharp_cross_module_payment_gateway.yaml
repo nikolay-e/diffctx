@@ -1,0 +1,222 @@
+name: gap2_062_csharp_cross_module_payment_gateway
+tags:
+- change:single_file
+- context:cross_module
+- difficulty:medium
+- distance:2hop
+- lang:csharp
+repo:
+  initial_files:
+    Payment/IPaymentProvider.cs: |
+      namespace Payment
+      {
+          public interface IPaymentProvider
+          {
+              bool Charge(string customerId, decimal amount);
+              bool Refund(string transactionId);
+          }
+      }
+    Payment/StripeProvider.cs: |
+      using Payment;
+
+      namespace Payment.Providers
+      {
+          public class StripeProvider : IPaymentProvider
+          {
+              public bool Charge(string customerId, decimal amount) => true;
+              public bool Refund(string transactionId) => true;
+          }
+      }
+    Checkout/CheckoutService.cs: |
+      using Payment;
+
+      namespace Checkout
+      {
+          public class CheckoutService
+          {
+              private readonly IPaymentProvider _provider;
+
+              public CheckoutService(IPaymentProvider provider)
+              {
+                  _provider = provider;
+              }
+
+              public bool ProcessOrder(string customerId, decimal total)
+              {
+                  return _provider.Charge(customerId, total);
+              }
+          }
+      }
+    Notifications/EmailSender.cs: |
+      const string TRAP_GAP2_062_EMAIL_A = "email_noise";
+      const int TRAP_GAP2_062_EMAIL_B = 587;
+
+      namespace Notifications
+      {
+          public class EmailSender
+          {
+              public void Send(string to, string body) { }
+          }
+      }
+    Reports/SalesReport.cs: |
+      const string TRAP_GAP2_062_REPORT_C = "report_noise";
+      const bool TRAP_GAP2_062_REPORT_D = false;
+
+      namespace Reports
+      {
+          public class SalesReport
+          {
+              public string Generate(DateTime from, DateTime to) => "";
+          }
+      }
+    Inventory/StockTracker.cs: |
+      const string TRAP_GAP2_062_STOCK_E = "stock_noise";
+      const int TRAP_GAP2_062_STOCK_F = 100;
+
+      namespace Inventory
+      {
+          public class StockTracker
+          {
+              public int GetQuantity(string sku) => 0;
+          }
+      }
+  changed_files:
+    Payment/IPaymentProvider.cs: |
+      namespace Payment
+      {
+          public interface IPaymentProvider
+          {
+              bool Charge(string customerId, decimal amount, string currency);
+              bool Refund(string transactionId);
+              bool ValidateCard(string cardToken);
+          }
+      }
+    Payment/StripeProvider.cs: |
+      using Payment;
+
+      namespace Payment.Providers
+      {
+          public class StripeProvider : IPaymentProvider
+          {
+              public bool Charge(string customerId, decimal amount, string currency) => true;
+              public bool Refund(string transactionId) => true;
+              public bool ValidateCard(string cardToken) => true;
+          }
+      }
+    Checkout/CheckoutService.cs: |
+      using Payment;
+
+      namespace Checkout
+      {
+          public class CheckoutService
+          {
+              private readonly IPaymentProvider _provider;
+
+              public CheckoutService(IPaymentProvider provider)
+              {
+                  _provider = provider;
+              }
+
+              public bool ProcessOrder(string customerId, decimal total)
+              {
+                  return _provider.Charge(customerId, total);
+              }
+          }
+      }
+    Notifications/EmailSender.cs: |
+      const string TRAP_GAP2_062_EMAIL_A = "email_noise";
+      const int TRAP_GAP2_062_EMAIL_B = 587;
+
+      namespace Notifications
+      {
+          public class EmailSender
+          {
+              public void Send(string to, string body) { }
+          }
+      }
+    Reports/SalesReport.cs: |
+      const string TRAP_GAP2_062_REPORT_C = "report_noise";
+      const bool TRAP_GAP2_062_REPORT_D = false;
+
+      namespace Reports
+      {
+          public class SalesReport
+          {
+              public string Generate(DateTime from, DateTime to) => "";
+          }
+      }
+    Inventory/StockTracker.cs: |
+      const string TRAP_GAP2_062_STOCK_E = "stock_noise";
+      const int TRAP_GAP2_062_STOCK_F = 100;
+
+      namespace Inventory
+      {
+          public class StockTracker
+          {
+              public int GetQuantity(string sku) => 0;
+          }
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: charge_currency
+  selector:
+    path: Payment/IPaymentProvider.cs
+    anchor: "bool Charge(string customerId, decimal amount, string currency)"
+- id: validate_card
+  selector:
+    path: Payment/IPaymentProvider.cs
+    anchor: "bool ValidateCard(string cardToken)"
+- id: stripe_implements
+  selector:
+    path: Payment/StripeProvider.cs
+    anchor: "public class StripeProvider : IPaymentProvider"
+- id: checkout_uses_provider
+  selector:
+    path: Checkout/CheckoutService.cs
+    anchor: "_provider.Charge(customerId, total)"
+- id: no_email
+  selector:
+    path: Notifications/EmailSender.cs
+- id: no_report
+  selector:
+    path: Reports/SalesReport.cs
+- id: no_stock
+  selector:
+    path: Inventory/StockTracker.cs
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_062_EMAIL_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_062_EMAIL_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP2_062_REPORT_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP2_062_REPORT_D
+- id: no_global_4
+  selector:
+    anchor: TRAP_GAP2_062_STOCK_E
+- id: no_global_5
+  selector:
+    anchor: TRAP_GAP2_062_STOCK_F
+oracle:
+  required:
+  - charge_currency
+  - validate_card
+  - stripe_implements
+  - checkout_uses_provider
+  allowed: []
+  forbidden:
+  - no_email
+  - no_report
+  - no_stock
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

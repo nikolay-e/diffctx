@@ -1,0 +1,294 @@
+name: bal3_1hop_035_php_multi_file_event
+tags:
+- lang:php
+- change:multi_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/Events/EventDispatcher.php: |
+      <?php
+      namespace App\Events;
+
+      class EventDispatcher
+      {
+          private array $listeners = [];
+
+          public function listen(string $event, callable $handler): void
+          {
+              $this->listeners[$event][] = $handler;
+          }
+
+          public function dispatch(string $event, array $payload): void
+          {
+              foreach ($this->listeners[$event] ?? [] as $handler) {
+                  $handler($payload);
+              }
+          }
+      }
+    src/Events/EventSubscriber.php: |
+      <?php
+      namespace App\Events;
+
+      class EventSubscriber
+      {
+          private EventDispatcher $dispatcher;
+
+          public function __construct(EventDispatcher $dispatcher)
+          {
+              $this->dispatcher = $dispatcher;
+          }
+
+          public function subscribe(string $event, callable $callback): void
+          {
+              $this->dispatcher->listen($event, $callback);
+          }
+      }
+    src/Services/OrderService.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Events\EventDispatcher;
+
+      class OrderService
+      {
+          private EventDispatcher $events;
+
+          public function __construct(EventDispatcher $events)
+          {
+              $this->events = $events;
+          }
+
+          public function placeOrder(array $items): array
+          {
+              $order = ['id' => rand(), 'items' => $items];
+              $this->events->dispatch('order.placed', $order);
+              return $order;
+          }
+      }
+    src/Services/AuditLogger.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Events\EventDispatcher;
+
+      class AuditLogger
+      {
+          private EventDispatcher $dispatcher;
+
+          public function __construct(EventDispatcher $dispatcher)
+          {
+              $this->dispatcher = $dispatcher;
+          }
+
+          public function logAction(string $action, array $context): void
+          {
+              $this->dispatcher->dispatch('audit.log', [
+                  'action' => $action,
+                  'context' => $context,
+              ]);
+          }
+      }
+    src/Services/NotificationBus.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Events\EventDispatcher;
+      use App\Events\EventSubscriber;
+
+      class NotificationBus
+      {
+          private EventSubscriber $subscriber;
+
+          public function __construct(EventSubscriber $subscriber)
+          {
+              $this->subscriber = $subscriber;
+          }
+
+          public function onOrderPlaced(callable $handler): void
+          {
+              $this->subscriber->subscribe('order.placed', $handler);
+          }
+      }
+    src/Services/AnalyticsTracker.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Events\EventDispatcher;
+
+      class AnalyticsTracker
+      {
+          private EventDispatcher $events;
+
+          public function __construct(EventDispatcher $events)
+          {
+              $this->events = $events;
+          }
+
+          public function track(string $eventName, array $data): void
+          {
+              $this->events->dispatch('analytics.' . $eventName, $data);
+          }
+      }
+    src/Util/ArrayUtil.php: |
+      <?php
+      namespace App\Util;
+
+      GARBAGE_BAL3_035_ARRAY_A = 'array';
+      GARBAGE_BAL3_035_FLATTEN_B = true;
+
+      class ArrayUtil
+      {
+          public static function flatten(array $arr): array
+          {
+              return array_merge(...$arr);
+          }
+      }
+    src/Util/MathUtil.php: |
+      <?php
+      namespace App\Util;
+
+      GARBAGE_BAL3_035_MATH_C = 'math';
+      GARBAGE_BAL3_035_ROUND_D = 2;
+
+      class MathUtil
+      {
+          public static function average(array $values): float
+          {
+              return array_sum($values) / count($values);
+          }
+      }
+    src/Util/FileUtil.php: |
+      <?php
+      namespace App\Util;
+
+      GARBAGE_BAL3_035_FILE_E = 'file';
+      GARBAGE_BAL3_035_EXT_F = 'txt';
+
+      class FileUtil
+      {
+          public static function readAll(string $path): string
+          {
+              return file_get_contents($path);
+          }
+      }
+  changed_files:
+    src/Events/EventDispatcher.php: |
+      <?php
+      namespace App\Events;
+
+      class EventDispatcher
+      {
+          private array $listeners = [];
+          private array $history = [];
+
+          public function listen(string $event, callable $handler, int $priority = 0): void
+          {
+              $this->listeners[$event][] = ['handler' => $handler, 'priority' => $priority];
+          }
+
+          public function dispatch(string $event, array $payload): void
+          {
+              $this->history[] = ['event' => $event, 'payload' => $payload];
+              $handlers = $this->listeners[$event] ?? [];
+              usort($handlers, fn($a, $b) => $b['priority'] <=> $a['priority']);
+              foreach ($handlers as $entry) {
+                  $entry['handler']($payload);
+              }
+          }
+
+          public function getHistory(): array
+          {
+              return $this->history;
+          }
+      }
+    src/Events/EventSubscriber.php: |
+      <?php
+      namespace App\Events;
+
+      class EventSubscriber
+      {
+          private EventDispatcher $dispatcher;
+
+          public function __construct(EventDispatcher $dispatcher)
+          {
+              $this->dispatcher = $dispatcher;
+          }
+
+          public function subscribe(string $event, callable $callback, int $priority = 0): void
+          {
+              $this->dispatcher->listen($event, $callback, $priority);
+          }
+
+          public function unsubscribe(string $event): void
+          {
+          }
+      }
+  commit_message: "Add priority-based event dispatch and event history"
+fragments:
+- id: order_service_import
+  selector:
+    path: src/Services/OrderService.php
+    anchor: "use App\\Events\\EventDispatcher"
+- id: order_service_dispatch
+  selector:
+    path: src/Services/OrderService.php
+    anchor: "events->dispatch"
+- id: audit_logger_import
+  selector:
+    path: src/Services/AuditLogger.php
+    anchor: "use App\\Events\\EventDispatcher"
+- id: notification_bus
+  selector:
+    path: src/Services/NotificationBus.php
+    anchor: "use App\\Events\\EventSubscriber"
+- id: analytics_import
+  selector:
+    path: src/Services/AnalyticsTracker.php
+    anchor: "use App\\Events\\EventDispatcher"
+- id: no_array_util
+  selector:
+    path: src/Util/ArrayUtil.php
+- id: no_math_util
+  selector:
+    path: src/Util/MathUtil.php
+- id: no_file_util
+  selector:
+    path: src/Util/FileUtil.php
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_035_ARRAY_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_035_FLATTEN_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_035_MATH_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_035_ROUND_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL3_035_FILE_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL3_035_EXT_F
+oracle:
+  required:
+  - order_service_import
+  - order_service_dispatch
+  - audit_logger_import
+  - notification_bus
+  - analytics_import
+  allowed: []
+  forbidden:
+  - no_array_util
+  - no_math_util
+  - no_file_util
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

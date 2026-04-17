@@ -1,0 +1,149 @@
+name: bal3_cfgcode_004_go_json_rate_limit
+tags:
+- lang:php
+- change:bug_fix
+- change:single_file
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/Media/ImageResizer.php: |
+      <?php
+      namespace App\Media;
+
+      class ImageResizer
+      {
+          public function resize(string $path, int $width, int $height): array
+          {
+              $info = getimagesize($path);
+              $origWidth = $info[0];
+              $origHeight = $info[1];
+
+              $ratio = $origWidth / $origHeight;
+              if ($width / $height > $ratio) {
+                  $width = (int)($height * $ratio);
+              } else {
+                  $height = (int)($width / $ratio);
+              }
+
+              return ['width' => $width, 'height' => $height];
+          }
+
+          public function thumbnail(string $path, int $size): array
+          {
+              return $this->resize($path, $size, $size);
+          }
+      }
+    src/Media/VideoTranscoder.php: |
+      <?php
+      namespace App\Media;
+
+      class VideoTranscoder
+      {
+          public function transcode(string $input, string $format): string
+          {
+              return $input . '.' . $format;
+          }
+      }
+    garbage/StorageDriver.php: |
+      <?php
+      // GARBAGE_RATELIM_A = "s3_storage_driver_marker"
+    garbage/CdnPurger.php: |
+      <?php
+      // GARBAGE_RATELIM_B = "cdn_purge_marker"
+    garbage/MetadataExtractor.php: |
+      <?php
+      // GARBAGE_RATELIM_C = "exif_metadata_marker"
+  changed_files:
+    src/Media/ImageResizer.php: |
+      <?php
+      namespace App\Media;
+
+      class ImageResizer
+      {
+          public function resize(string $path, int $width, int $height): array
+          {
+              if ($width <= 0 || $height <= 0) {
+                  throw new \InvalidArgumentException("Width and height must be positive");
+              }
+
+              $info = getimagesize($path);
+              if ($info === false) {
+                  throw new \RuntimeException("Cannot read image: $path");
+              }
+
+              $origWidth = $info[0];
+              $origHeight = $info[1];
+
+              if ($origHeight === 0) {
+                  throw new \RuntimeException("Image has zero height");
+              }
+
+              $ratio = $origWidth / $origHeight;
+              if ($width / $height > $ratio) {
+                  $width = (int)($height * $ratio);
+              } else {
+                  $height = (int)($width / $ratio);
+              }
+
+              return ['width' => max(1, $width), 'height' => max(1, $height)];
+          }
+
+          public function thumbnail(string $path, int $size): array
+          {
+              return $this->resize($path, $size, $size);
+          }
+      }
+    src/Media/VideoTranscoder.php: |
+      <?php
+      namespace App\Media;
+
+      class VideoTranscoder
+      {
+          public function transcode(string $input, string $format): string
+          {
+              return $input . '.' . $format;
+          }
+      }
+    garbage/StorageDriver.php: |
+      <?php
+      // GARBAGE_RATELIM_A = "s3_storage_driver_marker"
+    garbage/CdnPurger.php: |
+      <?php
+      // GARBAGE_RATELIM_B = "cdn_purge_marker"
+    garbage/MetadataExtractor.php: |
+      <?php
+      // GARBAGE_RATELIM_C = "exif_metadata_marker"
+  commit_message: "fix: validate dimensions and guard against zero-height image in resize"
+fragments:
+- id: dimension_guard
+  selector:
+    path: src/Media/ImageResizer.php
+    anchor: "if ($width <= 0 || $height <= 0)"
+- id: zero_height_guard
+  selector:
+    path: src/Media/ImageResizer.php
+    anchor: "if ($origHeight === 0)"
+- id: no_video_transcoder
+  selector:
+    path: src/Media/VideoTranscoder.php
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_RATELIM_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_RATELIM_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_RATELIM_C
+oracle:
+  required:
+  - dimension_guard
+  - zero_height_guard
+  allowed: []
+  forbidden:
+  - no_video_transcoder
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

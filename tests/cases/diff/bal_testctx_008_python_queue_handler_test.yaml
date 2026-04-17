@@ -1,0 +1,137 @@
+name: bal_testctx_008_python_queue_handler_test
+tags:
+- lang:python
+- change:single_file
+- change:bug_fix
+- context:test_file
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/queue_handler.py: |
+      from collections import deque
+      from typing import Any, Optional
+
+      class PriorityQueue:
+          def __init__(self, max_size: int = 100):
+              self.max_size = max_size
+              self._items: list[tuple[int, Any]] = []
+
+          def push(self, priority: int, item: Any) -> None:
+              if len(self._items) >= self.max_size:
+                  raise OverflowError("Queue is full")
+              self._items.append((priority, item))
+              self._items.sort(key=lambda x: x[0])
+
+          def pop(self) -> Optional[Any]:
+              if not self._items:
+                  return None
+              return self._items.pop(0)[1]
+
+          def peek(self) -> Optional[Any]:
+              if not self._items:
+                  return None
+              return self._items[0][1]
+
+          def size(self) -> int:
+              return len(self._items)
+    tests/test_queue_handler.py: |
+      from src.queue_handler import PriorityQueue
+
+      def test_push_and_pop():
+          q = PriorityQueue()
+          q.push(2, "low")
+          q.push(1, "high")
+          assert q.pop() == "high"
+          assert q.pop() == "low"
+
+      def test_peek_returns_highest_priority():
+          q = PriorityQueue()
+          q.push(5, "last")
+          q.push(1, "first")
+          assert q.peek() == "first"
+          assert q.size() == 2
+
+      def test_pop_empty_returns_none():
+          q = PriorityQueue()
+          assert q.pop() is None
+    src/event_bus.py: |
+      from typing import Callable, Dict, List
+
+      class EventBus:
+          def __init__(self):
+              self._handlers: Dict[str, List[Callable]] = {}
+
+          def subscribe(self, event: str, handler: Callable) -> None:
+              if event not in self._handlers:
+                  self._handlers[event] = []
+              self._handlers[event].append(handler)
+
+          def publish(self, event: str, data: object = None) -> None:
+              for handler in self._handlers.get(event, []):
+                  handler(data)
+  changed_files:
+    src/queue_handler.py: |
+      from collections import deque
+      from typing import Any, Optional
+
+      class PriorityQueue:
+          def __init__(self, max_size: int = 100):
+              self.max_size = max_size
+              self._items: list[tuple[int, Any]] = []
+              self._counter = 0
+
+          def push(self, priority: int, item: Any) -> None:
+              if len(self._items) >= self.max_size:
+                  raise OverflowError("Queue is full")
+              self._items.append((priority, self._counter, item))
+              self._counter += 1
+              self._items.sort(key=lambda x: (x[0], x[1]))
+
+          def pop(self) -> Optional[Any]:
+              if not self._items:
+                  return None
+              return self._items.pop(0)[2]
+
+          def peek(self) -> Optional[Any]:
+              if not self._items:
+                  return None
+              return self._items[0][2]
+
+          def size(self) -> int:
+              return len(self._items)
+
+          def clear(self) -> None:
+              self._items.clear()
+              self._counter = 0
+  commit_message: "fix: preserve insertion order for equal priorities in PriorityQueue"
+fragments:
+- id: push_fn
+  selector:
+    path: src/queue_handler.py
+    anchor: "def push(self, priority: int, item"
+- id: clear_fn
+  selector:
+    path: src/queue_handler.py
+    anchor: "def clear(self)"
+- id: test_imports_queue
+  selector:
+    path: tests/test_queue_handler.py
+    anchor: "from src.queue_handler import PriorityQueue"
+- id: test_push_and_pop
+  selector:
+    path: tests/test_queue_handler.py
+    anchor: "def test_push_and_pop"
+- id: no_event_bus
+  selector:
+    path: src/event_bus.py
+    anchor: "class EventBus"
+oracle:
+  required:
+  - push_fn
+  - test_imports_queue
+  allowed:
+  - clear_fn
+  - test_push_and_pop
+  forbidden:
+  - no_event_bus

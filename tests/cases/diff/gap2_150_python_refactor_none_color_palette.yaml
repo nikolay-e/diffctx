@@ -1,0 +1,83 @@
+name: gap2_150_python_refactor_none_color_palette
+tags:
+- change:refactor
+- context:none
+- difficulty:trivial
+- distance:0hop
+- lang:python
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    palette/rgb.py: |
+      def hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
+          h = hex_color.lstrip('#')
+          r = int(h[0:2], 16)
+          g = int(h[2:4], 16)
+          b = int(h[4:6], 16)
+          return (r, g, b)
+
+      def rgb_to_hex(r: int, g: int, b: int) -> str:
+          return '#{:02x}{:02x}{:02x}'.format(r, g, b)
+
+      def clamp_channel(value: int) -> int:
+          if value < 0:
+              return 0
+          if value > 255:
+              return 255
+          return value
+    palette/blend.py: |
+      BLEND_MODES = ["normal", "multiply", "screen"]
+
+      class ColorBlender:
+          def __init__(self, mode: str = "normal"):
+              self.mode = mode
+
+          def blend(self, c1: tuple, c2: tuple, alpha: float) -> tuple:
+              return tuple(int(a * alpha + b * (1 - alpha)) for a, b in zip(c1, c2))
+    palette/gradient.py: |
+      GRADIENT_STEPS = 10
+
+      class GradientGenerator:
+          def __init__(self, start: tuple, end: tuple):
+              self.start = start
+              self.end = end
+
+          def generate(self, steps: int = GRADIENT_STEPS) -> list[tuple]:
+              return [
+                  tuple(int(s + (e - s) * i / steps) for s, e in zip(self.start, self.end))
+                  for i in range(steps + 1)
+              ]
+  changed_files:
+    palette/rgb.py: |
+      def hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
+          h = hex_color.lstrip('#')
+          return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+
+      def rgb_to_hex(r: int, g: int, b: int) -> str:
+          return f"#{r:02x}{g:02x}{b:02x}"
+
+      def clamp_channel(value: int) -> int:
+          return max(0, min(255, value))
+  commit_message: "refactor: simplify rgb conversion and clamping"
+fragments:
+- id: no_blend
+  selector:
+    path: palette/blend.py
+- id: no_gradient
+  selector:
+    path: palette/gradient.py
+- id: no_blend_modes
+  selector:
+    anchor: BLEND_MODES
+- id: no_gradient_steps
+  selector:
+    anchor: GRADIENT_STEPS
+oracle:
+  required: []
+  allowed: []
+  forbidden:
+  - no_blend
+  - no_gradient
+  - no_blend_modes
+  - no_gradient_steps

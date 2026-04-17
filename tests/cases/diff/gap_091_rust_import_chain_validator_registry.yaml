@@ -1,0 +1,150 @@
+name: gap_091_rust_import_chain_validator_registry
+tags:
+- lang:rust
+- change:new_function
+- change:signature
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:2hop
+repo:
+  initial_files:
+    src/rule.rs: |
+      pub struct Rule {
+          name: String,
+          pattern: String,
+      }
+
+      impl Rule {
+          pub fn new(name: &str, pattern: &str) -> Self {
+              Rule {
+                  name: name.to_string(),
+                  pattern: pattern.to_string(),
+              }
+          }
+
+          pub fn name(&self) -> &str {
+              &self.name
+          }
+
+          pub fn matches(&self, input: &str) -> bool {
+              input.contains(&self.pattern)
+          }
+      }
+    src/registry.rs: |
+      use crate::rule::Rule;
+
+      pub struct Registry {
+          rules: Vec<Rule>,
+      }
+
+      impl Registry {
+          pub fn new() -> Self {
+              Registry { rules: Vec::new() }
+          }
+
+          pub fn add(&mut self, rule: Rule) {
+              self.rules.push(rule);
+          }
+
+          pub fn validate(&self, input: &str) -> bool {
+              self.rules.iter().all(|r| r.matches(input))
+          }
+
+          pub fn count(&self) -> usize {
+              self.rules.len()
+          }
+      }
+    src/sanitizer.rs: |
+      pub fn trim_whitespace(input: &str) -> String {
+          input.trim().to_string()
+      }
+
+      pub fn remove_special_chars(input: &str) -> String {
+          input.chars().filter(|c| c.is_alphanumeric() || *c == ' ').collect()
+      }
+
+      pub fn to_lowercase(input: &str) -> String {
+          input.to_lowercase()
+      }
+
+      pub fn truncate(input: &str, max_len: usize) -> String {
+          if input.len() <= max_len {
+              input.to_string()
+          } else {
+              input[..max_len].to_string()
+          }
+      }
+  changed_files:
+    src/rule.rs: |
+      pub enum Severity {
+          Warning,
+          Error,
+      }
+
+      pub struct Rule {
+          name: String,
+          pattern: String,
+          severity: Severity,
+      }
+
+      impl Rule {
+          pub fn new(name: &str, pattern: &str) -> Self {
+              Rule {
+                  name: name.to_string(),
+                  pattern: pattern.to_string(),
+                  severity: Severity::Error,
+              }
+          }
+
+          pub fn with_severity(name: &str, pattern: &str, severity: Severity) -> Self {
+              Rule {
+                  name: name.to_string(),
+                  pattern: pattern.to_string(),
+                  severity,
+              }
+          }
+
+          pub fn name(&self) -> &str {
+              &self.name
+          }
+
+          pub fn matches(&self, input: &str) -> bool {
+              input.contains(&self.pattern)
+          }
+
+          pub fn is_error(&self) -> bool {
+              matches!(self.severity, Severity::Error)
+          }
+      }
+  commit_message: "feat(rule): add severity levels"
+fixtures:
+  auto_garbage: true
+fragments:
+- id: rule_severity_enum
+  selector:
+    path: src/rule.rs
+    anchor: "pub enum Severity"
+- id: rule_with_severity
+  selector:
+    path: src/rule.rs
+    anchor: "pub fn with_severity"
+- id: registry_uses_rule
+  selector:
+    path: src/registry.rs
+    anchor: "use crate::rule::Rule"
+- id: no_sanitizer
+  selector:
+    path: src/sanitizer.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_091_A
+oracle:
+  required:
+  - rule_severity_enum
+  - rule_with_severity
+  - registry_uses_rule
+  allowed: []
+  forbidden:
+  - no_sanitizer
+  - no_global_0

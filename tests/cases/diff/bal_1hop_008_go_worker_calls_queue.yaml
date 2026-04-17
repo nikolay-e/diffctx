@@ -1,0 +1,151 @@
+name: bal_1hop_008_go_worker_calls_queue
+tags:
+- lang:go
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    internal/queue/broker.go: |
+      package queue
+
+      type Message struct {
+          Topic   string
+          Payload []byte
+      }
+
+      type Broker struct {
+          ch chan *Message
+      }
+
+      func NewBroker(size int) *Broker {
+          return &Broker{ch: make(chan *Message, size)}
+      }
+
+      func (b *Broker) Publish(msg *Message) {
+          b.ch <- msg
+      }
+
+      func (b *Broker) Consume() *Message {
+          return <-b.ch
+      }
+    internal/worker/processor.go: |
+      package worker
+
+      import (
+          "fmt"
+          "myapp/internal/queue"
+      )
+
+      type Processor struct {
+          broker *queue.Broker
+      }
+
+      func NewProcessor(b *queue.Broker) *Processor {
+          return &Processor{broker: b}
+      }
+
+      func (p *Processor) Run() {
+          for {
+              msg := p.broker.Consume()
+              fmt.Printf("processing topic=%s len=%d\n", msg.Topic, len(msg.Payload))
+          }
+      }
+    internal/storage/s3.go: |
+      package storage
+
+      type S3Client struct {
+          Bucket string
+      }
+
+      func NewS3(bucket string) *S3Client {
+          return &S3Client{Bucket: bucket}
+      }
+
+      func (c *S3Client) Upload(key string, data []byte) error {
+          return nil
+      }
+    internal/telemetry/trace.go: |
+      package telemetry
+
+      func StartSpan(name string) {
+          println("span:", name)
+      }
+
+      func EndSpan(name string) {
+          println("end:", name)
+      }
+  changed_files:
+    internal/queue/broker.go: |
+      package queue
+
+      import "context"
+
+      type Message struct {
+          Topic   string
+          Payload []byte
+          Headers map[string]string
+      }
+
+      type Broker struct {
+          ch chan *Message
+      }
+
+      func NewBroker(size int) *Broker {
+          return &Broker{ch: make(chan *Message, size)}
+      }
+
+      func (b *Broker) Publish(ctx context.Context, msg *Message) error {
+          select {
+          case b.ch <- msg:
+              return nil
+          case <-ctx.Done():
+              return ctx.Err()
+          }
+      }
+
+      func (b *Broker) Consume(ctx context.Context) (*Message, error) {
+          select {
+          case msg := <-b.ch:
+              return msg, nil
+          case <-ctx.Done():
+              return nil, ctx.Err()
+          }
+      }
+  commit_message: "feat: add context support to Broker Publish/Consume"
+fragments:
+- id: publish_ctx_sig
+  selector:
+    path: internal/queue/broker.go
+    anchor: "func (b *Broker) Publish(ctx context.Context, msg *Message) error"
+- id: consume_ctx_sig
+  selector:
+    path: internal/queue/broker.go
+    anchor: "func (b *Broker) Consume(ctx context.Context) (*Message, error)"
+- id: message_headers
+  selector:
+    path: internal/queue/broker.go
+    anchor: "Headers map[string]string"
+- id: worker_calls_consume
+  selector:
+    path: internal/worker/processor.go
+    anchor: "p.broker.Consume()"
+- id: unrelated_s3
+  selector:
+    path: internal/storage/s3.go
+    anchor: "func NewS3"
+- id: unrelated_trace
+  selector:
+    path: internal/telemetry/trace.go
+    anchor: "func StartSpan"
+oracle:
+  required:
+  - consume_ctx_sig
+  - worker_calls_consume
+  allowed:
+  - publish_ctx_sig
+  - message_headers
+  forbidden:
+  - unrelated_s3
+  - unrelated_trace

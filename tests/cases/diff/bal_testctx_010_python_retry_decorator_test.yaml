@@ -1,0 +1,133 @@
+name: bal_testctx_010_python_retry_decorator_test
+tags:
+- lang:python
+- change:single_file
+- change:signature
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/retry.py: |
+      import time
+      from functools import wraps
+      from typing import Callable, TypeVar
+
+      T = TypeVar("T")
+
+      def retry(max_attempts: int = 3) -> Callable:
+          def decorator(func: Callable[..., T]) -> Callable[..., T]:
+              @wraps(func)
+              def wrapper(*args, **kwargs) -> T:
+                  last_error: Exception = RuntimeError("no attempts")
+                  for attempt in range(max_attempts):
+                      try:
+                          return func(*args, **kwargs)
+                      except Exception as e:
+                          last_error = e
+                  raise last_error
+              return wrapper
+          return decorator
+    tests/test_retry.py: |
+      from src.retry import retry
+
+      def test_retry_succeeds_first_try():
+          call_count = 0
+
+          @retry(max_attempts=3)
+          def succeed():
+              nonlocal call_count
+              call_count += 1
+              return "ok"
+
+          assert succeed() == "ok"
+          assert call_count == 1
+
+      def test_retry_succeeds_after_failure():
+          call_count = 0
+
+          @retry(max_attempts=3)
+          def flaky():
+              nonlocal call_count
+              call_count += 1
+              if call_count < 3:
+                  raise ValueError("not yet")
+              return "done"
+
+          assert flaky() == "done"
+          assert call_count == 3
+    src/circuit_breaker.py: |
+      from enum import Enum
+
+      class State(Enum):
+          CLOSED = "closed"
+          OPEN = "open"
+          HALF_OPEN = "half_open"
+
+      class CircuitBreaker:
+          def __init__(self, failure_threshold: int = 5):
+              self.failure_threshold = failure_threshold
+              self.failure_count = 0
+              self.state = State.CLOSED
+
+          def record_failure(self) -> None:
+              self.failure_count += 1
+              if self.failure_count >= self.failure_threshold:
+                  self.state = State.OPEN
+
+          def record_success(self) -> None:
+              self.failure_count = 0
+              self.state = State.CLOSED
+  changed_files:
+    src/retry.py: |
+      import time
+      from functools import wraps
+      from typing import Callable, Tuple, Type, TypeVar
+
+      T = TypeVar("T")
+
+      def retry(
+          max_attempts: int = 3,
+          delay_seconds: float = 0.0,
+          retryable_exceptions: Tuple[Type[Exception], ...] = (Exception,),
+      ) -> Callable:
+          def decorator(func: Callable[..., T]) -> Callable[..., T]:
+              @wraps(func)
+              def wrapper(*args, **kwargs) -> T:
+                  last_error: Exception = RuntimeError("no attempts")
+                  for attempt in range(max_attempts):
+                      try:
+                          return func(*args, **kwargs)
+                      except retryable_exceptions as e:
+                          last_error = e
+                          if delay_seconds > 0 and attempt < max_attempts - 1:
+                              time.sleep(delay_seconds)
+                  raise last_error
+              return wrapper
+          return decorator
+  commit_message: "feat: add delay and exception filtering to retry decorator"
+fragments:
+- id: retry_decorator
+  selector:
+    path: src/retry.py
+    anchor: "def retry("
+- id: test_imports_retry
+  selector:
+    path: tests/test_retry.py
+    anchor: "from src.retry import retry"
+- id: test_succeeds_first
+  selector:
+    path: tests/test_retry.py
+    anchor: "def test_retry_succeeds_first_try"
+- id: no_circuit_breaker
+  selector:
+    path: src/circuit_breaker.py
+    anchor: "class CircuitBreaker"
+oracle:
+  required:
+  - retry_decorator
+  - test_imports_retry
+  allowed:
+  - test_succeeds_first
+  forbidden:
+  - no_circuit_breaker

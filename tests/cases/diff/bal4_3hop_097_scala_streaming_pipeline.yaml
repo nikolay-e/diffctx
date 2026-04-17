@@ -1,0 +1,173 @@
+name: bal4_3hop_097_scala_streaming_pipeline
+tags:
+- lang:scala
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/stream/Record.scala: |
+      package stream
+
+      case class Record(key: String, value: String, timestamp: Long)
+
+      object Record {
+        def create(key: String, value: String): Record =
+          Record(key, value, System.currentTimeMillis())
+      }
+    src/main/scala/stream/Transformer.scala: |
+      package stream
+
+      import stream.Record
+
+      trait Transformer {
+        def transform(record: Record): Option[Record]
+      }
+
+      class FilterTransformer(predicate: Record => Boolean) extends Transformer {
+        override def transform(record: Record): Option[Record] =
+          if (predicate(record)) Some(record) else None
+      }
+
+      class MapTransformer(fn: String => String) extends Transformer {
+        override def transform(record: Record): Option[Record] =
+          Some(record.copy(value = fn(record.value)))
+      }
+    src/main/scala/stream/Topology.scala: |
+      package stream
+
+      import stream.{Record, Transformer}
+
+      class Topology(transformers: List[Transformer]) {
+        def process(record: Record): Option[Record] = {
+          transformers.foldLeft(Option(record)) { (rec, t) =>
+            rec.flatMap(t.transform)
+          }
+        }
+      }
+    src/main/scala/stream/Pipeline.scala: |
+      package stream
+
+      import stream.{Record, Topology}
+
+      class Pipeline(topology: Topology) {
+        def run(records: Seq[Record]): Seq[Record] = {
+          records.flatMap(topology.process)
+        }
+      }
+    src/main/scala/sink/OutputSink.scala: |
+      package sink
+
+      import stream.{Record, Pipeline}
+
+      trait OutputSink {
+        def write(records: Seq[Record]): Unit
+      }
+
+      class ConsoleSink extends OutputSink {
+        override def write(records: Seq[Record]): Unit =
+          records.foreach(r => println(s"${r.key}: ${r.value}"))
+      }
+    src/main/scala/app/StreamApp.scala: |
+      package app
+
+      import stream.{Record, Pipeline, Topology, FilterTransformer}
+      import sink.{OutputSink, ConsoleSink}
+
+      object StreamApp {
+        def build(transformers: List[stream.Transformer]): Pipeline = {
+          val topology = new Topology(transformers)
+          new Pipeline(topology)
+        }
+
+        def execute(pipeline: Pipeline, sink: OutputSink, records: Seq[Record]): Unit = {
+          val results = pipeline.run(records)
+          sink.write(results)
+        }
+      }
+    src/main/scala/util/Serializer.scala: |
+      package util
+
+      object Serializer {
+        val GARBAGE_097_SER_A = "avro"
+        val GARBAGE_097_SER_B = "protobuf"
+
+        def serialize(obj: Any): Array[Byte] = Array.empty
+      }
+    src/main/scala/util/Partitioner.scala: |
+      package util
+
+      object Partitioner {
+        val GARBAGE_097_PART_C = "hash"
+        val GARBAGE_097_PART_D = "round-robin"
+
+        def partition(key: String, numPartitions: Int): Int = math.abs(key.hashCode % numPartitions)
+      }
+  changed_files:
+    src/main/scala/stream/Record.scala: |
+      package stream
+
+      case class Record(key: String, value: String, timestamp: Long, partition: Int)
+
+      object Record {
+        def create(key: String, value: String): Record =
+          Record(key, value, System.currentTimeMillis(), 0)
+
+        def create(key: String, value: String, partition: Int): Record =
+          Record(key, value, System.currentTimeMillis(), partition)
+      }
+  commit_message: "feat: add partition field to Record case class"
+fragments:
+- id: record_partition
+  selector:
+    path: src/main/scala/stream/Record.scala
+    anchor: "partition: Int"
+- id: transformer_uses_record
+  selector:
+    path: src/main/scala/stream/Transformer.scala
+    anchor: "import stream.Record"
+- id: topology_process
+  selector:
+    path: src/main/scala/stream/Topology.scala
+    anchor: "import stream."
+- id: pipeline_run
+  selector:
+    path: src/main/scala/stream/Pipeline.scala
+    anchor: "import stream."
+- id: output_sink
+  selector:
+    path: src/main/scala/sink/OutputSink.scala
+    anchor: "import stream."
+- id: stream_app
+  selector:
+    path: src/main/scala/app/StreamApp.scala
+    anchor: "import stream."
+- id: no_serializer
+  selector:
+    path: src/main/scala/util/Serializer.scala
+    anchor: "GARBAGE_097_SER_A"
+- id: no_partitioner
+  selector:
+    path: src/main/scala/util/Partitioner.scala
+    anchor: "GARBAGE_097_PART_C"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_097_SER_B
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_097_PART_D
+oracle:
+  required:
+  - record_partition
+  - transformer_uses_record
+  - topology_process
+  - pipeline_run
+  - output_sink
+  - stream_app
+  allowed: []
+  forbidden:
+  - no_serializer
+  - no_partitioner
+  - no_global_0
+  - no_global_1

@@ -1,0 +1,123 @@
+name: gap2_140_ocaml_same_file_interval_set
+tags:
+- change:single_file
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:ocaml
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    lib/interval.ml: |
+      type t = { lo : float; hi : float }
+
+      let create lo hi =
+        if lo > hi then invalid_arg "lo > hi"
+        else { lo; hi }
+
+      let width iv = iv.hi -. iv.lo
+
+      let contains iv x = x >= iv.lo && x <= iv.hi
+
+      let overlaps a b =
+        a.lo <= b.hi && b.lo <= a.hi
+
+      let intersection a b =
+        if overlaps a b then
+          Some { lo = max a.lo b.lo; hi = min a.hi b.hi }
+        else None
+    lib/range_tree.ml: |
+      let _GARBAGE_GAP2_140_RANGE_A = "range_noise"
+      let _GARBAGE_GAP2_140_RANGE_B = "tree_noise"
+
+      type 'a node =
+        | Leaf
+        | Node of 'a node * 'a * 'a node
+
+      let rec insert tree value = match tree with
+        | Leaf -> Node (Leaf, value, Leaf)
+        | Node (l, v, r) ->
+          if value < v then Node (insert l value, v, r)
+          else Node (l, v, insert r value)
+    lib/segment.ml: |
+      let _GARBAGE_GAP2_140_SEG_C = "segment_noise"
+      let _GARBAGE_GAP2_140_SEG_D = "query_noise"
+
+      type point = { x : float; y : float }
+
+      let distance a b =
+        let dx = b.x -. a.x in
+        let dy = b.y -. a.y in
+        sqrt (dx *. dx +. dy *. dy)
+  changed_files:
+    lib/interval.ml: |
+      type t = { lo : float; hi : float }
+
+      let create lo hi =
+        if lo > hi then invalid_arg "lo > hi"
+        else { lo; hi }
+
+      let width iv = iv.hi -. iv.lo
+
+      let contains iv x = x >= iv.lo && x <= iv.hi
+
+      let overlaps a b =
+        a.lo <= b.hi && b.lo <= a.hi
+
+      let intersection a b =
+        if overlaps a b then
+          Some { lo = max a.lo b.lo; hi = min a.hi b.hi }
+        else None
+
+      let union a b =
+        { lo = min a.lo b.lo; hi = max a.hi b.hi }
+
+      let midpoint iv = (iv.lo +. iv.hi) /. 2.0
+
+      let split iv =
+        let mid = midpoint iv in
+        (create iv.lo mid, create mid iv.hi)
+fragments:
+- id: union_fn
+  selector:
+    path: lib/interval.ml
+    anchor: let union a b
+- id: midpoint_fn
+  selector:
+    path: lib/interval.ml
+    anchor: let midpoint iv
+- id: split_fn
+  selector:
+    path: lib/interval.ml
+    anchor: let split iv
+- id: no_range_tree
+  selector:
+    path: lib/range_tree.ml
+- id: no_segment
+  selector:
+    path: lib/segment.ml
+- id: no_global_0
+  selector:
+    anchor: _GARBAGE_GAP2_140_RANGE_A
+- id: no_global_1
+  selector:
+    anchor: _GARBAGE_GAP2_140_RANGE_B
+- id: no_global_2
+  selector:
+    anchor: _GARBAGE_GAP2_140_SEG_C
+- id: no_global_3
+  selector:
+    anchor: _GARBAGE_GAP2_140_SEG_D
+oracle:
+  required:
+  - union_fn
+  - midpoint_fn
+  - split_fn
+  forbidden:
+  - no_range_tree
+  - no_segment
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

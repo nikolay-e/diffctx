@@ -1,26 +1,224 @@
 name: internals_030_thai_long_comment
+tags:
+- lang:python
+- change:bug_fix
+- change:multi_file
+- context:test_file
+- distance:1hop
+- difficulty:medium
 repo:
   initial_files:
-    thai_long.py: |
-      def placeholder():
-          pass
+    src/config/loader.py: |
+      import os
+      import json
+      from typing import Any, Dict
+
+      class ConfigLoader:
+          def __init__(self, defaults: Dict[str, Any] = None):
+              self._config: Dict[str, Any] = defaults or {}
+
+          def load_file(self, path: str) -> None:
+              with open(path, "r", encoding="utf-8") as f:
+                  data = json.load(f)
+              self._config.update(data)
+
+          def load_env(self, prefix: str = "") -> None:
+              for key, value in os.environ.items():
+                  if prefix and not key.startswith(prefix):
+                      continue
+                  config_key = key[len(prefix):].lower() if prefix else key.lower()
+                  self._config[config_key] = value
+
+          def get(self, key: str, default: Any = None) -> Any:
+              return self._config.get(key, default)
+
+          def require(self, key: str) -> Any:
+              if key not in self._config:
+                  raise KeyError(f"required config key missing: {key}")
+              return self._config[key]
+    src/config/schema.py: |
+      from typing import Any, Dict, Type
+
+      CONFIG_SCHEMA: Dict[str, Type] = {
+          "host": str,
+          "port": int,
+          "debug": bool,
+          "workers": int,
+      }
+
+      def validate_config(config: Dict[str, Any]) -> None:
+          for key, expected_type in CONFIG_SCHEMA.items():
+              if key in config:
+                  val = config[key]
+                  if not isinstance(val, expected_type):
+                      raise TypeError(f"config '{key}' expected {expected_type.__name__}, got {type(val).__name__}")
+    tests/test_config.py: |
+      import pytest
+      from src.config.loader import ConfigLoader
+
+      def test_get_default_when_key_missing():
+          loader = ConfigLoader({"host": "localhost"})
+          assert loader.get("port", 8080) == 8080
+
+      def test_require_raises_when_key_missing():
+          loader = ConfigLoader()
+          with pytest.raises(KeyError, match="required config key missing"):
+              loader.require("database_url")
+
+      def test_load_env_lowercases_keys(monkeypatch):
+          monkeypatch.setenv("APP_HOST", "example.com")
+          loader = ConfigLoader()
+          loader.load_env(prefix="APP_")
+          assert loader.get("host") == "example.com"
+    src/monitoring/health.py: |
+      # GARBAGE_THAI30_A = "health_monitor_unrelated"
+      class HealthMonitor:
+          def check(self) -> bool:
+              return True
+    src/monitoring/metrics.py: |
+      # GARBAGE_THAI30_B = "metrics_monitor_unrelated"
+      class MetricsCollector:
+          def collect(self) -> dict:
+              return {}
+    src/monitoring/alerts.py: |
+      # GARBAGE_THAI30_C = "alerts_monitor_unrelated"
+      class AlertManager:
+          def trigger(self, name: str, severity: str) -> None:
+              pass
   changed_files:
-    thai_long.py: |
-      # ภาษาไทยไม่มีช่องว่างระหว่างคำ สามารถเขียนต่อเนื่องกันได้ยาวมาก
-      # อีกบรรทัดหนึ่งของความคิดเห็นภาษาไทย
-      def process_items(data_list):
-          return [item for item in data_list]
-  commit_message: Update files
+    src/config/loader.py: |
+      import os
+      import json
+      from typing import Any, Dict
+
+      class ConfigLoader:
+          def __init__(self, defaults: Dict[str, Any] = None):
+              self._config: Dict[str, Any] = defaults or {}
+
+          def load_file(self, path: str) -> None:
+              if not os.path.isfile(path):
+                  raise FileNotFoundError(f"config file not found: {path}")
+              with open(path, "r", encoding="utf-8") as f:
+                  data = json.load(f)
+              if not isinstance(data, dict):
+                  raise ValueError("config file must contain a JSON object")
+              self._config.update(data)
+
+          def load_env(self, prefix: str = "") -> None:
+              for key, value in os.environ.items():
+                  if prefix and not key.startswith(prefix):
+                      continue
+                  config_key = key[len(prefix):].lower() if prefix else key.lower()
+                  self._config[config_key] = value
+
+          def get(self, key: str, default: Any = None) -> Any:
+              return self._config.get(key, default)
+
+          def require(self, key: str) -> Any:
+              if key not in self._config:
+                  raise KeyError(f"required config key missing: {key}")
+              return self._config[key]
+
+          def as_dict(self) -> Dict[str, Any]:
+              return dict(self._config)
+    src/config/schema.py: |
+      from typing import Any, Dict, Type
+
+      CONFIG_SCHEMA: Dict[str, Type] = {
+          "host": str,
+          "port": int,
+          "debug": bool,
+          "workers": int,
+      }
+
+      def validate_config(config: Dict[str, Any]) -> None:
+          for key, expected_type in CONFIG_SCHEMA.items():
+              if key in config:
+                  val = config[key]
+                  if not isinstance(val, expected_type):
+                      raise TypeError(f"config '{key}' expected {expected_type.__name__}, got {type(val).__name__}")
+    tests/test_config.py: |
+      import pytest
+      import json
+      import os
+      from src.config.loader import ConfigLoader
+
+      def test_get_default_when_key_missing():
+          loader = ConfigLoader({"host": "localhost"})
+          assert loader.get("port", 8080) == 8080
+
+      def test_require_raises_when_key_missing():
+          loader = ConfigLoader()
+          with pytest.raises(KeyError, match="required config key missing"):
+              loader.require("database_url")
+
+      def test_load_env_lowercases_keys(monkeypatch):
+          monkeypatch.setenv("APP_HOST", "example.com")
+          loader = ConfigLoader()
+          loader.load_env(prefix="APP_")
+          assert loader.get("host") == "example.com"
+
+      def test_load_file_not_found_raises(tmp_path):
+          loader = ConfigLoader()
+          with pytest.raises(FileNotFoundError, match="config file not found"):
+              loader.load_file(str(tmp_path / "nonexistent.json"))
+
+      def test_load_file_non_dict_raises(tmp_path):
+          p = tmp_path / "bad.json"
+          p.write_text("[1, 2, 3]")
+          loader = ConfigLoader()
+          with pytest.raises(ValueError, match="JSON object"):
+              loader.load_file(str(p))
+    src/monitoring/health.py: |
+      # GARBAGE_THAI30_A = "health_monitor_unrelated"
+      class HealthMonitor:
+          def check(self) -> bool:
+              return True
+    src/monitoring/metrics.py: |
+      # GARBAGE_THAI30_B = "metrics_monitor_unrelated"
+      class MetricsCollector:
+          def collect(self) -> dict:
+              return {}
+    src/monitoring/alerts.py: |
+      # GARBAGE_THAI30_C = "alerts_monitor_unrelated"
+      class AlertManager:
+          def trigger(self, name: str, severity: str) -> None:
+              pass
+  commit_message: "fix: validate file existence and JSON object type in ConfigLoader.load_file"
 fragments:
-- id: thai_long_file
+- id: file_not_found_guard
   selector:
-    path: thai_long.py
-- id: req_global_0
+    path: src/config/loader.py
+    anchor: "config file not found"
+- id: non_dict_guard
   selector:
-    anchor: 'def process_items(data_list):'
+    path: src/config/loader.py
+    anchor: "config file must contain a JSON object"
+- id: test_file_not_found
+  selector:
+    path: tests/test_config.py
+    anchor: "test_load_file_not_found_raises"
+- id: test_non_dict_raises
+  selector:
+    path: tests/test_config.py
+    anchor: "test_load_file_non_dict_raises"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_THAI30_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_THAI30_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_THAI30_C
 oracle:
   required:
-  - thai_long_file
-  - req_global_0
-  allowed: []
-  forbidden: []
+  - file_not_found_guard
+  - non_dict_guard
+  - test_file_not_found
+  allowed:
+  - test_non_dict_raises
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

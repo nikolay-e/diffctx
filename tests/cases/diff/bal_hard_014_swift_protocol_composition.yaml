@@ -1,0 +1,188 @@
+name: bal_hard_014_swift_protocol_composition
+tags:
+- lang:swift
+- change:multi_file
+- change:signature
+- context:cross_module
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    Sources/Protocols/Identifiable.swift: |
+      protocol AppIdentifiable {
+          var id: String { get }
+      }
+    Sources/Protocols/Timestamped.swift: |
+      import Foundation
+      protocol Timestamped {
+          var createdAt: Date { get }
+      }
+    Sources/Protocols/Validatable.swift: |
+      protocol Validatable {
+          func validate() -> Bool
+      }
+    Sources/Models/Invoice.swift: |
+      import Foundation
+      struct Invoice: AppIdentifiable, Timestamped, Validatable {
+          let id: String
+          let createdAt: Date
+          let amount: Double
+          let customerId: String
+          func validate() -> Bool {
+              return amount > 0 && !customerId.isEmpty
+          }
+      }
+    Sources/Repository/InvoiceStore.swift: |
+      class InvoiceStore {
+          private var invoices: [Invoice] = []
+          func add(_ invoice: Invoice) {
+              if invoice.validate() {
+                  invoices.append(invoice)
+              }
+          }
+          func findById(_ id: String) -> Invoice? {
+              invoices.first { $0.id == id }
+          }
+          func all() -> [Invoice] { invoices }
+      }
+    Sources/Service/BillingService.swift: |
+      class BillingService {
+          private let store: InvoiceStore
+          init(store: InvoiceStore) {
+              self.store = store
+          }
+          func createInvoice(id: String, amount: Double, customerId: String) -> Invoice? {
+              let invoice = Invoice(id: id, createdAt: Date(), amount: amount, customerId: customerId)
+              store.add(invoice)
+              return store.findById(id)
+          }
+          func totalRevenue() -> Double {
+              store.all().reduce(0) { $0 + $1.amount }
+          }
+      }
+    Sources/API/BillingEndpoint.swift: |
+      class BillingEndpoint {
+          private let billing: BillingService
+          init(billing: BillingService) {
+              self.billing = billing
+          }
+          func create(id: String, amount: Double, customerId: String) -> String {
+              guard let invoice = billing.createInvoice(id: id, amount: amount, customerId: customerId) else {
+                  return "Failed"
+              }
+              return "Invoice \(invoice.id) created"
+          }
+      }
+    Sources/Helpers/NumberFormatter.swift: |
+      struct AppNumberFormatter {
+          static func currency(_ value: Double) -> String {
+              return String(format: "$%.2f", value)
+          }
+      }
+  changed_files:
+    Sources/Protocols/Validatable.swift: |
+      protocol Validatable {
+          func validate() -> Bool
+          func validationErrors() -> [String]
+      }
+    Sources/Models/Invoice.swift: |
+      import Foundation
+      struct Invoice: AppIdentifiable, Timestamped, Validatable {
+          let id: String
+          let createdAt: Date
+          let amount: Double
+          let customerId: String
+          func validate() -> Bool {
+              return validationErrors().isEmpty
+          }
+          func validationErrors() -> [String] {
+              var errors: [String] = []
+              if amount <= 0 { errors.append("Amount must be positive") }
+              if customerId.isEmpty { errors.append("Customer ID required") }
+              return errors
+          }
+      }
+    Sources/Repository/InvoiceStore.swift: |
+      class InvoiceStore {
+          private var invoices: [Invoice] = []
+          func add(_ invoice: Invoice) -> [String] {
+              let errors = invoice.validationErrors()
+              if errors.isEmpty {
+                  invoices.append(invoice)
+              }
+              return errors
+          }
+          func findById(_ id: String) -> Invoice? {
+              invoices.first { $0.id == id }
+          }
+          func all() -> [Invoice] { invoices }
+      }
+    Sources/Service/BillingService.swift: |
+      class BillingService {
+          private let store: InvoiceStore
+          init(store: InvoiceStore) {
+              self.store = store
+          }
+          func createInvoice(id: String, amount: Double, customerId: String) -> (Invoice?, [String]) {
+              let invoice = Invoice(id: id, createdAt: Date(), amount: amount, customerId: customerId)
+              let errors = store.add(invoice)
+              return (store.findById(id), errors)
+          }
+          func totalRevenue() -> Double {
+              store.all().reduce(0) { $0 + $1.amount }
+          }
+      }
+  commit_message: "feat: add validation errors to invoice flow"
+fragments:
+- id: validatable_errors
+  selector:
+    path: Validatable.swift
+    anchor: "func validationErrors() -> [String]"
+- id: invoice_validation_errors
+  selector:
+    path: Invoice.swift
+    anchor: "func validationErrors() -> [String]"
+- id: invoice_validate_uses_errors
+  selector:
+    path: Invoice.swift
+    anchor: "validationErrors().isEmpty"
+- id: store_returns_errors
+  selector:
+    path: InvoiceStore.swift
+    anchor: "invoice.validationErrors()"
+- id: service_returns_tuple
+  selector:
+    path: BillingService.swift
+    anchor: "(Invoice?, [String])"
+- id: endpoint_creates
+  selector:
+    path: BillingEndpoint.swift
+    anchor: "billing.createInvoice"
+- id: identifiable_protocol
+  selector:
+    path: Identifiable.swift
+    anchor: "protocol AppIdentifiable"
+- id: no_number_formatter
+  selector:
+    path: Helpers/NumberFormatter.swift
+- id: no_currency
+  selector:
+    anchor: "static func currency"
+- id: no_timestamped_body
+  selector:
+    path: Timestamped.swift
+    anchor: "var createdAt: Date"
+oracle:
+  required:
+  - validatable_errors
+  - invoice_validation_errors
+  - invoice_validate_uses_errors
+  - store_returns_errors
+  - service_returns_tuple
+  - endpoint_creates
+  allowed:
+  - identifiable_protocol
+  forbidden:
+  - no_number_formatter
+  - no_currency
+  - no_timestamped_body

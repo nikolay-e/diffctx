@@ -1,0 +1,185 @@
+name: bal_hard_009_swift_networking_layer
+tags:
+- lang:swift
+- change:multi_file
+- change:signature
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    Sources/Models/APIResponse.swift: |
+      struct APIResponse<T: Decodable>: Decodable {
+          let data: T
+          let status: Int
+      }
+    Sources/Network/HTTPClient.swift: |
+      import Foundation
+      protocol HTTPClient {
+          func request(url: URL, method: String, completion: @escaping (Data?, Error?) -> Void)
+      }
+    Sources/Network/URLSessionClient.swift: |
+      import Foundation
+      class URLSessionClient: HTTPClient {
+          private let session: URLSession
+          init(session: URLSession = .shared) {
+              self.session = session
+          }
+          func request(url: URL, method: String, completion: @escaping (Data?, Error?) -> Void) {
+              var req = URLRequest(url: url)
+              req.httpMethod = method
+              session.dataTask(with: req) { data, _, error in
+                  completion(data, error)
+              }.resume()
+          }
+      }
+    Sources/Service/APIService.swift: |
+      import Foundation
+      class APIService {
+          private let client: HTTPClient
+          init(client: HTTPClient) {
+              self.client = client
+          }
+          func fetchUser(id: String, completion: @escaping (APIResponse<User>?) -> Void) {
+              let url = URL(string: "https://api.example.com/users/\(id)")!
+              client.request(url: url, method: "GET") { data, error in
+                  guard let data = data, error == nil else { completion(nil); return }
+                  let response = try? JSONDecoder().decode(APIResponse<User>.self, from: data)
+                  completion(response)
+              }
+          }
+      }
+    Sources/Models/User.swift: |
+      struct User: Codable {
+          let id: String
+          let name: String
+          let email: String
+      }
+    Sources/ViewModel/UserViewModel.swift: |
+      class UserViewModel {
+          private let service: APIService
+          var userName: String = ""
+          init(service: APIService) {
+              self.service = service
+          }
+          func loadUser(id: String) {
+              service.fetchUser(id: id) { [weak self] response in
+                  self?.userName = response?.data.name ?? "Unknown"
+              }
+          }
+      }
+    Sources/Helpers/DateFormatter.swift: |
+      import Foundation
+      struct AppDateFormatter {
+          static func iso8601(from date: Date) -> String {
+              let formatter = ISO8601DateFormatter()
+              return formatter.string(from: date)
+          }
+      }
+    Sources/Helpers/KeychainHelper.swift: |
+      import Foundation
+      struct KeychainHelper {
+          static func save(key: String, value: String) {
+              UserDefaults.standard.set(value, forKey: key)
+          }
+          static func load(key: String) -> String? {
+              UserDefaults.standard.string(forKey: key)
+          }
+      }
+  changed_files:
+    Sources/Network/HTTPClient.swift: |
+      import Foundation
+      protocol HTTPClient {
+          func request(url: URL, method: String, headers: [String: String], completion: @escaping (Data?, Error?) -> Void)
+      }
+    Sources/Network/URLSessionClient.swift: |
+      import Foundation
+      class URLSessionClient: HTTPClient {
+          private let session: URLSession
+          init(session: URLSession = .shared) {
+              self.session = session
+          }
+          func request(url: URL, method: String, headers: [String: String], completion: @escaping (Data?, Error?) -> Void) {
+              var req = URLRequest(url: url)
+              req.httpMethod = method
+              headers.forEach { req.setValue($0.value, forHTTPHeaderField: $0.key) }
+              session.dataTask(with: req) { data, _, error in
+                  completion(data, error)
+              }.resume()
+          }
+      }
+    Sources/Service/APIService.swift: |
+      import Foundation
+      class APIService {
+          private let client: HTTPClient
+          private let authToken: String?
+          init(client: HTTPClient, authToken: String? = nil) {
+              self.client = client
+              self.authToken = authToken
+          }
+          func fetchUser(id: String, completion: @escaping (APIResponse<User>?) -> Void) {
+              let url = URL(string: "https://api.example.com/users/\(id)")!
+              var headers: [String: String] = [:]
+              if let token = authToken {
+                  headers["Authorization"] = "Bearer \(token)"
+              }
+              client.request(url: url, method: "GET", headers: headers) { data, error in
+                  guard let data = data, error == nil else { completion(nil); return }
+                  let response = try? JSONDecoder().decode(APIResponse<User>.self, from: data)
+                  completion(response)
+              }
+          }
+      }
+  commit_message: "feat: add headers support and auth token to HTTP layer"
+fragments:
+- id: http_client_headers
+  selector:
+    path: HTTPClient.swift
+    anchor: "headers: [String: String]"
+- id: urlsession_sets_headers
+  selector:
+    path: URLSessionClient.swift
+    anchor: "req.setValue($0.value, forHTTPHeaderField: $0.key)"
+- id: service_auth_token
+  selector:
+    path: APIService.swift
+    anchor: "private let authToken: String?"
+- id: service_sets_bearer
+  selector:
+    path: APIService.swift
+    anchor: 'headers["Authorization"] = "Bearer'
+- id: api_response_struct
+  selector:
+    path: APIResponse.swift
+    anchor: "struct APIResponse"
+- id: user_model
+  selector:
+    path: User.swift
+    anchor: "struct User: Codable"
+- id: viewmodel_loads_user
+  selector:
+    path: UserViewModel.swift
+    anchor: "service.fetchUser"
+- id: no_date_formatter
+  selector:
+    path: Helpers/DateFormatter.swift
+- id: no_keychain
+  selector:
+    path: Helpers/KeychainHelper.swift
+- id: no_iso8601
+  selector:
+    anchor: "func iso8601"
+oracle:
+  required:
+  - http_client_headers
+  - urlsession_sets_headers
+  - service_auth_token
+  - service_sets_bearer
+  - api_response_struct
+  - user_model
+  - viewmodel_loads_user
+  allowed: []
+  forbidden:
+  - no_date_formatter
+  - no_keychain
+  - no_iso8601

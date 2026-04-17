@@ -1,0 +1,274 @@
+name: gap2_071_xml_yaml_same_file_spring_bean_config
+tags:
+- lang:ruby
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:medium
+repo:
+  initial_files:
+    lib/core/resolver.rb: |
+      module Core
+        class Resolver
+          def initialize
+            @registry = {}
+          end
+
+          def register(name, &factory)
+            @registry[name] = factory
+          end
+
+          def resolve(name)
+            factory = @registry[name]
+            raise "Unknown dependency: #{name}" unless factory
+            factory.call(self)
+          end
+        end
+      end
+    lib/core/application.rb: |
+      require_relative 'resolver'
+
+      module Core
+        class Application
+          attr_reader :resolver
+
+          def initialize(&config)
+            @resolver = Resolver.new
+            config.call(@resolver) if config
+          end
+
+          def get(name)
+            @resolver.resolve(name)
+          end
+        end
+      end
+    lib/services/mailer.rb: |
+      require_relative '../core/resolver'
+
+      module Services
+        class Mailer
+          def initialize(resolver)
+            @config = resolver.resolve(:mailer_config)
+          end
+
+          def send_mail(to, subject, body)
+            puts "Sending to #{to}: #{subject}"
+          end
+        end
+      end
+    lib/services/notifier.rb: |
+      require_relative 'mailer'
+
+      module Services
+        class Notifier
+          def initialize(resolver)
+            @mailer = resolver.resolve(:mailer)
+          end
+
+          def notify(user_id, message)
+            @mailer.send_mail("#{user_id}@example.com", 'Notification', message)
+          end
+        end
+      end
+    lib/app/bootstrap.rb: |
+      require_relative '../core/application'
+      require_relative '../services/mailer'
+      require_relative '../services/notifier'
+
+      module App
+        def self.build
+          Core::Application.new do |r|
+            r.register(:mailer_config) { |_| { host: 'smtp.example.com', port: 587 } }
+            r.register(:mailer) { |resolver| Services::Mailer.new(resolver) }
+            r.register(:notifier) { |resolver| Services::Notifier.new(resolver) }
+          end
+        end
+      end
+    lib/utils/string_helpers.rb: |
+      GARBAGE_GAP071_A = 'string_helpers_namespace'
+
+      module Utils
+        module StringHelpers
+          def self.truncate(str, max)
+            str.length > max ? str[0...max] + '...' : str
+          end
+        end
+      end
+    lib/utils/date_helpers.rb: |
+      GARBAGE_GAP071_B = 'date_helpers_tz'
+      GARBAGE_GAP071_C = 'UTC'
+
+      module Utils
+        module DateHelpers
+          def self.today
+            Date.today
+          end
+        end
+      end
+    lib/config/database.rb: |
+      GARBAGE_GAP071_D = 'database_pool_size'
+
+      module Config
+        DB_URL = 'postgres://localhost/app'
+        POOL_SIZE = 5
+      end
+  changed_files:
+    lib/core/resolver.rb: |
+      module Core
+        class Resolver
+          def initialize
+            @registry = {}
+            @singletons = {}
+          end
+
+          def register(name, singleton: false, &factory)
+            @registry[name] = { factory: factory, singleton: singleton }
+          end
+
+          def resolve(name)
+            entry = @registry[name]
+            raise "Unknown dependency: #{name}" unless entry
+            if entry[:singleton]
+              @singletons[name] ||= entry[:factory].call(self)
+            else
+              entry[:factory].call(self)
+            end
+          end
+        end
+      end
+    lib/core/application.rb: |
+      require_relative 'resolver'
+
+      module Core
+        class Application
+          attr_reader :resolver
+
+          def initialize(&config)
+            @resolver = Resolver.new
+            config.call(@resolver) if config
+          end
+
+          def get(name)
+            @resolver.resolve(name)
+          end
+        end
+      end
+    lib/services/mailer.rb: |
+      require_relative '../core/resolver'
+
+      module Services
+        class Mailer
+          def initialize(resolver)
+            @config = resolver.resolve(:mailer_config)
+          end
+
+          def send_mail(to, subject, body)
+            puts "Sending to #{to}: #{subject}"
+          end
+        end
+      end
+    lib/services/notifier.rb: |
+      require_relative 'mailer'
+
+      module Services
+        class Notifier
+          def initialize(resolver)
+            @mailer = resolver.resolve(:mailer)
+          end
+
+          def notify(user_id, message)
+            @mailer.send_mail("#{user_id}@example.com", 'Notification', message)
+          end
+        end
+      end
+    lib/app/bootstrap.rb: |
+      require_relative '../core/application'
+      require_relative '../services/mailer'
+      require_relative '../services/notifier'
+
+      module App
+        def self.build
+          Core::Application.new do |r|
+            r.register(:mailer_config, singleton: true) { |_| { host: 'smtp.example.com', port: 587 } }
+            r.register(:mailer, singleton: true) { |resolver| Services::Mailer.new(resolver) }
+            r.register(:notifier) { |resolver| Services::Notifier.new(resolver) }
+          end
+        end
+      end
+    lib/utils/string_helpers.rb: |
+      GARBAGE_GAP071_A = 'string_helpers_namespace'
+
+      module Utils
+        module StringHelpers
+          def self.truncate(str, max)
+            str.length > max ? str[0...max] + '...' : str
+          end
+        end
+      end
+    lib/utils/date_helpers.rb: |
+      GARBAGE_GAP071_B = 'date_helpers_tz'
+      GARBAGE_GAP071_C = 'UTC'
+
+      module Utils
+        module DateHelpers
+          def self.today
+            Date.today
+          end
+        end
+      end
+    lib/config/database.rb: |
+      GARBAGE_GAP071_D = 'database_pool_size'
+
+      module Config
+        DB_URL = 'postgres://localhost/app'
+        POOL_SIZE = 5
+      end
+  commit_message: "feat: add singleton scope to Resolver#register"
+fragments:
+- id: resolver_register_singleton
+  selector:
+    path: lib/core/resolver.rb
+    anchor: "def register(name, singleton:"
+- id: resolver_resolve_singleton
+  selector:
+    path: lib/core/resolver.rb
+    anchor: "@singletons[name] ||="
+- id: bootstrap_singleton_true
+  selector:
+    path: lib/app/bootstrap.rb
+    anchor: "singleton: true"
+- id: no_string_helpers
+  selector:
+    path: lib/utils/string_helpers.rb
+- id: no_date_helpers
+  selector:
+    path: lib/utils/date_helpers.rb
+- id: no_database_config
+  selector:
+    path: lib/config/database.rb
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP071_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GAP071_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GAP071_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GAP071_D
+oracle:
+  required:
+  - resolver_register_singleton
+  - resolver_resolve_singleton
+  - bootstrap_singleton_true
+  allowed: []
+  forbidden:
+  - no_string_helpers
+  - no_date_helpers
+  - no_database_config
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

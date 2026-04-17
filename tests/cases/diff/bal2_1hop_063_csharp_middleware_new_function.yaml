@@ -1,0 +1,225 @@
+name: bal2_1hop_063_csharp_middleware_new_function
+tags:
+- lang:csharp
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/Middleware/AuthMiddleware.cs: |
+      using System;
+      using System.Threading.Tasks;
+      using Microsoft.AspNetCore.Http;
+
+      namespace App.Middleware
+      {
+          public class AuthMiddleware
+          {
+              private readonly RequestDelegate _next;
+
+              public AuthMiddleware(RequestDelegate next)
+              {
+                  _next = next;
+              }
+
+              public async Task InvokeAsync(HttpContext context)
+              {
+                  var token = context.Request.Headers["Authorization"].ToString();
+                  if (string.IsNullOrEmpty(token))
+                  {
+                      context.Response.StatusCode = 401;
+                      return;
+                  }
+                  await _next(context);
+              }
+          }
+      }
+    src/Startup.cs: |
+      using System;
+      using App.Middleware;
+      using Microsoft.AspNetCore.Builder;
+
+      namespace App
+      {
+          public class Startup
+          {
+              public void Configure(IApplicationBuilder app)
+              {
+                  app.UseMiddleware<AuthMiddleware>();
+                  app.UseRouting();
+                  app.UseEndpoints(endpoints =>
+                  {
+                      endpoints.MapControllers();
+                  });
+              }
+          }
+      }
+    src/Services/TokenValidator.cs: |
+      using System;
+
+      namespace App.Services
+      {
+          public class TokenValidator
+          {
+              public bool Validate(string token)
+              {
+                  return !string.IsNullOrEmpty(token) && token.StartsWith("Bearer ");
+              }
+          }
+      }
+    src/Controllers/HealthController.cs: |
+      using System;
+      using Microsoft.AspNetCore.Mvc;
+
+      namespace App.Controllers
+      {
+          [ApiController]
+          [Route("api/health")]
+          public class HealthController : ControllerBase
+          {
+              [HttpGet]
+              public IActionResult Get()
+              {
+                  return Ok(new { Status = "healthy" });
+              }
+          }
+      }
+    garbage/Data/MigrationRunner.cs: |
+      using System;
+      GARBAGE_063_MIGRATION_A = "runner";
+      GARBAGE_063_SCHEMA_VER_B = 42;
+
+      namespace App.Data
+      {
+          public class MigrationRunner
+          {
+              GARBAGE_063_BATCH_SIZE_C = 100;
+
+              public void RunMigrations() { }
+          }
+      }
+    garbage/Jobs/CleanupJob.cs: |
+      using System;
+      GARBAGE_063_CLEANUP_D = "daily";
+      GARBAGE_063_RETENTION_E = 30;
+
+      namespace App.Jobs
+      {
+          public class CleanupJob
+          {
+              GARBAGE_063_MAX_RECORDS_F = 5000;
+
+              public void Execute() { }
+          }
+      }
+    garbage/Helpers/StringHelper.cs: |
+      using System;
+      GARBAGE_063_HELPER_TYPE_G = "string";
+      GARBAGE_063_LOCALE_H = "en-US";
+
+      namespace App.Helpers
+      {
+          public class StringHelper
+          {
+              GARBAGE_063_MAX_LEN_I = 255;
+              GARBAGE_063_TRIM_MODE_J = "both";
+
+              public static string Truncate(string s, int len) { return s; }
+          }
+      }
+  changed_files:
+    src/Middleware/AuthMiddleware.cs: |
+      using System;
+      using System.Threading.Tasks;
+      using Microsoft.AspNetCore.Http;
+
+      namespace App.Middleware
+      {
+          public class AuthMiddleware
+          {
+              private readonly RequestDelegate _next;
+
+              public AuthMiddleware(RequestDelegate next)
+              {
+                  _next = next;
+              }
+
+              public async Task InvokeAsync(HttpContext context)
+              {
+                  var token = context.Request.Headers["Authorization"].ToString();
+                  if (string.IsNullOrEmpty(token))
+                  {
+                      context.Response.StatusCode = 401;
+                      return;
+                  }
+                  await _next(context);
+              }
+
+              public async Task InvokeWithRateLimitAsync(HttpContext context, int maxRequests)
+              {
+                  var clientIp = context.Connection.RemoteIpAddress?.ToString();
+                  if (IsRateLimited(clientIp, maxRequests))
+                  {
+                      context.Response.StatusCode = 429;
+                      return;
+                  }
+                  await InvokeAsync(context);
+              }
+
+              private bool IsRateLimited(string clientIp, int maxRequests)
+              {
+                  return false;
+              }
+          }
+      }
+  commit_message: "Add rate limiting method to auth middleware"
+fragments:
+- id: startup_use_middleware
+  selector:
+    path: src/Startup.cs
+    anchor: "app.UseMiddleware<AuthMiddleware>()"
+- id: startup_configure
+  selector:
+    path: src/Startup.cs
+    anchor: "public void Configure(IApplicationBuilder app)"
+- id: token_validator_validate
+  selector:
+    path: src/Services/TokenValidator.cs
+    anchor: "public bool Validate(string token)"
+- id: existing_invoke
+  selector:
+    path: src/Middleware/AuthMiddleware.cs
+    anchor: "public async Task InvokeAsync(HttpContext context)"
+- id: no_migration_runner
+  selector:
+    path: garbage/Data/MigrationRunner.cs
+- id: no_cleanup_job
+  selector:
+    path: garbage/Jobs/CleanupJob.cs
+- id: no_string_helper
+  selector:
+    path: garbage/Helpers/StringHelper.cs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_063_MIGRATION_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_063_CLEANUP_D
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_063_HELPER_TYPE_G
+oracle:
+  required:
+  - startup_use_middleware
+  - startup_configure
+  - token_validator_validate
+  - existing_invoke
+  allowed: []
+  forbidden:
+  - no_migration_runner
+  - no_cleanup_job
+  - no_string_helper
+  - no_global_0
+  - no_global_1
+  - no_global_2

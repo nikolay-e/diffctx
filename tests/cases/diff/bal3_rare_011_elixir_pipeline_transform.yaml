@@ -1,0 +1,189 @@
+name: bal3_rare_011_elixir_pipeline_transform
+tags:
+- lang:kotlin
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:easy
+repo:
+  initial_files:
+    core/src/main/kotlin/com/data/util/StringUtils.kt: |
+      package com.data.util
+
+      object StringUtils {
+          fun slugify(input: String): String {
+              return input.trim().lowercase().replace(" ", "-")
+          }
+
+          fun truncate(input: String, maxLength: Int): String {
+              return if (input.length <= maxLength) input else input.substring(0, maxLength)
+          }
+      }
+    core/src/main/kotlin/com/data/model/Category.kt: |
+      package com.data.model
+
+      import com.data.util.StringUtils
+
+      data class Category(
+          val id: Long,
+          val name: String,
+      ) {
+          val slug: String get() = StringUtils.slugify(name)
+      }
+    core/src/main/kotlin/com/data/repository/CategoryRepository.kt: |
+      package com.data.repository
+
+      import com.data.model.Category
+
+      interface CategoryRepository {
+          fun findBySlug(slug: String): Category?
+          fun findAll(): List<Category>
+          fun save(category: Category): Category
+      }
+    api/src/main/kotlin/com/api/service/CategoryService.kt: |
+      package com.api.service
+
+      import com.data.repository.CategoryRepository
+      import com.data.util.StringUtils
+
+      class CategoryService(private val repo: CategoryRepository) {
+          fun findByName(name: String): com.data.model.Category? {
+              val slug = StringUtils.slugify(name)
+              return repo.findBySlug(slug)
+          }
+      }
+    garbage/src/main/kotlin/com/util/CacheHelper.kt: |
+      package com.util
+
+      // GARBAGE_ELP11_A = "cache_helper_unrelated"
+      object CacheHelper {
+          fun evict(key: String) {}
+          fun put(key: String, value: Any) {}
+      }
+    garbage/src/main/kotlin/com/util/JsonMapper.kt: |
+      package com.util
+
+      // GARBAGE_ELP11_B = "json_mapper_unrelated"
+      object JsonMapper {
+          fun toJson(obj: Any): String = "{}"
+          fun fromJson(json: String): Map<String, Any> = emptyMap()
+      }
+    garbage/src/main/kotlin/com/util/DateHelper.kt: |
+      package com.util
+
+      // GARBAGE_ELP11_C = "date_helper_unrelated"
+      object DateHelper {
+          fun today(): String = "2024-01-01"
+          fun format(epochMs: Long): String = epochMs.toString()
+      }
+  changed_files:
+    core/src/main/kotlin/com/data/util/StringUtils.kt: |
+      package com.data.util
+
+      object StringUtils {
+          fun slugify(input: String): String {
+              return input.trim().lowercase()
+                  .replace(Regex("[^a-z0-9]+"), "-")
+                  .trimStart('-')
+                  .trimEnd('-')
+          }
+
+          fun truncate(input: String, maxLength: Int): String {
+              return if (input.length <= maxLength) input else input.substring(0, maxLength)
+          }
+      }
+    core/src/main/kotlin/com/data/model/Category.kt: |
+      package com.data.model
+
+      import com.data.util.StringUtils
+
+      data class Category(
+          val id: Long,
+          val name: String,
+      ) {
+          val slug: String get() = StringUtils.slugify(name)
+      }
+    core/src/main/kotlin/com/data/repository/CategoryRepository.kt: |
+      package com.data.repository
+
+      import com.data.model.Category
+
+      interface CategoryRepository {
+          fun findBySlug(slug: String): Category?
+          fun findAll(): List<Category>
+          fun save(category: Category): Category
+      }
+    api/src/main/kotlin/com/api/service/CategoryService.kt: |
+      package com.api.service
+
+      import com.data.repository.CategoryRepository
+      import com.data.util.StringUtils
+
+      class CategoryService(private val repo: CategoryRepository) {
+          fun findByName(name: String): com.data.model.Category? {
+              val slug = StringUtils.slugify(name)
+              return repo.findBySlug(slug)
+          }
+      }
+    garbage/src/main/kotlin/com/util/CacheHelper.kt: |
+      package com.util
+
+      // GARBAGE_ELP11_A = "cache_helper_unrelated"
+      object CacheHelper {
+          fun evict(key: String) {}
+          fun put(key: String, value: Any) {}
+      }
+    garbage/src/main/kotlin/com/util/JsonMapper.kt: |
+      package com.util
+
+      // GARBAGE_ELP11_B = "json_mapper_unrelated"
+      object JsonMapper {
+          fun toJson(obj: Any): String = "{}"
+          fun fromJson(json: String): Map<String, Any> = emptyMap()
+      }
+    garbage/src/main/kotlin/com/util/DateHelper.kt: |
+      package com.util
+
+      // GARBAGE_ELP11_C = "date_helper_unrelated"
+      object DateHelper {
+          fun today(): String = "2024-01-01"
+          fun format(epochMs: Long): String = epochMs.toString()
+      }
+  commit_message: "fix: slugify strips non-alphanumeric chars and trims leading/trailing dashes"
+fragments:
+- id: slugify_impl
+  selector:
+    path: core/src/main/kotlin/com/data/util/StringUtils.kt
+    anchor: "fun slugify"
+- id: category_uses_slugify
+  selector:
+    path: core/src/main/kotlin/com/data/model/Category.kt
+    anchor: "val slug"
+- id: service_uses_slugify
+  selector:
+    path: api/src/main/kotlin/com/api/service/CategoryService.kt
+    anchor: "StringUtils.slugify"
+- id: repo_find_by_slug
+  selector:
+    path: core/src/main/kotlin/com/data/repository/CategoryRepository.kt
+    anchor: "fun findBySlug"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_ELP11_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_ELP11_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_ELP11_C
+oracle:
+  required:
+  - slugify_impl
+  - category_uses_slugify
+  - service_uses_slugify
+  allowed:
+  - repo_find_by_slug
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

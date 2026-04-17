@@ -363,16 +363,36 @@ def _apply_closure(
     return closure
 
 
+_ONE_CLASS_PER_FILE_SUFFIXES = frozenset({".swift", ".java", ".kt"})
+
+
+def _infer_core_symbol(frag: Fragment) -> str | None:
+    if frag.symbol_name:
+        return frag.symbol_name.lower()
+    if frag.path.suffix.lower() in _ONE_CLASS_PER_FILE_SUFFIXES:
+        stem = frag.path.stem
+        if len(stem) >= 3:
+            return stem.lower()
+    return None
+
+
 def _collect_core_needs(
     all_fragments: list[Fragment],
     core_ids: set[FragmentId],
     needs: dict[tuple[str, str], InformationNeed],
 ) -> set[str]:
     core_symbol_names: set[str] = set()
+    seen_paths: set[Path] = set()
     for frag in all_fragments:
-        if frag.id not in core_ids or not frag.symbol_name:
+        if frag.id not in core_ids:
             continue
-        sym = frag.symbol_name.lower()
+        sym = _infer_core_symbol(frag)
+        if not sym:
+            continue
+        if frag.path in seen_paths and not frag.symbol_name:
+            continue
+        if not frag.symbol_name:
+            seen_paths.add(frag.path)
         core_symbol_names.add(sym)
         key = ("impact", sym)
         if key not in needs:
@@ -542,12 +562,13 @@ class UtilityState:
     file_importance: dict[Path, float] = field(default_factory=dict)
 
     def copy(self) -> UtilityState:
-        return replace(
+        result: UtilityState = replace(
             self,
             max_rel=dict(self.max_rel),
             priorities=dict(self.priorities),
             file_importance=dict(self.file_importance),
         )
+        return result
 
 
 def _phi(x: float) -> float:

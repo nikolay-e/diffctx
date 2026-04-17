@@ -1,0 +1,262 @@
+name: bal4_3hop_011_ruby_notification_dispatch
+tags:
+- lang:ruby
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:medium
+repo:
+  initial_files:
+    lib/notify/message.rb: |
+      module Notify
+        class Message
+          attr_reader :to, :body, :channel
+          def initialize(to, body, channel: :email)
+            @to = to
+            @body = body
+            @channel = channel
+          end
+          def valid?
+            !to.nil? && !body.nil?
+          end
+        end
+      end
+    lib/notify/queue.rb: |
+      require_relative 'message'
+      module Notify
+        class Queue
+          def initialize
+            @items = []
+          end
+          def push(to, body, channel: :email)
+            msg = Message.new(to, body, channel: channel)
+            @items << msg if msg.valid?
+          end
+          def pending
+            @items.size
+          end
+          def drain
+            @items.shift(@items.size)
+          end
+        end
+      end
+    lib/notify/dispatcher.rb: |
+      require_relative 'queue'
+      module Notify
+        class Dispatcher
+          def initialize
+            @queue = Queue.new
+          end
+          def enqueue(to, body, channel: :email)
+            @queue.push(to, body, channel: channel)
+          end
+          def send_all
+            @queue.drain.map { |m| { to: m.to, status: "sent" } }
+          end
+        end
+      end
+    lib/notify/service.rb: |
+      require_relative 'dispatcher'
+      module Notify
+        class Service
+          def initialize
+            @dispatcher = Dispatcher.new
+          end
+          def alert(to, body)
+            @dispatcher.enqueue(to, body, channel: :sms)
+            @dispatcher.send_all
+          end
+          def inform(to, body)
+            @dispatcher.enqueue(to, body, channel: :email)
+            @dispatcher.send_all
+          end
+        end
+      end
+    lib/notify/controller.rb: |
+      require_relative 'service'
+      module Notify
+        class Controller
+          def initialize
+            @svc = Service.new
+          end
+          def post_alert(to, body)
+            @svc.alert(to, body)
+          end
+        end
+      end
+    lib/notify/template.rb: |
+      module Notify
+        GARBAGE_011_TEMPLATE_A = "html"
+        GARBAGE_011_LAYOUT_B = "default"
+        class Template
+          def self.render(name)
+            "<div>#{name}</div>"
+          end
+        end
+      end
+    lib/notify/analytics.rb: |
+      module Notify
+        GARBAGE_011_ANALYTICS_C = "track"
+        GARBAGE_011_METRIC_D = "open_rate"
+        class Analytics
+          def self.track(event)
+            event
+          end
+        end
+      end
+  changed_files:
+    lib/notify/message.rb: |
+      module Notify
+        class Message
+          attr_reader :to, :body, :channel, :priority
+          def initialize(to, body, channel: :email, priority: :normal)
+            @to = to
+            @body = body
+            @channel = channel
+            @priority = priority
+          end
+          def valid?
+            !to.nil? && !body.nil?
+          end
+          def urgent?
+            priority == :high
+          end
+        end
+      end
+    lib/notify/queue.rb: |
+      require_relative 'message'
+      module Notify
+        class Queue
+          def initialize
+            @items = []
+          end
+          def push(to, body, channel: :email)
+            msg = Message.new(to, body, channel: channel)
+            @items << msg if msg.valid?
+          end
+          def pending
+            @items.size
+          end
+          def drain
+            @items.shift(@items.size)
+          end
+        end
+      end
+    lib/notify/dispatcher.rb: |
+      require_relative 'queue'
+      module Notify
+        class Dispatcher
+          def initialize
+            @queue = Queue.new
+          end
+          def enqueue(to, body, channel: :email)
+            @queue.push(to, body, channel: channel)
+          end
+          def send_all
+            @queue.drain.map { |m| { to: m.to, status: "sent" } }
+          end
+        end
+      end
+    lib/notify/service.rb: |
+      require_relative 'dispatcher'
+      module Notify
+        class Service
+          def initialize
+            @dispatcher = Dispatcher.new
+          end
+          def alert(to, body)
+            @dispatcher.enqueue(to, body, channel: :sms)
+            @dispatcher.send_all
+          end
+          def inform(to, body)
+            @dispatcher.enqueue(to, body, channel: :email)
+            @dispatcher.send_all
+          end
+        end
+      end
+    lib/notify/controller.rb: |
+      require_relative 'service'
+      module Notify
+        class Controller
+          def initialize
+            @svc = Service.new
+          end
+          def post_alert(to, body)
+            @svc.alert(to, body)
+          end
+        end
+      end
+    lib/notify/template.rb: |
+      module Notify
+        GARBAGE_011_TEMPLATE_A = "html"
+        GARBAGE_011_LAYOUT_B = "default"
+        class Template
+          def self.render(name)
+            "<div>#{name}</div>"
+          end
+        end
+      end
+    lib/notify/analytics.rb: |
+      module Notify
+        GARBAGE_011_ANALYTICS_C = "track"
+        GARBAGE_011_METRIC_D = "open_rate"
+        class Analytics
+          def self.track(event)
+            event
+          end
+        end
+      end
+  commit_message: "feat: add priority field and urgent check to Message"
+fragments:
+- id: message_priority
+  selector:
+    path: lib/notify/message.rb
+    anchor: "priority"
+- id: message_urgent
+  selector:
+    path: lib/notify/message.rb
+    anchor: "def urgent?"
+- id: queue_uses_message
+  selector:
+    path: lib/notify/queue.rb
+    anchor: "require_relative 'message'"
+- id: dispatcher_uses_queue
+  selector:
+    path: lib/notify/dispatcher.rb
+    anchor: "require_relative 'queue'"
+- id: service_uses_dispatcher
+  selector:
+    path: lib/notify/service.rb
+    anchor: "require_relative 'dispatcher'"
+- id: controller_uses_service
+  selector:
+    path: lib/notify/controller.rb
+    anchor: "require_relative 'service'"
+- id: no_template
+  selector:
+    path: lib/notify/template.rb
+    anchor: "GARBAGE_011_TEMPLATE_A"
+- id: no_analytics
+  selector:
+    path: lib/notify/analytics.rb
+    anchor: "GARBAGE_011_ANALYTICS_C"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_011_LAYOUT_B
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_011_METRIC_D
+oracle:
+  required:
+  - message_priority
+  - message_urgent
+  - queue_uses_message
+  - dispatcher_uses_queue
+  - service_uses_dispatcher
+  - controller_uses_service
+  allowed: []
+  forbidden:
+  - no_template
+  - no_analytics
+  - no_global_0
+  - no_global_1

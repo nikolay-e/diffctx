@@ -1,0 +1,176 @@
+name: gap2_053_julia_new_fn_signature_particle_simulation
+tags:
+- change:multi_file
+- change:new_function
+- change:signature
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:julia
+repo:
+  initial_files:
+    src/Particle.jl: |
+      module Particle
+
+      export ParticleState, step!, kinetic_energy
+
+      mutable struct ParticleState
+          x::Float64
+          y::Float64
+          vx::Float64
+          vy::Float64
+          mass::Float64
+      end
+
+      function step!(p::ParticleState, dt::Float64)
+          p.x += p.vx * dt
+          p.y += p.vy * dt
+      end
+
+      function kinetic_energy(p::ParticleState)::Float64
+          return 0.5 * p.mass * (p.vx^2 + p.vy^2)
+      end
+
+      end
+    src/Force.jl: |
+      module Force
+
+      export apply_gravity!, apply_drag!
+
+      function apply_gravity!(vx::Float64, vy::Float64, g::Float64, dt::Float64)::Tuple{Float64, Float64}
+          return (vx, vy - g * dt)
+      end
+
+      function apply_drag!(vx::Float64, vy::Float64, drag::Float64)::Tuple{Float64, Float64}
+          return (vx * (1 - drag), vy * (1 - drag))
+      end
+
+      end
+    src/Collision.jl: |
+      module Collision
+
+      GARBAGE_GAP2_053_RESTITUTION_A = 0.8
+      GARBAGE_GAP2_053_EPSILON_B = 0.001
+
+      function detect_wall(x::Float64, y::Float64, bounds::Tuple{Float64,Float64})::Bool
+          return x < 0 || x > bounds[1] || y < 0 || y > bounds[2]
+      end
+
+      function reflect(velocity::Float64)::Float64
+          return -velocity * 0.8
+      end
+
+      end
+    src/Emitter.jl: |
+      module Emitter
+
+      GARBAGE_GAP2_053_RATE_C = 100
+      GARBAGE_GAP2_053_SPREAD_D = 0.5
+
+      function emit_burst(count::Int, origin_x::Float64, origin_y::Float64)::Vector{Tuple{Float64,Float64}}
+          return [(origin_x + randn(), origin_y + randn()) for _ in 1:count]
+      end
+
+      function emit_stream(rate::Int, dt::Float64)::Int
+          return round(Int, rate * dt)
+      end
+
+      end
+  changed_files:
+    src/Particle.jl: |
+      module Particle
+
+      export ParticleState, step!, kinetic_energy, momentum, apply_impulse!
+
+      mutable struct ParticleState
+          x::Float64
+          y::Float64
+          vx::Float64
+          vy::Float64
+          mass::Float64
+      end
+
+      function step!(p::ParticleState, dt::Float64)
+          p.x += p.vx * dt
+          p.y += p.vy * dt
+      end
+
+      function kinetic_energy(p::ParticleState)::Float64
+          return 0.5 * p.mass * (p.vx^2 + p.vy^2)
+      end
+
+      function momentum(p::ParticleState)::Tuple{Float64, Float64}
+          return (p.mass * p.vx, p.mass * p.vy)
+      end
+
+      function apply_impulse!(p::ParticleState, fx::Float64, fy::Float64, dt::Float64)
+          p.vx += (fx / p.mass) * dt
+          p.vy += (fy / p.mass) * dt
+      end
+
+      end
+    src/Force.jl: |
+      module Force
+
+      export apply_gravity!, apply_drag!, spring_force
+
+      function apply_gravity!(vx::Float64, vy::Float64, g::Float64, dt::Float64)::Tuple{Float64, Float64}
+          return (vx, vy - g * dt)
+      end
+
+      function apply_drag!(vx::Float64, vy::Float64, drag::Float64)::Tuple{Float64, Float64}
+          return (vx * (1 - drag), vy * (1 - drag))
+      end
+
+      function spring_force(displacement::Float64, stiffness::Float64, damping::Float64, velocity::Float64)::Float64
+          return -stiffness * displacement - damping * velocity
+      end
+
+      end
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: particle_momentum
+  selector:
+    path: src/Particle.jl
+    anchor: "function momentum(p::ParticleState)::Tuple{Float64, Float64}"
+- id: particle_impulse
+  selector:
+    path: src/Particle.jl
+    anchor: "function apply_impulse!(p::ParticleState, fx::Float64, fy::Float64, dt::Float64)"
+- id: force_spring
+  selector:
+    path: src/Force.jl
+    anchor: "function spring_force(displacement::Float64, stiffness::Float64"
+- id: no_collision
+  selector:
+    path: src/Collision.jl
+- id: no_emitter
+  selector:
+    path: src/Emitter.jl
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP2_053_RESTITUTION_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GAP2_053_EPSILON_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GAP2_053_RATE_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GAP2_053_SPREAD_D
+oracle:
+  required:
+  - particle_momentum
+  - particle_impulse
+  - force_spring
+  allowed: []
+  forbidden:
+  - no_collision
+  - no_emitter
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

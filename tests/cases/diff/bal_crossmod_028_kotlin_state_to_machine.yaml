@@ -1,0 +1,155 @@
+name: bal_crossmod_028_kotlin_state_to_machine
+tags:
+- lang:kotlin
+- change:single_file
+- change:new_function
+- context:cross_module
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/main/kotlin/state/OrderState.kt: |
+      package state
+
+      enum class OrderStatus {
+          CREATED, CONFIRMED, SHIPPED, DELIVERED, CANCELLED
+      }
+
+      data class OrderState(
+          val orderId: Long,
+          val status: OrderStatus,
+          val updatedAt: Long = System.currentTimeMillis()
+      )
+    src/main/kotlin/machine/OrderStateMachine.kt: |
+      package machine
+
+      import state.OrderState
+      import state.OrderStatus
+
+      class OrderStateMachine {
+          private val transitions = mapOf(
+              OrderStatus.CREATED to setOf(OrderStatus.CONFIRMED, OrderStatus.CANCELLED),
+              OrderStatus.CONFIRMED to setOf(OrderStatus.SHIPPED, OrderStatus.CANCELLED),
+              OrderStatus.SHIPPED to setOf(OrderStatus.DELIVERED)
+          )
+
+          fun canTransition(from: OrderStatus, to: OrderStatus): Boolean {
+              return transitions[from]?.contains(to) == true
+          }
+
+          fun transition(state: OrderState, newStatus: OrderStatus): OrderState {
+              require(canTransition(state.status, newStatus)) {
+                  "Invalid transition from ${state.status} to $newStatus"
+              }
+              return state.copy(status = newStatus, updatedAt = System.currentTimeMillis())
+          }
+      }
+    src/main/kotlin/notification/OrderNotifier.kt: |
+      package notification
+
+      object OrderNotifier {
+          fun notifyStatusChange(orderId: Long, status: String) {
+              println("Order $orderId changed to $status")
+          }
+      }
+    src/main/kotlin/persistence/OrderStore.kt: |
+      package persistence
+
+      import state.OrderState
+
+      class OrderStore {
+          private val orders = mutableMapOf<Long, OrderState>()
+
+          fun save(state: OrderState) {
+              orders[state.orderId] = state
+          }
+
+          fun load(orderId: Long): OrderState? = orders[orderId]
+      }
+  changed_files:
+    src/main/kotlin/state/OrderState.kt: |
+      package state
+
+      enum class OrderStatus {
+          CREATED, CONFIRMED, SHIPPED, DELIVERED, CANCELLED
+      }
+
+      data class OrderState(
+          val orderId: Long,
+          val status: OrderStatus,
+          val updatedAt: Long = System.currentTimeMillis()
+      ) {
+          fun isTerminal(): Boolean = status == OrderStatus.DELIVERED || status == OrderStatus.CANCELLED
+      }
+    src/main/kotlin/machine/OrderStateMachine.kt: |
+      package machine
+
+      import state.OrderState
+      import state.OrderStatus
+
+      class OrderStateMachine {
+          private val transitions = mapOf(
+              OrderStatus.CREATED to setOf(OrderStatus.CONFIRMED, OrderStatus.CANCELLED),
+              OrderStatus.CONFIRMED to setOf(OrderStatus.SHIPPED, OrderStatus.CANCELLED),
+              OrderStatus.SHIPPED to setOf(OrderStatus.DELIVERED)
+          )
+
+          fun canTransition(from: OrderStatus, to: OrderStatus): Boolean {
+              return transitions[from]?.contains(to) == true
+          }
+
+          fun transition(state: OrderState, newStatus: OrderStatus): OrderState {
+              require(canTransition(state.status, newStatus)) {
+                  "Invalid transition from ${state.status} to $newStatus"
+              }
+              return state.copy(status = newStatus, updatedAt = System.currentTimeMillis())
+          }
+      }
+    src/main/kotlin/notification/OrderNotifier.kt: |
+      package notification
+
+      object OrderNotifier {
+          fun notifyStatusChange(orderId: Long, status: String) {
+              println("Order $orderId changed to $status")
+          }
+      }
+    src/main/kotlin/persistence/OrderStore.kt: |
+      package persistence
+
+      import state.OrderState
+
+      class OrderStore {
+          private val orders = mutableMapOf<Long, OrderState>()
+
+          fun save(state: OrderState) {
+              orders[state.orderId] = state
+          }
+
+          fun load(orderId: Long): OrderState? = orders[orderId]
+      }
+  commit_message: "feat: add isTerminal check to OrderState"
+fragments:
+- id: is_terminal_method
+  selector:
+    path: src/main/kotlin/state/OrderState.kt
+    anchor: "fun isTerminal()"
+- id: machine_uses_state
+  selector:
+    path: src/main/kotlin/machine/OrderStateMachine.kt
+    anchor: "fun transition(state: OrderState"
+- id: store_uses_state
+  selector:
+    path: src/main/kotlin/persistence/OrderStore.kt
+    anchor: "fun save(state: OrderState)"
+- id: no_notifier
+  selector:
+    path: src/main/kotlin/notification/OrderNotifier.kt
+    anchor: "object OrderNotifier"
+oracle:
+  required:
+  - is_terminal_method
+  - machine_uses_state
+  allowed:
+  - store_uses_state
+  forbidden:
+  - no_notifier

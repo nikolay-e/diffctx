@@ -1,0 +1,325 @@
+name: bal_refactor_022_java_rename_class_across_files
+tags:
+- lang:ruby
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:medium
+repo:
+  initial_files:
+    lib/core/pipeline.rb: |
+      require_relative 'stage'
+      require_relative 'context'
+
+      module Core
+        class Pipeline
+          def initialize
+            @stages = []
+          end
+
+          def add_stage(stage)
+            @stages << stage
+            self
+          end
+
+          def run(input)
+            ctx = Context.new(input)
+            @stages.each { |s| s.process(ctx) }
+            ctx.output
+          end
+        end
+      end
+    lib/core/stage.rb: |
+      module Core
+        module Stage
+          def process(context)
+            raise NotImplementedError
+          end
+        end
+      end
+    lib/core/context.rb: |
+      module Core
+        class Context
+          attr_accessor :data, :errors
+
+          def initialize(input)
+            @data = input
+            @errors = []
+          end
+
+          def output
+            { data: @data, errors: @errors }
+          end
+        end
+      end
+    lib/stages/validation_stage.rb: |
+      require_relative '../core/stage'
+      require_relative '../core/context'
+
+      module Stages
+        class ValidationStage
+          include Core::Stage
+
+          def initialize(schema)
+            @schema = schema
+          end
+
+          def process(context)
+            @schema.each do |key, required|
+              context.errors << "Missing: #{key}" if required && !context.data.key?(key)
+            end
+          end
+        end
+      end
+    lib/stages/transform_stage.rb: |
+      require_relative '../core/stage'
+
+      module Stages
+        class TransformStage
+          include Core::Stage
+
+          def initialize(&block)
+            @transform = block
+          end
+
+          def process(context)
+            context.data = @transform.call(context.data)
+          end
+        end
+      end
+    lib/app/document_processor.rb: |
+      require_relative '../core/pipeline'
+      require_relative '../stages/validation_stage'
+      require_relative '../stages/transform_stage'
+
+      module App
+        class DocumentProcessor
+          def initialize
+            schema = { title: true, body: true }
+            @pipeline = Core::Pipeline.new
+              .add_stage(Stages::ValidationStage.new(schema))
+              .add_stage(Stages::TransformStage.new { |d| d.transform_values(&:strip) })
+          end
+
+          def process(document)
+            @pipeline.run(document)
+          end
+        end
+      end
+    lib/storage/archive.rb: |
+      GARBAGE_REFACT022_A = 'archive_storage_v1'
+
+      module Storage
+        class Archive
+          def store(key, data)
+            puts "Archived #{key}"
+          end
+        end
+      end
+    lib/utils/encoder.rb: |
+      GARBAGE_REFACT022_B = 'base64_encoder'
+      GARBAGE_REFACT022_C = 'utf8'
+
+      module Utils
+        class Encoder
+          def self.encode(str)
+            Base64.strict_encode64(str)
+          end
+        end
+      end
+    lib/monitoring/health_check.rb: |
+      GARBAGE_REFACT022_D = 'health_check_endpoint'
+
+      module Monitoring
+        class HealthCheck
+          def status
+            :ok
+          end
+        end
+      end
+  changed_files:
+    lib/core/pipeline.rb: |
+      require_relative 'stage'
+      require_relative 'context'
+
+      module Core
+        class Pipeline
+          def initialize
+            @stages = []
+          end
+
+          def add_stage(stage)
+            @stages << stage
+            self
+          end
+
+          def run(input, metadata: {})
+            ctx = Context.new(input, metadata: metadata)
+            @stages.each { |s| s.process(ctx) }
+            ctx.output
+          end
+        end
+      end
+    lib/core/stage.rb: |
+      module Core
+        module Stage
+          def process(context)
+            raise NotImplementedError
+          end
+        end
+      end
+    lib/core/context.rb: |
+      module Core
+        class Context
+          attr_accessor :data, :errors, :metadata
+
+          def initialize(input, metadata: {})
+            @data = input
+            @errors = []
+            @metadata = metadata
+          end
+
+          def output
+            { data: @data, errors: @errors, metadata: @metadata }
+          end
+        end
+      end
+    lib/stages/validation_stage.rb: |
+      require_relative '../core/stage'
+      require_relative '../core/context'
+
+      module Stages
+        class ValidationStage
+          include Core::Stage
+
+          def initialize(schema)
+            @schema = schema
+          end
+
+          def process(context)
+            @schema.each do |key, required|
+              context.errors << "Missing: #{key}" if required && !context.data.key?(key)
+            end
+          end
+        end
+      end
+    lib/stages/transform_stage.rb: |
+      require_relative '../core/stage'
+
+      module Stages
+        class TransformStage
+          include Core::Stage
+
+          def initialize(&block)
+            @transform = block
+          end
+
+          def process(context)
+            context.data = @transform.call(context.data)
+          end
+        end
+      end
+    lib/app/document_processor.rb: |
+      require_relative '../core/pipeline'
+      require_relative '../stages/validation_stage'
+      require_relative '../stages/transform_stage'
+
+      module App
+        class DocumentProcessor
+          def initialize
+            schema = { title: true, body: true }
+            @pipeline = Core::Pipeline.new
+              .add_stage(Stages::ValidationStage.new(schema))
+              .add_stage(Stages::TransformStage.new { |d| d.transform_values(&:strip) })
+          end
+
+          def process(document, source: 'api')
+            @pipeline.run(document, metadata: { source: source, processed_at: Time.now.iso8601 })
+          end
+        end
+      end
+    lib/storage/archive.rb: |
+      GARBAGE_REFACT022_A = 'archive_storage_v1'
+
+      module Storage
+        class Archive
+          def store(key, data)
+            puts "Archived #{key}"
+          end
+        end
+      end
+    lib/utils/encoder.rb: |
+      GARBAGE_REFACT022_B = 'base64_encoder'
+      GARBAGE_REFACT022_C = 'utf8'
+
+      module Utils
+        class Encoder
+          def self.encode(str)
+            Base64.strict_encode64(str)
+          end
+        end
+      end
+    lib/monitoring/health_check.rb: |
+      GARBAGE_REFACT022_D = 'health_check_endpoint'
+
+      module Monitoring
+        class HealthCheck
+          def status
+            :ok
+          end
+        end
+      end
+  commit_message: "feat: add metadata support to Pipeline and Context"
+fragments:
+- id: context_metadata
+  selector:
+    path: lib/core/context.rb
+    anchor: "attr_accessor :data, :errors, :metadata"
+- id: context_initialize
+  selector:
+    path: lib/core/context.rb
+    anchor: "def initialize(input, metadata:"
+- id: pipeline_run_metadata
+  selector:
+    path: lib/core/pipeline.rb
+    anchor: "def run(input, metadata:"
+- id: document_processor_process
+  selector:
+    path: lib/app/document_processor.rb
+    anchor: "def process(document, source:"
+- id: no_archive
+  selector:
+    path: lib/storage/archive.rb
+- id: no_encoder
+  selector:
+    path: lib/utils/encoder.rb
+- id: no_health_check
+  selector:
+    path: lib/monitoring/health_check.rb
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_REFACT022_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_REFACT022_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_REFACT022_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_REFACT022_D
+oracle:
+  required:
+  - context_metadata
+  - context_initialize
+  - pipeline_run_metadata
+  - document_processor_process
+  allowed: []
+  forbidden:
+  - no_archive
+  - no_encoder
+  - no_health_check
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

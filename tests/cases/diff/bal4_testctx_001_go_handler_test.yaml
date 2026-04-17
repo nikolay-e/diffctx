@@ -1,0 +1,82 @@
+name: bal4_testctx_001_go_handler_test
+tags:
+- lang:go
+- change:single_file
+- change:bug_fix
+- context:test_file
+- distance:1hop
+- difficulty:trivial
+repo:
+  initial_files:
+    server/handler.go: |
+      package server
+
+      import "net/http"
+
+      func Greet(w http.ResponseWriter, r *http.Request) {
+          name := r.URL.Query().Get("name")
+          w.Write([]byte("hello " + name))
+      }
+    server/handler_test.go: |
+      package server
+
+      import (
+          "net/http"
+          "net/http/httptest"
+          "testing"
+      )
+
+      func TestGreet(t *testing.T) {
+          req := httptest.NewRequest(http.MethodGet, "/greet?name=world", nil)
+          w := httptest.NewRecorder()
+          Greet(w, req)
+          if w.Body.String() != "hello world" {
+              t.Errorf("unexpected body: %s", w.Body.String())
+          }
+      }
+    utils/math.go: |
+      package utils
+
+      func Clamp(val, lo, hi int) int {
+          if val < lo {
+              return lo
+          }
+          if val > hi {
+              return hi
+          }
+          return val
+      }
+  changed_files:
+    server/handler.go: |
+      package server
+
+      import "net/http"
+
+      func Greet(w http.ResponseWriter, r *http.Request) {
+          name := r.URL.Query().Get("name")
+          if name == "" {
+              name = "stranger"
+          }
+          w.Write([]byte("hello " + name))
+      }
+  commit_message: "fix: default name when query param missing"
+fragments:
+- id: greet_fn
+  selector:
+    path: server/handler.go
+    anchor: "func Greet"
+- id: test_greet
+  selector:
+    path: server/handler_test.go
+    anchor: "func TestGreet(t *testing.T)"
+- id: no_utils
+  selector:
+    path: utils/math.go
+    anchor: "func Clamp"
+oracle:
+  required:
+  - greet_fn
+  - test_greet
+  allowed: []
+  forbidden:
+  - no_utils

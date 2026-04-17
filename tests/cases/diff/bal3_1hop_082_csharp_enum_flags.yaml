@@ -1,0 +1,355 @@
+name: bal3_1hop_082_csharp_enum_flags
+tags:
+- lang:csharp
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: csharp-no-tree-sitter
+repo:
+  initial_files:
+    src/Core/Permission.cs: |
+      using System;
+
+      namespace App.Core
+      {
+          public enum Permission
+          {
+              None = 0,
+              Read = 1,
+              Write = 2,
+              Delete = 4
+          }
+      }
+    src/Auth/PermissionChecker.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Auth
+      {
+          public class PermissionChecker
+          {
+              public bool HasPermission(Permission userPerms, Permission required)
+              {
+                  return (userPerms & required) == required;
+              }
+          }
+      }
+    src/Auth/RoleManager.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Auth
+      {
+          public class RoleManager
+          {
+              public Permission GetRolePermissions(string role)
+              {
+                  switch (role)
+                  {
+                      case "admin": return Permission.Read | Permission.Write | Permission.Delete;
+                      case "editor": return Permission.Read | Permission.Write;
+                      default: return Permission.Read;
+                  }
+              }
+          }
+      }
+    src/Controllers/ResourceController.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Controllers
+      {
+          public class ResourceController
+          {
+              private readonly Permission _userPermissions;
+
+              public ResourceController(Permission userPermissions)
+              {
+                  _userPermissions = userPermissions;
+              }
+
+              public bool CanDelete()
+              {
+                  return (_userPermissions & Permission.Delete) == Permission.Delete;
+              }
+          }
+      }
+    src/Middleware/AuthorizationFilter.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Middleware
+      {
+          public class AuthorizationFilter
+          {
+              public bool Authorize(Permission userPerms, Permission required)
+              {
+                  return (userPerms & required) == required;
+              }
+          }
+      }
+    src/Views/PermissionView.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Views
+      {
+          public class PermissionView
+          {
+              public string Render(Permission perms)
+              {
+                  return $"Permissions: {perms}";
+              }
+          }
+      }
+    src/IO/FileWriter.cs: |
+      using System;
+      GARBAGE_082_BUFFER_SIZE_A = 8192;
+      GARBAGE_082_FLUSH_MODE_B = "auto";
+
+      namespace App.IO
+      {
+          public class FileWriter
+          {
+              public void Write(string path, string content) { }
+          }
+      }
+    src/IO/StreamReader.cs: |
+      using System;
+      GARBAGE_082_READ_AHEAD_C = 4096;
+      GARBAGE_082_ENCODING_D = "utf-8";
+
+      namespace App.IO
+      {
+          public class StreamReader
+          {
+              public string Read(string path) { return ""; }
+          }
+      }
+    src/Compression/GzipCompressor.cs: |
+      using System;
+      GARBAGE_082_COMP_LEVEL_E = 6;
+      GARBAGE_082_WINDOW_BITS_F = 15;
+
+      namespace App.Compression
+      {
+          public class GzipCompressor
+          {
+              public byte[] Compress(byte[] data) { return data; }
+          }
+      }
+  changed_files:
+    src/Core/Permission.cs: |
+      using System;
+
+      namespace App.Core
+      {
+          [Flags]
+          public enum Permission
+          {
+              None = 0,
+              Read = 1,
+              Write = 2,
+              Delete = 4,
+              Execute = 8,
+              Admin = 16,
+              All = Read | Write | Delete | Execute | Admin
+          }
+      }
+    src/Auth/PermissionChecker.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Auth
+      {
+          public class PermissionChecker
+          {
+              public bool HasPermission(Permission userPerms, Permission required)
+              {
+                  return (userPerms & required) == required;
+              }
+          }
+      }
+    src/Auth/RoleManager.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Auth
+      {
+          public class RoleManager
+          {
+              public Permission GetRolePermissions(string role)
+              {
+                  switch (role)
+                  {
+                      case "admin": return Permission.Read | Permission.Write | Permission.Delete;
+                      case "editor": return Permission.Read | Permission.Write;
+                      default: return Permission.Read;
+                  }
+              }
+          }
+      }
+    src/Controllers/ResourceController.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Controllers
+      {
+          public class ResourceController
+          {
+              private readonly Permission _userPermissions;
+
+              public ResourceController(Permission userPermissions)
+              {
+                  _userPermissions = userPermissions;
+              }
+
+              public bool CanDelete()
+              {
+                  return (_userPermissions & Permission.Delete) == Permission.Delete;
+              }
+          }
+      }
+    src/Middleware/AuthorizationFilter.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Middleware
+      {
+          public class AuthorizationFilter
+          {
+              public bool Authorize(Permission userPerms, Permission required)
+              {
+                  return (userPerms & required) == required;
+              }
+          }
+      }
+    src/Views/PermissionView.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Views
+      {
+          public class PermissionView
+          {
+              public string Render(Permission perms)
+              {
+                  return $"Permissions: {perms}";
+              }
+          }
+      }
+    src/IO/FileWriter.cs: |
+      using System;
+      GARBAGE_082_BUFFER_SIZE_A = 8192;
+      GARBAGE_082_FLUSH_MODE_B = "auto";
+
+      namespace App.IO
+      {
+          public class FileWriter
+          {
+              public void Write(string path, string content) { }
+          }
+      }
+    src/IO/StreamReader.cs: |
+      using System;
+      GARBAGE_082_READ_AHEAD_C = 4096;
+      GARBAGE_082_ENCODING_D = "utf-8";
+
+      namespace App.IO
+      {
+          public class StreamReader
+          {
+              public string Read(string path) { return ""; }
+          }
+      }
+    src/Compression/GzipCompressor.cs: |
+      using System;
+      GARBAGE_082_COMP_LEVEL_E = 6;
+      GARBAGE_082_WINDOW_BITS_F = 15;
+
+      namespace App.Compression
+      {
+          public class GzipCompressor
+          {
+              public byte[] Compress(byte[] data) { return data; }
+          }
+      }
+  commit_message: "feat: add Execute, Admin and All flags to Permission enum"
+fragments:
+- id: checker_using
+  selector:
+    path: src/Auth/PermissionChecker.cs
+    anchor: "using App.Core"
+- id: checker_check
+  selector:
+    path: src/Auth/PermissionChecker.cs
+    anchor: "userPerms & required"
+- id: role_using
+  selector:
+    path: src/Auth/RoleManager.cs
+    anchor: "using App.Core"
+- id: role_permissions
+  selector:
+    path: src/Auth/RoleManager.cs
+    anchor: "Permission.Read | Permission.Write | Permission.Delete"
+- id: resource_using
+  selector:
+    path: src/Controllers/ResourceController.cs
+    anchor: "using App.Core"
+- id: auth_filter_using
+  selector:
+    path: src/Middleware/AuthorizationFilter.cs
+    anchor: "using App.Core"
+- id: perm_view_using
+  selector:
+    path: src/Views/PermissionView.cs
+    anchor: "using App.Core"
+- id: no_file_writer
+  selector:
+    path: src/IO/FileWriter.cs
+- id: no_stream_reader
+  selector:
+    path: src/IO/StreamReader.cs
+- id: no_gzip
+  selector:
+    path: src/Compression/GzipCompressor.cs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_082_BUFFER_SIZE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_082_FLUSH_MODE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_082_READ_AHEAD_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_082_ENCODING_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_082_COMP_LEVEL_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_082_WINDOW_BITS_F
+oracle:
+  required:
+  - checker_using
+  - checker_check
+  - role_using
+  - role_permissions
+  - resource_using
+  - auth_filter_using
+  - perm_view_using
+  allowed: []
+  forbidden:
+  - no_file_writer
+  - no_stream_reader
+  - no_gzip
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

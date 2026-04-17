@@ -1,0 +1,154 @@
+name: gap_123_shell_import_chain_backup_pipeline
+tags:
+- lang:shell
+- change:single_file
+- context:import_chain
+- difficulty:hard
+- distance:2hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    scripts/backup.sh: |
+      #!/usr/bin/env bash
+      source lib/storage/upload.sh
+
+      BACKUP_DIR="/tmp/backups"
+
+      create_snapshot() {
+          local db_name="$1"
+          local timestamp
+          timestamp=$(date +%Y%m%d_%H%M%S)
+          local dump_file="$BACKUP_DIR/${db_name}_${timestamp}.sql"
+          pg_dump "$db_name" > "$dump_file"
+          echo "$dump_file"
+      }
+
+      backup_and_upload() {
+          local db_name="$1"
+          local bucket="$2"
+          local dump_file
+          dump_file=$(create_snapshot "$db_name")
+          upload_to_bucket "$dump_file" "$bucket"
+      }
+    lib/storage/upload.sh: |
+      #!/usr/bin/env bash
+      source lib/storage/auth.sh
+
+      upload_to_bucket() {
+          local file="$1"
+          local bucket="$2"
+          local token
+          token=$(get_auth_token)
+          curl -s -X PUT \
+              -H "Authorization: Bearer $token" \
+              -T "$file" \
+              "https://storage.example.com/$bucket/$(basename "$file")"
+      }
+
+      list_bucket_contents() {
+          local bucket="$1"
+          local token
+          token=$(get_auth_token)
+          curl -s -H "Authorization: Bearer $token" \
+              "https://storage.example.com/$bucket/"
+      }
+    lib/storage/auth.sh: |
+      #!/usr/bin/env bash
+      TOKEN_CACHE="/tmp/.storage_token"
+      TOKEN_TTL=3600
+
+      get_auth_token() {
+          if [[ -f "$TOKEN_CACHE" ]]; then
+              local age
+              age=$(( $(date +%s) - $(stat -c %Y "$TOKEN_CACHE" 2>/dev/null || stat -f %m "$TOKEN_CACHE") ))
+              if (( age < TOKEN_TTL )); then
+                  cat "$TOKEN_CACHE"
+                  return 0
+              fi
+          fi
+          local token
+          token=$(curl -s -X POST "https://auth.example.com/token" \
+              -d "grant_type=client_credentials" | jq -r '.access_token')
+          echo "$token" > "$TOKEN_CACHE"
+          echo "$token"
+      }
+
+      revoke_token() {
+          rm -f "$TOKEN_CACHE"
+      }
+    lib/notify/slack.sh: |
+      #!/usr/bin/env bash
+
+      send_slack_message() {
+          local webhook_url="$1"
+          local message="$2"
+          curl -s -X POST "$webhook_url" \
+              -H "Content-Type: application/json" \
+              -d "{\"text\": \"$message\"}"
+      }
+
+      send_slack_alert() {
+          local webhook_url="$1"
+          local title="$2"
+          local severity="$3"
+          send_slack_message "$webhook_url" ":warning: [$severity] $title"
+      }
+  changed_files:
+    scripts/backup.sh: |
+      #!/usr/bin/env bash
+      source lib/storage/upload.sh
+
+      BACKUP_DIR="/tmp/backups"
+      RETENTION_DAYS=7
+
+      create_snapshot() {
+          local db_name="$1"
+          local timestamp
+          timestamp=$(date +%Y%m%d_%H%M%S)
+          local dump_file="$BACKUP_DIR/${db_name}_${timestamp}.sql"
+          pg_dump "$db_name" > "$dump_file"
+          echo "$dump_file"
+      }
+
+      backup_and_upload() {
+          local db_name="$1"
+          local bucket="$2"
+          local dump_file
+          dump_file=$(create_snapshot "$db_name")
+          upload_to_bucket "$dump_file" "$bucket"
+      }
+
+      cleanup_local_backups() {
+          find "$BACKUP_DIR" -name "*.sql" -mtime +"$RETENTION_DAYS" -delete
+          local remaining
+          remaining=$(find "$BACKUP_DIR" -name "*.sql" | wc -l)
+          echo "Remaining local backups: $remaining"
+      }
+fragments:
+- id: cleanup_fn
+  selector:
+    path: scripts/backup.sh
+    anchor: cleanup_local_backups
+- id: upload_fn
+  selector:
+    path: lib/storage/upload.sh
+    anchor: upload_to_bucket
+- id: auth_fn
+  selector:
+    path: lib/storage/auth.sh
+    anchor: get_auth_token
+- id: no_slack
+  selector:
+    path: lib/notify/slack.sh
+- id: no_slack_alert
+  selector:
+    anchor: send_slack_alert
+oracle:
+  required:
+  - cleanup_fn
+  - upload_fn
+  - auth_fn
+  forbidden:
+  - no_slack
+  - no_slack_alert

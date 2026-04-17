@@ -1,0 +1,99 @@
+name: c_family_018_static_array_size
+tags:
+- lang:c
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    constants.h: |
+      #ifndef CONSTANTS_H
+      #define CONSTANTS_H
+      #define MAX_ITEMS 32
+      #endif
+    stack.c: |
+      #include "constants.h"
+      static int data[MAX_ITEMS];
+      static int top = 0;
+      void stack_push(int v) { if (top < MAX_ITEMS) data[top++] = v; }
+      int  stack_pop(void)   { return top > 0 ? data[--top] : 0; }
+      int  stack_size(void)  { return top; }
+    queue.c: |
+      #include "constants.h"
+      static int buf[MAX_ITEMS];
+      static int head = 0, tail = 0;
+      void queue_enqueue(int v) { if ((tail + 1) % MAX_ITEMS != head) buf[tail++ % MAX_ITEMS] = v; }
+      int  queue_dequeue(void)  { return head != tail ? buf[head++ % MAX_ITEMS] : 0; }
+    C_NOISE_018_nfc.h: |
+      #ifndef C_NOISE_018_NFC_H
+      #define C_NOISE_018_NFC_H
+      int C_NOISE_018_nfc_poll(void);
+      void C_NOISE_018_nfc_write_tag(const char *data);
+      #endif
+    C_NOISE_018_nfc.c: |
+      #include "C_NOISE_018_nfc.h"
+      int C_NOISE_018_nfc_poll(void) { return 0; }
+      void C_NOISE_018_nfc_write_tag(const char *data) {}
+  changed_files:
+    constants.h: |
+      #ifndef CONSTANTS_H
+      #define CONSTANTS_H
+      #define MAX_ITEMS 128
+      #endif
+    stack.c: |
+      #include "constants.h"
+      static int data[MAX_ITEMS];
+      static int top = 0;
+      void stack_push(int v) { if (top < MAX_ITEMS) data[top++] = v; }
+      int  stack_pop(void)   { return top > 0 ? data[--top] : 0; }
+      int  stack_size(void)  { return top; }
+    queue.c: |
+      #include "constants.h"
+      static int buf[MAX_ITEMS];
+      static int head = 0, tail = 0;
+      void queue_enqueue(int v) { if ((tail + 1) % MAX_ITEMS != head) buf[tail++ % MAX_ITEMS] = v; }
+      int  queue_dequeue(void)  { return head != tail ? buf[head++ % MAX_ITEMS] : 0; }
+    C_NOISE_018_nfc.h: |
+      #ifndef C_NOISE_018_NFC_H
+      #define C_NOISE_018_NFC_H
+      int C_NOISE_018_nfc_poll(void);
+      void C_NOISE_018_nfc_write_tag(const char *data);
+      #endif
+    C_NOISE_018_nfc.c: |
+      #include "C_NOISE_018_nfc.h"
+      int C_NOISE_018_nfc_poll(void) { return 0; }
+      void C_NOISE_018_nfc_write_tag(const char *data) {}
+  commit_message: "config: increase MAX_ITEMS from 32 to 128 in constants.h"
+fragments:
+- id: constants_h
+  selector:
+    path: constants.h
+    anchor: "MAX_ITEMS 128"
+- id: stack_c
+  selector:
+    path: stack.c
+    anchor: "data[MAX_ITEMS]"
+- id: queue_c
+  selector:
+    path: queue.c
+    anchor: "buf[MAX_ITEMS]"
+- id: no_nfc_h
+  selector:
+    anchor: C_NOISE_018_nfc_poll
+- id: no_nfc_c
+  selector:
+    path: C_NOISE_018_nfc.c
+- id: no_global_write_tag
+  selector:
+    anchor: C_NOISE_018_nfc_write_tag
+oracle:
+  required:
+  - constants_h
+  - stack_c
+  - queue_c
+  allowed: []
+  forbidden:
+  - no_nfc_h
+  - no_nfc_c
+  - no_global_write_tag

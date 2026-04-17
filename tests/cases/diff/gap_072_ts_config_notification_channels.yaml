@@ -1,0 +1,217 @@
+name: gap_072_ts_config_notification_channels
+tags:
+- change:config
+- change:multi_file
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:typescript
+repo:
+  initial_files:
+    src/notify/channels.ts: |
+      export interface NotificationChannel {
+        type: string;
+        endpoint: string;
+        active: boolean;
+      }
+
+      export const channels: NotificationChannel[] = [
+        { type: "email", endpoint: "smtp://mail.internal", active: true },
+        { type: "slack", endpoint: "https://hooks.slack.com/abc", active: true },
+      ];
+    src/notify/dispatcher.ts: |
+      import { NotificationChannel, channels } from "./channels";
+
+      function formatMessage(channel: NotificationChannel, text: string): string {
+        return `[${channel.type.toUpperCase()}] ${text}`;
+      }
+
+      function dispatch(text: string): string[] {
+        const results: string[] = [];
+        for (const ch of channels) {
+          if (ch.active) {
+            results.push(formatMessage(ch, text));
+          }
+        }
+        return results;
+      }
+
+      function activeChannelCount(): number {
+        return channels.filter((c) => c.active).length;
+      }
+    src/notify/template.ts: |
+      const TRAP_GAP072_TEMPLATE_A: string = "template_engine";
+      const TRAP_GAP072_SYNTAX_B: string = "mustache";
+
+      function renderTemplate(template: string, vars: Record<string, string>): string {
+        let result = template;
+        for (const [key, value] of Object.entries(vars)) {
+          result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
+        }
+        return result;
+      }
+
+      function escapeHtml(text: string): string {
+        return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      }
+    src/notify/queue.ts: |
+      const TRAP_GAP072_QUEUE_C: string = "notification_queue";
+      const TRAP_GAP072_MAX_SIZE_D: number = 1000;
+
+      interface QueuedNotification {
+        text: string;
+        channelType: string;
+        timestamp: number;
+      }
+
+      const notificationQueue: QueuedNotification[] = [];
+
+      function enqueue(item: QueuedNotification): void {
+        notificationQueue.push(item);
+      }
+
+      function dequeue(): QueuedNotification | undefined {
+        return notificationQueue.shift();
+      }
+
+      function queueSize(): number {
+        return notificationQueue.length;
+      }
+  changed_files:
+    src/notify/channels.ts: |
+      export interface NotificationChannel {
+        type: string;
+        endpoint: string;
+        active: boolean;
+        retryCount: number;
+      }
+
+      export const channels: NotificationChannel[] = [
+        { type: "email", endpoint: "smtp://mail.internal", active: true, retryCount: 3 },
+        { type: "slack", endpoint: "https://hooks.slack.com/abc", active: true, retryCount: 1 },
+        { type: "webhook", endpoint: "https://api.internal/hook", active: false, retryCount: 2 },
+      ];
+
+      export const defaultRetry = 3;
+    src/notify/dispatcher.ts: |
+      import { NotificationChannel, channels, defaultRetry } from "./channels";
+
+      function formatMessage(channel: NotificationChannel, text: string): string {
+        return `[${channel.type.toUpperCase()}] ${text}`;
+      }
+
+      function shouldRetry(channel: NotificationChannel, attempt: number): boolean {
+        return attempt < channel.retryCount;
+      }
+
+      function dispatch(text: string): string[] {
+        const results: string[] = [];
+        for (const ch of channels) {
+          if (ch.active) {
+            results.push(formatMessage(ch, text));
+          }
+        }
+        return results;
+      }
+
+      function dispatchWithRetry(text: string, channel: NotificationChannel): string[] {
+        const attempts: string[] = [];
+        for (let i = 0; i <= channel.retryCount; i++) {
+          attempts.push(`attempt ${i}: ${formatMessage(channel, text)}`);
+        }
+        return attempts;
+      }
+
+      function activeChannelCount(): number {
+        return channels.filter((c) => c.active).length;
+      }
+    src/notify/template.ts: |
+      const TRAP_GAP072_TEMPLATE_A: string = "template_engine";
+      const TRAP_GAP072_SYNTAX_B: string = "mustache";
+
+      function renderTemplate(template: string, vars: Record<string, string>): string {
+        let result = template;
+        for (const [key, value] of Object.entries(vars)) {
+          result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
+        }
+        return result;
+      }
+
+      function escapeHtml(text: string): string {
+        return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      }
+    src/notify/queue.ts: |
+      const TRAP_GAP072_QUEUE_C: string = "notification_queue";
+      const TRAP_GAP072_MAX_SIZE_D: number = 1000;
+
+      interface QueuedNotification {
+        text: string;
+        channelType: string;
+        timestamp: number;
+      }
+
+      const notificationQueue: QueuedNotification[] = [];
+
+      function enqueue(item: QueuedNotification): void {
+        notificationQueue.push(item);
+      }
+
+      function dequeue(): QueuedNotification | undefined {
+        return notificationQueue.shift();
+      }
+
+      function queueSize(): number {
+        return notificationQueue.length;
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: channels_retry
+  selector:
+    path: src/notify/channels.ts
+    anchor: 'retryCount: number;'
+- id: channels_webhook
+  selector:
+    path: src/notify/channels.ts
+    anchor: 'type: "webhook"'
+- id: dispatcher_should_retry
+  selector:
+    path: src/notify/dispatcher.ts
+    anchor: 'function shouldRetry(channel: NotificationChannel, attempt: number): boolean'
+- id: dispatcher_with_retry
+  selector:
+    path: src/notify/dispatcher.ts
+    anchor: 'function dispatchWithRetry(text: string, channel: NotificationChannel): string[]'
+- id: no_template
+  selector:
+    path: src/notify/template.ts
+- id: no_queue
+  selector:
+    path: src/notify/queue.ts
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP072_TEMPLATE_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP072_SYNTAX_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP072_QUEUE_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP072_MAX_SIZE_D
+oracle:
+  required:
+  - channels_retry
+  - channels_webhook
+  - dispatcher_should_retry
+  - dispatcher_with_retry
+  allowed: []
+  forbidden:
+  - no_template
+  - no_queue
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

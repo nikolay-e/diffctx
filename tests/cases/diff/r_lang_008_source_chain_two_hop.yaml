@@ -1,0 +1,101 @@
+name: r_lang_008_source_chain_two_hop
+tags:
+- lang:r
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:2hop
+- difficulty:medium
+repo:
+  initial_files:
+    R/utils.R: |
+      normalize_vector <- function(x) {
+        (x - min(x, na.rm = TRUE)) / (max(x, na.rm = TRUE) - min(x, na.rm = TRUE))
+      }
+
+      clip_outliers <- function(x, z_thresh = 3) {
+        mu <- mean(x, na.rm = TRUE)
+        sigma <- sd(x, na.rm = TRUE)
+        pmin(pmax(x, mu - z_thresh * sigma), mu + z_thresh * sigma)
+      }
+    R/helpers.R: |
+      source("R/utils.R")
+
+      preprocess_feature <- function(x, clip = TRUE) {
+        if (clip) x <- clip_outliers(x)
+        normalize_vector(x)
+      }
+    R/main.R: |
+      source("R/helpers.R")
+
+      run_pipeline <- function(df, feature_cols) {
+        for (col in feature_cols) {
+          df[[col]] <- preprocess_feature(df[[col]])
+        }
+        df
+      }
+    R/R_NOISE_008_table_utils.R: |
+      R_NOISE_008_freq_table <- function(x) {
+        as.data.frame(table(x), stringsAsFactors = FALSE)
+      }
+      R_NOISE_008_cross_tabulate <- function(x, y) {
+        table(x, y)
+      }
+    R/R_NOISE_008_format_utils.R: |
+      R_NOISE_008_format_pct <- function(x, digits = 1) {
+        paste0(round(x * 100, digits), "%")
+      }
+      R_NOISE_008_format_currency <- function(x, symbol = "$") {
+        paste0(symbol, formatC(x, format = "f", digits = 2, big.mark = ","))
+      }
+  changed_files:
+    R/utils.R: |
+      normalize_vector <- function(x, range = c(0, 1)) {
+        lo <- range[1]
+        hi <- range[2]
+        lo + (x - min(x, na.rm = TRUE)) * (hi - lo) /
+          (max(x, na.rm = TRUE) - min(x, na.rm = TRUE))
+      }
+
+      clip_outliers <- function(x, z_thresh = 3) {
+        mu <- mean(x, na.rm = TRUE)
+        sigma <- sd(x, na.rm = TRUE)
+        pmin(pmax(x, mu - z_thresh * sigma), mu + z_thresh * sigma)
+      }
+  commit_message: "Update files"
+fragments:
+- id: utils_normalize_changed
+  selector:
+    path: R/utils.R
+    anchor: normalize_vector
+- id: helpers_calls_normalize
+  selector:
+    path: R/helpers.R
+    anchor: normalize_vector
+- id: main_calls_preprocess
+  selector:
+    path: R/main.R
+    anchor: preprocess_feature
+- id: no_table_utils
+  selector:
+    path: R/R_NOISE_008_table_utils.R
+- id: no_format_utils
+  selector:
+    path: R/R_NOISE_008_format_utils.R
+- id: no_global_0
+  selector:
+    anchor: R_NOISE_008_freq_table
+- id: no_global_1
+  selector:
+    anchor: R_NOISE_008_format_pct
+oracle:
+  required:
+  - utils_normalize_changed
+  - helpers_calls_normalize
+  - main_calls_preprocess
+  allowed: []
+  forbidden:
+  - no_table_utils
+  - no_format_utils
+  - no_global_0
+  - no_global_1

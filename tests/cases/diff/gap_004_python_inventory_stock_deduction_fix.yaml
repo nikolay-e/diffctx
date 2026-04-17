@@ -1,0 +1,168 @@
+name: gap_004_python_inventory_stock_deduction_fix
+tags:
+- lang:python
+- change:bug_fix
+- change:multi_file
+- context:import_chain
+- difficulty:hard
+- distance:1hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    warehouse/stock.py: |
+      from warehouse.sku import SkuRegistry, SkuNotFoundError
+
+      class StockManager:
+          def __init__(self):
+              self._quantities: dict[str, int] = {}
+              self._registry = SkuRegistry()
+
+          def add_stock(self, sku: str, quantity: int) -> None:
+              self._registry.validate(sku)
+              current = self._quantities.get(sku, 0)
+              self._quantities[sku] = current + quantity
+
+          def deduct(self, sku: str, quantity: int) -> bool:
+              self._registry.validate(sku)
+              current = self._quantities.get(sku, 0)
+              if current < quantity:
+                  return False
+              self._quantities[sku] = current - quantity
+              return True
+
+          def get_quantity(self, sku: str) -> int:
+              return self._quantities.get(sku, 0)
+    warehouse/sku.py: |
+      class SkuNotFoundError(Exception):
+          pass
+
+      class SkuRegistry:
+          def __init__(self):
+              self._valid_skus: set[str] = set()
+
+          def register(self, sku: str) -> None:
+              self._valid_skus.add(sku.upper())
+
+          def validate(self, sku: str) -> None:
+              if sku.upper() not in self._valid_skus:
+                  raise SkuNotFoundError(f"Unknown SKU: {sku}")
+
+          def list_all(self) -> list[str]:
+              return sorted(self._valid_skus)
+    warehouse/shipping.py: |
+      from datetime import datetime
+
+      class ShippingLabel:
+          def __init__(self, address: str, weight_kg: float):
+              self.address = address
+              self.weight_kg = weight_kg
+              self.created_at = datetime.now()
+
+          def tracking_id(self) -> str:
+              ts = int(self.created_at.timestamp())
+              return f"SHP-{ts}-{hash(self.address) % 10000:04d}"
+
+          def estimated_cost(self) -> float:
+              base = 5.0
+              per_kg = 2.5
+              return base + self.weight_kg * per_kg
+    warehouse/reports.py: |
+      class InventoryReport:
+          def __init__(self, title: str):
+              self.title = title
+              self._rows: list[dict] = []
+
+          def add_row(self, sku: str, qty: int, value: float) -> None:
+              self._rows.append({"sku": sku, "qty": qty, "value": value})
+
+          def total_value(self) -> float:
+              return sum(r["value"] for r in self._rows)
+  changed_files:
+    warehouse/stock.py: |
+      from warehouse.sku import SkuRegistry, SkuNotFoundError
+
+      class StockManager:
+          def __init__(self):
+              self._quantities: dict[str, int] = {}
+              self._reserved: dict[str, int] = {}
+              self._registry = SkuRegistry()
+
+          def add_stock(self, sku: str, quantity: int) -> None:
+              self._registry.validate(sku)
+              current = self._quantities.get(sku, 0)
+              self._quantities[sku] = current + quantity
+
+          def reserve(self, sku: str, quantity: int) -> bool:
+              available = self.available(sku)
+              if available < quantity:
+                  return False
+              current_reserved = self._reserved.get(sku, 0)
+              self._reserved[sku] = current_reserved + quantity
+              return True
+
+          def deduct(self, sku: str, quantity: int) -> bool:
+              self._registry.validate(sku)
+              current = self._quantities.get(sku, 0)
+              reserved = self._reserved.get(sku, 0)
+              available = current - reserved
+              if available < quantity:
+                  return False
+              self._quantities[sku] = current - quantity
+              return True
+
+          def available(self, sku: str) -> int:
+              total = self._quantities.get(sku, 0)
+              reserved = self._reserved.get(sku, 0)
+              return max(0, total - reserved)
+
+          def get_quantity(self, sku: str) -> int:
+              return self._quantities.get(sku, 0)
+    warehouse/sku.py: |
+      class SkuNotFoundError(Exception):
+          pass
+
+      class SkuRegistry:
+          def __init__(self):
+              self._valid_skus: set[str] = set()
+
+          def register(self, sku: str) -> None:
+              self._valid_skus.add(sku.upper())
+
+          def validate(self, sku: str) -> None:
+              if sku.upper() not in self._valid_skus:
+                  raise SkuNotFoundError(f"Unknown SKU: {sku}")
+
+          def list_all(self) -> list[str]:
+              return sorted(self._valid_skus)
+fragments:
+- id: stock_deduct
+  selector:
+    path: warehouse/stock.py
+    anchor: "def deduct"
+- id: stock_reserve
+  selector:
+    path: warehouse/stock.py
+    anchor: "def reserve"
+- id: sku_validate
+  selector:
+    path: warehouse/sku.py
+    anchor: "def validate"
+- id: sku_error
+  selector:
+    path: warehouse/sku.py
+    anchor: "class SkuNotFoundError"
+- id: no_shipping
+  selector:
+    path: warehouse/shipping.py
+- id: no_reports
+  selector:
+    path: warehouse/reports.py
+oracle:
+  required:
+  - stock_deduct
+  - stock_reserve
+  - sku_validate
+  forbidden:
+  - no_shipping
+  - no_reports

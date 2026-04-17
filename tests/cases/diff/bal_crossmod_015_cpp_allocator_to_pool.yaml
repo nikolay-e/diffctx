@@ -1,0 +1,237 @@
+name: bal_crossmod_015_cpp_allocator_to_pool
+tags:
+- lang:cpp
+- change:single_file
+- change:signature
+- context:cross_module
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/memory/block_allocator.hpp: |
+      #pragma once
+      #include <cstddef>
+
+      namespace memory {
+
+      class BlockAllocator {
+      public:
+          explicit BlockAllocator(size_t block_size);
+          void* allocate();
+          void deallocate(void* ptr);
+          size_t block_size() const;
+      private:
+          size_t block_size_;
+          void* free_list_;
+      };
+
+      }
+    src/memory/block_allocator.cpp: |
+      #include "block_allocator.hpp"
+      #include <cstdlib>
+
+      namespace memory {
+
+      BlockAllocator::BlockAllocator(size_t block_size)
+          : block_size_(block_size), free_list_(nullptr) {}
+
+      void* BlockAllocator::allocate() {
+          if (free_list_) {
+              void* ptr = free_list_;
+              free_list_ = *static_cast<void**>(free_list_);
+              return ptr;
+          }
+          return std::malloc(block_size_);
+      }
+
+      void BlockAllocator::deallocate(void* ptr) {
+          *static_cast<void**>(ptr) = free_list_;
+          free_list_ = ptr;
+      }
+
+      size_t BlockAllocator::block_size() const {
+          return block_size_;
+      }
+
+      }
+    src/ecs/component_pool.hpp: |
+      #pragma once
+      #include <vector>
+      #include "../memory/block_allocator.hpp"
+
+      namespace ecs {
+
+      class ComponentPool {
+      public:
+          explicit ComponentPool(size_t component_size);
+          void* get(size_t index);
+          void* create();
+      private:
+          memory::BlockAllocator allocator_;
+          std::vector<void*> components_;
+      };
+
+      }
+    src/ecs/component_pool.cpp: |
+      #include "component_pool.hpp"
+
+      namespace ecs {
+
+      ComponentPool::ComponentPool(size_t component_size)
+          : allocator_(component_size) {}
+
+      void* ComponentPool::get(size_t index) {
+          return components_[index];
+      }
+
+      void* ComponentPool::create() {
+          void* ptr = allocator_.allocate();
+          components_.push_back(ptr);
+          return ptr;
+      }
+
+      }
+    src/debug/memory_tracker.hpp: |
+      #pragma once
+      #include <cstddef>
+
+      namespace debug {
+
+      class MemoryTracker {
+      public:
+          static void record_allocation(size_t bytes);
+          static void record_deallocation(size_t bytes);
+          static size_t current_usage();
+      };
+
+      }
+  changed_files:
+    src/memory/block_allocator.hpp: |
+      #pragma once
+      #include <cstddef>
+
+      namespace memory {
+
+      class BlockAllocator {
+      public:
+          BlockAllocator(size_t block_size, size_t alignment = alignof(std::max_align_t));
+          void* allocate();
+          void deallocate(void* ptr);
+          size_t block_size() const;
+          size_t alignment() const;
+      private:
+          size_t block_size_;
+          size_t alignment_;
+          void* free_list_;
+      };
+
+      }
+    src/memory/block_allocator.cpp: |
+      #include "block_allocator.hpp"
+      #include <cstdlib>
+
+      namespace memory {
+
+      BlockAllocator::BlockAllocator(size_t block_size, size_t alignment)
+          : block_size_(block_size), alignment_(alignment), free_list_(nullptr) {}
+
+      void* BlockAllocator::allocate() {
+          if (free_list_) {
+              void* ptr = free_list_;
+              free_list_ = *static_cast<void**>(free_list_);
+              return ptr;
+          }
+          return std::aligned_alloc(alignment_, block_size_);
+      }
+
+      void BlockAllocator::deallocate(void* ptr) {
+          *static_cast<void**>(ptr) = free_list_;
+          free_list_ = ptr;
+      }
+
+      size_t BlockAllocator::block_size() const {
+          return block_size_;
+      }
+
+      size_t BlockAllocator::alignment() const {
+          return alignment_;
+      }
+
+      }
+    src/ecs/component_pool.hpp: |
+      #pragma once
+      #include <vector>
+      #include "../memory/block_allocator.hpp"
+
+      namespace ecs {
+
+      class ComponentPool {
+      public:
+          explicit ComponentPool(size_t component_size);
+          void* get(size_t index);
+          void* create();
+      private:
+          memory::BlockAllocator allocator_;
+          std::vector<void*> components_;
+      };
+
+      }
+    src/ecs/component_pool.cpp: |
+      #include "component_pool.hpp"
+
+      namespace ecs {
+
+      ComponentPool::ComponentPool(size_t component_size)
+          : allocator_(component_size) {}
+
+      void* ComponentPool::get(size_t index) {
+          return components_[index];
+      }
+
+      void* ComponentPool::create() {
+          void* ptr = allocator_.allocate();
+          components_.push_back(ptr);
+          return ptr;
+      }
+
+      }
+    src/debug/memory_tracker.hpp: |
+      #pragma once
+      #include <cstddef>
+
+      namespace debug {
+
+      class MemoryTracker {
+      public:
+          static void record_allocation(size_t bytes);
+          static void record_deallocation(size_t bytes);
+          static size_t current_usage();
+      };
+
+      }
+  commit_message: "feat: add alignment support to block allocator"
+fragments:
+- id: allocator_alignment_ctor
+  selector:
+    path: src/memory/block_allocator.hpp
+    anchor: "BlockAllocator(size_t block_size, size_t alignment"
+- id: pool_uses_allocator
+  selector:
+    path: src/ecs/component_pool.cpp
+    anchor: "allocator_(component_size)"
+- id: pool_includes_allocator
+  selector:
+    path: src/ecs/component_pool.hpp
+    anchor: "memory::BlockAllocator allocator_"
+- id: no_memory_tracker
+  selector:
+    path: src/debug/memory_tracker.hpp
+    anchor: "class MemoryTracker"
+oracle:
+  required:
+  - allocator_alignment_ctor
+  - pool_uses_allocator
+  allowed:
+  - pool_includes_allocator
+  forbidden:
+  - no_memory_tracker

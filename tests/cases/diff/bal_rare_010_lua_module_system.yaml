@@ -1,0 +1,189 @@
+name: bal_rare_010_lua_module_system
+tags:
+- lang:lua
+- change:single_file
+- change:bug_fix
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/vec2.lua: |
+      local Vec2 = {}
+      Vec2.__index = Vec2
+
+      function Vec2.new(x, y)
+        return setmetatable({x = x, y = y}, Vec2)
+      end
+
+      function Vec2:length()
+        return math.sqrt(self.x * self.x + self.y * self.y)
+      end
+
+      function Vec2:add(other)
+        return Vec2.new(self.x + other.x, self.y + other.y)
+      end
+
+      function Vec2:scale(factor)
+        return Vec2.new(self.x * factor, self.y * factor)
+      end
+
+      return Vec2
+    src/physics.lua: |
+      local Vec2 = require("src.vec2")
+
+      local Physics = {}
+
+      function Physics.apply_gravity(position, velocity, dt)
+        local gravity = Vec2.new(0, -9.81)
+        local new_velocity = velocity:add(gravity:scale(dt))
+        local new_position = position:add(new_velocity:scale(dt))
+        return new_position, new_velocity
+      end
+
+      return Physics
+    garbage_audio.lua: |
+      local GARBAGE_RARE_010_VOLUME_A = 0.8
+      local GARBAGE_RARE_010_CHANNELS_B = 2
+
+      local GarbageAudio = {}
+
+      function GarbageAudio.play()
+        return GARBAGE_RARE_010_VOLUME_A
+      end
+
+      local GARBAGE_RARE_010_SAMPLE_C = 44100
+
+      return GarbageAudio
+    garbage_input.lua: |
+      local GARBAGE_RARE_010_DEADZONE_D = 0.15
+      local GARBAGE_RARE_010_SENSITIVITY_E = 1.0
+
+      local GarbageInput = {}
+
+      function GarbageInput.poll()
+        return GARBAGE_RARE_010_DEADZONE_D
+      end
+
+      local GARBAGE_RARE_010_REPEAT_F = 500
+
+      return GarbageInput
+  changed_files:
+    src/vec2.lua: |
+      local Vec2 = {}
+      Vec2.__index = Vec2
+
+      function Vec2.new(x, y)
+        return setmetatable({x = x or 0, y = y or 0}, Vec2)
+      end
+
+      function Vec2:length()
+        return math.sqrt(self.x * self.x + self.y * self.y)
+      end
+
+      function Vec2:normalize()
+        local len = self:length()
+        if len == 0 then return Vec2.new(0, 0) end
+        return Vec2.new(self.x / len, self.y / len)
+      end
+
+      function Vec2:add(other)
+        return Vec2.new(self.x + other.x, self.y + other.y)
+      end
+
+      function Vec2:scale(factor)
+        return Vec2.new(self.x * factor, self.y * factor)
+      end
+
+      return Vec2
+    src/physics.lua: |
+      local Vec2 = require("src.vec2")
+
+      local Physics = {}
+
+      function Physics.apply_gravity(position, velocity, dt)
+        local gravity = Vec2.new(0, -9.81)
+        local new_velocity = velocity:add(gravity:scale(dt))
+        local new_position = position:add(new_velocity:scale(dt))
+        return new_position, new_velocity
+      end
+
+      return Physics
+    garbage_audio.lua: |
+      local GARBAGE_RARE_010_VOLUME_A = 0.8
+      local GARBAGE_RARE_010_CHANNELS_B = 2
+
+      local GarbageAudio = {}
+
+      function GarbageAudio.play()
+        return GARBAGE_RARE_010_VOLUME_A
+      end
+
+      local GARBAGE_RARE_010_SAMPLE_C = 44100
+
+      return GarbageAudio
+    garbage_input.lua: |
+      local GARBAGE_RARE_010_DEADZONE_D = 0.15
+      local GARBAGE_RARE_010_SENSITIVITY_E = 1.0
+
+      local GarbageInput = {}
+
+      function GarbageInput.poll()
+        return GARBAGE_RARE_010_DEADZONE_D
+      end
+
+      local GARBAGE_RARE_010_REPEAT_F = 500
+
+      return GarbageInput
+  commit_message: "fix: handle nil args in Vec2.new and add normalize method"
+fragments:
+- id: vec2_nil_guard
+  selector:
+    path: src/vec2.lua
+    anchor: "x = x or 0, y = y or 0"
+- id: vec2_normalize
+  selector:
+    path: src/vec2.lua
+    anchor: "function Vec2:normalize()"
+- id: no_physics
+  selector:
+    path: src/physics.lua
+- id: no_garbage_audio
+  selector:
+    path: garbage_audio.lua
+- id: no_garbage_input
+  selector:
+    path: garbage_input.lua
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_RARE_010_VOLUME_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_RARE_010_CHANNELS_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_RARE_010_SAMPLE_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_RARE_010_DEADZONE_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_RARE_010_SENSITIVITY_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_RARE_010_REPEAT_F
+oracle:
+  required:
+  - vec2_nil_guard
+  - vec2_normalize
+  allowed: []
+  forbidden:
+  - no_physics
+  - no_garbage_audio
+  - no_garbage_input
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

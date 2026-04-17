@@ -1,0 +1,148 @@
+name: bal3_3hop_058_scala_notification_channel
+tags:
+- lang:scala
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/com/app/notify/Alert.scala: |
+      package com.app.notify
+
+      case class Alert(
+        level: String,
+        message: String
+      )
+    src/main/scala/com/app/notify/Channel.scala: |
+      package com.app.notify
+
+      trait Channel {
+        def send(alert: Alert): Boolean
+      }
+    src/main/scala/com/app/notify/SlackChannel.scala: |
+      package com.app.notify
+
+      class SlackChannel(webhook: String) extends Channel {
+        def send(alert: Alert): Boolean = {
+          println(s"Slack[$webhook]: ${alert.level} - ${alert.message}")
+          true
+        }
+      }
+    src/main/scala/com/app/notify/Dispatcher.scala: |
+      package com.app.notify
+
+      class Dispatcher(channels: List[Channel]) {
+        def dispatch(alert: Alert): Int = {
+          channels.count(_.send(alert))
+        }
+      }
+    src/main/scala/com/app/service/AlertService.scala: |
+      package com.app.service
+
+      import com.app.notify.{Dispatcher, Alert}
+
+      class AlertService(dispatcher: Dispatcher) {
+        def raise(level: String, message: String): Int = {
+          dispatcher.dispatch(Alert(level, message))
+        }
+      }
+    src/main/scala/com/app/api/AlertEndpoint.scala: |
+      package com.app.api
+
+      import com.app.service.AlertService
+
+      class AlertEndpoint(service: AlertService) {
+        def trigger(level: String, msg: String): String = {
+          val count = service.raise(level, msg)
+          s"notified:$count"
+        }
+      }
+    src/main/scala/com/app/util/Template.scala: |
+      package com.app.util
+
+      var GARBAGE_058_TMPL_MARKER_A = "mustache"
+      var GARBAGE_058_DELIM_MARKER_B = "{{"
+
+      object Template {
+        def render(template: String, vars: Map[String, String]): String = template
+      }
+    src/main/scala/com/app/util/Throttle.scala: |
+      package com.app.util
+
+      var GARBAGE_058_THROT_MARKER_C = "1/s"
+      var GARBAGE_058_BURST_MARKER_D = 10
+
+      object Throttle {
+        def allow(): Boolean = true
+      }
+  changed_files:
+    src/main/scala/com/app/notify/Alert.scala: |
+      package com.app.notify
+
+      import java.time.Instant
+
+      case class Alert(
+        level: String,
+        message: String,
+        source: String = "system",
+        timestamp: Instant = Instant.now(),
+        tags: List[String] = Nil
+      )
+  commit_message: "feat: add source, timestamp, and tags to Alert model"
+fragments:
+- id: alert_source_field
+  selector:
+    path: src/main/scala/com/app/notify/Alert.scala
+    anchor: "source: String"
+- id: alert_timestamp_field
+  selector:
+    path: src/main/scala/com/app/notify/Alert.scala
+    anchor: "timestamp: Instant"
+- id: alert_tags_field
+  selector:
+    path: src/main/scala/com/app/notify/Alert.scala
+    anchor: "tags: List[String]"
+- id: channel_sends_alert
+  selector:
+    path: src/main/scala/com/app/notify/Channel.scala
+    anchor: "send(alert: Alert)"
+- id: slack_extends_channel
+  selector:
+    path: src/main/scala/com/app/notify/SlackChannel.scala
+    anchor: "extends Channel"
+- id: dispatcher_uses_channels
+  selector:
+    path: src/main/scala/com/app/notify/Dispatcher.scala
+    anchor: "channels: List[Channel]"
+- id: service_imports_dispatcher
+  selector:
+    path: src/main/scala/com/app/service/AlertService.scala
+    anchor: "import com.app.notify"
+- id: endpoint_imports_service
+  selector:
+    path: src/main/scala/com/app/api/AlertEndpoint.scala
+    anchor: "import com.app.service.AlertService"
+- id: no_template
+  selector:
+    path: src/main/scala/com/app/util/Template.scala
+    anchor: "GARBAGE_058_TMPL_MARKER_A"
+- id: no_throttle
+  selector:
+    path: src/main/scala/com/app/util/Throttle.scala
+    anchor: "GARBAGE_058_THROT_MARKER_C"
+oracle:
+  required:
+  - alert_source_field
+  - alert_timestamp_field
+  - channel_sends_alert
+  - dispatcher_uses_channels
+  - service_imports_dispatcher
+  allowed:
+  - alert_tags_field
+  - slack_extends_channel
+  - endpoint_imports_service
+  forbidden:
+  - no_template
+  - no_throttle

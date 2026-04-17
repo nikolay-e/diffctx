@@ -1,0 +1,156 @@
+name: bal_1hop_007_go_middleware_calls_ratelimit
+tags:
+- lang:go
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    pkg/ratelimit/limiter.go: |
+      package ratelimit
+
+      import (
+          "sync"
+          "time"
+      )
+
+      type Limiter struct {
+          mu       sync.Mutex
+          requests map[string]int
+          limit    int
+          window   time.Duration
+      }
+
+      func New(limit int, window time.Duration) *Limiter {
+          return &Limiter{
+              requests: make(map[string]int),
+              limit:    limit,
+              window:   window,
+          }
+      }
+
+      func (l *Limiter) Allow(ip string) bool {
+          l.mu.Lock()
+          defer l.mu.Unlock()
+          l.requests[ip]++
+          return l.requests[ip] <= l.limit
+      }
+    pkg/middleware/rate.go: |
+      package middleware
+
+      import (
+          "net/http"
+          "myapp/pkg/ratelimit"
+      )
+
+      func RateLimitMiddleware(limiter *ratelimit.Limiter) func(http.Handler) http.Handler {
+          return func(next http.Handler) http.Handler {
+              return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+                  ip := r.RemoteAddr
+                  if !limiter.Allow(ip) {
+                      http.Error(w, "rate limited", 429)
+                      return
+                  }
+                  next.ServeHTTP(w, r)
+              })
+          }
+      }
+    pkg/cors/handler.go: |
+      package cors
+
+      import "net/http"
+
+      func AllowAll(next http.Handler) http.Handler {
+          return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              w.Header().Set("Access-Control-Allow-Origin", "*")
+              next.ServeHTTP(w, r)
+          })
+      }
+    pkg/compress/gzip.go: |
+      package compress
+
+      import "net/http"
+
+      func GzipMiddleware(next http.Handler) http.Handler {
+          return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              next.ServeHTTP(w, r)
+          })
+      }
+  changed_files:
+    pkg/ratelimit/limiter.go: |
+      package ratelimit
+
+      import (
+          "net"
+          "sync"
+          "time"
+      )
+
+      type Limiter struct {
+          mu       sync.Mutex
+          requests map[string]int
+          limit    int
+          window   time.Duration
+      }
+
+      func New(limit int, window time.Duration) *Limiter {
+          l := &Limiter{
+              requests: make(map[string]int),
+              limit:    limit,
+              window:   window,
+          }
+          go l.resetLoop()
+          return l
+      }
+
+      func (l *Limiter) resetLoop() {
+          for {
+              time.Sleep(l.window)
+              l.mu.Lock()
+              l.requests = make(map[string]int)
+              l.mu.Unlock()
+          }
+      }
+
+      func (l *Limiter) Allow(ip string) bool {
+          l.mu.Lock()
+          defer l.mu.Unlock()
+          cleanIP, _, _ := net.SplitHostPort(ip)
+          if cleanIP == "" {
+              cleanIP = ip
+          }
+          l.requests[cleanIP]++
+          return l.requests[cleanIP] <= l.limit
+      }
+  commit_message: "fix: reset rate counters and strip port from IP"
+fragments:
+- id: limiter_reset_loop
+  selector:
+    path: pkg/ratelimit/limiter.go
+    anchor: "func (l *Limiter) resetLoop()"
+- id: limiter_strip_port
+  selector:
+    path: pkg/ratelimit/limiter.go
+    anchor: "net.SplitHostPort(ip)"
+- id: middleware_calls_allow
+  selector:
+    path: pkg/middleware/rate.go
+    anchor: "limiter.Allow(ip)"
+- id: unrelated_cors
+  selector:
+    path: pkg/cors/handler.go
+    anchor: "Access-Control-Allow-Origin"
+- id: unrelated_gzip
+  selector:
+    path: pkg/compress/gzip.go
+    anchor: "func GzipMiddleware"
+oracle:
+  required:
+  - limiter_strip_port
+  - middleware_calls_allow
+  allowed:
+  - limiter_reset_loop
+  forbidden:
+  - unrelated_cors
+  - unrelated_gzip

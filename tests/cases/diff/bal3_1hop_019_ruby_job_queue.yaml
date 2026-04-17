@@ -1,0 +1,182 @@
+name: bal3_1hop_019_ruby_job_queue
+tags:
+- lang:ruby
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    lib/queue/job.rb: |
+      module Queue
+        class Job
+          attr_reader :id, :name, :payload
+
+          def initialize(id:, name:, payload:)
+            @id = id
+            @name = name
+            @payload = payload
+          end
+
+          def execute
+            "executed #{name}"
+          end
+        end
+      end
+    lib/workers/email_worker.rb: |
+      require_relative '../queue/job'
+
+      module Workers
+        class EmailWorker
+          def perform(job)
+            "sending email: #{job.payload}"
+          end
+        end
+      end
+    lib/workers/report_worker.rb: |
+      require_relative '../queue/job'
+
+      module Workers
+        class ReportWorker
+          def perform(job)
+            "generating report: #{job.payload}"
+          end
+        end
+      end
+    lib/workers/cleanup_worker.rb: |
+      require_relative '../queue/job'
+
+      module Workers
+        class CleanupWorker
+          def perform(job)
+            "cleaning: #{job.payload}"
+          end
+        end
+      end
+    lib/logging/file_logger.rb: |
+      GARBAGE_019_LOGGER_A = "file_logger"
+
+      module Logging
+        class FileLogger
+          def log(message)
+            message
+          end
+        end
+      end
+    lib/monitoring/health_check.rb: |
+      GARBAGE_019_HEALTH_B = "health_check"
+
+      module Monitoring
+        class HealthCheck
+          def check
+            { status: :ok }
+          end
+        end
+      end
+    lib/config/env_loader.rb: |
+      GARBAGE_019_ENV_C = "env_loader"
+
+      module Config
+        class EnvLoader
+          def load(path)
+            {}
+          end
+        end
+      end
+  changed_files:
+    lib/queue/job.rb: |
+      module Queue
+        class Job
+          attr_reader :id, :name, :payload, :priority, :attempts, :max_retries
+
+          def initialize(id:, name:, payload:, priority: :normal, max_retries: 3)
+            @id = id
+            @name = name
+            @payload = payload
+            @priority = priority
+            @max_retries = max_retries
+            @attempts = 0
+          end
+
+          def execute
+            @attempts += 1
+            "executed #{name}"
+          end
+
+          def retryable?
+            @attempts < @max_retries
+          end
+
+          def high_priority?
+            @priority == :high || @priority == :critical
+          end
+        end
+      end
+  commit_message: "feat: add priority, retry tracking, and helper methods to Job"
+fragments:
+- id: priority_attr
+  selector:
+    path: lib/queue/job.rb
+    anchor: ":priority, :attempts, :max_retries"
+- id: priority_param
+  selector:
+    path: lib/queue/job.rb
+    anchor: "priority: :normal"
+- id: retryable_method
+  selector:
+    path: lib/queue/job.rb
+    anchor: "def retryable?"
+- id: high_priority_method
+  selector:
+    path: lib/queue/job.rb
+    anchor: "def high_priority?"
+- id: email_worker_uses_job
+  selector:
+    path: lib/workers/email_worker.rb
+    anchor: "job.payload"
+- id: report_worker_uses_job
+  selector:
+    path: lib/workers/report_worker.rb
+    anchor: "job.payload"
+- id: cleanup_worker_uses_job
+  selector:
+    path: lib/workers/cleanup_worker.rb
+    anchor: "job.payload"
+- id: unrelated_logger
+  selector:
+    path: lib/logging/file_logger.rb
+    anchor: "class FileLogger"
+- id: unrelated_health
+  selector:
+    path: lib/monitoring/health_check.rb
+    anchor: "class HealthCheck"
+- id: unrelated_env
+  selector:
+    path: lib/config/env_loader.rb
+    anchor: "class EnvLoader"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_019_LOGGER_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_019_HEALTH_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_019_ENV_C
+oracle:
+  required:
+  - priority_attr
+  - priority_param
+  - retryable_method
+  - email_worker_uses_job
+  allowed:
+  - high_priority_method
+  - report_worker_uses_job
+  - cleanup_worker_uses_job
+  forbidden:
+  - unrelated_logger
+  - unrelated_health
+  - unrelated_env
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

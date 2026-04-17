@@ -1,0 +1,168 @@
+name: bal_crossmod_024_kotlin_entity_to_gateway
+tags:
+- lang:kotlin
+- change:multi_file
+- change:new_function
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/kotlin/domain/entity/Product.kt: |
+      package domain.entity
+
+      data class Product(
+          val id: Long,
+          val name: String,
+          val price: Double,
+          val stock: Int
+      )
+    src/main/kotlin/domain/service/InventoryService.kt: |
+      package domain.service
+
+      import domain.entity.Product
+
+      class InventoryService {
+          private val products = mutableListOf<Product>()
+
+          fun addProduct(product: Product) {
+              products.add(product)
+          }
+
+          fun findAvailable(): List<Product> =
+              products.filter { it.stock > 0 }
+
+          fun findById(id: Long): Product? =
+              products.find { it.id == id }
+      }
+    src/main/kotlin/api/gateway/ProductGateway.kt: |
+      package api.gateway
+
+      import domain.service.InventoryService
+      import domain.entity.Product
+
+      class ProductGateway(private val inventoryService: InventoryService) {
+          fun listAvailable(): List<Map<String, Any>> {
+              return inventoryService.findAvailable().map { product ->
+                  mapOf(
+                      "id" to product.id,
+                      "name" to product.name,
+                      "price" to product.price
+                  )
+              }
+          }
+      }
+    src/main/kotlin/infra/cache/RedisCache.kt: |
+      package infra.cache
+
+      object RedisCache {
+          private val store = mutableMapOf<String, String>()
+
+          fun get(key: String): String? = store[key]
+          fun set(key: String, value: String) { store[key] = value }
+          fun delete(key: String) { store.remove(key) }
+      }
+    src/main/kotlin/api/dto/ErrorResponse.kt: |
+      package api.dto
+
+      data class ErrorResponse(
+          val code: Int,
+          val message: String
+      )
+  changed_files:
+    src/main/kotlin/domain/entity/Product.kt: |
+      package domain.entity
+
+      data class Product(
+          val id: Long,
+          val name: String,
+          val price: Double,
+          val stock: Int,
+          val category: String = "general"
+      )
+    src/main/kotlin/domain/service/InventoryService.kt: |
+      package domain.service
+
+      import domain.entity.Product
+
+      class InventoryService {
+          private val products = mutableListOf<Product>()
+
+          fun addProduct(product: Product) {
+              products.add(product)
+          }
+
+          fun findAvailable(): List<Product> =
+              products.filter { it.stock > 0 }
+
+          fun findById(id: Long): Product? =
+              products.find { it.id == id }
+
+          fun findByCategory(category: String): List<Product> =
+              products.filter { it.category == category && it.stock > 0 }
+      }
+    src/main/kotlin/api/gateway/ProductGateway.kt: |
+      package api.gateway
+
+      import domain.service.InventoryService
+      import domain.entity.Product
+
+      class ProductGateway(private val inventoryService: InventoryService) {
+          fun listAvailable(): List<Map<String, Any>> {
+              return inventoryService.findAvailable().map { product ->
+                  mapOf(
+                      "id" to product.id,
+                      "name" to product.name,
+                      "price" to product.price
+                  )
+              }
+          }
+      }
+    src/main/kotlin/infra/cache/RedisCache.kt: |
+      package infra.cache
+
+      object RedisCache {
+          private val store = mutableMapOf<String, String>()
+
+          fun get(key: String): String? = store[key]
+          fun set(key: String, value: String) { store[key] = value }
+          fun delete(key: String) { store.remove(key) }
+      }
+    src/main/kotlin/api/dto/ErrorResponse.kt: |
+      package api.dto
+
+      data class ErrorResponse(
+          val code: Int,
+          val message: String
+      )
+  commit_message: "feat: add category to products with filtering"
+fragments:
+- id: product_category_field
+  selector:
+    path: src/main/kotlin/domain/entity/Product.kt
+    anchor: "val category: String"
+- id: find_by_category
+  selector:
+    path: src/main/kotlin/domain/service/InventoryService.kt
+    anchor: "fun findByCategory(category: String)"
+- id: gateway_uses_service
+  selector:
+    path: src/main/kotlin/api/gateway/ProductGateway.kt
+    anchor: "inventoryService.findAvailable()"
+- id: no_redis_cache
+  selector:
+    path: src/main/kotlin/infra/cache/RedisCache.kt
+    anchor: "object RedisCache"
+- id: no_error_response
+  selector:
+    path: src/main/kotlin/api/dto/ErrorResponse.kt
+    anchor: "data class ErrorResponse"
+oracle:
+  required:
+  - product_category_field
+  - find_by_category
+  - gateway_uses_service
+  allowed: []
+  forbidden:
+  - no_redis_cache
+  - no_error_response

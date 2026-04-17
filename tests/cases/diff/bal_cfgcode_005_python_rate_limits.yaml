@@ -1,0 +1,134 @@
+name: bal_cfgcode_005_python_rate_limits
+tags:
+- lang:python
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    config/rate_limits.json: |
+      {
+        "default_rpm": 60,
+        "default_burst": 10,
+        "endpoints": {
+          "/api/search": {"rpm": 30},
+          "/api/upload": {"rpm": 5}
+        }
+      }
+    src/rate_limiter.py: |
+      import json
+
+      with open("config/rate_limits.json") as f:
+          rate_cfg = json.load(f)
+
+      DEFAULT_RPM = rate_cfg["default_rpm"]
+      DEFAULT_BURST = rate_cfg["default_burst"]
+
+      def get_limit(endpoint):
+          endpoints = rate_cfg.get("endpoints", {})
+          ep_cfg = endpoints.get(endpoint, {})
+          return ep_cfg.get("rpm", DEFAULT_RPM)
+    src/auth.py: |
+      import json
+
+      with open("config/rate_limits.json") as f:
+          _cfg = json.load(f)
+
+      AUTH_RATE = _cfg["endpoints"].get("/api/auth", {}).get("rpm", 20)
+
+      def check_auth_rate(ip):
+          return AUTH_RATE
+    src/cache.py: |
+      GARBAGE_CFGCODE_005_CACHE_A = "redis"
+      GARBAGE_CFGCODE_005_CACHE_B = 3600
+
+      class CacheManager:
+          def get(self, key):
+              return None
+
+          def set(self, key, value):
+              pass
+  changed_files:
+    config/rate_limits.json: |
+      {
+        "default_rpm": 120,
+        "default_burst": 20,
+        "endpoints": {
+          "/api/search": {"rpm": 60},
+          "/api/upload": {"rpm": 10},
+          "/api/auth": {"rpm": 15, "burst": 3}
+        }
+      }
+    src/rate_limiter.py: |
+      import json
+
+      with open("config/rate_limits.json") as f:
+          rate_cfg = json.load(f)
+
+      DEFAULT_RPM = rate_cfg["default_rpm"]
+      DEFAULT_BURST = rate_cfg["default_burst"]
+
+      def get_limit(endpoint):
+          endpoints = rate_cfg.get("endpoints", {})
+          ep_cfg = endpoints.get(endpoint, {})
+          return ep_cfg.get("rpm", DEFAULT_RPM)
+    src/auth.py: |
+      import json
+
+      with open("config/rate_limits.json") as f:
+          _cfg = json.load(f)
+
+      AUTH_RATE = _cfg["endpoints"].get("/api/auth", {}).get("rpm", 20)
+
+      def check_auth_rate(ip):
+          return AUTH_RATE
+    src/cache.py: |
+      GARBAGE_CFGCODE_005_CACHE_A = "redis"
+      GARBAGE_CFGCODE_005_CACHE_B = 3600
+
+      class CacheManager:
+          def get(self, key):
+              return None
+
+          def set(self, key, value):
+              pass
+  commit_message: "config: double rate limits and add auth endpoint"
+fragments:
+- id: config_default_rpm
+  selector:
+    path: config/rate_limits.json
+    anchor: '"default_rpm": 120'
+- id: config_auth_endpoint
+  selector:
+    path: config/rate_limits.json
+    anchor: '"/api/auth"'
+- id: limiter_reads_config
+  selector:
+    path: src/rate_limiter.py
+    anchor: 'rate_cfg["default_rpm"]'
+- id: auth_reads_config
+  selector:
+    path: src/auth.py
+    anchor: '"/api/auth"'
+- id: no_cache
+  selector:
+    path: src/cache.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_005_CACHE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_005_CACHE_B
+oracle:
+  required:
+  - config_default_rpm
+  - config_auth_endpoint
+  - limiter_reads_config
+  - auth_reads_config
+  allowed: []
+  forbidden:
+  - no_cache
+  - no_global_0
+  - no_global_1

@@ -1,0 +1,359 @@
+name: bal3_1hop_074_swift_bug_fix_race_condition
+tags:
+- lang:swift
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    Sources/Cache/MemoryCache.swift: |
+      import Foundation
+
+      class MemoryCache {
+          private var storage: [String: Any] = [:]
+
+          func set(key: String, value: Any) {
+              storage[key] = value
+          }
+
+          func get(key: String) -> Any? {
+              return storage[key]
+          }
+
+          func remove(key: String) {
+              storage[key] = nil
+          }
+
+          func clear() {
+              storage.removeAll()
+          }
+      }
+    Sources/Services/ImageLoader.swift: |
+      import Foundation
+      import Cache
+
+      class ImageLoader {
+          private let cache: MemoryCache
+
+          init(cache: MemoryCache) {
+              self.cache = cache
+          }
+
+          func loadImage(url: String) -> Data? {
+              if let cached = cache.get(key: url) as? Data {
+                  return cached
+              }
+              let data = Data()
+              cache.set(key: url, value: data)
+              return data
+          }
+      }
+    Sources/Services/ConfigCache.swift: |
+      import Foundation
+      import Cache
+
+      class ConfigCache {
+          private let cache: MemoryCache
+
+          init(cache: MemoryCache) {
+              self.cache = cache
+          }
+
+          func getConfig(key: String) -> String? {
+              return cache.get(key: "config_\(key)") as? String
+          }
+
+          func setConfig(key: String, value: String) {
+              cache.set(key: "config_\(key)", value: value)
+          }
+      }
+    Sources/Services/SessionStore.swift: |
+      import Foundation
+      import Cache
+
+      class SessionStore {
+          private let cache: MemoryCache
+
+          init(cache: MemoryCache) {
+              self.cache = cache
+          }
+
+          func saveSession(token: String) {
+              cache.set(key: "session_token", value: token)
+          }
+
+          func getSession() -> String? {
+              return cache.get(key: "session_token") as? String
+          }
+
+          func clearSession() {
+              cache.remove(key: "session_token")
+          }
+      }
+    Sources/Services/FeatureCache.swift: |
+      import Foundation
+      import Cache
+
+      class FeatureCache {
+          private let cache: MemoryCache
+
+          init(cache: MemoryCache) {
+              self.cache = cache
+          }
+
+          func isFeatureEnabled(name: String) -> Bool {
+              return cache.get(key: "feature_\(name)") as? Bool ?? false
+          }
+
+          func setFeature(name: String, enabled: Bool) {
+              cache.set(key: "feature_\(name)", value: enabled)
+          }
+      }
+    Sources/Workers/BackgroundFetcher.swift: |
+      import Foundation
+      GARBAGE_074_FETCH_INTERVAL_A = 60
+      GARBAGE_074_MAX_RETRIES_B = 3
+
+      class BackgroundFetcher {
+          func fetch(url: String, completion: @escaping (Data?) -> Void) {
+              completion(nil)
+          }
+      }
+    Sources/Workers/ImageResizer.swift: |
+      import Foundation
+      GARBAGE_074_MAX_WIDTH_C = 1024
+      GARBAGE_074_QUALITY_D = 0.8
+
+      class ImageResizer {
+          func resize(data: Data, maxWidth: Int) -> Data { return data }
+      }
+    Sources/Workers/DataCompressor.swift: |
+      import Foundation
+      GARBAGE_074_COMPRESSION_LVL_E = 6
+      GARBAGE_074_CHUNK_SIZE_F = 4096
+
+      class DataCompressor {
+          func compress(data: Data) -> Data { return data }
+      }
+  changed_files:
+    Sources/Cache/MemoryCache.swift: |
+      import Foundation
+
+      class MemoryCache {
+          private var storage: [String: Any] = [:]
+          private let queue = DispatchQueue(label: "com.app.cache", attributes: .concurrent)
+
+          func set(key: String, value: Any) {
+              queue.async(flags: .barrier) {
+                  self.storage[key] = value
+              }
+          }
+
+          func get(key: String) -> Any? {
+              var result: Any?
+              queue.sync {
+                  result = self.storage[key]
+              }
+              return result
+          }
+
+          func remove(key: String) {
+              queue.async(flags: .barrier) {
+                  self.storage[key] = nil
+              }
+          }
+
+          func clear() {
+              queue.async(flags: .barrier) {
+                  self.storage.removeAll()
+              }
+          }
+
+          var count: Int {
+              var result = 0
+              queue.sync {
+                  result = self.storage.count
+              }
+              return result
+          }
+      }
+    Sources/Services/ImageLoader.swift: |
+      import Foundation
+      import Cache
+
+      class ImageLoader {
+          private let cache: MemoryCache
+
+          init(cache: MemoryCache) {
+              self.cache = cache
+          }
+
+          func loadImage(url: String) -> Data? {
+              if let cached = cache.get(key: url) as? Data {
+                  return cached
+              }
+              let data = Data()
+              cache.set(key: url, value: data)
+              return data
+          }
+      }
+    Sources/Services/ConfigCache.swift: |
+      import Foundation
+      import Cache
+
+      class ConfigCache {
+          private let cache: MemoryCache
+
+          init(cache: MemoryCache) {
+              self.cache = cache
+          }
+
+          func getConfig(key: String) -> String? {
+              return cache.get(key: "config_\(key)") as? String
+          }
+
+          func setConfig(key: String, value: String) {
+              cache.set(key: "config_\(key)", value: value)
+          }
+      }
+    Sources/Services/SessionStore.swift: |
+      import Foundation
+      import Cache
+
+      class SessionStore {
+          private let cache: MemoryCache
+
+          init(cache: MemoryCache) {
+              self.cache = cache
+          }
+
+          func saveSession(token: String) {
+              cache.set(key: "session_token", value: token)
+          }
+
+          func getSession() -> String? {
+              return cache.get(key: "session_token") as? String
+          }
+
+          func clearSession() {
+              cache.remove(key: "session_token")
+          }
+      }
+    Sources/Services/FeatureCache.swift: |
+      import Foundation
+      import Cache
+
+      class FeatureCache {
+          private let cache: MemoryCache
+
+          init(cache: MemoryCache) {
+              self.cache = cache
+          }
+
+          func isFeatureEnabled(name: String) -> Bool {
+              return cache.get(key: "feature_\(name)") as? Bool ?? false
+          }
+
+          func setFeature(name: String, enabled: Bool) {
+              cache.set(key: "feature_\(name)", value: enabled)
+          }
+      }
+    Sources/Workers/BackgroundFetcher.swift: |
+      import Foundation
+      GARBAGE_074_FETCH_INTERVAL_A = 60
+      GARBAGE_074_MAX_RETRIES_B = 3
+
+      class BackgroundFetcher {
+          func fetch(url: String, completion: @escaping (Data?) -> Void) {
+              completion(nil)
+          }
+      }
+    Sources/Workers/ImageResizer.swift: |
+      import Foundation
+      GARBAGE_074_MAX_WIDTH_C = 1024
+      GARBAGE_074_QUALITY_D = 0.8
+
+      class ImageResizer {
+          func resize(data: Data, maxWidth: Int) -> Data { return data }
+      }
+    Sources/Workers/DataCompressor.swift: |
+      import Foundation
+      GARBAGE_074_COMPRESSION_LVL_E = 6
+      GARBAGE_074_CHUNK_SIZE_F = 4096
+
+      class DataCompressor {
+          func compress(data: Data) -> Data { return data }
+      }
+  commit_message: "fix: add thread-safe concurrent queue to MemoryCache"
+fragments:
+- id: image_loader_imports
+  selector:
+    path: Sources/Services/ImageLoader.swift
+    anchor: "import Cache"
+- id: image_loader_get
+  selector:
+    path: Sources/Services/ImageLoader.swift
+    anchor: "cache.get(key: url)"
+- id: config_cache_imports
+  selector:
+    path: Sources/Services/ConfigCache.swift
+    anchor: "import Cache"
+- id: session_imports
+  selector:
+    path: Sources/Services/SessionStore.swift
+    anchor: "import Cache"
+- id: session_set
+  selector:
+    path: Sources/Services/SessionStore.swift
+    anchor: 'cache.set(key: "session_token"'
+- id: feature_imports
+  selector:
+    path: Sources/Services/FeatureCache.swift
+    anchor: "import Cache"
+- id: no_bg_fetcher
+  selector:
+    path: Sources/Workers/BackgroundFetcher.swift
+- id: no_resizer
+  selector:
+    path: Sources/Workers/ImageResizer.swift
+- id: no_compressor
+  selector:
+    path: Sources/Workers/DataCompressor.swift
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_074_FETCH_INTERVAL_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_074_MAX_RETRIES_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_074_MAX_WIDTH_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_074_QUALITY_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_074_COMPRESSION_LVL_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_074_CHUNK_SIZE_F
+oracle:
+  required:
+  - image_loader_imports
+  - image_loader_get
+  - config_cache_imports
+  - session_imports
+  - session_set
+  - feature_imports
+  allowed: []
+  forbidden:
+  - no_bg_fetcher
+  - no_resizer
+  - no_compressor
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

@@ -1,0 +1,202 @@
+name: bal4_3hop_095_scala_game_ecs
+tags:
+- lang:scala
+- change:multi_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/ecs/Component.scala: |
+      package ecs
+
+      trait Component
+
+      case class Position(x: Float, y: Float) extends Component
+      case class Velocity(dx: Float, dy: Float) extends Component
+      case class Health(current: Int, max: Int) extends Component
+    src/main/scala/ecs/Entity.scala: |
+      package ecs
+
+      import ecs.Component
+
+      class Entity(val id: Int) {
+        private val components = scala.collection.mutable.Map.empty[String, Component]
+
+        def add(name: String, comp: Component): Unit = components(name) = comp
+        def get[T <: Component](name: String): Option[T] = components.get(name).map(_.asInstanceOf[T])
+        def has(name: String): Boolean = components.contains(name)
+      }
+    src/main/scala/ecs/System.scala: |
+      package ecs
+
+      import ecs.Entity
+
+      trait System {
+        def update(entities: Seq[Entity], dt: Float): Unit
+      }
+    src/main/scala/ecs/World.scala: |
+      package ecs
+
+      import ecs.{Entity, System}
+
+      class World {
+        private val entities = scala.collection.mutable.ArrayBuffer.empty[Entity]
+        private val systems = scala.collection.mutable.ArrayBuffer.empty[System]
+        private var nextId = 0
+
+        def spawn(): Entity = {
+          val e = new Entity(nextId)
+          nextId += 1
+          entities += e
+          e
+        }
+
+        def register(sys: System): Unit = systems += sys
+
+        def tick(dt: Float): Unit = systems.foreach(_.update(entities.toSeq, dt))
+      }
+    src/main/scala/systems/PhysicsSystem.scala: |
+      package systems
+
+      import ecs.{System, Entity, Position, Velocity}
+
+      class PhysicsSystem extends System {
+        override def update(entities: Seq[Entity], dt: Float): Unit = {
+          entities.foreach { e =>
+            for {
+              pos <- e.get[Position]("position")
+              vel <- e.get[Velocity]("velocity")
+            } {
+              e.add("position", Position(pos.x + vel.dx * dt, pos.y + vel.dy * dt))
+            }
+          }
+        }
+      }
+    src/main/scala/game/GameLoop.scala: |
+      package game
+
+      import ecs.World
+      import systems.PhysicsSystem
+
+      object GameLoop {
+        def create(): World = {
+          val world = new World
+          world.register(new PhysicsSystem)
+          world
+        }
+
+        def run(world: World, frames: Int): Unit = {
+          (0 until frames).foreach(_ => world.tick(0.016f))
+        }
+      }
+    src/main/scala/util/MathHelper.scala: |
+      package util
+
+      object MathHelper {
+        val GARBAGE_095_MATH_A = "lerp"
+        val GARBAGE_095_MATH_B = "slerp"
+
+        def lerp(a: Float, b: Float, t: Float): Float = a + (b - a) * t
+      }
+    src/main/scala/util/AssetLoader.scala: |
+      package util
+
+      object AssetLoader {
+        val GARBAGE_095_ASSET_C = "texture"
+        val GARBAGE_095_ASSET_D = "mesh"
+
+        def load(path: String): Array[Byte] = Array.empty
+      }
+  changed_files:
+    src/main/scala/ecs/Component.scala: |
+      package ecs
+
+      trait Component
+
+      case class Position(x: Float, y: Float) extends Component
+      case class Velocity(dx: Float, dy: Float) extends Component
+      case class Health(current: Int, max: Int) extends Component
+      case class Collision(radius: Float, layer: Int) extends Component
+    src/main/scala/systems/PhysicsSystem.scala: |
+      package systems
+
+      import ecs.{System, Entity, Position, Velocity, Collision}
+
+      class PhysicsSystem extends System {
+        override def update(entities: Seq[Entity], dt: Float): Unit = {
+          entities.foreach { e =>
+            for {
+              pos <- e.get[Position]("position")
+              vel <- e.get[Velocity]("velocity")
+            } {
+              e.add("position", Position(pos.x + vel.dx * dt, pos.y + vel.dy * dt))
+            }
+          }
+        }
+
+        def detectCollisions(entities: Seq[Entity]): Seq[(Int, Int)] = {
+          val collidable = entities.filter(_.has("collision"))
+          for {
+            a <- collidable
+            b <- collidable if a.id < b.id
+            ca <- a.get[Collision]("collision")
+            cb <- b.get[Collision]("collision")
+            if ca.layer == cb.layer
+          } yield (a.id, b.id)
+        }
+      }
+  commit_message: "feat: add Collision component and collision detection"
+fragments:
+- id: collision_component
+  selector:
+    path: src/main/scala/ecs/Component.scala
+    anchor: "Collision"
+- id: entity_has
+  selector:
+    path: src/main/scala/ecs/Entity.scala
+    anchor: "import ecs.Component"
+- id: system_trait
+  selector:
+    path: src/main/scala/ecs/System.scala
+    anchor: "import ecs.Entity"
+- id: world_tick
+  selector:
+    path: src/main/scala/ecs/World.scala
+    anchor: "import ecs."
+- id: physics_collision
+  selector:
+    path: src/main/scala/systems/PhysicsSystem.scala
+    anchor: "detectCollisions"
+- id: game_loop
+  selector:
+    path: src/main/scala/game/GameLoop.scala
+    anchor: "import ecs.World"
+- id: no_math_helper
+  selector:
+    path: src/main/scala/util/MathHelper.scala
+    anchor: "GARBAGE_095_MATH_A"
+- id: no_asset_loader
+  selector:
+    path: src/main/scala/util/AssetLoader.scala
+    anchor: "GARBAGE_095_ASSET_C"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_095_MATH_B
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_095_ASSET_D
+oracle:
+  required:
+  - collision_component
+  - entity_has
+  - physics_collision
+  - world_tick
+  - game_loop
+  allowed:
+  - system_trait
+  forbidden:
+  - no_math_helper
+  - no_asset_loader
+  - no_global_0
+  - no_global_1

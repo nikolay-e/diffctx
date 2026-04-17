@@ -1,0 +1,218 @@
+name: bal_cfgcode_025_go_logging_config
+tags:
+- lang:go
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    config/logging.yaml: |
+      level: debug
+      format: text
+      output: stdout
+      caller: false
+    internal/logger/logger.go: |
+      package logger
+
+      import (
+        "os"
+
+        "gopkg.in/yaml.v3"
+      )
+
+      type LogConfig struct {
+        Level  string `yaml:"level"`
+        Format string `yaml:"format"`
+        Output string `yaml:"output"`
+        Caller bool   `yaml:"caller"`
+      }
+
+      func LoadLogConfig() (*LogConfig, error) {
+        data, err := os.ReadFile("config/logging.yaml")
+        if err != nil {
+          return nil, err
+        }
+        var cfg LogConfig
+        yaml.Unmarshal(data, &cfg)
+        return &cfg, nil
+      }
+
+      func NewLogger(cfg *LogConfig) {
+        _ = cfg.Level
+        _ = cfg.Format
+      }
+    internal/middleware/request_log.go: |
+      package middleware
+
+      import (
+        "os"
+
+        "gopkg.in/yaml.v3"
+      )
+
+      type logCfg struct {
+        Level string `yaml:"level"`
+      }
+
+      func ShouldLogRequests() bool {
+        data, _ := os.ReadFile("config/logging.yaml")
+        var cfg logCfg
+        yaml.Unmarshal(data, &cfg)
+        return cfg.Level == "debug"
+      }
+    internal/queue/worker.go: |
+      package queue
+
+      var GARBAGE_CFGCODE_025_QUEUE_A = "rabbitmq"
+      var GARBAGE_CFGCODE_025_QUEUE_B = 5672
+
+      func Process(job string) error {
+        return nil
+      }
+    internal/email/sender.go: |
+      package email
+
+      var GARBAGE_CFGCODE_025_EMAIL_C = "smtp"
+      var GARBAGE_CFGCODE_025_EMAIL_D = 587
+
+      func Send(to string, body string) error {
+        return nil
+      }
+  changed_files:
+    config/logging.yaml: |
+      level: warn
+      format: json
+      output: file
+      caller: true
+      file_path: /var/log/app.log
+      rotation:
+        max_size_mb: 100
+        max_backups: 5
+    internal/logger/logger.go: |
+      package logger
+
+      import (
+        "os"
+
+        "gopkg.in/yaml.v3"
+      )
+
+      type LogConfig struct {
+        Level  string `yaml:"level"`
+        Format string `yaml:"format"`
+        Output string `yaml:"output"`
+        Caller bool   `yaml:"caller"`
+      }
+
+      func LoadLogConfig() (*LogConfig, error) {
+        data, err := os.ReadFile("config/logging.yaml")
+        if err != nil {
+          return nil, err
+        }
+        var cfg LogConfig
+        yaml.Unmarshal(data, &cfg)
+        return &cfg, nil
+      }
+
+      func NewLogger(cfg *LogConfig) {
+        _ = cfg.Level
+        _ = cfg.Format
+      }
+    internal/middleware/request_log.go: |
+      package middleware
+
+      import (
+        "os"
+
+        "gopkg.in/yaml.v3"
+      )
+
+      type logCfg struct {
+        Level string `yaml:"level"`
+      }
+
+      func ShouldLogRequests() bool {
+        data, _ := os.ReadFile("config/logging.yaml")
+        var cfg logCfg
+        yaml.Unmarshal(data, &cfg)
+        return cfg.Level == "debug"
+      }
+    internal/queue/worker.go: |
+      package queue
+
+      var GARBAGE_CFGCODE_025_QUEUE_A = "rabbitmq"
+      var GARBAGE_CFGCODE_025_QUEUE_B = 5672
+
+      func Process(job string) error {
+        return nil
+      }
+    internal/email/sender.go: |
+      package email
+
+      var GARBAGE_CFGCODE_025_EMAIL_C = "smtp"
+      var GARBAGE_CFGCODE_025_EMAIL_D = 587
+
+      func Send(to string, body string) error {
+        return nil
+      }
+  commit_message: "config: production logging with JSON and file rotation"
+fragments:
+- id: config_level
+  selector:
+    path: config/logging.yaml
+    anchor: "level: warn"
+- id: config_format
+  selector:
+    path: config/logging.yaml
+    anchor: "format: json"
+- id: config_rotation
+  selector:
+    path: config/logging.yaml
+    anchor: "max_size_mb: 100"
+- id: logger_reads_config
+  selector:
+    path: internal/logger/logger.go
+    anchor: 'os.ReadFile("config/logging.yaml")'
+- id: logger_uses_level
+  selector:
+    path: internal/logger/logger.go
+    anchor: "cfg.Level"
+- id: middleware_reads_config
+  selector:
+    path: internal/middleware/request_log.go
+    anchor: 'os.ReadFile("config/logging.yaml")'
+- id: no_queue
+  selector:
+    path: internal/queue/worker.go
+- id: no_email
+  selector:
+    path: internal/email/sender.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_025_QUEUE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_025_QUEUE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_025_EMAIL_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_025_EMAIL_D
+oracle:
+  required:
+  - config_level
+  - config_format
+  - config_rotation
+  - logger_reads_config
+  - middleware_reads_config
+  allowed: []
+  forbidden:
+  - no_queue
+  - no_email
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

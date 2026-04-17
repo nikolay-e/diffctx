@@ -1,0 +1,187 @@
+name: bal_testctx_020_typescript_task_runner_test
+tags:
+- lang:typescript
+- change:multi_file
+- change:signature
+- context:test_file
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/taskRunner.ts: |
+      export interface TaskResult {
+        taskId: string;
+        success: boolean;
+        output: string;
+      }
+
+      export class TaskRunner {
+        private tasks: Map<string, () => Promise<string>> = new Map();
+
+        register(id: string, fn: () => Promise<string>): void {
+          this.tasks.set(id, fn);
+        }
+
+        async run(id: string): Promise<TaskResult> {
+          const fn = this.tasks.get(id);
+          if (!fn) {
+            return { taskId: id, success: false, output: 'Task not found' };
+          }
+          try {
+            const output = await fn();
+            return { taskId: id, success: true, output };
+          } catch (e) {
+            return { taskId: id, success: false, output: (e as Error).message };
+          }
+        }
+      }
+    src/taskRegistry.ts: |
+      import { TaskRunner } from './taskRunner';
+
+      export class TaskRegistry {
+        private runner: TaskRunner;
+
+        constructor(runner: TaskRunner) {
+          this.runner = runner;
+        }
+
+        registerBatch(tasks: Array<{ id: string; fn: () => Promise<string> }>): void {
+          for (const task of tasks) {
+            this.runner.register(task.id, task.fn);
+          }
+        }
+      }
+    __tests__/taskRunner.test.ts: |
+      import { TaskRunner } from '../src/taskRunner';
+
+      describe('TaskRunner', () => {
+        test('runs registered task successfully', async () => {
+          const runner = new TaskRunner();
+          runner.register('greet', async () => 'hello');
+          const result = await runner.run('greet');
+          expect(result.success).toBe(true);
+          expect(result.output).toBe('hello');
+        });
+
+        test('returns failure for unknown task', async () => {
+          const runner = new TaskRunner();
+          const result = await runner.run('unknown');
+          expect(result.success).toBe(false);
+        });
+
+        test('catches task errors', async () => {
+          const runner = new TaskRunner();
+          runner.register('fail', async () => { throw new Error('boom'); });
+          const result = await runner.run('fail');
+          expect(result.success).toBe(false);
+          expect(result.output).toBe('boom');
+        });
+      });
+    src/notificationService.ts: |
+      export interface Notification {
+        recipient: string;
+        message: string;
+        channel: 'email' | 'sms' | 'push';
+      }
+
+      export function createNotification(
+        recipient: string,
+        message: string,
+        channel: 'email' | 'sms' | 'push' = 'email',
+      ): Notification {
+        return { recipient, message, channel };
+      }
+  changed_files:
+    src/taskRunner.ts: |
+      export interface TaskResult {
+        taskId: string;
+        success: boolean;
+        output: string;
+        durationMs: number;
+      }
+
+      export class TaskRunner {
+        private tasks: Map<string, () => Promise<string>> = new Map();
+        private timeout: number;
+
+        constructor(timeoutMs: number = 30000) {
+          this.timeout = timeoutMs;
+        }
+
+        register(id: string, fn: () => Promise<string>): void {
+          this.tasks.set(id, fn);
+        }
+
+        unregister(id: string): boolean {
+          return this.tasks.delete(id);
+        }
+
+        async run(id: string): Promise<TaskResult> {
+          const fn = this.tasks.get(id);
+          const start = Date.now();
+          if (!fn) {
+            return { taskId: id, success: false, output: 'Task not found', durationMs: 0 };
+          }
+          try {
+            const output = await Promise.race([
+              fn(),
+              new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error('Timeout')), this.timeout)
+              ),
+            ]);
+            return { taskId: id, success: true, output, durationMs: Date.now() - start };
+          } catch (e) {
+            return { taskId: id, success: false, output: (e as Error).message, durationMs: Date.now() - start };
+          }
+        }
+
+        listTasks(): string[] {
+          return Array.from(this.tasks.keys());
+        }
+      }
+  commit_message: "feat: add timeout, duration tracking, unregister, listTasks"
+fragments:
+- id: task_runner_constructor
+  selector:
+    path: src/taskRunner.ts
+    anchor: "constructor(timeoutMs: number"
+- id: run_with_timeout
+  selector:
+    path: src/taskRunner.ts
+    anchor: "async run(id: string)"
+- id: unregister_fn
+  selector:
+    path: src/taskRunner.ts
+    anchor: "unregister(id: string)"
+- id: list_tasks_fn
+  selector:
+    path: src/taskRunner.ts
+    anchor: "listTasks(): string[]"
+- id: test_imports_runner
+  selector:
+    path: __tests__/taskRunner.test.ts
+    anchor: "import { TaskRunner } from"
+- id: test_runs_registered
+  selector:
+    path: __tests__/taskRunner.test.ts
+    anchor: "test('runs registered task successfully'"
+- id: registry_imports_runner
+  selector:
+    path: src/taskRegistry.ts
+    anchor: "import { TaskRunner } from"
+- id: no_notification
+  selector:
+    path: src/notificationService.ts
+    anchor: "export function createNotification"
+oracle:
+  required:
+  - task_runner_constructor
+  - run_with_timeout
+  - test_imports_runner
+  allowed:
+  - unregister_fn
+  - list_tasks_fn
+  - test_runs_registered
+  - registry_imports_runner
+  forbidden:
+  - no_notification

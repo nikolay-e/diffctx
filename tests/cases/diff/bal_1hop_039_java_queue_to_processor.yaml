@@ -1,0 +1,130 @@
+name: bal_1hop_039_java_queue_to_processor
+tags:
+- lang:java
+- change:new_function
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/main/java/com/messaging/queue/TaskQueue.java: |
+      package com.messaging.queue;
+      import java.util.LinkedList;
+      import java.util.Queue;
+      public class TaskQueue {
+          private final Queue<String> queue = new LinkedList<>();
+          public void enqueue(String task) {
+              queue.add(task);
+          }
+          public String dequeue() {
+              return queue.poll();
+          }
+          public boolean isEmpty() {
+              return queue.isEmpty();
+          }
+      }
+    src/main/java/com/messaging/processor/TaskProcessor.java: |
+      package com.messaging.processor;
+      import com.messaging.queue.TaskQueue;
+      public class TaskProcessor {
+          private final TaskQueue queue;
+          public TaskProcessor(TaskQueue queue) { this.queue = queue; }
+          public void processNext() {
+              String task = queue.dequeue();
+              if (task != null) {
+                  System.out.println("Processing: " + task);
+              }
+          }
+          public void processAll() {
+              while (!queue.isEmpty()) {
+                  processNext();
+              }
+          }
+      }
+    src/main/java/com/messaging/model/TaskResult.java: |
+      package com.messaging.model;
+      public class TaskResult {
+          private final boolean success;
+          private final String message;
+          public TaskResult(boolean success, String message) {
+              this.success = success;
+              this.message = message;
+          }
+          public boolean isSuccess() { return success; }
+          public String getMessage() { return message; }
+      }
+    src/main/java/com/messaging/alert/AlertService.java: |
+      package com.messaging.alert;
+      public class AlertService {
+          public void sendAlert(String message) {
+              System.err.println("ALERT: " + message);
+          }
+      }
+  changed_files:
+    src/main/java/com/messaging/queue/TaskQueue.java: |
+      package com.messaging.queue;
+      import java.util.LinkedList;
+      import java.util.Queue;
+      public class TaskQueue {
+          private final Queue<String> queue = new LinkedList<>();
+          private final int maxSize;
+          public TaskQueue(int maxSize) {
+              this.maxSize = maxSize;
+          }
+          public TaskQueue() {
+              this(1000);
+          }
+          public boolean enqueue(String task) {
+              if (queue.size() >= maxSize) {
+                  return false;
+              }
+              queue.add(task);
+              return true;
+          }
+          public String dequeue() {
+              return queue.poll();
+          }
+          public boolean isEmpty() {
+              return queue.isEmpty();
+          }
+          public int size() {
+              return queue.size();
+          }
+      }
+  commit_message: "feat: add bounded queue with max size and size query"
+fragments:
+- id: queue_bounded
+  selector:
+    path: TaskQueue.java
+    anchor: "maxSize"
+- id: queue_size_method
+  selector:
+    path: TaskQueue.java
+    anchor: "public int size()"
+- id: processor_uses_queue
+  selector:
+    path: TaskProcessor.java
+    anchor: "queue.dequeue()"
+- id: processor_process_all
+  selector:
+    path: TaskProcessor.java
+    anchor: "queue.isEmpty()"
+- id: no_task_result
+  selector:
+    path: TaskResult.java
+    anchor: "TaskResult"
+- id: no_alert_service
+  selector:
+    path: AlertService.java
+    anchor: "AlertService"
+oracle:
+  required:
+  - queue_bounded
+  - processor_uses_queue
+  allowed:
+  - queue_size_method
+  - processor_process_all
+  forbidden:
+  - no_task_result
+  - no_alert_service

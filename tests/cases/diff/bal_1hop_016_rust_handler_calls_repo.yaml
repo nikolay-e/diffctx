@@ -1,0 +1,181 @@
+name: bal_1hop_016_rust_handler_calls_repo
+tags:
+- lang:java
+- change:signature
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/gaming/leaderboard/ScoreRepository.java: |
+      package com.gaming.leaderboard;
+
+      import java.util.List;
+      import java.util.Optional;
+
+      public interface ScoreRepository {
+          void submit(String playerId, long score, String gameMode);
+          Optional<Long> getTopScore(String playerId);
+          List<ScoreEntry> getLeaderboard(String gameMode, int limit);
+      }
+    src/main/java/com/gaming/leaderboard/LeaderboardService.java: |
+      package com.gaming.leaderboard;
+
+      import java.util.List;
+      import java.util.Optional;
+
+      public class LeaderboardService {
+          private final ScoreRepository repository;
+
+          public LeaderboardService(ScoreRepository repository) {
+              this.repository = repository;
+          }
+
+          public void recordScore(String playerId, long score, String gameMode) {
+              repository.submit(playerId, score, gameMode);
+          }
+
+          public Optional<Long> getPersonalBest(String playerId) {
+              return repository.getTopScore(playerId);
+          }
+
+          public List<ScoreEntry> fetchLeaderboard(String gameMode, int limit) {
+              return repository.getLeaderboard(gameMode, limit);
+          }
+      }
+    src/main/java/com/gaming/leaderboard/ScoreEntry.java: |
+      package com.gaming.leaderboard;
+
+      public class ScoreEntry {
+          private final String playerId;
+          private final long score;
+          private final String gameMode;
+
+          public ScoreEntry(String playerId, long score, String gameMode) {
+              this.playerId = playerId;
+              this.score = score;
+              this.gameMode = gameMode;
+          }
+
+          public String getPlayerId() { return playerId; }
+          public long getScore() { return score; }
+          public String getGameMode() { return gameMode; }
+      }
+    garbage/AchievementUnlocker.java: |
+      // GARBAGE_HANREPO_A = "achievement_unlocker_marker"
+    garbage/ReplayStorage.java: |
+      // GARBAGE_HANREPO_B = "replay_storage_marker"
+    garbage/AntiCheatService.java: |
+      // GARBAGE_HANREPO_C = "anti_cheat_marker"
+  changed_files:
+    src/main/java/com/gaming/leaderboard/ScoreRepository.java: |
+      package com.gaming.leaderboard;
+
+      import java.util.List;
+      import java.util.Optional;
+
+      public interface ScoreRepository {
+          void submit(String playerId, long score, String gameMode);
+          Optional<Long> getTopScore(String playerId, String gameMode);
+          List<ScoreEntry> getLeaderboard(String gameMode, int limit);
+          List<ScoreEntry> getLeaderboard(String gameMode, int limit, int offset);
+          void deleteScores(String playerId);
+      }
+    src/main/java/com/gaming/leaderboard/LeaderboardService.java: |
+      package com.gaming.leaderboard;
+
+      import java.util.List;
+      import java.util.Optional;
+
+      public class LeaderboardService {
+          private final ScoreRepository repository;
+
+          public LeaderboardService(ScoreRepository repository) {
+              this.repository = repository;
+          }
+
+          public void recordScore(String playerId, long score, String gameMode) {
+              repository.submit(playerId, score, gameMode);
+          }
+
+          public Optional<Long> getPersonalBest(String playerId, String gameMode) {
+              return repository.getTopScore(playerId, gameMode);
+          }
+
+          public List<ScoreEntry> fetchLeaderboard(String gameMode, int limit) {
+              return repository.getLeaderboard(gameMode, limit);
+          }
+
+          public List<ScoreEntry> fetchLeaderboardPaged(String gameMode, int limit, int offset) {
+              return repository.getLeaderboard(gameMode, limit, offset);
+          }
+
+          public void erasePlayerScores(String playerId) {
+              repository.deleteScores(playerId);
+          }
+      }
+    src/main/java/com/gaming/leaderboard/ScoreEntry.java: |
+      package com.gaming.leaderboard;
+
+      public class ScoreEntry {
+          private final String playerId;
+          private final long score;
+          private final String gameMode;
+
+          public ScoreEntry(String playerId, long score, String gameMode) {
+              this.playerId = playerId;
+              this.score = score;
+              this.gameMode = gameMode;
+          }
+
+          public String getPlayerId() { return playerId; }
+          public long getScore() { return score; }
+          public String getGameMode() { return gameMode; }
+      }
+    garbage/AchievementUnlocker.java: |
+      // GARBAGE_HANREPO_A = "achievement_unlocker_marker"
+    garbage/ReplayStorage.java: |
+      // GARBAGE_HANREPO_B = "replay_storage_marker"
+    garbage/AntiCheatService.java: |
+      // GARBAGE_HANREPO_C = "anti_cheat_marker"
+  commit_message: "feat: add gameMode to getTopScore, paged leaderboard, and deleteScores"
+fragments:
+- id: top_score_game_mode_sig
+  selector:
+    anchor: "Optional<Long> getTopScore(String playerId, String gameMode)"
+- id: delete_scores_sig
+  selector:
+    anchor: "void deleteScores(String playerId)"
+- id: paged_leaderboard_sig
+  selector:
+    anchor: "List<ScoreEntry> getLeaderboard(String gameMode, int limit, int offset)"
+- id: service_personal_best_updated
+  selector:
+    path: src/main/java/com/gaming/leaderboard/LeaderboardService.java
+    anchor: "getPersonalBest(String playerId, String gameMode)"
+- id: service_erase_scores
+  selector:
+    path: src/main/java/com/gaming/leaderboard/LeaderboardService.java
+    anchor: "erasePlayerScores"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_HANREPO_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_HANREPO_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_HANREPO_C
+oracle:
+  required:
+  - top_score_game_mode_sig
+  - delete_scores_sig
+  - paged_leaderboard_sig
+  - service_personal_best_updated
+  - service_erase_scores
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

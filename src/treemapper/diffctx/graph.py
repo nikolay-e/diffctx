@@ -122,6 +122,23 @@ class Graph:
                 g.add_edge(src, dst, weight=w)
         return g
 
+    def _bfs_from_seed(self, seed: FragmentId, radius: int) -> dict[FragmentId, int]:
+        frontier = {seed: 0}
+        visited: dict[FragmentId, int] = {seed: 0}
+        for _step in range(radius):
+            next_frontier: dict[FragmentId, int] = {}
+            for node, dist in frontier.items():
+                for nbr in self._fwd.get(node, {}):
+                    if nbr not in visited:
+                        visited[nbr] = dist + 1
+                        next_frontier[nbr] = dist + 1
+                for nbr in self._rev.get(node, {}):
+                    if nbr not in visited:
+                        visited[nbr] = dist + 1
+                        next_frontier[nbr] = dist + 1
+            frontier = next_frontier
+        return visited
+
     def ego_graph(self, seeds: set[FragmentId], radius: int = 2) -> dict[FragmentId, float]:
         scores: dict[FragmentId, float] = {}
         if not self._nodes:
@@ -129,56 +146,30 @@ class Graph:
         for seed in seeds:
             if seed not in self._nodes:
                 continue
-            frontier = {seed: 0}
-            visited: dict[FragmentId, int] = {seed: 0}
-            for _step in range(radius):
-                next_frontier: dict[FragmentId, int] = {}
-                for node, dist in frontier.items():
-                    for nbr in self._fwd.get(node, {}):
-                        if nbr not in visited:
-                            visited[nbr] = dist + 1
-                            next_frontier[nbr] = dist + 1
-                    for nbr in self._rev.get(node, {}):
-                        if nbr not in visited:
-                            visited[nbr] = dist + 1
-                            next_frontier[nbr] = dist + 1
-                frontier = next_frontier
+            visited = self._bfs_from_seed(seed, radius)
             for node, dist in visited.items():
                 hop_score = 1.0 / (1 + dist) if dist > 0 else 1.0
                 scores[node] = max(scores.get(node, 0.0), hop_score)
         return scores
 
 
-def build_graph(fragments: list[Fragment], repo_root: Path | None = None) -> Graph:
-    graph = Graph()
+def _merge_edges(
+    target: dict[tuple[FragmentId, FragmentId], float],
+    categories: dict[tuple[FragmentId, FragmentId], str],
+    source: dict[tuple[FragmentId, FragmentId], float],
+    source_cats: dict[tuple[FragmentId, FragmentId], str] | None = None,
+    default_cat: str = "generic",
+) -> None:
+    for (src, dst), weight in source.items():
+        if weight > target.get((src, dst), 0.0):
+            target[(src, dst)] = weight
+            if source_cats:
+                categories[(src, dst)] = source_cats.get((src, dst), default_cat)
+            else:
+                categories[(src, dst)] = default_cat
 
-    for frag in fragments:
-        graph.add_node(frag.id)
 
-    skip_expensive = len(fragments) > LIMITS.skip_expensive_threshold
-    if skip_expensive:
-        logger.debug("diffctx: %d fragments exceed threshold, skipping expensive edge builders", len(fragments))
-
-    all_edges: dict[tuple[FragmentId, FragmentId], float] = {}
-    edge_categories: dict[tuple[FragmentId, FragmentId], str] = {}
-
-    plugin_edges, plugin_categories = collect_all_edges(fragments, repo_root, skip_expensive=skip_expensive)
-    for (src, dst), weight in plugin_edges.items():
-        if weight > all_edges.get((src, dst), 0.0):
-            all_edges[(src, dst)] = weight
-            edge_categories[(src, dst)] = plugin_categories.get((src, dst), "generic")
-
-    if not skip_expensive:
-        embedding_edges = _build_embedding_edges(fragments, clamp_lexical_weight)
-        for (src, dst), weight in embedding_edges.items():
-            if weight > all_edges.get((src, dst), 0.0):
-                all_edges[(src, dst)] = weight
-                edge_categories[(src, dst)] = "similarity"
-
-    all_edges = _apply_hub_suppression(all_edges, edge_categories)
-
-    for frag in fragments:
-        graph.add_node(frag.id)
+def _populate_graph(graph: Graph, all_edges: dict[tuple[FragmentId, FragmentId], float]) -> None:
     for (src, dst), w in all_edges.items():
         if w > 0:
             fwd_nbrs = graph._fwd.get(src)
@@ -191,6 +182,29 @@ def build_graph(fragments: list[Fragment], repo_root: Path | None = None) -> Gra
                 rev_nbrs = {}
                 graph._rev[dst] = rev_nbrs
             rev_nbrs[src] = w
+
+
+def build_graph(fragments: list[Fragment], repo_root: Path | None = None) -> Graph:
+    graph = Graph()
+    for frag in fragments:
+        graph.add_node(frag.id)
+
+    skip_expensive = len(fragments) > LIMITS.skip_expensive_threshold
+    if skip_expensive:
+        logger.debug("diffctx: %d fragments exceed threshold, skipping expensive edge builders", len(fragments))
+
+    all_edges: dict[tuple[FragmentId, FragmentId], float] = {}
+    edge_categories: dict[tuple[FragmentId, FragmentId], str] = {}
+
+    plugin_edges, plugin_categories = collect_all_edges(fragments, repo_root, skip_expensive=skip_expensive)
+    _merge_edges(all_edges, edge_categories, plugin_edges, plugin_categories)
+
+    if not skip_expensive:
+        embedding_edges = _build_embedding_edges(fragments, clamp_lexical_weight)
+        _merge_edges(all_edges, edge_categories, embedding_edges, default_cat="similarity")
+
+    all_edges = _apply_hub_suppression(all_edges, edge_categories)
+    _populate_graph(graph, all_edges)
     graph.edge_categories = edge_categories
 
     return graph

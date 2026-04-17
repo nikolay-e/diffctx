@@ -1,0 +1,108 @@
+name: gap_165_terraform_ts_feature_flag_cross_module
+tags:
+- change:config
+- change:single_file
+- context:cross_module
+- difficulty:medium
+- distance:2hop
+- lang:terraform
+- lang:typescript
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    infra/feature-flags.tf: |
+      resource "aws_ssm_parameter" "dark_mode" {
+        name  = "/app/features/dark_mode"
+        type  = "String"
+        value = "false"
+      }
+
+      resource "aws_ssm_parameter" "beta_search" {
+        name  = "/app/features/beta_search"
+        type  = "String"
+        value = "true"
+      }
+    frontend/src/config/features.ts: |
+      export interface FeatureFlags {
+        darkMode: boolean;
+        betaSearch: boolean;
+      }
+
+      export function parseFeatureFlags(raw: Record<string, string>): FeatureFlags {
+        return {
+          darkMode: raw["dark_mode"] === "true",
+          betaSearch: raw["beta_search"] === "true",
+        };
+      }
+    frontend/src/services/featureService.ts: |
+      import { FeatureFlags, parseFeatureFlags } from "../config/features";
+
+      export class FeatureService {
+        private flags: FeatureFlags | null = null;
+
+        async loadFlags(endpoint: string): Promise<FeatureFlags> {
+          const response = await fetch(endpoint);
+          const raw = await response.json();
+          this.flags = parseFeatureFlags(raw);
+          return this.flags;
+        }
+
+        isEnabled(flag: keyof FeatureFlags): boolean {
+          if (!this.flags) throw new Error("Flags not loaded");
+          return this.flags[flag];
+        }
+      }
+    frontend/src/utils/logger.ts: |
+      export function logInfo(message: string): void {
+        console.log(`[INFO] ${message}`);
+      }
+
+      export function logError(message: string, error?: Error): void {
+        console.error(`[ERROR] ${message}`, error);
+      }
+  changed_files:
+    infra/feature-flags.tf: |
+      resource "aws_ssm_parameter" "dark_mode" {
+        name  = "/app/features/dark_mode"
+        type  = "String"
+        value = "false"
+      }
+
+      resource "aws_ssm_parameter" "beta_search" {
+        name  = "/app/features/beta_search"
+        type  = "String"
+        value = "true"
+      }
+
+      resource "aws_ssm_parameter" "ai_assistant" {
+        name  = "/app/features/ai_assistant"
+        type  = "String"
+        value = "false"
+      }
+fragments:
+- id: tf_ai_assistant
+  selector:
+    path: infra/feature-flags.tf
+    anchor: ai_assistant
+- id: ts_feature_iface
+  selector:
+    path: frontend/src/config/features.ts
+    anchor: FeatureFlags
+- id: ts_parse_fn
+  selector:
+    path: frontend/src/config/features.ts
+    anchor: parseFeatureFlags
+- id: no_logger
+  selector:
+    path: frontend/src/utils/logger.ts
+- id: no_feature_service
+  selector:
+    path: frontend/src/services/featureService.ts
+oracle:
+  required:
+  - tf_ai_assistant
+  - ts_feature_iface
+  forbidden:
+  - no_logger
+  - no_feature_service

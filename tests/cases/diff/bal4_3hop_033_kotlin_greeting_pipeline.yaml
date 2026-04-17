@@ -1,0 +1,124 @@
+name: bal4_3hop_033_kotlin_greeting_pipeline
+tags:
+- lang:kotlin
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:trivial
+repo:
+  initial_files:
+    src/model/Locale.kt: |
+      package model
+
+      enum class Locale { EN, DE }
+    src/i18n/Translator.kt: |
+      package i18n
+
+      import model.Locale
+
+      fun greet(locale: Locale): String =
+          if (locale == Locale.EN) "Hello" else "Hallo"
+    src/service/Greeter.kt: |
+      package service
+
+      import i18n.greet
+      import model.Locale
+
+      fun greetUser(name: String, locale: Locale): String =
+          "${greet(locale)}, $name!"
+    src/api/Handler.kt: |
+      package api
+
+      import service.greetUser
+      import model.Locale
+
+      fun handle(name: String): String =
+          greetUser(name, Locale.EN)
+    src/utils/Junk.kt: |
+      package utils
+      val GARBAGE_033_JUNK_A = "junk"
+      val GARBAGE_033_DUST_B = true
+    src/utils/Scrap.kt: |
+      package utils
+      val GARBAGE_033_SCRAP_C = "scrap"
+      val GARBAGE_033_BIT_D = 0
+  changed_files:
+    src/model/Locale.kt: |
+      package model
+
+      enum class Locale { EN, DE, FR }
+    src/i18n/Translator.kt: |
+      package i18n
+
+      import model.Locale
+
+      fun greet(locale: Locale): String =
+          if (locale == Locale.EN) "Hello" else "Hallo"
+    src/service/Greeter.kt: |
+      package service
+
+      import i18n.greet
+      import model.Locale
+
+      fun greetUser(name: String, locale: Locale): String =
+          "${greet(locale)}, $name!"
+    src/api/Handler.kt: |
+      package api
+
+      import service.greetUser
+      import model.Locale
+
+      fun handle(name: String): String =
+          greetUser(name, Locale.EN)
+    src/utils/Junk.kt: |
+      package utils
+      val GARBAGE_033_JUNK_A = "junk"
+      val GARBAGE_033_DUST_B = true
+    src/utils/Scrap.kt: |
+      package utils
+      val GARBAGE_033_SCRAP_C = "scrap"
+      val GARBAGE_033_BIT_D = 0
+  commit_message: "feat: add French locale"
+fragments:
+- id: locale_fr
+  selector:
+    path: src/model/Locale.kt
+    anchor: "FR"
+- id: translator_import
+  selector:
+    path: src/i18n/Translator.kt
+    anchor: "import model.Locale"
+- id: greeter_import
+  selector:
+    path: src/service/Greeter.kt
+    anchor: "import i18n.greet"
+- id: handler_import
+  selector:
+    path: src/api/Handler.kt
+    anchor: "import service.greetUser"
+- id: no_junk
+  selector:
+    path: src/utils/Junk.kt
+    anchor: "GARBAGE_033_JUNK_A"
+- id: no_scrap
+  selector:
+    path: src/utils/Scrap.kt
+    anchor: "GARBAGE_033_SCRAP_C"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_033_DUST_B
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_033_BIT_D
+oracle:
+  required:
+  - locale_fr
+  - translator_import
+  - greeter_import
+  - handler_import
+  allowed: []
+  forbidden:
+  - no_junk
+  - no_scrap
+  - no_global_0
+  - no_global_1

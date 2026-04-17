@@ -1,0 +1,198 @@
+name: gap_058_py_multifunction_dns_resolver
+tags:
+- lang:python
+- change:multi_file
+- change:new_function
+- change:new_function
+- change:new_function
+- change:new_function
+- change:new_function
+- change:signature
+- context:same_file
+- distance:0hop
+- difficulty:medium
+repo:
+  initial_files:
+    resolver/records.py: |
+      from dataclasses import dataclass
+      from enum import Enum
+
+      class RecordType(Enum):
+          A = "A"
+          CNAME = "CNAME"
+
+      @dataclass
+      class DNSRecord:
+          name: str
+          record_type: RecordType
+          value: str
+          ttl: int = 300
+
+      class RecordStore:
+          def __init__(self):
+              self._records: dict[str, list[DNSRecord]] = {}
+
+          def add(self, record: DNSRecord) -> None:
+              key = f"{record.name}:{record.record_type.value}"
+              if key not in self._records:
+                  self._records[key] = []
+              self._records[key].append(record)
+
+          def lookup(self, name: str, record_type: RecordType) -> list[DNSRecord]:
+              key = f"{name}:{record_type.value}"
+              return self._records.get(key, [])
+    resolver/cache.py: |
+      from typing import Optional
+      from resolver.records import DNSRecord
+
+      class ResolverCache:
+          def __init__(self):
+              self._entries: dict[str, DNSRecord] = {}
+
+          def get(self, key: str) -> Optional[DNSRecord]:
+              return self._entries.get(key)
+
+          def put(self, key: str, record: DNSRecord) -> None:
+              self._entries[key] = record
+    resolver/format.py: |
+      from resolver.records import DNSRecord
+
+      def format_record(record: DNSRecord) -> str:
+          return f"{record.name} {record.ttl} IN {record.record_type.value} {record.value}"
+
+      def format_records(records: list[DNSRecord]) -> str:
+          return "\n".join(format_record(r) for r in records)
+  changed_files:
+    resolver/records.py: |
+      from dataclasses import dataclass
+      from enum import Enum
+
+      class RecordType(Enum):
+          A = "A"
+          AAAA = "AAAA"
+          CNAME = "CNAME"
+          MX = "MX"
+          TXT = "TXT"
+          NS = "NS"
+
+      @dataclass
+      class DNSRecord:
+          name: str
+          record_type: RecordType
+          value: str
+          ttl: int = 300
+          priority: int = 0
+
+      class RecordStore:
+          def __init__(self):
+              self._records: dict[str, list[DNSRecord]] = {}
+
+          def add(self, record: DNSRecord) -> None:
+              key = f"{record.name}:{record.record_type.value}"
+              if key not in self._records:
+                  self._records[key] = []
+              self._records[key].append(record)
+
+          def lookup(self, name: str, record_type: RecordType) -> list[DNSRecord]:
+              key = f"{name}:{record_type.value}"
+              return self._records.get(key, [])
+
+          def lookup_all(self, name: str) -> list[DNSRecord]:
+              results = []
+              for key, records in self._records.items():
+                  if key.startswith(f"{name}:"):
+                      results.extend(records)
+              return results
+
+          def remove(self, name: str, record_type: RecordType) -> int:
+              key = f"{name}:{record_type.value}"
+              removed = len(self._records.pop(key, []))
+              return removed
+
+          def count(self) -> int:
+              return sum(len(v) for v in self._records.values())
+
+          def names(self) -> list[str]:
+              seen: set[str] = set()
+              for key in self._records:
+                  name = key.split(":")[0]
+                  seen.add(name)
+              return sorted(seen)
+
+          def purge_expired(self, current_ttl: int) -> int:
+              purged = 0
+              for key in list(self._records.keys()):
+                  before = len(self._records[key])
+                  self._records[key] = [
+                      r for r in self._records[key] if r.ttl > current_ttl
+                  ]
+                  purged += before - len(self._records[key])
+              return purged
+    resolver/cache.py: |
+      from typing import Optional
+      from resolver.records import DNSRecord
+
+      class ResolverCache:
+          def __init__(self):
+              self._entries: dict[str, DNSRecord] = {}
+
+          def get(self, key: str) -> Optional[DNSRecord]:
+              return self._entries.get(key)
+
+          def put(self, key: str, record: DNSRecord) -> None:
+              self._entries[key] = record
+    resolver/format.py: |
+      from resolver.records import DNSRecord
+
+      def format_record(record: DNSRecord) -> str:
+          return f"{record.name} {record.ttl} IN {record.record_type.value} {record.value}"
+
+      def format_records(records: list[DNSRecord]) -> str:
+          return "\n".join(format_record(r) for r in records)
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: aaaa_type
+  selector:
+    path: resolver/records.py
+    anchor: 'AAAA = "AAAA"'
+- id: mx_type
+  selector:
+    path: resolver/records.py
+    anchor: 'MX = "MX"'
+- id: priority_field
+  selector:
+    path: resolver/records.py
+    anchor: "priority: int = 0"
+- id: lookup_all
+  selector:
+    path: resolver/records.py
+    anchor: "def lookup_all(self, name: str) -> list[DNSRecord]:"
+- id: remove_method
+  selector:
+    path: resolver/records.py
+    anchor: "def remove(self, name: str, record_type: RecordType) -> int:"
+- id: count_method
+  selector:
+    path: resolver/records.py
+    anchor: "def count(self) -> int:"
+- id: names_method
+  selector:
+    path: resolver/records.py
+    anchor: "def names(self) -> list[str]:"
+- id: purge_method
+  selector:
+    path: resolver/records.py
+    anchor: "def purge_expired(self, current_ttl: int) -> int:"
+oracle:
+  required:
+  - aaaa_type
+  - priority_field
+  - lookup_all
+  - remove_method
+  - count_method
+  - names_method
+  - purge_method
+  allowed: []
+  forbidden: []

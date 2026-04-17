@@ -1,0 +1,135 @@
+name: bal_testctx_009_python_template_engine_test
+tags:
+- lang:python
+- change:multi_file
+- change:new_function
+- context:test_file
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/template_engine.py: |
+      import re
+      from typing import Dict
+
+      class TemplateEngine:
+          def __init__(self, delimiters: tuple[str, str] = ("{{", "}}")):
+              self.open_delim = delimiters[0]
+              self.close_delim = delimiters[1]
+
+          def render(self, template: str, context: Dict[str, str]) -> str:
+              result = template
+              for key, value in context.items():
+                  placeholder = f"{self.open_delim}{key}{self.close_delim}"
+                  result = result.replace(placeholder, value)
+              return result
+    src/template_loader.py: |
+      from src.template_engine import TemplateEngine
+
+      class TemplateLoader:
+          def __init__(self, engine: TemplateEngine):
+              self.engine = engine
+              self._cache: dict[str, str] = {}
+
+          def load_string(self, name: str, content: str) -> None:
+              self._cache[name] = content
+
+          def render_cached(self, name: str, context: dict[str, str]) -> str:
+              template = self._cache[name]
+              return self.engine.render(template, context)
+    tests/test_template_engine.py: |
+      from src.template_engine import TemplateEngine
+
+      def test_simple_render():
+          engine = TemplateEngine()
+          result = engine.render("Hello {{name}}", {"name": "World"})
+          assert result == "Hello World"
+
+      def test_multiple_variables():
+          engine = TemplateEngine()
+          result = engine.render("{{a}} + {{b}}", {"a": "1", "b": "2"})
+          assert result == "1 + 2"
+
+      def test_custom_delimiters():
+          engine = TemplateEngine(delimiters=("<%", "%>"))
+          result = engine.render("Hi <%user%>", {"user": "Alice"})
+          assert result == "Hi Alice"
+    src/html_sanitizer.py: |
+      import html
+
+      def sanitize(text: str) -> str:
+          return html.escape(text)
+
+      def strip_tags(text: str) -> str:
+          import re
+          return re.sub(r'<[^>]+>', '', text)
+  changed_files:
+    src/template_engine.py: |
+      import re
+      from typing import Callable, Dict, Optional
+
+      class TemplateEngine:
+          def __init__(self, delimiters: tuple[str, str] = ("{{", "}}")):
+              self.open_delim = delimiters[0]
+              self.close_delim = delimiters[1]
+              self._filters: dict[str, Callable[[str], str]] = {}
+
+          def register_filter(self, name: str, fn: Callable[[str], str]) -> None:
+              self._filters[name] = fn
+
+          def render(self, template: str, context: Dict[str, str]) -> str:
+              result = template
+              for key, value in context.items():
+                  placeholder = f"{self.open_delim}{key}{self.close_delim}"
+                  result = result.replace(placeholder, value)
+              return result
+
+          def render_with_filters(
+              self, template: str, context: Dict[str, str]
+          ) -> str:
+              pattern = re.compile(
+                  re.escape(self.open_delim) + r'(\w+)\|(\w+)' + re.escape(self.close_delim)
+              )
+              def replacer(match: re.Match) -> str:
+                  key, filter_name = match.group(1), match.group(2)
+                  value = context.get(key, "")
+                  if filter_name in self._filters:
+                      return self._filters[filter_name](value)
+                  return value
+              return pattern.sub(replacer, template)
+  commit_message: "feat: add filter support to template engine"
+fragments:
+- id: register_filter_fn
+  selector:
+    path: src/template_engine.py
+    anchor: "def register_filter(self, name: str"
+- id: render_with_filters_fn
+  selector:
+    path: src/template_engine.py
+    anchor: "def render_with_filters"
+- id: test_imports_template
+  selector:
+    path: tests/test_template_engine.py
+    anchor: "from src.template_engine import TemplateEngine"
+- id: test_simple_render
+  selector:
+    path: tests/test_template_engine.py
+    anchor: "def test_simple_render"
+- id: template_loader_imports
+  selector:
+    path: src/template_loader.py
+    anchor: "from src.template_engine import TemplateEngine"
+- id: no_html_sanitizer
+  selector:
+    path: src/html_sanitizer.py
+    anchor: "def sanitize"
+oracle:
+  required:
+  - register_filter_fn
+  - render_with_filters_fn
+  - test_imports_template
+  allowed:
+  - test_simple_render
+  - template_loader_imports
+  forbidden:
+  - no_html_sanitizer

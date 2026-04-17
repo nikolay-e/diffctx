@@ -1,0 +1,218 @@
+name: bal_3hop_039_typescript_data_pipeline_transform
+tags:
+- lang:typescript
+- change:multi_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/pipeline/schema.ts: |
+      export interface Record {
+        id: string;
+        fields: Map<string, string>;
+      }
+
+      export interface TransformResult {
+        record: Record;
+        errors: string[];
+      }
+    src/pipeline/transforms.ts: |
+      import { Record, TransformResult } from './schema';
+
+      export function normalizeFields(record: Record): TransformResult {
+        const normalized = new Map<string, string>();
+        record.fields.forEach((v, k) => normalized.set(k.toLowerCase(), v.trim()));
+        return { record: { ...record, fields: normalized }, errors: [] };
+      }
+
+      export function validateRequired(record: Record, required: string[]): TransformResult {
+        const errors = required
+          .filter(f => !record.fields.has(f))
+          .map(f => `Missing field: ${f}`);
+        return { record, errors };
+      }
+    src/pipeline/engine.ts: |
+      import { normalizeFields, validateRequired } from './transforms';
+      import { Record, TransformResult } from './schema';
+
+      export class PipelineEngine {
+        private requiredFields: string[] = [];
+
+        setRequired(fields: string[]): void {
+          this.requiredFields = fields;
+        }
+
+        process(record: Record): TransformResult {
+          const normalized = normalizeFields(record);
+          if (normalized.errors.length > 0) return normalized;
+          return validateRequired(normalized.record, this.requiredFields);
+        }
+      }
+    src/api/ingest.ts: |
+      import { PipelineEngine } from '../pipeline/engine';
+
+      const engine = new PipelineEngine();
+      engine.setRequired(['name', 'email']);
+
+      export function handleIngest(req: any, res: any): void {
+        const fields = new Map(Object.entries(req.body));
+        const result = engine.process({ id: req.params.id, fields });
+        if (result.errors.length > 0) {
+          res.status(400).json({ errors: result.errors });
+        } else {
+          res.status(200).json(result.record);
+        }
+      }
+    src/utils/buffer.ts: |
+      GARBAGE_039_BUFFER_MARKER_A = "buffer";
+      GARBAGE_039_ALLOC_MARKER_B = 1024;
+
+      export class RingBuffer<T> {
+        private items: T[] = [];
+        push(item: T): void { this.items.push(item); }
+      }
+    src/utils/timer.ts: |
+      GARBAGE_039_TIMER_MARKER_C = "timer";
+      GARBAGE_039_INTERVAL_MARKER_D = 1000;
+
+      export function debounce(fn: Function, ms: number): Function {
+        let timer: any;
+        return (...args: any[]) => {
+          clearTimeout(timer);
+          timer = setTimeout(() => fn(...args), ms);
+        };
+      }
+  changed_files:
+    src/pipeline/schema.ts: |
+      export interface Record {
+        id: string;
+        fields: Map<string, string>;
+        metadata?: Map<string, string>;
+      }
+
+      export interface TransformResult {
+        record: Record;
+        errors: string[];
+        warnings: string[];
+      }
+    src/pipeline/transforms.ts: |
+      import { Record, TransformResult } from './schema';
+
+      export function normalizeFields(record: Record): TransformResult {
+        const normalized = new Map<string, string>();
+        record.fields.forEach((v, k) => normalized.set(k.toLowerCase(), v.trim()));
+        return { record: { ...record, fields: normalized }, errors: [], warnings: [] };
+      }
+
+      export function validateRequired(record: Record, required: string[]): TransformResult {
+        const errors = required
+          .filter(f => !record.fields.has(f))
+          .map(f => `Missing field: ${f}`);
+        return { record, errors, warnings: [] };
+      }
+
+      export function enrichMetadata(record: Record): TransformResult {
+        const metadata = record.metadata || new Map();
+        metadata.set('processedAt', new Date().toISOString());
+        return { record: { ...record, metadata }, errors: [], warnings: [] };
+      }
+    src/pipeline/engine.ts: |
+      import { normalizeFields, validateRequired, enrichMetadata } from './transforms';
+      import { Record, TransformResult } from './schema';
+
+      export class PipelineEngine {
+        private requiredFields: string[] = [];
+
+        setRequired(fields: string[]): void {
+          this.requiredFields = fields;
+        }
+
+        process(record: Record): TransformResult {
+          const normalized = normalizeFields(record);
+          if (normalized.errors.length > 0) return normalized;
+          const validated = validateRequired(normalized.record, this.requiredFields);
+          if (validated.errors.length > 0) return validated;
+          return enrichMetadata(validated.record);
+        }
+      }
+    src/api/ingest.ts: |
+      import { PipelineEngine } from '../pipeline/engine';
+
+      const engine = new PipelineEngine();
+      engine.setRequired(['name', 'email']);
+
+      export function handleIngest(req: any, res: any): void {
+        const fields = new Map(Object.entries(req.body));
+        const result = engine.process({ id: req.params.id, fields });
+        if (result.errors.length > 0) {
+          res.status(400).json({ errors: result.errors });
+        } else {
+          res.status(200).json(result.record);
+        }
+      }
+    src/utils/buffer.ts: |
+      GARBAGE_039_BUFFER_MARKER_A = "buffer";
+      GARBAGE_039_ALLOC_MARKER_B = 1024;
+
+      export class RingBuffer<T> {
+        private items: T[] = [];
+        push(item: T): void { this.items.push(item); }
+      }
+    src/utils/timer.ts: |
+      GARBAGE_039_TIMER_MARKER_C = "timer";
+      GARBAGE_039_INTERVAL_MARKER_D = 1000;
+
+      export function debounce(fn: Function, ms: number): Function {
+        let timer: any;
+        return (...args: any[]) => {
+          clearTimeout(timer);
+          timer = setTimeout(() => fn(...args), ms);
+        };
+      }
+  commit_message: "feat: add metadata enrichment and warnings to pipeline"
+fragments:
+- id: schema_metadata_field
+  selector:
+    path: src/pipeline/schema.ts
+    anchor: "metadata?: Map<string, string>"
+- id: schema_warnings_field
+  selector:
+    path: src/pipeline/schema.ts
+    anchor: "warnings: string[]"
+- id: enrich_metadata_fn
+  selector:
+    path: src/pipeline/transforms.ts
+    anchor: "export function enrichMetadata"
+- id: engine_imports_enrich
+  selector:
+    path: src/pipeline/engine.ts
+    anchor: "import { normalizeFields, validateRequired, enrichMetadata }"
+- id: engine_calls_enrich
+  selector:
+    path: src/pipeline/engine.ts
+    anchor: "return enrichMetadata(validated.record)"
+- id: api_imports_engine
+  selector:
+    path: src/api/ingest.ts
+    anchor: "import { PipelineEngine } from '../pipeline/engine'"
+- id: no_buffer
+  selector:
+    path: src/utils/buffer.ts
+    anchor: "GARBAGE_039_BUFFER_MARKER_A"
+- id: no_timer
+  selector:
+    path: src/utils/timer.ts
+    anchor: "GARBAGE_039_TIMER_MARKER_C"
+oracle:
+  required:
+  - schema_metadata_field
+  - schema_warnings_field
+  - enrich_metadata_fn
+  - engine_imports_enrich
+  - engine_calls_enrich
+  - api_imports_engine
+  allowed: []
+  forbidden:
+  - no_buffer
+  - no_timer

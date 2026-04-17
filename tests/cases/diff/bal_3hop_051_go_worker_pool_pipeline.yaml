@@ -1,0 +1,243 @@
+name: bal_3hop_051_go_worker_pool_pipeline
+tags:
+- lang:go
+- change:multi_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    pkg/task/types.go: |
+      package task
+
+      type Task struct {
+        ID      string
+        Payload string
+        Status  string
+      }
+
+      type TaskResult struct {
+        TaskID string
+        Output string
+        Error  error
+      }
+    pkg/task/worker.go: |
+      package task
+
+      type Worker struct {
+        ID string
+      }
+
+      func NewWorker(id string) *Worker {
+        return &Worker{ID: id}
+      }
+
+      func (w *Worker) Execute(t Task) TaskResult {
+        return TaskResult{TaskID: t.ID, Output: "processed: " + t.Payload}
+      }
+    pkg/task/pool.go: |
+      package task
+
+      type Pool struct {
+        workers []*Worker
+      }
+
+      func NewPool(size int) *Pool {
+        p := &Pool{}
+        for i := 0; i < size; i++ {
+          p.workers = append(p.workers, NewWorker(string(rune('A'+i))))
+        }
+        return p
+      }
+
+      func (p *Pool) Submit(t Task) TaskResult {
+        worker := p.workers[0]
+        return worker.Execute(t)
+      }
+    cmd/processor/main.go: |
+      package main
+
+      import (
+        "fmt"
+        "pkg/task"
+      )
+
+      func main() {
+        pool := task.NewPool(4)
+        t := task.Task{ID: "1", Payload: "hello", Status: "pending"}
+        result := pool.Submit(t)
+        fmt.Printf("Result: %s\n", result.Output)
+      }
+    pkg/util/rand.go: |
+      package util
+
+      var GARBAGE_051_RAND_MARKER_A = "rand"
+      var GARBAGE_051_SEED_MARKER_B = 42
+
+      func RandomString(n int) string { return "" }
+    pkg/util/sleep.go: |
+      package util
+
+      var GARBAGE_051_SLEEP_MARKER_C = "sleep"
+      var GARBAGE_051_DURATION_MARKER_D = 1000
+
+      func SleepMs(ms int) {}
+  changed_files:
+    pkg/task/types.go: |
+      package task
+
+      import "time"
+
+      type Priority int
+
+      const (
+        PriorityLow    Priority = 0
+        PriorityNormal Priority = 1
+        PriorityHigh   Priority = 2
+      )
+
+      type Task struct {
+        ID        string
+        Payload   string
+        Status    string
+        Priority  Priority
+        CreatedAt time.Time
+      }
+
+      type TaskResult struct {
+        TaskID   string
+        Output   string
+        Error    error
+        Duration time.Duration
+      }
+    pkg/task/worker.go: |
+      package task
+
+      import "time"
+
+      type Worker struct {
+        ID string
+      }
+
+      func NewWorker(id string) *Worker {
+        return &Worker{ID: id}
+      }
+
+      func (w *Worker) Execute(t Task) TaskResult {
+        start := time.Now()
+        output := "processed: " + t.Payload
+        return TaskResult{TaskID: t.ID, Output: output, Duration: time.Since(start)}
+      }
+    pkg/task/pool.go: |
+      package task
+
+      import "sort"
+
+      type Pool struct {
+        workers []*Worker
+        queue   []Task
+      }
+
+      func NewPool(size int) *Pool {
+        p := &Pool{}
+        for i := 0; i < size; i++ {
+          p.workers = append(p.workers, NewWorker(string(rune('A'+i))))
+        }
+        return p
+      }
+
+      func (p *Pool) Submit(t Task) TaskResult {
+        worker := p.workers[0]
+        return worker.Execute(t)
+      }
+
+      func (p *Pool) SubmitBatch(tasks []Task) []TaskResult {
+        sort.Slice(tasks, func(i, j int) bool {
+          return tasks[i].Priority > tasks[j].Priority
+        })
+        var results []TaskResult
+        for _, t := range tasks {
+          results = append(results, p.Submit(t))
+        }
+        return results
+      }
+    cmd/processor/main.go: |
+      package main
+
+      import (
+        "fmt"
+        "time"
+        "pkg/task"
+      )
+
+      func main() {
+        pool := task.NewPool(4)
+        tasks := []task.Task{
+          {ID: "1", Payload: "low", Status: "pending", Priority: task.PriorityLow, CreatedAt: time.Now()},
+          {ID: "2", Payload: "high", Status: "pending", Priority: task.PriorityHigh, CreatedAt: time.Now()},
+        }
+        results := pool.SubmitBatch(tasks)
+        for _, r := range results {
+          fmt.Printf("Task %s: %s (took %v)\n", r.TaskID, r.Output, r.Duration)
+        }
+      }
+    pkg/util/rand.go: |
+      package util
+
+      var GARBAGE_051_RAND_MARKER_A = "rand"
+      var GARBAGE_051_SEED_MARKER_B = 42
+
+      func RandomString(n int) string { return "" }
+    pkg/util/sleep.go: |
+      package util
+
+      var GARBAGE_051_SLEEP_MARKER_C = "sleep"
+      var GARBAGE_051_DURATION_MARKER_D = 1000
+
+      func SleepMs(ms int) {}
+  commit_message: "feat: add task priority and batch submission to worker pool"
+fragments:
+- id: priority_type
+  selector:
+    path: pkg/task/types.go
+    anchor: "type Priority int"
+- id: task_priority_field
+  selector:
+    path: pkg/task/types.go
+    anchor: "Priority  Priority"
+- id: result_duration_field
+  selector:
+    path: pkg/task/types.go
+    anchor: "Duration time.Duration"
+- id: worker_tracks_duration
+  selector:
+    path: pkg/task/worker.go
+    anchor: "Duration: time.Since(start)"
+- id: pool_submit_batch
+  selector:
+    path: pkg/task/pool.go
+    anchor: "func (p *Pool) SubmitBatch"
+- id: main_calls_batch
+  selector:
+    path: cmd/processor/main.go
+    anchor: "pool.SubmitBatch(tasks)"
+- id: no_rand
+  selector:
+    path: pkg/util/rand.go
+    anchor: "GARBAGE_051_RAND_MARKER_A"
+- id: no_sleep
+  selector:
+    path: pkg/util/sleep.go
+    anchor: "GARBAGE_051_SLEEP_MARKER_C"
+oracle:
+  required:
+  - priority_type
+  - task_priority_field
+  - result_duration_field
+  - worker_tracks_duration
+  - pool_submit_batch
+  - main_calls_batch
+  allowed: []
+  forbidden:
+  - no_rand
+  - no_sleep

@@ -1,0 +1,141 @@
+name: bal3_cfgcode_001_go_yaml_db_pool
+tags:
+- lang:go
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    config/database.yaml: |
+      database:
+        host: localhost
+        port: 5432
+        max_pool: 10
+        idle_timeout: 30s
+    internal/db/pool.go: |
+      package db
+
+      import (
+          "os"
+          "gopkg.in/yaml.v3"
+      )
+
+      type DatabaseConfig struct {
+          Host        string `yaml:"host"`
+          Port        int    `yaml:"port"`
+          MaxPool     int    `yaml:"max_pool"`
+          IdleTimeout string `yaml:"idle_timeout"`
+      }
+
+      func LoadDatabaseConfig(path string) (*DatabaseConfig, error) {
+          data, err := os.ReadFile(path)
+          if err != nil {
+              return nil, err
+          }
+          var wrapper struct {
+              Database DatabaseConfig `yaml:"database"`
+          }
+          if err := yaml.Unmarshal(data, &wrapper); err != nil {
+              return nil, err
+          }
+          return &wrapper.Database, nil
+      }
+    internal/db/migrate.go: |
+      package db
+
+      GARBAGE_CFGCODE_001_MIGRATE_A = "migrate"
+      GARBAGE_CFGCODE_001_SCHEMA_B = true
+
+      func RunMigrations(dsn string) error {
+          return nil
+      }
+    internal/cache/redis.go: |
+      package cache
+
+      GARBAGE_CFGCODE_001_REDIS_C = "redis"
+      GARBAGE_CFGCODE_001_TTL_D = 3600
+
+      type RedisClient struct {
+          Addr string
+      }
+
+      func NewRedisClient(addr string) *RedisClient {
+          return &RedisClient{Addr: addr}
+      }
+    internal/logging/logger.go: |
+      package logging
+
+      GARBAGE_CFGCODE_001_LOG_E = "logger"
+      GARBAGE_CFGCODE_001_LEVEL_F = "info"
+
+      func NewLogger(level string) {}
+  changed_files:
+    config/database.yaml: |
+      database:
+        host: localhost
+        port: 5432
+        max_pool: 25
+        idle_timeout: 60s
+        max_lifetime: 300s
+  commit_message: "increase pool size and add max_lifetime"
+fragments:
+- id: pool_config_loader
+  selector:
+    path: internal/db/pool.go
+    anchor: "LoadDatabaseConfig"
+- id: pool_struct
+  selector:
+    path: internal/db/pool.go
+    anchor: "type DatabaseConfig struct"
+- id: max_pool_field
+  selector:
+    path: internal/db/pool.go
+    anchor: "MaxPool"
+- id: no_migrate
+  selector:
+    path: internal/db/migrate.go
+    anchor: "RunMigrations"
+- id: no_redis
+  selector:
+    path: internal/cache/redis.go
+    anchor: "type RedisClient struct"
+- id: no_logger
+  selector:
+    path: internal/logging/logger.go
+    anchor: "NewLogger"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_001_MIGRATE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_001_SCHEMA_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_001_REDIS_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_001_TTL_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CFGCODE_001_LOG_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CFGCODE_001_LEVEL_F
+oracle:
+  required:
+  - pool_config_loader
+  - pool_struct
+  - max_pool_field
+  allowed: []
+  forbidden:
+  - no_migrate
+  - no_redis
+  - no_logger
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

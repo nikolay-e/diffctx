@@ -1,0 +1,248 @@
+name: gap_187_zig_import_chain_packet_serializer
+tags:
+- lang:zig
+- change:single_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+repo:
+  initial_files:
+    src/packet.zig: |
+      const std = @import("std");
+      const serial = @import("serial.zig");
+
+      pub const Packet = struct {
+          header: u32,
+          payload: []const u8,
+          checksum: u16,
+
+          pub fn encode(self: Packet, buf: []u8) usize {
+              return serial.writeFrame(self.header, self.payload, buf);
+          }
+
+          pub fn isValid(self: Packet) bool {
+              return self.checksum == computeChecksum(self.payload);
+          }
+      };
+
+      fn computeChecksum(data: []const u8) u16 {
+          var sum: u16 = 0;
+          for (data) |b| sum +%= b;
+          return sum;
+      }
+    src/serial.zig: |
+      const crc = @import("crc.zig");
+
+      pub fn writeFrame(header: u32, payload: []const u8, buf: []u8) usize {
+          var offset: usize = 0;
+          buf[offset] = @truncate(header >> 24);
+          offset += 1;
+          buf[offset] = @truncate(header >> 16);
+          offset += 1;
+          buf[offset] = @truncate(header >> 8);
+          offset += 1;
+          buf[offset] = @truncate(header);
+          offset += 1;
+          for (payload) |b| {
+              buf[offset] = b;
+              offset += 1;
+          }
+          const c = crc.crc16(payload);
+          buf[offset] = @truncate(c >> 8);
+          offset += 1;
+          buf[offset] = @truncate(c);
+          offset += 1;
+          return offset;
+      }
+    src/crc.zig: |
+      pub fn crc16(data: []const u8) u16 {
+          var crc_val: u16 = 0xFFFF;
+          for (data) |byte| {
+              crc_val ^= @as(u16, byte);
+              var i: u4 = 0;
+              while (i < 8) : (i += 1) {
+                  if (crc_val & 1 == 1) {
+                      crc_val = (crc_val >> 1) ^ 0xA001;
+                  } else {
+                      crc_val >>= 1;
+                  }
+              }
+          }
+          return crc_val;
+      }
+
+      pub fn crc32(data: []const u8) u32 {
+          _ = data;
+          return 0;
+      }
+    src/router.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_187_ROUTER_MARKER_A: []const u8 = "router_noise";
+      const TRAP_GAP_187_ROUTER_FLAG_B: u16 = 443;
+
+      pub fn route(destination: u32, data: []const u8) void {
+          _ = destination;
+          _ = data;
+      }
+    src/metrics.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_187_METRICS_MARKER_C: []const u8 = "metrics_noise";
+      const TRAP_GAP_187_METRICS_FLAG_D: u64 = 0;
+
+      pub fn incrementCounter(name: []const u8) void {
+          _ = name;
+      }
+
+      pub fn recordLatency(name: []const u8, ms: u64) void {
+          _ = name;
+          _ = ms;
+      }
+  changed_files:
+    src/packet.zig: |
+      const std = @import("std");
+      const serial = @import("serial.zig");
+
+      pub const Packet = struct {
+          header: u32,
+          payload: []const u8,
+          checksum: u16,
+          version: u8,
+
+          pub fn encode(self: Packet, buf: []u8) usize {
+              buf[0] = self.version;
+              return 1 + serial.writeFrame(self.header, self.payload, buf[1..]);
+          }
+
+          pub fn isValid(self: Packet) bool {
+              return self.checksum == computeChecksum(self.payload);
+          }
+      };
+
+      fn computeChecksum(data: []const u8) u16 {
+          var sum: u16 = 0;
+          for (data) |b| sum +%= b;
+          return sum;
+      }
+    src/serial.zig: |
+      const crc = @import("crc.zig");
+
+      pub fn writeFrame(header: u32, payload: []const u8, buf: []u8) usize {
+          var offset: usize = 0;
+          buf[offset] = @truncate(header >> 24);
+          offset += 1;
+          buf[offset] = @truncate(header >> 16);
+          offset += 1;
+          buf[offset] = @truncate(header >> 8);
+          offset += 1;
+          buf[offset] = @truncate(header);
+          offset += 1;
+          for (payload) |b| {
+              buf[offset] = b;
+              offset += 1;
+          }
+          const c = crc.crc16(payload);
+          buf[offset] = @truncate(c >> 8);
+          offset += 1;
+          buf[offset] = @truncate(c);
+          offset += 1;
+          return offset;
+      }
+    src/crc.zig: |
+      pub fn crc16(data: []const u8) u16 {
+          var crc_val: u16 = 0xFFFF;
+          for (data) |byte| {
+              crc_val ^= @as(u16, byte);
+              var i: u4 = 0;
+              while (i < 8) : (i += 1) {
+                  if (crc_val & 1 == 1) {
+                      crc_val = (crc_val >> 1) ^ 0xA001;
+                  } else {
+                      crc_val >>= 1;
+                  }
+              }
+          }
+          return crc_val;
+      }
+
+      pub fn crc32(data: []const u8) u32 {
+          _ = data;
+          return 0;
+      }
+    src/router.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_187_ROUTER_MARKER_A: []const u8 = "router_noise";
+      const TRAP_GAP_187_ROUTER_FLAG_B: u16 = 443;
+
+      pub fn route(destination: u32, data: []const u8) void {
+          _ = destination;
+          _ = data;
+      }
+    src/metrics.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_187_METRICS_MARKER_C: []const u8 = "metrics_noise";
+      const TRAP_GAP_187_METRICS_FLAG_D: u64 = 0;
+
+      pub fn incrementCounter(name: []const u8) void {
+          _ = name;
+      }
+
+      pub fn recordLatency(name: []const u8, ms: u64) void {
+          _ = name;
+          _ = ms;
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: packet_version_field
+  selector:
+    path: src/packet.zig
+    anchor: "version: u8"
+- id: packet_encode_change
+  selector:
+    path: src/packet.zig
+    anchor: buf[0] = self.version
+- id: serial_write_frame
+  selector:
+    path: src/serial.zig
+    anchor: "pub fn writeFrame(header: u32, payload: []const u8, buf: []u8) usize"
+- id: crc_fn
+  selector:
+    path: src/crc.zig
+    anchor: "pub fn crc16(data: []const u8) u16"
+- id: no_router
+  selector:
+    path: src/router.zig
+- id: no_metrics
+  selector:
+    path: src/metrics.zig
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP_187_ROUTER_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP_187_ROUTER_FLAG_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP_187_METRICS_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP_187_METRICS_FLAG_D
+oracle:
+  required:
+  - packet_version_field
+  - packet_encode_change
+  - serial_write_frame
+  - crc_fn
+  allowed: []
+  forbidden:
+  - no_router
+  - no_metrics
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

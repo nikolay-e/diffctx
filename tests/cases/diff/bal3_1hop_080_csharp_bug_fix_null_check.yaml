@@ -1,0 +1,385 @@
+name: bal3_1hop_080_csharp_bug_fix_null_check
+tags:
+- lang:csharp
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: csharp-no-tree-sitter
+repo:
+  initial_files:
+    src/Core/UserContext.cs: |
+      using System;
+
+      namespace App.Core
+      {
+          public class UserContext
+          {
+              public int UserId { get; set; }
+              public string Username { get; set; }
+              public string Role { get; set; }
+
+              public bool IsAdmin()
+              {
+                  return Role == "admin";
+              }
+
+              public bool HasPermission(string permission)
+              {
+                  return Role == "admin" || Role == "moderator";
+              }
+          }
+      }
+    src/Handlers/DashboardHandler.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Handlers
+      {
+          public class DashboardHandler
+          {
+              private readonly UserContext _context;
+
+              public DashboardHandler(UserContext context)
+              {
+                  _context = context;
+              }
+
+              public string GetDashboard()
+              {
+                  if (_context.IsAdmin())
+                  {
+                      return "Admin Dashboard";
+                  }
+                  return $"Dashboard for {_context.Username}";
+              }
+          }
+      }
+    src/Handlers/SettingsHandler.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Handlers
+      {
+          public class SettingsHandler
+          {
+              private readonly UserContext _context;
+
+              public SettingsHandler(UserContext context)
+              {
+                  _context = context;
+              }
+
+              public bool CanEditSettings()
+              {
+                  return _context.HasPermission("settings.edit");
+              }
+          }
+      }
+    src/Handlers/ReportHandler.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Handlers
+      {
+          public class ReportHandler
+          {
+              private readonly UserContext _context;
+
+              public ReportHandler(UserContext context)
+              {
+                  _context = context;
+              }
+
+              public string GenerateReport()
+              {
+                  return $"Report by {_context.Username} (Role: {_context.Role})";
+              }
+          }
+      }
+    src/Handlers/AuditHandler.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Handlers
+      {
+          public class AuditHandler
+          {
+              private readonly UserContext _context;
+
+              public AuditHandler(UserContext context)
+              {
+                  _context = context;
+              }
+
+              public void LogAction(string action)
+              {
+                  Console.WriteLine($"[{_context.UserId}] {action}");
+              }
+          }
+      }
+    src/Serialization/XmlSerializer.cs: |
+      using System;
+      GARBAGE_080_XML_VERSION_A = "1.0";
+      GARBAGE_080_ENCODING_B = "utf-8";
+
+      namespace App.Serialization
+      {
+          public class XmlSerializer
+          {
+              public string Serialize(object obj) { return ""; }
+          }
+      }
+    src/Serialization/ProtobufSerializer.cs: |
+      using System;
+      GARBAGE_080_PROTO_VER_C = 3;
+      GARBAGE_080_MAX_SIZE_D = 4194304;
+
+      namespace App.Serialization
+      {
+          public class ProtobufSerializer
+          {
+              public byte[] Serialize(object obj) { return new byte[0]; }
+          }
+      }
+    src/Diagnostics/TraceLogger.cs: |
+      using System;
+      GARBAGE_080_TRACE_LEVEL_E = "verbose";
+      GARBAGE_080_TRACE_OUTPUT_F = "stdout";
+
+      namespace App.Diagnostics
+      {
+          public class TraceLogger
+          {
+              public void Trace(string message) { }
+          }
+      }
+  changed_files:
+    src/Core/UserContext.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Core
+      {
+          public class UserContext
+          {
+              public int UserId { get; set; }
+              public string Username { get; set; }
+              public string Role { get; set; }
+              public List<string> Permissions { get; set; } = new List<string>();
+
+              public bool IsAdmin()
+              {
+                  return Role != null && Role == "admin";
+              }
+
+              public bool HasPermission(string permission)
+              {
+                  if (string.IsNullOrEmpty(Role)) return false;
+                  if (Role == "admin") return true;
+                  return Permissions != null && Permissions.Contains(permission);
+              }
+
+              public bool IsAuthenticated()
+              {
+                  return UserId > 0 && !string.IsNullOrEmpty(Username);
+              }
+          }
+      }
+    src/Handlers/DashboardHandler.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Handlers
+      {
+          public class DashboardHandler
+          {
+              private readonly UserContext _context;
+
+              public DashboardHandler(UserContext context)
+              {
+                  _context = context;
+              }
+
+              public string GetDashboard()
+              {
+                  if (_context.IsAdmin())
+                  {
+                      return "Admin Dashboard";
+                  }
+                  return $"Dashboard for {_context.Username}";
+              }
+          }
+      }
+    src/Handlers/SettingsHandler.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Handlers
+      {
+          public class SettingsHandler
+          {
+              private readonly UserContext _context;
+
+              public SettingsHandler(UserContext context)
+              {
+                  _context = context;
+              }
+
+              public bool CanEditSettings()
+              {
+                  return _context.HasPermission("settings.edit");
+              }
+          }
+      }
+    src/Handlers/ReportHandler.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Handlers
+      {
+          public class ReportHandler
+          {
+              private readonly UserContext _context;
+
+              public ReportHandler(UserContext context)
+              {
+                  _context = context;
+              }
+
+              public string GenerateReport()
+              {
+                  return $"Report by {_context.Username} (Role: {_context.Role})";
+              }
+          }
+      }
+    src/Handlers/AuditHandler.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Handlers
+      {
+          public class AuditHandler
+          {
+              private readonly UserContext _context;
+
+              public AuditHandler(UserContext context)
+              {
+                  _context = context;
+              }
+
+              public void LogAction(string action)
+              {
+                  Console.WriteLine($"[{_context.UserId}] {action}");
+              }
+          }
+      }
+    src/Serialization/XmlSerializer.cs: |
+      using System;
+      GARBAGE_080_XML_VERSION_A = "1.0";
+      GARBAGE_080_ENCODING_B = "utf-8";
+
+      namespace App.Serialization
+      {
+          public class XmlSerializer
+          {
+              public string Serialize(object obj) { return ""; }
+          }
+      }
+    src/Serialization/ProtobufSerializer.cs: |
+      using System;
+      GARBAGE_080_PROTO_VER_C = 3;
+      GARBAGE_080_MAX_SIZE_D = 4194304;
+
+      namespace App.Serialization
+      {
+          public class ProtobufSerializer
+          {
+              public byte[] Serialize(object obj) { return new byte[0]; }
+          }
+      }
+    src/Diagnostics/TraceLogger.cs: |
+      using System;
+      GARBAGE_080_TRACE_LEVEL_E = "verbose";
+      GARBAGE_080_TRACE_OUTPUT_F = "stdout";
+
+      namespace App.Diagnostics
+      {
+          public class TraceLogger
+          {
+              public void Trace(string message) { }
+          }
+      }
+  commit_message: "fix: add null checks and Permissions list to UserContext"
+fragments:
+- id: dashboard_using
+  selector:
+    path: src/Handlers/DashboardHandler.cs
+    anchor: "using App.Core"
+- id: dashboard_is_admin
+  selector:
+    path: src/Handlers/DashboardHandler.cs
+    anchor: "_context.IsAdmin()"
+- id: settings_using
+  selector:
+    path: src/Handlers/SettingsHandler.cs
+    anchor: "using App.Core"
+- id: settings_permission
+  selector:
+    path: src/Handlers/SettingsHandler.cs
+    anchor: '_context.HasPermission("settings.edit")'
+- id: report_using
+  selector:
+    path: src/Handlers/ReportHandler.cs
+    anchor: "using App.Core"
+- id: audit_using
+  selector:
+    path: src/Handlers/AuditHandler.cs
+    anchor: "using App.Core"
+- id: no_xml
+  selector:
+    path: src/Serialization/XmlSerializer.cs
+- id: no_protobuf
+  selector:
+    path: src/Serialization/ProtobufSerializer.cs
+- id: no_trace
+  selector:
+    path: src/Diagnostics/TraceLogger.cs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_080_XML_VERSION_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_080_ENCODING_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_080_PROTO_VER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_080_MAX_SIZE_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_080_TRACE_LEVEL_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_080_TRACE_OUTPUT_F
+oracle:
+  required:
+  - dashboard_using
+  - dashboard_is_admin
+  - settings_using
+  - settings_permission
+  - report_using
+  - audit_using
+  allowed: []
+  forbidden:
+  - no_xml
+  - no_protobuf
+  - no_trace
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

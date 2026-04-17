@@ -1,0 +1,163 @@
+name: gap2_131_nix_cross_module_backup_restic
+tags:
+- change:single_file
+- context:cross_module
+- difficulty:medium
+- distance:2hop
+- lang:nix
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    modules/restic.nix: |
+      { config, lib, pkgs, ... }:
+
+      {
+        options.backup.restic.repository = lib.mkOption {
+          type = lib.types.str;
+          default = "s3:s3.amazonaws.com/my-backups";
+        };
+
+        options.backup.restic.paths = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [ "/var/lib/data" ];
+        };
+
+        config = {
+          services.restic.backups.daily = {
+            repository = config.backup.restic.repository;
+            paths = config.backup.restic.paths;
+            passwordFile = "/etc/restic/password";
+            timerConfig = { OnCalendar = "daily"; };
+          };
+        };
+      }
+    modules/postgres-backup.nix: |
+      { config, lib, pkgs, ... }:
+
+      {
+        config = {
+          services.postgresqlBackup = {
+            enable = true;
+            location = "/var/lib/pgbackup";
+          };
+
+          backup.restic.paths = [ "/var/lib/pgbackup" ] ++ config.backup.restic.paths;
+        };
+      }
+    hosts/db-server.nix: |
+      { config, pkgs, ... }:
+
+      {
+        imports = [
+          ../modules/restic.nix
+          ../modules/postgres-backup.nix
+        ];
+
+        services.postgresql.enable = true;
+        networking.hostName = "db-server";
+        system.stateVersion = "24.05";
+      }
+    modules/certbot.nix: |
+      { config, lib, pkgs, ... }:
+
+      {
+        TRAP_GAP2_131_CERT_A = "certbot_noise";
+        TRAP_GAP2_131_CERT_B = "letsencrypt";
+
+        config = {
+          security.acme.acceptTerms = true;
+          security.acme.defaults.email = "admin@example.com";
+        };
+      }
+    modules/fail2ban.nix: |
+      { config, lib, pkgs, ... }:
+
+      {
+        TRAP_GAP2_131_F2B_C = "fail2ban_noise";
+        TRAP_GAP2_131_F2B_D = 3;
+
+        config = {
+          services.fail2ban.enable = true;
+          services.fail2ban.maxretry = 3;
+        };
+      }
+  changed_files:
+    modules/restic.nix: |
+      { config, lib, pkgs, ... }:
+
+      {
+        options.backup.restic.repository = lib.mkOption {
+          type = lib.types.str;
+          default = "s3:s3.amazonaws.com/my-backups";
+        };
+
+        options.backup.restic.paths = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [ "/var/lib/data" ];
+        };
+
+        options.backup.restic.pruneOpts = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [ "--keep-daily 7" "--keep-weekly 4" "--keep-monthly 6" ];
+        };
+
+        config = {
+          services.restic.backups.daily = {
+            repository = config.backup.restic.repository;
+            paths = config.backup.restic.paths;
+            passwordFile = "/etc/restic/password";
+            timerConfig = { OnCalendar = "daily"; };
+            pruneOpts = config.backup.restic.pruneOpts;
+          };
+        };
+      }
+fragments:
+- id: prune_option
+  selector:
+    path: modules/restic.nix
+    anchor: options.backup.restic.pruneOpts
+- id: prune_usage
+  selector:
+    path: modules/restic.nix
+    anchor: config.backup.restic.pruneOpts
+- id: pg_backup_paths
+  selector:
+    path: modules/postgres-backup.nix
+    anchor: config.backup.restic.paths
+- id: db_server_imports
+  selector:
+    path: hosts/db-server.nix
+    anchor: ../modules/restic.nix
+- id: no_certbot
+  selector:
+    path: modules/certbot.nix
+- id: no_fail2ban
+  selector:
+    path: modules/fail2ban.nix
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_131_CERT_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_131_CERT_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP2_131_F2B_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP2_131_F2B_D
+oracle:
+  required:
+  - prune_option
+  - prune_usage
+  - pg_backup_paths
+  - db_server_imports
+  allowed: []
+  forbidden:
+  - no_certbot
+  - no_fail2ban
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

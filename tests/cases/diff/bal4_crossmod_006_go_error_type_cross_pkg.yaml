@@ -1,0 +1,155 @@
+name: bal4_crossmod_006_go_error_type_cross_pkg
+tags:
+- lang:go
+- change:single_file
+- context:cross_module
+- distance:2hop
+- difficulty:easy
+repo:
+  initial_files:
+    pkg/errors/codes.go: |
+      package errors
+
+      type AppError struct {
+          Code    int
+          Message string
+      }
+
+      func (e *AppError) Error() string {
+          return e.Message
+      }
+
+      func NotFound(msg string) *AppError {
+          return &AppError{Code: 404, Message: msg}
+      }
+    pkg/repo/user_repo.go: |
+      package repo
+
+      import "pkg/errors"
+
+      func FindByID(id int) (string, error) {
+          if id <= 0 {
+              return "", errors.NotFound("user not found")
+          }
+          return "user", nil
+      }
+    pkg/service/user_service.go: |
+      package service
+
+      import "pkg/repo"
+
+      func GetUserProfile(id int) (string, error) {
+          return repo.FindByID(id)
+      }
+    pkg/transport/grpc.go: |
+      package transport
+
+      var GARBAGE_006_GRPC_A = "50051"
+      var GARBAGE_006_PROTO_B = "v3"
+
+      func Serve() {}
+    garbage_migration.go: |
+      package migration
+
+      var GARBAGE_006_VERSION_C = 1
+      var GARBAGE_006_TABLE_D = "users"
+
+      func Migrate() {}
+  changed_files:
+    pkg/errors/codes.go: |
+      package errors
+
+      type AppError struct {
+          Code    int
+          Message string
+      }
+
+      func (e *AppError) Error() string {
+          return e.Message
+      }
+
+      func NotFound(msg string) *AppError {
+          return &AppError{Code: 404, Message: msg}
+      }
+
+      func Forbidden(msg string) *AppError {
+          return &AppError{Code: 403, Message: msg}
+      }
+    pkg/repo/user_repo.go: |
+      package repo
+
+      import "pkg/errors"
+
+      func FindByID(id int) (string, error) {
+          if id <= 0 {
+              return "", errors.NotFound("user not found")
+          }
+          return "user", nil
+      }
+    pkg/service/user_service.go: |
+      package service
+
+      import "pkg/repo"
+
+      func GetUserProfile(id int) (string, error) {
+          return repo.FindByID(id)
+      }
+    pkg/transport/grpc.go: |
+      package transport
+
+      var GARBAGE_006_GRPC_A = "50051"
+      var GARBAGE_006_PROTO_B = "v3"
+
+      func Serve() {}
+    garbage_migration.go: |
+      package migration
+
+      var GARBAGE_006_VERSION_C = 1
+      var GARBAGE_006_TABLE_D = "users"
+
+      func Migrate() {}
+  commit_message: "add Forbidden error constructor"
+fragments:
+- id: app_error_struct
+  selector:
+    path: pkg/errors/codes.go
+    anchor: "type AppError struct"
+- id: repo_uses_notfound
+  selector:
+    path: pkg/repo/user_repo.go
+    anchor: "func FindByID(id int)"
+- id: service_uses_repo
+  selector:
+    path: pkg/service/user_service.go
+    anchor: "func GetUserProfile(id int)"
+- id: no_transport
+  selector:
+    path: pkg/transport/grpc.go
+- id: no_garbage_migration
+  selector:
+    path: garbage_migration.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_006_GRPC_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_006_PROTO_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_006_VERSION_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_006_TABLE_D
+oracle:
+  required:
+  - app_error_struct
+  - repo_uses_notfound
+  - service_uses_repo
+  allowed: []
+  forbidden:
+  - no_transport
+  - no_garbage_migration
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

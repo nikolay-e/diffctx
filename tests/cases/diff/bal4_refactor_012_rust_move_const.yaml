@@ -1,0 +1,114 @@
+name: bal4_refactor_012_rust_move_const
+tags:
+- lang:rust
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/limit.rs: |
+      const MAX_RETRIES: u32 = 5;
+
+      pub fn should_retry(attempt: u32) -> bool {
+          attempt < MAX_RETRIES
+      }
+    src/worker.rs: |
+      use crate::limit;
+
+      pub fn execute() {
+          for i in 0..10 {
+              if limit::should_retry(i) {
+                  println!("retry {}", i);
+              }
+          }
+      }
+    src/garbage_sig.rs: |
+      // GARBAGE_BAL4R012_SIG_A
+      pub const GARBAGE_BAL4R012_ALG_B: &str = "sha256";
+
+      pub struct GarbageSig {
+          // GARBAGE_BAL4R012_SIG_C
+      }
+    src/garbage_enc.rs: |
+      // GARBAGE_BAL4R012_ENC_D
+      pub const GARBAGE_BAL4R012_KEY_E: &str = "aes";
+  changed_files:
+    src/constants.rs: |
+      pub const MAX_RETRIES: u32 = 5;
+    src/limit.rs: |
+      use crate::constants::MAX_RETRIES;
+
+      pub fn should_retry(attempt: u32) -> bool {
+          attempt < MAX_RETRIES
+      }
+    src/worker.rs: |
+      use crate::limit;
+
+      pub fn execute() {
+          for i in 0..10 {
+              if limit::should_retry(i) {
+                  println!("retry {}", i);
+              }
+          }
+      }
+    src/garbage_sig.rs: |
+      // GARBAGE_BAL4R012_SIG_A
+      pub const GARBAGE_BAL4R012_ALG_B: &str = "sha256";
+
+      pub struct GarbageSig {
+          // GARBAGE_BAL4R012_SIG_C
+      }
+    src/garbage_enc.rs: |
+      // GARBAGE_BAL4R012_ENC_D
+      pub const GARBAGE_BAL4R012_KEY_E: &str = "aes";
+  commit_message: "refactor: move MAX_RETRIES to constants module"
+fragments:
+- id: new_constants
+  selector:
+    path: src/constants.rs
+    anchor: "pub const MAX_RETRIES"
+- id: limit_imports_const
+  selector:
+    path: src/limit.rs
+    anchor: "use crate::constants::MAX_RETRIES"
+- id: worker_calls_limit
+  selector:
+    path: src/worker.rs
+    anchor: "limit::should_retry"
+- id: no_garbage_sig
+  selector:
+    path: src/garbage_sig.rs
+- id: no_garbage_enc
+  selector:
+    path: src/garbage_enc.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL4R012_SIG_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL4R012_ALG_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL4R012_SIG_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL4R012_ENC_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL4R012_KEY_E
+oracle:
+  required:
+  - new_constants
+  - limit_imports_const
+  allowed:
+  - worker_calls_limit
+  forbidden:
+  - no_garbage_sig
+  - no_garbage_enc
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

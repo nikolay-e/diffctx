@@ -1,0 +1,152 @@
+name: bal_cfgcode_023_go_feature_flags
+tags:
+- lang:go
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    config/features.yaml: |
+      features:
+        enable_cache: false
+        enable_metrics: true
+        max_workers: 4
+    internal/features/flags.go: |
+      package features
+
+      import (
+        "os"
+
+        "gopkg.in/yaml.v3"
+      )
+
+      type FeatureConfig struct {
+        Features struct {
+          EnableCache   bool `yaml:"enable_cache"`
+          EnableMetrics bool `yaml:"enable_metrics"`
+          MaxWorkers    int  `yaml:"max_workers"`
+        } `yaml:"features"`
+      }
+
+      func Load() (*FeatureConfig, error) {
+        data, err := os.ReadFile("config/features.yaml")
+        if err != nil {
+          return nil, err
+        }
+        var cfg FeatureConfig
+        yaml.Unmarshal(data, &cfg)
+        return &cfg, nil
+      }
+
+      func IsEnabled(cfg *FeatureConfig, name string) bool {
+        switch name {
+        case "cache":
+          return cfg.Features.EnableCache
+        case "metrics":
+          return cfg.Features.EnableMetrics
+        default:
+          return false
+        }
+      }
+    internal/storage/store.go: |
+      package storage
+
+      var GARBAGE_CFGCODE_023_STORE_A = "disk"
+      var GARBAGE_CFGCODE_023_STORE_B = "/data"
+
+      func Save(key string, value []byte) error {
+        return nil
+      }
+  changed_files:
+    config/features.yaml: |
+      features:
+        enable_cache: true
+        enable_metrics: true
+        enable_tracing: false
+        max_workers: 16
+    internal/features/flags.go: |
+      package features
+
+      import (
+        "os"
+
+        "gopkg.in/yaml.v3"
+      )
+
+      type FeatureConfig struct {
+        Features struct {
+          EnableCache   bool `yaml:"enable_cache"`
+          EnableMetrics bool `yaml:"enable_metrics"`
+          MaxWorkers    int  `yaml:"max_workers"`
+        } `yaml:"features"`
+      }
+
+      func Load() (*FeatureConfig, error) {
+        data, err := os.ReadFile("config/features.yaml")
+        if err != nil {
+          return nil, err
+        }
+        var cfg FeatureConfig
+        yaml.Unmarshal(data, &cfg)
+        return &cfg, nil
+      }
+
+      func IsEnabled(cfg *FeatureConfig, name string) bool {
+        switch name {
+        case "cache":
+          return cfg.Features.EnableCache
+        case "metrics":
+          return cfg.Features.EnableMetrics
+        default:
+          return false
+        }
+      }
+    internal/storage/store.go: |
+      package storage
+
+      var GARBAGE_CFGCODE_023_STORE_A = "disk"
+      var GARBAGE_CFGCODE_023_STORE_B = "/data"
+
+      func Save(key string, value []byte) error {
+        return nil
+      }
+  commit_message: "config: enable cache and increase workers"
+fragments:
+- id: config_cache
+  selector:
+    path: config/features.yaml
+    anchor: "enable_cache: true"
+- id: config_workers
+  selector:
+    path: config/features.yaml
+    anchor: "max_workers: 16"
+- id: flags_reads_config
+  selector:
+    path: internal/features/flags.go
+    anchor: 'os.ReadFile("config/features.yaml")'
+- id: flags_checks_cache
+  selector:
+    path: internal/features/flags.go
+    anchor: "cfg.Features.EnableCache"
+- id: no_storage
+  selector:
+    path: internal/storage/store.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_023_STORE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_023_STORE_B
+oracle:
+  required:
+  - config_cache
+  - config_workers
+  - flags_reads_config
+  - flags_checks_cache
+  allowed: []
+  forbidden:
+  - no_storage
+  - no_global_0
+  - no_global_1

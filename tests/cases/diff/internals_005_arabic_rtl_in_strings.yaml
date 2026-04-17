@@ -1,100 +1,238 @@
 name: internals_005_arabic_rtl_in_strings
+tags:
+- lang:go
+- change:new_function
+- change:single_file
+- context:import_chain
+- distance:2hop
+- difficulty:medium
 repo:
   initial_files:
-    src/messaging/sender.py: |
-      from src.messaging.formatter import format_message_body
-      def send_message(recipient: str, body: str) -> dict:
-          formatted = format_message_body(body)
-          return {"to": recipient, "body": formatted, "sent": True}
-      def queue_message(recipient: str, body: str) -> str:
-          return "queued:" + recipient
-    src/messaging/formatter.py: |
-      def format_message_body(body: str) -> str:
-          return body.strip()
-      def add_signature(body: str, sig: str) -> str:
-          return body + "\n" + sig
-    garbage_delivery_tracker.py: |
-      GARBAGE_INT_005_DELIVERY_MARKER_A = "track"
-      GARBAGE_INT_005_STATUS_MARKER_B = "pending"
+    pkg/notification/sender.go: |
+      package notification
 
-      class GarbageDeliveryTracker:
-          def noop(self):
-              pass
-    garbage_message_archive.py: |
-      GARBAGE_INT_005_ARCHIVE_MARKER_C = "store"
-      GARBAGE_INT_005_COMPRESS_MARKER_D = "gzip"
+      type Message struct {
+          To      string
+          Subject string
+          Body    string
+      }
 
-      class GarbageMessageArchive:
-          def noop(self):
-              pass
+      type Sender struct {
+          provider Provider
+      }
+
+      func NewSender(p Provider) *Sender {
+          return &Sender{provider: p}
+      }
+
+      func (s *Sender) Send(msg Message) error {
+          return s.provider.Deliver(msg.To, msg.Subject, msg.Body)
+      }
+    pkg/notification/provider.go: |
+      package notification
+
+      type Provider interface {
+          Deliver(to, subject, body string) error
+      }
+    internal/alerts/alert_service.go: |
+      package alerts
+
+      import "pkg/notification"
+
+      type AlertService struct {
+          sender *notification.Sender
+      }
+
+      func NewAlertService(s *notification.Sender) *AlertService {
+          return &AlertService{sender: s}
+      }
+
+      func (a *AlertService) SendAlert(email, alertMsg string) error {
+          return a.sender.Send(notification.Message{
+              To:      email,
+              Subject: "Alert",
+              Body:    alertMsg,
+          })
+      }
+    internal/monitoring/checker.go: |
+      package monitoring
+
+      import "internal/alerts"
+
+      type Checker struct {
+          alerts *alerts.AlertService
+      }
+
+      func NewChecker(a *alerts.AlertService) *Checker {
+          return &Checker{alerts: a}
+      }
+
+      func (c *Checker) Check(endpoint, contactEmail string) error {
+          return c.alerts.SendAlert(contactEmail, "Endpoint "+endpoint+" is down")
+      }
+    garbage/EcommerceCart.go: |
+      package garbage
+
+      // GARBAGE_INT005_A = "ecommerce_cart_marker"
+
+      type EcommerceCart struct{ Items []string }
+    garbage/GameInventory.go: |
+      package garbage
+
+      // GARBAGE_INT005_B = "game_inventory_marker"
+
+      type GameInventory struct{ Slots int }
+    garbage/IoTFirmware.go: |
+      package garbage
+
+      // GARBAGE_INT005_C = "iot_firmware_marker"
+
+      type IoTFirmware struct{ Version string }
   changed_files:
-    src/messaging/sender.py: |
-      from src/messaging/formatter import format_message_body
-      def send_message(recipient: str, body: str) -> dict:
-          message = "مرحبا"
-          greeting = "أهلاً وسهلاً"
-          formatted = format_message_body(greeting + ": " + body)
-          return {"to": recipient, "body": formatted, "greeting": message, "sent": True}
-      def queue_message(recipient: str, body: str) -> str:
-          return "queued:" + recipient
-    src/messaging/formatter.py: |
-      def format_message_body(body: str) -> str:
-          return body.strip()
-      def add_signature(body: str, sig: str) -> str:
-          return body + "\n" + sig
-    garbage_delivery_tracker.py: |
-      GARBAGE_INT_005_DELIVERY_MARKER_A = "track"
-      GARBAGE_INT_005_STATUS_MARKER_B = "pending"
+    pkg/notification/sender.go: |
+      package notification
 
-      class GarbageDeliveryTracker:
-          def noop(self):
-              pass
-    garbage_message_archive.py: |
-      GARBAGE_INT_005_ARCHIVE_MARKER_C = "store"
-      GARBAGE_INT_005_COMPRESS_MARKER_D = "gzip"
+      import "strings"
 
-      class GarbageMessageArchive:
-          def noop(self):
-              pass
-  commit_message: Update files
+      type Message struct {
+          To      string
+          Subject string
+          Body    string
+      }
+
+      type Sender struct {
+          provider Provider
+      }
+
+      func NewSender(p Provider) *Sender {
+          return &Sender{provider: p}
+      }
+
+      func (s *Sender) Send(msg Message) error {
+          return s.provider.Deliver(msg.To, msg.Subject, msg.Body)
+      }
+
+      func (s *Sender) SendBatch(msgs []Message) []error {
+          errs := make([]error, 0, len(msgs))
+          for _, msg := range msgs {
+              if err := s.Send(msg); err != nil {
+                  errs = append(errs, err)
+              }
+          }
+          if len(errs) == 0 {
+              return nil
+          }
+          return errs
+      }
+
+      func (s *Sender) SendBulkAlert(recipients []string, subject, body string) []error {
+          msgs := make([]Message, 0, len(recipients))
+          for _, r := range recipients {
+              r = strings.TrimSpace(r)
+              if r != "" {
+                  msgs = append(msgs, Message{To: r, Subject: subject, Body: body})
+              }
+          }
+          return s.SendBatch(msgs)
+      }
+    pkg/notification/provider.go: |
+      package notification
+
+      type Provider interface {
+          Deliver(to, subject, body string) error
+      }
+    internal/alerts/alert_service.go: |
+      package alerts
+
+      import "pkg/notification"
+
+      type AlertService struct {
+          sender *notification.Sender
+      }
+
+      func NewAlertService(s *notification.Sender) *AlertService {
+          return &AlertService{sender: s}
+      }
+
+      func (a *AlertService) SendAlert(email, alertMsg string) error {
+          return a.sender.Send(notification.Message{
+              To:      email,
+              Subject: "Alert",
+              Body:    alertMsg,
+          })
+      }
+
+      func (a *AlertService) BroadcastAlert(emails []string, alertMsg string) []error {
+          return a.sender.SendBulkAlert(emails, "Alert", alertMsg)
+      }
+    internal/monitoring/checker.go: |
+      package monitoring
+
+      import "internal/alerts"
+
+      type Checker struct {
+          alerts *alerts.AlertService
+      }
+
+      func NewChecker(a *alerts.AlertService) *Checker {
+          return &Checker{alerts: a}
+      }
+
+      func (c *Checker) Check(endpoint, contactEmail string) error {
+          return c.alerts.SendAlert(contactEmail, "Endpoint "+endpoint+" is down")
+      }
+    garbage/EcommerceCart.go: |
+      package garbage
+
+      // GARBAGE_INT005_A = "ecommerce_cart_marker"
+
+      type EcommerceCart struct{ Items []string }
+    garbage/GameInventory.go: |
+      package garbage
+
+      // GARBAGE_INT005_B = "game_inventory_marker"
+
+      type GameInventory struct{ Slots int }
+    garbage/IoTFirmware.go: |
+      package garbage
+
+      // GARBAGE_INT005_C = "iot_firmware_marker"
+
+      type IoTFirmware struct{ Version string }
+  commit_message: "feat: add SendBatch and SendBulkAlert to notification sender"
 fragments:
-- id: sender_file
+- id: send_batch_fn
   selector:
-    path: src/messaging/sender.py
-- id: req_global_0
+    path: pkg/notification/sender.go
+    anchor: "func (s *Sender) SendBatch"
+- id: send_bulk_alert_fn
   selector:
-    anchor: from src/messaging/formatter import format_message_body
-- id: req_global_1
+    path: pkg/notification/sender.go
+    anchor: "func (s *Sender) SendBulkAlert"
+- id: alert_broadcast
   selector:
-    anchor: message = "مرحبا"
-- id: no_global_0
+    path: internal/alerts/alert_service.go
+    anchor: "func (a *AlertService) BroadcastAlert"
+- id: no_checker
   selector:
-    anchor: GARBAGE_INT_005_ARCHIVE_MARKER_C
-- id: no_global_1
+    path: internal/monitoring/checker.go
+- id: no_garbage_a
   selector:
-    anchor: GARBAGE_INT_005_COMPRESS_MARKER_D
-- id: no_global_2
+    anchor: GARBAGE_INT005_A
+- id: no_garbage_b
   selector:
-    anchor: GARBAGE_INT_005_DELIVERY_MARKER_A
-- id: no_global_3
+    anchor: GARBAGE_INT005_B
+- id: no_garbage_c
   selector:
-    anchor: GARBAGE_INT_005_STATUS_MARKER_B
-- id: no_global_4
-  selector:
-    anchor: garbage_delivery_tracker.py
-- id: no_global_5
-  selector:
-    anchor: garbage_message_archive.py
+    anchor: GARBAGE_INT005_C
 oracle:
   required:
-  - sender_file
-  - req_global_0
-  - req_global_1
+  - send_batch_fn
+  - send_bulk_alert_fn
+  - alert_broadcast
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+  - no_checker
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

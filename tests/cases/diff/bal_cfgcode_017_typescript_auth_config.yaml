@@ -1,0 +1,234 @@
+name: bal_cfgcode_017_typescript_auth_config
+tags:
+- lang:typescript
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    config/auth.json: |
+      {
+        "jwtSecret": "dev-secret-key",
+        "tokenExpiry": "1h",
+        "refreshExpiry": "7d",
+        "providers": {
+          "google": {
+            "clientId": "google-dev",
+            "enabled": true
+          }
+        }
+      }
+    src/jwt.ts: |
+      import { readFileSync } from 'fs';
+
+      const authConfig = JSON.parse(readFileSync('config/auth.json', 'utf-8'));
+
+      export const JWT_SECRET = authConfig.jwtSecret;
+      export const TOKEN_EXPIRY = authConfig.tokenExpiry;
+      export const REFRESH_EXPIRY = authConfig.refreshExpiry;
+
+      export function createToken(payload: object): string {
+        return `${JWT_SECRET}:${JSON.stringify(payload)}`;
+      }
+    src/oauth.ts: |
+      import { readFileSync } from 'fs';
+
+      const cfg = JSON.parse(readFileSync('config/auth.json', 'utf-8'));
+
+      export function getProvider(name: string) {
+        return cfg.providers[name];
+      }
+
+      export function listProviders(): string[] {
+        return Object.keys(cfg.providers).filter(
+          (p) => cfg.providers[p].enabled
+        );
+      }
+    src/session-store.ts: |
+      import { readFileSync } from 'fs';
+
+      const authCfg = JSON.parse(readFileSync('config/auth.json', 'utf-8'));
+
+      export const SESSION_DURATION = authCfg.refreshExpiry;
+
+      export function isExpired(createdAt: number, now: number): boolean {
+        return now - createdAt > 604800000;
+      }
+    src/email-service.ts: |
+      const GARBAGE_CFGCODE_017_EMAIL_A = "smtp";
+      const GARBAGE_CFGCODE_017_EMAIL_B = 587;
+
+      export function sendEmail(to: string, subject: string): void {
+        return;
+      }
+    src/file-upload.ts: |
+      const GARBAGE_CFGCODE_017_UPLOAD_C = "s3";
+      const GARBAGE_CFGCODE_017_UPLOAD_D = "10mb";
+
+      export function upload(buffer: Buffer): string {
+        return "uploaded";
+      }
+    garbage_types.ts: |
+      const GARBAGE_CFGCODE_017_TYPE_E = "interface";
+      const GARBAGE_CFGCODE_017_TYPE_F = "generic";
+
+      export type Nothing = never;
+  changed_files:
+    config/auth.json: |
+      {
+        "jwtSecret": "prod-rotated-key-2024",
+        "tokenExpiry": "15m",
+        "refreshExpiry": "30d",
+        "providers": {
+          "google": {
+            "clientId": "google-prod",
+            "enabled": true
+          },
+          "github": {
+            "clientId": "github-prod",
+            "enabled": true
+          },
+          "saml": {
+            "entityId": "https://sso.example.com",
+            "enabled": false
+          }
+        },
+        "mfa": {
+          "enabled": true,
+          "issuer": "MyApp"
+        }
+      }
+    src/jwt.ts: |
+      import { readFileSync } from 'fs';
+
+      const authConfig = JSON.parse(readFileSync('config/auth.json', 'utf-8'));
+
+      export const JWT_SECRET = authConfig.jwtSecret;
+      export const TOKEN_EXPIRY = authConfig.tokenExpiry;
+      export const REFRESH_EXPIRY = authConfig.refreshExpiry;
+
+      export function createToken(payload: object): string {
+        return `${JWT_SECRET}:${JSON.stringify(payload)}`;
+      }
+    src/oauth.ts: |
+      import { readFileSync } from 'fs';
+
+      const cfg = JSON.parse(readFileSync('config/auth.json', 'utf-8'));
+
+      export function getProvider(name: string) {
+        return cfg.providers[name];
+      }
+
+      export function listProviders(): string[] {
+        return Object.keys(cfg.providers).filter(
+          (p) => cfg.providers[p].enabled
+        );
+      }
+    src/session-store.ts: |
+      import { readFileSync } from 'fs';
+
+      const authCfg = JSON.parse(readFileSync('config/auth.json', 'utf-8'));
+
+      export const SESSION_DURATION = authCfg.refreshExpiry;
+
+      export function isExpired(createdAt: number, now: number): boolean {
+        return now - createdAt > 604800000;
+      }
+    src/email-service.ts: |
+      const GARBAGE_CFGCODE_017_EMAIL_A = "smtp";
+      const GARBAGE_CFGCODE_017_EMAIL_B = 587;
+
+      export function sendEmail(to: string, subject: string): void {
+        return;
+      }
+    src/file-upload.ts: |
+      const GARBAGE_CFGCODE_017_UPLOAD_C = "s3";
+      const GARBAGE_CFGCODE_017_UPLOAD_D = "10mb";
+
+      export function upload(buffer: Buffer): string {
+        return "uploaded";
+      }
+    garbage_types.ts: |
+      const GARBAGE_CFGCODE_017_TYPE_E = "interface";
+      const GARBAGE_CFGCODE_017_TYPE_F = "generic";
+
+      export type Nothing = never;
+  commit_message: "config: production auth with MFA and new providers"
+fragments:
+- id: config_token_expiry
+  selector:
+    path: config/auth.json
+    anchor: '"tokenExpiry": "15m"'
+- id: config_github
+  selector:
+    path: config/auth.json
+    anchor: "github-prod"
+- id: config_mfa
+  selector:
+    path: config/auth.json
+    anchor: '"mfa"'
+- id: jwt_reads_secret
+  selector:
+    path: src/jwt.ts
+    anchor: "authConfig.jwtSecret"
+- id: jwt_reads_expiry
+  selector:
+    path: src/jwt.ts
+    anchor: "authConfig.tokenExpiry"
+- id: oauth_reads_providers
+  selector:
+    path: src/oauth.ts
+    anchor: "cfg.providers[name]"
+- id: session_reads_refresh
+  selector:
+    path: src/session-store.ts
+    anchor: "authCfg.refreshExpiry"
+- id: no_email
+  selector:
+    path: src/email-service.ts
+- id: no_upload
+  selector:
+    path: src/file-upload.ts
+- id: no_types
+  selector:
+    path: garbage_types.ts
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_017_EMAIL_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_017_EMAIL_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_017_UPLOAD_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_017_UPLOAD_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CFGCODE_017_TYPE_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CFGCODE_017_TYPE_F
+oracle:
+  required:
+  - config_token_expiry
+  - config_github
+  - config_mfa
+  - jwt_reads_secret
+  - jwt_reads_expiry
+  - oauth_reads_providers
+  - session_reads_refresh
+  allowed: []
+  forbidden:
+  - no_email
+  - no_upload
+  - no_types
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

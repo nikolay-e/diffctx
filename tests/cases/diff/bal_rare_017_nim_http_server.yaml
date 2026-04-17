@@ -1,0 +1,203 @@
+name: bal_rare_017_nim_http_server
+tags:
+- lang:rust
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/cdn/invalidator.rs: |
+      use crate::cache::manifest::CacheManifest;
+
+      pub struct CdnInvalidator {
+          manifest: CacheManifest,
+          base_url: String,
+      }
+
+      impl CdnInvalidator {
+          pub fn new(manifest: CacheManifest, base_url: &str) -> Self {
+              CdnInvalidator { manifest, base_url: base_url.to_string() }
+          }
+
+          pub fn invalidate(&mut self, path: &str) -> Vec<String> {
+              let patterns = self.manifest.patterns_for(path);
+              patterns.iter().map(|p| format!("{}/{}", self.base_url, p)).collect()
+              // BUG: does not remove invalidated entries from manifest
+          }
+
+          pub fn invalidate_all(&mut self) -> usize {
+              let count = self.manifest.len();
+              self.manifest.clear();
+              count
+          }
+      }
+    src/cache/manifest.rs: |
+      use std::collections::HashMap;
+
+      pub struct CacheManifest {
+          entries: HashMap<String, Vec<String>>,
+      }
+
+      impl CacheManifest {
+          pub fn new() -> Self {
+              CacheManifest { entries: HashMap::new() }
+          }
+
+          pub fn register(&mut self, path: &str, patterns: Vec<String>) {
+              self.entries.insert(path.to_string(), patterns);
+          }
+
+          pub fn patterns_for(&self, path: &str) -> Vec<String> {
+              self.entries.get(path).cloned().unwrap_or_default()
+          }
+
+          pub fn remove(&mut self, path: &str) {
+              self.entries.remove(path);
+          }
+
+          pub fn clear(&mut self) {
+              self.entries.clear();
+          }
+
+          pub fn len(&self) -> usize {
+              self.entries.len()
+          }
+      }
+    src/metrics/counters.rs: |
+      use crate::cdn::invalidator::CdnInvalidator;
+
+      pub fn count_pending(invalidator: &CdnInvalidator) -> usize {
+          invalidator.manifest_len()
+      }
+    garbage/purge_worker.rs: |
+      // GARBAGE_RARE017_PURGE_A = "purge_worker_marker"
+    garbage/origin.rs: |
+      // GARBAGE_RARE017_ORIGIN_B = "origin_marker"
+    garbage/prefetch.rs: |
+      // GARBAGE_RARE017_PREF_C = "prefetch_marker"
+    garbage/edge_node.rs: |
+      // GARBAGE_RARE017_EDGE_D = "edge_node_marker"
+  changed_files:
+    src/cdn/invalidator.rs: |
+      use crate::cache::manifest::CacheManifest;
+
+      pub struct CdnInvalidator {
+          manifest: CacheManifest,
+          base_url: String,
+      }
+
+      impl CdnInvalidator {
+          pub fn new(manifest: CacheManifest, base_url: &str) -> Self {
+              CdnInvalidator { manifest, base_url: base_url.to_string() }
+          }
+
+          pub fn invalidate(&mut self, path: &str) -> Vec<String> {
+              let patterns = self.manifest.patterns_for(path);
+              self.manifest.remove(path);
+              patterns.iter().map(|p| format!("{}/{}", self.base_url, p)).collect()
+          }
+
+          pub fn invalidate_all(&mut self) -> usize {
+              let count = self.manifest.len();
+              self.manifest.clear();
+              count
+          }
+
+          pub fn manifest_len(&self) -> usize {
+              self.manifest.len()
+          }
+      }
+    src/cache/manifest.rs: |
+      use std::collections::HashMap;
+
+      pub struct CacheManifest {
+          entries: HashMap<String, Vec<String>>,
+      }
+
+      impl CacheManifest {
+          pub fn new() -> Self {
+              CacheManifest { entries: HashMap::new() }
+          }
+
+          pub fn register(&mut self, path: &str, patterns: Vec<String>) {
+              self.entries.insert(path.to_string(), patterns);
+          }
+
+          pub fn patterns_for(&self, path: &str) -> Vec<String> {
+              self.entries.get(path).cloned().unwrap_or_default()
+          }
+
+          pub fn remove(&mut self, path: &str) {
+              self.entries.remove(path);
+          }
+
+          pub fn clear(&mut self) {
+              self.entries.clear();
+          }
+
+          pub fn len(&self) -> usize {
+              self.entries.len()
+          }
+      }
+    src/metrics/counters.rs: |
+      use crate::cdn::invalidator::CdnInvalidator;
+
+      pub fn count_pending(invalidator: &CdnInvalidator) -> usize {
+          invalidator.manifest_len()
+      }
+    garbage/purge_worker.rs: |
+      // GARBAGE_RARE017_PURGE_A = "purge_worker_marker"
+    garbage/origin.rs: |
+      // GARBAGE_RARE017_ORIGIN_B = "origin_marker"
+    garbage/prefetch.rs: |
+      // GARBAGE_RARE017_PREF_C = "prefetch_marker"
+    garbage/edge_node.rs: |
+      // GARBAGE_RARE017_EDGE_D = "edge_node_marker"
+  commit_message: "fix: remove manifest entry after invalidation to prevent stale re-serve"
+fragments:
+- id: invalidate_remove_call
+  selector:
+    path: src/cdn/invalidator.rs
+    anchor: "self.manifest.remove(path);"
+- id: manifest_len_method
+  selector:
+    path: src/cdn/invalidator.rs
+    anchor: "pub fn manifest_len(&self) -> usize {"
+- id: manifest_remove_method
+  selector:
+    path: src/cache/manifest.rs
+    anchor: "pub fn remove(&mut self, path: &str) {"
+- id: metrics_calls_manifest_len
+  selector:
+    path: src/metrics/counters.rs
+    anchor: "invalidator.manifest_len()"
+- id: manifest_patterns_for
+  selector:
+    path: src/cache/manifest.rs
+    anchor: "pub fn patterns_for(&self, path: &str) -> Vec<String> {"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_RARE017_PURGE_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_RARE017_ORIGIN_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_RARE017_PREF_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_RARE017_EDGE_D
+oracle:
+  required:
+  - invalidate_remove_call
+  - manifest_remove_method
+  - metrics_calls_manifest_len
+  allowed:
+  - manifest_len_method
+  - manifest_patterns_for
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

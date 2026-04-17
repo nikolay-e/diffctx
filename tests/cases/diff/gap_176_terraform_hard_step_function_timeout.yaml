@@ -1,0 +1,148 @@
+name: gap_176_terraform_hard_step_function_timeout
+tags:
+- change:config
+- change:single_file
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+- lang:terraform
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    automation/pipelines/etl/main.tf: |
+      module "state_machine" {
+        source       = "../../modules/step-functions"
+        name         = "daily-etl"
+        definition   = file("${path.module}/workflow.json")
+        role_arn     = module.execution_role.arn
+      }
+
+      module "execution_role" {
+        source    = "../../modules/iam-execution"
+        role_name = "etl-step-fn-role"
+      }
+    automation/pipelines/etl/workflow.json: |
+      {
+        "StartAt": "Extract",
+        "States": {
+          "Extract": {
+            "Type": "Task",
+            "Resource": "arn:aws:lambda:us-east-1:123456789:function:extract",
+            "TimeoutSeconds": 300,
+            "Next": "Transform"
+          },
+          "Transform": {
+            "Type": "Task",
+            "Resource": "arn:aws:lambda:us-east-1:123456789:function:transform",
+            "TimeoutSeconds": 600,
+            "Next": "Load"
+          },
+          "Load": {
+            "Type": "Task",
+            "Resource": "arn:aws:lambda:us-east-1:123456789:function:load",
+            "TimeoutSeconds": 300,
+            "End": true
+          }
+        }
+      }
+    automation/modules/step-functions/main.tf: |
+      resource "aws_sfn_state_machine" "this" {
+        name       = var.name
+        role_arn   = var.role_arn
+        definition = var.definition
+      }
+    automation/modules/step-functions/variables.tf: |
+      variable "name" {
+        type = string
+      }
+
+      variable "role_arn" {
+        type = string
+      }
+
+      variable "definition" {
+        type = string
+      }
+    automation/modules/iam-execution/main.tf: |
+      resource "aws_iam_role" "execution" {
+        name = var.role_name
+
+        assume_role_policy = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Action    = "sts:AssumeRole"
+            Effect    = "Allow"
+            Principal = { Service = "states.amazonaws.com" }
+          }]
+        })
+      }
+    automation/modules/iam-execution/variables.tf: |
+      variable "role_name" {
+        type = string
+      }
+    automation/modules/iam-execution/outputs.tf: |
+      output "arn" {
+        value = aws_iam_role.execution.arn
+      }
+    automation/modules/eventbridge/main.tf: |
+      resource "aws_cloudwatch_event_rule" "hourly" {
+        name                = "hourly-trigger"
+        schedule_expression = "rate(1 hour)"
+      }
+  changed_files:
+    automation/modules/step-functions/main.tf: |
+      resource "aws_sfn_state_machine" "this" {
+        name       = var.name
+        role_arn   = var.role_arn
+        definition = var.definition
+
+        logging_configuration {
+          log_destination        = var.log_group_arn
+          include_execution_data = true
+          level                  = "ERROR"
+        }
+      }
+    automation/modules/step-functions/variables.tf: |
+      variable "name" {
+        type = string
+      }
+
+      variable "role_arn" {
+        type = string
+      }
+
+      variable "definition" {
+        type = string
+      }
+
+      variable "log_group_arn" {
+        type    = string
+        default = ""
+      }
+fragments:
+- id: sfn_logging
+  selector:
+    path: automation/modules/step-functions/main.tf
+    anchor: logging_configuration
+- id: sfn_log_var
+  selector:
+    path: automation/modules/step-functions/variables.tf
+    anchor: log_group_arn
+- id: etl_uses_sfn
+  selector:
+    path: automation/pipelines/etl/main.tf
+    anchor: module "state_machine"
+- id: no_eventbridge
+  selector:
+    path: automation/modules/eventbridge/main.tf
+- id: no_iam_execution
+  selector:
+    path: automation/modules/iam-execution/main.tf
+oracle:
+  required:
+  - sfn_logging
+  - sfn_log_var
+  forbidden:
+  - no_eventbridge
+  - no_iam_execution

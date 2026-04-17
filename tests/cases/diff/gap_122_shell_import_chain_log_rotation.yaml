@@ -1,0 +1,141 @@
+name: gap_122_shell_import_chain_log_rotation
+tags:
+- lang:shell
+- change:single_file
+- context:import_chain
+- difficulty:hard
+- distance:2hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    sbin/logmanager.sh: |
+      #!/usr/bin/env bash
+      source lib/logging/rotate.sh
+
+      LOG_BASE="/var/log/app"
+
+      run_rotation() {
+          local max_age="${1:-30}"
+          rotate_logs "$LOG_BASE" "$max_age"
+      }
+
+      archive_old_logs() {
+          local target_dir="$1"
+          compress_rotated "$LOG_BASE" "$target_dir"
+      }
+
+      show_log_stats() {
+          local count
+          count=$(find "$LOG_BASE" -name "*.log" | wc -l)
+          echo "Active logs: $count"
+      }
+    lib/logging/rotate.sh: |
+      #!/usr/bin/env bash
+      source lib/logging/compress.sh
+
+      rotate_logs() {
+          local base_dir="$1"
+          local max_days="$2"
+          find "$base_dir" -name "*.log" -mtime +"$max_days" -print0 |
+              while IFS= read -r -d '' logfile; do
+                  mv "$logfile" "${logfile}.old"
+              done
+      }
+
+      compress_rotated() {
+          local base_dir="$1"
+          local archive_dir="$2"
+          mkdir -p "$archive_dir"
+          find "$base_dir" -name "*.old" -print0 |
+              while IFS= read -r -d '' oldfile; do
+                  compress_file "$oldfile" "$archive_dir"
+              done
+      }
+    lib/logging/compress.sh: |
+      #!/usr/bin/env bash
+      COMPRESS_LEVEL=9
+
+      compress_file() {
+          local src="$1"
+          local dest_dir="$2"
+          local basename
+          basename=$(basename "$src")
+          gzip -"$COMPRESS_LEVEL" -c "$src" > "$dest_dir/${basename}.gz"
+          rm -f "$src"
+      }
+
+      decompress_file() {
+          local archive="$1"
+          local dest_dir="$2"
+          gunzip -c "$archive" > "$dest_dir/$(basename "$archive" .gz)"
+      }
+    lib/monitoring/health.sh: |
+      #!/usr/bin/env bash
+
+      check_disk_space() {
+          local threshold="${1:-90}"
+          local usage
+          usage=$(df / | awk 'NR==2 {print $5}' | tr -d '%')
+          (( usage > threshold ))
+      }
+
+      check_memory() {
+          free -m | awk 'NR==2 {printf "%.0f", $3/$2 * 100}'
+      }
+  changed_files:
+    sbin/logmanager.sh: |
+      #!/usr/bin/env bash
+      source lib/logging/rotate.sh
+
+      LOG_BASE="/var/log/app"
+
+      run_rotation() {
+          local max_age="${1:-30}"
+          rotate_logs "$LOG_BASE" "$max_age"
+      }
+
+      archive_old_logs() {
+          local target_dir="$1"
+          compress_rotated "$LOG_BASE" "$target_dir"
+      }
+
+      show_log_stats() {
+          local count
+          count=$(find "$LOG_BASE" -name "*.log" | wc -l)
+          echo "Active logs: $count"
+      }
+
+      purge_archives() {
+          local archive_dir="$1"
+          local keep_days="${2:-90}"
+          find "$archive_dir" -name "*.gz" -mtime +"$keep_days" -delete
+          echo "Purged archives older than $keep_days days"
+      }
+fragments:
+- id: purge_archives
+  selector:
+    path: sbin/logmanager.sh
+    anchor: purge_archives
+- id: rotate_logs
+  selector:
+    path: lib/logging/rotate.sh
+    anchor: rotate_logs
+- id: compress_file
+  selector:
+    path: lib/logging/compress.sh
+    anchor: compress_file
+- id: no_health
+  selector:
+    path: lib/monitoring/health.sh
+- id: no_disk_space
+  selector:
+    anchor: check_disk_space
+oracle:
+  required:
+  - purge_archives
+  - rotate_logs
+  - compress_file
+  forbidden:
+  - no_health
+  - no_disk_space

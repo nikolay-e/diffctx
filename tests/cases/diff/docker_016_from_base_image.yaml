@@ -1,4 +1,11 @@
 name: docker_016_from_base_image
+tags:
+- lang:python
+- lang:shell
+- change:single_file
+- context:import_chain
+- distance:2hop
+- difficulty:medium
 repo:
   initial_files:
     requirements.txt: |

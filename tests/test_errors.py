@@ -18,19 +18,16 @@ def test_invalid_directory_path(run_mapper, capsys):
     captured = capsys.readouterr()
 
     assert "Error:" in captured.err
-    assert f"'{dir_name}'" in captured.err or f"{Path(dir_name).resolve()}" in captured.err
-    assert "does not exist" in captured.err or "not a valid directory" in captured.err
+    assert dir_name in captured.err
+    assert "No matches" in captured.err or "does not exist" in captured.err
 
 
 def test_input_path_is_file(run_mapper, temp_project, capsys):
     file_path = temp_project / "some_file.txt"
-    file_path.touch()
-    assert not run_mapper([str(file_path)])
+    file_path.write_text("hello")
+    assert run_mapper([str(file_path)])
     captured = capsys.readouterr()
-
-    assert "Error:" in captured.err
-    assert str(file_path.resolve()) in captured.err
-    assert "not a directory" in captured.err
+    assert "some_file.txt" in captured.out
 
 
 @pytest.mark.skipif(
@@ -119,7 +116,7 @@ def test_oserror_accessing_directory(temp_project, monkeypatch, capsys):
     original_resolve = Path.resolve
 
     def mock_resolve(self, strict=False):
-        if strict and self.name == "testdir":
+        if self.name == "testdir":
             raise OSError("Simulated OSError: disk I/O error")
         return original_resolve(self, strict=strict)
 

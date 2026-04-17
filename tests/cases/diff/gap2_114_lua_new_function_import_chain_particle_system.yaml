@@ -1,0 +1,208 @@
+name: gap2_114_lua_new_function_import_chain_particle_system
+tags:
+- change:new_function
+- change:single_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:lua
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    engine/vec2.lua: |
+      local M = {}
+
+      function M.new(x, y)
+          return { x = x or 0, y = y or 0 }
+      end
+
+      function M.add(a, b)
+          return M.new(a.x + b.x, a.y + b.y)
+      end
+
+      function M.scale(v, s)
+          return M.new(v.x * s, v.y * s)
+      end
+
+      function M.length(v)
+          return math.sqrt(v.x * v.x + v.y * v.y)
+      end
+
+      return M
+    engine/emitter.lua: |
+      local vec2 = require("engine.vec2")
+
+      local M = {}
+
+      function M.create(position, rate)
+          return { pos = position, rate = rate, particles = {} }
+      end
+
+      function M.emit(emitter, dt)
+          local count = math.floor(emitter.rate * dt)
+          for i = 1, count do
+              local vel = vec2.new(math.random() - 0.5, -math.random())
+              local p = { pos = vec2.new(emitter.pos.x, emitter.pos.y), vel = vel, life = 2.0 }
+              emitter.particles[#emitter.particles + 1] = p
+          end
+      end
+
+      function M.update(emitter, dt)
+          for i = #emitter.particles, 1, -1 do
+              local p = emitter.particles[i]
+              p.pos = vec2.add(p.pos, vec2.scale(p.vel, dt))
+              p.life = p.life - dt
+              if p.life <= 0 then
+                  table.remove(emitter.particles, i)
+              end
+          end
+      end
+
+      return M
+    game/effects.lua: |
+      local emitter = require("engine.emitter")
+      local vec2 = require("engine.vec2")
+
+      local M = {}
+
+      function M.spawn_explosion(x, y)
+          local e = emitter.create(vec2.new(x, y), 50)
+          emitter.emit(e, 0.1)
+          return e
+      end
+
+      return M
+    engine/audio.lua: |
+      local TRAP_GAP2_114_AUDIO_A = "sound_engine"
+      local TRAP_GAP2_114_VOLUME_B = 0.8
+
+      local M = {}
+
+      function M.play(name)
+          return "playing: " .. name
+      end
+
+      function M.set_volume(vol)
+          TRAP_GAP2_114_VOLUME_B = vol
+      end
+
+      return M
+  changed_files:
+    engine/vec2.lua: |
+      local M = {}
+
+      function M.new(x, y)
+          return { x = x or 0, y = y or 0 }
+      end
+
+      function M.add(a, b)
+          return M.new(a.x + b.x, a.y + b.y)
+      end
+
+      function M.scale(v, s)
+          return M.new(v.x * s, v.y * s)
+      end
+
+      function M.length(v)
+          return math.sqrt(v.x * v.x + v.y * v.y)
+      end
+
+      function M.rotate(v, angle)
+          local c = math.cos(angle)
+          local s = math.sin(angle)
+          return M.new(v.x * c - v.y * s, v.x * s + v.y * c)
+      end
+
+      return M
+    engine/emitter.lua: |
+      local vec2 = require("engine.vec2")
+
+      local M = {}
+
+      function M.create(position, rate)
+          return { pos = position, rate = rate, particles = {} }
+      end
+
+      function M.emit(emitter, dt)
+          local count = math.floor(emitter.rate * dt)
+          for i = 1, count do
+              local vel = vec2.new(math.random() - 0.5, -math.random())
+              local p = { pos = vec2.new(emitter.pos.x, emitter.pos.y), vel = vel, life = 2.0 }
+              emitter.particles[#emitter.particles + 1] = p
+          end
+      end
+
+      function M.update(emitter, dt)
+          for i = #emitter.particles, 1, -1 do
+              local p = emitter.particles[i]
+              p.pos = vec2.add(p.pos, vec2.scale(p.vel, dt))
+              p.life = p.life - dt
+              if p.life <= 0 then
+                  table.remove(emitter.particles, i)
+              end
+          end
+      end
+
+      return M
+    game/effects.lua: |
+      local emitter = require("engine.emitter")
+      local vec2 = require("engine.vec2")
+
+      local M = {}
+
+      function M.spawn_explosion(x, y)
+          local e = emitter.create(vec2.new(x, y), 50)
+          emitter.emit(e, 0.1)
+          return e
+      end
+
+      return M
+    engine/audio.lua: |
+      local TRAP_GAP2_114_AUDIO_A = "sound_engine"
+      local TRAP_GAP2_114_VOLUME_B = 0.8
+
+      local M = {}
+
+      function M.play(name)
+          return "playing: " .. name
+      end
+
+      function M.set_volume(vol)
+          TRAP_GAP2_114_VOLUME_B = vol
+      end
+
+      return M
+  commit_message: Update files
+fragments:
+- id: vec2_rotate
+  selector:
+    path: engine/vec2.lua
+    anchor: function M.rotate
+- id: vec2_cos_sin
+  selector:
+    path: engine/vec2.lua
+    anchor: math.cos(angle)
+- id: emitter_require
+  selector:
+    path: engine/emitter.lua
+    anchor: require("engine.vec2")
+- id: no_audio
+  selector:
+    path: engine/audio.lua
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_114_AUDIO_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_114_VOLUME_B
+oracle:
+  required:
+  - vec2_rotate
+  - vec2_cos_sin
+  - emitter_require
+  allowed: []
+  forbidden:
+  - no_audio
+  - no_global_0
+  - no_global_1

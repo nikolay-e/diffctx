@@ -1,0 +1,95 @@
+name: gap2_123_markdown_same_file_contributing_guide
+tags:
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+- lang:markdown
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    CONTRIBUTING.md: |
+      # Contributing
+
+      ## Code Style
+
+      Use four-space indentation throughout the project.
+      Run the linter before submitting a pull request.
+
+      ## Pull Requests
+
+      Each PR must reference an issue number.
+      Squash commits into a single logical change before merging.
+
+      ## Reporting Bugs
+
+      Open an issue with reproduction steps and expected behavior.
+      Include the output of the version command.
+    CODE_OF_CONDUCT.md: |
+      # Code of Conduct
+
+      TRAP_GAP2_123_COC_A placeholder.
+
+      Be respectful and constructive in all interactions.
+      Harassment of any kind is not tolerated.
+    SECURITY.md: |
+      # Security Policy
+
+      TRAP_GAP2_123_SEC_B placeholder.
+
+      Report vulnerabilities via the private disclosure form.
+      Do not open public issues for security findings.
+  changed_files:
+    CONTRIBUTING.md: |
+      # Contributing
+
+      ## Code Style
+
+      Use four-space indentation throughout the project.
+      Run the linter before submitting a pull request.
+
+      ## Commit Messages
+
+      Write imperative mood subject lines under 72 characters.
+      Reference the issue number in the commit body.
+
+      ## Pull Requests
+
+      Each PR must reference an issue number.
+      Squash commits into a single logical change before merging.
+
+      ## Reporting Bugs
+
+      Open an issue with reproduction steps and expected behavior.
+      Include the output of the version command.
+fragments:
+- id: commit_section
+  selector:
+    path: CONTRIBUTING.md
+    anchor: "## Commit Messages"
+- id: commit_body
+  selector:
+    path: CONTRIBUTING.md
+    anchor: imperative mood subject lines
+- id: no_coc
+  selector:
+    path: CODE_OF_CONDUCT.md
+- id: no_security
+  selector:
+    path: SECURITY.md
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_123_COC_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_123_SEC_B
+oracle:
+  required:
+  - commit_section
+  - commit_body
+  forbidden:
+  - no_coc
+  - no_security
+  - no_global_0
+  - no_global_1

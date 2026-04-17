@@ -1,0 +1,168 @@
+name: bal3_1hop_001_go_http_handler
+tags:
+- lang:java
+- change:signature
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/devops/pipeline/StageRunner.java: |
+      package com.devops.pipeline;
+
+      import java.util.Map;
+
+      public interface StageRunner {
+          StageResult run(String stageName, Map<String, String> env);
+          boolean canRun(String stageName);
+      }
+    src/main/java/com/devops/pipeline/PipelineExecutor.java: |
+      package com.devops.pipeline;
+
+      import java.util.List;
+      import java.util.Map;
+      import java.util.ArrayList;
+
+      public class PipelineExecutor {
+          private final StageRunner runner;
+
+          public PipelineExecutor(StageRunner runner) {
+              this.runner = runner;
+          }
+
+          public List<StageResult> execute(List<String> stages, Map<String, String> env) {
+              List<StageResult> results = new ArrayList<>();
+              for (String stage : stages) {
+                  if (runner.canRun(stage)) {
+                      results.add(runner.run(stage, env));
+                  }
+              }
+              return results;
+          }
+      }
+    src/main/java/com/devops/pipeline/StageResult.java: |
+      package com.devops.pipeline;
+
+      public class StageResult {
+          private final String stage;
+          private final boolean success;
+          private final String output;
+
+          public StageResult(String stage, boolean success, String output) {
+              this.stage = stage;
+              this.success = success;
+              this.output = output;
+          }
+
+          public String getStage() { return stage; }
+          public boolean isSuccess() { return success; }
+          public String getOutput() { return output; }
+      }
+    garbage/NotificationSender.java: |
+      // GARBAGE_PIPE_A = "slack_notifier_marker"
+    garbage/ArtifactStore.java: |
+      // GARBAGE_PIPE_B = "s3_artifact_marker"
+    garbage/SecretVault.java: |
+      // GARBAGE_PIPE_C = "vault_secret_marker"
+  changed_files:
+    src/main/java/com/devops/pipeline/StageRunner.java: |
+      package com.devops.pipeline;
+
+      import java.util.Map;
+
+      public interface StageRunner {
+          StageResult run(String stageName, Map<String, String> env, StageContext context);
+          boolean canRun(String stageName);
+          void onFailure(String stageName, StageResult result);
+      }
+    src/main/java/com/devops/pipeline/PipelineExecutor.java: |
+      package com.devops.pipeline;
+
+      import java.util.List;
+      import java.util.Map;
+      import java.util.ArrayList;
+
+      public class PipelineExecutor {
+          private final StageRunner runner;
+
+          public PipelineExecutor(StageRunner runner) {
+              this.runner = runner;
+          }
+
+          public List<StageResult> execute(List<String> stages, Map<String, String> env) {
+              List<StageResult> results = new ArrayList<>();
+              StageContext ctx = new StageContext(stages);
+              for (String stage : stages) {
+                  if (runner.canRun(stage)) {
+                      StageResult result = runner.run(stage, env, ctx);
+                      results.add(result);
+                      if (!result.isSuccess()) {
+                          runner.onFailure(stage, result);
+                          break;
+                      }
+                  }
+              }
+              return results;
+          }
+      }
+    src/main/java/com/devops/pipeline/StageResult.java: |
+      package com.devops.pipeline;
+
+      public class StageResult {
+          private final String stage;
+          private final boolean success;
+          private final String output;
+
+          public StageResult(String stage, boolean success, String output) {
+              this.stage = stage;
+              this.success = success;
+              this.output = output;
+          }
+
+          public String getStage() { return stage; }
+          public boolean isSuccess() { return success; }
+          public String getOutput() { return output; }
+      }
+    garbage/NotificationSender.java: |
+      // GARBAGE_PIPE_A = "slack_notifier_marker"
+    garbage/ArtifactStore.java: |
+      // GARBAGE_PIPE_B = "s3_artifact_marker"
+    garbage/SecretVault.java: |
+      // GARBAGE_PIPE_C = "vault_secret_marker"
+  commit_message: "feat: add StageContext param and onFailure callback to StageRunner"
+fragments:
+- id: run_signature_changed
+  selector:
+    anchor: "StageResult run(String stageName, Map<String, String> env, StageContext context)"
+- id: on_failure_added
+  selector:
+    anchor: "void onFailure(String stageName, StageResult result)"
+- id: executor_passes_context
+  selector:
+    path: src/main/java/com/devops/pipeline/PipelineExecutor.java
+    anchor: "StageContext ctx = new StageContext(stages)"
+- id: executor_calls_on_failure
+  selector:
+    path: src/main/java/com/devops/pipeline/PipelineExecutor.java
+    anchor: "runner.onFailure(stage, result)"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_PIPE_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_PIPE_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_PIPE_C
+oracle:
+  required:
+  - run_signature_changed
+  - on_failure_added
+  - executor_passes_context
+  - executor_calls_on_failure
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

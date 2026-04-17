@@ -1,0 +1,144 @@
+name: gap2_047_jsts_config_same_file_jest_transforms
+tags:
+- lang:python
+- change:bug_fix
+- change:multi_file
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/search/indexer.py: |
+      from src.search.tokenizer import tokenize
+
+      class Indexer:
+          def __init__(self) -> None:
+              self._index: dict[str, set[int]] = {}
+
+          def add(self, doc_id: int, text: str) -> None:
+              for token in tokenize(text):
+                  # BUG: overwrites existing doc set instead of updating
+                  self._index[token] = {doc_id}
+
+          def search(self, query: str) -> set[int]:
+              tokens = tokenize(query)
+              if not tokens:
+                  return set()
+              results = None
+              for token in tokens:
+                  hits = self._index.get(token, set())
+                  results = hits if results is None else results & hits
+              return results or set()
+    src/search/tokenizer.py: |
+      import re
+
+      def tokenize(text: str) -> list[str]:
+          return re.findall(r'\w+', text.lower())
+    tests/test_indexer.py: |
+      from src.search.indexer import Indexer
+
+      def test_single_doc_search():
+          idx = Indexer()
+          idx.add(1, "hello world")
+          assert 1 in idx.search("hello")
+    garbage/ranker.py: |
+      # GARBAGE_SIDX_A = "ranker_marker"
+      def rank(results: list) -> list:
+          return results
+    garbage/highlighter.py: |
+      # GARBAGE_SIDX_B = "highlighter_marker"
+      def highlight(text: str, query: str) -> str:
+          return text
+    garbage/suggester.py: |
+      # GARBAGE_SIDX_C = "suggester_marker"
+      def suggest(prefix: str) -> list[str]:
+          return []
+  changed_files:
+    src/search/indexer.py: |
+      from src.search.tokenizer import tokenize
+
+      class Indexer:
+          def __init__(self) -> None:
+              self._index: dict[str, set[int]] = {}
+
+          def add(self, doc_id: int, text: str) -> None:
+              for token in tokenize(text):
+                  self._index.setdefault(token, set()).add(doc_id)
+
+          def search(self, query: str) -> set[int]:
+              tokens = tokenize(query)
+              if not tokens:
+                  return set()
+              results = None
+              for token in tokens:
+                  hits = self._index.get(token, set())
+                  results = hits if results is None else results & hits
+              return results or set()
+    src/search/tokenizer.py: |
+      import re
+
+      def tokenize(text: str) -> list[str]:
+          return re.findall(r'\w+', text.lower())
+    tests/test_indexer.py: |
+      from src.search.indexer import Indexer
+
+      def test_single_doc_search():
+          idx = Indexer()
+          idx.add(1, "hello world")
+          assert 1 in idx.search("hello")
+
+      def test_multiple_docs_same_token():
+          idx = Indexer()
+          idx.add(1, "python rocks")
+          idx.add(2, "python rules")
+          results = idx.search("python")
+          assert 1 in results
+          assert 2 in results
+
+      def test_overwrite_bug_fixed():
+          idx = Indexer()
+          idx.add(1, "shared token")
+          idx.add(2, "shared token")
+          assert idx.search("shared") == {1, 2}
+    garbage/ranker.py: |
+      # GARBAGE_SIDX_A = "ranker_marker"
+      def rank(results: list) -> list:
+          return results
+    garbage/highlighter.py: |
+      # GARBAGE_SIDX_B = "highlighter_marker"
+      def highlight(text: str, query: str) -> str:
+          return text
+    garbage/suggester.py: |
+      # GARBAGE_SIDX_C = "suggester_marker"
+      def suggest(prefix: str) -> list[str]:
+          return []
+  commit_message: "fix: use setdefault to accumulate doc ids instead of overwriting"
+fragments:
+- id: setdefault_fix
+  selector:
+    anchor: "self._index.setdefault(token, set()).add(doc_id)"
+- id: test_multiple_docs
+  selector:
+    anchor: "def test_multiple_docs_same_token()"
+- id: test_overwrite_fixed
+  selector:
+    anchor: "def test_overwrite_bug_fixed()"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_SIDX_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_SIDX_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_SIDX_C
+oracle:
+  required:
+  - setdefault_fix
+  - test_multiple_docs
+  - test_overwrite_fixed
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

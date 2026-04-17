@@ -1,99 +1,181 @@
 name: internals_003_chinese_comments_ascii_identifiers
+tags:
+- lang:clojure
+- change:multi_file
+- context:import_chain
+- distance:2hop
+- difficulty:hard
 repo:
   initial_files:
-    src/calculator/engine.py: |
-      from src.calculator.validators import validate_input
-      def calculate_sum(values: list) -> float:
-          validate_input(values)
-          return sum(values)
-      def calculate_average(values: list) -> float:
-          total = calculate_sum(values)
-          return total / len(values) if values else 0.0
-    src/calculator/validators.py: |
-      def validate_input(values: list) -> None:
-          if not isinstance(values, list):
-              raise TypeError("Expected list")
-    garbage_math_formatter.py: |
-      GARBAGE_INT_003_FORMAT_MARKER_A = "math"
-      GARBAGE_INT_003_DECIMAL_MARKER_B = "prec"
+    src/event/bus.clj: |
+      (ns event.bus)
 
-      class GarbageMathFormatter:
-          def noop(self):
-              pass
-    garbage_number_parser.py: |
-      GARBAGE_INT_003_PARSE_MARKER_C = "num"
-      GARBAGE_INT_003_BASE_MARKER_D = "dec"
+      (defprotocol EventBus
+        (publish! [this topic payload])
+        (subscribe! [this topic handler]))
 
-      class GarbageNumberParser:
-          def noop(self):
-              pass
+      (defrecord LocalBus [handlers]
+        EventBus
+        (publish! [this topic payload]
+          (doseq [h (get @handlers topic [])]
+            (h payload)))
+        (subscribe! [this topic handler]
+          (swap! handlers update topic (fnil conj []) handler)))
+
+      (defn create-bus []
+        (->LocalBus (atom {})))
+    src/event/dispatcher.clj: |
+      (ns event.dispatcher
+        (:require [event.bus :as bus]))
+
+      (defn dispatch [event-bus topic payload]
+        (bus/publish! event-bus topic payload))
+
+      (defn register [event-bus topic handler]
+        (bus/subscribe! event-bus topic handler))
+    src/service/order_service.clj: |
+      (ns service.order-service
+        (:require [event.dispatcher :as disp]))
+
+      (defn place-order [event-bus order]
+        (disp/dispatch event-bus :order/placed order))
+
+      (defn cancel-order [event-bus order-id]
+        (disp/dispatch event-bus :order/cancelled {:id order-id}))
+    garbage/metrics.clj: |
+      (ns garbage.metrics)
+
+      (def ^:const GARBAGE_INT003_A "prometheus_marker")
+      (def ^:const GARBAGE_INT003_B "counter_marker")
+
+      (defn record-metric [name value]
+        GARBAGE_INT003_A)
+    garbage/storage.clj: |
+      (ns garbage.storage)
+
+      (def ^:const GARBAGE_INT003_C "s3_marker")
+      (def ^:const GARBAGE_INT003_D "bucket_marker")
+
+      (defn upload [key data]
+        GARBAGE_INT003_C)
+    garbage/auth.clj: |
+      (ns garbage.auth)
+
+      (def ^:const GARBAGE_INT003_E "jwt_marker")
+
+      (defn verify-token [token]
+        GARBAGE_INT003_E)
   changed_files:
-    src/calculator/engine.py: |
-      from src.calculator.validators import validate_input
-      # 这是一个计算总和的函数
-      def calculate_sum(values: list) -> float:
-          validate_input(values)
-          return sum(values)
-      # 计算平均值
-      def calculate_average(values: list) -> float:
-          total = calculate_sum(values)
-          return total / len(values) if values else 0.0
-      # 返回统计信息
-      def get_statistics(values: list) -> dict:
-          return {"sum": calculate_sum(values), "avg": calculate_average(values)}
-    src/calculator/validators.py: |
-      def validate_input(values: list) -> None:
-          if not isinstance(values, list):
-              raise TypeError("Expected list")
-    garbage_math_formatter.py: |
-      GARBAGE_INT_003_FORMAT_MARKER_A = "math"
-      GARBAGE_INT_003_DECIMAL_MARKER_B = "prec"
+    src/event/bus.clj: |
+      (ns event.bus)
 
-      class GarbageMathFormatter:
-          def noop(self):
-              pass
-    garbage_number_parser.py: |
-      GARBAGE_INT_003_PARSE_MARKER_C = "num"
-      GARBAGE_INT_003_BASE_MARKER_D = "dec"
+      (defprotocol EventBus
+        (publish! [this topic payload])
+        (subscribe! [this topic handler])
+        (unsubscribe! [this topic handler]))
 
-      class GarbageNumberParser:
-          def noop(self):
-              pass
-  commit_message: Update files
+      (defrecord LocalBus [handlers]
+        EventBus
+        (publish! [this topic payload]
+          (doseq [h (get @handlers topic [])]
+            (h payload)))
+        (subscribe! [this topic handler]
+          (swap! handlers update topic (fnil conj []) handler))
+        (unsubscribe! [this topic handler]
+          (swap! handlers update topic (partial remove #(= % handler)))))
+
+      (defn create-bus []
+        (->LocalBus (atom {})))
+    src/event/dispatcher.clj: |
+      (ns event.dispatcher
+        (:require [event.bus :as bus]))
+
+      (defn dispatch [event-bus topic payload]
+        (bus/publish! event-bus topic payload))
+
+      (defn register [event-bus topic handler]
+        (bus/subscribe! event-bus topic handler))
+
+      (defn deregister [event-bus topic handler]
+        (bus/unsubscribe! event-bus topic handler))
+    src/service/order_service.clj: |
+      (ns service.order-service
+        (:require [event.dispatcher :as disp]))
+
+      (defn place-order [event-bus order]
+        (disp/dispatch event-bus :order/placed order))
+
+      (defn cancel-order [event-bus order-id]
+        (disp/dispatch event-bus :order/cancelled {:id order-id}))
+
+      (defn stop-listening [event-bus topic handler]
+        (disp/deregister event-bus topic handler))
+    garbage/metrics.clj: |
+      (ns garbage.metrics)
+
+      (def ^:const GARBAGE_INT003_A "prometheus_marker")
+      (def ^:const GARBAGE_INT003_B "counter_marker")
+
+      (defn record-metric [name value]
+        GARBAGE_INT003_A)
+    garbage/storage.clj: |
+      (ns garbage.storage)
+
+      (def ^:const GARBAGE_INT003_C "s3_marker")
+      (def ^:const GARBAGE_INT003_D "bucket_marker")
+
+      (defn upload [key data]
+        GARBAGE_INT003_C)
+    garbage/auth.clj: |
+      (ns garbage.auth)
+
+      (def ^:const GARBAGE_INT003_E "jwt_marker")
+
+      (defn verify-token [token]
+        GARBAGE_INT003_E)
+  commit_message: "feat: add unsubscribe! to EventBus protocol and deregister through dispatcher"
 fragments:
-- id: engine_file
+- id: bus_unsubscribe_protocol
   selector:
-    path: src/calculator/engine.py
-- id: req_global_0
+    path: src/event/bus.clj
+    anchor: "(unsubscribe! [this topic handler])"
+- id: bus_unsubscribe_impl
   selector:
-    anchor: 'def get_statistics(values: list) -> dict:'
-- id: no_global_0
+    path: src/event/bus.clj
+    anchor: "(partial remove"
+- id: dispatcher_deregister
   selector:
-    anchor: GARBAGE_INT_003_BASE_MARKER_D
-- id: no_global_1
+    path: src/event/dispatcher.clj
+    anchor: "(defn deregister"
+- id: order_service_stop
   selector:
-    anchor: GARBAGE_INT_003_DECIMAL_MARKER_B
-- id: no_global_2
+    path: src/service/order_service.clj
+    anchor: "(defn stop-listening"
+- id: no_garbage_a
   selector:
-    anchor: GARBAGE_INT_003_FORMAT_MARKER_A
-- id: no_global_3
+    anchor: GARBAGE_INT003_A
+- id: no_garbage_b
   selector:
-    anchor: GARBAGE_INT_003_PARSE_MARKER_C
-- id: no_global_4
+    anchor: GARBAGE_INT003_B
+- id: no_garbage_c
   selector:
-    anchor: garbage_math_formatter.py
-- id: no_global_5
+    anchor: GARBAGE_INT003_C
+- id: no_garbage_d
   selector:
-    anchor: garbage_number_parser.py
+    anchor: GARBAGE_INT003_D
+- id: no_garbage_e
+  selector:
+    anchor: GARBAGE_INT003_E
 oracle:
   required:
-  - engine_file
-  - req_global_0
+  - bus_unsubscribe_protocol
+  - bus_unsubscribe_impl
+  - dispatcher_deregister
+  - order_service_stop
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d
+  - no_garbage_e

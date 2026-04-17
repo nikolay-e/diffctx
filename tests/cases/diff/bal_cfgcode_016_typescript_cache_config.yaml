@@ -1,0 +1,155 @@
+name: bal_cfgcode_016_typescript_cache_config
+tags:
+- lang:typescript
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    config/cache.json: |
+      {
+        "driver": "memory",
+        "ttl": 300,
+        "prefix": "app_",
+        "maxItems": 1000
+      }
+    src/cache.ts: |
+      import { readFileSync } from 'fs';
+
+      const cacheConfig = JSON.parse(readFileSync('config/cache.json', 'utf-8'));
+
+      export const DRIVER = cacheConfig.driver;
+      export const TTL = cacheConfig.ttl;
+      export const PREFIX = cacheConfig.prefix;
+
+      export function cacheKey(key: string): string {
+        return `${PREFIX}${key}`;
+      }
+    src/session.ts: |
+      import { readFileSync } from 'fs';
+
+      const cfg = JSON.parse(readFileSync('config/cache.json', 'utf-8'));
+
+      export function sessionKey(id: string): string {
+        return `${cfg.prefix}session:${id}`;
+      }
+
+      export const SESSION_TTL = cfg.ttl * 2;
+    src/auth.ts: |
+      const GARBAGE_CFGCODE_016_AUTH_A = "bearer";
+      const GARBAGE_CFGCODE_016_AUTH_B = "Authorization";
+
+      export function extractToken(header: string): string {
+        return header.replace("Bearer ", "");
+      }
+    src/errors.ts: |
+      const GARBAGE_CFGCODE_016_ERR_C = 500;
+      const GARBAGE_CFGCODE_016_ERR_D = "Internal Server Error";
+
+      export class AppError extends Error {
+        constructor(public code: number, message: string) {
+          super(message);
+        }
+      }
+  changed_files:
+    config/cache.json: |
+      {
+        "driver": "redis",
+        "ttl": 600,
+        "prefix": "prod_",
+        "maxItems": 10000,
+        "redis": {
+          "host": "redis.internal",
+          "port": 6379
+        }
+      }
+    src/cache.ts: |
+      import { readFileSync } from 'fs';
+
+      const cacheConfig = JSON.parse(readFileSync('config/cache.json', 'utf-8'));
+
+      export const DRIVER = cacheConfig.driver;
+      export const TTL = cacheConfig.ttl;
+      export const PREFIX = cacheConfig.prefix;
+
+      export function cacheKey(key: string): string {
+        return `${PREFIX}${key}`;
+      }
+    src/session.ts: |
+      import { readFileSync } from 'fs';
+
+      const cfg = JSON.parse(readFileSync('config/cache.json', 'utf-8'));
+
+      export function sessionKey(id: string): string {
+        return `${cfg.prefix}session:${id}`;
+      }
+
+      export const SESSION_TTL = cfg.ttl * 2;
+    src/auth.ts: |
+      const GARBAGE_CFGCODE_016_AUTH_A = "bearer";
+      const GARBAGE_CFGCODE_016_AUTH_B = "Authorization";
+
+      export function extractToken(header: string): string {
+        return header.replace("Bearer ", "");
+      }
+    src/errors.ts: |
+      const GARBAGE_CFGCODE_016_ERR_C = 500;
+      const GARBAGE_CFGCODE_016_ERR_D = "Internal Server Error";
+
+      export class AppError extends Error {
+        constructor(public code: number, message: string) {
+          super(message);
+        }
+      }
+  commit_message: "config: switch cache to redis for production"
+fragments:
+- id: config_driver
+  selector:
+    path: config/cache.json
+    anchor: '"driver": "redis"'
+- id: config_redis_host
+  selector:
+    path: config/cache.json
+    anchor: "redis.internal"
+- id: cache_reads_config
+  selector:
+    path: src/cache.ts
+    anchor: "cacheConfig.driver"
+- id: session_reads_config
+  selector:
+    path: src/session.ts
+    anchor: "cfg.prefix"
+- id: no_auth
+  selector:
+    path: src/auth.ts
+- id: no_errors
+  selector:
+    path: src/errors.ts
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_016_AUTH_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_016_AUTH_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_016_ERR_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_016_ERR_D
+oracle:
+  required:
+  - config_driver
+  - config_redis_host
+  - cache_reads_config
+  - session_reads_config
+  allowed: []
+  forbidden:
+  - no_auth
+  - no_errors
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

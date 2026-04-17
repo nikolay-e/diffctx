@@ -1,0 +1,158 @@
+name: bal3_3hop_050_scala_event_sourcing_cqrs
+tags:
+- lang:scala
+- change:multi_file
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/com/app/event/DomainEvent.scala: |
+      package com.app.event
+
+      sealed trait DomainEvent {
+        def aggregateId: String
+      }
+      case class ItemCreated(aggregateId: String, name: String) extends DomainEvent
+      case class ItemUpdated(aggregateId: String, name: String) extends DomainEvent
+    src/main/scala/com/app/event/EventStore.scala: |
+      package com.app.event
+
+      import scala.collection.mutable
+
+      class EventStore {
+        private val events = mutable.ListBuffer.empty[DomainEvent]
+        def append(event: DomainEvent): Unit = events += event
+        def getAll: List[DomainEvent] = events.toList
+      }
+    src/main/scala/com/app/aggregate/ItemAggregate.scala: |
+      package com.app.aggregate
+
+      import com.app.event.{EventStore, ItemCreated, ItemUpdated}
+
+      class ItemAggregate(store: EventStore) {
+        private var name: String = ""
+        def create(id: String, n: String): Unit = {
+          name = n
+          store.append(ItemCreated(id, n))
+        }
+        def update(id: String, n: String): Unit = {
+          name = n
+          store.append(ItemUpdated(id, n))
+        }
+      }
+    src/main/scala/com/app/service/CommandHandler.scala: |
+      package com.app.service
+
+      import com.app.aggregate.ItemAggregate
+
+      class CommandHandler(aggregate: ItemAggregate) {
+        def handleCreate(id: String, name: String): Unit = aggregate.create(id, name)
+        def handleUpdate(id: String, name: String): Unit = aggregate.update(id, name)
+      }
+    src/main/scala/com/app/api/CommandEndpoint.scala: |
+      package com.app.api
+
+      import com.app.service.CommandHandler
+
+      class CommandEndpoint(handler: CommandHandler) {
+        def create(id: String, name: String): String = {
+          handler.handleCreate(id, name)
+          "created"
+        }
+      }
+    src/main/scala/com/app/util/Snapshot.scala: |
+      package com.app.util
+
+      var GARBAGE_050_SNAP_MARKER_A = "snapshot"
+      var GARBAGE_050_VERSION_MARKER_B = 0
+
+      object Snapshot {
+        def take(state: Any): Unit = ()
+      }
+    src/main/scala/com/app/util/Projector.scala: |
+      package com.app.util
+
+      var GARBAGE_050_PROJ_MARKER_C = "projection"
+      var GARBAGE_050_OFFSET_MARKER_D = 0L
+
+      object Projector {
+        def project(events: List[Any]): Unit = ()
+      }
+  changed_files:
+    src/main/scala/com/app/event/DomainEvent.scala: |
+      package com.app.event
+
+      sealed trait DomainEvent {
+        def aggregateId: String
+        def version: Long
+        def timestamp: Long
+      }
+      case class ItemCreated(aggregateId: String, name: String, version: Long, timestamp: Long) extends DomainEvent
+      case class ItemUpdated(aggregateId: String, name: String, version: Long, timestamp: Long) extends DomainEvent
+    src/main/scala/com/app/aggregate/ItemAggregate.scala: |
+      package com.app.aggregate
+
+      import com.app.event.{EventStore, ItemCreated, ItemUpdated}
+
+      class ItemAggregate(store: EventStore) {
+        private var name: String = ""
+        private var version: Long = 0
+        def create(id: String, n: String): Unit = {
+          name = n
+          version += 1
+          store.append(ItemCreated(id, n, version, System.currentTimeMillis()))
+        }
+        def update(id: String, n: String): Unit = {
+          name = n
+          version += 1
+          store.append(ItemUpdated(id, n, version, System.currentTimeMillis()))
+        }
+      }
+  commit_message: "feat: add version and timestamp to DomainEvent trait"
+fragments:
+- id: event_version_method
+  selector:
+    path: src/main/scala/com/app/event/DomainEvent.scala
+    anchor: "def version: Long"
+- id: event_timestamp_method
+  selector:
+    path: src/main/scala/com/app/event/DomainEvent.scala
+    anchor: "def timestamp: Long"
+- id: aggregate_version_tracking
+  selector:
+    path: src/main/scala/com/app/aggregate/ItemAggregate.scala
+    anchor: "version += 1"
+- id: store_uses_event
+  selector:
+    path: src/main/scala/com/app/event/EventStore.scala
+    anchor: "append(event: DomainEvent)"
+- id: handler_imports_aggregate
+  selector:
+    path: src/main/scala/com/app/service/CommandHandler.scala
+    anchor: "import com.app.aggregate.ItemAggregate"
+- id: endpoint_imports_handler
+  selector:
+    path: src/main/scala/com/app/api/CommandEndpoint.scala
+    anchor: "import com.app.service.CommandHandler"
+- id: no_snapshot
+  selector:
+    path: src/main/scala/com/app/util/Snapshot.scala
+    anchor: "GARBAGE_050_SNAP_MARKER_A"
+- id: no_projector
+  selector:
+    path: src/main/scala/com/app/util/Projector.scala
+    anchor: "GARBAGE_050_PROJ_MARKER_C"
+oracle:
+  required:
+  - event_version_method
+  - event_timestamp_method
+  - aggregate_version_tracking
+  - store_uses_event
+  - handler_imports_aggregate
+  allowed:
+  - endpoint_imports_handler
+  forbidden:
+  - no_snapshot
+  - no_projector

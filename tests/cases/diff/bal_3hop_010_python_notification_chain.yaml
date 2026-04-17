@@ -1,0 +1,158 @@
+name: bal_3hop_010_python_notification_chain
+tags:
+- lang:python
+- change:single_file
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    notifications/message.py: |
+      class Message:
+          def __init__(self, recipient: str, subject: str, body: str):
+              self.recipient = recipient
+              self.subject = subject
+              self.body = body
+          def format(self) -> str:
+              return f"To: {self.recipient}\nSubject: {self.subject}\n\n{self.body}"
+    notifications/channel.py: |
+      from notifications.message import Message
+      class Channel:
+          def __init__(self, name: str):
+              self.name = name
+              self.sent: list[Message] = []
+          def send(self, message: Message) -> bool:
+              self.sent.append(message)
+              return True
+    notifications/dispatcher.py: |
+      from notifications.channel import Channel
+      from notifications.message import Message
+      class NotificationDispatcher:
+          def __init__(self):
+              self.channels: dict[str, Channel] = {}
+          def add_channel(self, channel: Channel):
+              self.channels[channel.name] = channel
+          def notify(self, channel_name: str, message: Message) -> bool:
+              ch = self.channels.get(channel_name)
+              if ch is None:
+                  return False
+              return ch.send(message)
+    app/notification_api.py: |
+      from notifications.dispatcher import NotificationDispatcher
+      from notifications.message import Message
+      class NotificationAPI:
+          def __init__(self, dispatcher: NotificationDispatcher):
+              self.dispatcher = dispatcher
+          def send_alert(self, recipient: str, text: str) -> bool:
+              msg = Message(recipient=recipient, subject="Alert", body=text)
+              return self.dispatcher.notify("email", msg)
+    utils/template.py: |
+      def render_template(template: str, **kwargs) -> str:
+          result = template
+          for key, value in kwargs.items():
+              result = result.replace(f"{{{key}}}", str(value))
+          return result
+    db/audit_log.py: |
+      class AuditLog:
+          def __init__(self):
+              self.entries: list[dict] = []
+          def log(self, action: str, details: str):
+              self.entries.append({"action": action, "details": details})
+  changed_files:
+    notifications/message.py: |
+      from typing import Optional
+      class Message:
+          def __init__(self, recipient: str, subject: str, body: str,
+                       priority: str = "normal", reply_to: Optional[str] = None):
+              self.recipient = recipient
+              self.subject = subject
+              self.body = body
+              self.priority = priority
+              self.reply_to = reply_to
+          def format(self) -> str:
+              header = f"To: {self.recipient}\nSubject: {self.subject}"
+              if self.reply_to:
+                  header += f"\nReply-To: {self.reply_to}"
+              return f"{header}\n\n{self.body}"
+          def is_urgent(self) -> bool:
+              return self.priority == "urgent"
+    notifications/channel.py: |
+      from notifications.message import Message
+      class Channel:
+          def __init__(self, name: str):
+              self.name = name
+              self.sent: list[Message] = []
+          def send(self, message: Message) -> bool:
+              self.sent.append(message)
+              return True
+    notifications/dispatcher.py: |
+      from notifications.channel import Channel
+      from notifications.message import Message
+      class NotificationDispatcher:
+          def __init__(self):
+              self.channels: dict[str, Channel] = {}
+          def add_channel(self, channel: Channel):
+              self.channels[channel.name] = channel
+          def notify(self, channel_name: str, message: Message) -> bool:
+              ch = self.channels.get(channel_name)
+              if ch is None:
+                  return False
+              return ch.send(message)
+    app/notification_api.py: |
+      from notifications.dispatcher import NotificationDispatcher
+      from notifications.message import Message
+      class NotificationAPI:
+          def __init__(self, dispatcher: NotificationDispatcher):
+              self.dispatcher = dispatcher
+          def send_alert(self, recipient: str, text: str) -> bool:
+              msg = Message(recipient=recipient, subject="Alert", body=text)
+              return self.dispatcher.notify("email", msg)
+    utils/template.py: |
+      def render_template(template: str, **kwargs) -> str:
+          result = template
+          for key, value in kwargs.items():
+              result = result.replace(f"{{{key}}}", str(value))
+          return result
+    db/audit_log.py: |
+      class AuditLog:
+          def __init__(self):
+              self.entries: list[dict] = []
+          def log(self, action: str, details: str):
+              self.entries.append({"action": action, "details": details})
+  commit_message: "feat: add priority, reply_to, and is_urgent to Message"
+fragments:
+- id: message_priority
+  selector:
+    path: notifications/message.py
+    anchor: "priority: str = \"normal\""
+- id: channel_uses_message
+  selector:
+    path: notifications/channel.py
+    anchor: "from notifications.message import Message"
+- id: dispatcher_uses_channel
+  selector:
+    path: notifications/dispatcher.py
+    anchor: "from notifications.channel import Channel"
+- id: api_uses_dispatcher
+  selector:
+    path: app/notification_api.py
+    anchor: "from notifications.dispatcher import NotificationDispatcher"
+- id: no_template
+  selector:
+    path: utils/template.py
+    anchor: "def render_template"
+- id: no_audit_log
+  selector:
+    path: db/audit_log.py
+    anchor: "class AuditLog"
+oracle:
+  required:
+  - message_priority
+  - channel_uses_message
+  - dispatcher_uses_channel
+  - api_uses_dispatcher
+  allowed: []
+  forbidden:
+  - no_template
+  - no_audit_log

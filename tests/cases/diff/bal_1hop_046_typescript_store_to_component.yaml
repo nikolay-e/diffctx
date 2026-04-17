@@ -1,0 +1,122 @@
+name: bal_1hop_046_typescript_store_to_component
+tags:
+- lang:python
+- lang:shell
+- change:multi_file
+- context:same_file
+- distance:0hop
+- difficulty:easy
+repo:
+  initial_files:
+    deploy/package.py: |
+      import os
+      import tarfile
+
+      OUTPUT_DIR = "dist"
+
+
+      def create_package(source_dir: str, version: str) -> str:
+          archive = os.path.join(OUTPUT_DIR, f"app-{version}.tar.gz")
+          with tarfile.open(archive, "w:gz") as tar:
+              tar.add(source_dir, arcname="app")
+          return archive
+    deploy/publish.sh: |
+      #!/usr/bin/env bash
+      python3 deploy/package.py "$VERSION"
+    garbage/monitor.py: |
+      GARBAGE_BAL046_MONITOR_A = "monitor_marker"
+
+
+      def check_health() -> bool:
+          return True
+    garbage/rollback.py: |
+      GARBAGE_BAL046_ROLLBACK_B = "rollback_marker"
+
+
+      def rollback(version: str) -> None:
+          pass
+    garbage/secrets.py: |
+      GARBAGE_BAL046_SECRETS_C = "secrets_marker"
+
+
+      def load_secrets() -> dict:
+          return {}
+  changed_files:
+    deploy/package.py: |
+      import os
+      import tarfile
+      import hashlib
+
+      OUTPUT_DIR = "dist"
+
+
+      def create_package(source_dir: str, version: str) -> str:
+          archive = os.path.join(OUTPUT_DIR, f"app-{version}.tar.gz")
+          with tarfile.open(archive, "w:gz") as tar:
+              tar.add(source_dir, arcname="app")
+          return archive
+
+
+      def checksum(archive_path: str) -> str:
+          h = hashlib.sha256()
+          with open(archive_path, "rb") as f:
+              for chunk in iter(lambda: f.read(8192), b""):
+                  h.update(chunk)
+          return h.hexdigest()
+    deploy/publish.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      ARCHIVE=$(python3 deploy/package.py "$VERSION")
+      echo "Created: $ARCHIVE"
+      python3 -c "import deploy.package; print(deploy.package.checksum('$ARCHIVE'))"
+    garbage/monitor.py: |
+      GARBAGE_BAL046_MONITOR_A = "monitor_marker"
+
+
+      def check_health() -> bool:
+          return True
+    garbage/rollback.py: |
+      GARBAGE_BAL046_ROLLBACK_B = "rollback_marker"
+
+
+      def rollback(version: str) -> None:
+          pass
+    garbage/secrets.py: |
+      GARBAGE_BAL046_SECRETS_C = "secrets_marker"
+
+
+      def load_secrets() -> dict:
+          return {}
+  commit_message: "feat: add checksum function and improve publish script"
+fragments:
+- id: checksum_fn
+  selector:
+    path: deploy/package.py
+    anchor: "def checksum"
+- id: create_package_fn
+  selector:
+    path: deploy/package.py
+    anchor: "def create_package"
+- id: shell_uses_checksum
+  selector:
+    path: deploy/publish.sh
+    anchor: "deploy.package.checksum"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_BAL046_MONITOR_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_BAL046_ROLLBACK_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_BAL046_SECRETS_C
+oracle:
+  required:
+  - checksum_fn
+  - create_package_fn
+  - shell_uses_checksum
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

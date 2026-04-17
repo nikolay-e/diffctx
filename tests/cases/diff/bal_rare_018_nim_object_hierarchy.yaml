@@ -1,0 +1,230 @@
+name: bal_rare_018_nim_object_hierarchy
+tags:
+- lang:go
+- change:multi_file
+- change:new_function
+- context:same_file
+- distance:0hop
+- difficulty:easy
+repo:
+  initial_files:
+    internal/iot/sensor.go: |
+      package iot
+
+      import "time"
+
+      type Reading struct {
+          SensorID  string
+          Value     float64
+          Unit      string
+          Timestamp time.Time
+      }
+
+      type Sensor struct {
+          ID       string
+          Name     string
+          Location string
+          readings []Reading
+      }
+
+      func NewSensor(id, name, location string) *Sensor {
+          return &Sensor{ID: id, Name: name, Location: location}
+      }
+
+      func (s *Sensor) Record(value float64, unit string) {
+          s.readings = append(s.readings, Reading{
+              SensorID:  s.ID,
+              Value:     value,
+              Unit:      unit,
+              Timestamp: time.Now(),
+          })
+      }
+
+      func (s *Sensor) Latest() *Reading {
+          if len(s.readings) == 0 {
+              return nil
+          }
+          return &s.readings[len(s.readings)-1]
+      }
+    internal/iot/hub.go: |
+      package iot
+
+      type Hub struct {
+          sensors map[string]*Sensor
+      }
+
+      func NewHub() *Hub {
+          return &Hub{sensors: make(map[string]*Sensor)}
+      }
+
+      func (h *Hub) Register(s *Sensor) {
+          h.sensors[s.ID] = s
+      }
+
+      func (h *Hub) Get(id string) *Sensor {
+          return h.sensors[id]
+      }
+    internal/cloud/uploader.go: |
+      package cloud
+
+      import "fmt"
+
+      type Uploader struct {
+          endpoint string
+      }
+
+      func NewUploader(endpoint string) *Uploader {
+          return &Uploader{endpoint: endpoint}
+      }
+
+      func (u *Uploader) Upload(data []byte) error {
+          fmt.Printf("uploading %d bytes to %s\n", len(data), u.endpoint)
+          return nil
+      }
+    garbage/firmware.go: |
+      // GARBAGE_RARE018_FIRM_A = "firmware_marker"
+    garbage/provisioning.go: |
+      // GARBAGE_RARE018_PROV_B = "provisioning_marker"
+    garbage/ota.go: |
+      // GARBAGE_RARE018_OTA_C = "ota_marker"
+  changed_files:
+    internal/iot/sensor.go: |
+      package iot
+
+      import "time"
+
+      type Reading struct {
+          SensorID  string
+          Value     float64
+          Unit      string
+          Timestamp time.Time
+      }
+
+      type Sensor struct {
+          ID       string
+          Name     string
+          Location string
+          readings []Reading
+      }
+
+      func NewSensor(id, name, location string) *Sensor {
+          return &Sensor{ID: id, Name: name, Location: location}
+      }
+
+      func (s *Sensor) Record(value float64, unit string) {
+          s.readings = append(s.readings, Reading{
+              SensorID:  s.ID,
+              Value:     value,
+              Unit:      unit,
+              Timestamp: time.Now(),
+          })
+      }
+
+      func (s *Sensor) Latest() *Reading {
+          if len(s.readings) == 0 {
+              return nil
+          }
+          return &s.readings[len(s.readings)-1]
+      }
+
+      func (s *Sensor) Average() float64 {
+          if len(s.readings) == 0 {
+              return 0
+          }
+          sum := 0.0
+          for _, r := range s.readings {
+              sum += r.Value
+          }
+          return sum / float64(len(s.readings))
+      }
+
+      func (s *Sensor) ReadingCount() int {
+          return len(s.readings)
+      }
+    internal/iot/hub.go: |
+      package iot
+
+      type Hub struct {
+          sensors map[string]*Sensor
+      }
+
+      func NewHub() *Hub {
+          return &Hub{sensors: make(map[string]*Sensor)}
+      }
+
+      func (h *Hub) Register(s *Sensor) {
+          h.sensors[s.ID] = s
+      }
+
+      func (h *Hub) Get(id string) *Sensor {
+          return h.sensors[id]
+      }
+
+      func (h *Hub) AllSensors() []*Sensor {
+          sensors := make([]*Sensor, 0, len(h.sensors))
+          for _, s := range h.sensors {
+              sensors = append(sensors, s)
+          }
+          return sensors
+      }
+    internal/cloud/uploader.go: |
+      package cloud
+
+      import "fmt"
+
+      type Uploader struct {
+          endpoint string
+      }
+
+      func NewUploader(endpoint string) *Uploader {
+          return &Uploader{endpoint: endpoint}
+      }
+
+      func (u *Uploader) Upload(data []byte) error {
+          fmt.Printf("uploading %d bytes to %s\n", len(data), u.endpoint)
+          return nil
+      }
+    garbage/firmware.go: |
+      // GARBAGE_RARE018_FIRM_A = "firmware_marker"
+    garbage/provisioning.go: |
+      // GARBAGE_RARE018_PROV_B = "provisioning_marker"
+    garbage/ota.go: |
+      // GARBAGE_RARE018_OTA_C = "ota_marker"
+  commit_message: "feat: add Sensor.Average/ReadingCount and Hub.AllSensors"
+fragments:
+- id: sensor_average
+  selector:
+    path: internal/iot/sensor.go
+    anchor: "func (s *Sensor) Average() float64 {"
+- id: sensor_reading_count
+  selector:
+    path: internal/iot/sensor.go
+    anchor: "func (s *Sensor) ReadingCount() int {"
+- id: hub_all_sensors
+  selector:
+    path: internal/iot/hub.go
+    anchor: "func (h *Hub) AllSensors() []*Sensor {"
+- id: unrelated_uploader
+  selector:
+    path: internal/cloud/uploader.go
+    anchor: "func (u *Uploader) Upload"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_RARE018_FIRM_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_RARE018_PROV_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_RARE018_OTA_C
+oracle:
+  required:
+  - sensor_average
+  - sensor_reading_count
+  - hub_all_sensors
+  allowed: []
+  forbidden:
+  - unrelated_uploader
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

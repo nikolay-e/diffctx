@@ -1,0 +1,152 @@
+name: bal_testctx_018_typescript_config_parser_test
+tags:
+- lang:typescript
+- change:single_file
+- change:bug_fix
+- context:test_file
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/configParser.ts: |
+      export interface AppConfig {
+        host: string;
+        port: number;
+        debug: boolean;
+      }
+
+      export function parseConfig(raw: Record<string, string>): AppConfig {
+        return {
+          host: raw['HOST'] || 'localhost',
+          port: parseInt(raw['PORT'] || '3000', 10),
+          debug: raw['DEBUG'] === 'true',
+        };
+      }
+
+      export function mergeConfigs(base: AppConfig, override: Partial<AppConfig>): AppConfig {
+        return { ...base, ...override };
+      }
+    src/configLoader.ts: |
+      import { parseConfig, AppConfig } from './configParser';
+
+      export function loadFromEnv(env: Record<string, string>): AppConfig {
+        const filtered: Record<string, string> = {};
+        for (const [key, value] of Object.entries(env)) {
+          if (key.startsWith('APP_')) {
+            filtered[key.replace('APP_', '')] = value;
+          }
+        }
+        return parseConfig(filtered);
+      }
+    __tests__/configParser.test.ts: |
+      import { parseConfig, mergeConfigs, AppConfig } from '../src/configParser';
+
+      describe('configParser', () => {
+        test('parses config with defaults', () => {
+          const config = parseConfig({});
+          expect(config.host).toBe('localhost');
+          expect(config.port).toBe(3000);
+          expect(config.debug).toBe(false);
+        });
+
+        test('parses provided values', () => {
+          const config = parseConfig({ HOST: 'api.com', PORT: '8080', DEBUG: 'true' });
+          expect(config.host).toBe('api.com');
+          expect(config.port).toBe(8080);
+          expect(config.debug).toBe(true);
+        });
+
+        test('merges configs correctly', () => {
+          const base: AppConfig = { host: 'localhost', port: 3000, debug: false };
+          const merged = mergeConfigs(base, { port: 9090 });
+          expect(merged.port).toBe(9090);
+          expect(merged.host).toBe('localhost');
+        });
+      });
+    src/httpServer.ts: |
+      export class HttpServer {
+        private port: number;
+        private running: boolean = false;
+
+        constructor(port: number) {
+          this.port = port;
+        }
+
+        start(): void {
+          this.running = true;
+        }
+
+        stop(): void {
+          this.running = false;
+        }
+
+        isRunning(): boolean {
+          return this.running;
+        }
+      }
+  changed_files:
+    src/configParser.ts: |
+      export interface AppConfig {
+        host: string;
+        port: number;
+        debug: boolean;
+      }
+
+      export function parseConfig(raw: Record<string, string>): AppConfig {
+        const port = parseInt(raw['PORT'] || '3000', 10);
+        if (isNaN(port) || port < 1 || port > 65535) {
+          throw new Error(`Invalid port: ${raw['PORT']}`);
+        }
+        return {
+          host: raw['HOST'] || 'localhost',
+          port,
+          debug: raw['DEBUG'] === 'true',
+        };
+      }
+
+      export function mergeConfigs(base: AppConfig, override: Partial<AppConfig>): AppConfig {
+        return { ...base, ...override };
+      }
+
+      export function validateConfig(config: AppConfig): string[] {
+        const errors: string[] = [];
+        if (!config.host) errors.push('host is required');
+        if (config.port < 1 || config.port > 65535) errors.push('port must be 1-65535');
+        return errors;
+      }
+  commit_message: "fix: validate port range, add validateConfig"
+fragments:
+- id: parse_config_fn
+  selector:
+    path: src/configParser.ts
+    anchor: "export function parseConfig"
+- id: validate_config_fn
+  selector:
+    path: src/configParser.ts
+    anchor: "export function validateConfig"
+- id: test_imports_config
+  selector:
+    path: __tests__/configParser.test.ts
+    anchor: "import { parseConfig, mergeConfigs"
+- id: test_parses_defaults
+  selector:
+    path: __tests__/configParser.test.ts
+    anchor: "test('parses config with defaults'"
+- id: config_loader_imports
+  selector:
+    path: src/configLoader.ts
+    anchor: "import { parseConfig, AppConfig } from"
+- id: no_http_server
+  selector:
+    path: src/httpServer.ts
+    anchor: "export class HttpServer"
+oracle:
+  required:
+  - parse_config_fn
+  - validate_config_fn
+  - test_imports_config
+  allowed:
+  - test_parses_defaults
+  - config_loader_imports
+  forbidden:
+  - no_http_server

@@ -1,0 +1,119 @@
+name: bal4_refactor_009_rust_move_to_module
+tags:
+- lang:rust
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/app.rs: |
+      pub fn greet(name: &str) -> String {
+          format!("Hello, {}!", capitalize(name))
+      }
+
+      fn capitalize(s: &str) -> String {
+          let mut c = s.chars();
+          match c.next() {
+              None => String::new(),
+              Some(f) => f.to_uppercase().to_string() + c.as_str(),
+          }
+      }
+    src/main.rs: |
+      mod app;
+
+      fn main() {
+          println!("{}", app::greet("world"));
+      }
+    src/garbage_fmt.rs: |
+      // GARBAGE_BAL4R009_FMT_A
+      pub const GARBAGE_BAL4R009_PAD_B: usize = 4;
+
+      pub struct GarbageFmt {
+          // GARBAGE_BAL4R009_FMT_C
+      }
+    src/garbage_err.rs: |
+      // GARBAGE_BAL4R009_ERR_D
+      pub const GARBAGE_BAL4R009_CODE_E: i32 = -1;
+  changed_files:
+    src/app.rs: |
+      use crate::text::capitalize;
+
+      pub fn greet(name: &str) -> String {
+          format!("Hello, {}!", capitalize(name))
+      }
+    src/text.rs: |
+      pub fn capitalize(s: &str) -> String {
+          let mut c = s.chars();
+          match c.next() {
+              None => String::new(),
+              Some(f) => f.to_uppercase().to_string() + c.as_str(),
+          }
+      }
+    src/main.rs: |
+      mod app;
+      mod text;
+
+      fn main() {
+          println!("{}", app::greet("world"));
+      }
+    src/garbage_fmt.rs: |
+      // GARBAGE_BAL4R009_FMT_A
+      pub const GARBAGE_BAL4R009_PAD_B: usize = 4;
+
+      pub struct GarbageFmt {
+          // GARBAGE_BAL4R009_FMT_C
+      }
+    src/garbage_err.rs: |
+      // GARBAGE_BAL4R009_ERR_D
+      pub const GARBAGE_BAL4R009_CODE_E: i32 = -1;
+  commit_message: "refactor: move capitalize to text module"
+fragments:
+- id: app_imports_text
+  selector:
+    path: src/app.rs
+    anchor: "use crate::text::capitalize"
+- id: new_text_module
+  selector:
+    path: src/text.rs
+    anchor: "pub fn capitalize"
+- id: main_declares_mod
+  selector:
+    path: src/main.rs
+    anchor: "mod text"
+- id: no_garbage_fmt
+  selector:
+    path: src/garbage_fmt.rs
+- id: no_garbage_err
+  selector:
+    path: src/garbage_err.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL4R009_FMT_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL4R009_PAD_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL4R009_FMT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL4R009_ERR_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL4R009_CODE_E
+oracle:
+  required:
+  - app_imports_text
+  - new_text_module
+  - main_declares_mod
+  allowed: []
+  forbidden:
+  - no_garbage_fmt
+  - no_garbage_err
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

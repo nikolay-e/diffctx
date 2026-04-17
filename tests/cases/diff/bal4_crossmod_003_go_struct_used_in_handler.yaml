@@ -1,0 +1,110 @@
+name: bal4_crossmod_003_go_struct_used_in_handler
+tags:
+- lang:go
+- change:single_file
+- context:cross_module
+- distance:1hop
+- difficulty:trivial
+repo:
+  initial_files:
+    pkg/models/user.go: |
+      package models
+
+      type User struct {
+          ID    int
+          Name  string
+          Email string
+      }
+    pkg/handlers/user_handler.go: |
+      package handlers
+
+      import "pkg/models"
+
+      func GetUser(id int) models.User {
+          return models.User{ID: id, Name: "test", Email: "t@t.com"}
+      }
+    pkg/middleware/cors.go: |
+      package middleware
+
+      var GARBAGE_003_CORS_A = "allow-all"
+      var GARBAGE_003_ORIGIN_B = "*"
+
+      func CORS() string {
+          return GARBAGE_003_CORS_A
+      }
+    garbage_routes.go: |
+      package routes
+
+      var GARBAGE_003_ROUTE_C = "/api"
+      var GARBAGE_003_PREFIX_D = "v1"
+
+      func Setup() {}
+  changed_files:
+    pkg/models/user.go: |
+      package models
+
+      type User struct {
+          ID    int
+          Name  string
+          Email string
+          Role  string
+      }
+    pkg/handlers/user_handler.go: |
+      package handlers
+
+      import "pkg/models"
+
+      func GetUser(id int) models.User {
+          return models.User{ID: id, Name: "test", Email: "t@t.com"}
+      }
+    pkg/middleware/cors.go: |
+      package middleware
+
+      var GARBAGE_003_CORS_A = "allow-all"
+      var GARBAGE_003_ORIGIN_B = "*"
+
+      func CORS() string {
+          return GARBAGE_003_CORS_A
+      }
+    garbage_routes.go: |
+      package routes
+
+      var GARBAGE_003_ROUTE_C = "/api"
+      var GARBAGE_003_PREFIX_D = "v1"
+
+      func Setup() {}
+  commit_message: "add Role field to User struct"
+fragments:
+- id: handler_get_user
+  selector:
+    path: pkg/handlers/user_handler.go
+    anchor: "func GetUser(id int) models.User"
+- id: no_middleware
+  selector:
+    path: pkg/middleware/cors.go
+- id: no_garbage_routes
+  selector:
+    path: garbage_routes.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_003_CORS_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_003_ORIGIN_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_003_ROUTE_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_003_PREFIX_D
+oracle:
+  required:
+  - handler_get_user
+  allowed: []
+  forbidden:
+  - no_middleware
+  - no_garbage_routes
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

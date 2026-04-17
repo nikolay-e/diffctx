@@ -1,0 +1,184 @@
+name: gap_104_rust_multi_file_audio_pipeline
+tags:
+- lang:rust
+- change:multi_file
+- change:new_function
+- change:signature
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/audio/mixer.rs: |
+      use crate::audio::track::Track;
+      use crate::audio::sample::SampleBuffer;
+
+      pub struct Mixer {
+          tracks: Vec<Track>,
+          master_volume: f32,
+      }
+
+      impl Mixer {
+          pub fn new(master_volume: f32) -> Self {
+              Self {
+                  tracks: Vec::new(),
+                  master_volume,
+              }
+          }
+
+          pub fn add_track(&mut self, track: Track) {
+              self.tracks.push(track);
+          }
+
+          pub fn render(&self, num_samples: usize) -> SampleBuffer {
+              let mut output = SampleBuffer::silence(num_samples);
+              for track in &self.tracks {
+                  let rendered = track.render(num_samples);
+                  output.mix_from(&rendered, self.master_volume);
+              }
+              output
+          }
+      }
+    src/audio/track.rs: |
+      use crate::audio::sample::SampleBuffer;
+
+      pub struct Track {
+          name: String,
+          volume: f32,
+          muted: bool,
+          samples: Vec<f32>,
+      }
+
+      impl Track {
+          pub fn new(name: &str, samples: Vec<f32>) -> Self {
+              Self {
+                  name: name.to_string(),
+                  volume: 1.0,
+                  muted: false,
+                  samples,
+              }
+          }
+
+          pub fn render(&self, num_samples: usize) -> SampleBuffer {
+              if self.muted {
+                  return SampleBuffer::silence(num_samples);
+              }
+              let data: Vec<f32> = self.samples.iter()
+                  .take(num_samples)
+                  .map(|s| s * self.volume)
+                  .collect();
+              SampleBuffer::from_data(data)
+          }
+      }
+    src/audio/sample.rs: |
+      pub struct SampleBuffer {
+          data: Vec<f32>,
+      }
+
+      impl SampleBuffer {
+          pub fn silence(len: usize) -> Self {
+              Self { data: vec![0.0; len] }
+          }
+
+          pub fn from_data(data: Vec<f32>) -> Self {
+              Self { data }
+          }
+
+          pub fn mix_from(&mut self, other: &SampleBuffer, gain: f32) {
+              for (dst, src) in self.data.iter_mut().zip(other.data.iter()) {
+                  *dst += src * gain;
+              }
+          }
+      }
+    src/video/encoder.rs: |
+      pub struct VideoEncoder {
+          bitrate: u32,
+          width: u32,
+          height: u32,
+      }
+
+      impl VideoEncoder {
+          pub fn new(bitrate: u32, width: u32, height: u32) -> Self {
+              Self { bitrate, width, height }
+          }
+
+          pub fn encode_frame(&self, pixels: &[u8]) -> Vec<u8> {
+              pixels.to_vec()
+          }
+      }
+  changed_files:
+    src/audio/mixer.rs: |
+      use crate::audio::track::Track;
+      use crate::audio::sample::SampleBuffer;
+
+      pub struct Mixer {
+          tracks: Vec<Track>,
+          master_volume: f32,
+          solo_index: Option<usize>,
+      }
+
+      impl Mixer {
+          pub fn new(master_volume: f32) -> Self {
+              Self {
+                  tracks: Vec::new(),
+                  master_volume,
+                  solo_index: None,
+              }
+          }
+
+          pub fn add_track(&mut self, track: Track) {
+              self.tracks.push(track);
+          }
+
+          pub fn solo(&mut self, index: usize) {
+              self.solo_index = Some(index);
+          }
+
+          pub fn render(&self, num_samples: usize) -> SampleBuffer {
+              let mut output = SampleBuffer::silence(num_samples);
+              for (i, track) in self.tracks.iter().enumerate() {
+                  if let Some(solo) = self.solo_index {
+                      if i != solo {
+                          continue;
+                      }
+                  }
+                  let rendered = track.render(num_samples);
+                  output.mix_from(&rendered, self.master_volume);
+              }
+              output
+          }
+      }
+fragments:
+- id: mixer_solo
+  selector:
+    path: src/audio/mixer.rs
+    anchor: "pub fn solo"
+- id: mixer_render
+  selector:
+    path: src/audio/mixer.rs
+    anchor: "pub fn render"
+- id: track_render
+  selector:
+    path: src/audio/track.rs
+    anchor: "pub fn render"
+- id: sample_mix
+  selector:
+    path: src/audio/sample.rs
+    anchor: "pub fn mix_from"
+- id: no_video
+  selector:
+    path: src/video/encoder.rs
+- id: no_video_encoder
+  selector:
+    anchor: VideoEncoder
+oracle:
+  required:
+  - mixer_solo
+  - mixer_render
+  - track_render
+  - sample_mix
+  forbidden:
+  - no_video
+  - no_video_encoder

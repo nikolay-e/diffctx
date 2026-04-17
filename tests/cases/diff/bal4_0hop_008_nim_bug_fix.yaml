@@ -1,0 +1,89 @@
+name: bal4_0hop_008_nim_bug_fix
+tags:
+- lang:nim
+- change:single_file
+- change:bug_fix
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/divide.nim: |
+      proc safeDivide(a, b: int): int =
+        a div b
+
+      proc modulo(a, b: int): int =
+        a mod b
+    src/garbage_power.nim: |
+      const GARBAGE_B4N008_POW_A = "power"
+      const GARBAGE_B4N008_POW_B = 2
+
+      proc garbagePow(x, n: int): int =
+        x
+    src/garbage_clamp.nim: |
+      const GARBAGE_B4N008_CLP_C = "clamp"
+      const GARBAGE_B4N008_CLP_D = true
+
+      proc garbageClamp(v, lo, hi: int): int =
+        v
+  changed_files:
+    src/divide.nim: |
+      proc safeDivide(a, b: int): int =
+        if b == 0:
+          return 0
+        a div b
+
+      proc modulo(a, b: int): int =
+        a mod b
+    src/garbage_power.nim: |
+      const GARBAGE_B4N008_POW_A = "power"
+      const GARBAGE_B4N008_POW_B = 2
+
+      proc garbagePow(x, n: int): int =
+        x
+    src/garbage_clamp.nim: |
+      const GARBAGE_B4N008_CLP_C = "clamp"
+      const GARBAGE_B4N008_CLP_D = true
+
+      proc garbageClamp(v, lo, hi: int): int =
+        v
+  commit_message: "fix: guard against division by zero"
+fragments:
+- id: zero_check
+  selector:
+    path: src/divide.nim
+    anchor: "if b == 0:"
+- id: return_zero
+  selector:
+    path: src/divide.nim
+    anchor: "return 0"
+- id: no_garbage_power
+  selector:
+    path: src/garbage_power.nim
+- id: no_garbage_clamp
+  selector:
+    path: src/garbage_clamp.nim
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_B4N008_POW_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_B4N008_POW_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_B4N008_CLP_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_B4N008_CLP_D
+oracle:
+  required:
+  - zero_check
+  - return_zero
+  allowed: []
+  forbidden:
+  - no_garbage_power
+  - no_garbage_clamp
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

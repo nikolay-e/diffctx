@@ -1,0 +1,153 @@
+name: bal2_1hop_040_scala_repository_pattern
+tags:
+- lang:scala
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/repo/Repository.scala: |
+      package repo
+
+      import scala.concurrent.Future
+
+      trait Repository[T] {
+        def findById(id: String): Future[Option[T]]
+        def save(entity: T): Future[Unit]
+        def delete(id: String): Future[Unit]
+      }
+    src/main/scala/model/Campaign.scala: |
+      package model
+
+      case class Campaign(id: String, name: String, budget: Double, status: String)
+    src/main/scala/repo/CampaignRepo.scala: |
+      package repo
+
+      import model.Campaign
+      import scala.concurrent.Future
+      import scala.concurrent.ExecutionContext.Implicits.global
+
+      class CampaignRepo extends Repository[Campaign] {
+        private var store: Map[String, Campaign] = Map.empty
+
+        def findById(id: String): Future[Option[Campaign]] = Future.successful(store.get(id))
+        def save(entity: Campaign): Future[Unit] = Future.successful { store += (entity.id -> entity) }
+        def delete(id: String): Future[Unit] = Future.successful { store -= id }
+      }
+    src/main/scala/service/CampaignService.scala: |
+      package service
+
+      import repo.{Repository, CampaignRepo}
+      import model.Campaign
+      import scala.concurrent.Future
+
+      class CampaignService(repo: Repository[Campaign]) {
+        def getCampaign(id: String): Future[Option[Campaign]] = repo.findById(id)
+        def createCampaign(c: Campaign): Future[Unit] = repo.save(c)
+      }
+    src/main/scala/api/CampaignApi.scala: |
+      package api
+
+      import service.CampaignService
+      import model.Campaign
+
+      class CampaignApi(service: CampaignService) {
+        def handleGet(id: String): String = s"campaign-$id"
+      }
+    src/main/scala/integration/AdNetwork.scala: |
+      package integration
+
+      GARBAGE_040_AD_NETWORK_A = "adnet"
+
+      class AdNetwork(apiKey: String) {
+        def pushCampaign(id: String): Boolean = true
+        def pullStats(id: String): Map[String, Double] = Map.empty
+      }
+    src/main/scala/scheduler/BudgetChecker.scala: |
+      package scheduler
+
+      GARBAGE_040_BUDGET_CHECKER_B = "budget"
+
+      class BudgetChecker {
+        def checkOverspend(): List[String] = Nil
+      }
+    src/main/scala/notification/SlackNotifier.scala: |
+      package notification
+
+      GARBAGE_040_SLACK_NOTIFIER_C = "slack"
+
+      class SlackNotifier(webhook: String) {
+        def notify(channel: String, msg: String): Unit = ()
+      }
+  changed_files:
+    src/main/scala/repo/Repository.scala: |
+      package repo
+
+      import scala.concurrent.Future
+
+      trait Repository[T] {
+        def findById(id: String): Future[Option[T]]
+        def findAll(limit: Int = 100, offset: Int = 0): Future[List[T]]
+        def save(entity: T): Future[Unit]
+        def delete(id: String): Future[Unit]
+        def exists(id: String): Future[Boolean]
+      }
+  commit_message: "feat: add findAll and exists to Repository trait"
+fragments:
+- id: repo_find_all
+  selector:
+    path: src/main/scala/repo/Repository.scala
+    anchor: "def findAll(limit: Int = 100, offset: Int = 0)"
+- id: repo_exists
+  selector:
+    path: src/main/scala/repo/Repository.scala
+    anchor: "def exists(id: String)"
+- id: campaign_repo_implements
+  selector:
+    path: src/main/scala/repo/CampaignRepo.scala
+    anchor: "extends Repository[Campaign]"
+- id: campaign_service_uses_repo
+  selector:
+    path: src/main/scala/service/CampaignService.scala
+    anchor: "repo: Repository[Campaign]"
+- id: campaign_api_uses_service
+  selector:
+    path: src/main/scala/api/CampaignApi.scala
+    anchor: "service: CampaignService"
+- id: unrelated_ad_network
+  selector:
+    path: src/main/scala/integration/AdNetwork.scala
+    anchor: "class AdNetwork"
+- id: unrelated_budget
+  selector:
+    path: src/main/scala/scheduler/BudgetChecker.scala
+    anchor: "class BudgetChecker"
+- id: unrelated_slack
+  selector:
+    path: src/main/scala/notification/SlackNotifier.scala
+    anchor: "class SlackNotifier"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_040_AD_NETWORK_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_040_BUDGET_CHECKER_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_040_SLACK_NOTIFIER_C
+oracle:
+  required:
+  - repo_find_all
+  - repo_exists
+  - campaign_repo_implements
+  - campaign_service_uses_repo
+  allowed:
+  - campaign_api_uses_service
+  forbidden:
+  - unrelated_ad_network
+  - unrelated_budget
+  - unrelated_slack
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

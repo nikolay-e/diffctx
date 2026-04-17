@@ -1,0 +1,144 @@
+name: gap2_012_java_config_rate_limit_api_gateway
+tags:
+- lang:java
+- change:config
+- change:single_file
+- context:cross_module
+- distance:2hop
+- difficulty:medium
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/main/resources/gateway.yaml: |
+      gateway:
+        rateLimit:
+          requestsPerMinute: 60
+          burstSize: 10
+          headerName: X-Client-Id
+        cors:
+          allowedOrigins:
+            - "https://app.example.com"
+    src/main/java/com/fintech/config/GatewayConfig.java: |
+      package com.fintech.config;
+
+      import java.util.Map;
+
+      public class GatewayConfig {
+          private final Map<String, Object> rateLimit;
+
+          @SuppressWarnings("unchecked")
+          public GatewayConfig(Map<String, Object> root) {
+              Map<String, Object> gw = (Map<String, Object>) root.get("gateway");
+              this.rateLimit = (Map<String, Object>) gw.get("rateLimit");
+          }
+
+          public int getRequestsPerMinute() {
+              return (int) rateLimit.getOrDefault("requestsPerMinute", 60);
+          }
+
+          public int getBurstSize() {
+              return (int) rateLimit.getOrDefault("burstSize", 10);
+          }
+
+          public String getHeaderName() {
+              return (String) rateLimit.getOrDefault("headerName", "X-Client-Id");
+          }
+      }
+    src/main/java/com/fintech/gateway/RateLimitFilter.java: |
+      package com.fintech.gateway;
+
+      import com.fintech.config.GatewayConfig;
+      import java.util.concurrent.ConcurrentHashMap;
+      import java.util.concurrent.atomic.AtomicInteger;
+
+      public class RateLimitFilter {
+          private final int maxRequests;
+          private final int burst;
+          private final ConcurrentHashMap<String, AtomicInteger> counters;
+
+          public RateLimitFilter(GatewayConfig config) {
+              this.maxRequests = config.getRequestsPerMinute();
+              this.burst = config.getBurstSize();
+              this.counters = new ConcurrentHashMap<>();
+          }
+
+          public boolean allowRequest(String clientId) {
+              AtomicInteger count = counters.computeIfAbsent(clientId, k -> new AtomicInteger(0));
+              return count.incrementAndGet() <= maxRequests + burst;
+          }
+
+          public void resetCounters() {
+              counters.clear();
+          }
+      }
+    src/main/java/com/fintech/gateway/RequestRouter.java: |
+      package com.fintech.gateway;
+
+      public class RequestRouter {
+          private final RateLimitFilter rateLimitFilter;
+
+          public RequestRouter(RateLimitFilter rateLimitFilter) {
+              this.rateLimitFilter = rateLimitFilter;
+          }
+
+          public String route(String clientId, String path) {
+              if (!rateLimitFilter.allowRequest(clientId)) {
+                  return "429 Too Many Requests";
+              }
+              return "200 OK";
+          }
+      }
+    src/main/java/com/fintech/audit/AuditLogger.java: |
+      package com.fintech.audit;
+
+      import java.time.Instant;
+
+      public class AuditLogger {
+          public void log(String action, String details) {
+              System.out.println(Instant.now() + " [AUDIT] " + action + ": " + details);
+          }
+
+          public void logTransaction(String txId, double amount) {
+              log("TRANSACTION", txId + " amount=" + amount);
+          }
+      }
+  changed_files:
+    src/main/resources/gateway.yaml: |
+      gateway:
+        rateLimit:
+          requestsPerMinute: 120
+          burstSize: 20
+          headerName: X-Client-Id
+        cors:
+          allowedOrigins:
+            - "https://app.example.com"
+  commit_message: "config: double rate limits for fintech API gateway"
+fragments:
+- id: config_yaml
+  selector:
+    path: src/main/resources/gateway.yaml
+    anchor: "requestsPerMinute: 120"
+- id: config_reader
+  selector:
+    path: src/main/java/com/fintech/config/GatewayConfig.java
+    anchor: "getRequestsPerMinute"
+- id: filter_uses_config
+  selector:
+    path: src/main/java/com/fintech/gateway/RateLimitFilter.java
+    anchor: "config.getRequestsPerMinute()"
+- id: no_audit_logger
+  selector:
+    path: src/main/java/com/fintech/audit/AuditLogger.java
+- id: no_audit_class
+  selector:
+    anchor: AuditLogger
+oracle:
+  required:
+  - config_yaml
+  - config_reader
+  - filter_uses_config
+  allowed: []
+  forbidden:
+  - no_audit_logger
+  - no_audit_class

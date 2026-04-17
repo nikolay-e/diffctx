@@ -1,0 +1,166 @@
+name: bal_3hop_008_python_cli_command_chain
+tags:
+- lang:python
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    cli/options.py: |
+      class Option:
+          def __init__(self, flag: str, description: str, required: bool = False):
+              self.flag = flag
+              self.description = description
+              self.required = required
+          def matches(self, arg: str) -> bool:
+              return arg == self.flag
+    cli/parser.py: |
+      from cli.options import Option
+      class ArgParser:
+          def __init__(self):
+              self.options: list[Option] = []
+          def add_option(self, flag: str, desc: str, required: bool = False):
+              self.options.append(Option(flag, desc, required))
+          def parse(self, args: list[str]) -> dict:
+              result = {}
+              for i, arg in enumerate(args):
+                  for opt in self.options:
+                      if opt.matches(arg) and i + 1 < len(args):
+                          result[opt.flag] = args[i + 1]
+              return result
+    cli/command.py: |
+      from cli.parser import ArgParser
+      class Command:
+          def __init__(self, name: str):
+              self.name = name
+              self.parser = ArgParser()
+          def execute(self, args: list[str]) -> str:
+              parsed = self.parser.parse(args)
+              return f"Executed {self.name} with {parsed}"
+    cli/app.py: |
+      from cli.command import Command
+      class CLIApp:
+          def __init__(self, name: str):
+              self.name = name
+              self.commands: dict[str, Command] = {}
+          def register(self, cmd: Command):
+              self.commands[cmd.name] = cmd
+          def run(self, args: list[str]) -> str:
+              if not args:
+                  return "No command given"
+              cmd_name = args[0]
+              if cmd_name in self.commands:
+                  return self.commands[cmd_name].execute(args[1:])
+              return f"Unknown command: {cmd_name}"
+    utils/color.py: |
+      def red(text: str) -> str:
+          return f"\033[31m{text}\033[0m"
+      def green(text: str) -> str:
+          return f"\033[32m{text}\033[0m"
+    utils/file_utils.py: |
+      import os
+      def ensure_dir(path: str):
+          os.makedirs(path, exist_ok=True)
+      def read_file(path: str) -> str:
+          with open(path) as f:
+              return f.read()
+  changed_files:
+    cli/options.py: |
+      from typing import Optional
+      class Option:
+          def __init__(self, flag: str, description: str, required: bool = False,
+                       default: Optional[str] = None):
+              self.flag = flag
+              self.description = description
+              self.required = required
+              self.default = default
+          def matches(self, arg: str) -> bool:
+              return arg == self.flag or arg == self.flag.lstrip("-")[:2]
+    cli/parser.py: |
+      from cli.options import Option
+      class ArgParser:
+          def __init__(self):
+              self.options: list[Option] = []
+          def add_option(self, flag: str, desc: str, required: bool = False):
+              self.options.append(Option(flag, desc, required))
+          def parse(self, args: list[str]) -> dict:
+              result = {}
+              for i, arg in enumerate(args):
+                  for opt in self.options:
+                      if opt.matches(arg) and i + 1 < len(args):
+                          result[opt.flag] = args[i + 1]
+              return result
+    cli/command.py: |
+      from cli.parser import ArgParser
+      class Command:
+          def __init__(self, name: str):
+              self.name = name
+              self.parser = ArgParser()
+          def execute(self, args: list[str]) -> str:
+              parsed = self.parser.parse(args)
+              return f"Executed {self.name} with {parsed}"
+    cli/app.py: |
+      from cli.command import Command
+      class CLIApp:
+          def __init__(self, name: str):
+              self.name = name
+              self.commands: dict[str, Command] = {}
+          def register(self, cmd: Command):
+              self.commands[cmd.name] = cmd
+          def run(self, args: list[str]) -> str:
+              if not args:
+                  return "No command given"
+              cmd_name = args[0]
+              if cmd_name in self.commands:
+                  return self.commands[cmd_name].execute(args[1:])
+              return f"Unknown command: {cmd_name}"
+    utils/color.py: |
+      def red(text: str) -> str:
+          return f"\033[31m{text}\033[0m"
+      def green(text: str) -> str:
+          return f"\033[32m{text}\033[0m"
+    utils/file_utils.py: |
+      import os
+      def ensure_dir(path: str):
+          os.makedirs(path, exist_ok=True)
+      def read_file(path: str) -> str:
+          with open(path) as f:
+              return f.read()
+  commit_message: "feat: add default value and short-flag matching to Option"
+fragments:
+- id: option_default_and_shortflag
+  selector:
+    path: cli/options.py
+    anchor: "default: Optional[str] = None"
+- id: parser_uses_option
+  selector:
+    path: cli/parser.py
+    anchor: "from cli.options import Option"
+- id: command_uses_parser
+  selector:
+    path: cli/command.py
+    anchor: "from cli.parser import ArgParser"
+- id: app_uses_command
+  selector:
+    path: cli/app.py
+    anchor: "from cli.command import Command"
+- id: no_color
+  selector:
+    path: utils/color.py
+    anchor: "def red"
+- id: no_file_utils
+  selector:
+    path: utils/file_utils.py
+    anchor: "def ensure_dir"
+oracle:
+  required:
+  - option_default_and_shortflag
+  - parser_uses_option
+  - command_uses_parser
+  - app_uses_command
+  allowed: []
+  forbidden:
+  - no_color
+  - no_file_utils

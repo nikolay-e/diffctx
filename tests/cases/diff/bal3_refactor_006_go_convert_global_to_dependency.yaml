@@ -1,0 +1,115 @@
+name: bal3_refactor_006_go_convert_global_to_dependency
+tags:
+- lang:python
+- lang:shell
+- change:multi_file
+- context:same_file
+- distance:0hop
+- difficulty:easy
+repo:
+  initial_files:
+    scripts/backup.py: |
+      import os
+      import shutil
+
+      BACKUP_DIR = "/tmp/backups"
+
+
+      def run_backup(source: str) -> str:
+          dest = os.path.join(BACKUP_DIR, os.path.basename(source))
+          shutil.copy2(source, dest)
+          return dest
+    scripts/backup.sh: |
+      #!/usr/bin/env bash
+      python3 scripts/backup.py "$1"
+    garbage/cache.py: |
+      GARBAGE_R006_CACHE_A = "cache_marker"
+
+
+      def get_cache():
+          return {}
+    garbage/queue.py: |
+      GARBAGE_R006_QUEUE_B = "queue_marker"
+
+
+      def enqueue(item):
+          pass
+    garbage/metrics.py: |
+      GARBAGE_R006_METRICS_C = "metrics_marker"
+
+
+      def record(name, value):
+          pass
+  changed_files:
+    scripts/backup.py: |
+      import os
+      import shutil
+
+      BACKUP_DIR = "/var/data/backups"
+      BACKUP_COMPRESS = True
+
+
+      def run_backup(source: str) -> str:
+          dest = os.path.join(BACKUP_DIR, os.path.basename(source))
+          shutil.copy2(source, dest)
+          return dest
+
+
+      def list_backups() -> list[str]:
+          return sorted(os.listdir(BACKUP_DIR))
+    scripts/backup.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      python3 scripts/backup.py "$1"
+      echo "Backup complete for $1"
+    garbage/cache.py: |
+      GARBAGE_R006_CACHE_A = "cache_marker"
+
+
+      def get_cache():
+          return {}
+    garbage/queue.py: |
+      GARBAGE_R006_QUEUE_B = "queue_marker"
+
+
+      def enqueue(item):
+          pass
+    garbage/metrics.py: |
+      GARBAGE_R006_METRICS_C = "metrics_marker"
+
+
+      def record(name, value):
+          pass
+  commit_message: "feat: update backup dir and add list_backups helper"
+fragments:
+- id: backup_dir_constant
+  selector:
+    path: scripts/backup.py
+    anchor: "BACKUP_DIR = "
+- id: list_backups_fn
+  selector:
+    path: scripts/backup.py
+    anchor: "def list_backups"
+- id: shell_echo
+  selector:
+    path: scripts/backup.sh
+    anchor: "echo \"Backup complete"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_R006_CACHE_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_R006_QUEUE_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_R006_METRICS_C
+oracle:
+  required:
+  - backup_dir_constant
+  - list_backups_fn
+  - shell_echo
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

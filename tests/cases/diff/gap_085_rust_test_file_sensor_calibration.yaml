@@ -1,0 +1,157 @@
+name: gap_085_rust_test_file_sensor_calibration
+tags:
+- lang:rust
+- change:new_function
+- change:signature
+- change:single_file
+- context:test_file
+- difficulty:medium
+- distance:2hop
+repo:
+  initial_files:
+    src/sensor.rs: |
+      pub struct Sensor {
+          id: u32,
+          offset: f64,
+      }
+
+      impl Sensor {
+          pub fn new(id: u32) -> Self {
+              Sensor { id, offset: 0.0 }
+          }
+
+          pub fn read(&self, raw_value: f64) -> f64 {
+              raw_value + self.offset
+          }
+
+          pub fn set_offset(&mut self, offset: f64) {
+              self.offset = offset;
+          }
+
+          pub fn id(&self) -> u32 {
+              self.id
+          }
+      end
+    tests/test_sensor.rs: |
+      use crate::sensor::Sensor;
+
+      #[cfg(test)]
+      mod tests {
+          use super::*;
+
+          #[test]
+          fn test_new_sensor() {
+              let s = Sensor::new(1);
+              assert_eq!(s.id(), 1);
+          }
+
+          #[test]
+          fn test_read_raw() {
+              let s = Sensor::new(1);
+              assert_eq!(s.read(25.0), 25.0);
+          }
+
+          #[test]
+          fn test_with_offset() {
+              let mut s = Sensor::new(1);
+              s.set_offset(1.5);
+              assert_eq!(s.read(25.0), 26.5);
+          }
+      }
+    src/telemetry.rs: |
+      pub struct TelemetryBuffer {
+          entries: Vec<f64>,
+          capacity: usize,
+      }
+
+      impl TelemetryBuffer {
+          pub fn new(capacity: usize) -> Self {
+              TelemetryBuffer {
+                  entries: Vec::with_capacity(capacity),
+                  capacity,
+              }
+          }
+
+          pub fn push(&mut self, value: f64) {
+              if self.entries.len() >= self.capacity {
+                  self.entries.remove(0);
+              }
+              self.entries.push(value);
+          }
+
+          pub fn average(&self) -> f64 {
+              if self.entries.is_empty() {
+                  return 0.0;
+              }
+              self.entries.iter().sum::<f64>() / self.entries.len() as f64
+          }
+      }
+  changed_files:
+    src/sensor.rs: |
+      pub struct Sensor {
+          id: u32,
+          offset: f64,
+          scale: f64,
+      }
+
+      impl Sensor {
+          pub fn new(id: u32) -> Self {
+              Sensor { id, offset: 0.0, scale: 1.0 }
+          }
+
+          pub fn calibrated(id: u32, offset: f64, scale: f64) -> Self {
+              Sensor { id, offset, scale }
+          }
+
+          pub fn read(&self, raw_value: f64) -> f64 {
+              (raw_value * self.scale) + self.offset
+          }
+
+          pub fn set_offset(&mut self, offset: f64) {
+              self.offset = offset;
+          }
+
+          pub fn set_scale(&mut self, scale: f64) {
+              self.scale = scale;
+          }
+
+          pub fn id(&self) -> u32 {
+              self.id
+          }
+      }
+  commit_message: "feat(sensor): add scale calibration"
+fixtures:
+  auto_garbage: true
+fragments:
+- id: sensor_scale_field
+  selector:
+    path: src/sensor.rs
+    anchor: "scale: f64"
+- id: sensor_calibrated
+  selector:
+    path: src/sensor.rs
+    anchor: "pub fn calibrated(id: u32, offset: f64, scale: f64)"
+- id: sensor_read_scaled
+  selector:
+    path: src/sensor.rs
+    anchor: "(raw_value * self.scale) + self.offset"
+- id: test_uses_sensor
+  selector:
+    path: tests/test_sensor.rs
+    anchor: "Sensor::new(1)"
+- id: no_telemetry
+  selector:
+    path: src/telemetry.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_085_A
+oracle:
+  required:
+  - sensor_scale_field
+  - sensor_calibrated
+  - sensor_read_scaled
+  - test_uses_sensor
+  allowed: []
+  forbidden:
+  - no_telemetry
+  - no_global_0

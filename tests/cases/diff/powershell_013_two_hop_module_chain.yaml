@@ -1,0 +1,100 @@
+name: powershell_013_two_hop_module_chain
+tags:
+- lang:powershell
+- change:single_file
+- change:signature
+- context:call_graph
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    base.psm1: |
+      function Get-ConnectionString {
+          param(
+              [string]$Server,
+              [string]$Database
+          )
+          return "Server=$Server;Database=$Database;Integrated Security=true"
+      }
+      Export-ModuleMember -Function Get-ConnectionString
+    utils.psm1: |
+      Import-Module ./base.psm1
+
+      function Open-ManagedConnection {
+          param([string]$Server, [string]$Database)
+          $connStr = Get-ConnectionString -Server $Server -Database $Database
+          $conn = New-Object System.Data.SqlClient.SqlConnection($connStr)
+          $conn.Open()
+          return $conn
+      }
+      Export-ModuleMember -Function Open-ManagedConnection
+    script.ps1: |
+      Import-Module ./utils.psm1
+      $conn = Open-ManagedConnection -Server "sqlprod" -Database "Inventory"
+      Write-Output "Connected to $($conn.Database)"
+      $conn.Close()
+    PS_NOISE_013_ColorUtils.psm1: |
+      function PS_NOISE_013_Write-ColorOutput {
+          param([string]$Message, [System.ConsoleColor]$Color = [System.ConsoleColor]::White)
+          $saved = $Host.UI.RawUI.ForegroundColor
+          $Host.UI.RawUI.ForegroundColor = $Color
+          Write-Output $Message
+          $Host.UI.RawUI.ForegroundColor = $saved
+      }
+      Export-ModuleMember -Function PS_NOISE_013_Write-ColorOutput
+    PS_NOISE_013_JsonUtils.psm1: |
+      function PS_NOISE_013_Merge-JsonObjects {
+          param([hashtable]$Base, [hashtable]$Override)
+          $merged = $Base.Clone()
+          foreach ($key in $Override.Keys) { $merged[$key] = $Override[$key] }
+          return $merged
+      }
+      Export-ModuleMember -Function PS_NOISE_013_Merge-JsonObjects
+  changed_files:
+    base.psm1: |
+      function Get-ConnectionString {
+          param(
+              [string]$Server,
+              [string]$Database,
+              [int]$ConnectTimeoutSec = 30
+          )
+          return "Server=$Server;Database=$Database;Integrated Security=true;Connect Timeout=$ConnectTimeoutSec"
+      }
+      Export-ModuleMember -Function Get-ConnectionString
+  commit_message: "feat: add ConnectTimeoutSec param to Get-ConnectionString"
+fragments:
+- id: base_timeout_param
+  selector:
+    path: base.psm1
+    anchor: ConnectTimeoutSec
+- id: utils_calls_base
+  selector:
+    path: utils.psm1
+    anchor: Get-ConnectionString
+- id: script_calls_utils
+  selector:
+    path: script.ps1
+    anchor: Open-ManagedConnection
+- id: no_color_utils
+  selector:
+    path: PS_NOISE_013_ColorUtils.psm1
+- id: no_json_utils
+  selector:
+    path: PS_NOISE_013_JsonUtils.psm1
+- id: no_global_0
+  selector:
+    anchor: PS_NOISE_013_Write-ColorOutput
+- id: no_global_1
+  selector:
+    anchor: PS_NOISE_013_Merge-JsonObjects
+oracle:
+  required:
+  - base_timeout_param
+  - utils_calls_base
+  - script_calls_utils
+  allowed: []
+  forbidden:
+  - no_color_utils
+  - no_json_utils
+  - no_global_0
+  - no_global_1

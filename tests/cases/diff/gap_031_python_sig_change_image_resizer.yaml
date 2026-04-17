@@ -1,0 +1,135 @@
+name: gap_031_python_sig_change_image_resizer
+tags:
+- change:signature
+- change:single_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:python
+repo:
+  initial_files:
+    imaging/transform.py: |
+      from typing import NamedTuple
+
+      class Dimensions(NamedTuple):
+          width: int
+          height: int
+
+      def resize(original: Dimensions, max_side: int) -> Dimensions:
+          ratio = min(max_side / original.width, max_side / original.height)
+          return Dimensions(
+              width=int(original.width * ratio),
+              height=int(original.height * ratio),
+          )
+    imaging/pipeline.py: |
+      from imaging.transform import resize, Dimensions
+
+      class ImagePipeline:
+          def __init__(self, max_side: int = 1024):
+              self.max_side = max_side
+              self.processed: list[Dimensions] = []
+
+          def process(self, width: int, height: int) -> Dimensions:
+              original = Dimensions(width, height)
+              result = resize(original, self.max_side)
+              self.processed.append(result)
+              return result
+    imaging/api.py: |
+      from imaging.pipeline import ImagePipeline
+
+      class ImageAPI:
+          def __init__(self):
+              self.pipeline = ImagePipeline(max_side=2048)
+
+          def handle_upload(self, width: int, height: int) -> dict:
+              resized = self.pipeline.process(width, height)
+              return {"width": resized.width, "height": resized.height}
+    imaging/storage.py: |
+      GARBAGE_GAP_031_STORE_A = "s3_marker"
+      GARBAGE_GAP_031_BUCKET_B = "images-prod"
+
+      def upload_blob(key: str, data: bytes) -> str:
+          return f"s3://images-prod/{key}"
+    imaging/metadata.py: |
+      GARBAGE_GAP_031_META_C = "exif_marker"
+      GARBAGE_GAP_031_ORIENT_D = "auto"
+
+      def extract_exif(data: bytes) -> dict:
+          return {"orientation": 1}
+  changed_files:
+    imaging/transform.py: |
+      from typing import NamedTuple
+      from enum import Enum
+
+      class Dimensions(NamedTuple):
+          width: int
+          height: int
+
+      class FitMode(Enum):
+          CONTAIN = "contain"
+          COVER = "cover"
+          STRETCH = "stretch"
+
+      def resize(original: Dimensions, max_side: int, mode: FitMode = FitMode.CONTAIN) -> Dimensions:
+          if mode == FitMode.STRETCH:
+              return Dimensions(width=max_side, height=max_side)
+          if mode == FitMode.COVER:
+              ratio = max(max_side / original.width, max_side / original.height)
+          else:
+              ratio = min(max_side / original.width, max_side / original.height)
+          return Dimensions(
+              width=int(original.width * ratio),
+              height=int(original.height * ratio),
+          )
+  commit_message: "add FitMode parameter to resize function"
+fixtures:
+  auto_garbage: true
+fragments:
+- id: transform_resize
+  selector:
+    path: imaging/transform.py
+    anchor: "def resize"
+- id: transform_fitmode
+  selector:
+    path: imaging/transform.py
+    anchor: "class FitMode"
+- id: pipeline_process
+  selector:
+    path: imaging/pipeline.py
+    anchor: "def process"
+- id: api_upload
+  selector:
+    path: imaging/api.py
+    anchor: "def handle_upload"
+- id: no_storage
+  selector:
+    path: imaging/storage.py
+- id: no_metadata
+  selector:
+    path: imaging/metadata.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_031_STORE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GAP_031_BUCKET_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GAP_031_META_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GAP_031_ORIENT_D
+oracle:
+  required:
+  - transform_resize
+  - transform_fitmode
+  - pipeline_process
+  - api_upload
+  allowed: []
+  forbidden:
+  - no_storage
+  - no_metadata
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

@@ -1,0 +1,275 @@
+name: gap_039_go_new_func_feature_flag_evaluator
+tags:
+- change:multi_file
+- change:new_function
+- context:cross_module
+- difficulty:medium
+- distance:2hop
+- lang:go
+repo:
+  initial_files:
+    internal/flags/rule.go: |
+      package flags
+
+      type Rule struct {
+          Attribute string
+          Operator  string
+          Value     string
+      }
+
+      func (r *Rule) Evaluate(attrs map[string]string) bool {
+          val, ok := attrs[r.Attribute]
+          if !ok {
+              return false
+          }
+          switch r.Operator {
+          case "eq":
+              return val == r.Value
+          case "neq":
+              return val != r.Value
+          default:
+              return false
+          }
+      }
+    internal/flags/flag.go: |
+      package flags
+
+      type Flag struct {
+          Key     string
+          Enabled bool
+          Rules   []*Rule
+      }
+
+      func NewFlag(key string, enabled bool) *Flag {
+          return &Flag{Key: key, Enabled: enabled}
+      }
+
+      func (f *Flag) AddRule(r *Rule) {
+          f.Rules = append(f.Rules, r)
+      }
+
+      func (f *Flag) IsActive(attrs map[string]string) bool {
+          if !f.Enabled {
+              return false
+          }
+          for _, r := range f.Rules {
+              if !r.Evaluate(attrs) {
+                  return false
+              }
+          }
+          return true
+      }
+    internal/api/handler.go: |
+      package api
+
+      import "internal/flags"
+
+      type FeatureHandler struct {
+          Registry map[string]*flags.Flag
+      }
+
+      func NewFeatureHandler() *FeatureHandler {
+          return &FeatureHandler{Registry: make(map[string]*flags.Flag)}
+      }
+
+      func (h *FeatureHandler) Register(f *flags.Flag) {
+          h.Registry[f.Key] = f
+      }
+
+      func (h *FeatureHandler) Check(key string, attrs map[string]string) bool {
+          f, ok := h.Registry[key]
+          if !ok {
+              return false
+          }
+          return f.IsActive(attrs)
+      }
+    internal/cache/store.go: |
+      package cache
+
+      var GARBAGE_GAP_039_CACHE_A = "redis_marker"
+      var GARBAGE_GAP_039_TTL_B = 600
+
+      func Get(key string) (string, bool) {
+          return "", false
+      }
+
+      func Set(key string, value string) {}
+    internal/metrics/counter.go: |
+      package metrics
+
+      var GARBAGE_GAP_039_METRIC_C = "prometheus_marker"
+      var GARBAGE_GAP_039_PREFIX_D = "app_"
+
+      func Increment(name string) {}
+  changed_files:
+    internal/flags/rule.go: |
+      package flags
+
+      import "strings"
+
+      type Rule struct {
+          Attribute string
+          Operator  string
+          Value     string
+      }
+
+      func (r *Rule) Evaluate(attrs map[string]string) bool {
+          val, ok := attrs[r.Attribute]
+          if !ok {
+              return false
+          }
+          switch r.Operator {
+          case "eq":
+              return val == r.Value
+          case "neq":
+              return val != r.Value
+          case "contains":
+              return strings.Contains(val, r.Value)
+          case "prefix":
+              return strings.HasPrefix(val, r.Value)
+          default:
+              return false
+          }
+      }
+    internal/flags/flag.go: |
+      package flags
+
+      type Flag struct {
+          Key        string
+          Enabled    bool
+          Rules      []*Rule
+          Percentage int
+      }
+
+      func NewFlag(key string, enabled bool) *Flag {
+          return &Flag{Key: key, Enabled: enabled, Percentage: 100}
+      }
+
+      func (f *Flag) AddRule(r *Rule) {
+          f.Rules = append(f.Rules, r)
+      }
+
+      func (f *Flag) IsActive(attrs map[string]string) bool {
+          if !f.Enabled {
+              return false
+          }
+          for _, r := range f.Rules {
+              if !r.Evaluate(attrs) {
+                  return false
+              }
+          }
+          return true
+      }
+
+      func (f *Flag) IsActiveForUser(userID string, attrs map[string]string) bool {
+          if !f.IsActive(attrs) {
+              return false
+          }
+          if f.Percentage >= 100 {
+              return true
+          }
+          bucket := int(userID[len(userID)-1]) % 100
+          return bucket < f.Percentage
+      }
+    internal/api/handler.go: |
+      package api
+
+      import "internal/flags"
+
+      type FeatureHandler struct {
+          Registry map[string]*flags.Flag
+      }
+
+      func NewFeatureHandler() *FeatureHandler {
+          return &FeatureHandler{Registry: make(map[string]*flags.Flag)}
+      }
+
+      func (h *FeatureHandler) Register(f *flags.Flag) {
+          h.Registry[f.Key] = f
+      }
+
+      func (h *FeatureHandler) Check(key string, attrs map[string]string) bool {
+          f, ok := h.Registry[key]
+          if !ok {
+              return false
+          }
+          return f.IsActive(attrs)
+      }
+
+      func (h *FeatureHandler) CheckForUser(key string, userID string, attrs map[string]string) bool {
+          f, ok := h.Registry[key]
+          if !ok {
+              return false
+          }
+          return f.IsActiveForUser(userID, attrs)
+      }
+    internal/cache/store.go: |
+      package cache
+
+      var GARBAGE_GAP_039_CACHE_A = "redis_marker"
+      var GARBAGE_GAP_039_TTL_B = 600
+
+      func Get(key string) (string, bool) {
+          return "", false
+      }
+
+      func Set(key string, value string) {}
+    internal/metrics/counter.go: |
+      package metrics
+
+      var GARBAGE_GAP_039_METRIC_C = "prometheus_marker"
+      var GARBAGE_GAP_039_PREFIX_D = "app_"
+
+      func Increment(name string) {}
+  commit_message: "add percentage-based feature flag rollout"
+fixtures:
+  auto_garbage: true
+fragments:
+- id: rule_contains
+  selector:
+    path: internal/flags/rule.go
+    anchor: "contains"
+- id: flag_percentage
+  selector:
+    path: internal/flags/flag.go
+    anchor: "Percentage int"
+- id: flag_active_user
+  selector:
+    path: internal/flags/flag.go
+    anchor: "func (f *Flag) IsActiveForUser"
+- id: handler_check_user
+  selector:
+    path: internal/api/handler.go
+    anchor: "func (h *FeatureHandler) CheckForUser"
+- id: no_cache
+  selector:
+    path: internal/cache/store.go
+- id: no_metrics
+  selector:
+    path: internal/metrics/counter.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_039_CACHE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GAP_039_TTL_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GAP_039_METRIC_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GAP_039_PREFIX_D
+oracle:
+  required:
+  - flag_percentage
+  - flag_active_user
+  - handler_check_user
+  allowed:
+  - rule_contains
+  forbidden:
+  - no_cache
+  - no_metrics
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

@@ -1,0 +1,215 @@
+name: bal_refactor_021_java_extract_method_to_util
+tags:
+- lang:java
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/main/java/com/app/service/OrderService.java: |
+      package com.app.service;
+
+      import java.util.List;
+
+      public class OrderService {
+          public double calculateTotal(List<Double> prices) {
+              double total = 0;
+              for (double price : prices) {
+                  double rounded = Math.round(price * 100.0) / 100.0;
+                  total += rounded;
+              }
+              return Math.round(total * 100.0) / 100.0;
+          }
+
+          public String formatReceipt(List<Double> prices) {
+              double total = calculateTotal(prices);
+              return String.format("Total: $%.2f", total);
+          }
+      }
+    src/main/java/com/app/service/InvoiceService.java: |
+      package com.app.service;
+
+      public class InvoiceService {
+          public double computeInvoiceAmount(double subtotal, double taxRate) {
+              double tax = subtotal * taxRate;
+              double rounded = Math.round(tax * 100.0) / 100.0;
+              return Math.round((subtotal + rounded) * 100.0) / 100.0;
+          }
+      }
+    src/main/java/com/app/controller/OrderController.java: |
+      package com.app.controller;
+
+      import com.app.service.OrderService;
+      import java.util.List;
+
+      public class OrderController {
+          private final OrderService orderService;
+
+          public OrderController(OrderService orderService) {
+              this.orderService = orderService;
+          }
+
+          public String handleOrder(List<Double> prices) {
+              return orderService.formatReceipt(prices);
+          }
+      }
+    src/main/java/com/app/config/AppConfig.java: |
+      package com.app.config;
+
+      public class AppConfig {
+          public static final String GARBAGE_REFACTOR_021_CONFIG_A = "config";
+          public static final boolean GARBAGE_REFACTOR_021_DEBUG_B = false;
+
+          public String getEnvironment() {
+              return "production";
+          }
+      }
+    src/main/java/com/app/GarbageReporting.java: |
+      package com.app;
+
+      public class GarbageReporting {
+          public static final String GARBAGE_REFACTOR_021_REPORT_C = "reporting";
+          public static final int GARBAGE_REFACTOR_021_BATCH_D = 50;
+          public static final boolean GARBAGE_REFACTOR_021_ASYNC_E = true;
+
+          public void generate() {}
+      }
+  changed_files:
+    src/main/java/com/app/util/MoneyUtil.java: |
+      package com.app.util;
+
+      public class MoneyUtil {
+          public static double roundCents(double amount) {
+              return Math.round(amount * 100.0) / 100.0;
+          }
+      }
+    src/main/java/com/app/service/OrderService.java: |
+      package com.app.service;
+
+      import com.app.util.MoneyUtil;
+      import java.util.List;
+
+      public class OrderService {
+          public double calculateTotal(List<Double> prices) {
+              double total = 0;
+              for (double price : prices) {
+                  total += MoneyUtil.roundCents(price);
+              }
+              return MoneyUtil.roundCents(total);
+          }
+
+          public String formatReceipt(List<Double> prices) {
+              double total = calculateTotal(prices);
+              return String.format("Total: $%.2f", total);
+          }
+      }
+    src/main/java/com/app/service/InvoiceService.java: |
+      package com.app.service;
+
+      import com.app.util.MoneyUtil;
+
+      public class InvoiceService {
+          public double computeInvoiceAmount(double subtotal, double taxRate) {
+              double tax = MoneyUtil.roundCents(subtotal * taxRate);
+              return MoneyUtil.roundCents(subtotal + tax);
+          }
+      }
+    src/main/java/com/app/controller/OrderController.java: |
+      package com.app.controller;
+
+      import com.app.service.OrderService;
+      import java.util.List;
+
+      public class OrderController {
+          private final OrderService orderService;
+
+          public OrderController(OrderService orderService) {
+              this.orderService = orderService;
+          }
+
+          public String handleOrder(List<Double> prices) {
+              return orderService.formatReceipt(prices);
+          }
+      }
+    src/main/java/com/app/config/AppConfig.java: |
+      package com.app.config;
+
+      public class AppConfig {
+          public static final String GARBAGE_REFACTOR_021_CONFIG_A = "config";
+          public static final boolean GARBAGE_REFACTOR_021_DEBUG_B = false;
+
+          public String getEnvironment() {
+              return "production";
+          }
+      }
+    src/main/java/com/app/GarbageReporting.java: |
+      package com.app;
+
+      public class GarbageReporting {
+          public static final String GARBAGE_REFACTOR_021_REPORT_C = "reporting";
+          public static final int GARBAGE_REFACTOR_021_BATCH_D = 50;
+          public static final boolean GARBAGE_REFACTOR_021_ASYNC_E = true;
+
+          public void generate() {}
+      }
+  commit_message: "refactor: extract rounding logic into MoneyUtil"
+fragments:
+- id: new_money_util
+  selector:
+    path: src/main/java/com/app/util/MoneyUtil.java
+    anchor: "public static double roundCents"
+- id: order_imports_util
+  selector:
+    path: src/main/java/com/app/service/OrderService.java
+    anchor: "import com.app.util.MoneyUtil"
+- id: order_uses_util
+  selector:
+    path: src/main/java/com/app/service/OrderService.java
+    anchor: "MoneyUtil.roundCents(price)"
+- id: invoice_imports_util
+  selector:
+    path: src/main/java/com/app/service/InvoiceService.java
+    anchor: "import com.app.util.MoneyUtil"
+- id: controller_uses_service
+  selector:
+    path: src/main/java/com/app/controller/OrderController.java
+    anchor: "import com.app.service.OrderService"
+- id: no_config
+  selector:
+    path: src/main/java/com/app/config/AppConfig.java
+- id: no_garbage_reporting
+  selector:
+    path: src/main/java/com/app/GarbageReporting.java
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_REFACTOR_021_CONFIG_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_REFACTOR_021_DEBUG_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_REFACTOR_021_REPORT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_REFACTOR_021_BATCH_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_REFACTOR_021_ASYNC_E
+oracle:
+  required:
+  - new_money_util
+  - order_imports_util
+  - order_uses_util
+  - invoice_imports_util
+  - controller_uses_service
+  allowed: []
+  forbidden:
+  - no_config
+  - no_garbage_reporting
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

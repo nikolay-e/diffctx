@@ -1,0 +1,63 @@
+name: bal3_bugfix_006_rust_off_by_one_iter
+tags:
+- lang:rust
+- change:single_file
+- change:bug_fix
+- context:same_file
+- distance:0hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/window.rs: |
+      pub fn sliding_window(data: &[i32], size: usize) -> Vec<Vec<i32>> {
+          let mut result = Vec::new();
+          for i in 0..data.len() - size {
+              result.push(data[i..i + size].to_vec());
+          }
+          result
+      }
+
+      pub fn max_window_sum(data: &[i32], size: usize) -> i32 {
+          sliding_window(data, size)
+              .iter()
+              .map(|w| w.iter().sum())
+              .max()
+              .unwrap_or(0)
+      }
+    src/format.rs: |
+      pub fn join_csv(items: &[&str]) -> String {
+          items.join(",")
+      }
+  changed_files:
+    src/window.rs: |
+      pub fn sliding_window(data: &[i32], size: usize) -> Vec<Vec<i32>> {
+          let mut result = Vec::new();
+          for i in 0..=data.len() - size {
+              result.push(data[i..i + size].to_vec());
+          }
+          result
+      }
+
+      pub fn max_window_sum(data: &[i32], size: usize) -> i32 {
+          sliding_window(data, size)
+              .iter()
+              .map(|w| w.iter().sum())
+              .max()
+              .unwrap_or(0)
+      }
+  commit_message: "fix: include last window in sliding_window iteration"
+fragments:
+- id: range_fix
+  selector:
+    path: src/window.rs
+    anchor: "for i in 0..=data.len() - size"
+- id: no_format
+  selector:
+    path: src/format.rs
+    anchor: "fn join_csv"
+oracle:
+  required:
+  - range_fix
+  allowed: []
+  forbidden:
+  - no_format

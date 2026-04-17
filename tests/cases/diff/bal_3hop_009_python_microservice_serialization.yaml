@@ -1,0 +1,168 @@
+name: bal_3hop_009_python_microservice_serialization
+tags:
+- lang:python
+- change:single_file
+- change:multi_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    shared/dto.py: |
+      from dataclasses import dataclass
+      @dataclass
+      class OrderDTO:
+          order_id: str
+          product: str
+          quantity: int
+          def to_dict(self) -> dict:
+              return {"order_id": self.order_id, "product": self.product, "quantity": self.quantity}
+    shared/serializer.py: |
+      import json
+      from shared.dto import OrderDTO
+      class Serializer:
+          def serialize(self, dto: OrderDTO) -> str:
+              return json.dumps(dto.to_dict())
+          def deserialize(self, data: str) -> OrderDTO:
+              d = json.loads(data)
+              return OrderDTO(**d)
+    services/order_service.py: |
+      from shared.serializer import Serializer
+      from shared.dto import OrderDTO
+      class OrderService:
+          def __init__(self):
+              self.serializer = Serializer()
+              self.orders: list[OrderDTO] = []
+          def create_order(self, product: str, quantity: int) -> str:
+              order = OrderDTO(order_id=f"ord_{len(self.orders)}", product=product, quantity=quantity)
+              self.orders.append(order)
+              return self.serializer.serialize(order)
+    gateway/api.py: |
+      from services.order_service import OrderService
+      class Gateway:
+          def __init__(self):
+              self.order_service = OrderService()
+          def handle_create_order(self, product: str, quantity: int) -> str:
+              return self.order_service.create_order(product, quantity)
+          def handle_list_orders(self) -> list:
+              return [o.to_dict() for o in self.order_service.orders]
+    utils/rate_limiter.py: |
+      import time
+      class RateLimiter:
+          def __init__(self, max_requests: int, window: float):
+              self.max_requests = max_requests
+              self.window = window
+              self.requests: list[float] = []
+          def allow(self) -> bool:
+              now = time.time()
+              self.requests = [t for t in self.requests if now - t < self.window]
+              if len(self.requests) < self.max_requests:
+                  self.requests.append(now)
+                  return True
+              return False
+    config/routes.py: |
+      ROUTES = {
+          "/orders": "create_order",
+          "/orders/list": "list_orders",
+      }
+  changed_files:
+    shared/dto.py: |
+      from dataclasses import dataclass
+      from typing import Optional
+      @dataclass
+      class OrderDTO:
+          order_id: str
+          product: str
+          quantity: int
+          status: str = "pending"
+          notes: Optional[str] = None
+          def to_dict(self) -> dict:
+              result = {"order_id": self.order_id, "product": self.product,
+                        "quantity": self.quantity, "status": self.status}
+              if self.notes:
+                  result["notes"] = self.notes
+              return result
+    shared/serializer.py: |
+      import json
+      from shared.dto import OrderDTO
+      class Serializer:
+          def serialize(self, dto: OrderDTO) -> str:
+              return json.dumps(dto.to_dict())
+          def deserialize(self, data: str) -> OrderDTO:
+              d = json.loads(data)
+              return OrderDTO(**d)
+    services/order_service.py: |
+      from shared.serializer import Serializer
+      from shared.dto import OrderDTO
+      class OrderService:
+          def __init__(self):
+              self.serializer = Serializer()
+              self.orders: list[OrderDTO] = []
+          def create_order(self, product: str, quantity: int) -> str:
+              order = OrderDTO(order_id=f"ord_{len(self.orders)}", product=product, quantity=quantity)
+              self.orders.append(order)
+              return self.serializer.serialize(order)
+    gateway/api.py: |
+      from services.order_service import OrderService
+      class Gateway:
+          def __init__(self):
+              self.order_service = OrderService()
+          def handle_create_order(self, product: str, quantity: int) -> str:
+              return self.order_service.create_order(product, quantity)
+          def handle_list_orders(self) -> list:
+              return [o.to_dict() for o in self.order_service.orders]
+    utils/rate_limiter.py: |
+      import time
+      class RateLimiter:
+          def __init__(self, max_requests: int, window: float):
+              self.max_requests = max_requests
+              self.window = window
+              self.requests: list[float] = []
+          def allow(self) -> bool:
+              now = time.time()
+              self.requests = [t for t in self.requests if now - t < self.window]
+              if len(self.requests) < self.max_requests:
+                  self.requests.append(now)
+                  return True
+              return False
+    config/routes.py: |
+      ROUTES = {
+          "/orders": "create_order",
+          "/orders/list": "list_orders",
+      }
+  commit_message: "feat: add status and notes fields to OrderDTO"
+fragments:
+- id: dto_new_fields
+  selector:
+    path: shared/dto.py
+    anchor: "status: str = \"pending\""
+- id: serializer_uses_dto
+  selector:
+    path: shared/serializer.py
+    anchor: "from shared.dto import OrderDTO"
+- id: service_uses_serializer
+  selector:
+    path: services/order_service.py
+    anchor: "from shared.serializer import Serializer"
+- id: gateway_uses_service
+  selector:
+    path: gateway/api.py
+    anchor: "from services.order_service import OrderService"
+- id: no_rate_limiter
+  selector:
+    path: utils/rate_limiter.py
+    anchor: "class RateLimiter"
+- id: no_routes
+  selector:
+    path: config/routes.py
+    anchor: "ROUTES"
+oracle:
+  required:
+  - dto_new_fields
+  - serializer_uses_dto
+  - service_uses_serializer
+  - gateway_uses_service
+  allowed: []
+  forbidden:
+  - no_rate_limiter
+  - no_routes

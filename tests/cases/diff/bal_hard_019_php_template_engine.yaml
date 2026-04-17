@@ -1,0 +1,218 @@
+name: bal_hard_019_php_template_engine
+tags:
+- lang:php
+- change:multi_file
+- change:new_function
+- context:cross_module
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/Template/Token.php: |
+      <?php
+      namespace App\Template;
+      class Token {
+          public string $type;
+          public string $value;
+          public function __construct(string $type, string $value) {
+              $this->type = $type;
+              $this->value = $value;
+          }
+      }
+    src/Template/Lexer.php: |
+      <?php
+      namespace App\Template;
+      class Lexer {
+          public function tokenize(string $template): array {
+              $tokens = [];
+              $parts = preg_split('/(\{\{.*?\}\})/', $template, -1, PREG_SPLIT_DELIM_CAPTURE);
+              foreach ($parts as $part) {
+                  if (preg_match('/^\{\{(.+?)\}\}$/', $part, $m)) {
+                      $tokens[] = new Token('variable', trim($m[1]));
+                  } else {
+                      $tokens[] = new Token('text', $part);
+                  }
+              }
+              return $tokens;
+          }
+      }
+    src/Template/Compiler.php: |
+      <?php
+      namespace App\Template;
+      class Compiler {
+          public function compile(array $tokens, array $context): string {
+              $output = '';
+              foreach ($tokens as $token) {
+                  if ($token->type === 'variable') {
+                      $output .= $context[$token->value] ?? '';
+                  } else {
+                      $output .= $token->value;
+                  }
+              }
+              return $output;
+          }
+      }
+    src/Template/Engine.php: |
+      <?php
+      namespace App\Template;
+      class Engine {
+          private Lexer $lexer;
+          private Compiler $compiler;
+          public function __construct() {
+              $this->lexer = new Lexer();
+              $this->compiler = new Compiler();
+          }
+          public function render(string $template, array $context): string {
+              $tokens = $this->lexer->tokenize($template);
+              return $this->compiler->compile($tokens, $context);
+          }
+      }
+    src/View/PageRenderer.php: |
+      <?php
+      namespace App\View;
+      use App\Template\Engine;
+      class PageRenderer {
+          private Engine $engine;
+          public function __construct(Engine $engine) {
+              $this->engine = $engine;
+          }
+          public function renderPage(string $title, string $body): string {
+              $template = '<h1>{{ title }}</h1><div>{{ body }}</div>';
+              return $this->engine->render($template, ['title' => $title, 'body' => $body]);
+          }
+      }
+    src/Controller/ViewController.php: |
+      <?php
+      namespace App\Controller;
+      use App\View\PageRenderer;
+      class ViewController {
+          private PageRenderer $renderer;
+          public function __construct(PageRenderer $renderer) {
+              $this->renderer = $renderer;
+          }
+          public function index(): string {
+              return $this->renderer->renderPage('Home', 'Welcome to our site');
+          }
+      }
+    src/Helpers/HtmlSanitizer.php: |
+      <?php
+      namespace App\Helpers;
+      class HtmlSanitizer {
+          public static function clean(string $html): string {
+              return htmlspecialchars($html, ENT_QUOTES, 'UTF-8');
+          }
+      }
+    src/Helpers/FileLoader.php: |
+      <?php
+      namespace App\Helpers;
+      class FileLoader {
+          public static function load(string $path): string {
+              return file_get_contents($path);
+          }
+      }
+  changed_files:
+    src/Template/Token.php: |
+      <?php
+      namespace App\Template;
+      class Token {
+          public string $type;
+          public string $value;
+          public array $args;
+          public function __construct(string $type, string $value, array $args = []) {
+              $this->type = $type;
+              $this->value = $value;
+              $this->args = $args;
+          }
+      }
+    src/Template/Lexer.php: |
+      <?php
+      namespace App\Template;
+      class Lexer {
+          public function tokenize(string $template): array {
+              $tokens = [];
+              $parts = preg_split('/(\{\{.*?\}\}|\{%.*?%\})/', $template, -1, PREG_SPLIT_DELIM_CAPTURE);
+              foreach ($parts as $part) {
+                  if (preg_match('/^\{\{(.+?)\}\}$/', $part, $m)) {
+                      $tokens[] = new Token('variable', trim($m[1]));
+                  } elseif (preg_match('/^\{%\s*if\s+(.+?)\s*%\}$/', $part, $m)) {
+                      $tokens[] = new Token('if', trim($m[1]));
+                  } elseif (preg_match('/^\{%\s*endif\s*%\}$/', $part)) {
+                      $tokens[] = new Token('endif', '');
+                  } else {
+                      $tokens[] = new Token('text', $part);
+                  }
+              }
+              return $tokens;
+          }
+      }
+    src/Template/Compiler.php: |
+      <?php
+      namespace App\Template;
+      class Compiler {
+          public function compile(array $tokens, array $context): string {
+              $output = '';
+              $skip = false;
+              foreach ($tokens as $token) {
+                  if ($token->type === 'if') {
+                      $skip = empty($context[$token->value]);
+                  } elseif ($token->type === 'endif') {
+                      $skip = false;
+                  } elseif (!$skip) {
+                      if ($token->type === 'variable') {
+                          $output .= $context[$token->value] ?? '';
+                      } else {
+                          $output .= $token->value;
+                      }
+                  }
+              }
+              return $output;
+          }
+      }
+  commit_message: "feat: add conditional blocks to template engine"
+fragments:
+- id: token_args_field
+  selector:
+    path: Token.php
+    anchor: "public array $args"
+- id: lexer_if_block
+  selector:
+    path: Lexer.php
+    anchor: "preg_match('/^\\{%\\s*if"
+- id: lexer_endif
+  selector:
+    path: Lexer.php
+    anchor: "Token('endif'"
+- id: compiler_handles_if
+  selector:
+    path: Compiler.php
+    anchor: "$token->type === 'if'"
+- id: engine_orchestrates
+  selector:
+    path: Engine.php
+    anchor: "$this->compiler->compile($tokens, $context)"
+- id: page_renderer_uses_engine
+  selector:
+    path: PageRenderer.php
+    anchor: "$this->engine->render"
+- id: no_html_sanitizer
+  selector:
+    path: Helpers/HtmlSanitizer.php
+- id: no_file_loader
+  selector:
+    path: Helpers/FileLoader.php
+- id: no_clean_method
+  selector:
+    anchor: "public static function clean"
+oracle:
+  required:
+  - token_args_field
+  - lexer_if_block
+  - lexer_endif
+  - compiler_handles_if
+  - engine_orchestrates
+  - page_renderer_uses_engine
+  allowed: []
+  forbidden:
+  - no_html_sanitizer
+  - no_file_loader
+  - no_clean_method

@@ -1,0 +1,84 @@
+name: bal_crossmod_001_ruby_service_to_worker
+tags:
+- lang:ruby
+- change:single_file
+- change:signature
+- context:cross_module
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    lib/services/payment.rb: |
+      module Services
+        class Payment
+          def charge(amount)
+            { status: :ok, amount: amount }
+          end
+        end
+      end
+    lib/workers/billing.rb: |
+      require_relative '../services/payment'
+      module Workers
+        class Billing
+          def run(order_id, amount)
+            svc = Services::Payment.new
+            svc.charge(amount)
+          end
+        end
+      end
+    lib/utils/formatter.rb: |
+      module Utils
+        class Formatter
+          def self.currency(amount)
+            "$#{format('%.2f', amount)}"
+          end
+        end
+      end
+  changed_files:
+    lib/services/payment.rb: |
+      module Services
+        class Payment
+          def charge(amount, currency: 'USD')
+            { status: :ok, amount: amount, currency: currency }
+          end
+        end
+      end
+    lib/workers/billing.rb: |
+      require_relative '../services/payment'
+      module Workers
+        class Billing
+          def run(order_id, amount)
+            svc = Services::Payment.new
+            svc.charge(amount)
+          end
+        end
+      end
+    lib/utils/formatter.rb: |
+      module Utils
+        class Formatter
+          def self.currency(amount)
+            "$#{format('%.2f', amount)}"
+          end
+        end
+      end
+  commit_message: "feat: add currency parameter to charge"
+fragments:
+- id: charge_currency_param
+  selector:
+    path: lib/services/payment.rb
+    anchor: "def charge(amount, currency: 'USD')"
+- id: worker_calls_charge
+  selector:
+    path: lib/workers/billing.rb
+    anchor: "svc.charge(amount)"
+- id: no_formatter
+  selector:
+    path: lib/utils/formatter.rb
+    anchor: "def self.currency"
+oracle:
+  required:
+  - charge_currency_param
+  - worker_calls_charge
+  allowed: []
+  forbidden:
+  - no_formatter

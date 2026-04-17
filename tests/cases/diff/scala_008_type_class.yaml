@@ -1,135 +1,319 @@
 name: scala_008_type_class
+tags:
+- lang:java
+- change:multi_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:hard
 repo:
   initial_files:
-    Show.scala: |
-      trait Show[A] {
-        def show(a: A): String
+    src/main/java/com/api/ratelimit/RateLimiter.java: |
+      package com.api.ratelimit;
+
+      import java.time.Instant;
+      import java.util.concurrent.ConcurrentHashMap;
+      import java.util.concurrent.atomic.AtomicInteger;
+
+      public class RateLimiter {
+          private final int maxRequests;
+          private final long windowSeconds;
+          private final ConcurrentHashMap<String, WindowState> states = new ConcurrentHashMap<>();
+
+          public RateLimiter(int maxRequests, long windowSeconds) {
+              this.maxRequests = maxRequests;
+              this.windowSeconds = windowSeconds;
+          }
+
+          public boolean allowRequest(String clientId) {
+              long now = Instant.now().getEpochSecond();
+              WindowState state = states.computeIfAbsent(clientId, k -> new WindowState(now));
+              synchronized (state) {
+                  if (now - state.windowStart >= windowSeconds) {
+                      state.windowStart = now;
+                      state.count.set(0);
+                  }
+                  return state.count.incrementAndGet() <= maxRequests;
+              }
+          }
+
+          private static class WindowState {
+              long windowStart;
+              AtomicInteger count = new AtomicInteger(0);
+              WindowState(long start) { this.windowStart = start; }
+          }
       }
+    src/main/java/com/api/ratelimit/RateLimitPolicy.java: |
+      package com.api.ratelimit;
 
-      object Show {
-        def apply[A](implicit sh: Show[A]): Show[A] = sh
+      public class RateLimitPolicy {
+          private final String clientId;
+          private final int maxRequests;
+          private final long windowSeconds;
 
-        implicit val intShow: Show[Int] = (a: Int) => a.toString
-        implicit val stringShow: Show[String] = (a: String) => a
+          public RateLimitPolicy(String clientId, int maxRequests, long windowSeconds) {
+              this.clientId = clientId;
+              this.maxRequests = maxRequests;
+              this.windowSeconds = windowSeconds;
+          }
+
+          public String getClientId() { return clientId; }
+          public int getMaxRequests() { return maxRequests; }
+          public long getWindowSeconds() { return windowSeconds; }
       }
-    Printer.scala: |
-      class Printer {}
-    Eq.scala: |
-      trait Eq[A] {
-        def eqv(a: A, b: A): Boolean
+    src/test/java/com/api/ratelimit/RateLimiterTest.java: |
+      package com.api.ratelimit;
+
+      import org.junit.jupiter.api.Test;
+      import static org.junit.jupiter.api.Assertions.*;
+
+      class RateLimiterTest {
+          @Test
+          void allowRequest_withinLimit_returnsTrue() {
+              RateLimiter limiter = new RateLimiter(5, 60);
+              for (int i = 0; i < 5; i++) {
+                  assertTrue(limiter.allowRequest("client1"));
+              }
+          }
+
+          @Test
+          void allowRequest_exceedsLimit_returnsFalse() {
+              RateLimiter limiter = new RateLimiter(2, 60);
+              limiter.allowRequest("client1");
+              limiter.allowRequest("client1");
+              assertFalse(limiter.allowRequest("client1"));
+          }
+
+          @Test
+          void allowRequest_differentClients_independentCounters() {
+              RateLimiter limiter = new RateLimiter(1, 60);
+              assertTrue(limiter.allowRequest("clientA"));
+              assertTrue(limiter.allowRequest("clientB"));
+              assertFalse(limiter.allowRequest("clientA"));
+          }
       }
+    src/main/java/com/api/auth/TokenValidator.java: |
+      package com.api.auth;
 
-      object Eq {
-        def apply[A](implicit ev: Eq[A]): Eq[A] = ev
-
-        implicit val intEq: Eq[Int] = (a: Int, b: Int) => a == b
-        implicit val stringEq: Eq[String] = (a: String, b: String) => a == b
-
-        def isEqual[A: Eq](a: A, b: A): Boolean = Eq[A].eqv(a, b)
+      // GARBAGE_SC8_A = "token_validator_unrelated"
+      public class TokenValidator {
+          public boolean validate(String token) {
+              return token != null && !token.isEmpty();
+          }
       }
-    Formatter.scala: |
-      class Formatter {
-        def formatInt(value: Int): String = s"Integer: $value"
-        def formatString(value: String): String = s"String: '$value'"
-        def formatDouble(value: Double): String = f"Double: $value%.2f"
-        def formatBoolean(value: Boolean): String = if (value) "yes" else "no"
+    src/main/java/com/api/cache/ResponseCache.java: |
+      package com.api.cache;
+
+      // GARBAGE_SC8_B = "response_cache_unrelated"
+      public class ResponseCache {
+          public String get(String key) { return null; }
+          public void put(String key, String value) {}
+      }
+    src/main/java/com/api/logging/RequestLogger.java: |
+      package com.api.logging;
+
+      // GARBAGE_SC8_C = "request_logger_unrelated"
+      public class RequestLogger {
+          public void log(String method, String path, int status) {}
       }
   changed_files:
-    Show.scala: |
-      trait Show[A] {
-        def show(a: A): String
+    src/main/java/com/api/ratelimit/RateLimiter.java: |
+      package com.api.ratelimit;
+
+      import java.time.Instant;
+      import java.util.concurrent.ConcurrentHashMap;
+      import java.util.concurrent.atomic.AtomicInteger;
+
+      public class RateLimiter {
+          private final int maxRequests;
+          private final long windowSeconds;
+          private final ConcurrentHashMap<String, WindowState> states = new ConcurrentHashMap<>();
+
+          public RateLimiter(int maxRequests, long windowSeconds) {
+              this.maxRequests = maxRequests;
+              this.windowSeconds = windowSeconds;
+          }
+
+          public boolean allowRequest(String clientId) {
+              long now = Instant.now().getEpochSecond();
+              WindowState state = states.computeIfAbsent(clientId, k -> new WindowState(now));
+              synchronized (state) {
+                  if (now - state.windowStart >= windowSeconds) {
+                      state.windowStart = now;
+                      state.count.set(0);
+                  }
+                  return state.count.incrementAndGet() <= maxRequests;
+              }
+          }
+
+          public RateLimitStatus getStatus(String clientId) {
+              WindowState state = states.get(clientId);
+              if (state == null) {
+                  return new RateLimitStatus(maxRequests, 0, windowSeconds);
+              }
+              synchronized (state) {
+                  int used = state.count.get();
+                  int remaining = Math.max(0, maxRequests - used);
+                  return new RateLimitStatus(maxRequests, remaining, windowSeconds);
+              }
+          }
+
+          public void resetClient(String clientId) {
+              states.remove(clientId);
+          }
+
+          private static class WindowState {
+              long windowStart;
+              AtomicInteger count = new AtomicInteger(0);
+              WindowState(long start) { this.windowStart = start; }
+          }
       }
+    src/main/java/com/api/ratelimit/RateLimitStatus.java: |
+      package com.api.ratelimit;
 
-      object Show {
-        def apply[A](implicit sh: Show[A]): Show[A] = sh
+      public class RateLimitStatus {
+          private final int limit;
+          private final int remaining;
+          private final long windowSeconds;
 
-        implicit val intShow: Show[Int] = (a: Int) => a.toString
-        implicit val stringShow: Show[String] = (a: String) => a
+          public RateLimitStatus(int limit, int remaining, long windowSeconds) {
+              this.limit = limit;
+              this.remaining = remaining;
+              this.windowSeconds = windowSeconds;
+          }
+
+          public int getLimit() { return limit; }
+          public int getRemaining() { return remaining; }
+          public long getWindowSeconds() { return windowSeconds; }
       }
-    Printer.scala: |
-      class Printer {
-        def print[A: Show](value: A): String = {
-          Show[A].show(value)
-        }
+    src/main/java/com/api/ratelimit/RateLimitPolicy.java: |
+      package com.api.ratelimit;
 
-        def printInt(value: Int): String = {
-          print(value)
-        }
+      public class RateLimitPolicy {
+          private final String clientId;
+          private final int maxRequests;
+          private final long windowSeconds;
 
-        def printString(value: String): String = {
-          print(value)
-        }
+          public RateLimitPolicy(String clientId, int maxRequests, long windowSeconds) {
+              this.clientId = clientId;
+              this.maxRequests = maxRequests;
+              this.windowSeconds = windowSeconds;
+          }
+
+          public String getClientId() { return clientId; }
+          public int getMaxRequests() { return maxRequests; }
+          public long getWindowSeconds() { return windowSeconds; }
       }
-    Eq.scala: |
-      trait Eq[A] {
-        def eqv(a: A, b: A): Boolean
-      }
+    src/test/java/com/api/ratelimit/RateLimiterTest.java: |
+      package com.api.ratelimit;
 
-      object Eq {
-        def apply[A](implicit ev: Eq[A]): Eq[A] = ev
+      import org.junit.jupiter.api.Test;
+      import static org.junit.jupiter.api.Assertions.*;
 
-        implicit val intEq: Eq[Int] = (a: Int, b: Int) => a == b
-        implicit val stringEq: Eq[String] = (a: String, b: String) => a == b
+      class RateLimiterTest {
+          @Test
+          void allowRequest_withinLimit_returnsTrue() {
+              RateLimiter limiter = new RateLimiter(5, 60);
+              for (int i = 0; i < 5; i++) {
+                  assertTrue(limiter.allowRequest("client1"));
+              }
+          }
 
-        def isEqual[A: Eq](a: A, b: A): Boolean = Eq[A].eqv(a, b)
+          @Test
+          void allowRequest_exceedsLimit_returnsFalse() {
+              RateLimiter limiter = new RateLimiter(2, 60);
+              limiter.allowRequest("client1");
+              limiter.allowRequest("client1");
+              assertFalse(limiter.allowRequest("client1"));
+          }
+
+          @Test
+          void allowRequest_differentClients_independentCounters() {
+              RateLimiter limiter = new RateLimiter(1, 60);
+              assertTrue(limiter.allowRequest("clientA"));
+              assertTrue(limiter.allowRequest("clientB"));
+              assertFalse(limiter.allowRequest("clientA"));
+          }
+
+          @Test
+          void getStatus_afterRequests_returnsCorrectRemaining() {
+              RateLimiter limiter = new RateLimiter(10, 60);
+              limiter.allowRequest("client1");
+              limiter.allowRequest("client1");
+              limiter.allowRequest("client1");
+              RateLimitStatus status = limiter.getStatus("client1");
+              assertEquals(10, status.getLimit());
+              assertEquals(7, status.getRemaining());
+          }
+
+          @Test
+          void resetClient_clearsState() {
+              RateLimiter limiter = new RateLimiter(1, 60);
+              limiter.allowRequest("client1");
+              assertFalse(limiter.allowRequest("client1"));
+              limiter.resetClient("client1");
+              assertTrue(limiter.allowRequest("client1"));
+          }
       }
-    Formatter.scala: |
-      class Formatter {
-        def formatInt(value: Int): String = s"Integer: $value"
-        def formatString(value: String): String = s"String: '$value'"
-        def formatDouble(value: Double): String = f"Double: $value%.2f"
-        def formatBoolean(value: Boolean): String = if (value) "yes" else "no"
+    src/main/java/com/api/auth/TokenValidator.java: |
+      package com.api.auth;
+
+      // GARBAGE_SC8_A = "token_validator_unrelated"
+      public class TokenValidator {
+          public boolean validate(String token) {
+              return token != null && !token.isEmpty();
+          }
       }
-  commit_message: Update files
+    src/main/java/com/api/cache/ResponseCache.java: |
+      package com.api.cache;
+
+      // GARBAGE_SC8_B = "response_cache_unrelated"
+      public class ResponseCache {
+          public String get(String key) { return null; }
+          public void put(String key, String value) {}
+      }
+    src/main/java/com/api/logging/RequestLogger.java: |
+      package com.api.logging;
+
+      // GARBAGE_SC8_C = "request_logger_unrelated"
+      public class RequestLogger {
+          public void log(String method, String path, int status) {}
+      }
+  commit_message: "feat: add getStatus and resetClient to RateLimiter with RateLimitStatus DTO"
 fragments:
-- id: printer
+- id: get_status_method
   selector:
-    path: Printer.scala
-    anchor: 'def print[A: Show](value: A): String = {'
-- id: printer_1
+    path: src/main/java/com/api/ratelimit/RateLimiter.java
+    anchor: "public RateLimitStatus getStatus"
+- id: reset_client_method
   selector:
-    path: Printer.scala
-    anchor: Show[A].show(value)
-- id: show
+    path: src/main/java/com/api/ratelimit/RateLimiter.java
+    anchor: "public void resetClient"
+- id: test_get_status
   selector:
-    path: Show.scala
-    anchor: trait Show[A] {
-- id: no_eq
+    path: src/test/java/com/api/ratelimit/RateLimiterTest.java
+    anchor: "getStatus_afterRequests_returnsCorrectRemaining"
+- id: test_reset_client
   selector:
-    path: Eq.scala
-- id: no_formatter
+    path: src/test/java/com/api/ratelimit/RateLimiterTest.java
+    anchor: "resetClient_clearsState"
+- id: no_garbage_a
   selector:
-    path: Formatter.scala
-- id: no_global_0
+    anchor: GARBAGE_SC8_A
+- id: no_garbage_b
   selector:
-    anchor: trait Eq[A]
-- id: no_global_1
+    anchor: GARBAGE_SC8_B
+- id: no_garbage_c
   selector:
-    anchor: eqv
-- id: no_global_2
-  selector:
-    anchor: isEqual
-- id: no_global_3
-  selector:
-    anchor: class Formatter
-- id: no_global_4
-  selector:
-    anchor: formatDouble
-- id: no_global_5
-  selector:
-    anchor: formatBoolean
+    anchor: GARBAGE_SC8_C
 oracle:
   required:
-  - printer
-  - printer_1
-  - show
+  - get_status_method
+  - reset_client_method
+  - test_get_status
+  - test_reset_client
   allowed: []
   forbidden:
-  - no_eq
-  - no_formatter
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

@@ -1,0 +1,172 @@
+name: bal4_bugfix_003_swift_wrong_operator_filter
+tags:
+- lang:swift
+- change:single_file
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    Sources/Models/Product.swift: |
+      struct Product {
+          let id: Int
+          let name: String
+          let price: Double
+          let isAvailable: Bool
+      }
+    Sources/Services/Catalog.swift: |
+      import Foundation
+
+      class Catalog {
+          var products: [Product] = []
+
+          func affordableProducts(maxPrice: Double) -> [Product] {
+              return products.filter { $0.price > maxPrice && $0.isAvailable }
+          }
+
+          func addProduct(_ product: Product) {
+              products.append(product)
+          }
+
+          func removeProduct(id: Int) {
+              products.removeAll { $0.id == id }
+          }
+      }
+    Sources/Views/ProductList.swift: |
+      class ProductListView {
+          let catalog: Catalog
+
+          init(catalog: Catalog) {
+              self.catalog = catalog
+          }
+
+          func render(budget: Double) -> [String] {
+              let items = catalog.affordableProducts(maxPrice: budget)
+              return items.map { $0.name }
+          }
+      }
+    garbage_bal4_003_auth.swift: |
+      GARBAGE_BAL4_003_AUTH_A = "jwt"
+      GARBAGE_BAL4_003_TOKEN_B = true
+
+      class AuthProvider {
+          let GARBAGE_BAL4_003_EXP_C = 3600
+          func validate() -> Bool { return true }
+      }
+    garbage_bal4_003_metrics.swift: |
+      GARBAGE_BAL4_003_METRICS_D = "prometheus"
+      GARBAGE_BAL4_003_PORT_E = 9090
+
+      class MetricsCollector {
+          let GARBAGE_BAL4_003_INTERVAL_F = 60
+          func collect() {}
+      }
+  changed_files:
+    Sources/Models/Product.swift: |
+      struct Product {
+          let id: Int
+          let name: String
+          let price: Double
+          let isAvailable: Bool
+      }
+    Sources/Services/Catalog.swift: |
+      import Foundation
+
+      class Catalog {
+          var products: [Product] = []
+
+          func affordableProducts(maxPrice: Double) -> [Product] {
+              return products.filter { $0.price <= maxPrice && $0.isAvailable }
+          }
+
+          func addProduct(_ product: Product) {
+              products.append(product)
+          }
+
+          func removeProduct(id: Int) {
+              products.removeAll { $0.id == id }
+          }
+      }
+    Sources/Views/ProductList.swift: |
+      class ProductListView {
+          let catalog: Catalog
+
+          init(catalog: Catalog) {
+              self.catalog = catalog
+          }
+
+          func render(budget: Double) -> [String] {
+              let items = catalog.affordableProducts(maxPrice: budget)
+              return items.map { $0.name }
+          }
+      }
+    garbage_bal4_003_auth.swift: |
+      GARBAGE_BAL4_003_AUTH_A = "jwt"
+      GARBAGE_BAL4_003_TOKEN_B = true
+
+      class AuthProvider {
+          let GARBAGE_BAL4_003_EXP_C = 3600
+          func validate() -> Bool { return true }
+      }
+    garbage_bal4_003_metrics.swift: |
+      GARBAGE_BAL4_003_METRICS_D = "prometheus"
+      GARBAGE_BAL4_003_PORT_E = 9090
+
+      class MetricsCollector {
+          let GARBAGE_BAL4_003_INTERVAL_F = 60
+          func collect() {}
+      }
+  commit_message: "fix: use <= instead of > for affordable products filter"
+fragments:
+- id: affordable_func
+  selector:
+    path: Sources/Services/Catalog.swift
+    anchor: "func affordableProducts(maxPrice: Double)"
+- id: filter_fix
+  selector:
+    path: Sources/Services/Catalog.swift
+    anchor: "$0.price <= maxPrice"
+- id: product_struct
+  selector:
+    path: Sources/Models/Product.swift
+    anchor: "struct Product"
+- id: no_garbage_auth
+  selector:
+    path: garbage_bal4_003_auth.swift
+- id: no_garbage_metrics
+  selector:
+    path: garbage_bal4_003_metrics.swift
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL4_003_AUTH_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL4_003_TOKEN_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL4_003_EXP_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL4_003_METRICS_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL4_003_PORT_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL4_003_INTERVAL_F
+oracle:
+  required:
+  - affordable_func
+  - filter_fix
+  - product_struct
+  allowed: []
+  forbidden:
+  - no_garbage_auth
+  - no_garbage_metrics
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

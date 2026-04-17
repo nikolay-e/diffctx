@@ -1,0 +1,103 @@
+name: bal4_0hop_004_haskell_new_guard
+tags:
+- lang:haskell
+- change:single_file
+- change:new_function
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/Grade.hs: |
+      module Grade where
+
+      classify :: Int -> String
+      classify n
+        | n >= 90 = "A"
+        | n >= 80 = "B"
+        | otherwise = "C"
+    src/garbage_score.hs: |
+      module GarbageScore where
+
+      GARBAGE_B4H004_SCORE_A = "score"
+      GARBAGE_B4H004_SCORE_B = 100
+
+      garbageScore :: Int -> Int
+      garbageScore x = x * 2
+    src/garbage_rank.hs: |
+      module GarbageRank where
+
+      GARBAGE_B4H004_RANK_C = "rank"
+      GARBAGE_B4H004_RANK_D = True
+
+      garbageRank :: Int -> String
+      garbageRank _ = "unranked"
+  changed_files:
+    src/Grade.hs: |
+      module Grade where
+
+      classify :: Int -> String
+      classify n
+        | n >= 90 = "A"
+        | n >= 80 = "B"
+        | n >= 70 = "C"
+        | otherwise = "F"
+
+      isPassing :: Int -> Bool
+      isPassing n = n >= 70
+    src/garbage_score.hs: |
+      module GarbageScore where
+
+      GARBAGE_B4H004_SCORE_A = "score"
+      GARBAGE_B4H004_SCORE_B = 100
+
+      garbageScore :: Int -> Int
+      garbageScore x = x * 2
+    src/garbage_rank.hs: |
+      module GarbageRank where
+
+      GARBAGE_B4H004_RANK_C = "rank"
+      GARBAGE_B4H004_RANK_D = True
+
+      garbageRank :: Int -> String
+      garbageRank _ = "unranked"
+  commit_message: "feat: add grade C and isPassing helper"
+fragments:
+- id: new_guard
+  selector:
+    path: src/Grade.hs
+    anchor: "| n >= 70 = \"C\""
+- id: new_fn
+  selector:
+    path: src/Grade.hs
+    anchor: "isPassing :: Int -> Bool"
+- id: no_garbage_score
+  selector:
+    path: src/garbage_score.hs
+- id: no_garbage_rank
+  selector:
+    path: src/garbage_rank.hs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_B4H004_SCORE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_B4H004_SCORE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_B4H004_RANK_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_B4H004_RANK_D
+oracle:
+  required:
+  - new_guard
+  - new_fn
+  allowed: []
+  forbidden:
+  - no_garbage_score
+  - no_garbage_rank
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

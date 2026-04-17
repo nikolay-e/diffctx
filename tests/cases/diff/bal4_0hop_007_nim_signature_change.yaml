@@ -1,0 +1,90 @@
+name: bal4_0hop_007_nim_signature_change
+tags:
+- lang:nim
+- change:single_file
+- change:signature
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/convert.nim: |
+      proc toUpper(s: string): string =
+        result = ""
+        for c in s:
+          result.add(chr(ord(c) - 32))
+
+      proc toLower(s: string): string =
+        result = ""
+        for c in s:
+          result.add(chr(ord(c) + 32))
+    src/garbage_tokens.nim: |
+      const GARBAGE_B4N007_TOK_A = "tokens"
+      const GARBAGE_B4N007_TOK_B = 5
+
+      proc garbageTokenize(s: string): seq[string] =
+        @[s]
+    src/garbage_validate.nim: |
+      const GARBAGE_B4N007_VAL_C = "validate"
+      const GARBAGE_B4N007_VAL_D = false
+
+      proc garbageCheck(x: int): bool =
+        x > 0
+  changed_files:
+    src/convert.nim: |
+      proc toUpper(s: string, locale: string = "en"): string =
+        result = ""
+        for c in s:
+          result.add(chr(ord(c) - 32))
+
+      proc toLower(s: string): string =
+        result = ""
+        for c in s:
+          result.add(chr(ord(c) + 32))
+    src/garbage_tokens.nim: |
+      const GARBAGE_B4N007_TOK_A = "tokens"
+      const GARBAGE_B4N007_TOK_B = 5
+
+      proc garbageTokenize(s: string): seq[string] =
+        @[s]
+    src/garbage_validate.nim: |
+      const GARBAGE_B4N007_VAL_C = "validate"
+      const GARBAGE_B4N007_VAL_D = false
+
+      proc garbageCheck(x: int): bool =
+        x > 0
+  commit_message: "feat: add locale parameter to toUpper"
+fragments:
+- id: changed_sig
+  selector:
+    path: src/convert.nim
+    anchor: "proc toUpper(s: string, locale: string = \"en\"): string ="
+- id: no_garbage_tokens
+  selector:
+    path: src/garbage_tokens.nim
+- id: no_garbage_validate
+  selector:
+    path: src/garbage_validate.nim
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_B4N007_TOK_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_B4N007_TOK_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_B4N007_VAL_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_B4N007_VAL_D
+oracle:
+  required:
+  - changed_sig
+  allowed: []
+  forbidden:
+  - no_garbage_tokens
+  - no_garbage_validate
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

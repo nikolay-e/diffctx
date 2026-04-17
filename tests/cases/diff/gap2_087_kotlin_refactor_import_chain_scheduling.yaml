@@ -1,0 +1,236 @@
+name: gap2_087_kotlin_refactor_import_chain_scheduling
+tags:
+- lang:rust
+- change:bug_fix
+- change:multi_file
+- context:test_file
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/auth/token.rs: |
+      use crate::auth::claims::Claims;
+
+      pub fn generate_token(claims: &Claims, secret: &str) -> String {
+          let payload = serde_json::to_string(claims).unwrap();
+          format!("{}.{}", payload, secret)
+      }
+
+      pub fn validate_token(token: &str, secret: &str) -> bool {
+          let parts: Vec<&str> = token.splitn(2, '.').collect();
+          parts.len() == 2 && parts[1] == secret
+      }
+    src/auth/claims.rs: |
+      use serde::{Deserialize, Serialize};
+
+      #[derive(Debug, Serialize, Deserialize, Clone)]
+      pub struct Claims {
+          pub sub: String,
+          pub exp: u64,
+          pub roles: Vec<String>,
+      }
+
+      impl Claims {
+          pub fn new(sub: String, exp: u64, roles: Vec<String>) -> Self {
+              Self { sub, exp, roles }
+          }
+
+          pub fn is_expired(&self, now: u64) -> bool {
+              self.exp < now
+          }
+      }
+    src/auth/mod.rs: |
+      pub mod claims;
+      pub mod token;
+    tests/test_token.rs: |
+      use crate::auth::token::{generate_token, validate_token};
+      use crate::auth::claims::Claims;
+
+      #[test]
+      fn test_generate_and_validate_roundtrip() {
+          let claims = Claims::new("user123".to_string(), 9999999999, vec!["admin".to_string()]);
+          let token = generate_token(&claims, "mysecret");
+          assert!(validate_token(&token, "mysecret"));
+      }
+
+      #[test]
+      fn test_validate_rejects_wrong_secret() {
+          let claims = Claims::new("user123".to_string(), 9999999999, vec![]);
+          let token = generate_token(&claims, "correct");
+          assert!(!validate_token(&token, "wrong"));
+      }
+    src/storage/cache.rs: |
+      pub const GARBAGE_GAP087_A: &str = "cache_key_prefix";
+      pub const GARBAGE_GAP087_B: u32 = 3600;
+
+      pub struct Cache;
+
+      impl Cache {
+          pub fn get(&self, _key: &str) -> Option<String> { None }
+          pub fn set(&self, _key: &str, _value: &str) {}
+      }
+    src/storage/db.rs: |
+      pub const GARBAGE_GAP087_C: &str = "postgres://localhost/app";
+
+      pub struct DbPool;
+
+      impl DbPool {
+          pub fn query(&self, _sql: &str) -> Vec<String> { vec![] }
+      }
+    src/metrics/counter.rs: |
+      pub const GARBAGE_GAP087_D: &str = "requests_total";
+
+      pub struct Counter {
+          value: u64,
+      }
+
+      impl Counter {
+          pub fn new() -> Self { Self { value: 0 } }
+          pub fn increment(&mut self) { self.value += 1; }
+      }
+  changed_files:
+    src/auth/token.rs: |
+      use crate::auth::claims::Claims;
+
+      pub fn generate_token(claims: &Claims, secret: &str) -> String {
+          let payload = serde_json::to_string(claims).unwrap();
+          let encoded = base64::encode(&payload);
+          format!("{}.{}", encoded, secret)
+      }
+
+      pub fn validate_token(token: &str, secret: &str) -> bool {
+          let parts: Vec<&str> = token.splitn(2, '.').collect();
+          if parts.len() != 2 || parts[1] != secret {
+              return false;
+          }
+          let decoded = base64::decode(parts[0]).unwrap_or_default();
+          !decoded.is_empty()
+      }
+    src/auth/claims.rs: |
+      use serde::{Deserialize, Serialize};
+
+      #[derive(Debug, Serialize, Deserialize, Clone)]
+      pub struct Claims {
+          pub sub: String,
+          pub exp: u64,
+          pub roles: Vec<String>,
+      }
+
+      impl Claims {
+          pub fn new(sub: String, exp: u64, roles: Vec<String>) -> Self {
+              Self { sub, exp, roles }
+          }
+
+          pub fn is_expired(&self, now: u64) -> bool {
+              self.exp < now
+          }
+      }
+    src/auth/mod.rs: |
+      pub mod claims;
+      pub mod token;
+    tests/test_token.rs: |
+      use crate::auth::token::{generate_token, validate_token};
+      use crate::auth::claims::Claims;
+
+      #[test]
+      fn test_generate_and_validate_roundtrip() {
+          let claims = Claims::new("user123".to_string(), 9999999999, vec!["admin".to_string()]);
+          let token = generate_token(&claims, "mysecret");
+          assert!(validate_token(&token, "mysecret"));
+      }
+
+      #[test]
+      fn test_validate_rejects_wrong_secret() {
+          let claims = Claims::new("user123".to_string(), 9999999999, vec![]);
+          let token = generate_token(&claims, "correct");
+          assert!(!validate_token(&token, "wrong"));
+      }
+
+      #[test]
+      fn test_validate_rejects_tampered_payload() {
+          let token = "not_base64.mysecret";
+          assert!(!validate_token(token, "mysecret"));
+      }
+    src/storage/cache.rs: |
+      pub const GARBAGE_GAP087_A: &str = "cache_key_prefix";
+      pub const GARBAGE_GAP087_B: u32 = 3600;
+
+      pub struct Cache;
+
+      impl Cache {
+          pub fn get(&self, _key: &str) -> Option<String> { None }
+          pub fn set(&self, _key: &str, _value: &str) {}
+      }
+    src/storage/db.rs: |
+      pub const GARBAGE_GAP087_C: &str = "postgres://localhost/app";
+
+      pub struct DbPool;
+
+      impl DbPool {
+          pub fn query(&self, _sql: &str) -> Vec<String> { vec![] }
+      }
+    src/metrics/counter.rs: |
+      pub const GARBAGE_GAP087_D: &str = "requests_total";
+
+      pub struct Counter {
+          value: u64,
+      }
+
+      impl Counter {
+          pub fn new() -> Self { Self { value: 0 } }
+          pub fn increment(&mut self) { self.value += 1; }
+      }
+  commit_message: "fix: use base64 encoding in token generation and validation"
+fragments:
+- id: generate_token
+  selector:
+    path: src/auth/token.rs
+    anchor: "pub fn generate_token"
+- id: validate_token
+  selector:
+    path: src/auth/token.rs
+    anchor: "pub fn validate_token"
+- id: test_roundtrip
+  selector:
+    path: tests/test_token.rs
+    anchor: "fn test_generate_and_validate_roundtrip"
+- id: test_tampered
+  selector:
+    path: tests/test_token.rs
+    anchor: "fn test_validate_rejects_tampered_payload"
+- id: no_cache
+  selector:
+    path: src/storage/cache.rs
+- id: no_db
+  selector:
+    path: src/storage/db.rs
+- id: no_counter
+  selector:
+    path: src/metrics/counter.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP087_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GAP087_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GAP087_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GAP087_D
+oracle:
+  required:
+  - generate_token
+  - validate_token
+  - test_roundtrip
+  - test_tampered
+  allowed: []
+  forbidden:
+  - no_cache
+  - no_db
+  - no_counter
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

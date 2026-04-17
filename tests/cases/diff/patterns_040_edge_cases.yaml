@@ -1,181 +1,219 @@
 name: patterns_040_edge_cases
+tags:
+- lang:go
+- change:multi_file
+- change:new_function
+- context:same_file
+- distance:0hop
+- difficulty:easy
 repo:
   initial_files:
-    src/validator.py: |
-      import re
+    internal/notification/email.go: |
+      package notification
 
-      def validate_email(email: str) -> bool:
-          pattern = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
-          return bool(re.match(pattern, email))
+      import "fmt"
 
-      def validate_phone(phone: str) -> bool:
-          return phone.isdigit() and 10 <= len(phone) <= 15
+      type EmailSender struct {
+          host string
+          port int
+          from string
+      }
 
-      def validate_username(username: str) -> bool:
-          return len(username) >= 3 and username.isalnum()
-    tests/test_validator.py: |
-      from src.validator import validate_email
+      func NewEmailSender(host string, port int, from string) *EmailSender {
+          return &EmailSender{host: host, port: port, from: from}
+      }
 
-      def test_email_valid():
-          assert validate_email("test@example.com")
-    src/sanitizer.py: |
-      import re
+      func (e *EmailSender) Send(to, subject, body string) error {
+          fmt.Printf("sending email to %s: %s\n", to, subject)
+          return nil
+      }
 
-      def sanitize_html(text: str) -> str:
-          return re.sub(r'<[^>]+>', '', text)
+      func (e *EmailSender) Address() string {
+          return fmt.Sprintf("%s:%d", e.host, e.port)
+      }
+    internal/notification/sms.go: |
+      package notification
 
-      def validate_sql_input(value: str) -> bool:
-          dangerous = ["DROP", "DELETE", "INSERT", "UPDATE", "--", ";"]
-          upper_val = value.upper()
-          return not any(d in upper_val for d in dangerous)
+      import "fmt"
 
-      def escape_special_chars(text: str) -> str:
-          return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    tests/test_sanitizer.py: |
-      import pytest
-      from src.sanitizer import sanitize_html, validate_sql_input
+      type SmsSender struct {
+          apiKey   string
+          fromNum  string
+          sent     int
+      }
 
-      @pytest.mark.parametrize("input_html,expected", [
-          ("<b>bold</b>", "bold"),
-          ("<script>alert('xss')</script>", "alert('xss')"),
-          ("no tags", "no tags"),
-      ])
-      def test_sanitize_html(input_html, expected):
-          assert sanitize_html(input_html) == expected
+      func NewSmsSender(apiKey, fromNum string) *SmsSender {
+          return &SmsSender{apiKey: apiKey, fromNum: fromNum}
+      }
 
-      @pytest.mark.parametrize("value,expected", [
-          ("normal input", True),
-          ("DROP TABLE users", False),
-          ("hello; --", False),
-      ])
-      def test_validate_sql(value, expected):
-          assert validate_sql_input(value) == expected
+      func (s *SmsSender) Send(to, message string) error {
+          fmt.Printf("SMS to %s: %s\n", to, message)
+          s.sent++
+          return nil
+      }
+    internal/storage/blob.go: |
+      package storage
+
+      import "fmt"
+
+      type BlobStore struct {
+          bucket string
+      }
+
+      func NewBlobStore(bucket string) *BlobStore {
+          return &BlobStore{bucket: bucket}
+      }
+
+      func (b *BlobStore) Put(key string, data []byte) error {
+          fmt.Printf("storing %d bytes at %s/%s\n", len(data), b.bucket, key)
+          return nil
+      }
+    garbage/push_notification.go: |
+      // GARBAGE_PATT40_PUSH_A = "push_notification_marker"
+    garbage/webhook.go: |
+      // GARBAGE_PATT40_WEBH_B = "webhook_marker"
+    garbage/slack_notify.go: |
+      // GARBAGE_PATT40_SLACK_C = "slack_notify_marker"
+    garbage/pager_duty.go: |
+      // GARBAGE_PATT40_PAGER_D = "pager_duty_marker"
   changed_files:
-    src/validator.py: |
-      import re
+    internal/notification/email.go: |
+      package notification
 
-      def validate_email(email: str) -> bool:
-          pattern = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
-          return bool(re.match(pattern, email))
+      import "fmt"
 
-      def validate_phone(phone: str) -> bool:
-          return phone.isdigit() and 10 <= len(phone) <= 15
+      type EmailSender struct {
+          host    string
+          port    int
+          from    string
+          sent    int
+          failed  int
+      }
 
-      def validate_username(username: str) -> bool:
-          return len(username) >= 3 and username.isalnum()
-    tests/test_validator.py: |
-      import pytest
-      from src.validator import validate_email, validate_phone
+      func NewEmailSender(host string, port int, from string) *EmailSender {
+          return &EmailSender{host: host, port: port, from: from}
+      }
 
-      @pytest.mark.parametrize("email,expected", [
-          ("test@example.com", True),
-          ("user.name+tag@domain.co.uk", True),
-          ("invalid", False),
-          ("missing@domain", False),
-          ("@nodomain.com", False),
-          ("spaces in@email.com", False),
-          ("", False),
-      ])
-      def test_email_validation(email, expected):
-          assert validate_email(email) == expected
+      func (e *EmailSender) Send(to, subject, body string) error {
+          fmt.Printf("sending email to %s: %s\n", to, subject)
+          e.sent++
+          return nil
+      }
 
-      @pytest.mark.parametrize("phone,expected", [
-          ("1234567890", True),
-          ("12345678901234", True),
-          ("123", False),
-          ("12345678901234567", False),
-          ("123-456-7890", False),
-          ("phone123", False),
-      ])
-      def test_phone_validation(phone, expected):
-          assert validate_phone(phone) == expected
-    src/sanitizer.py: |
-      import re
+      func (e *EmailSender) Address() string {
+          return fmt.Sprintf("%s:%d", e.host, e.port)
+      }
 
-      def sanitize_html(text: str) -> str:
-          return re.sub(r'<[^>]+>', '', text)
+      func (e *EmailSender) Stats() (sent, failed int) {
+          return e.sent, e.failed
+      }
 
-      def validate_sql_input(value: str) -> bool:
-          dangerous = ["DROP", "DELETE", "INSERT", "UPDATE", "--", ";"]
-          upper_val = value.upper()
-          return not any(d in upper_val for d in dangerous)
+      func (e *EmailSender) RecordFailure() {
+          e.failed++
+      }
+    internal/notification/sms.go: |
+      package notification
 
-      def escape_special_chars(text: str) -> str:
-          return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    tests/test_sanitizer.py: |
-      import pytest
-      from src.sanitizer import sanitize_html, validate_sql_input
+      import "fmt"
 
-      @pytest.mark.parametrize("input_html,expected", [
-          ("<b>bold</b>", "bold"),
-          ("<script>alert('xss')</script>", "alert('xss')"),
-          ("no tags", "no tags"),
-      ])
-      def test_sanitize_html(input_html, expected):
-          assert sanitize_html(input_html) == expected
+      type SmsSender struct {
+          apiKey  string
+          fromNum string
+          sent    int
+          failed  int
+      }
 
-      @pytest.mark.parametrize("value,expected", [
-          ("normal input", True),
-          ("DROP TABLE users", False),
-          ("hello; --", False),
-      ])
-      def test_validate_sql(value, expected):
-          assert validate_sql_input(value) == expected
-  commit_message: Update files
+      func NewSmsSender(apiKey, fromNum string) *SmsSender {
+          return &SmsSender{apiKey: apiKey, fromNum: fromNum}
+      }
+
+      func (s *SmsSender) Send(to, message string) error {
+          fmt.Printf("SMS to %s: %s\n", to, message)
+          s.sent++
+          return nil
+      }
+
+      func (s *SmsSender) Stats() (sent, failed int) {
+          return s.sent, s.failed
+      }
+
+      func (s *SmsSender) RecordFailure() {
+          s.failed++
+      }
+    internal/storage/blob.go: |
+      package storage
+
+      import "fmt"
+
+      type BlobStore struct {
+          bucket string
+      }
+
+      func NewBlobStore(bucket string) *BlobStore {
+          return &BlobStore{bucket: bucket}
+      }
+
+      func (b *BlobStore) Put(key string, data []byte) error {
+          fmt.Printf("storing %d bytes at %s/%s\n", len(data), b.bucket, key)
+          return nil
+      }
+    garbage/push_notification.go: |
+      // GARBAGE_PATT40_PUSH_A = "push_notification_marker"
+    garbage/webhook.go: |
+      // GARBAGE_PATT40_WEBH_B = "webhook_marker"
+    garbage/slack_notify.go: |
+      // GARBAGE_PATT40_SLACK_C = "slack_notify_marker"
+    garbage/pager_duty.go: |
+      // GARBAGE_PATT40_PAGER_D = "pager_duty_marker"
+  commit_message: "feat: add Stats/RecordFailure to EmailSender and SmsSender"
 fragments:
-- id: test_validator
+- id: email_stats
   selector:
-    path: tests/test_validator.py
-    anchor: import pytest
-- id: test_validator_1
+    path: internal/notification/email.go
+    anchor: "func (e *EmailSender) Stats() (sent, failed int) {"
+- id: email_record_failure
   selector:
-    path: tests/test_validator.py
-    anchor: '@pytest.mark.parametrize("email,expected", ['
-- id: validator
+    path: internal/notification/email.go
+    anchor: "func (e *EmailSender) RecordFailure() {"
+- id: email_failed_field
   selector:
-    path: src/validator.py
-    anchor: 'def validate_email(email: str) -> bool:'
-- id: validator_1
+    path: internal/notification/email.go
+    anchor: "failed  int"
+- id: sms_stats
   selector:
-    path: src/validator.py
-    anchor: 'def validate_phone(phone: str) -> bool:'
-- id: no_sanitizer
+    path: internal/notification/sms.go
+    anchor: "func (s *SmsSender) Stats() (sent, failed int) {"
+- id: sms_record_failure
   selector:
-    path: src/sanitizer.py
-- id: no_test_sanitizer
+    path: internal/notification/sms.go
+    anchor: "func (s *SmsSender) RecordFailure() {"
+- id: unrelated_blob
   selector:
-    path: tests/test_sanitizer.py
-- id: no_global_0
+    path: internal/storage/blob.go
+    anchor: "func (b *BlobStore) Put"
+- id: no_garbage_a
   selector:
-    anchor: sanitize_html
-- id: no_global_1
+    anchor: GARBAGE_PATT40_PUSH_A
+- id: no_garbage_b
   selector:
-    anchor: validate_sql_input
-- id: no_global_2
+    anchor: GARBAGE_PATT40_WEBH_B
+- id: no_garbage_c
   selector:
-    anchor: escape_special_chars
-- id: no_global_3
+    anchor: GARBAGE_PATT40_SLACK_C
+- id: no_garbage_d
   selector:
-    anchor: test_sanitize_html
-- id: no_global_4
-  selector:
-    anchor: test_validate_sql
-- id: no_global_5
-  selector:
-    anchor: DROP TABLE
+    anchor: GARBAGE_PATT40_PAGER_D
 oracle:
   required:
-  - test_validator
-  - test_validator_1
-  - validator
-  - validator_1
-  allowed: []
+  - email_stats
+  - email_record_failure
+  - sms_stats
+  - sms_record_failure
+  allowed:
+  - email_failed_field
   forbidden:
-  - no_sanitizer
-  - no_test_sanitizer
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+  - unrelated_blob
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

@@ -1,0 +1,126 @@
+name: gap_018_prisma_product_soft_delete_column
+tags:
+- lang:prisma
+- lang:sql
+- lang:typescript
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    prisma/schema.prisma: |
+      generator client {
+        provider = "prisma-client-js"
+      }
+
+      datasource db {
+        provider = "postgresql"
+        url      = env("DATABASE_URL")
+      }
+
+      model Product {
+        id          Int      @id @default(autoincrement())
+        name        String
+        price       Decimal
+        sku         String   @unique
+        categoryId  Int
+        category    Category @relation(fields: [categoryId], references: [id])
+        createdAt   DateTime @default(now())
+      }
+
+      model Category {
+        id       Int       @id @default(autoincrement())
+        name     String    @unique
+        products Product[]
+      }
+    migrations/001_products.sql: |
+      CREATE TABLE "Category" (
+        "id" SERIAL PRIMARY KEY,
+        "name" TEXT NOT NULL UNIQUE
+      );
+
+      CREATE TABLE "Product" (
+        "id" SERIAL PRIMARY KEY,
+        "name" TEXT NOT NULL,
+        "price" DECIMAL NOT NULL,
+        "sku" TEXT NOT NULL UNIQUE,
+        "categoryId" INTEGER NOT NULL,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "Product_categoryId_fkey" FOREIGN KEY ("categoryId") REFERENCES "Category"("id")
+      );
+    src/api/catalog.ts: |
+      import { PrismaClient } from '@prisma/client';
+
+      const prisma = new PrismaClient();
+
+      export async function listProducts(categoryId?: number) {
+        const where = categoryId ? { categoryId } : {};
+        return prisma.product.findMany({ where, orderBy: { name: 'asc' } });
+      }
+
+      export async function getProduct(sku: string) {
+        return prisma.product.findUnique({ where: { sku } });
+      }
+    src/utils/currency.ts: |
+      export function formatPrice(cents: number, currency: string = 'USD'): string {
+        const dollars = (cents / 100).toFixed(2);
+        return `${currency} ${dollars}`;
+      }
+
+      export function parsePriceString(s: string): number {
+        return Math.round(parseFloat(s.replace(/[^0-9.]/g, '')) * 100);
+      }
+  changed_files:
+    prisma/schema.prisma: |
+      generator client {
+        provider = "prisma-client-js"
+      }
+
+      datasource db {
+        provider = "postgresql"
+        url      = env("DATABASE_URL")
+      }
+
+      model Product {
+        id          Int       @id @default(autoincrement())
+        name        String
+        price       Decimal
+        sku         String    @unique
+        categoryId  Int
+        category    Category  @relation(fields: [categoryId], references: [id])
+        createdAt   DateTime  @default(now())
+        deletedAt   DateTime?
+
+        @@index([deletedAt])
+      }
+
+      model Category {
+        id       Int       @id @default(autoincrement())
+        name     String    @unique
+        products Product[]
+      }
+fragments:
+- id: product_model
+  selector:
+    path: prisma/schema.prisma
+    anchor: "model Product"
+- id: deleted_at_field
+  selector:
+    path: prisma/schema.prisma
+    anchor: "deletedAt"
+- id: no_currency
+  selector:
+    path: src/utils/currency.ts
+- id: no_catalog
+  selector:
+    path: src/api/catalog.ts
+oracle:
+  required:
+  - product_model
+  - deleted_at_field
+  forbidden:
+  - no_currency
+  - no_catalog

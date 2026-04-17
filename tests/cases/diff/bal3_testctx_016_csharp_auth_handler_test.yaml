@@ -1,0 +1,173 @@
+name: bal3_testctx_016_csharp_auth_handler_test
+tags:
+- lang:csharp
+- change:multi_file
+- change:refactor
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/AuthHandler.cs: |
+      namespace Auth;
+
+      using System.Collections.Generic;
+
+      public class AuthHandler
+      {
+          private readonly Dictionary<string, string> _credentials = new();
+
+          public void Register(string username, string passwordHash)
+          {
+              _credentials[username] = passwordHash;
+          }
+
+          public bool Authenticate(string username, string passwordHash)
+          {
+              return _credentials.TryGetValue(username, out var stored) && stored == passwordHash;
+          }
+      }
+    src/TokenGenerator.cs: |
+      namespace Auth;
+
+      using System;
+
+      public class TokenGenerator
+      {
+          public string Generate(string userId)
+          {
+              return $"{userId}:{Guid.NewGuid():N}";
+          }
+      }
+    tests/AuthHandlerTests.cs: |
+      using Xunit;
+      using Auth;
+
+      public class AuthHandlerTests
+      {
+          [Fact]
+          public void Register_And_Authenticate_Succeeds()
+          {
+              var handler = new AuthHandler();
+              handler.Register("alice", "hash123");
+              Assert.True(handler.Authenticate("alice", "hash123"));
+          }
+
+          [Fact]
+          public void Authenticate_WrongPassword_Fails()
+          {
+              var handler = new AuthHandler();
+              handler.Register("bob", "correct");
+              Assert.False(handler.Authenticate("bob", "wrong"));
+          }
+
+          [Fact]
+          public void Authenticate_UnknownUser_Fails()
+          {
+              var handler = new AuthHandler();
+              Assert.False(handler.Authenticate("nobody", "any"));
+          }
+      }
+    src/SessionStore.cs: |
+      namespace Auth;
+
+      using System.Collections.Generic;
+
+      public class SessionStore
+      {
+          private readonly HashSet<string> _sessions = new();
+
+          public void Add(string sessionId) => _sessions.Add(sessionId);
+          public bool Contains(string sessionId) => _sessions.Contains(sessionId);
+          public void Remove(string sessionId) => _sessions.Remove(sessionId);
+      }
+  changed_files:
+    src/AuthHandler.cs: |
+      namespace Auth;
+
+      using System;
+      using System.Collections.Generic;
+
+      public class AuthHandler
+      {
+          private readonly Dictionary<string, string> _credentials = new();
+          private readonly HashSet<string> _lockedAccounts = new();
+          private readonly Dictionary<string, int> _failedAttempts = new();
+
+          public void Register(string username, string passwordHash)
+          {
+              _credentials[username] = passwordHash;
+          }
+
+          public bool Authenticate(string username, string passwordHash)
+          {
+              if (_lockedAccounts.Contains(username))
+                  return false;
+
+              if (!_credentials.TryGetValue(username, out var stored) || stored != passwordHash)
+              {
+                  var attempts = _failedAttempts.GetValueOrDefault(username, 0) + 1;
+                  _failedAttempts[username] = attempts;
+                  if (attempts >= 5)
+                      _lockedAccounts.Add(username);
+                  return false;
+              }
+
+              _failedAttempts.Remove(username);
+              return true;
+          }
+
+          public bool IsLocked(string username) => _lockedAccounts.Contains(username);
+
+          public void Unlock(string username)
+          {
+              _lockedAccounts.Remove(username);
+              _failedAttempts.Remove(username);
+          }
+      }
+  commit_message: "refactor: add account lockout after 5 failed attempts"
+fragments:
+- id: locked_accounts_field
+  selector:
+    path: src/AuthHandler.cs
+    anchor: "_lockedAccounts = new()"
+- id: lockout_logic
+  selector:
+    path: src/AuthHandler.cs
+    anchor: "attempts >= 5"
+- id: is_locked_method
+  selector:
+    path: src/AuthHandler.cs
+    anchor: "public bool IsLocked(string username)"
+- id: unlock_method
+  selector:
+    path: src/AuthHandler.cs
+    anchor: "public void Unlock(string username)"
+- id: test_register_auth
+  selector:
+    path: tests/AuthHandlerTests.cs
+    anchor: "public void Register_And_Authenticate_Succeeds()"
+- id: test_wrong_password
+  selector:
+    path: tests/AuthHandlerTests.cs
+    anchor: "public void Authenticate_WrongPassword_Fails()"
+- id: no_token_gen
+  selector:
+    path: src/TokenGenerator.cs
+    anchor: "public class TokenGenerator"
+- id: no_session_store
+  selector:
+    path: src/SessionStore.cs
+    anchor: "public class SessionStore"
+oracle:
+  required:
+  - locked_accounts_field
+  - lockout_logic
+  - is_locked_method
+  - test_register_auth
+  - test_wrong_password
+  allowed:
+  - unlock_method
+  forbidden:
+  - no_token_gen
+  - no_session_store

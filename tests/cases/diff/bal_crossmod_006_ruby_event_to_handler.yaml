@@ -1,0 +1,174 @@
+name: bal_crossmod_006_ruby_event_to_handler
+tags:
+- lang:ruby
+- change:multi_file
+- change:new_function
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    lib/events/domain_event.rb: |
+      module Events
+        class DomainEvent
+          attr_reader :name, :payload, :timestamp
+
+          def initialize(name, payload)
+            @name = name
+            @payload = payload
+            @timestamp = Time.now
+          end
+        end
+      end
+    lib/events/event_bus.rb: |
+      require_relative 'domain_event'
+      module Events
+        class EventBus
+          def initialize
+            @handlers = Hash.new { |h, k| h[k] = [] }
+          end
+
+          def subscribe(event_name, handler)
+            @handlers[event_name] << handler
+          end
+
+          def publish(event)
+            @handlers[event.name].each { |h| h.call(event) }
+          end
+        end
+      end
+    lib/handlers/notification_handler.rb: |
+      module Handlers
+        class NotificationHandler
+          def call(event)
+            send_email(event.payload[:email], event.name)
+          end
+
+          private
+
+          def send_email(to, subject)
+            puts "Sending #{subject} to #{to}"
+          end
+        end
+      end
+    lib/config/event_config.rb: |
+      require_relative '../events/event_bus'
+      require_relative '../handlers/notification_handler'
+      module Config
+        class EventConfig
+          def self.setup
+            bus = Events::EventBus.new
+            bus.subscribe('user.created', Handlers::NotificationHandler.new)
+            bus
+          end
+        end
+      end
+    lib/utils/time_helper.rb: |
+      module Utils
+        class TimeHelper
+          def self.format_timestamp(time)
+            time.strftime('%Y-%m-%d %H:%M:%S')
+          end
+        end
+      end
+  changed_files:
+    lib/events/domain_event.rb: |
+      module Events
+        class DomainEvent
+          attr_reader :name, :payload, :timestamp, :correlation_id
+
+          def initialize(name, payload, correlation_id: nil)
+            @name = name
+            @payload = payload
+            @timestamp = Time.now
+            @correlation_id = correlation_id
+          end
+        end
+      end
+    lib/events/event_bus.rb: |
+      require_relative 'domain_event'
+      module Events
+        class EventBus
+          def initialize
+            @handlers = Hash.new { |h, k| h[k] = [] }
+          end
+
+          def subscribe(event_name, handler)
+            @handlers[event_name] << handler
+          end
+
+          def publish(event)
+            @handlers[event.name].each { |h| h.call(event) }
+          end
+
+          def publish_with_correlation(event_name, payload, correlation_id)
+            event = DomainEvent.new(event_name, payload, correlation_id: correlation_id)
+            publish(event)
+          end
+        end
+      end
+    lib/handlers/notification_handler.rb: |
+      module Handlers
+        class NotificationHandler
+          def call(event)
+            send_email(event.payload[:email], event.name)
+          end
+
+          private
+
+          def send_email(to, subject)
+            puts "Sending #{subject} to #{to}"
+          end
+        end
+      end
+    lib/config/event_config.rb: |
+      require_relative '../events/event_bus'
+      require_relative '../handlers/notification_handler'
+      module Config
+        class EventConfig
+          def self.setup
+            bus = Events::EventBus.new
+            bus.subscribe('user.created', Handlers::NotificationHandler.new)
+            bus
+          end
+        end
+      end
+    lib/utils/time_helper.rb: |
+      module Utils
+        class TimeHelper
+          def self.format_timestamp(time)
+            time.strftime('%Y-%m-%d %H:%M:%S')
+          end
+        end
+      end
+  commit_message: "feat: add correlation_id to domain events"
+fragments:
+- id: domain_event_correlation
+  selector:
+    path: lib/events/domain_event.rb
+    anchor: "correlation_id"
+- id: bus_publish_correlation
+  selector:
+    path: lib/events/event_bus.rb
+    anchor: "def publish_with_correlation"
+- id: handler_calls_event
+  selector:
+    path: lib/handlers/notification_handler.rb
+    anchor: "def call(event)"
+- id: config_subscribes
+  selector:
+    path: lib/config/event_config.rb
+    anchor: "bus.subscribe"
+- id: no_time_helper
+  selector:
+    path: lib/utils/time_helper.rb
+    anchor: "def self.format_timestamp"
+oracle:
+  required:
+  - domain_event_correlation
+  - bus_publish_correlation
+  - handler_calls_event
+  allowed:
+  - config_subscribes
+  forbidden:
+  - no_time_helper

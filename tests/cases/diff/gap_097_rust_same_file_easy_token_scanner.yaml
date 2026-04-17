@@ -1,0 +1,212 @@
+name: gap_097_rust_same_file_easy_token_scanner
+tags:
+- lang:rust
+- change:new_function
+- change:signature
+- change:single_file
+- context:same_file
+- difficulty:easy
+- distance:0hop
+repo:
+  initial_files:
+    src/scanner.rs: |
+      #[derive(Debug, PartialEq)]
+      pub enum Token {
+          Number(f64),
+          Operator(char),
+          LeftParen,
+          RightParen,
+      }
+
+      pub struct Scanner {
+          input: Vec<char>,
+          pos: usize,
+      }
+
+      impl Scanner {
+          pub fn new(input: &str) -> Self {
+              Scanner {
+                  input: input.chars().collect(),
+                  pos: 0,
+              }
+          }
+
+          pub fn next_token(&mut self) -> Option<Token> {
+              self.skip_whitespace();
+              if self.pos >= self.input.len() {
+                  return None;
+              }
+              let ch = self.input[self.pos];
+              match ch {
+                  '(' => { self.pos += 1; Some(Token::LeftParen) }
+                  ')' => { self.pos += 1; Some(Token::RightParen) }
+                  '+' | '-' | '*' | '/' => { self.pos += 1; Some(Token::Operator(ch)) }
+                  '0'..='9' => Some(self.scan_number()),
+                  _ => { self.pos += 1; None }
+              }
+          }
+
+          fn skip_whitespace(&mut self) {
+              while self.pos < self.input.len() && self.input[self.pos].is_whitespace() {
+                  self.pos += 1;
+              }
+          }
+
+          fn scan_number(&mut self) -> Token {
+              let start = self.pos;
+              while self.pos < self.input.len() && self.input[self.pos].is_ascii_digit() {
+                  self.pos += 1;
+              }
+              let s: String = self.input[start..self.pos].iter().collect();
+              Token::Number(s.parse().unwrap_or(0.0))
+          }
+      }
+    src/evaluator.rs: |
+      pub fn evaluate_postfix(tokens: &[f64], ops: &[char]) -> f64 {
+          let mut stack: Vec<f64> = Vec::new();
+          for &val in tokens {
+              stack.push(val);
+          }
+          for &op in ops {
+              if stack.len() < 2 {
+                  break;
+              }
+              let b = stack.pop().unwrap();
+              let a = stack.pop().unwrap();
+              let result = match op {
+                  '+' => a + b,
+                  '-' => a - b,
+                  '*' => a * b,
+                  '/' => if b != 0.0 { a / b } else { 0.0 },
+                  _ => 0.0,
+              };
+              stack.push(result);
+          }
+          stack.pop().unwrap_or(0.0)
+      }
+    src/formatter.rs: |
+      pub fn format_number(n: f64, decimals: usize) -> String {
+          format!("{:.prec$}", n, prec = decimals)
+      }
+
+      pub fn format_expression(parts: &[String]) -> String {
+          parts.join(" ")
+      }
+
+      pub fn parenthesize(expr: &str) -> String {
+          format!("({})", expr)
+      }
+  changed_files:
+    src/scanner.rs: |
+      #[derive(Debug, PartialEq)]
+      pub enum Token {
+          Number(f64),
+          Identifier(String),
+          Operator(char),
+          LeftParen,
+          RightParen,
+      }
+
+      pub struct Scanner {
+          input: Vec<char>,
+          pos: usize,
+      }
+
+      impl Scanner {
+          pub fn new(input: &str) -> Self {
+              Scanner {
+                  input: input.chars().collect(),
+                  pos: 0,
+              }
+          }
+
+          pub fn scan_all(&mut self) -> Vec<Token> {
+              let mut tokens = Vec::new();
+              while let Some(token) = self.next_token() {
+                  tokens.push(token);
+              }
+              tokens
+          }
+
+          pub fn next_token(&mut self) -> Option<Token> {
+              self.skip_whitespace();
+              if self.pos >= self.input.len() {
+                  return None;
+              }
+              let ch = self.input[self.pos];
+              match ch {
+                  '(' => { self.pos += 1; Some(Token::LeftParen) }
+                  ')' => { self.pos += 1; Some(Token::RightParen) }
+                  '+' | '-' | '*' | '/' => { self.pos += 1; Some(Token::Operator(ch)) }
+                  '0'..='9' => Some(self.scan_number()),
+                  'a'..='z' | 'A'..='Z' | '_' => Some(self.scan_identifier()),
+                  _ => { self.pos += 1; None }
+              }
+          }
+
+          fn skip_whitespace(&mut self) {
+              while self.pos < self.input.len() && self.input[self.pos].is_whitespace() {
+                  self.pos += 1;
+              }
+          }
+
+          fn scan_number(&mut self) -> Token {
+              let start = self.pos;
+              while self.pos < self.input.len() && self.input[self.pos].is_ascii_digit() {
+                  self.pos += 1;
+              }
+              let s: String = self.input[start..self.pos].iter().collect();
+              Token::Number(s.parse().unwrap_or(0.0))
+          }
+
+          fn scan_identifier(&mut self) -> Token {
+              let start = self.pos;
+              while self.pos < self.input.len()
+                  && (self.input[self.pos].is_alphanumeric() || self.input[self.pos] == '_')
+              {
+                  self.pos += 1;
+              }
+              let s: String = self.input[start..self.pos].iter().collect();
+              Token::Identifier(s)
+          }
+      }
+  commit_message: "feat(scanner): add identifier token and scan_all"
+fixtures:
+  auto_garbage: true
+fragments:
+- id: scanner_identifier_variant
+  selector:
+    path: src/scanner.rs
+    anchor: "Identifier(String)"
+- id: scanner_scan_all
+  selector:
+    path: src/scanner.rs
+    anchor: "pub fn scan_all"
+- id: scanner_scan_identifier
+  selector:
+    path: src/scanner.rs
+    anchor: "fn scan_identifier"
+- id: scanner_enum
+  selector:
+    path: src/scanner.rs
+    anchor: "pub enum Token"
+- id: no_evaluator
+  selector:
+    path: src/evaluator.rs
+- id: no_formatter
+  selector:
+    path: src/formatter.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_097_A
+oracle:
+  required:
+  - scanner_identifier_variant
+  - scanner_scan_all
+  - scanner_scan_identifier
+  - scanner_enum
+  allowed: []
+  forbidden:
+  - no_evaluator
+  - no_formatter
+  - no_global_0

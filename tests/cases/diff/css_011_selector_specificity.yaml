@@ -1,0 +1,94 @@
+name: css_011_selector_specificity
+tags:
+- lang:css
+- change:multi_file
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    utils.css: |
+      .hidden { display: none !important; }
+      .visible { display: block !important; }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+      }
+    nav.css: |
+      @import "utils.css";
+      .nav-mobile { display: flex; }
+      .nav-desktop { display: none; }
+    dropdown.css: |
+      @import "utils.css";
+      .dropdown-menu { display: none; }
+      .dropdown-menu.open { display: block; }
+    CSS_NOISE_011_charts.css: |
+      .CSS_NOISE_011_chart_bar { fill: #3b82f6; }
+      .CSS_NOISE_011_chart_line { stroke: #10b981; stroke-width: 2; }
+    CSS_NOISE_011_pricing.css: |
+      .CSS_NOISE_011_pricing_card { border: 2px solid transparent; }
+      .CSS_NOISE_011_pricing_featured { border-color: #6366f1; }
+  changed_files:
+    utils.css: |
+      .is-hidden { display: none !important; }
+      .is-visible { display: block !important; }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+      }
+    nav.css: |
+      @import "utils.css";
+      .nav-mobile { display: flex; }
+      .nav-desktop { display: none; }
+    dropdown.css: |
+      @import "utils.css";
+      .dropdown-menu { display: none; }
+      .dropdown-menu.open { display: block; }
+  commit_message: "style: rename .hidden/.visible to .is-hidden/.is-visible"
+fragments:
+- id: is_hidden_class
+  selector:
+    path: utils.css
+    anchor: is-hidden
+- id: is_visible_class
+  selector:
+    path: utils.css
+    anchor: is-visible
+- id: nav_imports_utils
+  selector:
+    path: nav.css
+    anchor: utils.css
+- id: dropdown_imports_utils
+  selector:
+    path: dropdown.css
+    anchor: utils.css
+- id: no_charts
+  selector:
+    path: CSS_NOISE_011_charts.css
+- id: no_pricing
+  selector:
+    path: CSS_NOISE_011_pricing.css
+- id: no_global_0
+  selector:
+    anchor: CSS_NOISE_011_chart_bar
+- id: no_global_1
+  selector:
+    anchor: CSS_NOISE_011_pricing_card
+oracle:
+  required:
+  - is_hidden_class
+  - is_visible_class
+  - nav_imports_utils
+  - dropdown_imports_utils
+  allowed: []
+  forbidden:
+  - no_charts
+  - no_pricing
+  - no_global_0
+  - no_global_1

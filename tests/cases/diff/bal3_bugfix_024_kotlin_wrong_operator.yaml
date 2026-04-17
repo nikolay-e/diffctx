@@ -1,0 +1,134 @@
+name: bal3_bugfix_024_kotlin_wrong_operator
+tags:
+- lang:json
+- lang:yaml
+- change:config
+- change:single_file
+- context:import_chain
+- distance:2hop
+- difficulty:medium
+repo:
+  initial_files:
+    config/ratelimit.json: |
+      {
+        "rateLimit": {
+          "requestsPerMinute": 60,
+          "burstSize": 10,
+          "windowSeconds": 60
+        }
+      }
+    src/gateway/limiter.py: |
+      import json
+
+      def load_ratelimit_config(path: str = "config/ratelimit.json") -> dict:
+          with open(path) as f:
+              return json.load(f)
+
+      def build_limiter(config: dict) -> "TokenBucketLimiter":
+          rl = config["rateLimit"]
+          return TokenBucketLimiter(
+              rate=rl["requestsPerMinute"],
+              burst=rl["burstSize"],
+              window=rl["windowSeconds"],
+          )
+    src/gateway/middleware.py: |
+      from src.gateway.limiter import build_limiter, load_ratelimit_config
+
+      class RateLimitMiddleware:
+          def __init__(self):
+              config = load_ratelimit_config()
+              self.limiter = build_limiter(config)
+
+          def __call__(self, request, next_handler):
+              if not self.limiter.allow(request.client_ip):
+                  return Response(status=429, body="rate limit exceeded")
+              return next_handler(request)
+    garbage/AuthMiddleware.py: |
+      # GARBAGE_GW_A = "auth_middleware_marker"
+    garbage/LoggingMiddleware.py: |
+      # GARBAGE_GW_B = "logging_middleware_marker"
+    garbage/CorsMiddleware.py: |
+      # GARBAGE_GW_C = "cors_middleware_marker"
+    garbage/TracingMiddleware.py: |
+      # GARBAGE_GW_D = "tracing_middleware_marker"
+  changed_files:
+    config/ratelimit.json: |
+      {
+        "rateLimit": {
+          "requestsPerMinute": 120,
+          "burstSize": 25,
+          "windowSeconds": 60,
+          "penaltySeconds": 30
+        }
+      }
+    src/gateway/limiter.py: |
+      import json
+
+      def load_ratelimit_config(path: str = "config/ratelimit.json") -> dict:
+          with open(path) as f:
+              return json.load(f)
+
+      def build_limiter(config: dict) -> "TokenBucketLimiter":
+          rl = config["rateLimit"]
+          return TokenBucketLimiter(
+              rate=rl["requestsPerMinute"],
+              burst=rl["burstSize"],
+              window=rl["windowSeconds"],
+              penalty=rl.get("penaltySeconds", 0),
+          )
+    src/gateway/middleware.py: |
+      from src.gateway.limiter import build_limiter, load_ratelimit_config
+
+      class RateLimitMiddleware:
+          def __init__(self):
+              config = load_ratelimit_config()
+              self.limiter = build_limiter(config)
+
+          def __call__(self, request, next_handler):
+              if not self.limiter.allow(request.client_ip):
+                  return Response(status=429, body="rate limit exceeded")
+              return next_handler(request)
+    garbage/AuthMiddleware.py: |
+      # GARBAGE_GW_A = "auth_middleware_marker"
+    garbage/LoggingMiddleware.py: |
+      # GARBAGE_GW_B = "logging_middleware_marker"
+    garbage/CorsMiddleware.py: |
+      # GARBAGE_GW_C = "cors_middleware_marker"
+    garbage/TracingMiddleware.py: |
+      # GARBAGE_GW_D = "tracing_middleware_marker"
+  commit_message: "config: increase rate limit capacity and add penalty window"
+fragments:
+- id: ratelimit_config
+  selector:
+    path: config/ratelimit.json
+    anchor: "requestsPerMinute"
+- id: build_limiter
+  selector:
+    path: src/gateway/limiter.py
+    anchor: "def build_limiter"
+- id: no_middleware
+  selector:
+    path: src/gateway/middleware.py
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_GW_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_GW_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_GW_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_GW_D
+oracle:
+  required:
+  - ratelimit_config
+  - build_limiter
+  allowed: []
+  forbidden:
+  - no_middleware
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

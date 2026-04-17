@@ -1,0 +1,232 @@
+name: gap_059_py_multifunction_image_pipeline
+tags:
+- lang:ruby
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:easy
+repo:
+  initial_files:
+    lib/iot/sensor.rb: |
+      module Iot
+        class Sensor
+          attr_reader :id, :unit
+
+          def initialize(id, unit)
+            @id = id
+            @unit = unit
+          end
+
+          def read
+            raise NotImplementedError
+          end
+        end
+      end
+    lib/iot/thermometer.rb: |
+      require_relative 'sensor'
+
+      module Iot
+        class Thermometer < Sensor
+          def initialize(id)
+            super(id, 'celsius')
+          end
+
+          def read
+            20.0 + rand * 10
+          end
+        end
+      end
+    lib/monitoring/collector.rb: |
+      require_relative '../iot/thermometer'
+
+      module Monitoring
+        class Collector
+          def initialize
+            @sensors = []
+          end
+
+          def add_sensor(sensor)
+            @sensors << sensor
+          end
+
+          def collect
+            @sensors.map { |s| { id: s.id, value: s.read, unit: s.unit } }
+          end
+        end
+      end
+    lib/monitoring/aggregator.rb: |
+      require_relative 'collector'
+
+      module Monitoring
+        class Aggregator
+          def initialize(collector)
+            @collector = collector
+          end
+
+          def average
+            readings = @collector.collect
+            return 0.0 if readings.empty?
+            readings.sum { |r| r[:value] } / readings.size.to_f
+          end
+        end
+      end
+    lib/api/telemetry_controller.rb: |
+      require_relative '../monitoring/aggregator'
+
+      module Api
+        class TelemetryController
+          def initialize(aggregator)
+            @aggregator = aggregator
+          end
+
+          def get_average
+            { average: @aggregator.average }
+          end
+        end
+      end
+    garbage/firmware.rb: |
+      # GARBAGE_IMGPIPE_A = "firmware_updater_marker"
+    garbage/provisioner.rb: |
+      # GARBAGE_IMGPIPE_B = "device_provisioner_marker"
+    garbage/dashboard.rb: |
+      # GARBAGE_IMGPIPE_C = "grafana_dashboard_marker"
+  changed_files:
+    lib/iot/sensor.rb: |
+      module Iot
+        class Sensor
+          attr_reader :id, :unit, :location
+
+          def initialize(id, unit, location: 'unknown')
+            @id = id
+            @unit = unit
+            @location = location
+          end
+
+          def read
+            raise NotImplementedError
+          end
+
+          def metadata
+            { id: @id, unit: @unit, location: @location }
+          end
+        end
+      end
+    lib/iot/thermometer.rb: |
+      require_relative 'sensor'
+
+      module Iot
+        class Thermometer < Sensor
+          def initialize(id, location: 'unknown')
+            super(id, 'celsius', location: location)
+          end
+
+          def read
+            20.0 + rand * 10
+          end
+        end
+      end
+    lib/monitoring/collector.rb: |
+      require_relative '../iot/thermometer'
+
+      module Monitoring
+        class Collector
+          def initialize
+            @sensors = []
+          end
+
+          def add_sensor(sensor)
+            @sensors << sensor
+          end
+
+          def collect
+            @sensors.map { |s| s.metadata.merge(value: s.read) }
+          end
+        end
+      end
+    lib/monitoring/aggregator.rb: |
+      require_relative 'collector'
+
+      module Monitoring
+        class Aggregator
+          def initialize(collector)
+            @collector = collector
+          end
+
+          def average
+            readings = @collector.collect
+            return 0.0 if readings.empty?
+            readings.sum { |r| r[:value] } / readings.size.to_f
+          end
+
+          def by_location
+            @collector.collect.group_by { |r| r[:location] }
+          end
+        end
+      end
+    lib/api/telemetry_controller.rb: |
+      require_relative '../monitoring/aggregator'
+
+      module Api
+        class TelemetryController
+          def initialize(aggregator)
+            @aggregator = aggregator
+          end
+
+          def get_average
+            { average: @aggregator.average }
+          end
+
+          def get_by_location
+            @aggregator.by_location
+          end
+        end
+      end
+    garbage/firmware.rb: |
+      # GARBAGE_IMGPIPE_A = "firmware_updater_marker"
+    garbage/provisioner.rb: |
+      # GARBAGE_IMGPIPE_B = "device_provisioner_marker"
+    garbage/dashboard.rb: |
+      # GARBAGE_IMGPIPE_C = "grafana_dashboard_marker"
+  commit_message: "feat: add location to Sensor and by_location aggregation"
+fragments:
+- id: sensor_location_field
+  selector:
+    path: lib/iot/sensor.rb
+    anchor: "attr_reader :id, :unit, :location"
+- id: thermometer_location_init
+  selector:
+    path: lib/iot/thermometer.rb
+    anchor: "def initialize(id, location: 'unknown')"
+- id: collector_uses_metadata
+  selector:
+    path: lib/monitoring/collector.rb
+    anchor: "s.metadata.merge(value: s.read)"
+- id: aggregator_by_location
+  selector:
+    path: lib/monitoring/aggregator.rb
+    anchor: "def by_location"
+- id: controller_exposes_location
+  selector:
+    path: lib/api/telemetry_controller.rb
+    anchor: "get_by_location"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_IMGPIPE_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_IMGPIPE_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_IMGPIPE_C
+oracle:
+  required:
+  - sensor_location_field
+  - thermometer_location_init
+  - collector_uses_metadata
+  - aggregator_by_location
+  allowed:
+  - controller_exposes_location
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

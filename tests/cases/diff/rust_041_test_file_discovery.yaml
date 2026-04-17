@@ -1,0 +1,173 @@
+name: rust_041_test_file_discovery
+tags:
+- lang:rust
+- change:single_file
+- change:signature
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/parser.rs: |
+      pub struct Parser {
+          strict: bool,
+      }
+
+      impl Parser {
+          pub fn new(strict: bool) -> Self {
+              Parser { strict }
+          }
+
+          pub fn parse(&self, input: &str) -> Result<Vec<String>, String> {
+              let tokens: Vec<String> = input
+                  .split_whitespace()
+                  .map(|s| s.to_string())
+                  .collect();
+              if self.strict && tokens.is_empty() {
+                  return Err("empty input".to_string());
+              }
+              Ok(tokens)
+          }
+      }
+    tests/test_parser.rs: |
+      use crate::parser::Parser;
+
+      #[cfg(test)]
+      mod tests {
+          use super::*;
+
+          #[test]
+          fn test_parse_basic() {
+              let p = Parser::new(false);
+              let result = p.parse("hello world");
+              assert_eq!(result.unwrap(), vec!["hello", "world"]);
+          }
+
+          #[test]
+          fn test_parse_strict_empty() {
+              let p = Parser::new(true);
+              let result = p.parse("");
+              assert!(result.is_err());
+          }
+
+          #[test]
+          fn test_parse_single_token() {
+              let p = Parser::new(false);
+              let result = p.parse("single");
+              assert_eq!(result.unwrap(), vec!["single"]);
+          }
+      }
+    src/formatter.rs: |
+      pub fn format_output(items: &[String]) -> String {
+          items.join(", ")
+      }
+
+      pub fn format_numbered(items: &[String]) -> String {
+          items
+              .iter()
+              .enumerate()
+              .map(|(i, s)| format!("{}. {}", i + 1, s))
+              .collect::<Vec<_>>()
+              .join("\n")
+      }
+  changed_files:
+    src/parser.rs: |
+      pub struct Parser {
+          strict: bool,
+          max_tokens: usize,
+      }
+
+      impl Parser {
+          pub fn new(strict: bool) -> Self {
+              Parser { strict, max_tokens: 1000 }
+          }
+
+          pub fn with_limit(strict: bool, max_tokens: usize) -> Self {
+              Parser { strict, max_tokens }
+          }
+
+          pub fn parse(&self, input: &str) -> Result<Vec<String>, String> {
+              let tokens: Vec<String> = input
+                  .split_whitespace()
+                  .map(|s| s.to_string())
+                  .collect();
+              if self.strict && tokens.is_empty() {
+                  return Err("empty input".to_string());
+              }
+              if tokens.len() > self.max_tokens {
+                  return Err(format!("too many tokens: {}", tokens.len()));
+              }
+              Ok(tokens)
+          }
+      }
+    tests/test_parser.rs: |
+      use crate::parser::Parser;
+
+      #[cfg(test)]
+      mod tests {
+          use super::*;
+
+          #[test]
+          fn test_parse_basic() {
+              let p = Parser::new(false);
+              let result = p.parse("hello world");
+              assert_eq!(result.unwrap(), vec!["hello", "world"]);
+          }
+
+          #[test]
+          fn test_parse_strict_empty() {
+              let p = Parser::new(true);
+              let result = p.parse("");
+              assert!(result.is_err());
+          }
+
+          #[test]
+          fn test_parse_single_token() {
+              let p = Parser::new(false);
+              let result = p.parse("single");
+              assert_eq!(result.unwrap(), vec!["single"]);
+          }
+      }
+    src/formatter.rs: |
+      pub fn format_output(items: &[String]) -> String {
+          items.join(", ")
+      }
+
+      pub fn format_numbered(items: &[String]) -> String {
+          items
+              .iter()
+              .enumerate()
+              .map(|(i, s)| format!("{}. {}", i + 1, s))
+              .collect::<Vec<_>>()
+              .join("\n")
+      }
+  commit_message: "feat(parser): add token limit to parser"
+fragments:
+- id: parser_max_tokens_field
+  selector:
+    path: src/parser.rs
+    anchor: "max_tokens: usize"
+- id: parser_with_limit
+  selector:
+    path: src/parser.rs
+    anchor: "pub fn with_limit(strict: bool, max_tokens: usize)"
+- id: parser_limit_check
+  selector:
+    path: src/parser.rs
+    anchor: "if tokens.len() > self.max_tokens"
+- id: test_uses_parser
+  selector:
+    path: tests/test_parser.rs
+    anchor: "Parser::new(false)"
+- id: no_formatter
+  selector:
+    path: src/formatter.rs
+oracle:
+  required:
+  - parser_max_tokens_field
+  - parser_with_limit
+  - parser_limit_check
+  - test_uses_parser
+  allowed: []
+  forbidden:
+  - no_formatter

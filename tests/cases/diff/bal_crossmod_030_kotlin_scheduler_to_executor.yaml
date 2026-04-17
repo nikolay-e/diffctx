@@ -1,0 +1,174 @@
+name: bal_crossmod_030_kotlin_scheduler_to_executor
+tags:
+- lang:kotlin
+- change:single_file
+- change:signature
+- context:cross_module
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/main/kotlin/scheduler/CronExpression.kt: |
+      package scheduler
+
+      data class CronExpression(
+          val minute: String,
+          val hour: String,
+          val dayOfMonth: String,
+          val month: String,
+          val dayOfWeek: String
+      ) {
+          fun matches(minute: Int, hour: Int): Boolean {
+              val minuteMatch = this.minute == "*" || this.minute.toIntOrNull() == minute
+              val hourMatch = this.hour == "*" || this.hour.toIntOrNull() == hour
+              return minuteMatch && hourMatch
+          }
+      }
+    src/main/kotlin/scheduler/JobDefinition.kt: |
+      package scheduler
+
+      data class JobDefinition(
+          val name: String,
+          val schedule: CronExpression,
+          val action: () -> Unit
+      )
+    src/main/kotlin/executor/JobExecutor.kt: |
+      package executor
+
+      import scheduler.JobDefinition
+
+      class JobExecutor {
+          private val jobs = mutableListOf<JobDefinition>()
+
+          fun register(job: JobDefinition) {
+              jobs.add(job)
+          }
+
+          fun tick(minute: Int, hour: Int) {
+              jobs.filter { it.schedule.matches(minute, hour) }
+                  .forEach { it.action() }
+          }
+      }
+    src/main/kotlin/monitoring/JobMonitor.kt: |
+      package monitoring
+
+      object JobMonitor {
+          private val history = mutableListOf<String>()
+
+          fun record(jobName: String, success: Boolean) {
+              history.add("$jobName: ${if (success) "OK" else "FAIL"}")
+          }
+
+          fun recentHistory(count: Int): List<String> =
+              history.takeLast(count)
+      }
+    src/main/kotlin/config/SchedulerConfig.kt: |
+      package config
+
+      data class SchedulerConfig(
+          val maxConcurrentJobs: Int = 4,
+          val retryOnFailure: Boolean = true
+      )
+  changed_files:
+    src/main/kotlin/scheduler/CronExpression.kt: |
+      package scheduler
+
+      data class CronExpression(
+          val minute: String,
+          val hour: String,
+          val dayOfMonth: String,
+          val month: String,
+          val dayOfWeek: String
+      ) {
+          fun matches(minute: Int, hour: Int): Boolean {
+              val minuteMatch = this.minute == "*" || this.minute.toIntOrNull() == minute
+              val hourMatch = this.hour == "*" || this.hour.toIntOrNull() == hour
+              return minuteMatch && hourMatch
+          }
+
+          fun nextOccurrence(fromMinute: Int, fromHour: Int): Pair<Int, Int> {
+              for (h in fromHour..23) {
+                  val startMin = if (h == fromHour) fromMinute + 1 else 0
+                  for (m in startMin..59) {
+                      if (matches(m, h)) return Pair(m, h)
+                  }
+              }
+              return Pair(0, 0)
+          }
+      }
+    src/main/kotlin/scheduler/JobDefinition.kt: |
+      package scheduler
+
+      data class JobDefinition(
+          val name: String,
+          val schedule: CronExpression,
+          val action: () -> Unit
+      )
+    src/main/kotlin/executor/JobExecutor.kt: |
+      package executor
+
+      import scheduler.JobDefinition
+
+      class JobExecutor {
+          private val jobs = mutableListOf<JobDefinition>()
+
+          fun register(job: JobDefinition) {
+              jobs.add(job)
+          }
+
+          fun tick(minute: Int, hour: Int) {
+              jobs.filter { it.schedule.matches(minute, hour) }
+                  .forEach { it.action() }
+          }
+      }
+    src/main/kotlin/monitoring/JobMonitor.kt: |
+      package monitoring
+
+      object JobMonitor {
+          private val history = mutableListOf<String>()
+
+          fun record(jobName: String, success: Boolean) {
+              history.add("$jobName: ${if (success) "OK" else "FAIL"}")
+          }
+
+          fun recentHistory(count: Int): List<String> =
+              history.takeLast(count)
+      }
+    src/main/kotlin/config/SchedulerConfig.kt: |
+      package config
+
+      data class SchedulerConfig(
+          val maxConcurrentJobs: Int = 4,
+          val retryOnFailure: Boolean = true
+      )
+  commit_message: "feat: add next occurrence calculation to cron"
+fragments:
+- id: next_occurrence
+  selector:
+    path: src/main/kotlin/scheduler/CronExpression.kt
+    anchor: "fun nextOccurrence"
+- id: executor_calls_matches
+  selector:
+    path: src/main/kotlin/executor/JobExecutor.kt
+    anchor: "it.schedule.matches(minute, hour)"
+- id: job_uses_cron
+  selector:
+    path: src/main/kotlin/scheduler/JobDefinition.kt
+    anchor: "val schedule: CronExpression"
+- id: no_job_monitor
+  selector:
+    path: src/main/kotlin/monitoring/JobMonitor.kt
+    anchor: "object JobMonitor"
+- id: no_scheduler_config
+  selector:
+    path: src/main/kotlin/config/SchedulerConfig.kt
+    anchor: "data class SchedulerConfig"
+oracle:
+  required:
+  - next_occurrence
+  - executor_calls_matches
+  allowed:
+  - job_uses_cron
+  forbidden:
+  - no_job_monitor
+  - no_scheduler_config

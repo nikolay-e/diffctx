@@ -1,0 +1,99 @@
+name: bal_1hop_050_typescript_cache_to_resolver
+tags:
+- lang:typescript
+- change:signature
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/cache/memoryCache.ts: |
+      const store = new Map<string, unknown>();
+
+      export function cacheGet<T>(key: string): T | undefined {
+        return store.get(key) as T | undefined;
+      }
+
+      export function cacheSet<T>(key: string, value: T): void {
+        store.set(key, value);
+      }
+    src/graphql/resolvers.ts: |
+      import { cacheGet, cacheSet } from '../cache/memoryCache';
+
+      interface Article {
+        id: string;
+        title: string;
+        body: string;
+      }
+
+      export function resolveArticle(id: string): Article | undefined {
+        const cached = cacheGet<Article>(`article:${id}`);
+        if (cached) return cached;
+        const article: Article = { id, title: `Article ${id}`, body: 'Content here' };
+        cacheSet(`article:${id}`, article);
+        return article;
+      }
+    src/graphql/schema.ts: |
+      export const typeDefs = `
+        type Article {
+          id: ID!
+          title: String!
+          body: String!
+        }
+        type Query {
+          article(id: ID!): Article
+        }
+      `;
+  changed_files:
+    src/cache/memoryCache.ts: |
+      interface CacheEntry<T> {
+        value: T;
+        expiresAt: number;
+      }
+
+      const store = new Map<string, CacheEntry<unknown>>();
+
+      export function cacheGet<T>(key: string): T | undefined {
+        const entry = store.get(key) as CacheEntry<T> | undefined;
+        if (!entry) return undefined;
+        if (Date.now() > entry.expiresAt) {
+          store.delete(key);
+          return undefined;
+        }
+        return entry.value;
+      }
+
+      export function cacheSet<T>(key: string, value: T, ttlMs: number = 60000): void {
+        store.set(key, { value, expiresAt: Date.now() + ttlMs });
+      }
+
+      export function cacheDelete(key: string): boolean {
+        return store.delete(key);
+      }
+  commit_message: "feat: add TTL expiration and delete to memory cache"
+fragments:
+- id: cache_ttl
+  selector:
+    path: memoryCache.ts
+    anchor: "expiresAt"
+- id: cache_delete
+  selector:
+    path: memoryCache.ts
+    anchor: "cacheDelete"
+- id: resolver_uses_cache
+  selector:
+    path: resolvers.ts
+    anchor: "cacheGet"
+- id: no_schema
+  selector:
+    path: schema.ts
+    anchor: "typeDefs"
+oracle:
+  required:
+  - cache_ttl
+  - resolver_uses_cache
+  allowed:
+  - cache_delete
+  forbidden:
+  - no_schema

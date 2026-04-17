@@ -1,0 +1,132 @@
+name: gap2_042_ts_bugfix_import_chain_array_bounds_parser
+tags:
+- lang:python
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:2hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/pipeline/reader.py: |
+      def read_lines(path: str) -> list[str]:
+          with open(path) as f:
+              return f.readlines()
+
+      def read_csv(path: str) -> list[list[str]]:
+          lines = read_lines(path)
+          return [line.strip().split(",") for line in lines]
+    src/pipeline/transformer.py: |
+      from src.pipeline.reader import read_csv
+
+      def transform_records(path: str) -> list[dict]:
+          rows = read_csv(path)
+          if not rows:
+              return []
+          headers = rows[0]
+          return [dict(zip(headers, row)) for row in rows[1:]]
+    src/pipeline/exporter.py: |
+      from src.pipeline.transformer import transform_records
+
+      def export_to_json(path: str) -> list[dict]:
+          records = transform_records(path)
+          return records
+
+      def export_filtered(path: str, key: str, value: str) -> list[dict]:
+          records = transform_records(path)
+          return [r for r in records if r.get(key) == value]
+    garbage/archiver.py: |
+      GARBAGE_GAP2042_A = "archive_marker"
+
+      def noop():
+          pass
+    garbage/notifier.py: |
+      GARBAGE_GAP2042_B = "notify_marker"
+
+      def noop():
+          pass
+    garbage/scheduler.py: |
+      GARBAGE_GAP2042_C = "schedule_marker"
+
+      def noop():
+          pass
+  changed_files:
+    src/pipeline/reader.py: |
+      def read_lines(path: str) -> list[str]:
+          with open(path, encoding="utf-8") as f:
+              return f.readlines()
+
+      def read_csv(path: str) -> list[list[str]]:
+          lines = read_lines(path)
+          return [line.strip().split(",") for line in lines if line.strip()]
+    src/pipeline/transformer.py: |
+      from src.pipeline.reader import read_csv
+
+      def transform_records(path: str) -> list[dict]:
+          rows = read_csv(path)
+          if not rows:
+              return []
+          headers = [h.strip() for h in rows[0]]
+          return [dict(zip(headers, [c.strip() for c in row])) for row in rows[1:]]
+    src/pipeline/exporter.py: |
+      from src.pipeline.transformer import transform_records
+
+      def export_to_json(path: str) -> list[dict]:
+          records = transform_records(path)
+          return records
+
+      def export_filtered(path: str, key: str, value: str) -> list[dict]:
+          records = transform_records(path)
+          return [r for r in records if r.get(key) == value]
+    garbage/archiver.py: |
+      GARBAGE_GAP2042_A = "archive_marker"
+
+      def noop():
+          pass
+    garbage/notifier.py: |
+      GARBAGE_GAP2042_B = "notify_marker"
+
+      def noop():
+          pass
+    garbage/scheduler.py: |
+      GARBAGE_GAP2042_C = "schedule_marker"
+
+      def noop():
+          pass
+  commit_message: "refactor: add utf-8 encoding, strip blank lines and whitespace in CSV pipeline"
+fragments:
+- id: reader_encoding
+  selector:
+    path: src/pipeline/reader.py
+    anchor: 'encoding="utf-8"'
+- id: reader_strip_blank
+  selector:
+    path: src/pipeline/reader.py
+    anchor: "if line.strip()"
+- id: transformer_strip_headers
+  selector:
+    path: src/pipeline/transformer.py
+    anchor: "[h.strip() for h in rows[0]]"
+- id: exporter_file
+  selector:
+    path: src/pipeline/exporter.py
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_GAP2042_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_GAP2042_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_GAP2042_C
+oracle:
+  required:
+  - reader_encoding
+  - reader_strip_blank
+  - transformer_strip_headers
+  allowed:
+  - exporter_file
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

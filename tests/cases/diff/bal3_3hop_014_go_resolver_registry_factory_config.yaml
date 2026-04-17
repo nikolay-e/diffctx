@@ -1,0 +1,182 @@
+name: bal3_3hop_014_go_resolver_registry_factory_config
+tags:
+- lang:go
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    di/config/config.go: |
+      package config
+
+      type Config struct {
+          Bindings map[string]string
+      }
+
+      func NewConfig() *Config {
+          return &Config{Bindings: make(map[string]string)}
+      }
+
+      func (c *Config) Bind(iface, impl string) {
+          c.Bindings[iface] = impl
+      }
+
+      func (c *Config) Resolve(iface string) string {
+          return c.Bindings[iface]
+      }
+    di/factory/factory.go: |
+      package factory
+
+      import "myapp/di/config"
+
+      type Factory struct {
+          cfg *config.Config
+      }
+
+      func NewFactory(cfg *config.Config) *Factory {
+          return &Factory{cfg: cfg}
+      }
+
+      func (f *Factory) Create(iface string) string {
+          impl := f.cfg.Resolve(iface)
+          return "instance:" + impl
+      }
+    di/registry/registry.go: |
+      package registry
+
+      import "myapp/di/factory"
+
+      type Registry struct {
+          factory *factory.Factory
+          cache   map[string]string
+      }
+
+      func NewRegistry(f *factory.Factory) *Registry {
+          return &Registry{factory: f, cache: make(map[string]string)}
+      }
+
+      func (r *Registry) Get(iface string) string {
+          if cached, ok := r.cache[iface]; ok {
+              return cached
+          }
+          instance := r.factory.Create(iface)
+          r.cache[iface] = instance
+          return instance
+      }
+    di/resolver/resolver.go: |
+      package resolver
+
+      import "myapp/di/registry"
+
+      type Resolver struct {
+          registry *registry.Registry
+      }
+
+      func NewResolver(reg *registry.Registry) *Resolver {
+          return &Resolver{registry: reg}
+      }
+
+      func (r *Resolver) Resolve(iface string) string {
+          return r.registry.Get(iface)
+      }
+    di/scope/scope.go: |
+      package scope
+
+      var GARBAGE_BAL3_014_SCOPE_MARKER_A = "scope"
+      var GARBAGE_BAL3_014_LIFETIME_MARKER_B = "singleton"
+
+      type Scope struct {
+          name string
+      }
+
+      func (s *Scope) Name() string { return s.name }
+    di/scope/child.go: |
+      package scope
+
+      var GARBAGE_BAL3_014_CHILD_MARKER_C = "child"
+      var GARBAGE_BAL3_014_PARENT_MARKER_D = "root"
+
+      type ChildScope struct{}
+
+      func (c *ChildScope) Inherit() {}
+  changed_files:
+    di/config/config.go: |
+      package config
+
+      import "fmt"
+
+      type Config struct {
+          Bindings map[string]string
+      }
+
+      func NewConfig() *Config {
+          return &Config{Bindings: make(map[string]string)}
+      }
+
+      func (c *Config) Bind(iface, impl string) {
+          c.Bindings[iface] = impl
+      }
+
+      func (c *Config) Resolve(iface string) (string, error) {
+          impl, ok := c.Bindings[iface]
+          if !ok {
+              return "", fmt.Errorf("no binding for %s", iface)
+          }
+          return impl, nil
+      }
+  commit_message: "Fix config resolve to return error on missing binding"
+fragments:
+- id: config_resolve_error
+  selector:
+    path: di/config/config.go
+    anchor: "no binding for %s"
+- id: config_resolve_sig
+  selector:
+    path: di/config/config.go
+    anchor: "func (c *Config) Resolve(iface string) (string, error)"
+- id: factory_create
+  selector:
+    path: di/factory/factory.go
+    anchor: "func (f *Factory) Create"
+- id: registry_get
+  selector:
+    path: di/registry/registry.go
+    anchor: "func (r *Registry) Get"
+- id: resolver_resolve
+  selector:
+    path: di/resolver/resolver.go
+    anchor: "func (r *Resolver) Resolve"
+- id: no_scope
+  selector:
+    path: di/scope/scope.go
+- id: no_child
+  selector:
+    path: di/scope/child.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_014_SCOPE_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_014_LIFETIME_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_014_CHILD_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_014_PARENT_MARKER_D
+oracle:
+  required:
+  - config_resolve_error
+  - config_resolve_sig
+  - factory_create
+  - registry_get
+  - resolver_resolve
+  allowed: []
+  forbidden:
+  - no_scope
+  - no_child
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

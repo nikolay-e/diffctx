@@ -1,0 +1,246 @@
+name: bal_3hop_050_go_event_sourcing_aggregate
+tags:
+- lang:go
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    pkg/event/types.go: |
+      package event
+
+      import "time"
+
+      type Event struct {
+        Type      string
+        Payload   map[string]string
+        Timestamp time.Time
+      }
+
+      func NewEvent(eventType string, payload map[string]string) Event {
+        return Event{Type: eventType, Payload: payload, Timestamp: time.Now()}
+      }
+    pkg/event/store.go: |
+      package event
+
+      type EventStore struct {
+        events []Event
+      }
+
+      func NewEventStore() *EventStore {
+        return &EventStore{}
+      }
+
+      func (s *EventStore) Append(e Event) {
+        s.events = append(s.events, e)
+      }
+
+      func (s *EventStore) GetAll() []Event {
+        return s.events
+      }
+    pkg/aggregate/account.go: |
+      package aggregate
+
+      import "pkg/event"
+
+      type Account struct {
+        ID      string
+        Balance float64
+        store   *event.EventStore
+      }
+
+      func NewAccount(id string, store *event.EventStore) *Account {
+        return &Account{ID: id, Balance: 0, store: store}
+      }
+
+      func (a *Account) Deposit(amount float64) {
+        a.Balance += amount
+        e := event.NewEvent("deposited", map[string]string{"amount": fmt.Sprintf("%.2f", amount)})
+        a.store.Append(e)
+      }
+    cmd/bank/main.go: |
+      package main
+
+      import (
+        "fmt"
+        "pkg/aggregate"
+        "pkg/event"
+      )
+
+      func main() {
+        store := event.NewEventStore()
+        account := aggregate.NewAccount("acc-1", store)
+        account.Deposit(100.0)
+        fmt.Printf("Balance: %.2f, Events: %d\n", account.Balance, len(store.GetAll()))
+      }
+    pkg/util/format.go: |
+      package util
+
+      var GARBAGE_050_FORMAT_MARKER_A = "format"
+      var GARBAGE_050_CURRENCY_MARKER_B = "USD"
+
+      func FormatMoney(amount float64) string { return "" }
+    pkg/util/id.go: |
+      package util
+
+      var GARBAGE_050_ID_MARKER_C = "id"
+      var GARBAGE_050_UUID_MARKER_D = true
+
+      func GenerateID() string { return "id" }
+  changed_files:
+    pkg/event/types.go: |
+      package event
+
+      import "time"
+
+      type Event struct {
+        Type      string
+        Payload   map[string]string
+        Timestamp time.Time
+        Version   int
+      }
+
+      func NewEvent(eventType string, payload map[string]string, version int) Event {
+        return Event{Type: eventType, Payload: payload, Timestamp: time.Now(), Version: version}
+      }
+    pkg/event/store.go: |
+      package event
+
+      type EventStore struct {
+        events []Event
+      }
+
+      func NewEventStore() *EventStore {
+        return &EventStore{}
+      }
+
+      func (s *EventStore) Append(e Event) {
+        s.events = append(s.events, e)
+      }
+
+      func (s *EventStore) GetAll() []Event {
+        return s.events
+      }
+
+      func (s *EventStore) GetByType(eventType string) []Event {
+        var result []Event
+        for _, e := range s.events {
+          if e.Type == eventType {
+            result = append(result, e)
+          }
+        }
+        return result
+      }
+    pkg/aggregate/account.go: |
+      package aggregate
+
+      import (
+        "fmt"
+        "pkg/event"
+      )
+
+      type Account struct {
+        ID      string
+        Balance float64
+        version int
+        store   *event.EventStore
+      }
+
+      func NewAccount(id string, store *event.EventStore) *Account {
+        return &Account{ID: id, Balance: 0, version: 0, store: store}
+      }
+
+      func (a *Account) Deposit(amount float64) {
+        a.Balance += amount
+        a.version++
+        e := event.NewEvent("deposited", map[string]string{"amount": fmt.Sprintf("%.2f", amount)}, a.version)
+        a.store.Append(e)
+      }
+
+      func (a *Account) Withdraw(amount float64) error {
+        if amount > a.Balance {
+          return fmt.Errorf("insufficient funds")
+        }
+        a.Balance -= amount
+        a.version++
+        e := event.NewEvent("withdrawn", map[string]string{"amount": fmt.Sprintf("%.2f", amount)}, a.version)
+        a.store.Append(e)
+        return nil
+      }
+    cmd/bank/main.go: |
+      package main
+
+      import (
+        "fmt"
+        "pkg/aggregate"
+        "pkg/event"
+      )
+
+      func main() {
+        store := event.NewEventStore()
+        account := aggregate.NewAccount("acc-1", store)
+        account.Deposit(100.0)
+        account.Withdraw(30.0)
+        fmt.Printf("Balance: %.2f, Events: %d\n", account.Balance, len(store.GetAll()))
+      }
+    pkg/util/format.go: |
+      package util
+
+      var GARBAGE_050_FORMAT_MARKER_A = "format"
+      var GARBAGE_050_CURRENCY_MARKER_B = "USD"
+
+      func FormatMoney(amount float64) string { return "" }
+    pkg/util/id.go: |
+      package util
+
+      var GARBAGE_050_ID_MARKER_C = "id"
+      var GARBAGE_050_UUID_MARKER_D = true
+
+      func GenerateID() string { return "id" }
+  commit_message: "feat: add event versioning and withdraw to Account aggregate"
+fragments:
+- id: event_version_field
+  selector:
+    path: pkg/event/types.go
+    anchor: "Version   int"
+- id: new_event_version_param
+  selector:
+    path: pkg/event/types.go
+    anchor: "func NewEvent(eventType string, payload map[string]string, version int)"
+- id: store_get_by_type
+  selector:
+    path: pkg/event/store.go
+    anchor: "func (s *EventStore) GetByType"
+- id: account_withdraw
+  selector:
+    path: pkg/aggregate/account.go
+    anchor: "func (a *Account) Withdraw"
+- id: main_imports_aggregate
+  selector:
+    path: cmd/bank/main.go
+    anchor: "pkg/aggregate"
+- id: main_calls_withdraw
+  selector:
+    path: cmd/bank/main.go
+    anchor: "account.Withdraw(30.0)"
+- id: no_format
+  selector:
+    path: pkg/util/format.go
+    anchor: "GARBAGE_050_FORMAT_MARKER_A"
+- id: no_id
+  selector:
+    path: pkg/util/id.go
+    anchor: "GARBAGE_050_ID_MARKER_C"
+oracle:
+  required:
+  - event_version_field
+  - new_event_version_param
+  - store_get_by_type
+  - account_withdraw
+  - main_imports_aggregate
+  - main_calls_withdraw
+  allowed: []
+  forbidden:
+  - no_format
+  - no_id

@@ -1,0 +1,120 @@
+name: c_family_010_file_io_signature
+tags:
+- lang:c
+- change:multi_file
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    config_reader.h: |
+      #ifndef CONFIG_READER_H
+      #define CONFIG_READER_H
+      int read_config(const char *path);
+      #endif
+    config_reader.c: |
+      #include "config_reader.h"
+      #include <stdio.h>
+      int read_config(const char *path) {
+          FILE *f = fopen(path, "r");
+          if (!f) return -1;
+          /* parse config */
+          fclose(f);
+          return 0;
+      }
+    main.c: |
+      #include "config_reader.h"
+      int main(void) {
+          return read_config("app.conf");
+      }
+    config_parser.c: |
+      #include "config_reader.h"
+      void reload_config(void) {
+          read_config("/etc/app.conf");
+      }
+    C_NOISE_010_camera.h: |
+      #ifndef C_NOISE_010_CAMERA_H
+      #define C_NOISE_010_CAMERA_H
+      int C_NOISE_010_camera_open(int device_id);
+      void C_NOISE_010_camera_close(int handle);
+      #endif
+    C_NOISE_010_camera.c: |
+      #include "C_NOISE_010_camera.h"
+      int C_NOISE_010_camera_open(int device_id) { return 0; }
+      void C_NOISE_010_camera_close(int handle) {}
+  changed_files:
+    config_reader.h: |
+      #ifndef CONFIG_READER_H
+      #define CONFIG_READER_H
+      int read_config(const char *path, int strict_mode);
+      #endif
+    config_reader.c: |
+      #include "config_reader.h"
+      #include <stdio.h>
+      #include <stdlib.h>
+      int read_config(const char *path, int strict_mode) {
+          FILE *f = fopen(path, "r");
+          if (!f) return strict_mode ? -1 : 0;
+          /* parse config */
+          fclose(f);
+          return 0;
+      }
+    main.c: |
+      #include "config_reader.h"
+      int main(void) {
+          return read_config("app.conf", 0);
+      }
+    config_parser.c: |
+      #include "config_reader.h"
+      void reload_config(void) {
+          read_config("/etc/app.conf", 1);
+      }
+    C_NOISE_010_camera.h: |
+      #ifndef C_NOISE_010_CAMERA_H
+      #define C_NOISE_010_CAMERA_H
+      int C_NOISE_010_camera_open(int device_id);
+      void C_NOISE_010_camera_close(int handle);
+      #endif
+    C_NOISE_010_camera.c: |
+      #include "C_NOISE_010_camera.h"
+      int C_NOISE_010_camera_open(int device_id) { return 0; }
+      void C_NOISE_010_camera_close(int handle) {}
+  commit_message: "feat: add strict_mode parameter to read_config and update all callers"
+fragments:
+- id: config_reader_h
+  selector:
+    path: config_reader.h
+    anchor: "int strict_mode"
+- id: config_reader_c
+  selector:
+    path: config_reader.c
+    anchor: "strict_mode ? -1 : 0"
+- id: main_c
+  selector:
+    path: main.c
+    anchor: "read_config(\"app.conf\", 0)"
+- id: config_parser_c
+  selector:
+    path: config_parser.c
+    anchor: "read_config(\"/etc/app.conf\", 1)"
+- id: no_camera_h
+  selector:
+    anchor: C_NOISE_010_camera_open
+- id: no_camera_c
+  selector:
+    path: C_NOISE_010_camera.c
+- id: no_global_close
+  selector:
+    anchor: C_NOISE_010_camera_close
+oracle:
+  required:
+  - config_reader_h
+  - config_reader_c
+  - main_c
+  - config_parser_c
+  allowed: []
+  forbidden:
+  - no_camera_h
+  - no_camera_c
+  - no_global_close

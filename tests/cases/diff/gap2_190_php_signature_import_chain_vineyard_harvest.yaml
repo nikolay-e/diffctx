@@ -1,0 +1,175 @@
+name: gap2_190_php_signature_import_chain_vineyard_harvest
+tags:
+- change:signature
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:2hop
+- lang:php
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/Vineyard/HarvestPlanner.php: |
+      <?php
+
+      namespace App\Vineyard;
+
+      use App\Vineyard\Field\GrapeBlock;
+
+      class HarvestPlanner
+      {
+          private GrapeBlock $block;
+
+          public function __construct(GrapeBlock $block)
+          {
+              $this->block = $block;
+          }
+
+          public function estimateYield(): float
+          {
+              return $this->block->vinesCount() * $this->block->avgClusterWeight();
+          }
+
+          public function readyToHarvest(): bool
+          {
+              return $this->block->sugarBrix() >= 22.0;
+          }
+      }
+    src/Vineyard/Field/GrapeBlock.php: |
+      <?php
+
+      namespace App\Vineyard\Field;
+
+      use App\Vineyard\Field\SoilSample;
+
+      class GrapeBlock
+      {
+          private SoilSample $soil;
+          private int $vines;
+          private float $clusterWeight;
+          private float $brix;
+
+          public function __construct(SoilSample $soil, int $vines, float $clusterWeight, float $brix)
+          {
+              $this->soil = $soil;
+              $this->vines = $vines;
+              $this->clusterWeight = $clusterWeight;
+              $this->brix = $brix;
+          }
+
+          public function vinesCount(): int
+          {
+              return $this->vines;
+          }
+
+          public function avgClusterWeight(): float
+          {
+              return $this->clusterWeight;
+          }
+
+          public function sugarBrix(): float
+          {
+              return $this->brix;
+          }
+      }
+    src/Vineyard/Field/SoilSample.php: |
+      <?php
+
+      namespace App\Vineyard\Field;
+
+      class SoilSample
+      {
+          private float $ph;
+          private float $moisture;
+
+          public function __construct(float $ph, float $moisture)
+          {
+              $this->ph = $ph;
+              $this->moisture = $moisture;
+          }
+
+          public function ph(): float
+          {
+              return $this->ph;
+          }
+
+          public function moisture(): float
+          {
+              return $this->moisture;
+          }
+      }
+    src/Cellar/BarrelStorage.php: |
+      <?php
+
+      namespace App\Cellar;
+
+      class BarrelStorage
+      {
+          private int $capacity;
+
+          public function __construct(int $capacity)
+          {
+              $this->capacity = $capacity;
+          }
+
+          public function freeSlots(): int
+          {
+              return $this->capacity;
+          }
+      }
+  changed_files:
+    src/Vineyard/HarvestPlanner.php: |
+      <?php
+
+      namespace App\Vineyard;
+
+      use App\Vineyard\Field\GrapeBlock;
+
+      class HarvestPlanner
+      {
+          private GrapeBlock $block;
+
+          public function __construct(GrapeBlock $block)
+          {
+              $this->block = $block;
+          }
+
+          public function estimateYield(float $lossPercent = 5.0): float
+          {
+              $gross = $this->block->vinesCount() * $this->block->avgClusterWeight();
+              return $gross * (1.0 - $lossPercent / 100.0);
+          }
+
+          public function readyToHarvest(): bool
+          {
+              return $this->block->sugarBrix() >= 22.0;
+          }
+      }
+  commit_message: "feat: add loss percentage to harvest yield estimate"
+fragments:
+- id: estimate_yield_sig
+  selector:
+    path: src/Vineyard/HarvestPlanner.php
+    anchor: "public function estimateYield"
+- id: block_vines_count
+  selector:
+    path: src/Vineyard/Field/GrapeBlock.php
+    anchor: "public function vinesCount"
+- id: soil_sample_class
+  selector:
+    path: src/Vineyard/Field/SoilSample.php
+    anchor: class SoilSample
+- id: no_cellar
+  selector:
+    path: src/Cellar/BarrelStorage.php
+- id: no_barrel
+  selector:
+    anchor: BarrelStorage
+oracle:
+  required:
+  - estimate_yield_sig
+  - block_vines_count
+  forbidden:
+  - no_cellar
+  - no_barrel

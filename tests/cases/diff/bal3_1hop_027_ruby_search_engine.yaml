@@ -1,0 +1,216 @@
+name: bal3_1hop_027_ruby_search_engine
+tags:
+- lang:ruby
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    lib/search/index.rb: |
+      module Search
+        class Index
+          def initialize
+            @documents = {}
+          end
+
+          def add(id, content)
+            @documents[id] = content
+          end
+
+          def search(query)
+            @documents.select { |_id, content| content.include?(query) }
+          end
+
+          def remove(id)
+            @documents.delete(id)
+          end
+        end
+      end
+    lib/services/product_search.rb: |
+      require_relative '../search/index'
+
+      module Services
+        class ProductSearch
+          def initialize(index)
+            @index = index
+          end
+
+          def find_products(query)
+            @index.search(query)
+          end
+
+          def index_product(product)
+            @index.add(product[:id], product[:name])
+          end
+        end
+      end
+    lib/services/article_search.rb: |
+      require_relative '../search/index'
+
+      module Services
+        class ArticleSearch
+          def initialize(index)
+            @index = index
+          end
+
+          def find_articles(query)
+            @index.search(query)
+          end
+
+          def index_article(article)
+            @index.add(article[:id], article[:title] + " " + article[:body])
+          end
+        end
+      end
+    lib/services/user_search.rb: |
+      require_relative '../search/index'
+
+      module Services
+        class UserSearch
+          def initialize(index)
+            @index = index
+          end
+
+          def find_users(query)
+            @index.search(query)
+          end
+        end
+      end
+    lib/analytics/page_tracker.rb: |
+      GARBAGE_027_TRACKER_A = "page_tracker"
+
+      module Analytics
+        class PageTracker
+          def track(url, visitor_id)
+            "tracked #{url} for #{visitor_id}"
+          end
+        end
+      end
+    lib/analytics/conversion_tracker.rb: |
+      GARBAGE_027_CONVERSION_B = "conversion_tracker"
+
+      module Analytics
+        class ConversionTracker
+          def track(event, value)
+            "conversion: #{event} = #{value}"
+          end
+        end
+      end
+    lib/analytics/ab_test.rb: |
+      GARBAGE_027_ABTEST_C = "ab_test"
+
+      module Analytics
+        class AbTest
+          def variant(user_id, experiment)
+            "A"
+          end
+        end
+      end
+  changed_files:
+    lib/search/index.rb: |
+      module Search
+        class SearchResult
+          attr_reader :id, :content, :score
+
+          def initialize(id:, content:, score:)
+            @id = id
+            @content = content
+            @score = score
+          end
+        end
+
+        class Index
+          def initialize(case_sensitive: false)
+            @documents = {}
+            @case_sensitive = case_sensitive
+          end
+
+          def add(id, content, metadata: {})
+            @documents[id] = { content: content, metadata: metadata }
+          end
+
+          def search(query, limit: 10)
+            normalize = ->(s) { @case_sensitive ? s : s.downcase }
+            results = @documents.select { |_id, doc| normalize.call(doc[:content]).include?(normalize.call(query)) }
+            results.map { |id, doc| SearchResult.new(id: id, content: doc[:content], score: 1.0) }
+                   .first(limit)
+          end
+
+          def remove(id)
+            @documents.delete(id)
+          end
+
+          def size
+            @documents.size
+          end
+        end
+      end
+  commit_message: "feat: add SearchResult, case sensitivity, metadata, and limit"
+fragments:
+- id: search_result_class
+  selector:
+    path: lib/search/index.rb
+    anchor: "class SearchResult"
+- id: case_sensitive_param
+  selector:
+    path: lib/search/index.rb
+    anchor: "case_sensitive: false"
+- id: metadata_param
+  selector:
+    path: lib/search/index.rb
+    anchor: "metadata: {}"
+- id: search_limit_param
+  selector:
+    path: lib/search/index.rb
+    anchor: "def search(query, limit: 10)"
+- id: product_search_calls
+  selector:
+    path: lib/services/product_search.rb
+    anchor: "@index.search(query)"
+- id: article_search_calls
+  selector:
+    path: lib/services/article_search.rb
+    anchor: "@index.search(query)"
+- id: user_search_calls
+  selector:
+    path: lib/services/user_search.rb
+    anchor: "@index.search(query)"
+- id: unrelated_page_tracker
+  selector:
+    path: lib/analytics/page_tracker.rb
+    anchor: "class PageTracker"
+- id: unrelated_conversion
+  selector:
+    path: lib/analytics/conversion_tracker.rb
+    anchor: "class ConversionTracker"
+- id: unrelated_abtest
+  selector:
+    path: lib/analytics/ab_test.rb
+    anchor: "class AbTest"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_027_TRACKER_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_027_CONVERSION_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_027_ABTEST_C
+oracle:
+  required:
+  - search_result_class
+  - case_sensitive_param
+  - search_limit_param
+  - product_search_calls
+  allowed:
+  - metadata_param
+  - article_search_calls
+  - user_search_calls
+  forbidden:
+  - unrelated_page_tracker
+  - unrelated_conversion
+  - unrelated_abtest
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

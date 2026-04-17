@@ -1,0 +1,78 @@
+name: gap2_092_python_config_cross_module_database_pool
+tags:
+- change:config
+- change:single_file
+- context:cross_module
+- difficulty:easy
+- distance:0hop
+- lang:python
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    config/database.py: |
+      DB_HOST = "localhost"
+      DB_PORT = 5432
+      DB_NAME = "appdb"
+      POOL_SIZE = 5
+      MAX_OVERFLOW = 10
+      POOL_TIMEOUT = 30
+    persistence/connection_manager.py: |
+      from config.database import DB_HOST, DB_PORT, POOL_SIZE
+
+      class ConnectionManager:
+          def __init__(self):
+              self.host = DB_HOST
+              self.port = DB_PORT
+              self.pool_size = POOL_SIZE
+
+          def get_connection(self):
+              return None
+    jobs/report_builder.py: |
+      TRAP_GAP2_092_REPORT_A = "report_noise"
+      TRAP_GAP2_092_REPORT_B = 256
+
+      class ReportBuilder:
+          def build(self, query: str) -> bytes:
+              return b""
+  changed_files:
+    config/database.py: |
+      DB_HOST = "pgbouncer.internal"
+      DB_PORT = 6432
+      DB_NAME = "appdb"
+      POOL_SIZE = 20
+      MAX_OVERFLOW = 40
+      POOL_TIMEOUT = 10
+      POOL_RECYCLE = 1800
+  commit_message: Update files
+fragments:
+- id: db_host
+  selector:
+    path: config/database.py
+    anchor: "pgbouncer.internal"
+- id: pool_recycle
+  selector:
+    path: config/database.py
+    anchor: POOL_RECYCLE
+- id: pool_size
+  selector:
+    path: config/database.py
+    anchor: "POOL_SIZE = 20"
+- id: no_report
+  selector:
+    path: jobs/report_builder.py
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_092_REPORT_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_092_REPORT_B
+oracle:
+  required:
+  - db_host
+  - pool_recycle
+  - pool_size
+  forbidden:
+  - no_report
+  - no_global_0
+  - no_global_1

@@ -1,0 +1,105 @@
+name: html_010_two_hop_html_css_js
+tags:
+- lang:html
+- lang:css
+- change:single_file
+- context:import_chain
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    index.html: |
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <link rel="stylesheet" href="style.css">
+      </head>
+      <body>
+        <div class="animated-logo"></div>
+      </body>
+      </html>
+    style.css: |
+      @import "animation.css";
+      :root {
+        --logo-color: #6366f1;
+        --logo-size: 64px;
+      }
+      .animated-logo {
+        width: var(--logo-size);
+        height: var(--logo-size);
+        background: var(--logo-color);
+        border-radius: 50%;
+        animation: pulse 2s ease-in-out infinite;
+      }
+    animation.css: |
+      @keyframes pulse {
+        0%, 100% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.1); opacity: 0.8; }
+      }
+    HTML_NOISE_010_search.html: |
+      <!-- HTML_NOISE_010_search_page -->
+      <form class="HTML_NOISE_010_search_form" action="/search">
+        <input type="search" name="q" class="HTML_NOISE_010_search_input">
+      </form>
+    HTML_NOISE_010_checkout.html: |
+      <!-- HTML_NOISE_010_checkout_page -->
+      <section class="HTML_NOISE_010_checkout_steps">Checkout</section>
+  changed_files:
+    style.css: |
+      @import "animation.css";
+      :root {
+        --logo-color: #4f46e5;
+        --logo-size: 80px;
+        --logo-shadow: 0 0 20px rgba(99, 102, 241, 0.4);
+      }
+      .animated-logo {
+        width: var(--logo-size);
+        height: var(--logo-size);
+        background: var(--logo-color);
+        border-radius: 50%;
+        box-shadow: var(--logo-shadow);
+        animation: pulse 2s ease-in-out infinite;
+      }
+  commit_message: "style: update logo color, size, and add glow shadow token"
+fragments:
+- id: logo_color_updated
+  selector:
+    path: style.css
+    anchor: "--logo-color: #4f46e5"
+- id: logo_shadow_added
+  selector:
+    path: style.css
+    anchor: "--logo-shadow"
+- id: animation_css_imported
+  selector:
+    path: animation.css
+    anchor: pulse
+- id: index_links_style
+  selector:
+    path: index.html
+    anchor: style.css
+- id: no_search
+  selector:
+    path: HTML_NOISE_010_search.html
+- id: no_checkout
+  selector:
+    path: HTML_NOISE_010_checkout.html
+- id: no_global_0
+  selector:
+    anchor: HTML_NOISE_010_search_form
+- id: no_global_1
+  selector:
+    anchor: HTML_NOISE_010_checkout_steps
+oracle:
+  required:
+  - logo_color_updated
+  - logo_shadow_added
+  - animation_css_imported
+  - index_links_style
+  allowed: []
+  forbidden:
+  - no_search
+  - no_checkout
+  - no_global_0
+  - no_global_1

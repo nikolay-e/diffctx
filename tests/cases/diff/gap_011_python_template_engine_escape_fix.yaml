@@ -1,0 +1,166 @@
+name: gap_011_python_template_engine_escape_fix
+tags:
+- lang:python
+- change:bug_fix
+- change:single_file
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    tpl/compiler.py: |
+      import re
+
+      class TemplateCompiler:
+          VAR_PATTERN = re.compile(r"\{\{\s*(\w+)\s*\}\}")
+
+          def compile(self, source: str) -> "CompiledTemplate":
+              parts = []
+              last_end = 0
+              for match in self.VAR_PATTERN.finditer(source):
+                  if match.start() > last_end:
+                      parts.append(("literal", source[last_end:match.start()]))
+                  parts.append(("var", match.group(1)))
+                  last_end = match.end()
+              if last_end < len(source):
+                  parts.append(("literal", source[last_end:]))
+              return CompiledTemplate(parts)
+
+      class CompiledTemplate:
+          def __init__(self, parts: list[tuple[str, str]]):
+              self._parts = parts
+
+          def render(self, context: dict[str, str]) -> str:
+              output = []
+              for kind, value in self._parts:
+                  if kind == "literal":
+                      output.append(value)
+                  elif kind == "var":
+                      output.append(str(context.get(value, "")))
+              return "".join(output)
+    tpl/loader.py: |
+      from pathlib import Path
+      from tpl.compiler import TemplateCompiler
+
+      class FileTemplateLoader:
+          def __init__(self, base_dir: str):
+              self._base = Path(base_dir)
+              self._compiler = TemplateCompiler()
+              self._cache: dict[str, object] = {}
+
+          def load(self, name: str):
+              if name in self._cache:
+                  return self._cache[name]
+              path = self._base / name
+              source = path.read_text()
+              compiled = self._compiler.compile(source)
+              self._cache[name] = compiled
+              return compiled
+    web/views.py: |
+      from tpl.loader import FileTemplateLoader
+
+      class PageView:
+          def __init__(self, loader: FileTemplateLoader):
+              self._loader = loader
+
+          def render_page(self, template_name: str, title: str, body: str) -> str:
+              tpl = self._loader.load(template_name)
+              return tpl.render({"title": title, "body": body})
+
+          def render_error(self, status: int, message: str) -> str:
+              tpl = self._loader.load("error.html")
+              return tpl.render({"status": str(status), "message": message})
+    web/router.py: |
+      class Router:
+          def __init__(self):
+              self._routes: dict[str, callable] = {}
+
+          def add_route(self, path: str, handler: callable) -> None:
+              self._routes[path] = handler
+
+          def resolve(self, path: str) -> callable | None:
+              return self._routes.get(path)
+
+          def all_routes(self) -> list[str]:
+              return sorted(self._routes.keys())
+    tpl/filters.py: |
+      class FilterRegistry:
+          def __init__(self):
+              self._filters: dict[str, callable] = {}
+
+          def register(self, name: str, fn: callable) -> None:
+              self._filters[name] = fn
+
+          def apply(self, name: str, value: str) -> str:
+              fn = self._filters.get(name)
+              if fn is None:
+                  return value
+              return fn(value)
+  changed_files:
+    tpl/compiler.py: |
+      import re
+      from html import escape as html_escape
+
+      class TemplateCompiler:
+          VAR_PATTERN = re.compile(r"\{\{\s*(\w+)(\|raw)?\s*\}\}")
+
+          def compile(self, source: str) -> "CompiledTemplate":
+              parts = []
+              last_end = 0
+              for match in self.VAR_PATTERN.finditer(source):
+                  if match.start() > last_end:
+                      parts.append(("literal", source[last_end:match.start()]))
+                  is_raw = match.group(2) is not None
+                  parts.append(("raw" if is_raw else "var", match.group(1)))
+                  last_end = match.end()
+              if last_end < len(source):
+                  parts.append(("literal", source[last_end:]))
+              return CompiledTemplate(parts)
+
+      class CompiledTemplate:
+          def __init__(self, parts: list[tuple[str, str]]):
+              self._parts = parts
+
+          def render(self, context: dict[str, str]) -> str:
+              output = []
+              for kind, value in self._parts:
+                  if kind == "literal":
+                      output.append(value)
+                  elif kind == "var":
+                      output.append(html_escape(str(context.get(value, ""))))
+                  elif kind == "raw":
+                      output.append(str(context.get(value, "")))
+              return "".join(output)
+fragments:
+- id: compiler_compile
+  selector:
+    path: tpl/compiler.py
+    anchor: "def compile"
+- id: template_render
+  selector:
+    path: tpl/compiler.py
+    anchor: "def render"
+- id: view_render_page
+  selector:
+    path: web/views.py
+    anchor: "def render_page"
+- id: loader_load
+  selector:
+    path: tpl/loader.py
+    anchor: "def load"
+- id: no_router
+  selector:
+    path: web/router.py
+- id: no_filters
+  selector:
+    path: tpl/filters.py
+oracle:
+  required:
+  - compiler_compile
+  - template_render
+  - view_render_page
+  forbidden:
+  - no_router
+  - no_filters

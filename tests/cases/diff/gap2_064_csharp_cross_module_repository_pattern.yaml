@@ -1,0 +1,246 @@
+name: gap2_064_csharp_cross_module_repository_pattern
+tags:
+- change:single_file
+- context:cross_module
+- difficulty:medium
+- distance:2hop
+- lang:csharp
+repo:
+  initial_files:
+    Data/IRepository.cs: |
+      namespace Data
+      {
+          public interface IRepository<T>
+          {
+              T GetById(int id);
+              void Save(T entity);
+              void Delete(int id);
+          }
+      }
+    Data/ProductRepository.cs: |
+      using Data;
+      using Models;
+
+      namespace Data.Impl
+      {
+          public class ProductRepository : IRepository<Product>
+          {
+              public Product GetById(int id) => new Product { Id = id };
+              public void Save(Product entity) { }
+              public void Delete(int id) { }
+          }
+      }
+    Models/Product.cs: |
+      namespace Models
+      {
+          public class Product
+          {
+              public int Id { get; set; }
+              public string Name { get; set; }
+              public decimal Price { get; set; }
+          }
+      }
+    Services/CatalogService.cs: |
+      using Data;
+      using Models;
+
+      namespace Services
+      {
+          public class CatalogService
+          {
+              private readonly IRepository<Product> _repo;
+
+              public CatalogService(IRepository<Product> repo)
+              {
+                  _repo = repo;
+              }
+
+              public Product FindProduct(int id) => _repo.GetById(id);
+          }
+      }
+    Scheduling/CronRunner.cs: |
+      const string TRAP_GAP2_064_CRON_A = "cron_noise";
+      const int TRAP_GAP2_064_CRON_B = 60;
+
+      namespace Scheduling
+      {
+          public class CronRunner
+          {
+              public void Schedule(string expr, Action job) { }
+          }
+      }
+    Analytics/ClickTracker.cs: |
+      const string TRAP_GAP2_064_CLICK_C = "click_noise";
+      const bool TRAP_GAP2_064_CLICK_D = true;
+
+      namespace Analytics
+      {
+          public class ClickTracker
+          {
+              public void Track(string pageId, int x, int y) { }
+          }
+      }
+    Localization/Translator.cs: |
+      const string TRAP_GAP2_064_I18N_E = "i18n_noise";
+      const int TRAP_GAP2_064_I18N_F = 256;
+
+      namespace Localization
+      {
+          public class Translator
+          {
+              public string Translate(string key, string locale) => key;
+          }
+      }
+  changed_files:
+    Data/IRepository.cs: |
+      namespace Data
+      {
+          public interface IRepository<T>
+          {
+              T GetById(int id);
+              IEnumerable<T> GetAll();
+              void Save(T entity);
+              void Delete(int id);
+          }
+      }
+    Data/ProductRepository.cs: |
+      using Data;
+      using Models;
+
+      namespace Data.Impl
+      {
+          public class ProductRepository : IRepository<Product>
+          {
+              private readonly List<Product> _store = new();
+
+              public Product GetById(int id) => _store.FirstOrDefault(p => p.Id == id);
+              public IEnumerable<Product> GetAll() => _store.AsReadOnly();
+              public void Save(Product entity) { _store.Add(entity); }
+              public void Delete(int id) { _store.RemoveAll(p => p.Id == id); }
+          }
+      }
+    Models/Product.cs: |
+      namespace Models
+      {
+          public class Product
+          {
+              public int Id { get; set; }
+              public string Name { get; set; }
+              public decimal Price { get; set; }
+          }
+      }
+    Services/CatalogService.cs: |
+      using Data;
+      using Models;
+
+      namespace Services
+      {
+          public class CatalogService
+          {
+              private readonly IRepository<Product> _repo;
+
+              public CatalogService(IRepository<Product> repo)
+              {
+                  _repo = repo;
+              }
+
+              public Product FindProduct(int id) => _repo.GetById(id);
+          }
+      }
+    Scheduling/CronRunner.cs: |
+      const string TRAP_GAP2_064_CRON_A = "cron_noise";
+      const int TRAP_GAP2_064_CRON_B = 60;
+
+      namespace Scheduling
+      {
+          public class CronRunner
+          {
+              public void Schedule(string expr, Action job) { }
+          }
+      }
+    Analytics/ClickTracker.cs: |
+      const string TRAP_GAP2_064_CLICK_C = "click_noise";
+      const bool TRAP_GAP2_064_CLICK_D = true;
+
+      namespace Analytics
+      {
+          public class ClickTracker
+          {
+              public void Track(string pageId, int x, int y) { }
+          }
+      }
+    Localization/Translator.cs: |
+      const string TRAP_GAP2_064_I18N_E = "i18n_noise";
+      const int TRAP_GAP2_064_I18N_F = 256;
+
+      namespace Localization
+      {
+          public class Translator
+          {
+              public string Translate(string key, string locale) => key;
+          }
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: get_all_interface
+  selector:
+    path: Data/IRepository.cs
+    anchor: "IEnumerable<T> GetAll()"
+- id: repo_interface
+  selector:
+    path: Data/IRepository.cs
+    anchor: "public interface IRepository<T>"
+- id: product_get_all
+  selector:
+    path: Data/ProductRepository.cs
+    anchor: "public IEnumerable<Product> GetAll()"
+- id: catalog_uses_repo
+  selector:
+    path: Services/CatalogService.cs
+    anchor: "_repo.GetById(id)"
+- id: no_cron
+  selector:
+    path: Scheduling/CronRunner.cs
+- id: no_click
+  selector:
+    path: Analytics/ClickTracker.cs
+- id: no_i18n
+  selector:
+    path: Localization/Translator.cs
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_064_CRON_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_064_CRON_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP2_064_CLICK_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP2_064_CLICK_D
+- id: no_global_4
+  selector:
+    anchor: TRAP_GAP2_064_I18N_E
+- id: no_global_5
+  selector:
+    anchor: TRAP_GAP2_064_I18N_F
+oracle:
+  required:
+  - get_all_interface
+  - repo_interface
+  - product_get_all
+  - catalog_uses_repo
+  allowed: []
+  forbidden:
+  - no_cron
+  - no_click
+  - no_i18n
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

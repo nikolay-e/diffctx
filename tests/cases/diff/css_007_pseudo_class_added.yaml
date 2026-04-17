@@ -1,0 +1,77 @@
+name: css_007_pseudo_class_added
+tags:
+- lang:css
+- change:single_file
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    buttons.css: |
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        padding: 8px 16px;
+        background: #3b82f6;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .btn-sm { padding: 4px 8px; font-size: 12px; }
+      .btn-lg { padding: 12px 24px; font-size: 18px; }
+    CSS_NOISE_007_table.css: |
+      .CSS_NOISE_007_table_head { background: #f3f4f6; }
+      .CSS_NOISE_007_table_cell { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; }
+    CSS_NOISE_007_breadcrumb.css: |
+      .CSS_NOISE_007_breadcrumb_list { display: flex; gap: 8px; }
+      .CSS_NOISE_007_breadcrumb_sep { color: #9ca3af; }
+  changed_files:
+    buttons.css: |
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        padding: 8px 16px;
+        background: #3b82f6;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: transform 0.1s ease;
+      }
+      .btn:hover { transform: translateY(-1px); }
+      .btn:active { transform: translateY(0); }
+      .btn-sm { padding: 4px 8px; font-size: 12px; }
+      .btn-lg { padding: 12px 24px; font-size: 18px; }
+  commit_message: "style: add hover/active transform to .btn"
+fragments:
+- id: btn_hover_transform
+  selector:
+    path: buttons.css
+    anchor: "btn:hover"
+- id: btn_active_transform
+  selector:
+    path: buttons.css
+    anchor: "btn:active"
+- id: no_table
+  selector:
+    path: CSS_NOISE_007_table.css
+- id: no_breadcrumb
+  selector:
+    path: CSS_NOISE_007_breadcrumb.css
+- id: no_global_0
+  selector:
+    anchor: CSS_NOISE_007_table_head
+- id: no_global_1
+  selector:
+    anchor: CSS_NOISE_007_breadcrumb_list
+oracle:
+  required:
+  - btn_hover_transform
+  - btn_active_transform
+  allowed: []
+  forbidden:
+  - no_table
+  - no_breadcrumb
+  - no_global_0
+  - no_global_1

@@ -1,0 +1,104 @@
+name: bal4_crossmod_007_rust_trait_impl_cross_mod
+tags:
+- lang:rust
+- change:single_file
+- context:cross_module
+- distance:1hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/traits/serializable.rs: |
+      pub trait Serializable {
+          fn to_json(&self) -> String;
+      }
+    src/models/product.rs: |
+      use crate::traits::serializable::Serializable;
+
+      pub struct Product {
+          pub name: String,
+          pub price: f64,
+      }
+
+      impl Serializable for Product {
+          fn to_json(&self) -> String {
+              format!("{{\"name\":\"{}\",\"price\":{}}}", self.name, self.price)
+          }
+      }
+    src/utils/format.rs: |
+      pub const GARBAGE_007_FMT_A: &str = "default";
+      pub const GARBAGE_007_SEP_B: &str = ",";
+
+      pub fn pad_left(s: &str, width: usize) -> String {
+          format!("{:>width$}", s, width = width)
+      }
+    garbage_bench.rs: |
+      pub const GARBAGE_007_BENCH_C: &str = "perf";
+      pub const GARBAGE_007_ITER_D: u32 = 1000;
+
+      pub fn run_bench() {}
+  changed_files:
+    src/traits/serializable.rs: |
+      pub trait Serializable {
+          fn to_json(&self) -> String;
+          fn to_csv(&self) -> String;
+      }
+    src/models/product.rs: |
+      use crate::traits::serializable::Serializable;
+
+      pub struct Product {
+          pub name: String,
+          pub price: f64,
+      }
+
+      impl Serializable for Product {
+          fn to_json(&self) -> String {
+              format!("{{\"name\":\"{}\",\"price\":{}}}", self.name, self.price)
+          }
+      }
+    src/utils/format.rs: |
+      pub const GARBAGE_007_FMT_A: &str = "default";
+      pub const GARBAGE_007_SEP_B: &str = ",";
+
+      pub fn pad_left(s: &str, width: usize) -> String {
+          format!("{:>width$}", s, width = width)
+      }
+    garbage_bench.rs: |
+      pub const GARBAGE_007_BENCH_C: &str = "perf";
+      pub const GARBAGE_007_ITER_D: u32 = 1000;
+
+      pub fn run_bench() {}
+  commit_message: "add to_csv to Serializable trait"
+fragments:
+- id: product_impl
+  selector:
+    path: src/models/product.rs
+    anchor: "impl Serializable for Product"
+- id: no_format
+  selector:
+    path: src/utils/format.rs
+- id: no_garbage_bench
+  selector:
+    path: garbage_bench.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_007_FMT_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_007_SEP_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_007_BENCH_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_007_ITER_D
+oracle:
+  required:
+  - product_impl
+  allowed: []
+  forbidden:
+  - no_format
+  - no_garbage_bench
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

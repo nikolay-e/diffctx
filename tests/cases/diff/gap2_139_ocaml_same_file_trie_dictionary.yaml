@@ -1,0 +1,142 @@
+name: gap2_139_ocaml_same_file_trie_dictionary
+tags:
+- change:single_file
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:ocaml
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    lib/trie.ml: |
+      type t = {
+        is_terminal : bool;
+        children : (char * t) list;
+      }
+
+      let empty = { is_terminal = false; children = [] }
+
+      let rec insert trie word idx =
+        if idx >= String.length word then
+          { trie with is_terminal = true }
+        else
+          let c = word.[idx] in
+          let child = match List.assoc_opt c trie.children with
+            | Some t -> t
+            | None -> empty
+          in
+          let updated = insert child word (idx + 1) in
+          let children = (c, updated) :: List.filter (fun (k, _) -> k <> c) trie.children in
+          { trie with children }
+
+      let add trie word = insert trie word 0
+
+      let rec contains trie word idx =
+        if idx >= String.length word then trie.is_terminal
+        else match List.assoc_opt word.[idx] trie.children with
+          | Some child -> contains child word (idx + 1)
+          | None -> false
+
+      let mem trie word = contains trie word 0
+    lib/bloom_filter.ml: |
+      let _GARBAGE_GAP2_139_BLOOM_A = "bloom_noise"
+      let _GARBAGE_GAP2_139_BLOOM_B = "hash_noise"
+
+      let create_filter size = Array.make size false
+
+      let add_to_filter filter hash = filter.(hash mod Array.length filter) <- true
+
+      let check_filter filter hash = filter.(hash mod Array.length filter)
+    lib/skip_list.ml: |
+      let _GARBAGE_GAP2_139_SKIP_C = "skip_noise"
+      let _GARBAGE_GAP2_139_SKIP_D = "level_noise"
+
+      type 'a node = { value : 'a; forward : 'a node option array }
+
+      let max_level = 16
+  changed_files:
+    lib/trie.ml: |
+      type t = {
+        is_terminal : bool;
+        children : (char * t) list;
+      }
+
+      let empty = { is_terminal = false; children = [] }
+
+      let rec insert trie word idx =
+        if idx >= String.length word then
+          { trie with is_terminal = true }
+        else
+          let c = word.[idx] in
+          let child = match List.assoc_opt c trie.children with
+            | Some t -> t
+            | None -> empty
+          in
+          let updated = insert child word (idx + 1) in
+          let children = (c, updated) :: List.filter (fun (k, _) -> k <> c) trie.children in
+          { trie with children }
+
+      let add trie word = insert trie word 0
+
+      let rec contains trie word idx =
+        if idx >= String.length word then trie.is_terminal
+        else match List.assoc_opt word.[idx] trie.children with
+          | Some child -> contains child word (idx + 1)
+          | None -> false
+
+      let mem trie word = contains trie word 0
+
+      let rec collect_words trie prefix acc =
+        let acc = if trie.is_terminal then prefix :: acc else acc in
+        List.fold_left (fun a (c, child) ->
+          collect_words child (prefix ^ String.make 1 c) a
+        ) acc trie.children
+
+      let all_words trie = collect_words trie "" []
+
+      let rec count_nodes trie =
+        1 + List.fold_left (fun acc (_, child) -> acc + count_nodes child) 0 trie.children
+fragments:
+- id: collect_words
+  selector:
+    path: lib/trie.ml
+    anchor: let rec collect_words trie prefix acc
+- id: all_words
+  selector:
+    path: lib/trie.ml
+    anchor: let all_words trie
+- id: count_nodes
+  selector:
+    path: lib/trie.ml
+    anchor: let rec count_nodes trie
+- id: no_bloom
+  selector:
+    path: lib/bloom_filter.ml
+- id: no_skip
+  selector:
+    path: lib/skip_list.ml
+- id: no_global_0
+  selector:
+    anchor: _GARBAGE_GAP2_139_BLOOM_A
+- id: no_global_1
+  selector:
+    anchor: _GARBAGE_GAP2_139_BLOOM_B
+- id: no_global_2
+  selector:
+    anchor: _GARBAGE_GAP2_139_SKIP_C
+- id: no_global_3
+  selector:
+    anchor: _GARBAGE_GAP2_139_SKIP_D
+oracle:
+  required:
+  - collect_words
+  - all_words
+  - count_nodes
+  forbidden:
+  - no_bloom
+  - no_skip
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

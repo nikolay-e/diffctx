@@ -1,0 +1,146 @@
+name: bal3_3hop_034_java_inventory_stock_check
+tags:
+- lang:java
+- change:multi_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/app/inventory/Product.java: |
+      package com.app.inventory;
+
+      public class Product {
+          private String sku;
+          private int quantity;
+          public Product(String sku, int quantity) {
+              this.sku = sku;
+              this.quantity = quantity;
+          }
+          public String getSku() { return sku; }
+          public int getQuantity() { return quantity; }
+      }
+    src/main/java/com/app/inventory/StockChecker.java: |
+      package com.app.inventory;
+
+      public class StockChecker {
+          public boolean isAvailable(Product product, int requested) {
+              return product.getQuantity() >= requested;
+          }
+      }
+    src/main/java/com/app/service/InventoryService.java: |
+      package com.app.service;
+
+      import com.app.inventory.StockChecker;
+      import com.app.inventory.Product;
+
+      public class InventoryService {
+          private final StockChecker checker;
+          public InventoryService(StockChecker checker) {
+              this.checker = checker;
+          }
+          public boolean checkStock(Product product, int qty) {
+              return checker.isAvailable(product, qty);
+          }
+      }
+    src/main/java/com/app/web/CartController.java: |
+      package com.app.web;
+
+      import com.app.service.InventoryService;
+      import com.app.inventory.Product;
+
+      public class CartController {
+          private final InventoryService inventoryService;
+          public CartController(InventoryService inventoryService) {
+              this.inventoryService = inventoryService;
+          }
+          public String addToCart(Product product, int qty) {
+              if (inventoryService.checkStock(product, qty)) {
+                  return "added";
+              }
+              return "out_of_stock";
+          }
+      }
+    src/main/java/com/app/util/Formatter.java: |
+      package com.app.util;
+
+      public class Formatter {
+          public static String GARBAGE_034_FMT_MARKER_A = "fmt";
+          public static int GARBAGE_034_PAD_MARKER_B = 10;
+          public static String pad(String s) { return s; }
+      }
+    src/main/java/com/app/util/Validator.java: |
+      package com.app.util;
+
+      public class Validator {
+          public static String GARBAGE_034_VALID_MARKER_C = "valid";
+          public static boolean GARBAGE_034_STRICT_MARKER_D = true;
+          public static boolean isValid(String s) { return true; }
+      }
+  changed_files:
+    src/main/java/com/app/inventory/Product.java: |
+      package com.app.inventory;
+
+      public class Product {
+          private String sku;
+          private int quantity;
+          private int reservedQuantity;
+          public Product(String sku, int quantity, int reservedQuantity) {
+              this.sku = sku;
+              this.quantity = quantity;
+              this.reservedQuantity = reservedQuantity;
+          }
+          public String getSku() { return sku; }
+          public int getQuantity() { return quantity; }
+          public int getReservedQuantity() { return reservedQuantity; }
+          public int getAvailableQuantity() { return quantity - reservedQuantity; }
+      }
+    src/main/java/com/app/inventory/StockChecker.java: |
+      package com.app.inventory;
+
+      public class StockChecker {
+          public boolean isAvailable(Product product, int requested) {
+              return product.getAvailableQuantity() >= requested;
+          }
+      }
+  commit_message: "feat: account for reserved stock in availability check"
+fragments:
+- id: product_reserved_field
+  selector:
+    path: src/main/java/com/app/inventory/Product.java
+    anchor: "private int reservedQuantity"
+- id: product_available_qty
+  selector:
+    path: src/main/java/com/app/inventory/Product.java
+    anchor: "getAvailableQuantity"
+- id: checker_uses_available
+  selector:
+    path: src/main/java/com/app/inventory/StockChecker.java
+    anchor: "getAvailableQuantity"
+- id: service_imports_checker
+  selector:
+    path: src/main/java/com/app/service/InventoryService.java
+    anchor: "import com.app.inventory.StockChecker"
+- id: controller_imports_service
+  selector:
+    path: src/main/java/com/app/web/CartController.java
+    anchor: "import com.app.service.InventoryService"
+- id: no_formatter
+  selector:
+    path: src/main/java/com/app/util/Formatter.java
+    anchor: "GARBAGE_034_FMT_MARKER_A"
+- id: no_validator
+  selector:
+    path: src/main/java/com/app/util/Validator.java
+    anchor: "GARBAGE_034_VALID_MARKER_C"
+oracle:
+  required:
+  - product_reserved_field
+  - product_available_qty
+  - checker_uses_available
+  - service_imports_checker
+  - controller_imports_service
+  allowed: []
+  forbidden:
+  - no_formatter
+  - no_validator

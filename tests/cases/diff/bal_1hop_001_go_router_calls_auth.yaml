@@ -1,0 +1,113 @@
+name: bal_1hop_001_go_router_calls_auth
+tags:
+- lang:go
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    internal/auth/token.go: |
+      package auth
+
+      import "time"
+
+      type Claims struct {
+          UserID string
+          Exp    time.Time
+      }
+
+      func ValidateToken(raw string) (*Claims, error) {
+          if raw == "" {
+              return nil, fmt.Errorf("empty token")
+          }
+          return &Claims{UserID: "u1", Exp: time.Now().Add(time.Hour)}, nil
+      }
+    internal/router/routes.go: |
+      package router
+
+      import (
+          "net/http"
+          "myapp/internal/auth"
+      )
+
+      func SetupRoutes(mux *http.ServeMux) {
+          mux.HandleFunc("/profile", func(w http.ResponseWriter, r *http.Request) {
+              claims, err := auth.ValidateToken(r.Header.Get("Authorization"))
+              if err != nil {
+                  http.Error(w, "unauthorized", 401)
+                  return
+              }
+              w.Write([]byte("hello " + claims.UserID))
+          })
+      }
+    internal/db/connection.go: |
+      package db
+
+      type Pool struct {
+          DSN string
+      }
+
+      func NewPool(dsn string) *Pool {
+          return &Pool{DSN: dsn}
+      }
+    cmd/server/main.go: |
+      package main
+
+      import "net/http"
+
+      func main() {
+          mux := http.NewServeMux()
+          http.ListenAndServe(":8080", mux)
+      }
+  changed_files:
+    internal/auth/token.go: |
+      package auth
+
+      import (
+          "fmt"
+          "time"
+      )
+
+      type Claims struct {
+          UserID string
+          Role   string
+          Exp    time.Time
+      }
+
+      func ValidateToken(raw string, allowExpired bool) (*Claims, error) {
+          if raw == "" {
+              return nil, fmt.Errorf("empty token")
+          }
+          c := &Claims{UserID: "u1", Role: "user", Exp: time.Now().Add(time.Hour)}
+          if !allowExpired && c.Exp.Before(time.Now()) {
+              return nil, fmt.Errorf("token expired")
+          }
+          return c, nil
+      }
+  commit_message: "feat: add allowExpired param and Role to Claims"
+fragments:
+- id: validate_token_new_sig
+  selector:
+    path: internal/auth/token.go
+    anchor: "func ValidateToken(raw string, allowExpired bool)"
+- id: router_calls_validate
+  selector:
+    path: internal/router/routes.go
+    anchor: "auth.ValidateToken"
+- id: unrelated_db
+  selector:
+    path: internal/db/connection.go
+    anchor: "func NewPool"
+- id: unrelated_main
+  selector:
+    path: cmd/server/main.go
+    anchor: "func main()"
+oracle:
+  required:
+  - validate_token_new_sig
+  - router_calls_validate
+  allowed: []
+  forbidden:
+  - unrelated_db
+  - unrelated_main

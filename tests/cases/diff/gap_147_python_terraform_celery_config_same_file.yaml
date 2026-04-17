@@ -1,0 +1,107 @@
+name: gap_147_python_terraform_celery_config_same_file
+tags:
+- change:config
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+- lang:python
+- lang:terraform
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    workers/celeryconfig.py: |
+      import os
+
+      broker_url = os.getenv("BROKER_URL", "amqp://guest:guest@localhost:5672//")
+      result_backend = os.getenv("RESULT_BACKEND", "redis://localhost:6379/2")
+
+      task_serializer = "json"
+      result_serializer = "json"
+      accept_content = ["json"]
+      timezone = "UTC"
+      enable_utc = True
+
+      task_acks_late = True
+      worker_prefetch_multiplier = 1
+      task_default_queue = "default"
+      task_default_exchange = "default"
+      task_default_routing_key = "default"
+    infra/sqs.tf: |
+      resource "aws_sqs_queue" "tasks" {
+        name                       = "celery-tasks"
+        delay_seconds              = 0
+        max_message_size           = 262144
+        message_retention_seconds  = 345600
+        visibility_timeout_seconds = 30
+        receive_wait_time_seconds  = 10
+      }
+
+      resource "aws_sqs_queue" "dlq" {
+        name                       = "celery-tasks-dlq"
+        message_retention_seconds  = 1209600
+      }
+    infra/ecs_worker.tf: |
+      resource "aws_ecs_task_definition" "worker" {
+        family                   = "celery-worker"
+        requires_compatibilities = ["FARGATE"]
+        network_mode             = "awsvpc"
+        cpu                      = "512"
+        memory                   = "1024"
+
+        container_definitions = jsonencode([{
+          name  = "worker"
+          image = "app:latest"
+          command = ["celery", "-A", "app", "worker"]
+        }])
+      }
+  changed_files:
+    workers/celeryconfig.py: |
+      import os
+
+      broker_url = os.getenv("BROKER_URL", "amqp://guest:guest@localhost:5672//")
+      result_backend = os.getenv("RESULT_BACKEND", "redis://localhost:6379/2")
+
+      task_serializer = "json"
+      result_serializer = "json"
+      accept_content = ["json"]
+      timezone = "UTC"
+      enable_utc = True
+
+      task_acks_late = True
+      worker_prefetch_multiplier = 4
+      worker_concurrency = int(os.getenv("WORKER_CONCURRENCY", "8"))
+      task_default_queue = "default"
+      task_default_exchange = "default"
+      task_default_routing_key = "default"
+
+      task_soft_time_limit = 300
+      task_time_limit = 600
+fragments:
+- id: prefetch
+  selector:
+    path: workers/celeryconfig.py
+    anchor: worker_prefetch_multiplier
+- id: concurrency
+  selector:
+    path: workers/celeryconfig.py
+    anchor: worker_concurrency
+- id: soft_limit
+  selector:
+    path: workers/celeryconfig.py
+    anchor: task_soft_time_limit
+- id: no_sqs
+  selector:
+    path: infra/sqs.tf
+- id: no_ecs_worker
+  selector:
+    path: infra/ecs_worker.tf
+oracle:
+  required:
+  - prefetch
+  - concurrency
+  - soft_limit
+  forbidden:
+  - no_sqs
+  - no_ecs_worker

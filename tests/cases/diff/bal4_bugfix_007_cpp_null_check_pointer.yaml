@@ -1,0 +1,188 @@
+name: bal4_bugfix_007_cpp_null_check_pointer
+tags:
+- lang:cpp
+- change:single_file
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    include/node.h: |
+      #pragma once
+
+      struct TreeNode {
+          int value;
+          TreeNode* left;
+          TreeNode* right;
+
+          explicit TreeNode(int v) : value(v), left(nullptr), right(nullptr) {}
+      };
+    src/tree.cpp: |
+      #include "node.h"
+
+      class BinaryTree {
+      public:
+          BinaryTree() : root_(nullptr) {}
+
+          int findMax() const {
+              return findMaxNode(root_);
+          }
+
+      private:
+          TreeNode* root_;
+
+          int findMaxNode(TreeNode* node) const {
+              int maxVal = node->value;
+              if (node->left) {
+                  int leftMax = findMaxNode(node->left);
+                  if (leftMax > maxVal) maxVal = leftMax;
+              }
+              if (node->right) {
+                  int rightMax = findMaxNode(node->right);
+                  if (rightMax > maxVal) maxVal = rightMax;
+              }
+              return maxVal;
+          }
+      };
+    src/printer.cpp: |
+      #include "node.h"
+      #include <iostream>
+
+      void printInOrder(TreeNode* node) {
+          if (!node) return;
+          printInOrder(node->left);
+          std::cout << node->value << " ";
+          printInOrder(node->right);
+      }
+    garbage_bal4_007_alloc.cpp: |
+      // GARBAGE_BAL4_007_ALLOC_A = "slab"
+      // GARBAGE_BAL4_007_PAGE_B = 4096
+      class Allocator {
+          // GARBAGE_BAL4_007_ALIGN_C = 16
+          void* alloc(int size) { return nullptr; }
+      };
+    garbage_bal4_007_log.cpp: |
+      // GARBAGE_BAL4_007_LOG_D = "stderr"
+      // GARBAGE_BAL4_007_LEVEL_E = 2
+      class Logger {
+          // GARBAGE_BAL4_007_BUF_F = 8192
+          void write(const char* msg) {}
+      };
+  changed_files:
+    include/node.h: |
+      #pragma once
+
+      struct TreeNode {
+          int value;
+          TreeNode* left;
+          TreeNode* right;
+
+          explicit TreeNode(int v) : value(v), left(nullptr), right(nullptr) {}
+      };
+    src/tree.cpp: |
+      #include "node.h"
+      #include <limits>
+
+      class BinaryTree {
+      public:
+          BinaryTree() : root_(nullptr) {}
+
+          int findMax() const {
+              return findMaxNode(root_);
+          }
+
+      private:
+          TreeNode* root_;
+
+          int findMaxNode(TreeNode* node) const {
+              if (!node) return std::numeric_limits<int>::min();
+              int maxVal = node->value;
+              if (node->left) {
+                  int leftMax = findMaxNode(node->left);
+                  if (leftMax > maxVal) maxVal = leftMax;
+              }
+              if (node->right) {
+                  int rightMax = findMaxNode(node->right);
+                  if (rightMax > maxVal) maxVal = rightMax;
+              }
+              return maxVal;
+          }
+      };
+    src/printer.cpp: |
+      #include "node.h"
+      #include <iostream>
+
+      void printInOrder(TreeNode* node) {
+          if (!node) return;
+          printInOrder(node->left);
+          std::cout << node->value << " ";
+          printInOrder(node->right);
+      }
+    garbage_bal4_007_alloc.cpp: |
+      // GARBAGE_BAL4_007_ALLOC_A = "slab"
+      // GARBAGE_BAL4_007_PAGE_B = 4096
+      class Allocator {
+          // GARBAGE_BAL4_007_ALIGN_C = 16
+          void* alloc(int size) { return nullptr; }
+      };
+    garbage_bal4_007_log.cpp: |
+      // GARBAGE_BAL4_007_LOG_D = "stderr"
+      // GARBAGE_BAL4_007_LEVEL_E = 2
+      class Logger {
+          // GARBAGE_BAL4_007_BUF_F = 8192
+          void write(const char* msg) {}
+      };
+  commit_message: "fix: add null check before dereferencing tree node"
+fragments:
+- id: findMaxNode_func
+  selector:
+    path: src/tree.cpp
+    anchor: "int findMaxNode(TreeNode* node) const"
+- id: null_check
+  selector:
+    path: src/tree.cpp
+    anchor: "if (!node) return"
+- id: treenode_struct
+  selector:
+    path: include/node.h
+    anchor: "struct TreeNode"
+- id: no_garbage_alloc
+  selector:
+    path: garbage_bal4_007_alloc.cpp
+- id: no_garbage_log
+  selector:
+    path: garbage_bal4_007_log.cpp
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL4_007_ALLOC_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL4_007_PAGE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL4_007_ALIGN_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL4_007_LOG_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL4_007_LEVEL_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL4_007_BUF_F
+oracle:
+  required:
+  - findMaxNode_func
+  - null_check
+  - treenode_struct
+  allowed: []
+  forbidden:
+  - no_garbage_alloc
+  - no_garbage_log
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

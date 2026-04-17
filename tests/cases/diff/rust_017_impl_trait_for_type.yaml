@@ -1,353 +1,136 @@
 name: rust_017_impl_trait_for_type
+tags:
+- lang:rust
+- change:bug_fix
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:medium
 repo:
   initial_files:
-    src/lib.rs: |
-      pub mod traits;
-      pub mod shapes;
-      pub mod unrelated;
-    src/traits.rs: |
-      pub trait Drawable {
-          fn draw(&self);
+    src/finance/exchange_rate.rs: |
+      use std::collections::HashMap;
 
-          fn preview(&self) {
-              println!("Preview: ");
-              self.draw();
+      pub struct ExchangeRateCache {
+          rates: HashMap<(String, String), f64>,
+      }
+
+      impl ExchangeRateCache {
+          pub fn new() -> Self {
+              Self { rates: HashMap::new() }
           }
-      }
 
-      pub trait Resizable {
-          fn resize(&mut self, factor: f64);
-      }
-    src/shapes.rs: |
-      use crate::traits::Drawable;
-      use std::f64::consts::PI;
+          pub fn set(&mut self, from: &str, to: &str, rate: f64) {
+              self.rates.insert((from.to_string(), to.to_string()), rate);
+          }
 
-      #[derive(Debug, Clone)]
-      pub struct Circle {
-          pub radius: f64,
-          pub center: (f64, f64),
-      }
-
-      impl Circle {
-          pub fn new(radius: f64) -> Self {
-              Self {
-                  radius,
-                  center: (0.0, 0.0),
+          pub fn convert(&self, amount: f64, from: &str, to: &str) -> Option<f64> {
+              if from == to {
+                  return Some(amount);
               }
-          }
-
-          pub fn with_center(radius: f64, x: f64, y: f64) -> Self {
-              Self {
-                  radius,
-                  center: (x, y),
-              }
+              // BUG: does not check for inverse rate when direct rate is absent
+              self.rates.get(&(from.to_string(), to.to_string()))
+                  .map(|&rate| amount * rate)
           }
       }
+    src/finance/fx_service.rs: |
+      use crate::finance::exchange_rate::ExchangeRateCache;
 
-      impl Drawable for Circle {
-          fn draw(&self) {
-              println!("Drawing circle with radius {}", self.radius);
-          }
-      }
-    src/unrelated/mod.rs: |
-      pub mod physics;
-      pub mod math;
-    src/unrelated/physics.rs: |
-      // GARBAGE_RUST_PHYSICS_001
-      pub const GARBAGE_GRAVITY_002: f64 = 9.81;
-      pub const GARBAGE_LIGHT_SPEED_003: f64 = 299792458.0;
-
-      pub struct GarbageVector3D004 {
-          x: f64,
-          y: f64,
-          z: f64,
+      pub struct FxService {
+          cache: ExchangeRateCache,
       }
 
-      impl GarbageVector3D004 {
-          pub fn garbage_magnitude_005(&self) -> f64 {
-              (self.x * self.x + self.y * self.y + self.z * self.z).sqrt()
+      impl FxService {
+          pub fn new(cache: ExchangeRateCache) -> Self {
+              Self { cache }
           }
 
-          pub fn garbage_normalize_006(&mut self) {
-              let mag = self.garbage_magnitude_005();
-              if mag > 0.0 {
-                  self.x /= mag;
-                  self.y /= mag;
-                  self.z /= mag;
-              }
+          pub fn convert(&self, amount: f64, from: &str, to: &str) -> Result<f64, String> {
+              self.cache.convert(amount, from, to)
+                  .ok_or_else(|| format!("no rate for {}->{}", from, to))
           }
       }
-
-      pub trait GarbagePhysicsBody007 {
-          fn garbage_apply_force_008(&mut self, force: &GarbageVector3D004);
-          fn garbage_update_009(&mut self, dt: f64);
-      }
-    src/unrelated/math.rs: |
-      // GARBAGE_RUST_MATH_010
-      pub const GARBAGE_PI_011: f64 = 3.14159265358979;
-      pub const GARBAGE_E_012: f64 = 2.71828182845904;
-
-      pub struct GarbageMatrix4x4_013 {
-          data: [[f64; 4]; 4],
-      }
-
-      impl GarbageMatrix4x4_013 {
-          pub fn garbage_identity_014() -> Self {
-              Self {
-                  data: [
-                      [1.0, 0.0, 0.0, 0.0],
-                      [0.0, 1.0, 0.0, 0.0],
-                      [0.0, 0.0, 1.0, 0.0],
-                      [0.0, 0.0, 0.0, 1.0],
-                  ],
-              }
-          }
-
-          pub fn garbage_multiply_015(&self, other: &Self) -> Self {
-              Self::garbage_identity_014()
-          }
-      }
+    garbage/ledger_sync.rs: |
+      // GARBAGE_FX_A = "ledger_sync_marker"
+    garbage/settlement.rs: |
+      // GARBAGE_FX_B = "settlement_marker"
+    garbage/audit_trail.rs: |
+      // GARBAGE_FX_C = "audit_trail_marker"
   changed_files:
-    src/lib.rs: |
-      pub mod traits;
-      pub mod shapes;
-      pub mod unrelated;
-    src/traits.rs: |
-      pub trait Drawable {
-          fn draw(&self);
-          fn area(&self) -> f64;
+    src/finance/exchange_rate.rs: |
+      use std::collections::HashMap;
 
-          fn preview(&self) {
-              println!("Preview (area: {:.2}): ", self.area());
-              self.draw();
+      pub struct ExchangeRateCache {
+          rates: HashMap<(String, String), f64>,
+      }
+
+      impl ExchangeRateCache {
+          pub fn new() -> Self {
+              Self { rates: HashMap::new() }
           }
 
-          fn is_visible(&self) -> bool {
-              self.area() > 0.0
+          pub fn set(&mut self, from: &str, to: &str, rate: f64) {
+              self.rates.insert((from.to_string(), to.to_string()), rate);
           }
-      }
 
-      pub trait Resizable {
-          fn resize(&mut self, factor: f64);
-          fn scale_to_area(&mut self, target_area: f64);
-      }
-
-      pub trait Transformable: Drawable + Resizable {
-          fn translate(&mut self, dx: f64, dy: f64);
-          fn rotate(&mut self, angle: f64);
-      }
-    src/shapes.rs: |
-      use crate::traits::{Drawable, Resizable, Transformable};
-      use std::f64::consts::PI;
-
-      #[derive(Debug, Clone)]
-      pub struct Circle {
-          pub radius: f64,
-          pub center: (f64, f64),
-          rotation: f64,
-      }
-
-      impl Circle {
-          pub fn new(radius: f64) -> Self {
-              Self {
-                  radius,
-                  center: (0.0, 0.0),
-                  rotation: 0.0,
+          pub fn convert(&self, amount: f64, from: &str, to: &str) -> Option<f64> {
+              if from == to {
+                  return Some(amount);
               }
-          }
-
-          pub fn with_center(radius: f64, x: f64, y: f64) -> Self {
-              Self {
-                  radius,
-                  center: (x, y),
-                  rotation: 0.0,
-              }
+              let direct = self.rates.get(&(from.to_string(), to.to_string())).copied();
+              let inverse = self.rates.get(&(to.to_string(), from.to_string()))
+                  .map(|&r| 1.0 / r);
+              direct.or(inverse).map(|rate| amount * rate)
           }
       }
+    src/finance/fx_service.rs: |
+      use crate::finance::exchange_rate::ExchangeRateCache;
 
-      impl Drawable for Circle {
-          fn draw(&self) {
-              println!("Drawing circle with radius {} at {:?}", self.radius, self.center);
-          }
-
-          fn area(&self) -> f64 {
-              PI * self.radius * self.radius
-          }
+      pub struct FxService {
+          cache: ExchangeRateCache,
       }
 
-      impl Resizable for Circle {
-          fn resize(&mut self, factor: f64) {
-              self.radius *= factor.abs();
+      impl FxService {
+          pub fn new(cache: ExchangeRateCache) -> Self {
+              Self { cache }
           }
 
-          fn scale_to_area(&mut self, target_area: f64) {
-              self.radius = (target_area / PI).sqrt();
-          }
-      }
-
-      impl Transformable for Circle {
-          fn translate(&mut self, dx: f64, dy: f64) {
-              self.center.0 += dx;
-              self.center.1 += dy;
-          }
-
-          fn rotate(&mut self, angle: f64) {
-              self.rotation += angle;
+          pub fn convert(&self, amount: f64, from: &str, to: &str) -> Result<f64, String> {
+              self.cache.convert(amount, from, to)
+                  .ok_or_else(|| format!("no rate for {}->{}", from, to))
           }
       }
-
-      #[derive(Debug, Clone)]
-      pub struct Rectangle {
-          pub width: f64,
-          pub height: f64,
-          pub position: (f64, f64),
-      }
-
-      impl Rectangle {
-          pub fn new(width: f64, height: f64) -> Self {
-              Self {
-                  width,
-                  height,
-                  position: (0.0, 0.0),
-              }
-          }
-      }
-
-      impl Drawable for Rectangle {
-          fn draw(&self) {
-              println!("Drawing rectangle {}x{} at {:?}", self.width, self.height, self.position);
-          }
-
-          fn area(&self) -> f64 {
-              self.width * self.height
-          }
-      }
-
-      impl Resizable for Rectangle {
-          fn resize(&mut self, factor: f64) {
-              self.width *= factor.abs();
-              self.height *= factor.abs();
-          }
-
-          fn scale_to_area(&mut self, target_area: f64) {
-              let ratio = self.width / self.height;
-              self.height = (target_area / ratio).sqrt();
-              self.width = self.height * ratio;
-          }
-      }
-    src/unrelated/mod.rs: |
-      pub mod physics;
-      pub mod math;
-    src/unrelated/physics.rs: |
-      // GARBAGE_RUST_PHYSICS_001
-      pub const GARBAGE_GRAVITY_002: f64 = 9.81;
-      pub const GARBAGE_LIGHT_SPEED_003: f64 = 299792458.0;
-
-      pub struct GarbageVector3D004 {
-          x: f64,
-          y: f64,
-          z: f64,
-      }
-
-      impl GarbageVector3D004 {
-          pub fn garbage_magnitude_005(&self) -> f64 {
-              (self.x * self.x + self.y * self.y + self.z * self.z).sqrt()
-          }
-
-          pub fn garbage_normalize_006(&mut self) {
-              let mag = self.garbage_magnitude_005();
-              if mag > 0.0 {
-                  self.x /= mag;
-                  self.y /= mag;
-                  self.z /= mag;
-              }
-          }
-      }
-
-      pub trait GarbagePhysicsBody007 {
-          fn garbage_apply_force_008(&mut self, force: &GarbageVector3D004);
-          fn garbage_update_009(&mut self, dt: f64);
-      }
-    src/unrelated/math.rs: |
-      // GARBAGE_RUST_MATH_010
-      pub const GARBAGE_PI_011: f64 = 3.14159265358979;
-      pub const GARBAGE_E_012: f64 = 2.71828182845904;
-
-      pub struct GarbageMatrix4x4_013 {
-          data: [[f64; 4]; 4],
-      }
-
-      impl GarbageMatrix4x4_013 {
-          pub fn garbage_identity_014() -> Self {
-              Self {
-                  data: [
-                      [1.0, 0.0, 0.0, 0.0],
-                      [0.0, 1.0, 0.0, 0.0],
-                      [0.0, 0.0, 1.0, 0.0],
-                      [0.0, 0.0, 0.0, 1.0],
-                  ],
-              }
-          }
-
-          pub fn garbage_multiply_015(&self, other: &Self) -> Self {
-              Self::garbage_identity_014()
-          }
-      }
-  commit_message: Update files
+    garbage/ledger_sync.rs: |
+      // GARBAGE_FX_A = "ledger_sync_marker"
+    garbage/settlement.rs: |
+      // GARBAGE_FX_B = "settlement_marker"
+    garbage/audit_trail.rs: |
+      // GARBAGE_FX_C = "audit_trail_marker"
+  commit_message: "fix: fall back to inverse rate in ExchangeRateCache::convert"
 fragments:
-- id: shapes_file
+- id: convert_fn
   selector:
-    path: src/shapes.rs
-- id: traits_file
+    path: src/finance/exchange_rate.rs
+    anchor: "pub fn convert"
+- id: fx_service_convert
   selector:
-    path: src/traits.rs
-- id: req_global_0
+    path: src/finance/fx_service.rs
+    anchor: "pub fn convert"
+- id: no_garbage_a
   selector:
-    anchor: use crate::traits::{Drawable, Resizable, Transformable};
-- id: req_global_1
+    anchor: GARBAGE_FX_A
+- id: no_garbage_b
   selector:
-    anchor: println!("Drawing circle with radius {} at {:?}", self.radius, self.center);
-- id: no_global_0
+    anchor: GARBAGE_FX_B
+- id: no_garbage_c
   selector:
-    anchor: GARBAGE_E_012
-- id: no_global_1
-  selector:
-    anchor: GARBAGE_GRAVITY_002
-- id: no_global_2
-  selector:
-    anchor: GARBAGE_LIGHT_SPEED_003
-- id: no_global_3
-  selector:
-    anchor: GARBAGE_PI_011
-- id: no_global_4
-  selector:
-    anchor: GARBAGE_RUST_MATH_010
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_RUST_PHYSICS_001
-- id: no_global_6
-  selector:
-    anchor: math.rs
-- id: no_global_7
-  selector:
-    anchor: mod.rs
-- id: no_global_8
-  selector:
-    anchor: physics.rs
+    anchor: GARBAGE_FX_C
 oracle:
   required:
-  - shapes_file
-  - traits_file
-  - req_global_0
-  - req_global_1
-  allowed: []
+  - convert_fn
+  allowed:
+  - fx_service_convert
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
-  - no_global_8
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

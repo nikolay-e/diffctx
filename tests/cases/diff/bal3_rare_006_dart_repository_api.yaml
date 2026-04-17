@@ -1,0 +1,147 @@
+name: bal3_rare_006_dart_repository_api
+tags:
+- lang:dart
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+xfail:
+  category: dart-no-tree-sitter
+repo:
+  initial_files:
+    lib/config/api_config.dart: |
+      class ApiConfig {
+        final String baseUrl;
+        final int timeoutMs;
+        final Map<String, String> headers;
+
+        ApiConfig({
+          required this.baseUrl,
+          required this.timeoutMs,
+          this.headers = const {},
+        });
+      }
+    lib/repositories/product_repository.dart: |
+      import '../config/api_config.dart';
+
+      class ProductRepository {
+        final ApiConfig config;
+
+        ProductRepository(this.config);
+
+        String buildUrl(String path) {
+          return '${config.baseUrl}$path';
+        }
+
+        Map<String, dynamic> fetchProducts() {
+          final url = buildUrl('/products');
+          return {'url': url, 'timeout': config.timeoutMs};
+        }
+      }
+    lib/repositories/order_repository.dart: |
+      import '../config/api_config.dart';
+
+      class OrderRepository {
+        final ApiConfig config;
+
+        OrderRepository(this.config);
+
+        String buildUrl(String path) {
+          return '${config.baseUrl}$path';
+        }
+      }
+    lib/widgets/product_list.dart: |
+      const GARBAGE_RARE_006_LIST_A = 'grid';
+      const GARBAGE_RARE_006_COLS_B = 2;
+
+      class ProductList {
+        void render() {}
+      }
+    lib/theme/colors.dart: |
+      const GARBAGE_RARE_006_PRIMARY_C = 0xFF6200EE;
+      const GARBAGE_RARE_006_ACCENT_D = 0xFF03DAC5;
+
+      class AppColors {}
+    lib/utils/debounce.dart: |
+      const GARBAGE_RARE_006_DELAY_E = 300;
+      const GARBAGE_RARE_006_TIMER_F = 'debounce';
+
+      void debounce(Function fn, int delayMs) {}
+  changed_files:
+    lib/config/api_config.dart: |
+      class ApiConfig {
+        final String baseUrl;
+        final int timeoutMs;
+        final Map<String, String> headers;
+        final int retryCount;
+        final String? apiKey;
+
+        ApiConfig({
+          required this.baseUrl,
+          required this.timeoutMs,
+          this.headers = const {},
+          this.retryCount = 3,
+          this.apiKey,
+        });
+      }
+  commit_message: "add retryCount and apiKey to ApiConfig"
+fragments:
+- id: product_repo_import
+  selector:
+    path: lib/repositories/product_repository.dart
+    anchor: "import '../config/api_config.dart'"
+- id: product_repo_uses_config
+  selector:
+    path: lib/repositories/product_repository.dart
+    anchor: "config.baseUrl"
+- id: order_repo_import
+  selector:
+    path: lib/repositories/order_repository.dart
+    anchor: "import '../config/api_config.dart'"
+- id: no_product_list
+  selector:
+    path: lib/widgets/product_list.dart
+    anchor: "class ProductList"
+- id: no_colors
+  selector:
+    path: lib/theme/colors.dart
+    anchor: "class AppColors"
+- id: no_debounce
+  selector:
+    path: lib/utils/debounce.dart
+    anchor: "debounce"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_RARE_006_LIST_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_RARE_006_COLS_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_RARE_006_PRIMARY_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_RARE_006_ACCENT_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_RARE_006_DELAY_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_RARE_006_TIMER_F
+oracle:
+  required:
+  - product_repo_import
+  - product_repo_uses_config
+  - order_repo_import
+  allowed: []
+  forbidden:
+  - no_product_list
+  - no_colors
+  - no_debounce
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

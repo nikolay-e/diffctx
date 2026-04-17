@@ -1,0 +1,100 @@
+name: bal4_0hop_013_zig_bug_fix
+tags:
+- lang:zig
+- change:single_file
+- change:bug_fix
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/safe_div.zig: |
+      const std = @import("std");
+
+      pub fn safeDivide(a: i32, b: i32) i32 {
+          return @divTrunc(a, b);
+      }
+
+      pub fn remainder(a: i32, b: i32) i32 {
+          return @rem(a, b);
+      }
+    src/garbage_abs.zig: |
+      const GARBAGE_B4Z013_ABS_A: []const u8 = "abs";
+      const GARBAGE_B4Z013_ABS_B: i32 = -1;
+
+      pub fn garbageAbs(x: i32) i32 {
+          return x;
+      }
+    src/garbage_neg.zig: |
+      const GARBAGE_B4Z013_NEG_C: []const u8 = "neg";
+      const GARBAGE_B4Z013_NEG_D: bool = true;
+
+      pub fn garbageNeg(x: i32) i32 {
+          return -x;
+      }
+  changed_files:
+    src/safe_div.zig: |
+      const std = @import("std");
+
+      pub fn safeDivide(a: i32, b: i32) ?i32 {
+          if (b == 0) return null;
+          return @divTrunc(a, b);
+      }
+
+      pub fn remainder(a: i32, b: i32) i32 {
+          return @rem(a, b);
+      }
+    src/garbage_abs.zig: |
+      const GARBAGE_B4Z013_ABS_A: []const u8 = "abs";
+      const GARBAGE_B4Z013_ABS_B: i32 = -1;
+
+      pub fn garbageAbs(x: i32) i32 {
+          return x;
+      }
+    src/garbage_neg.zig: |
+      const GARBAGE_B4Z013_NEG_C: []const u8 = "neg";
+      const GARBAGE_B4Z013_NEG_D: bool = true;
+
+      pub fn garbageNeg(x: i32) i32 {
+          return -x;
+      }
+  commit_message: "fix: return optional on division by zero"
+fragments:
+- id: optional_return
+  selector:
+    path: src/safe_div.zig
+    anchor: "pub fn safeDivide(a: i32, b: i32) ?i32 {"
+- id: null_guard
+  selector:
+    path: src/safe_div.zig
+    anchor: "if (b == 0) return null;"
+- id: no_garbage_abs
+  selector:
+    path: src/garbage_abs.zig
+- id: no_garbage_neg
+  selector:
+    path: src/garbage_neg.zig
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_B4Z013_ABS_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_B4Z013_ABS_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_B4Z013_NEG_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_B4Z013_NEG_D
+oracle:
+  required:
+  - optional_return
+  - null_guard
+  allowed: []
+  forbidden:
+  - no_garbage_abs
+  - no_garbage_neg
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

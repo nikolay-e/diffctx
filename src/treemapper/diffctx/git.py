@@ -181,6 +181,13 @@ def split_diff_range(diff_range: str) -> tuple[str | None, str | None]:
     return (base or None, head or None)
 
 
+def get_commit_message(repo_root: Path, rev: str) -> str:
+    try:
+        return run_git(repo_root, ["log", "-1", "--format=%s%n%b", rev]).strip()
+    except GitError:
+        return ""
+
+
 def get_untracked_files(repo_root: Path) -> list[Path]:
     return [repo_root / p for p in _run_git_z(repo_root, ["ls-files", "--others", "--exclude-standard", "-z"])]
 

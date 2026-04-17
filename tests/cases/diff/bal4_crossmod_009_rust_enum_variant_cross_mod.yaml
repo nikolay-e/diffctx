@@ -1,0 +1,117 @@
+name: bal4_crossmod_009_rust_enum_variant_cross_mod
+tags:
+- lang:rust
+- change:single_file
+- context:cross_module
+- distance:1hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/types/status.rs: |
+      pub enum Status {
+          Active,
+          Inactive,
+      }
+
+      impl Status {
+          pub fn as_str(&self) -> &str {
+              match self {
+                  Status::Active => "active",
+                  Status::Inactive => "inactive",
+              }
+          }
+      }
+    src/services/account.rs: |
+      use crate::types::status::Status;
+
+      pub fn activate(current: &Status) -> Status {
+          match current {
+              Status::Inactive => Status::Active,
+              _ => Status::Active,
+          }
+      }
+    src/db/pool.rs: |
+      pub const GARBAGE_009_POOL_A: u32 = 5;
+      pub const GARBAGE_009_TIMEOUT_B: u32 = 30;
+
+      pub fn get_conn() -> String {
+          "conn".to_string()
+      }
+    garbage_telemetry.rs: |
+      pub const GARBAGE_009_SPAN_C: &str = "trace";
+      pub const GARBAGE_009_LEVEL_D: &str = "info";
+
+      pub fn emit() {}
+  changed_files:
+    src/types/status.rs: |
+      pub enum Status {
+          Active,
+          Inactive,
+          Suspended,
+      }
+
+      impl Status {
+          pub fn as_str(&self) -> &str {
+              match self {
+                  Status::Active => "active",
+                  Status::Inactive => "inactive",
+                  Status::Suspended => "suspended",
+              }
+          }
+      }
+    src/services/account.rs: |
+      use crate::types::status::Status;
+
+      pub fn activate(current: &Status) -> Status {
+          match current {
+              Status::Inactive => Status::Active,
+              _ => Status::Active,
+          }
+      }
+    src/db/pool.rs: |
+      pub const GARBAGE_009_POOL_A: u32 = 5;
+      pub const GARBAGE_009_TIMEOUT_B: u32 = 30;
+
+      pub fn get_conn() -> String {
+          "conn".to_string()
+      }
+    garbage_telemetry.rs: |
+      pub const GARBAGE_009_SPAN_C: &str = "trace";
+      pub const GARBAGE_009_LEVEL_D: &str = "info";
+
+      pub fn emit() {}
+  commit_message: "add Suspended variant to Status enum"
+fragments:
+- id: account_activate
+  selector:
+    path: src/services/account.rs
+    anchor: "pub fn activate(current: &Status)"
+- id: no_pool
+  selector:
+    path: src/db/pool.rs
+- id: no_garbage_telemetry
+  selector:
+    path: garbage_telemetry.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_009_POOL_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_009_TIMEOUT_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_009_SPAN_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_009_LEVEL_D
+oracle:
+  required:
+  - account_activate
+  allowed: []
+  forbidden:
+  - no_pool
+  - no_garbage_telemetry
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

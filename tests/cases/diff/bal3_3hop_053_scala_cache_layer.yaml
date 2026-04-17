@@ -1,0 +1,144 @@
+name: bal3_3hop_053_scala_cache_layer
+tags:
+- lang:scala
+- change:multi_file
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/com/app/cache/CacheKey.scala: |
+      package com.app.cache
+
+      case class CacheKey(
+        namespace: String,
+        id: String
+      ) {
+        def toKey: String = s"$namespace:$id"
+      }
+    src/main/scala/com/app/cache/CacheStore.scala: |
+      package com.app.cache
+
+      import scala.collection.mutable
+
+      class CacheStore {
+        private val data = mutable.Map.empty[String, String]
+        def get(key: CacheKey): Option[String] = data.get(key.toKey)
+        def put(key: CacheKey, value: String): Unit = data.put(key.toKey, value)
+      }
+    src/main/scala/com/app/cache/CacheManager.scala: |
+      package com.app.cache
+
+      class CacheManager(store: CacheStore) {
+        def fetch(namespace: String, id: String): Option[String] = {
+          store.get(CacheKey(namespace, id))
+        }
+        def store(namespace: String, id: String, value: String): Unit = {
+          this.store.put(CacheKey(namespace, id), value)
+        }
+      }
+    src/main/scala/com/app/service/CacheService.scala: |
+      package com.app.service
+
+      import com.app.cache.CacheManager
+
+      class CacheService(manager: CacheManager) {
+        def lookup(ns: String, id: String): Option[String] = manager.fetch(ns, id)
+      }
+    src/main/scala/com/app/api/CacheEndpoint.scala: |
+      package com.app.api
+
+      import com.app.service.CacheService
+
+      class CacheEndpoint(service: CacheService) {
+        def get(ns: String, id: String): String = {
+          service.lookup(ns, id).getOrElse("miss")
+        }
+      }
+    src/main/scala/com/app/util/Ttl.scala: |
+      package com.app.util
+
+      var GARBAGE_053_TTL_MARKER_A = "60s"
+      var GARBAGE_053_MAX_MARKER_B = 3600
+
+      object Ttl {
+        def parse(s: String): Long = 60
+      }
+    src/main/scala/com/app/util/Eviction.scala: |
+      package com.app.util
+
+      var GARBAGE_053_EVICT_MARKER_C = "lru"
+      var GARBAGE_053_SIZE_MARKER_D = 1000
+
+      object Eviction {
+        def shouldEvict(size: Int, max: Int): Boolean = size >= max
+      }
+  changed_files:
+    src/main/scala/com/app/cache/CacheKey.scala: |
+      package com.app.cache
+
+      case class CacheKey(
+        namespace: String,
+        id: String,
+        version: Int = 0
+      ) {
+        def toKey: String = s"$namespace:$id:v$version"
+      }
+    src/main/scala/com/app/cache/CacheStore.scala: |
+      package com.app.cache
+
+      import scala.collection.mutable
+
+      class CacheStore {
+        private val data = mutable.Map.empty[String, String]
+        def get(key: CacheKey): Option[String] = data.get(key.toKey)
+        def put(key: CacheKey, value: String): Unit = data.put(key.toKey, value)
+        def invalidate(key: CacheKey): Unit = data.remove(key.toKey)
+      }
+  commit_message: "feat: add versioned cache keys and invalidation"
+fragments:
+- id: key_version_field
+  selector:
+    path: src/main/scala/com/app/cache/CacheKey.scala
+    anchor: "version: Int = 0"
+- id: key_versioned_tokey
+  selector:
+    path: src/main/scala/com/app/cache/CacheKey.scala
+    anchor: "v$version"
+- id: store_invalidate
+  selector:
+    path: src/main/scala/com/app/cache/CacheStore.scala
+    anchor: "def invalidate"
+- id: manager_uses_store
+  selector:
+    path: src/main/scala/com/app/cache/CacheManager.scala
+    anchor: "store: CacheStore"
+- id: service_imports_manager
+  selector:
+    path: src/main/scala/com/app/service/CacheService.scala
+    anchor: "import com.app.cache.CacheManager"
+- id: endpoint_imports_service
+  selector:
+    path: src/main/scala/com/app/api/CacheEndpoint.scala
+    anchor: "import com.app.service.CacheService"
+- id: no_ttl
+  selector:
+    path: src/main/scala/com/app/util/Ttl.scala
+    anchor: "GARBAGE_053_TTL_MARKER_A"
+- id: no_eviction
+  selector:
+    path: src/main/scala/com/app/util/Eviction.scala
+    anchor: "GARBAGE_053_EVICT_MARKER_C"
+oracle:
+  required:
+  - key_version_field
+  - key_versioned_tokey
+  - store_invalidate
+  - manager_uses_store
+  - service_imports_manager
+  allowed:
+  - endpoint_imports_service
+  forbidden:
+  - no_ttl
+  - no_eviction

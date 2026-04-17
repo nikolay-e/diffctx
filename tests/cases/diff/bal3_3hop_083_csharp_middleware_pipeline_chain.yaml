@@ -1,0 +1,290 @@
+name: bal3_3hop_083_csharp_middleware_pipeline_chain
+tags:
+- lang:csharp
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/Http/HttpContext.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Http
+      {
+          public class HttpContext
+          {
+              public string Method { get; set; }
+              public string Path { get; set; }
+              public Dictionary<string, string> Headers { get; set; } = new();
+          }
+      }
+    src/Middleware/CorsMiddleware.cs: |
+      using System;
+      using App.Http;
+
+      namespace App.Middleware
+      {
+          public class CorsMiddleware
+          {
+              public bool Process(HttpContext context)
+              {
+                  context.Headers["Access-Control-Allow-Origin"] = "*";
+                  return true;
+              }
+          }
+      }
+    src/Middleware/MiddlewarePipeline.cs: |
+      using System;
+      using System.Collections.Generic;
+      using App.Http;
+      using App.Middleware;
+
+      namespace App.Middleware
+      {
+          public class MiddlewarePipeline
+          {
+              private readonly CorsMiddleware _cors;
+              public MiddlewarePipeline(CorsMiddleware cors)
+              {
+                  _cors = cors;
+              }
+              public bool Execute(HttpContext context)
+              {
+                  return _cors.Process(context);
+              }
+          }
+      }
+    src/Hosting/WebHost.cs: |
+      using System;
+      using App.Middleware;
+      using App.Http;
+
+      namespace App.Hosting
+      {
+          public class WebHost
+          {
+              private readonly MiddlewarePipeline _pipeline;
+              public WebHost(MiddlewarePipeline pipeline)
+              {
+                  _pipeline = pipeline;
+              }
+              public string HandleRequest(HttpContext context)
+              {
+                  if (!_pipeline.Execute(context))
+                  {
+                      return "403 Forbidden";
+                  }
+                  return "200 OK";
+              }
+          }
+      }
+    src/Program/Startup.cs: |
+      using System;
+      using App.Hosting;
+
+      namespace App.Program
+      {
+          public class Startup
+          {
+              private readonly WebHost _host;
+              public Startup(WebHost host)
+              {
+                  _host = host;
+              }
+              public string Run(HttpContext context)
+              {
+                  return _host.HandleRequest(context);
+              }
+          }
+      }
+    src/Caching/MemoryCache.cs: |
+      using System;
+      // GARBAGE_083_MCACHE_A = "memory"
+      // GARBAGE_083_SIZE_B = 1024
+
+      namespace App.Caching
+      {
+          public class MemoryCache
+          {
+              public object Get(string key) => null;
+          }
+      }
+    src/Caching/DistributedCache.cs: |
+      using System;
+      // GARBAGE_083_DCACHE_C = "redis"
+      // GARBAGE_083_HOST_D = "localhost"
+
+      namespace App.Caching
+      {
+          public class DistributedCache
+          {
+              public object Get(string key) => null;
+          }
+      }
+  changed_files:
+    src/Http/HttpContext.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Http
+      {
+          public class HttpContext
+          {
+              public string Method { get; set; }
+              public string Path { get; set; }
+              public Dictionary<string, string> Headers { get; set; } = new();
+              public string ClientIp { get; set; } = "127.0.0.1";
+              public DateTime RequestTime { get; set; } = DateTime.UtcNow;
+          }
+      }
+    src/Middleware/CorsMiddleware.cs: |
+      using System;
+      using App.Http;
+
+      namespace App.Middleware
+      {
+          public class CorsMiddleware
+          {
+              public bool Process(HttpContext context)
+              {
+                  context.Headers["Access-Control-Allow-Origin"] = "*";
+                  return true;
+              }
+          }
+      }
+    src/Middleware/MiddlewarePipeline.cs: |
+      using System;
+      using System.Collections.Generic;
+      using App.Http;
+      using App.Middleware;
+
+      namespace App.Middleware
+      {
+          public class MiddlewarePipeline
+          {
+              private readonly CorsMiddleware _cors;
+              public MiddlewarePipeline(CorsMiddleware cors)
+              {
+                  _cors = cors;
+              }
+              public bool Execute(HttpContext context)
+              {
+                  return _cors.Process(context);
+              }
+          }
+      }
+    src/Hosting/WebHost.cs: |
+      using System;
+      using App.Middleware;
+      using App.Http;
+
+      namespace App.Hosting
+      {
+          public class WebHost
+          {
+              private readonly MiddlewarePipeline _pipeline;
+              public WebHost(MiddlewarePipeline pipeline)
+              {
+                  _pipeline = pipeline;
+              }
+              public string HandleRequest(HttpContext context)
+              {
+                  if (!_pipeline.Execute(context))
+                  {
+                      return "403 Forbidden";
+                  }
+                  return "200 OK";
+              }
+          }
+      }
+    src/Program/Startup.cs: |
+      using System;
+      using App.Hosting;
+
+      namespace App.Program
+      {
+          public class Startup
+          {
+              private readonly WebHost _host;
+              public Startup(WebHost host)
+              {
+                  _host = host;
+              }
+              public string Run(HttpContext context)
+              {
+                  return _host.HandleRequest(context);
+              }
+          }
+      }
+    src/Caching/MemoryCache.cs: |
+      using System;
+      // GARBAGE_083_MCACHE_A = "memory"
+      // GARBAGE_083_SIZE_B = 1024
+
+      namespace App.Caching
+      {
+          public class MemoryCache
+          {
+              public object Get(string key) => null;
+          }
+      }
+    src/Caching/DistributedCache.cs: |
+      using System;
+      // GARBAGE_083_DCACHE_C = "redis"
+      // GARBAGE_083_HOST_D = "localhost"
+
+      namespace App.Caching
+      {
+          public class DistributedCache
+          {
+              public object Get(string key) => null;
+          }
+      }
+  commit_message: "feat: add client IP and request timestamp to HttpContext"
+fragments:
+- id: context_client_ip
+  selector:
+    path: src/Http/HttpContext.cs
+    anchor: "ClientIp"
+- id: context_request_time
+  selector:
+    path: src/Http/HttpContext.cs
+    anchor: "RequestTime"
+- id: cors_uses_http
+  selector:
+    path: src/Middleware/CorsMiddleware.cs
+    anchor: "using App.Http"
+- id: pipeline_uses_middleware
+  selector:
+    path: src/Middleware/MiddlewarePipeline.cs
+    anchor: "using App.Http"
+- id: host_uses_pipeline
+  selector:
+    path: src/Hosting/WebHost.cs
+    anchor: "using App.Middleware"
+- id: startup_uses_host
+  selector:
+    path: src/Program/Startup.cs
+    anchor: "using App.Hosting"
+- id: no_memory_cache
+  selector:
+    path: src/Caching/MemoryCache.cs
+    anchor: "GARBAGE_083_MCACHE_A"
+- id: no_dist_cache
+  selector:
+    path: src/Caching/DistributedCache.cs
+    anchor: "GARBAGE_083_DCACHE_C"
+oracle:
+  required:
+  - context_client_ip
+  - cors_uses_http
+  - pipeline_uses_middleware
+  - host_uses_pipeline
+  - startup_uses_host
+  allowed:
+  - context_request_time
+  forbidden:
+  - no_memory_cache
+  - no_dist_cache

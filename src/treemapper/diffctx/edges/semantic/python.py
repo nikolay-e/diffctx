@@ -19,8 +19,10 @@ logger = logging.getLogger(__name__)
 
 _RG_BIN = None if os.environ.get("DIFFCTX_NO_RIPGREP") else shutil.which("rg")
 
-_IMPORT_LINE_RE = re.compile(r"^\s*(?:from\s+(\.+)?([\w.]*)\s+import|import\s+([\w.]+(?:\s*,\s*[\w.]+)*))")
+_IMPORT_FROM_RE = re.compile(r"^\s*from\s+(\.+)?([\w.]*)\s+import")
+_IMPORT_SIMPLE_RE = re.compile(r"^\s*import\s+([\w.]+(?:\s*,\s*[\w.]+)*)")
 
+_INIT_PY = "__init__.py"
 _PYTHON_EXTS = {".py", ".pyi", ".pyw"}
 
 _PY_WEIGHTS = LANG_WEIGHTS["python"]
@@ -61,6 +63,26 @@ def _resolve_relative(name: str, source_path: Path, repo_root: Path | None) -> s
         return None
 
 
+def _collect_import_from(
+    node: ast.ImportFrom,
+    imports: set[str],
+    source_path: Path | None,
+    repo_root: Path | None,
+) -> None:
+    module = node.module or ""
+    if node.level and node.level > 0:
+        relative = "." * node.level + module
+        if source_path:
+            resolved = _resolve_relative(relative, source_path, repo_root)
+            if resolved:
+                _add_import_with_prefixes(imports, resolved)
+    elif module:
+        _add_import_with_prefixes(imports, module)
+        for alias in node.names:
+            if alias.name and alias.name != "*":
+                _add_import_with_prefixes(imports, f"{module}.{alias.name}")
+
+
 def _extract_imports_from_content(content: str, source_path: Path | None = None, repo_root: Path | None = None) -> set[str]:
     imports: set[str] = set()
     import warnings
@@ -78,19 +100,7 @@ def _extract_imports_from_content(content: str, source_path: Path | None = None,
                 if alias.name:
                     _add_import_with_prefixes(imports, alias.name)
         elif isinstance(node, ast.ImportFrom):
-            module = node.module or ""
-            if node.level and node.level > 0:
-                dots = "." * node.level
-                relative = dots + module
-                if source_path:
-                    resolved = _resolve_relative(relative, source_path, repo_root)
-                    if resolved:
-                        _add_import_with_prefixes(imports, resolved)
-            elif module:
-                _add_import_with_prefixes(imports, module)
-                for alias in node.names:
-                    if alias.name and alias.name != "*":
-                        _add_import_with_prefixes(imports, f"{module}.{alias.name}")
+            _collect_import_from(node, imports, source_path, repo_root)
     return imports
 
 
@@ -145,22 +155,25 @@ def _build_import_index_rg(
         if path not in candidate_set:
             continue
 
-        m = _IMPORT_LINE_RE.match(content.strip())
-        if not m:
+        stripped = content.strip()
+        m_from = _IMPORT_FROM_RE.match(stripped)
+        m_simple = _IMPORT_SIMPLE_RE.match(stripped)
+        if not m_from and not m_simple:
             continue
 
-        dots, module, simple_import = m.groups()
-        if simple_import:
-            for name in simple_import.split(","):
+        if m_simple:
+            for name in m_simple.group(1).split(","):
                 name = name.split(" as ")[0].strip()
                 if name:
                     _add_import_with_prefixes(file_to_imports[path], name)
-        elif dots:
-            resolved = _resolve_relative_rg(path, repo_root, len(dots), module or "")
-            if resolved:
-                _add_import_with_prefixes(file_to_imports[path], resolved)
-        elif module:
-            _add_import_with_prefixes(file_to_imports[path], module)
+        elif m_from:
+            dots, module = m_from.group(1), m_from.group(2)
+            if dots:
+                resolved = _resolve_relative_rg(path, repo_root, len(dots), module or "")
+                if resolved:
+                    _add_import_with_prefixes(file_to_imports[path], resolved)
+            elif module:
+                _add_import_with_prefixes(file_to_imports[path], module)
 
     return file_to_imports
 
@@ -186,7 +199,7 @@ def _find_module_file(target_dir: Path) -> Path | None:
     source_as_file = target_dir.with_suffix(".py")
     if source_as_file.is_file():
         return source_as_file
-    source_as_pkg = target_dir / "__init__.py"
+    source_as_pkg = target_dir / _INIT_PY
     if source_as_pkg.is_file():
         return source_as_pkg
     for ext in (".pyi", ".pyw"):
@@ -243,7 +256,7 @@ def _resolve_init_reexports(
                 continue
             result[_name] = resolved_path
 
-            if resolved_path.name == "__init__.py":
+            if resolved_path.name == _INIT_PY:
                 nested = _resolve_init_reexports(resolved_path, repo_root, file_cache, _depth + 1)
                 if _name in nested:
                     result[_name] = nested[_name]
@@ -277,36 +290,55 @@ class PythonEdgeBuilder(EdgeBuilder):
         frontier = set(py_changed)
 
         for _depth in range(self._DISCOVERY_MAX_DEPTH):
-            next_frontier: set[Path] = set()
-            for f in frontier:
-                f_imports = file_to_imports.get(f)
-                if f_imports is None:
-                    try:
-                        content = f.read_text(encoding="utf-8")
-                        f_imports = _extract_imports_from_content(content, f, repo_root)
-                    except (OSError, UnicodeDecodeError):
-                        continue
-
-                for imp in f_imports:
-                    for target in module_to_files.get(imp, []):
-                        if target not in changed_set and target not in discovered:
-                            discovered.add(target)
-                            next_frontier.add(target)
-
-                f_module = file_to_module.get(f) or path_to_module(f, repo_root)
-                if f_module:
-                    for candidate, cand_imports in file_to_imports.items():
-                        if candidate in changed_set or candidate in discovered:
-                            continue
-                        if f_module in cand_imports:
-                            discovered.add(candidate)
-                            next_frontier.add(candidate)
-
+            next_frontier = self._expand_frontier(
+                frontier,
+                changed_set,
+                discovered,
+                file_to_imports,
+                file_to_module,
+                module_to_files,
+                repo_root,
+            )
             frontier = next_frontier
             if not frontier:
                 break
 
         return list(discovered)
+
+    @staticmethod
+    def _expand_frontier(
+        frontier: set[Path],
+        changed_set: set[Path],
+        discovered: set[Path],
+        file_to_imports: dict[Path, set[str]],
+        file_to_module: dict[Path, str],
+        module_to_files: dict[str, list[Path]],
+        repo_root: Path | None,
+    ) -> set[Path]:
+        next_frontier: set[Path] = set()
+        for f in frontier:
+            f_imports = file_to_imports.get(f)
+            if f_imports is None:
+                try:
+                    content = f.read_text(encoding="utf-8")
+                    f_imports = _extract_imports_from_content(content, f, repo_root)
+                except (OSError, UnicodeDecodeError):
+                    continue
+
+            for imp in f_imports:
+                for target in module_to_files.get(imp, []):
+                    if target not in changed_set and target not in discovered:
+                        discovered.add(target)
+                        next_frontier.add(target)
+
+            f_module = file_to_module.get(f) or path_to_module(f, repo_root)
+            if f_module:
+                for candidate, cand_imports in file_to_imports.items():
+                    if candidate not in changed_set and candidate not in discovered and f_module in cand_imports:
+                        discovered.add(candidate)
+                        next_frontier.add(candidate)
+
+        return next_frontier
 
     def _build_import_index(
         self,
@@ -367,7 +399,7 @@ class PythonEdgeBuilder(EdgeBuilder):
         file_to_module: dict[Path, str],
         module_to_files: dict[str, list[Path]],
     ) -> None:
-        init_files = [f for f in all_candidate_files if f.name == "__init__.py"]
+        init_files = [f for f in all_candidate_files if f.name == _INIT_PY]
         for init_f in init_files:
             pkg_module = path_to_module(init_f, repo_root)
             if not pkg_module:
@@ -392,7 +424,7 @@ class PythonEdgeBuilder(EdgeBuilder):
         path_to_frags: dict[Path, list[FragmentId]],
     ) -> None:
         for f in py_frags:
-            if f.path.name != "__init__.py":
+            if f.path.name != _INIT_PY:
                 continue
             pkg_module = path_to_module(f.path, repo_root)
             if not pkg_module:
@@ -404,18 +436,16 @@ class PythonEdgeBuilder(EdgeBuilder):
                     if sf not in existing:
                         module_to_frags[pkg_module].append(sf)
 
-    def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:
-        py_frags = [f for f in fragments if _is_python_file(f.path)]
-        if not py_frags:
-            return {}
-
-        info_cache: dict[FragmentId, PyFragmentInfo] = {}
-        for f in py_frags:
-            info_cache[f.id] = analyze_python_fragment(f.content)
-
+    @staticmethod
+    def _build_frag_indexes(
+        py_frags: list[Fragment],
+        info_cache: dict[FragmentId, PyFragmentInfo],
+        repo_root: Path | None,
+    ) -> tuple[
+        dict[str, list[FragmentId]], dict[FragmentId, frozenset[str]], dict[str, list[FragmentId]], dict[Path, list[FragmentId]]
+    ]:
         name_to_defs: dict[str, list[FragmentId]] = defaultdict(list)
         frag_defines: dict[FragmentId, frozenset[str]] = {}
-
         for f in py_frags:
             info = info_cache[f.id]
             frag_defines[f.id] = info.defines
@@ -430,36 +460,35 @@ class PythonEdgeBuilder(EdgeBuilder):
                 module_to_frags[module].append(f.id)
             path_to_frags[f.path].append(f.id)
 
+        return name_to_defs, frag_defines, module_to_frags, path_to_frags
+
+    def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:
+        py_frags = [f for f in fragments if _is_python_file(f.path)]
+        if not py_frags:
+            return {}
+
+        info_cache: dict[FragmentId, PyFragmentInfo] = {}
+        for f in py_frags:
+            info_cache[f.id] = analyze_python_fragment(f.content)
+
+        name_to_defs, frag_defines, module_to_frags, path_to_frags = self._build_frag_indexes(
+            py_frags,
+            info_cache,
+            repo_root,
+        )
+
         file_cache: dict[Path, str] = {f.path: f.content for f in py_frags}
         self._enrich_frags_with_reexports(py_frags, repo_root, file_cache, module_to_frags, path_to_frags)
 
-        frag_imports: dict[FragmentId, set[str]] = {}
-        for f in py_frags:
-            frag_imports[f.id] = _extract_imports_from_content(f.content, f.path, repo_root)
-
-        frag_to_module: dict[FragmentId, str] = {}
-        for f in py_frags:
-            m = path_to_module(f.path, repo_root)
-            if m:
-                frag_to_module[f.id] = m
+        frag_imports = {f.id: _extract_imports_from_content(f.content, f.path, repo_root) for f in py_frags}
+        frag_to_module = {f.id: m for f in py_frags if (m := path_to_module(f.path, repo_root))}
 
         edges: EdgeDict = {}
-
         for f in py_frags:
             info = info_cache[f.id]
             self_defs = set(frag_defines.get(f.id, frozenset()))
             src_imports = frag_imports.get(f.id, set())
-
-            self._add_import_confirmed_edges(
-                edges,
-                f.id,
-                info,
-                name_to_defs,
-                self_defs,
-                src_imports,
-                frag_to_module,
-            )
-
+            self._add_import_confirmed_edges(edges, f.id, info, name_to_defs, self_defs, src_imports, frag_to_module)
             self._add_import_edges(f, frag_imports[f.id], module_to_frags, edges)
 
         return edges

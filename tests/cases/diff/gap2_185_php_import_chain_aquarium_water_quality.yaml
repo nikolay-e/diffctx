@@ -1,0 +1,150 @@
+name: gap2_185_php_import_chain_aquarium_water_quality
+tags:
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:2hop
+- lang:php
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/Aquarium/WaterMonitor.php: |
+      <?php
+
+      namespace App\Aquarium;
+
+      use App\Aquarium\Sensor\PhSensor;
+
+      class WaterMonitor
+      {
+          private PhSensor $sensor;
+
+          public function __construct(PhSensor $sensor)
+          {
+              $this->sensor = $sensor;
+          }
+
+          public function isHealthy(): bool
+          {
+              $ph = $this->sensor->currentPh();
+              return $ph >= 6.5 && $ph <= 8.5;
+          }
+      }
+    src/Aquarium/Sensor/PhSensor.php: |
+      <?php
+
+      namespace App\Aquarium\Sensor;
+
+      use App\Aquarium\Sensor\Calibration;
+
+      class PhSensor
+      {
+          private Calibration $calibration;
+          private float $rawValue;
+
+          public function __construct(Calibration $calibration, float $rawValue)
+          {
+              $this->calibration = $calibration;
+              $this->rawValue = $rawValue;
+          }
+
+          public function currentPh(): float
+          {
+              return $this->calibration->adjust($this->rawValue);
+          }
+      }
+    src/Aquarium/Sensor/Calibration.php: |
+      <?php
+
+      namespace App\Aquarium\Sensor;
+
+      class Calibration
+      {
+          private float $offset;
+
+          public function __construct(float $offset)
+          {
+              $this->offset = $offset;
+          }
+
+          public function adjust(float $raw): float
+          {
+              return $raw + $this->offset;
+          }
+      }
+    src/Feeding/FeedScheduler.php: |
+      <?php
+
+      namespace App\Feeding;
+
+      class FeedScheduler
+      {
+          public function nextFeedingTime(): string
+          {
+              return date('H:i', strtotime('+6 hours'));
+          }
+      }
+  changed_files:
+    src/Aquarium/WaterMonitor.php: |
+      <?php
+
+      namespace App\Aquarium;
+
+      use App\Aquarium\Sensor\PhSensor;
+
+      class WaterMonitor
+      {
+          private PhSensor $sensor;
+
+          public function __construct(PhSensor $sensor)
+          {
+              $this->sensor = $sensor;
+          }
+
+          public function isHealthy(): bool
+          {
+              $ph = $this->sensor->currentPh();
+              return $ph >= 6.5 && $ph <= 8.5;
+          }
+
+          public function alertLevel(): string
+          {
+              $ph = $this->sensor->currentPh();
+              if ($ph < 5.0 || $ph > 9.5) {
+                  return 'critical';
+              }
+              if ($ph < 6.5 || $ph > 8.5) {
+                  return 'warning';
+              }
+              return 'normal';
+          }
+      }
+  commit_message: "feat: add pH alert level to water monitor"
+fragments:
+- id: alert_level
+  selector:
+    path: src/Aquarium/WaterMonitor.php
+    anchor: "public function alertLevel"
+- id: ph_sensor_current
+  selector:
+    path: src/Aquarium/Sensor/PhSensor.php
+    anchor: "public function currentPh"
+- id: calibration_adjust
+  selector:
+    path: src/Aquarium/Sensor/Calibration.php
+    anchor: "public function adjust"
+- id: no_feeding
+  selector:
+    path: src/Feeding/FeedScheduler.php
+- id: no_feed_scheduler
+  selector:
+    anchor: FeedScheduler
+oracle:
+  required:
+  - alert_level
+  - ph_sensor_current
+  - calibration_adjust
+  forbidden:
+  - no_feeding
+  - no_feed_scheduler

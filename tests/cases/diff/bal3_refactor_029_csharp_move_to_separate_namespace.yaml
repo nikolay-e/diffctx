@@ -1,0 +1,301 @@
+name: bal3_refactor_029_csharp_move_to_separate_namespace
+tags:
+- lang:csharp
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    App/Startup.cs: |
+      namespace App
+      {
+          public class AppSettings
+          {
+              public string DbConnectionString { get; set; }
+              public int Port { get; set; }
+              public bool EnableLogging { get; set; }
+          }
+
+          public class DatabaseContext
+          {
+              private readonly string _connectionString;
+
+              public DatabaseContext(string connectionString)
+              {
+                  _connectionString = connectionString;
+              }
+
+              public void Migrate() { }
+          }
+
+          public class WebServer
+          {
+              private readonly int _port;
+
+              public WebServer(int port)
+              {
+                  _port = port;
+              }
+
+              public void Start() { }
+          }
+
+          public class Startup
+          {
+              public void Configure()
+              {
+                  var settings = new AppSettings
+                  {
+                      DbConnectionString = "Server=localhost;Database=app",
+                      Port = 8080,
+                      EnableLogging = true
+                  };
+                  var db = new DatabaseContext(settings.DbConnectionString);
+                  var server = new WebServer(settings.Port);
+                  db.Migrate();
+                  server.Start();
+              }
+          }
+      }
+    Controllers/HealthController.cs: |
+      namespace App.Controllers
+      {
+          public class HealthController
+          {
+              private readonly App.DatabaseContext _db;
+
+              public HealthController(App.DatabaseContext db)
+              {
+                  _db = db;
+              }
+
+              public bool Check() => true;
+          }
+      }
+    Jobs/MigrationJob.cs: |
+      namespace App.Jobs
+      {
+          public class MigrationJob
+          {
+              private readonly App.AppSettings _settings;
+
+              public MigrationJob(App.AppSettings settings)
+              {
+                  _settings = settings;
+              }
+
+              public void Execute()
+              {
+                  var db = new App.DatabaseContext(_settings.DbConnectionString);
+                  db.Migrate();
+              }
+          }
+      }
+    Logging/FileLogger.cs: |
+      namespace App.Logging
+      {
+          // GARBAGE_R029_LOGGER_A
+          public class FileLogger
+          {
+              public void Log(string msg) { }
+          }
+      }
+    Logging/ConsoleLogger.cs: |
+      namespace App.Logging
+      {
+          // GARBAGE_R029_CONSOLE_B
+          public class ConsoleLogger
+          {
+              public void Log(string msg) { }
+          }
+      }
+    Logging/NullLogger.cs: |
+      namespace App.Logging
+      {
+          // GARBAGE_R029_NULL_C
+          public class NullLogger
+          {
+              public void Log(string msg) { }
+          }
+      }
+  changed_files:
+    Config/AppSettings.cs: |
+      namespace App.Config
+      {
+          public class AppSettings
+          {
+              public string DbConnectionString { get; set; }
+              public int Port { get; set; }
+              public bool EnableLogging { get; set; }
+          }
+      }
+    Data/DatabaseContext.cs: |
+      namespace App.Data
+      {
+          public class DatabaseContext
+          {
+              private readonly string _connectionString;
+
+              public DatabaseContext(string connectionString)
+              {
+                  _connectionString = connectionString;
+              }
+
+              public void Migrate() { }
+          }
+      }
+    Server/WebServer.cs: |
+      namespace App.Server
+      {
+          public class WebServer
+          {
+              private readonly int _port;
+
+              public WebServer(int port)
+              {
+                  _port = port;
+              }
+
+              public void Start() { }
+          }
+      }
+    App/Startup.cs: |
+      using App.Config;
+      using App.Data;
+      using App.Server;
+
+      namespace App
+      {
+          public class Startup
+          {
+              public void Configure()
+              {
+                  var settings = new AppSettings
+                  {
+                      DbConnectionString = "Server=localhost;Database=app",
+                      Port = 8080,
+                      EnableLogging = true
+                  };
+                  var db = new DatabaseContext(settings.DbConnectionString);
+                  var server = new WebServer(settings.Port);
+                  db.Migrate();
+                  server.Start();
+              }
+          }
+      }
+    Controllers/HealthController.cs: |
+      using App.Data;
+
+      namespace App.Controllers
+      {
+          public class HealthController
+          {
+              private readonly DatabaseContext _db;
+
+              public HealthController(DatabaseContext db)
+              {
+                  _db = db;
+              }
+
+              public bool Check() => true;
+          }
+      }
+    Jobs/MigrationJob.cs: |
+      using App.Config;
+      using App.Data;
+
+      namespace App.Jobs
+      {
+          public class MigrationJob
+          {
+              private readonly AppSettings _settings;
+
+              public MigrationJob(AppSettings settings)
+              {
+                  _settings = settings;
+              }
+
+              public void Execute()
+              {
+                  var db = new DatabaseContext(_settings.DbConnectionString);
+                  db.Migrate();
+              }
+          }
+      }
+    Logging/FileLogger.cs: |
+      namespace App.Logging
+      {
+          // GARBAGE_R029_LOGGER_A
+          public class FileLogger
+          {
+              public void Log(string msg) { }
+          }
+      }
+    Logging/ConsoleLogger.cs: |
+      namespace App.Logging
+      {
+          // GARBAGE_R029_CONSOLE_B
+          public class ConsoleLogger
+          {
+              public void Log(string msg) { }
+          }
+      }
+    Logging/NullLogger.cs: |
+      namespace App.Logging
+      {
+          // GARBAGE_R029_NULL_C
+          public class NullLogger
+          {
+              public void Log(string msg) { }
+          }
+      }
+  commit_message: "refactor: move AppSettings, DatabaseContext, WebServer to separate namespaces"
+fragments:
+- id: settings_namespace
+  selector:
+    path: Config/AppSettings.cs
+    anchor: "namespace App.Config"
+- id: db_context_namespace
+  selector:
+    path: Data/DatabaseContext.cs
+    anchor: "namespace App.Data"
+- id: web_server_namespace
+  selector:
+    path: Server/WebServer.cs
+    anchor: "namespace App.Server"
+- id: startup_imports
+  selector:
+    path: App/Startup.cs
+    anchor: "using App.Config"
+- id: health_uses_data
+  selector:
+    path: Controllers/HealthController.cs
+    anchor: "using App.Data"
+- id: migration_uses_config
+  selector:
+    path: Jobs/MigrationJob.cs
+    anchor: "using App.Config"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_R029_LOGGER_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_R029_CONSOLE_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_R029_NULL_C
+oracle:
+  required:
+  - settings_namespace
+  - db_context_namespace
+  - web_server_namespace
+  - startup_imports
+  - health_uses_data
+  - migration_uses_config
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

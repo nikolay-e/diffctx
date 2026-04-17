@@ -1,0 +1,126 @@
+name: toml_011_pyproject_optional_deps
+tags:
+- lang:toml
+- lang:python
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    pyproject.toml: |
+      [project]
+      name = "toolkit"
+      version = "0.4.0"
+      requires-python = ">=3.11"
+      dependencies = [
+          "click>=8.0",
+          "pydantic>=2.0",
+      ]
+
+      [build-system]
+      requires = ["hatchling"]
+      build-backend = "hatchling.build"
+    src/toolkit/__init__.py: |
+      from importlib.metadata import version
+      __version__ = version("toolkit")
+    src/toolkit/cli.py: |
+      import click
+      from toolkit import __version__
+
+      @click.group()
+      @click.version_option(__version__)
+      def cli():
+          pass
+    TOML_NOISE_011_monitoring.toml: |
+      [TOML_NOISE_011_prometheus]
+      TOML_NOISE_011_scrape_interval = "15s"
+      TOML_NOISE_011_retention = "30d"
+
+      [TOML_NOISE_011_alertmanager]
+      TOML_NOISE_011_url = "http://alertmanager:9093"
+    src/toolkit/toml_noise_011_internal.py: |
+      # TOML_NOISE_011_internal module
+      TOML_NOISE_011_INTERNAL = "internal_marker"
+  changed_files:
+    pyproject.toml: |
+      [project]
+      name = "toolkit"
+      version = "0.4.0"
+      requires-python = ">=3.11"
+      dependencies = [
+          "click>=8.0",
+          "pydantic>=2.0",
+      ]
+
+      [project.optional-dependencies]
+      dev = [
+          "pytest>=8.0",
+          "pytest-cov>=5.0",
+          "ruff>=0.4",
+          "mypy>=1.10",
+      ]
+      docs = [
+          "mkdocs>=1.6",
+          "mkdocs-material>=9.0",
+      ]
+
+      [build-system]
+      requires = ["hatchling"]
+      build-backend = "hatchling.build"
+
+      [tool.pytest.ini_options]
+      testpaths = ["tests"]
+      addopts = "--cov=src/toolkit --cov-report=term-missing"
+    src/toolkit/cli.py: |
+      import click
+      from toolkit import __version__
+
+      @click.group()
+      @click.version_option(__version__)
+      def cli():
+          pass
+
+      @cli.command()
+      def test():
+          """Run the test suite."""
+          import subprocess
+          subprocess.run(["pytest"], check=True)
+  commit_message: "chore: add optional dev/docs dependency groups and pytest config"
+fragments:
+- id: pyproject_optional_deps
+  selector:
+    path: pyproject.toml
+    anchor: "[project.optional-dependencies]"
+- id: pyproject_pytest_config
+  selector:
+    path: pyproject.toml
+    anchor: "[tool.pytest.ini_options]"
+- id: cli_test_command
+  selector:
+    path: src/toolkit/cli.py
+    anchor: "def test"
+- id: no_noise_toml
+  selector:
+    path: TOML_NOISE_011_monitoring.toml
+- id: no_internal_py
+  selector:
+    path: src/toolkit/toml_noise_011_internal.py
+- id: no_global_0
+  selector:
+    anchor: TOML_NOISE_011_scrape_interval
+- id: no_global_1
+  selector:
+    anchor: TOML_NOISE_011_INTERNAL
+oracle:
+  required:
+  - pyproject_optional_deps
+  - pyproject_pytest_config
+  - cli_test_command
+  allowed: []
+  forbidden:
+  - no_noise_toml
+  - no_internal_py
+  - no_global_0
+  - no_global_1

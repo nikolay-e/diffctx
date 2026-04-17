@@ -1,0 +1,115 @@
+name: gap2_178_php_signature_import_chain_email_template
+tags:
+- change:signature
+- change:single_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:php
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/Mail/Mailer.php: |
+      <?php
+
+      namespace App\Mail;
+
+      use App\Mail\TemplateEngine;
+
+      class Mailer
+      {
+          private TemplateEngine $engine;
+
+          public function __construct(TemplateEngine $engine)
+          {
+              $this->engine = $engine;
+          }
+
+          public function send(string $to, string $template, array $vars): bool
+          {
+              $body = $this->engine->compile($template, $vars);
+              return strlen($body) > 0;
+          }
+      }
+    src/Mail/TemplateEngine.php: |
+      <?php
+
+      namespace App\Mail;
+
+      class TemplateEngine
+      {
+          public function compile(string $template, array $vars): string
+          {
+              $result = $template;
+              foreach ($vars as $key => $val) {
+                  $result = str_replace("{{" . $key . "}}", $val, $result);
+              }
+              return $result;
+          }
+      }
+    src/Notification/SmsGateway.php: |
+      <?php
+
+      namespace App\Notification;
+
+      class SmsGateway
+      {
+          public function send(string $phone, string $message): bool
+          {
+              return strlen($phone) > 0 && strlen($message) > 0;
+          }
+      }
+  changed_files:
+    src/Mail/TemplateEngine.php: |
+      <?php
+
+      namespace App\Mail;
+
+      class TemplateEngine
+      {
+          private string $delimiterOpen;
+          private string $delimiterClose;
+
+          public function __construct(string $delimiterOpen = '{{', string $delimiterClose = '}}')
+          {
+              $this->delimiterOpen = $delimiterOpen;
+              $this->delimiterClose = $delimiterClose;
+          }
+
+          public function compile(string $template, array $vars, bool $escapeHtml = false): string
+          {
+              $result = $template;
+              foreach ($vars as $key => $val) {
+                  $replacement = $escapeHtml ? htmlspecialchars($val) : $val;
+                  $result = str_replace($this->delimiterOpen . $key . $this->delimiterClose, $replacement, $result);
+              }
+              return $result;
+          }
+      }
+fragments:
+- id: compile_sig
+  selector:
+    path: src/Mail/TemplateEngine.php
+    anchor: "public function compile(string $template, array $vars, bool $escapeHtml"
+- id: delimiter_fields
+  selector:
+    path: src/Mail/TemplateEngine.php
+    anchor: delimiterOpen
+- id: escape_logic
+  selector:
+    path: src/Mail/TemplateEngine.php
+    anchor: htmlspecialchars
+- id: no_sms
+  selector:
+    path: src/Notification/SmsGateway.php
+- id: no_mailer
+  selector:
+    path: src/Mail/Mailer.php
+oracle:
+  required:
+  - compile_sig
+  - delimiter_fields
+  - escape_logic
+  forbidden:
+  - no_sms

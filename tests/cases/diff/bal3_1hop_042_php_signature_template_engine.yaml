@@ -1,0 +1,270 @@
+name: bal3_1hop_042_php_signature_template_engine
+tags:
+- lang:php
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: php-no-tree-sitter
+repo:
+  initial_files:
+    src/Template/Engine.php: |
+      <?php
+      namespace App\Template;
+
+      class Engine
+      {
+          private string $basePath;
+
+          public function __construct(string $basePath)
+          {
+              $this->basePath = $basePath;
+          }
+
+          public function render(string $template, array $vars): string
+          {
+              $content = "Template: {$template}";
+              foreach ($vars as $key => $value) {
+                  $content = str_replace("{{$key}}", $value, $content);
+              }
+              return $content;
+          }
+      }
+    src/Controllers/PageController.php: |
+      <?php
+      namespace App\Controllers;
+
+      use App\Template\Engine;
+
+      class PageController
+      {
+          private Engine $engine;
+
+          public function __construct(Engine $engine)
+          {
+              $this->engine = $engine;
+          }
+
+          public function home(): string
+          {
+              return $this->engine->render('home', ['title' => 'Welcome']);
+          }
+
+          public function about(): string
+          {
+              return $this->engine->render('about', ['title' => 'About Us']);
+          }
+      }
+    src/Controllers/BlogController.php: |
+      <?php
+      namespace App\Controllers;
+
+      use App\Template\Engine;
+
+      class BlogController
+      {
+          private Engine $engine;
+
+          public function __construct(Engine $engine)
+          {
+              $this->engine = $engine;
+          }
+
+          public function index(): string
+          {
+              return $this->engine->render('blog/index', ['title' => 'Blog']);
+          }
+
+          public function show(int $id): string
+          {
+              return $this->engine->render('blog/show', ['id' => $id]);
+          }
+      }
+    src/Controllers/DashboardController.php: |
+      <?php
+      namespace App\Controllers;
+
+      use App\Template\Engine;
+
+      class DashboardController
+      {
+          private Engine $engine;
+
+          public function __construct(Engine $engine)
+          {
+              $this->engine = $engine;
+          }
+
+          public function index(): string
+          {
+              return $this->engine->render('dashboard', ['user' => 'admin']);
+          }
+      }
+    src/Controllers/ErrorController.php: |
+      <?php
+      namespace App\Controllers;
+
+      use App\Template\Engine;
+
+      class ErrorController
+      {
+          private Engine $engine;
+
+          public function __construct(Engine $engine)
+          {
+              $this->engine = $engine;
+          }
+
+          public function notFound(): string
+          {
+              return $this->engine->render('errors/404', ['message' => 'Not Found']);
+          }
+
+          public function serverError(): string
+          {
+              return $this->engine->render('errors/500', ['message' => 'Internal Error']);
+          }
+      }
+    src/Console/CommandRunner.php: |
+      <?php
+      namespace App\Console;
+
+      GARBAGE_BAL3_042_CMD_A = 'command';
+      GARBAGE_BAL3_042_ARGS_B = [];
+
+      class CommandRunner
+      {
+          public function run(string $command): int
+          {
+              return 0;
+          }
+      }
+    src/Console/OutputFormatter.php: |
+      <?php
+      namespace App\Console;
+
+      GARBAGE_BAL3_042_FMT_C = 'output';
+      GARBAGE_BAL3_042_COLOR_D = true;
+
+      class OutputFormatter
+      {
+          public function format(string $text): string
+          {
+              return $text;
+          }
+      }
+    src/Console/InputReader.php: |
+      <?php
+      namespace App\Console;
+
+      GARBAGE_BAL3_042_INPUT_E = 'reader';
+      GARBAGE_BAL3_042_STDIN_F = 'php://stdin';
+
+      class InputReader
+      {
+          public function read(): string
+          {
+              return '';
+          }
+      }
+  changed_files:
+    src/Template/Engine.php: |
+      <?php
+      namespace App\Template;
+
+      class Engine
+      {
+          private string $basePath;
+          private string $extension;
+
+          public function __construct(string $basePath, string $extension = '.html')
+          {
+              $this->basePath = $basePath;
+              $this->extension = $extension;
+          }
+
+          public function render(string $template, array $vars, ?string $layout = null): string
+          {
+              $content = "Template: {$template}{$this->extension}";
+              foreach ($vars as $key => $value) {
+                  $content = str_replace("{{$key}}", $value, $content);
+              }
+              if ($layout !== null) {
+                  $content = "Layout({$layout}): {$content}";
+              }
+              return $content;
+          }
+
+          public function exists(string $template): bool
+          {
+              return true;
+          }
+      }
+  commit_message: "Add layout support and extension config to template Engine"
+fragments:
+- id: page_controller
+  selector:
+    path: src/Controllers/PageController.php
+    anchor: "use App\\Template\\Engine"
+- id: page_render
+  selector:
+    path: src/Controllers/PageController.php
+    anchor: "engine->render"
+- id: blog_controller
+  selector:
+    path: src/Controllers/BlogController.php
+    anchor: "use App\\Template\\Engine"
+- id: dashboard_controller
+  selector:
+    path: src/Controllers/DashboardController.php
+    anchor: "use App\\Template\\Engine"
+- id: error_controller
+  selector:
+    path: src/Controllers/ErrorController.php
+    anchor: "use App\\Template\\Engine"
+- id: no_command_runner
+  selector:
+    path: src/Console/CommandRunner.php
+- id: no_output_formatter
+  selector:
+    path: src/Console/OutputFormatter.php
+- id: no_input_reader
+  selector:
+    path: src/Console/InputReader.php
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_042_CMD_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_042_ARGS_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_042_FMT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_042_COLOR_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL3_042_INPUT_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL3_042_STDIN_F
+oracle:
+  required:
+  - page_controller
+  - page_render
+  - blog_controller
+  - dashboard_controller
+  - error_controller
+  allowed: []
+  forbidden:
+  - no_command_runner
+  - no_output_formatter
+  - no_input_reader
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

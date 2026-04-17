@@ -1,0 +1,80 @@
+name: css_020_scss_variable
+tags:
+- lang:css
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    _variables.scss: |
+      $primary-color: #4f46e5;
+      $secondary-color: #0ea5e9;
+      $font-stack: 'Inter', system-ui, sans-serif;
+      $border-radius-base: 4px;
+      $spacing-unit: 8px;
+    _buttons.scss: |
+      @use 'variables' as *;
+      .btn {
+        padding: $spacing-unit ($spacing-unit * 2);
+        border-radius: $border-radius-base;
+        font-family: $font-stack;
+        cursor: pointer;
+      }
+      .btn-primary {
+        background: $primary-color;
+        color: #fff;
+        border: none;
+      }
+    CSS_NOISE_020_rtl.css: |
+      .CSS_NOISE_020_rtl_layout { direction: rtl; text-align: right; }
+      .CSS_NOISE_020_rtl_icon { transform: scaleX(-1); }
+    CSS_NOISE_020_print.css: |
+      @media print {
+        .CSS_NOISE_020_print_hide { display: none; }
+        .CSS_NOISE_020_print_break { page-break-before: always; }
+      }
+  changed_files:
+    _variables.scss: |
+      $primary-color: #4338ca;
+      $secondary-color: #0284c7;
+      $font-stack: 'Inter', system-ui, sans-serif;
+      $border-radius-base: 6px;
+      $spacing-unit: 8px;
+  commit_message: "style: darken primary/secondary SCSS colors and increase base border-radius"
+fragments:
+- id: primary_color_changed
+  selector:
+    path: _variables.scss
+    anchor: "#4338ca"
+- id: border_radius_changed
+  selector:
+    path: _variables.scss
+    anchor: "$border-radius-base: 6px"
+- id: buttons_uses_variables
+  selector:
+    path: _buttons.scss
+    anchor: "use 'variables'"
+- id: no_rtl
+  selector:
+    path: CSS_NOISE_020_rtl.css
+- id: no_print
+  selector:
+    path: CSS_NOISE_020_print.css
+- id: no_global_0
+  selector:
+    anchor: CSS_NOISE_020_rtl_layout
+- id: no_global_1
+  selector:
+    anchor: CSS_NOISE_020_print_hide
+oracle:
+  required:
+  - primary_color_changed
+  - border_radius_changed
+  - buttons_uses_variables
+  allowed: []
+  forbidden:
+  - no_rtl
+  - no_print
+  - no_global_0
+  - no_global_1

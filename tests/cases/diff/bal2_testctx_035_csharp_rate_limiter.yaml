@@ -1,0 +1,161 @@
+name: bal2_testctx_035_csharp_rate_limiter
+tags:
+- lang:csharp
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/Middleware/RateLimiter.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Middleware
+      {
+          public class RateLimiter
+          {
+              private readonly int _maxRequests;
+              private readonly TimeSpan _window;
+              private readonly Dictionary<string, List<DateTime>> _requests = new();
+
+              public RateLimiter(int maxRequests, TimeSpan window)
+              {
+                  _maxRequests = maxRequests;
+                  _window = window;
+              }
+
+              public bool IsAllowed(string clientId)
+              {
+                  var now = DateTime.UtcNow;
+                  if (!_requests.ContainsKey(clientId))
+                      _requests[clientId] = new List<DateTime>();
+
+                  _requests[clientId].RemoveAll(t => t < now - _window);
+                  if (_requests[clientId].Count >= _maxRequests)
+                      return false;
+
+                  _requests[clientId].Add(now);
+                  return true;
+              }
+          }
+      }
+    Tests/RateLimiterTests.cs: |
+      using Xunit;
+      using App.Middleware;
+      using System;
+
+      namespace App.Tests
+      {
+          public class RateLimiterTests
+          {
+              [Fact]
+              public void IsAllowed_UnderLimit_ReturnsTrue()
+              {
+                  var limiter = new RateLimiter(5, TimeSpan.FromMinutes(1));
+                  Assert.True(limiter.IsAllowed("client1"));
+              }
+
+              [Fact]
+              public void IsAllowed_OverLimit_ReturnsFalse()
+              {
+                  var limiter = new RateLimiter(2, TimeSpan.FromMinutes(1));
+                  limiter.IsAllowed("client1");
+                  limiter.IsAllowed("client1");
+                  Assert.False(limiter.IsAllowed("client1"));
+              }
+          }
+      }
+    src/Middleware/CorsHandler.cs: |
+      using System;
+
+      namespace App.Middleware
+      {
+          public class CorsHandler
+          {
+              public string GetAllowedOrigin(string origin)
+              {
+                  return "*";
+              }
+          }
+      }
+  changed_files:
+    src/Middleware/RateLimiter.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Middleware
+      {
+          public class RateLimiter
+          {
+              private readonly int _maxRequests;
+              private readonly TimeSpan _window;
+              private readonly Dictionary<string, List<DateTime>> _requests = new();
+
+              public RateLimiter(int maxRequests, TimeSpan window)
+              {
+                  _maxRequests = maxRequests;
+                  _window = window;
+              }
+
+              public bool IsAllowed(string clientId)
+              {
+                  var now = DateTime.UtcNow;
+                  if (!_requests.ContainsKey(clientId))
+                      _requests[clientId] = new List<DateTime>();
+
+                  _requests[clientId].RemoveAll(t => t < now - _window);
+                  if (_requests[clientId].Count >= _maxRequests)
+                      return false;
+
+                  _requests[clientId].Add(now);
+                  return true;
+              }
+
+              public int RemainingRequests(string clientId)
+              {
+                  var now = DateTime.UtcNow;
+                  if (!_requests.ContainsKey(clientId))
+                      return _maxRequests;
+
+                  _requests[clientId].RemoveAll(t => t < now - _window);
+                  return Math.Max(0, _maxRequests - _requests[clientId].Count);
+              }
+
+              public void Reset(string clientId)
+              {
+                  _requests.Remove(clientId);
+              }
+          }
+      }
+  commit_message: "feat: add remaining requests count and reset"
+fragments:
+- id: remaining_fn
+  selector:
+    path: src/Middleware/RateLimiter.cs
+    anchor: "public int RemainingRequests(string clientId)"
+- id: reset_fn
+  selector:
+    path: src/Middleware/RateLimiter.cs
+    anchor: "public void Reset(string clientId)"
+- id: test_imports
+  selector:
+    path: Tests/RateLimiterTests.cs
+    anchor: "using App.Middleware"
+- id: test_class
+  selector:
+    path: Tests/RateLimiterTests.cs
+    anchor: "public class RateLimiterTests"
+- id: no_cors
+  selector:
+    path: src/Middleware/CorsHandler.cs
+    anchor: "class CorsHandler"
+oracle:
+  required:
+  - remaining_fn
+  - reset_fn
+  - test_imports
+  allowed:
+  - test_class
+  forbidden:
+  - no_cors

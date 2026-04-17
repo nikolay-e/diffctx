@@ -1,4 +1,11 @@
 name: cicd_007_makefile_targets
+tags:
+- lang:python
+- lang:shell
+- change:single_file
+- context:cross_module
+- distance:2hop
+- difficulty:hard
 repo:
   initial_files:
     Makefile: ".PHONY: build test clean install dev\n\nPYTHON := python3\nVENV := venv\nPIP := $(VENV)/bin/pip\nPYTEST :=\

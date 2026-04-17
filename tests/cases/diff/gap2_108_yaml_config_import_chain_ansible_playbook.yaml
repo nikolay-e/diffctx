@@ -1,0 +1,114 @@
+name: gap2_108_yaml_config_import_chain_ansible_playbook
+tags:
+- change:config
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:0hop
+- lang:yaml
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    inventory/group_vars/webservers.yaml: |
+      http_port: 80
+      max_workers: 4
+      document_root: /var/www/html
+      ssl_enabled: false
+      log_level: warn
+    playbooks/webserver.yaml: |
+      - hosts: webservers
+        become: true
+        tasks:
+        - name: Configure nginx
+          template:
+            src: nginx.conf.j2
+            dest: /etc/nginx/nginx.conf
+          notify: restart nginx
+        - name: Open firewall port
+          ufw:
+            rule: allow
+            port: "{{ http_port }}"
+        handlers:
+        - name: restart nginx
+          service:
+            name: nginx
+            state: restarted
+    playbooks/monitoring.yaml: |
+      TRAP_GAP2_108_MON_A: "monitoring_playbook"
+      TRAP_GAP2_108_AGENT_B: "node_exporter"
+      - hosts: all
+        tasks:
+        - name: Install node exporter
+          apt:
+            name: prometheus-node-exporter
+            state: present
+  changed_files:
+    inventory/group_vars/webservers.yaml: |
+      http_port: 443
+      max_workers: 8
+      document_root: /var/www/html
+      ssl_enabled: true
+      ssl_cert_path: /etc/ssl/certs/app.pem
+      ssl_key_path: /etc/ssl/private/app.key
+      log_level: info
+    playbooks/webserver.yaml: |
+      - hosts: webservers
+        become: true
+        tasks:
+        - name: Configure nginx
+          template:
+            src: nginx.conf.j2
+            dest: /etc/nginx/nginx.conf
+          notify: restart nginx
+        - name: Open firewall port
+          ufw:
+            rule: allow
+            port: "{{ http_port }}"
+        handlers:
+        - name: restart nginx
+          service:
+            name: nginx
+            state: restarted
+    playbooks/monitoring.yaml: |
+      TRAP_GAP2_108_MON_A: "monitoring_playbook"
+      TRAP_GAP2_108_AGENT_B: "node_exporter"
+      - hosts: all
+        tasks:
+        - name: Install node exporter
+          apt:
+            name: prometheus-node-exporter
+            state: present
+  commit_message: Update files
+fragments:
+- id: vars_port
+  selector:
+    path: inventory/group_vars/webservers.yaml
+    anchor: "http_port: 443"
+- id: vars_ssl
+  selector:
+    path: inventory/group_vars/webservers.yaml
+    anchor: "ssl_enabled: true"
+- id: vars_cert
+  selector:
+    path: inventory/group_vars/webservers.yaml
+    anchor: ssl_cert_path
+- id: no_monitoring
+  selector:
+    path: playbooks/monitoring.yaml
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_108_MON_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_108_AGENT_B
+oracle:
+  required:
+  - vars_port
+  - vars_ssl
+  - vars_cert
+  allowed: []
+  forbidden:
+  - no_monitoring
+  - no_global_0
+  - no_global_1

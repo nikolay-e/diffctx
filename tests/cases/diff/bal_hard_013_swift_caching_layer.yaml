@@ -1,0 +1,179 @@
+name: bal_hard_013_swift_caching_layer
+tags:
+- lang:swift
+- change:multi_file
+- change:new_function
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    Sources/Cache/CacheProtocol.swift: |
+      protocol CacheProtocol {
+          associatedtype Value
+          func get(key: String) -> Value?
+          func set(key: String, value: Value)
+          func remove(key: String)
+      }
+    Sources/Cache/InMemoryCache.swift: |
+      class InMemoryCache<V>: CacheProtocol {
+          typealias Value = V
+          private var store: [String: V] = [:]
+          func get(key: String) -> V? { store[key] }
+          func set(key: String, value: V) { store[key] = value }
+          func remove(key: String) { store.removeValue(forKey: key) }
+      }
+    Sources/Models/Article.swift: |
+      struct Article {
+          let id: String
+          let title: String
+          let content: String
+      }
+    Sources/Repository/ArticleRepository.swift: |
+      class ArticleRepository {
+          private let cache: InMemoryCache<Article>
+          init(cache: InMemoryCache<Article>) {
+              self.cache = cache
+          }
+          func getArticle(id: String) -> Article? {
+              return cache.get(key: id)
+          }
+          func saveArticle(_ article: Article) {
+              cache.set(key: article.id, value: article)
+          }
+      }
+    Sources/Service/ContentService.swift: |
+      class ContentService {
+          private let repo: ArticleRepository
+          init(repo: ArticleRepository) {
+              self.repo = repo
+          }
+          func fetchArticle(id: String) -> Article? {
+              return repo.getArticle(id: id)
+          }
+      }
+    Sources/API/ContentController.swift: |
+      class ContentController {
+          private let service: ContentService
+          init(service: ContentService) {
+              self.service = service
+          }
+          func getArticle(id: String) -> String {
+              guard let article = service.fetchArticle(id: id) else { return "Not found" }
+              return "\(article.title): \(article.content)"
+          }
+      }
+    Sources/Helpers/StringUtils.swift: |
+      struct StringUtils {
+          static func truncate(_ text: String, maxLength: Int) -> String {
+              if text.count <= maxLength { return text }
+              return String(text.prefix(maxLength)) + "..."
+          }
+      }
+    Sources/Helpers/URLBuilder.swift: |
+      struct URLBuilder {
+          static func build(base: String, path: String) -> String {
+              return "\(base)/\(path)"
+          }
+      }
+  changed_files:
+    Sources/Cache/CacheProtocol.swift: |
+      import Foundation
+      protocol CacheProtocol {
+          associatedtype Value
+          func get(key: String) -> Value?
+          func set(key: String, value: Value, ttl: TimeInterval?)
+          func remove(key: String)
+      }
+    Sources/Cache/InMemoryCache.swift: |
+      import Foundation
+      class InMemoryCache<V>: CacheProtocol {
+          typealias Value = V
+          private var store: [String: V] = [:]
+          private var expirations: [String: Date] = [:]
+          func get(key: String) -> V? {
+              if let expiry = expirations[key], Date() > expiry {
+                  remove(key: key)
+                  return nil
+              }
+              return store[key]
+          }
+          func set(key: String, value: V, ttl: TimeInterval? = nil) {
+              store[key] = value
+              if let ttl = ttl {
+                  expirations[key] = Date().addingTimeInterval(ttl)
+              }
+          }
+          func remove(key: String) {
+              store.removeValue(forKey: key)
+              expirations.removeValue(forKey: key)
+          }
+      }
+    Sources/Repository/ArticleRepository.swift: |
+      import Foundation
+      class ArticleRepository {
+          private let cache: InMemoryCache<Article>
+          private let defaultTTL: TimeInterval = 300
+          init(cache: InMemoryCache<Article>) {
+              self.cache = cache
+          }
+          func getArticle(id: String) -> Article? {
+              return cache.get(key: id)
+          }
+          func saveArticle(_ article: Article) {
+              cache.set(key: article.id, value: article, ttl: defaultTTL)
+          }
+      }
+  commit_message: "feat: add TTL-based cache expiration"
+fragments:
+- id: cache_protocol_ttl
+  selector:
+    path: CacheProtocol.swift
+    anchor: "ttl: TimeInterval?"
+- id: inmemory_expirations
+  selector:
+    path: InMemoryCache.swift
+    anchor: "private var expirations"
+- id: inmemory_checks_expiry
+  selector:
+    path: InMemoryCache.swift
+    anchor: "Date() > expiry"
+- id: repo_default_ttl
+  selector:
+    path: ArticleRepository.swift
+    anchor: "defaultTTL: TimeInterval = 300"
+- id: repo_sets_ttl
+  selector:
+    path: ArticleRepository.swift
+    anchor: "ttl: defaultTTL"
+- id: article_model
+  selector:
+    path: Article.swift
+    anchor: "struct Article"
+- id: content_service_fetch
+  selector:
+    path: ContentService.swift
+    anchor: "repo.getArticle"
+- id: no_string_utils
+  selector:
+    path: Helpers/StringUtils.swift
+- id: no_url_builder
+  selector:
+    path: Helpers/URLBuilder.swift
+- id: no_truncate
+  selector:
+    anchor: "static func truncate"
+oracle:
+  required:
+  - cache_protocol_ttl
+  - inmemory_expirations
+  - inmemory_checks_expiry
+  - repo_default_ttl
+  - repo_sets_ttl
+  - article_model
+  - content_service_fetch
+  allowed: []
+  forbidden:
+  - no_string_utils
+  - no_url_builder
+  - no_truncate

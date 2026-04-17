@@ -1,0 +1,211 @@
+name: gap2_065_java_config_cross_module_database_pool
+tags:
+- change:config
+- change:single_file
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+- lang:java
+repo:
+  initial_files:
+    src/main/resources/application.properties: |
+      db.url=jdbc:postgresql://localhost:5432/warehouse
+      db.pool.maxSize=10
+      db.pool.minIdle=2
+      db.pool.timeout=30000
+    src/main/java/config/DatabaseConfig.java: |
+      package config;
+
+      import java.util.Properties;
+      import java.io.InputStream;
+
+      public class DatabaseConfig {
+          private final Properties props = new Properties();
+
+          public DatabaseConfig() {
+              try (InputStream is = getClass().getResourceAsStream("/application.properties")) {
+                  props.load(is);
+              } catch (Exception e) {
+                  throw new RuntimeException(e);
+              }
+          }
+
+          public String getUrl() { return props.getProperty("db.url"); }
+          public int getMaxPoolSize() { return Integer.parseInt(props.getProperty("db.pool.maxSize")); }
+          public int getMinIdle() { return Integer.parseInt(props.getProperty("db.pool.minIdle")); }
+          public long getTimeout() { return Long.parseLong(props.getProperty("db.pool.timeout")); }
+      }
+    src/main/java/pool/ConnectionPool.java: |
+      package pool;
+
+      import config.DatabaseConfig;
+
+      public class ConnectionPool {
+          private final DatabaseConfig config;
+
+          public ConnectionPool(DatabaseConfig config) {
+              this.config = config;
+          }
+
+          public void initialize() {
+              System.out.println("Pool: " + config.getUrl() + " max=" + config.getMaxPoolSize());
+          }
+      }
+    src/main/java/search/Indexer.java: |
+      package search;
+      static final String TRAP_GAP2_065_IDX_A = "indexer_noise";
+      static final int TRAP_GAP2_065_IDX_B = 1024;
+
+      public class Indexer {
+          public void reindex(String collection) { }
+      }
+    src/main/java/export/CsvExporter.java: |
+      package export;
+      static final String TRAP_GAP2_065_CSV_C = "csv_noise";
+      static final boolean TRAP_GAP2_065_CSV_D = true;
+
+      public class CsvExporter {
+          public byte[] export(String query) { return new byte[0]; }
+      }
+    src/main/java/auth/TokenStore.java: |
+      package auth;
+      static final String TRAP_GAP2_065_TOK_E = "token_noise";
+      static final int TRAP_GAP2_065_TOK_F = 3600;
+
+      public class TokenStore {
+          public String issue(String userId) { return "tok_" + userId; }
+      }
+  changed_files:
+    src/main/resources/application.properties: |
+      db.url=jdbc:postgresql://localhost:5432/warehouse
+      db.pool.maxSize=25
+      db.pool.minIdle=5
+      db.pool.timeout=15000
+      db.pool.validationQuery=SELECT 1
+    src/main/java/config/DatabaseConfig.java: |
+      package config;
+
+      import java.util.Properties;
+      import java.io.InputStream;
+
+      public class DatabaseConfig {
+          private final Properties props = new Properties();
+
+          public DatabaseConfig() {
+              try (InputStream is = getClass().getResourceAsStream("/application.properties")) {
+                  props.load(is);
+              } catch (Exception e) {
+                  throw new RuntimeException(e);
+              }
+          }
+
+          public String getUrl() { return props.getProperty("db.url"); }
+          public int getMaxPoolSize() { return Integer.parseInt(props.getProperty("db.pool.maxSize")); }
+          public int getMinIdle() { return Integer.parseInt(props.getProperty("db.pool.minIdle")); }
+          public long getTimeout() { return Long.parseLong(props.getProperty("db.pool.timeout")); }
+          public String getValidationQuery() { return props.getProperty("db.pool.validationQuery"); }
+      }
+    src/main/java/pool/ConnectionPool.java: |
+      package pool;
+
+      import config.DatabaseConfig;
+
+      public class ConnectionPool {
+          private final DatabaseConfig config;
+
+          public ConnectionPool(DatabaseConfig config) {
+              this.config = config;
+          }
+
+          public void initialize() {
+              System.out.println("Pool: " + config.getUrl() + " max=" + config.getMaxPoolSize());
+          }
+      }
+    src/main/java/search/Indexer.java: |
+      package search;
+      static final String TRAP_GAP2_065_IDX_A = "indexer_noise";
+      static final int TRAP_GAP2_065_IDX_B = 1024;
+
+      public class Indexer {
+          public void reindex(String collection) { }
+      }
+    src/main/java/export/CsvExporter.java: |
+      package export;
+      static final String TRAP_GAP2_065_CSV_C = "csv_noise";
+      static final boolean TRAP_GAP2_065_CSV_D = true;
+
+      public class CsvExporter {
+          public byte[] export(String query) { return new byte[0]; }
+      }
+    src/main/java/auth/TokenStore.java: |
+      package auth;
+      static final String TRAP_GAP2_065_TOK_E = "token_noise";
+      static final int TRAP_GAP2_065_TOK_F = 3600;
+
+      public class TokenStore {
+          public String issue(String userId) { return "tok_" + userId; }
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: config_validation_query
+  selector:
+    path: src/main/resources/application.properties
+    anchor: "db.pool.validationQuery=SELECT 1"
+- id: config_max_size
+  selector:
+    path: src/main/resources/application.properties
+    anchor: "db.pool.maxSize=25"
+- id: getter_validation
+  selector:
+    path: src/main/java/config/DatabaseConfig.java
+    anchor: "public String getValidationQuery()"
+- id: pool_uses_config
+  selector:
+    path: src/main/java/pool/ConnectionPool.java
+    anchor: "config.getMaxPoolSize()"
+- id: no_indexer
+  selector:
+    path: src/main/java/search/Indexer.java
+- id: no_csv
+  selector:
+    path: src/main/java/export/CsvExporter.java
+- id: no_token
+  selector:
+    path: src/main/java/auth/TokenStore.java
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_065_IDX_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_065_IDX_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP2_065_CSV_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP2_065_CSV_D
+- id: no_global_4
+  selector:
+    anchor: TRAP_GAP2_065_TOK_E
+- id: no_global_5
+  selector:
+    anchor: TRAP_GAP2_065_TOK_F
+oracle:
+  required:
+  - config_validation_query
+  - config_max_size
+  - getter_validation
+  - pool_uses_config
+  allowed: []
+  forbidden:
+  - no_indexer
+  - no_csv
+  - no_token
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

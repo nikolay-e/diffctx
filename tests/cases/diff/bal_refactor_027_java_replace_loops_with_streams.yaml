@@ -1,0 +1,186 @@
+name: bal_refactor_027_java_replace_loops_with_streams
+tags:
+- lang:cpp
+- change:single_file
+- context:cross_module
+- distance:2hop
+- difficulty:medium
+repo:
+  initial_files:
+    include/audio/mixer.h: |
+      #pragma once
+      #include <vector>
+      #include <cstdint>
+
+      namespace audio {
+
+      struct MixerConfig {
+          int sample_rate;
+          int channels;
+          int buffer_size;
+      };
+
+      class Mixer {
+      public:
+          explicit Mixer(const MixerConfig& cfg);
+          void mix(const int16_t* input, int16_t* output, int frames);
+          float master_volume() const;
+          void set_master_volume(float v);
+      private:
+          MixerConfig cfg_;
+          float master_volume_;
+      };
+
+      }
+    src/playback/player.cpp: |
+      #include "audio/mixer.h"
+
+      namespace playback {
+
+      class Player {
+          audio::Mixer mixer_;
+      public:
+          explicit Player(const audio::MixerConfig& cfg) : mixer_(cfg) {}
+
+          void play(const int16_t* pcm, int frames) {
+              std::vector<int16_t> out(frames * 2);
+              mixer_.mix(pcm, out.data(), frames);
+          }
+      };
+
+      }
+    src/streaming/stream_decoder.cpp: |
+      #include "audio/mixer.h"
+
+      namespace streaming {
+
+      class StreamDecoder {
+          audio::MixerConfig mixer_cfg_;
+      public:
+          explicit StreamDecoder(const audio::MixerConfig& cfg) : mixer_cfg_(cfg) {}
+
+          audio::MixerConfig config() const { return mixer_cfg_; }
+      };
+
+      }
+    garbage/video.cpp: |
+      // GARBAGE_JAV027_VIDEO_A = "video_marker"
+      namespace video { void decode_frame() {} }
+    garbage/subtitles.cpp: |
+      // GARBAGE_JAV027_SUBS_B = "subtitles_marker"
+      namespace subtitles { void render() {} }
+    garbage/drm.cpp: |
+      // GARBAGE_JAV027_DRM_C = "drm_marker"
+      namespace drm { bool verify() { return true; } }
+  changed_files:
+    include/audio/mixer.h: |
+      #pragma once
+      #include <vector>
+      #include <cstdint>
+
+      namespace audio {
+
+      struct MixerConfig {
+          int sample_rate;
+          int channels;
+          int buffer_size;
+          bool normalize_output;
+          float limiter_threshold;
+      };
+
+      class Mixer {
+      public:
+          explicit Mixer(const MixerConfig& cfg);
+          void mix(const int16_t* input, int16_t* output, int frames);
+          float master_volume() const;
+          void set_master_volume(float v);
+          void set_limiter_threshold(float threshold);
+      private:
+          MixerConfig cfg_;
+          float master_volume_;
+      };
+
+      }
+    src/playback/player.cpp: |
+      #include "audio/mixer.h"
+
+      namespace playback {
+
+      class Player {
+          audio::Mixer mixer_;
+      public:
+          explicit Player(const audio::MixerConfig& cfg) : mixer_(cfg) {}
+
+          void play(const int16_t* pcm, int frames) {
+              std::vector<int16_t> out(frames * 2);
+              mixer_.mix(pcm, out.data(), frames);
+          }
+      };
+
+      }
+    src/streaming/stream_decoder.cpp: |
+      #include "audio/mixer.h"
+
+      namespace streaming {
+
+      class StreamDecoder {
+          audio::MixerConfig mixer_cfg_;
+      public:
+          explicit StreamDecoder(const audio::MixerConfig& cfg) : mixer_cfg_(cfg) {}
+
+          audio::MixerConfig config() const { return mixer_cfg_; }
+      };
+
+      }
+    garbage/video.cpp: |
+      // GARBAGE_JAV027_VIDEO_A = "video_marker"
+      namespace video { void decode_frame() {} }
+    garbage/subtitles.cpp: |
+      // GARBAGE_JAV027_SUBS_B = "subtitles_marker"
+      namespace subtitles { void render() {} }
+    garbage/drm.cpp: |
+      // GARBAGE_JAV027_DRM_C = "drm_marker"
+      namespace drm { bool verify() { return true; } }
+  commit_message: "feat: add normalize_output, limiter_threshold to MixerConfig"
+fragments:
+- id: mixer_config_normalize
+  selector:
+    path: include/audio/mixer.h
+    anchor: "normalize_output"
+- id: mixer_config_limiter
+  selector:
+    path: include/audio/mixer.h
+    anchor: "limiter_threshold"
+- id: set_limiter_method
+  selector:
+    path: include/audio/mixer.h
+    anchor: "void set_limiter_threshold"
+- id: player_uses_mixer_config
+  selector:
+    path: src/playback/player.cpp
+    anchor: "audio::MixerConfig"
+- id: decoder_uses_mixer_config
+  selector:
+    path: src/streaming/stream_decoder.cpp
+    anchor: "audio::MixerConfig"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_JAV027_VIDEO_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_JAV027_SUBS_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_JAV027_DRM_C
+oracle:
+  required:
+  - mixer_config_normalize
+  - mixer_config_limiter
+  - set_limiter_method
+  - player_uses_mixer_config
+  - decoder_uses_mixer_config
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

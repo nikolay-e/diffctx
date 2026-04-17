@@ -1,0 +1,191 @@
+name: css_002_stylesheet_cross_reference
+tags:
+- lang:css
+- lang:typescript
+- change:single_file
+- context:cross_module
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/styles/theme.css: |
+      :root {
+          --primary-color: #3498db;
+          --secondary-color: #2ecc71;
+          --danger-color: #e74c3c;
+          --font-size-base: 16px;
+          --border-radius: 4px;
+          --spacing-unit: 8px;
+      }
+
+      .btn {
+          padding: calc(var(--spacing-unit) * 1.5) calc(var(--spacing-unit) * 3);
+          border-radius: var(--border-radius);
+          font-size: var(--font-size-base);
+          border: none;
+          cursor: pointer;
+      }
+
+      .btn-primary {
+          background-color: var(--primary-color);
+          color: white;
+      }
+
+      .btn-danger {
+          background-color: var(--danger-color);
+          color: white;
+      }
+    src/components/Button.tsx: |
+      import '../styles/theme.css';
+
+      interface ButtonProps {
+          variant: 'primary' | 'danger';
+          label: string;
+          onClick: () => void;
+      }
+
+      export function Button({ variant, label, onClick }: ButtonProps) {
+          const className = `btn btn-${variant}`;
+          return <button className={className} onClick={onClick}>{label}</button>;
+      }
+    src/components/Card.tsx: |
+      import '../styles/theme.css';
+
+      interface CardProps {
+          title: string;
+          children: React.ReactNode;
+      }
+
+      export function Card({ title, children }: CardProps) {
+          return (
+              <div className="card">
+                  <h2>{title}</h2>
+                  {children}
+              </div>
+          );
+      }
+    src/utils/analytics.ts: |
+      export function trackEvent(name: string, data: Record<string, unknown>): void {
+          console.log('event', name, data);
+      }
+
+      export function trackPageView(path: string): void {
+          console.log('pageview', path);
+      }
+  changed_files:
+    src/styles/theme.css: |
+      :root {
+          --primary-color: #2563eb;
+          --secondary-color: #16a34a;
+          --danger-color: #dc2626;
+          --warning-color: #f59e0b;
+          --font-size-base: 16px;
+          --font-size-sm: 14px;
+          --border-radius: 6px;
+          --border-radius-lg: 12px;
+          --spacing-unit: 8px;
+      }
+
+      .btn {
+          padding: calc(var(--spacing-unit) * 1.5) calc(var(--spacing-unit) * 3);
+          border-radius: var(--border-radius);
+          font-size: var(--font-size-base);
+          border: none;
+          cursor: pointer;
+          transition: opacity 0.2s ease;
+      }
+
+      .btn:hover {
+          opacity: 0.9;
+      }
+
+      .btn-primary {
+          background-color: var(--primary-color);
+          color: white;
+      }
+
+      .btn-danger {
+          background-color: var(--danger-color);
+          color: white;
+      }
+
+      .btn-warning {
+          background-color: var(--warning-color);
+          color: black;
+      }
+    src/components/Button.tsx: |
+      import '../styles/theme.css';
+
+      interface ButtonProps {
+          variant: 'primary' | 'danger';
+          label: string;
+          onClick: () => void;
+      }
+
+      export function Button({ variant, label, onClick }: ButtonProps) {
+          const className = `btn btn-${variant}`;
+          return <button className={className} onClick={onClick}>{label}</button>;
+      }
+    src/components/Card.tsx: |
+      import '../styles/theme.css';
+
+      interface CardProps {
+          title: string;
+          children: React.ReactNode;
+      }
+
+      export function Card({ title, children }: CardProps) {
+          return (
+              <div className="card">
+                  <h2>{title}</h2>
+                  {children}
+              </div>
+          );
+      }
+    src/utils/analytics.ts: |
+      export function trackEvent(name: string, data: Record<string, unknown>): void {
+          console.log('event', name, data);
+      }
+
+      export function trackPageView(path: string): void {
+          console.log('pageview', path);
+      }
+  commit_message: "style: update design tokens and add warning variant"
+fragments:
+- id: new_primary_color
+  selector:
+    path: src/styles/theme.css
+    anchor: "--primary-color: #2563eb"
+- id: warning_color_var
+  selector:
+    path: src/styles/theme.css
+    anchor: "--warning-color: #f59e0b"
+- id: btn_warning_class
+  selector:
+    path: src/styles/theme.css
+    anchor: ".btn-warning"
+- id: btn_hover
+  selector:
+    path: src/styles/theme.css
+    anchor: ".btn:hover"
+- id: button_imports_theme
+  selector:
+    path: src/components/Button.tsx
+    anchor: "import '../styles/theme.css'"
+- id: no_analytics
+  selector:
+    path: src/utils/analytics.ts
+- id: no_track_event
+  selector:
+    anchor: trackEvent
+oracle:
+  required:
+  - new_primary_color
+  - warning_color_var
+  - btn_warning_class
+  - btn_hover
+  - button_imports_theme
+  allowed: []
+  forbidden:
+  - no_analytics
+  - no_track_event

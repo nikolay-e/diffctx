@@ -1,0 +1,112 @@
+name: c_family_016_bit_flags_enum
+tags:
+- lang:c
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    flags.h: |
+      #ifndef FLAGS_H
+      #define FLAGS_H
+      typedef enum {
+          FLAG_NONE    = 0,
+          FLAG_READ    = 1 << 0,
+          FLAG_WRITE   = 1 << 1,
+          FLAG_EXECUTE = 1 << 2,
+      } Permission;
+      #endif
+    access.c: |
+      #include "flags.h"
+      int can_write(Permission p) { return (p & FLAG_WRITE) != 0; }
+      int can_read(Permission p)  { return (p & FLAG_READ) != 0; }
+    audit.c: |
+      #include "flags.h"
+      #include <stdio.h>
+      void audit_permission(Permission p) {
+          if (p & FLAG_READ)    printf("r");
+          if (p & FLAG_WRITE)   printf("w");
+          if (p & FLAG_EXECUTE) printf("x");
+          printf("\n");
+      }
+    C_NOISE_016_thermal.h: |
+      #ifndef C_NOISE_016_THERMAL_H
+      #define C_NOISE_016_THERMAL_H
+      float C_NOISE_016_read_temp_celsius(void);
+      void C_NOISE_016_set_fan_speed(int percent);
+      #endif
+    C_NOISE_016_thermal.c: |
+      #include "C_NOISE_016_thermal.h"
+      float C_NOISE_016_read_temp_celsius(void) { return 0.0f; }
+      void C_NOISE_016_set_fan_speed(int percent) {}
+  changed_files:
+    flags.h: |
+      #ifndef FLAGS_H
+      #define FLAGS_H
+      typedef enum {
+          FLAG_NONE    = 0,
+          FLAG_READ    = 1 << 0,
+          FLAG_WRITE   = 1 << 1,
+          FLAG_EXECUTE = 1 << 2,
+          FLAG_APPEND  = 1 << 3,
+      } Permission;
+      #endif
+    access.c: |
+      #include "flags.h"
+      int can_write(Permission p)  { return (p & FLAG_WRITE) != 0; }
+      int can_read(Permission p)   { return (p & FLAG_READ) != 0; }
+      int can_append(Permission p) { return (p & FLAG_APPEND) != 0; }
+    audit.c: |
+      #include "flags.h"
+      #include <stdio.h>
+      void audit_permission(Permission p) {
+          if (p & FLAG_READ)    printf("r");
+          if (p & FLAG_WRITE)   printf("w");
+          if (p & FLAG_EXECUTE) printf("x");
+          if (p & FLAG_APPEND)  printf("a");
+          printf("\n");
+      }
+    C_NOISE_016_thermal.h: |
+      #ifndef C_NOISE_016_THERMAL_H
+      #define C_NOISE_016_THERMAL_H
+      float C_NOISE_016_read_temp_celsius(void);
+      void C_NOISE_016_set_fan_speed(int percent);
+      #endif
+    C_NOISE_016_thermal.c: |
+      #include "C_NOISE_016_thermal.h"
+      float C_NOISE_016_read_temp_celsius(void) { return 0.0f; }
+      void C_NOISE_016_set_fan_speed(int percent) {}
+  commit_message: "feat: add FLAG_APPEND bit to Permission enum and handle in access and audit"
+fragments:
+- id: flags_h
+  selector:
+    path: flags.h
+    anchor: "FLAG_APPEND  = 1 << 3"
+- id: access_c
+  selector:
+    path: access.c
+    anchor: can_append
+- id: audit_c
+  selector:
+    path: audit.c
+    anchor: "FLAG_APPEND"
+- id: no_thermal_h
+  selector:
+    anchor: C_NOISE_016_read_temp_celsius
+- id: no_thermal_c
+  selector:
+    path: C_NOISE_016_thermal.c
+- id: no_global_fan
+  selector:
+    anchor: C_NOISE_016_set_fan_speed
+oracle:
+  required:
+  - flags_h
+  - access_c
+  - audit_c
+  allowed: []
+  forbidden:
+  - no_thermal_h
+  - no_thermal_c
+  - no_global_fan

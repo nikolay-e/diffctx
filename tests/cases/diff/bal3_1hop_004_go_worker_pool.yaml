@@ -1,0 +1,214 @@
+name: bal3_1hop_004_go_worker_pool
+tags:
+- lang:clojure
+- change:multi_file
+- context:import_chain
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/queue/protocol.clj: |
+      (ns queue.protocol)
+
+      (defprotocol Queue
+        (enqueue! [this item])
+        (dequeue! [this])
+        (size [this]))
+    src/queue/bounded.clj: |
+      (ns queue.bounded
+        (:require [queue.protocol :as q]))
+
+      (defrecord BoundedQueue [store capacity]
+        q/Queue
+        (enqueue! [this item]
+          (if (< (count @store) capacity)
+            (do (swap! store conj item) true)
+            false))
+        (dequeue! [this]
+          (when (seq @store)
+            (let [item (first @store)]
+              (swap! store rest)
+              item)))
+        (size [this]
+          (count @store)))
+
+      (defn create [capacity]
+        (->BoundedQueue (atom []) capacity))
+    src/worker/processor.clj: |
+      (ns worker.processor
+        (:require [queue.bounded :as bq]
+                  [queue.protocol :as q]))
+
+      (defn process-all [queue handler]
+        (loop []
+          (when-let [item (q/dequeue! queue)]
+            (handler item)
+            (recur))))
+
+      (defn submit-batch [queue items]
+        (mapv #(q/enqueue! queue %) items))
+    src/app/runner.clj: |
+      (ns app.runner
+        (:require [queue.bounded :as bq]
+                  [worker.processor :as proc]))
+
+      (defn run [items handler]
+        (let [q (bq/create 100)]
+          (proc/submit-batch q items)
+          (proc/process-all q handler)))
+    garbage/search.clj: |
+      (ns garbage.search)
+
+      (def ^:const GARBAGE_BAL31HOP004_A "es_marker")
+      (def ^:const GARBAGE_BAL31HOP004_B "index_marker")
+
+      (defn search [query]
+        GARBAGE_BAL31HOP004_A)
+    garbage/notify.clj: |
+      (ns garbage.notify)
+
+      (def ^:const GARBAGE_BAL31HOP004_C "push_marker")
+      (def ^:const GARBAGE_BAL31HOP004_D "sms_marker")
+
+      (defn notify [user message]
+        GARBAGE_BAL31HOP004_C)
+    garbage/audit.clj: |
+      (ns garbage.audit)
+
+      (def ^:const GARBAGE_BAL31HOP004_E "audit_marker")
+
+      (defn record [event]
+        GARBAGE_BAL31HOP004_E)
+  changed_files:
+    src/queue/protocol.clj: |
+      (ns queue.protocol)
+
+      (defprotocol Queue
+        (enqueue! [this item])
+        (dequeue! [this])
+        (size [this])
+        (drain! [this]))
+    src/queue/bounded.clj: |
+      (ns queue.bounded
+        (:require [queue.protocol :as q]))
+
+      (defrecord BoundedQueue [store capacity]
+        q/Queue
+        (enqueue! [this item]
+          (if (< (count @store) capacity)
+            (do (swap! store conj item) true)
+            false))
+        (dequeue! [this]
+          (when (seq @store)
+            (let [item (first @store)]
+              (swap! store rest)
+              item)))
+        (size [this]
+          (count @store))
+        (drain! [this]
+          (let [items @store]
+            (reset! store [])
+            items)))
+
+      (defn create [capacity]
+        (->BoundedQueue (atom []) capacity))
+    src/worker/processor.clj: |
+      (ns worker.processor
+        (:require [queue.bounded :as bq]
+                  [queue.protocol :as q]))
+
+      (defn process-all [queue handler]
+        (loop []
+          (when-let [item (q/dequeue! queue)]
+            (handler item)
+            (recur))))
+
+      (defn submit-batch [queue items]
+        (mapv #(q/enqueue! queue %) items))
+
+      (defn drain-and-process [queue handler]
+        (doseq [item (q/drain! queue)]
+          (handler item)))
+    src/app/runner.clj: |
+      (ns app.runner
+        (:require [queue.bounded :as bq]
+                  [worker.processor :as proc]))
+
+      (defn run [items handler]
+        (let [q (bq/create 100)]
+          (proc/submit-batch q items)
+          (proc/process-all q handler)))
+
+      (defn run-drain [items handler]
+        (let [q (bq/create 100)]
+          (proc/submit-batch q items)
+          (proc/drain-and-process q handler)))
+    garbage/search.clj: |
+      (ns garbage.search)
+
+      (def ^:const GARBAGE_BAL31HOP004_A "es_marker")
+      (def ^:const GARBAGE_BAL31HOP004_B "index_marker")
+
+      (defn search [query]
+        GARBAGE_BAL31HOP004_A)
+    garbage/notify.clj: |
+      (ns garbage.notify)
+
+      (def ^:const GARBAGE_BAL31HOP004_C "push_marker")
+      (def ^:const GARBAGE_BAL31HOP004_D "sms_marker")
+
+      (defn notify [user message]
+        GARBAGE_BAL31HOP004_C)
+    garbage/audit.clj: |
+      (ns garbage.audit)
+
+      (def ^:const GARBAGE_BAL31HOP004_E "audit_marker")
+
+      (defn record [event]
+        GARBAGE_BAL31HOP004_E)
+  commit_message: "feat: add drain! to Queue protocol and drain-and-process to processor"
+fragments:
+- id: protocol_drain
+  selector:
+    path: src/queue/protocol.clj
+    anchor: "(drain! [this])"
+- id: bounded_drain_impl
+  selector:
+    path: src/queue/bounded.clj
+    anchor: "(drain! [this]"
+- id: processor_drain_fn
+  selector:
+    path: src/worker/processor.clj
+    anchor: "(defn drain-and-process"
+- id: runner_drain_fn
+  selector:
+    path: src/app/runner.clj
+    anchor: "(defn run-drain"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_BAL31HOP004_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_BAL31HOP004_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_BAL31HOP004_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_BAL31HOP004_D
+- id: no_garbage_e
+  selector:
+    anchor: GARBAGE_BAL31HOP004_E
+oracle:
+  required:
+  - protocol_drain
+  - bounded_drain_impl
+  - processor_drain_fn
+  - runner_drain_fn
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d
+  - no_garbage_e

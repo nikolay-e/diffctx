@@ -1,0 +1,99 @@
+name: bal4_0hop_015_zig_bug_fix_overflow
+tags:
+- lang:zig
+- change:single_file
+- change:bug_fix
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/counter.zig: |
+      const std = @import("std");
+
+      var count: u8 = 0;
+
+      pub fn increment() void {
+          count += 1;
+      }
+
+      pub fn getCount() u8 {
+          return count;
+      }
+    src/garbage_timer.zig: |
+      const GARBAGE_B4Z015_TMR_A: []const u8 = "timer";
+      const GARBAGE_B4Z015_TMR_B: u32 = 0;
+
+      pub fn garbageTimer() void {}
+    src/garbage_flag.zig: |
+      const GARBAGE_B4Z015_FLG_C: []const u8 = "flag";
+      const GARBAGE_B4Z015_FLG_D: bool = true;
+
+      pub fn garbageFlag() bool {
+          return false;
+      }
+  changed_files:
+    src/counter.zig: |
+      const std = @import("std");
+
+      var count: u32 = 0;
+
+      pub fn increment() void {
+          count += 1;
+      }
+
+      pub fn getCount() u32 {
+          return count;
+      }
+    src/garbage_timer.zig: |
+      const GARBAGE_B4Z015_TMR_A: []const u8 = "timer";
+      const GARBAGE_B4Z015_TMR_B: u32 = 0;
+
+      pub fn garbageTimer() void {}
+    src/garbage_flag.zig: |
+      const GARBAGE_B4Z015_FLG_C: []const u8 = "flag";
+      const GARBAGE_B4Z015_FLG_D: bool = true;
+
+      pub fn garbageFlag() bool {
+          return false;
+      }
+  commit_message: "fix: widen counter from u8 to u32 to prevent overflow"
+fragments:
+- id: widened_var
+  selector:
+    path: src/counter.zig
+    anchor: "var count: u32 = 0;"
+- id: widened_return
+  selector:
+    path: src/counter.zig
+    anchor: "pub fn getCount() u32 {"
+- id: no_garbage_timer
+  selector:
+    path: src/garbage_timer.zig
+- id: no_garbage_flag
+  selector:
+    path: src/garbage_flag.zig
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_B4Z015_TMR_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_B4Z015_TMR_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_B4Z015_FLG_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_B4Z015_FLG_D
+oracle:
+  required:
+  - widened_var
+  - widened_return
+  allowed: []
+  forbidden:
+  - no_garbage_timer
+  - no_garbage_flag
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

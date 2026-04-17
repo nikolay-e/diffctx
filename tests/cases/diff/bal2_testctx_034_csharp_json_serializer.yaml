@@ -1,0 +1,201 @@
+name: bal2_testctx_034_csharp_json_serializer
+tags:
+- lang:csharp
+- change:bug_fix
+- context:test_file
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/Serialization/JsonSerializer.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Text;
+
+      namespace App.Serialization
+      {
+          public class JsonSerializer
+          {
+              public string Serialize(Dictionary<string, object> data)
+              {
+                  var sb = new StringBuilder();
+                  sb.Append("{");
+                  var first = true;
+                  foreach (var kvp in data)
+                  {
+                      if (!first) sb.Append(",");
+                      sb.Append($"\"{kvp.Key}\":");
+                      sb.Append(FormatValue(kvp.Value));
+                      first = false;
+                  }
+                  sb.Append("}");
+                  return sb.ToString();
+              }
+
+              private string FormatValue(object value)
+              {
+                  if (value is string s) return $"\"{s}\"";
+                  if (value is bool b) return b ? "true" : "false";
+                  if (value is null) return "null";
+                  return value.ToString();
+              }
+          }
+      }
+    Tests/JsonSerializerTests.cs: |
+      using Xunit;
+      using App.Serialization;
+      using System.Collections.Generic;
+
+      namespace App.Tests
+      {
+          public class JsonSerializerTests
+          {
+              private readonly JsonSerializer _serializer = new JsonSerializer();
+
+              [Fact]
+              public void Serialize_StringValue_QuotesCorrectly()
+              {
+                  var data = new Dictionary<string, object> { { "name", "alice" } };
+                  var json = _serializer.Serialize(data);
+                  Assert.Contains("\"name\":\"alice\"", json);
+              }
+
+              [Fact]
+              public void Serialize_BoolValue_LowercaseOutput()
+              {
+                  var data = new Dictionary<string, object> { { "active", true } };
+                  var json = _serializer.Serialize(data);
+                  Assert.Contains("true", json);
+              }
+
+              [Fact]
+              public void Serialize_NullValue_OutputsNull()
+              {
+                  var data = new Dictionary<string, object> { { "field", null } };
+                  var json = _serializer.Serialize(data);
+                  Assert.Contains("null", json);
+              }
+          }
+      }
+    src/IO/FileReader.cs: |
+      using System;
+      using System.IO;
+
+      namespace App.IO
+      {
+          public class FileReader
+          {
+              public string Read(string path)
+              {
+                  return File.ReadAllText(path);
+              }
+          }
+      }
+    src/Caching/LruCache.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Caching
+      {
+          public class LruCache<TKey, TValue>
+          {
+              private readonly int _capacity;
+              private readonly Dictionary<TKey, TValue> _store;
+
+              public LruCache(int capacity)
+              {
+                  _capacity = capacity;
+                  _store = new Dictionary<TKey, TValue>();
+              }
+
+              public void Put(TKey key, TValue value)
+              {
+                  _store[key] = value;
+              }
+          }
+      }
+  changed_files:
+    src/Serialization/JsonSerializer.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Text;
+
+      namespace App.Serialization
+      {
+          public class JsonSerializer
+          {
+              public string Serialize(Dictionary<string, object> data)
+              {
+                  var sb = new StringBuilder();
+                  sb.Append("{");
+                  var first = true;
+                  foreach (var kvp in data)
+                  {
+                      if (!first) sb.Append(",");
+                      sb.Append($"\"{EscapeString(kvp.Key)}\":");
+                      sb.Append(FormatValue(kvp.Value));
+                      first = false;
+                  }
+                  sb.Append("}");
+                  return sb.ToString();
+              }
+
+              private string FormatValue(object value)
+              {
+                  if (value is string s) return $"\"{EscapeString(s)}\"";
+                  if (value is bool b) return b ? "true" : "false";
+                  if (value is null) return "null";
+                  return value.ToString();
+              }
+
+              private string EscapeString(string input)
+              {
+                  return input
+                      .Replace("\\", "\\\\")
+                      .Replace("\"", "\\\"")
+                      .Replace("\n", "\\n")
+                      .Replace("\t", "\\t");
+              }
+          }
+      }
+  commit_message: "fix: escape special characters in JSON string output"
+fragments:
+- id: escape_fn
+  selector:
+    path: src/Serialization/JsonSerializer.cs
+    anchor: "private string EscapeString(string input)"
+- id: format_value_uses_escape
+  selector:
+    path: src/Serialization/JsonSerializer.cs
+    anchor: "EscapeString(s)"
+- id: serialize_uses_escape
+  selector:
+    path: src/Serialization/JsonSerializer.cs
+    anchor: "EscapeString(kvp.Key)"
+- id: test_imports
+  selector:
+    path: Tests/JsonSerializerTests.cs
+    anchor: "using App.Serialization"
+- id: test_string_value
+  selector:
+    path: Tests/JsonSerializerTests.cs
+    anchor: "Serialize_StringValue_QuotesCorrectly"
+- id: no_file_reader
+  selector:
+    path: src/IO/FileReader.cs
+    anchor: "class FileReader"
+- id: no_lru_cache
+  selector:
+    path: src/Caching/LruCache.cs
+    anchor: "class LruCache"
+oracle:
+  required:
+  - escape_fn
+  - test_imports
+  allowed:
+  - format_value_uses_escape
+  - serialize_uses_escape
+  - test_string_value
+  forbidden:
+  - no_file_reader
+  - no_lru_cache

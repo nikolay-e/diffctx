@@ -1,0 +1,123 @@
+name: bal_hard_004_scala_type_class
+tags:
+- lang:scala
+- change:multi_file
+- change:new_function
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/codec/Encoder.scala: |
+      package codec
+      trait Encoder[A] {
+        def encode(value: A): String
+      }
+    src/main/scala/codec/Decoder.scala: |
+      package codec
+      trait Decoder[A] {
+        def decode(raw: String): A
+      }
+    src/main/scala/codec/JsonCodec.scala: |
+      package codec
+      object JsonCodec {
+        implicit val stringEncoder: Encoder[String] = (value: String) => s""""$value""""
+        implicit val intEncoder: Encoder[Int] = (value: Int) => value.toString
+        implicit val stringDecoder: Decoder[String] = (raw: String) => raw.stripPrefix("\"").stripSuffix("\"")
+        implicit val intDecoder: Decoder[Int] = (raw: String) => raw.toInt
+      }
+    src/main/scala/service/Serializer.scala: |
+      package service
+      import codec.{Encoder, Decoder}
+      class Serializer {
+        def serialize[A](value: A)(implicit enc: Encoder[A]): String = enc.encode(value)
+        def deserialize[A](raw: String)(implicit dec: Decoder[A]): A = dec.decode(raw)
+      }
+    src/main/scala/api/DataEndpoint.scala: |
+      package api
+      import service.Serializer
+      import codec.JsonCodec._
+      class DataEndpoint {
+        private val serializer = new Serializer()
+        def formatInt(value: Int): String = serializer.serialize(value)
+        def formatString(value: String): String = serializer.serialize(value)
+      }
+    src/main/scala/model/User.scala: |
+      package model
+      case class User(name: String, age: Int)
+    src/main/scala/util/StringOps.scala: |
+      package util
+      object StringOps {
+        def capitalize(s: String): String = s.capitalize
+        def truncate(s: String, max: Int): String = s.take(max)
+      }
+    src/main/scala/util/MathOps.scala: |
+      package util
+      object MathOps {
+        def clamp(value: Int, min: Int, max: Int): Int = math.max(min, math.min(max, value))
+      }
+  changed_files:
+    src/main/scala/codec/JsonCodec.scala: |
+      package codec
+      import model.User
+      object JsonCodec {
+        implicit val stringEncoder: Encoder[String] = (value: String) => s""""$value""""
+        implicit val intEncoder: Encoder[Int] = (value: Int) => value.toString
+        implicit val userEncoder: Encoder[User] = (u: User) => s"""{"name":"${u.name}","age":${u.age}}"""
+        implicit val stringDecoder: Decoder[String] = (raw: String) => raw.stripPrefix("\"").stripSuffix("\"")
+        implicit val intDecoder: Decoder[Int] = (raw: String) => raw.toInt
+      }
+    src/main/scala/api/DataEndpoint.scala: |
+      package api
+      import service.Serializer
+      import codec.JsonCodec._
+      import model.User
+      class DataEndpoint {
+        private val serializer = new Serializer()
+        def formatInt(value: Int): String = serializer.serialize(value)
+        def formatString(value: String): String = serializer.serialize(value)
+        def formatUser(user: User): String = serializer.serialize(user)
+      }
+  commit_message: "feat: add User encoder and endpoint"
+fragments:
+- id: user_encoder
+  selector:
+    path: JsonCodec.scala
+    anchor: "userEncoder: Encoder[User]"
+- id: user_case_class
+  selector:
+    path: User.scala
+    anchor: "case class User(name: String, age: Int)"
+- id: endpoint_format_user
+  selector:
+    path: DataEndpoint.scala
+    anchor: "def formatUser"
+- id: serializer_serialize
+  selector:
+    path: Serializer.scala
+    anchor: "def serialize[A]"
+- id: encoder_trait
+  selector:
+    path: Encoder.scala
+    anchor: "trait Encoder[A]"
+- id: no_string_ops
+  selector:
+    path: util/StringOps.scala
+- id: no_math_ops
+  selector:
+    path: util/MathOps.scala
+- id: no_clamp
+  selector:
+    anchor: "def clamp"
+oracle:
+  required:
+  - user_encoder
+  - user_case_class
+  - endpoint_format_user
+  - serializer_serialize
+  - encoder_trait
+  allowed: []
+  forbidden:
+  - no_string_ops
+  - no_math_ops
+  - no_clamp

@@ -1,0 +1,267 @@
+name: bal_rare_015_julia_dataframe_pipeline
+tags:
+- lang:julia
+- change:multi_file
+- change:bug_fix
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/DataFrame.jl: |
+      module DataFrame
+
+      struct Column
+          name::String
+          values::Vector{Any}
+      end
+
+      struct Table
+          columns::Vector{Column}
+      end
+
+      function create_table(names::Vector{String}, data::Vector{Vector{Any}})
+          cols = [Column(n, d) for (n, d) in zip(names, data)]
+          Table(cols)
+      end
+
+      function get_column(t::Table, name::String)
+          for col in t.columns
+              if col.name == name
+                  return col.values
+              end
+          end
+          error("Column $name not found")
+      end
+
+      function nrows(t::Table)
+          isempty(t.columns) ? 0 : length(t.columns[1].values)
+      end
+
+      export Column, Table, create_table, get_column, nrows
+
+      end
+    src/Filter.jl: |
+      module Filter
+      using ..DataFrame
+
+      function where(t::Table, col_name::String, pred::Function)
+          vals = get_column(t, col_name)
+          mask = [pred(v) for v in vals]
+          new_cols = [Column(c.name, c.values[mask]) for c in t.columns]
+          Table(new_cols)
+      end
+
+      export where
+
+      end
+    src/Aggregator.jl: |
+      module Aggregator
+      using ..DataFrame
+
+      function sum_column(t::Table, col_name::String)
+          vals = get_column(t, col_name)
+          sum(vals)
+      end
+
+      export sum_column
+
+      end
+    src/Pipeline.jl: |
+      module Pipeline
+      include("DataFrame.jl")
+      include("Filter.jl")
+      include("Aggregator.jl")
+      using .DataFrame
+      using .Filter
+      using .Aggregator
+
+      function run(t::Table)
+          filtered = where(t, "age", x -> x >= 18)
+          total = sum_column(filtered, "score")
+          (count=nrows(filtered), total=total)
+      end
+
+      end
+    garbage_viz.jl: |
+      GARBAGE_RARE_015_CHART_A = "bar"
+      GARBAGE_RARE_015_COLORS_B = 8
+
+      function garbage_viz()
+          return GARBAGE_RARE_015_CHART_A
+      end
+
+      GARBAGE_RARE_015_LEGEND_C = true
+    garbage_export.jl: |
+      GARBAGE_RARE_015_FORMAT_D = "csv"
+      GARBAGE_RARE_015_DELIM_E = ","
+
+      function garbage_export()
+          return GARBAGE_RARE_015_FORMAT_D
+      end
+
+      GARBAGE_RARE_015_HEADER_F = true
+  changed_files:
+    src/DataFrame.jl: |
+      module DataFrame
+
+      struct Column
+          name::String
+          values::Vector{Any}
+      end
+
+      struct Table
+          columns::Vector{Column}
+      end
+
+      function create_table(names::Vector{String}, data::Vector{Vector{Any}})
+          @assert length(names) == length(data) "Names and data must match"
+          @assert allequal(length.(data)) "All columns must have same length"
+          cols = [Column(n, d) for (n, d) in zip(names, data)]
+          Table(cols)
+      end
+
+      function get_column(t::Table, name::String)
+          for col in t.columns
+              if col.name == name
+                  return col.values
+              end
+          end
+          error("Column $name not found")
+      end
+
+      function has_column(t::Table, name::String)
+          any(c -> c.name == name, t.columns)
+      end
+
+      function nrows(t::Table)
+          isempty(t.columns) ? 0 : length(t.columns[1].values)
+      end
+
+      export Column, Table, create_table, get_column, has_column, nrows
+
+      end
+    src/Filter.jl: |
+      module Filter
+      using ..DataFrame
+
+      function where(t::Table, col_name::String, pred::Function)
+          @assert has_column(t, col_name) "Column $col_name does not exist"
+          vals = get_column(t, col_name)
+          mask = [pred(v) for v in vals]
+          new_cols = [Column(c.name, c.values[mask]) for c in t.columns]
+          Table(new_cols)
+      end
+
+      export where
+
+      end
+    src/Aggregator.jl: |
+      module Aggregator
+      using ..DataFrame
+
+      function sum_column(t::Table, col_name::String)
+          @assert has_column(t, col_name) "Column $col_name does not exist"
+          vals = get_column(t, col_name)
+          sum(vals)
+      end
+
+      export sum_column
+
+      end
+    src/Pipeline.jl: |
+      module Pipeline
+      include("DataFrame.jl")
+      include("Filter.jl")
+      include("Aggregator.jl")
+      using .DataFrame
+      using .Filter
+      using .Aggregator
+
+      function run(t::Table)
+          filtered = where(t, "age", x -> x >= 18)
+          total = sum_column(filtered, "score")
+          (count=nrows(filtered), total=total)
+      end
+
+      end
+    garbage_viz.jl: |
+      GARBAGE_RARE_015_CHART_A = "bar"
+      GARBAGE_RARE_015_COLORS_B = 8
+
+      function garbage_viz()
+          return GARBAGE_RARE_015_CHART_A
+      end
+
+      GARBAGE_RARE_015_LEGEND_C = true
+    garbage_export.jl: |
+      GARBAGE_RARE_015_FORMAT_D = "csv"
+      GARBAGE_RARE_015_DELIM_E = ","
+
+      function garbage_export()
+          return GARBAGE_RARE_015_FORMAT_D
+      end
+
+      GARBAGE_RARE_015_HEADER_F = true
+  commit_message: "fix: add validation assertions to DataFrame and dependent modules"
+fragments:
+- id: create_table_assert
+  selector:
+    path: src/DataFrame.jl
+    anchor: "@assert length(names) == length(data)"
+- id: has_column_fn
+  selector:
+    path: src/DataFrame.jl
+    anchor: "function has_column(t::Table, name::String)"
+- id: filter_assert
+  selector:
+    path: src/Filter.jl
+    anchor: "@assert has_column(t, col_name)"
+- id: aggregator_assert
+  selector:
+    path: src/Aggregator.jl
+    anchor: "@assert has_column(t, col_name)"
+- id: no_pipeline
+  selector:
+    path: src/Pipeline.jl
+- id: no_garbage_viz
+  selector:
+    path: garbage_viz.jl
+- id: no_garbage_export
+  selector:
+    path: garbage_export.jl
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_RARE_015_CHART_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_RARE_015_COLORS_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_RARE_015_LEGEND_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_RARE_015_FORMAT_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_RARE_015_DELIM_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_RARE_015_HEADER_F
+oracle:
+  required:
+  - create_table_assert
+  - has_column_fn
+  - filter_assert
+  - aggregator_assert
+  allowed: []
+  forbidden:
+  - no_pipeline
+  - no_garbage_viz
+  - no_garbage_export
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

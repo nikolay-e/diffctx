@@ -1,0 +1,154 @@
+name: bal3_1hop_008_go_event_bus
+tags:
+- lang:erlang
+- change:refactor
+- change:single_file
+- context:call_graph
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/session_store.erl: |
+      -module(session_store).
+      -export([start_link/0, put/2, get/1, delete/1]).
+
+      start_link() ->
+          ets:new(sessions, [named_table, public, set]),
+          {ok, self()}.
+
+      put(SessionId, Data) ->
+          ets:insert(sessions, {SessionId, Data}).
+
+      get(SessionId) ->
+          case ets:lookup(sessions, SessionId) of
+              [{_, Data}] -> {ok, Data};
+              [] -> {error, not_found}
+          end.
+
+      delete(SessionId) ->
+          ets:delete(sessions, SessionId).
+    src/auth_handler.erl: |
+      -module(auth_handler).
+      -export([handle_login/2, handle_logout/1]).
+
+      handle_login(UserId, Token) ->
+          session_store:put(Token, #{user_id => UserId, created_at => erlang:system_time()}).
+
+      handle_logout(Token) ->
+          session_store:delete(Token).
+    garbage/billing_worker.erl: |
+      -module(billing_worker).
+      %% GARBAGE_BAL3BUS_A = "billing_worker_marker"
+      -export([process/1]).
+
+      process(InvoiceId) ->
+          {ok, InvoiceId}.
+    garbage/email_dispatcher.erl: |
+      -module(email_dispatcher).
+      %% GARBAGE_BAL3BUS_B = "email_dispatcher_marker"
+      -export([send/2]).
+
+      send(To, Subject) ->
+          {queued, To, Subject}.
+    garbage/metrics_sink.erl: |
+      -module(metrics_sink).
+      %% GARBAGE_BAL3BUS_C = "metrics_sink_marker"
+      -export([record/2]).
+
+      record(Name, Value) ->
+          {ok, Name, Value}.
+  changed_files:
+    src/session_store.erl: |
+      -module(session_store).
+      -export([start_link/0, put/2, get/1, delete/1, exists/1, refresh/2]).
+
+      start_link() ->
+          ets:new(sessions, [named_table, public, set]),
+          {ok, self()}.
+
+      put(SessionId, Data) ->
+          ets:insert(sessions, {SessionId, Data}).
+
+      get(SessionId) ->
+          case ets:lookup(sessions, SessionId) of
+              [{_, Data}] -> {ok, Data};
+              [] -> {error, not_found}
+          end.
+
+      delete(SessionId) ->
+          ets:delete(sessions, SessionId).
+
+      exists(SessionId) ->
+          ets:member(sessions, SessionId).
+
+      refresh(SessionId, NewData) ->
+          case exists(SessionId) of
+              true  -> put(SessionId, NewData);
+              false -> {error, not_found}
+          end.
+    src/auth_handler.erl: |
+      -module(auth_handler).
+      -export([handle_login/2, handle_logout/1, handle_refresh/2]).
+
+      handle_login(UserId, Token) ->
+          session_store:put(Token, #{user_id => UserId, created_at => erlang:system_time()}).
+
+      handle_logout(Token) ->
+          session_store:delete(Token).
+
+      handle_refresh(Token, NewData) ->
+          session_store:refresh(Token, NewData).
+    garbage/billing_worker.erl: |
+      -module(billing_worker).
+      %% GARBAGE_BAL3BUS_A = "billing_worker_marker"
+      -export([process/1]).
+
+      process(InvoiceId) ->
+          {ok, InvoiceId}.
+    garbage/email_dispatcher.erl: |
+      -module(email_dispatcher).
+      %% GARBAGE_BAL3BUS_B = "email_dispatcher_marker"
+      -export([send/2]).
+
+      send(To, Subject) ->
+          {queued, To, Subject}.
+    garbage/metrics_sink.erl: |
+      -module(metrics_sink).
+      %% GARBAGE_BAL3BUS_C = "metrics_sink_marker"
+      -export([process/1]).
+
+      record(Name, Value) ->
+          {ok, Name, Value}.
+  commit_message: "refactor: extract exists/refresh from session_store, update auth_handler"
+fragments:
+- id: exists_fn
+  selector:
+    path: src/session_store.erl
+    anchor: "exists(SessionId) ->"
+- id: refresh_fn
+  selector:
+    path: src/session_store.erl
+    anchor: "refresh(SessionId, NewData) ->"
+- id: auth_refresh
+  selector:
+    path: src/auth_handler.erl
+    anchor: "handle_refresh(Token, NewData) ->"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_BAL3BUS_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_BAL3BUS_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_BAL3BUS_C
+oracle:
+  required:
+  - exists_fn
+  - refresh_fn
+  - auth_refresh
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

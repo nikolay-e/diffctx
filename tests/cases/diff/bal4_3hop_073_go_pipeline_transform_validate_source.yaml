@@ -1,0 +1,186 @@
+name: bal4_3hop_073_go_pipeline_transform_validate_source
+tags:
+- lang:go
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:easy
+repo:
+  initial_files:
+    pkg/source/reader.go: |
+      package source
+
+      type Record struct {
+          Key string
+          Val string
+      }
+
+      func Read(path string) []Record {
+          return []Record{{Key: "a", Val: "1"}}
+      }
+    pkg/validate/checker.go: |
+      package validate
+
+      import "myapp/pkg/source"
+
+      func Check(recs []source.Record) []source.Record {
+          var out []source.Record
+          for _, r := range recs {
+              if r.Key != "" {
+                  out = append(out, r)
+              }
+          }
+          return out
+      }
+    pkg/transform/mapper.go: |
+      package transform
+
+      import (
+          "myapp/pkg/source"
+          "myapp/pkg/validate"
+      )
+
+      func Map(recs []source.Record) []string {
+          valid := validate.Check(recs)
+          out := make([]string, len(valid))
+          for i, r := range valid {
+              out[i] = r.Val
+          }
+          return out
+      }
+    pkg/pipeline/runner.go: |
+      package pipeline
+
+      import (
+          "myapp/pkg/source"
+          "myapp/pkg/transform"
+      )
+
+      func Execute(path string) []string {
+          recs := source.Read(path)
+          return transform.Map(recs)
+      }
+    pkg/garbage/etl_noise.go: |
+      package garbage
+
+      var GARBAGE_073_ETL_A = "etl"
+      var GARBAGE_073_ETL_B = 100
+
+      type GarbageBatch struct {
+          GARBAGE_073_ETL_C int
+      }
+
+      func GarbageProcess() {}
+  changed_files:
+    pkg/source/reader.go: |
+      package source
+
+      type Record struct {
+          Key string
+          Val string
+      }
+
+      func Read(path string) []Record {
+          if path == "" {
+              return nil
+          }
+          return []Record{{Key: "a", Val: "1"}}
+      }
+    pkg/validate/checker.go: |
+      package validate
+
+      import "myapp/pkg/source"
+
+      func Check(recs []source.Record) []source.Record {
+          if recs == nil {
+              return nil
+          }
+          var out []source.Record
+          for _, r := range recs {
+              if r.Key != "" {
+                  out = append(out, r)
+              }
+          }
+          return out
+      }
+    pkg/transform/mapper.go: |
+      package transform
+
+      import (
+          "myapp/pkg/source"
+          "myapp/pkg/validate"
+      )
+
+      func Map(recs []source.Record) []string {
+          valid := validate.Check(recs)
+          out := make([]string, len(valid))
+          for i, r := range valid {
+              out[i] = r.Val
+          }
+          return out
+      }
+    pkg/pipeline/runner.go: |
+      package pipeline
+
+      import (
+          "myapp/pkg/source"
+          "myapp/pkg/transform"
+      )
+
+      func Execute(path string) []string {
+          recs := source.Read(path)
+          return transform.Map(recs)
+      }
+    pkg/garbage/etl_noise.go: |
+      package garbage
+
+      var GARBAGE_073_ETL_A = "etl"
+      var GARBAGE_073_ETL_B = 100
+
+      type GarbageBatch struct {
+          GARBAGE_073_ETL_C int
+      }
+
+      func GarbageProcess() {}
+  commit_message: "fix nil handling in source reader and validator"
+fragments:
+- id: read_fn
+  selector:
+    path: pkg/source/reader.go
+    anchor: "func Read"
+- id: check_fn
+  selector:
+    path: pkg/validate/checker.go
+    anchor: "func Check"
+- id: map_fn
+  selector:
+    path: pkg/transform/mapper.go
+    anchor: "func Map"
+- id: record_struct
+  selector:
+    path: pkg/source/reader.go
+    anchor: "type Record struct"
+- id: no_garbage_etl
+  selector:
+    path: pkg/garbage/etl_noise.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_073_ETL_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_073_ETL_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_073_ETL_C
+oracle:
+  required:
+  - read_fn
+  - check_fn
+  - map_fn
+  - record_struct
+  allowed: []
+  forbidden:
+  - no_garbage_etl
+  - no_global_0
+  - no_global_1
+  - no_global_2

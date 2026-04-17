@@ -1,0 +1,161 @@
+name: bal3_1hop_002_go_grpc_service
+tags:
+- lang:clojure
+- change:single_file
+- context:import_chain
+- distance:2hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/feature/flags.clj: |
+      (ns feature.flags)
+
+      (def ^:dynamic *flags* #{})
+
+      (defn enabled? [flag]
+        (contains? *flags* flag))
+
+      (defn enable! [flag]
+        (alter-var-root #'*flags* conj flag))
+
+      (defn disable! [flag]
+        (alter-var-root #'*flags* disj flag))
+    src/feature/guard.clj: |
+      (ns feature.guard
+        (:require [feature.flags :as flags]))
+
+      (defmacro when-feature [flag & body]
+        `(when (flags/enabled? ~flag)
+           ~@body))
+
+      (defn feature-gate [flag handler]
+        (fn [request]
+          (if (flags/enabled? flag)
+            (handler request)
+            {:status 503 :body {:error "feature disabled"}})))
+    src/api/features_handler.clj: |
+      (ns api.features-handler
+        (:require [feature.guard :as guard]
+                  [feature.flags :as flags]))
+
+      (defn handle-new-ui [request]
+        (guard/feature-gate :new-ui
+          (fn [_] {:status 200 :body {:page "new-ui"}})))
+
+      (defn toggle-flag [flag-name enable?]
+        (if enable?
+          (flags/enable! (keyword flag-name))
+          (flags/disable! (keyword flag-name))))
+    garbage/ab.clj: |
+      (ns garbage.ab)
+
+      (def ^:const GARBAGE_BAL31HOP002_A "experiment_marker")
+      (def ^:const GARBAGE_BAL31HOP002_B "variant_marker")
+
+      (defn assign-variant [user-id experiment]
+        GARBAGE_BAL31HOP002_A)
+    garbage/rollout.clj: |
+      (ns garbage.rollout)
+
+      (def ^:const GARBAGE_BAL31HOP002_C "rollout_marker")
+      (def ^:const GARBAGE_BAL31HOP002_D "percentage_marker")
+
+      (defn should-rollout? [user-id percentage]
+        GARBAGE_BAL31HOP002_C)
+    garbage/audit.clj: |
+      (ns garbage.audit)
+
+      (def ^:const GARBAGE_BAL31HOP002_E "audit_marker")
+
+      (defn record-toggle [flag enabled?]
+        GARBAGE_BAL31HOP002_E)
+  changed_files:
+    src/feature/flags.clj: |
+      (ns feature.flags)
+
+      (def ^:dynamic *flags* #{})
+      (def ^:dynamic *overrides* {})
+
+      (defn enabled? [flag]
+        (if-let [override (get *overrides* flag)]
+          override
+          (contains? *flags* flag)))
+
+      (defn enable! [flag]
+        (alter-var-root #'*flags* conj flag))
+
+      (defn disable! [flag]
+        (alter-var-root #'*flags* disj flag))
+
+      (defn with-override [flag value f]
+        (binding [*overrides* (assoc *overrides* flag value)]
+          (f)))
+    garbage/ab.clj: |
+      (ns garbage.ab)
+
+      (def ^:const GARBAGE_BAL31HOP002_A "experiment_marker")
+      (def ^:const GARBAGE_BAL31HOP002_B "variant_marker")
+
+      (defn assign-variant [user-id experiment]
+        GARBAGE_BAL31HOP002_A)
+    garbage/rollout.clj: |
+      (ns garbage.rollout)
+
+      (def ^:const GARBAGE_BAL31HOP002_C "rollout_marker")
+      (def ^:const GARBAGE_BAL31HOP002_D "percentage_marker")
+
+      (defn should-rollout? [user-id percentage]
+        GARBAGE_BAL31HOP002_C)
+    garbage/audit.clj: |
+      (ns garbage.audit)
+
+      (def ^:const GARBAGE_BAL31HOP002_E "audit_marker")
+
+      (defn record-toggle [flag enabled?]
+        GARBAGE_BAL31HOP002_E)
+  commit_message: "feat: add per-flag overrides with with-override to feature flags"
+fragments:
+- id: flags_overrides_var
+  selector:
+    path: src/feature/flags.clj
+    anchor: "(def ^:dynamic *overrides* {})"
+- id: flags_enabled_override_check
+  selector:
+    path: src/feature/flags.clj
+    anchor: "(if-let [override (get *overrides* flag)]"
+- id: flags_with_override
+  selector:
+    path: src/feature/flags.clj
+    anchor: "(defn with-override"
+- id: guard_uses_enabled
+  selector:
+    path: src/feature/guard.clj
+    anchor: "(flags/enabled? ~flag)"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_BAL31HOP002_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_BAL31HOP002_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_BAL31HOP002_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_BAL31HOP002_D
+- id: no_garbage_e
+  selector:
+    anchor: GARBAGE_BAL31HOP002_E
+oracle:
+  required:
+  - flags_overrides_var
+  - flags_enabled_override_check
+  - flags_with_override
+  - guard_uses_enabled
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d
+  - no_garbage_e

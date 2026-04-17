@@ -1,0 +1,157 @@
+name: bal_cfgcode_013_typescript_api_endpoints
+tags:
+- lang:typescript
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    config/api.json: |
+      {
+        "baseUrl": "http://localhost:3000/api",
+        "timeout": 5000,
+        "endpoints": {
+          "users": "/users",
+          "products": "/products"
+        }
+      }
+    src/api-client.ts: |
+      import { readFileSync } from 'fs';
+
+      const raw = readFileSync('config/api.json', 'utf-8');
+      const apiConfig = JSON.parse(raw);
+
+      export const BASE_URL = apiConfig.baseUrl;
+      export const TIMEOUT = apiConfig.timeout;
+
+      export function endpoint(name: string): string {
+        return `${BASE_URL}${apiConfig.endpoints[name]}`;
+      }
+    src/user-service.ts: |
+      import { readFileSync } from 'fs';
+
+      const cfg = JSON.parse(readFileSync('config/api.json', 'utf-8'));
+
+      export function getUsersEndpoint(): string {
+        return `${cfg.baseUrl}${cfg.endpoints.users}`;
+      }
+    src/validators.ts: |
+      const GARBAGE_CFGCODE_013_VAL_A = "email";
+      const GARBAGE_CFGCODE_013_VAL_B = /^[\w.]+@[\w.]+$/;
+
+      export function validateEmail(email: string): boolean {
+        return email.includes("@");
+      }
+    src/formatters.ts: |
+      const GARBAGE_CFGCODE_013_FMT_C = "date";
+      const GARBAGE_CFGCODE_013_FMT_D = "ISO";
+
+      export function formatDate(d: Date): string {
+        return d.toISOString();
+      }
+  changed_files:
+    config/api.json: |
+      {
+        "baseUrl": "https://api.example.com/v2",
+        "timeout": 10000,
+        "endpoints": {
+          "users": "/users",
+          "products": "/products",
+          "orders": "/orders"
+        },
+        "retryPolicy": {
+          "maxRetries": 3,
+          "backoffMs": 1000
+        }
+      }
+    src/api-client.ts: |
+      import { readFileSync } from 'fs';
+
+      const raw = readFileSync('config/api.json', 'utf-8');
+      const apiConfig = JSON.parse(raw);
+
+      export const BASE_URL = apiConfig.baseUrl;
+      export const TIMEOUT = apiConfig.timeout;
+
+      export function endpoint(name: string): string {
+        return `${BASE_URL}${apiConfig.endpoints[name]}`;
+      }
+    src/user-service.ts: |
+      import { readFileSync } from 'fs';
+
+      const cfg = JSON.parse(readFileSync('config/api.json', 'utf-8'));
+
+      export function getUsersEndpoint(): string {
+        return `${cfg.baseUrl}${cfg.endpoints.users}`;
+      }
+    src/validators.ts: |
+      const GARBAGE_CFGCODE_013_VAL_A = "email";
+      const GARBAGE_CFGCODE_013_VAL_B = /^[\w.]+@[\w.]+$/;
+
+      export function validateEmail(email: string): boolean {
+        return email.includes("@");
+      }
+    src/formatters.ts: |
+      const GARBAGE_CFGCODE_013_FMT_C = "date";
+      const GARBAGE_CFGCODE_013_FMT_D = "ISO";
+
+      export function formatDate(d: Date): string {
+        return d.toISOString();
+      }
+  commit_message: "config: v2 API with retry policy"
+fragments:
+- id: config_base_url
+  selector:
+    path: config/api.json
+    anchor: "api.example.com/v2"
+- id: config_retry
+  selector:
+    path: config/api.json
+    anchor: "maxRetries"
+- id: config_orders
+  selector:
+    path: config/api.json
+    anchor: "/orders"
+- id: client_reads_config
+  selector:
+    path: src/api-client.ts
+    anchor: "apiConfig.baseUrl"
+- id: user_service_reads
+  selector:
+    path: src/user-service.ts
+    anchor: "cfg.baseUrl"
+- id: no_validators
+  selector:
+    path: src/validators.ts
+- id: no_formatters
+  selector:
+    path: src/formatters.ts
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_013_VAL_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_013_VAL_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_013_FMT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_013_FMT_D
+oracle:
+  required:
+  - config_base_url
+  - config_retry
+  - config_orders
+  - client_reads_config
+  - user_service_reads
+  allowed: []
+  forbidden:
+  - no_validators
+  - no_formatters
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

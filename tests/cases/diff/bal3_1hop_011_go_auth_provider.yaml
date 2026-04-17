@@ -1,0 +1,233 @@
+name: bal3_1hop_011_go_auth_provider
+tags:
+- lang:go
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    pkg/auth/provider.go: |
+      package auth
+
+      type User struct {
+          ID    string
+          Email string
+          Role  string
+      }
+
+      type Provider struct {
+          users map[string]*User
+      }
+
+      func NewProvider() *Provider {
+          return &Provider{users: make(map[string]*User)}
+      }
+
+      func (p *Provider) Authenticate(email, password string) (*User, error) {
+          u, ok := p.users[email]
+          if !ok {
+              return nil, fmt.Errorf("user not found")
+          }
+          return u, nil
+      }
+
+      func (p *Provider) Register(id, email, role string) {
+          p.users[email] = &User{ID: id, Email: email, Role: role}
+      }
+    internal/api/login_handler.go: |
+      package api
+
+      import "pkg/auth"
+
+      type LoginHandler struct {
+          provider *auth.Provider
+      }
+
+      func NewLoginHandler(p *auth.Provider) *LoginHandler {
+          return &LoginHandler{provider: p}
+      }
+
+      func (h *LoginHandler) Handle(email, password string) (*auth.User, error) {
+          return h.provider.Authenticate(email, password)
+      }
+    internal/api/admin_handler.go: |
+      package api
+
+      import "pkg/auth"
+
+      type AdminHandler struct {
+          provider *auth.Provider
+      }
+
+      func NewAdminHandler(p *auth.Provider) *AdminHandler {
+          return &AdminHandler{provider: p}
+      }
+
+      func (h *AdminHandler) ListUsers() []*auth.User {
+          return nil
+      }
+    internal/api/signup_handler.go: |
+      package api
+
+      import "pkg/auth"
+
+      type SignupHandler struct {
+          provider *auth.Provider
+      }
+
+      func NewSignupHandler(p *auth.Provider) *SignupHandler {
+          return &SignupHandler{provider: p}
+      }
+
+      func (h *SignupHandler) Handle(email, password string) {
+          p.provider.Register("new-id", email, "user")
+      }
+    internal/cron/cleanup.go: |
+      package cron
+
+      GARBAGE_011_CLEANUP_A = "cleanup"
+
+      type CleanupJob struct {
+          Interval int
+      }
+
+      func (c *CleanupJob) Run() error {
+          return nil
+      }
+    internal/search/indexer.go: |
+      package search
+
+      GARBAGE_011_INDEXER_B = "indexer"
+
+      type Indexer struct {
+          Dir string
+      }
+
+      func (i *Indexer) Reindex() error {
+          return nil
+      }
+    internal/pdf/generator.go: |
+      package pdf
+
+      GARBAGE_011_PDF_C = "pdf"
+
+      type Generator struct {
+          Template string
+      }
+
+      func (g *Generator) Generate(data map[string]string) []byte {
+          return nil
+      }
+  changed_files:
+    pkg/auth/provider.go: |
+      package auth
+
+      import "fmt"
+
+      type User struct {
+          ID       string
+          Email    string
+          Role     string
+          Verified bool
+      }
+
+      type Provider struct {
+          users map[string]*User
+      }
+
+      func NewProvider() *Provider {
+          return &Provider{users: make(map[string]*User)}
+      }
+
+      func (p *Provider) Authenticate(email, password string) (*User, error) {
+          u, ok := p.users[email]
+          if !ok {
+              return nil, fmt.Errorf("user not found")
+          }
+          if !u.Verified {
+              return nil, fmt.Errorf("email not verified")
+          }
+          return u, nil
+      }
+
+      func (p *Provider) Register(id, email, role string) {
+          p.users[email] = &User{ID: id, Email: email, Role: role, Verified: false}
+      }
+
+      func (p *Provider) VerifyEmail(email string) error {
+          u, ok := p.users[email]
+          if !ok {
+              return fmt.Errorf("user not found")
+          }
+          u.Verified = true
+          return nil
+      }
+  commit_message: "feat: add email verification to auth provider"
+fragments:
+- id: verified_field
+  selector:
+    path: pkg/auth/provider.go
+    anchor: "Verified bool"
+- id: verify_check
+  selector:
+    path: pkg/auth/provider.go
+    anchor: "email not verified"
+- id: verify_email_method
+  selector:
+    path: pkg/auth/provider.go
+    anchor: "func (p *Provider) VerifyEmail"
+- id: register_verified_false
+  selector:
+    path: pkg/auth/provider.go
+    anchor: "Verified: false"
+- id: login_calls_authenticate
+  selector:
+    path: internal/api/login_handler.go
+    anchor: "p.provider.Authenticate(email, password)"
+- id: admin_uses_provider
+  selector:
+    path: internal/api/admin_handler.go
+    anchor: "provider *auth.Provider"
+- id: signup_calls_register
+  selector:
+    path: internal/api/signup_handler.go
+    anchor: "p.provider.Register("
+- id: unrelated_cleanup
+  selector:
+    path: internal/cron/cleanup.go
+    anchor: "type CleanupJob struct"
+- id: unrelated_indexer
+  selector:
+    path: internal/search/indexer.go
+    anchor: "type Indexer struct"
+- id: unrelated_pdf
+  selector:
+    path: internal/pdf/generator.go
+    anchor: "type Generator struct"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_011_CLEANUP_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_011_INDEXER_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_011_PDF_C
+oracle:
+  required:
+  - verified_field
+  - verify_check
+  - verify_email_method
+  - login_calls_authenticate
+  allowed:
+  - register_verified_false
+  - admin_uses_provider
+  - signup_calls_register
+  forbidden:
+  - unrelated_cleanup
+  - unrelated_indexer
+  - unrelated_pdf
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

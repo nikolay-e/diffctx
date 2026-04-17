@@ -1,0 +1,140 @@
+name: bal4_refactor_011_rust_extract_trait
+tags:
+- lang:rust
+- change:multi_file
+- change:refactor
+- context:cross_module
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/store.rs: |
+      pub struct MemStore {
+          data: Vec<String>,
+      }
+
+      impl MemStore {
+          pub fn new() -> Self {
+              MemStore { data: vec![] }
+          }
+
+          pub fn save(&mut self, val: String) {
+              self.data.push(val);
+          }
+
+          pub fn load(&self) -> &[String] {
+              &self.data
+          }
+      }
+    src/service.rs: |
+      use crate::store::MemStore;
+
+      pub fn run(store: &mut MemStore) {
+          store.save("hello".into());
+      }
+    src/garbage_tok.rs: |
+      // GARBAGE_BAL4R011_TOK_A
+      pub const GARBAGE_BAL4R011_EXP_B: u64 = 3600;
+
+      pub struct GarbageTok {
+          // GARBAGE_BAL4R011_TOK_C
+      }
+    src/garbage_pool.rs: |
+      // GARBAGE_BAL4R011_POOL_D
+      pub const GARBAGE_BAL4R011_MAX_E: usize = 10;
+  changed_files:
+    src/store.rs: |
+      pub trait Storage {
+          fn save(&mut self, val: String);
+          fn load(&self) -> &[String];
+      }
+
+      pub struct MemStore {
+          data: Vec<String>,
+      }
+
+      impl MemStore {
+          pub fn new() -> Self {
+              MemStore { data: vec![] }
+          }
+      }
+
+      impl Storage for MemStore {
+          fn save(&mut self, val: String) {
+              self.data.push(val);
+          }
+
+          fn load(&self) -> &[String] {
+              &self.data
+          }
+      }
+    src/service.rs: |
+      use crate::store::Storage;
+
+      pub fn run(store: &mut dyn Storage) {
+          store.save("hello".into());
+      }
+    src/garbage_tok.rs: |
+      // GARBAGE_BAL4R011_TOK_A
+      pub const GARBAGE_BAL4R011_EXP_B: u64 = 3600;
+
+      pub struct GarbageTok {
+          // GARBAGE_BAL4R011_TOK_C
+      }
+    src/garbage_pool.rs: |
+      // GARBAGE_BAL4R011_POOL_D
+      pub const GARBAGE_BAL4R011_MAX_E: usize = 10;
+  commit_message: "refactor: extract Storage trait from MemStore"
+fragments:
+- id: new_trait
+  selector:
+    path: src/store.rs
+    anchor: "pub trait Storage"
+- id: impl_storage
+  selector:
+    path: src/store.rs
+    anchor: "impl Storage for MemStore"
+- id: service_uses_trait
+  selector:
+    path: src/service.rs
+    anchor: "use crate::store::Storage"
+- id: service_dyn
+  selector:
+    path: src/service.rs
+    anchor: "dyn Storage"
+- id: no_garbage_tok
+  selector:
+    path: src/garbage_tok.rs
+- id: no_garbage_pool
+  selector:
+    path: src/garbage_pool.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL4R011_TOK_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL4R011_EXP_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL4R011_TOK_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL4R011_POOL_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL4R011_MAX_E
+oracle:
+  required:
+  - new_trait
+  - impl_storage
+  - service_uses_trait
+  - service_dyn
+  allowed: []
+  forbidden:
+  - no_garbage_tok
+  - no_garbage_pool
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

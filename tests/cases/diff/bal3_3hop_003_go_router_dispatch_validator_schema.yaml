@@ -1,0 +1,215 @@
+name: bal3_3hop_003_go_router_dispatch_validator_schema
+tags:
+- lang:go
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    pkg/schema/definitions.go: |
+      package schema
+
+      type FieldRule struct {
+          Name     string
+          Required bool
+          MinLen   int
+      }
+
+      type Schema struct {
+          Fields []FieldRule
+      }
+
+      func NewSchema(fields []FieldRule) *Schema {
+          return &Schema{Fields: fields}
+      }
+
+      func (s *Schema) FieldNames() []string {
+          names := make([]string, len(s.Fields))
+          for i, f := range s.Fields {
+              names[i] = f.Name
+          }
+          return names
+      }
+    pkg/validator/validator.go: |
+      package validator
+
+      import "myapp/pkg/schema"
+
+      type Validator struct {
+          schema *schema.Schema
+      }
+
+      func NewValidator(s *schema.Schema) *Validator {
+          return &Validator{schema: s}
+      }
+
+      func (v *Validator) Validate(data map[string]string) []string {
+          var errors []string
+          for _, field := range v.schema.Fields {
+              val, ok := data[field.Name]
+              if field.Required && !ok {
+                  errors = append(errors, field.Name+" is required")
+              }
+              if ok && len(val) < field.MinLen {
+                  errors = append(errors, field.Name+" too short")
+              }
+          }
+          return errors
+      }
+    pkg/dispatch/dispatcher.go: |
+      package dispatch
+
+      import "myapp/pkg/validator"
+
+      type Dispatcher struct {
+          validator *validator.Validator
+      }
+
+      func NewDispatcher(v *validator.Validator) *Dispatcher {
+          return &Dispatcher{validator: v}
+      }
+
+      func (d *Dispatcher) Dispatch(data map[string]string) (bool, []string) {
+          errs := d.validator.Validate(data)
+          if len(errs) > 0 {
+              return false, errs
+          }
+          return true, nil
+      }
+    pkg/router/router.go: |
+      package router
+
+      import "myapp/pkg/dispatch"
+
+      type Router struct {
+          dispatcher *dispatch.Dispatcher
+          routes     map[string]bool
+      }
+
+      func NewRouter(d *dispatch.Dispatcher) *Router {
+          return &Router{dispatcher: d, routes: make(map[string]bool)}
+      }
+
+      func (r *Router) Register(path string) {
+          r.routes[path] = true
+      }
+
+      func (r *Router) Handle(path string, data map[string]string) (bool, []string) {
+          if !r.routes[path] {
+              return false, []string{"route not found"}
+          }
+          return r.dispatcher.Dispatch(data)
+      }
+    pkg/health/checker.go: |
+      package health
+
+      var GARBAGE_BAL3_003_HEALTH_MARKER_A = "health"
+      var GARBAGE_BAL3_003_STATUS_MARKER_B = "ok"
+
+      type Checker struct{}
+
+      func (c *Checker) Check() string {
+          return "healthy"
+      }
+    pkg/health/reporter.go: |
+      package health
+
+      var GARBAGE_BAL3_003_REPORT_MARKER_C = "report"
+      var GARBAGE_BAL3_003_METRIC_MARKER_D = 42
+
+      type Reporter struct{}
+
+      func (r *Reporter) Report() string {
+          return "all systems go"
+      }
+  changed_files:
+    pkg/schema/definitions.go: |
+      package schema
+
+      type FieldRule struct {
+          Name     string
+          Required bool
+          MinLen   int
+          MaxLen   int
+      }
+
+      type Schema struct {
+          Fields []FieldRule
+      }
+
+      func NewSchema(fields []FieldRule) *Schema {
+          return &Schema{Fields: fields}
+      }
+
+      func (s *Schema) FieldNames() []string {
+          names := make([]string, len(s.Fields))
+          for i, f := range s.Fields {
+              names[i] = f.Name
+          }
+          return names
+      }
+
+      func (s *Schema) HasRequiredFields() bool {
+          for _, f := range s.Fields {
+              if f.Required {
+                  return true
+              }
+          }
+          return false
+      }
+  commit_message: "Add MaxLen to schema and HasRequiredFields helper"
+fragments:
+- id: schema_maxlen
+  selector:
+    path: pkg/schema/definitions.go
+    anchor: "MaxLen   int"
+- id: schema_has_required
+  selector:
+    path: pkg/schema/definitions.go
+    anchor: "func (s *Schema) HasRequiredFields"
+- id: validator_validate
+  selector:
+    path: pkg/validator/validator.go
+    anchor: "func (v *Validator) Validate"
+- id: dispatcher_dispatch
+  selector:
+    path: pkg/dispatch/dispatcher.go
+    anchor: "func (d *Dispatcher) Dispatch"
+- id: router_handle
+  selector:
+    path: pkg/router/router.go
+    anchor: "func (r *Router) Handle"
+- id: no_checker
+  selector:
+    path: pkg/health/checker.go
+- id: no_reporter
+  selector:
+    path: pkg/health/reporter.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_003_HEALTH_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_003_STATUS_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_003_REPORT_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_003_METRIC_MARKER_D
+oracle:
+  required:
+  - schema_maxlen
+  - schema_has_required
+  - validator_validate
+  - dispatcher_dispatch
+  - router_handle
+  allowed: []
+  forbidden:
+  - no_checker
+  - no_reporter
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

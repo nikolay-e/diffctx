@@ -1,0 +1,139 @@
+name: bal4_3hop_002_ruby_cms_publish
+tags:
+- lang:ruby
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:trivial
+repo:
+  initial_files:
+    lib/cms/slug.rb: |
+      module Cms
+        class Slug
+          def self.generate(title)
+            title.downcase.gsub(/\s+/, '-')
+          end
+        end
+      end
+    lib/cms/page.rb: |
+      require_relative 'slug'
+      module Cms
+        class Page
+          attr_reader :title, :slug
+          def initialize(title)
+            @title = title
+            @slug = Slug.generate(title)
+          end
+        end
+      end
+    lib/cms/publisher.rb: |
+      require_relative 'page'
+      module Cms
+        class Publisher
+          def publish(title)
+            Page.new(title)
+          end
+        end
+      end
+    lib/cms/api.rb: |
+      require_relative 'publisher'
+      module Cms
+        class Api
+          def create(title)
+            Publisher.new.publish(title)
+          end
+        end
+      end
+    lib/helpers/sanitizer.rb: |
+      module Helpers
+        GARBAGE_002_SANITIZER_A = "clean"
+        GARBAGE_002_ESCAPE_B = true
+        class Sanitizer
+          def self.clean(str)
+            str.gsub(/<.*?>/, '')
+          end
+        end
+      end
+  changed_files:
+    lib/cms/slug.rb: |
+      module Cms
+        class Slug
+          def self.generate(title)
+            title.downcase.strip.gsub(/\s+/, '-').gsub(/[^a-z0-9\-]/, '')
+          end
+        end
+      end
+    lib/cms/page.rb: |
+      require_relative 'slug'
+      module Cms
+        class Page
+          attr_reader :title, :slug
+          def initialize(title)
+            @title = title
+            @slug = Slug.generate(title)
+          end
+        end
+      end
+    lib/cms/publisher.rb: |
+      require_relative 'page'
+      module Cms
+        class Publisher
+          def publish(title)
+            Page.new(title)
+          end
+        end
+      end
+    lib/cms/api.rb: |
+      require_relative 'publisher'
+      module Cms
+        class Api
+          def create(title)
+            Publisher.new.publish(title)
+          end
+        end
+      end
+    lib/helpers/sanitizer.rb: |
+      module Helpers
+        GARBAGE_002_SANITIZER_A = "clean"
+        GARBAGE_002_ESCAPE_B = true
+        class Sanitizer
+          def self.clean(str)
+            str.gsub(/<.*?>/, '')
+          end
+        end
+      end
+  commit_message: "fix: strip special chars from slug"
+fragments:
+- id: slug_strip
+  selector:
+    path: lib/cms/slug.rb
+    anchor: "gsub(/[^a-z0-9"
+- id: page_uses_slug
+  selector:
+    path: lib/cms/page.rb
+    anchor: "require_relative 'slug'"
+- id: publisher_uses_page
+  selector:
+    path: lib/cms/publisher.rb
+    anchor: "require_relative 'page'"
+- id: api_uses_publisher
+  selector:
+    path: lib/cms/api.rb
+    anchor: "require_relative 'publisher'"
+- id: no_sanitizer
+  selector:
+    path: lib/helpers/sanitizer.rb
+    anchor: "GARBAGE_002_SANITIZER_A"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_002_ESCAPE_B
+oracle:
+  required:
+  - slug_strip
+  - page_uses_slug
+  - publisher_uses_page
+  - api_uses_publisher
+  allowed: []
+  forbidden:
+  - no_sanitizer
+  - no_global_0

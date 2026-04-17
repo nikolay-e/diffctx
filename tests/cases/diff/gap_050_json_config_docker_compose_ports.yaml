@@ -1,0 +1,128 @@
+name: gap_050_json_config_docker_compose_ports
+tags:
+- lang:json
+- lang:yaml
+- change:config
+- change:single_file
+- context:import_chain
+- distance:2hop
+- difficulty:medium
+repo:
+  initial_files:
+    config/search.json: |
+      {
+        "search": {
+          "indexBatchSize": 100,
+          "maxResultsPerQuery": 50,
+          "highlightFragments": 3,
+          "fuzzyDistance": 1
+        }
+      }
+    src/search/engine.py: |
+      import json
+
+      def load_search_config(path: str = "config/search.json") -> dict:
+          with open(path) as f:
+              return json.load(f)
+
+      def create_search_engine(config: dict) -> "SearchEngine":
+          sc = config["search"]
+          return SearchEngine(
+              index_batch_size=sc["indexBatchSize"],
+              max_results=sc["maxResultsPerQuery"],
+              highlight_fragments=sc["highlightFragments"],
+              fuzzy_distance=sc["fuzzyDistance"],
+          )
+    src/search/api.py: |
+      from src.search.engine import create_search_engine, load_search_config
+
+      class SearchApi:
+          def __init__(self):
+              config = load_search_config()
+              self.engine = create_search_engine(config)
+
+          def search(self, query: str) -> list:
+              return self.engine.query(query)
+    garbage/Indexer.py: |
+      # GARBAGE_SRH_A = "indexer_marker"
+    garbage/Tokenizer.py: |
+      # GARBAGE_SRH_B = "tokenizer_marker"
+    garbage/Ranker.py: |
+      # GARBAGE_SRH_C = "ranker_marker"
+  changed_files:
+    config/search.json: |
+      {
+        "search": {
+          "indexBatchSize": 500,
+          "maxResultsPerQuery": 100,
+          "highlightFragments": 5,
+          "fuzzyDistance": 2,
+          "synonymsEnabled": true,
+          "boostExactMatch": 3.0
+        }
+      }
+    src/search/engine.py: |
+      import json
+
+      def load_search_config(path: str = "config/search.json") -> dict:
+          with open(path) as f:
+              return json.load(f)
+
+      def create_search_engine(config: dict) -> "SearchEngine":
+          sc = config["search"]
+          return SearchEngine(
+              index_batch_size=sc["indexBatchSize"],
+              max_results=sc["maxResultsPerQuery"],
+              highlight_fragments=sc["highlightFragments"],
+              fuzzy_distance=sc["fuzzyDistance"],
+              synonyms_enabled=sc.get("synonymsEnabled", False),
+              boost_exact_match=sc.get("boostExactMatch", 1.0),
+          )
+    src/search/api.py: |
+      from src.search.engine import create_search_engine, load_search_config
+
+      class SearchApi:
+          def __init__(self):
+              config = load_search_config()
+              self.engine = create_search_engine(config)
+
+          def search(self, query: str) -> list:
+              return self.engine.query(query)
+    garbage/Indexer.py: |
+      # GARBAGE_SRH_A = "indexer_marker"
+    garbage/Tokenizer.py: |
+      # GARBAGE_SRH_B = "tokenizer_marker"
+    garbage/Ranker.py: |
+      # GARBAGE_SRH_C = "ranker_marker"
+  commit_message: "config: expand search config with synonyms and exact match boost"
+fragments:
+- id: search_config
+  selector:
+    path: config/search.json
+    anchor: "synonymsEnabled"
+- id: create_engine
+  selector:
+    path: src/search/engine.py
+    anchor: "def create_search_engine"
+- id: no_api
+  selector:
+    path: src/search/api.py
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_SRH_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_SRH_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_SRH_C
+oracle:
+  required:
+  - search_config
+  - create_engine
+  allowed: []
+  forbidden:
+  - no_api
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

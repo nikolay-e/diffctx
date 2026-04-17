@@ -1,34 +1,162 @@
 name: internals_038_cyclic_dependency_convergence
+tags:
+- lang:sql
+- change:single_file
+- context:cross_module
+- distance:0hop
+- difficulty:medium
 repo:
   initial_files:
-    cycle.py: |
-      def placeholder():
+    db/schema.sql: |
+      CREATE TABLE users (
+          id SERIAL PRIMARY KEY,
+          email VARCHAR(255) UNIQUE NOT NULL,
+          created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE sessions (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+          expires_at TIMESTAMP NOT NULL
+      );
+    src/auth/user_repo.py: |
+      def find_user_by_email(conn, email: str) -> dict | None:
+          cur = conn.cursor()
+          cur.execute("SELECT id, email, created_at FROM users WHERE email = %s", (email,))
+          row = cur.fetchone()
+          if row is None:
+              return None
+          return {"id": row[0], "email": row[1], "created_at": row[2]}
+    src/auth/session_repo.py: |
+      import datetime
+
+      def create_session(conn, user_id: int, ttl_hours: int = 24) -> str:
+          expires = datetime.datetime.utcnow() + datetime.timedelta(hours=ttl_hours)
+          cur = conn.cursor()
+          cur.execute(
+              "INSERT INTO sessions (user_id, expires_at) VALUES (%s, %s) RETURNING id",
+              (user_id, expires),
+          )
+          conn.commit()
+          return cur.fetchone()[0]
+    garbage/events.py: |
+      GARBAGE_CYC038_EVENTS_A = "events_marker"
+
+
+      def emit(event_name: str) -> None:
           pass
+    garbage/feature_flags.py: |
+      GARBAGE_CYC038_FLAGS_B = "flags_marker"
+
+
+      def is_enabled(flag: str) -> bool:
+          return False
+    garbage/rate_limit.py: |
+      GARBAGE_CYC038_RATE_C = "rate_marker"
+
+
+      def check_limit(key: str) -> bool:
+          return True
   changed_files:
-    cycle.py: |
-      def func_alpha():
-          func_beta()
+    db/schema.sql: |
+      CREATE TABLE users (
+          id SERIAL PRIMARY KEY,
+          email VARCHAR(255) UNIQUE NOT NULL,
+          display_name VARCHAR(255),
+          is_active BOOLEAN NOT NULL DEFAULT TRUE,
+          created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
 
-      def func_beta():
-          func_gamma()
+      CREATE TABLE sessions (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+          expires_at TIMESTAMP NOT NULL,
+          ip_address INET,
+          user_agent TEXT
+      );
 
-      def func_gamma():
-          func_alpha()
-  commit_message: Update files
+      CREATE INDEX idx_sessions_user_id ON sessions(user_id);
+      CREATE INDEX idx_sessions_expires_at ON sessions(expires_at);
+    src/auth/user_repo.py: |
+      def find_user_by_email(conn, email: str) -> dict | None:
+          cur = conn.cursor()
+          cur.execute("SELECT id, email, created_at FROM users WHERE email = %s", (email,))
+          row = cur.fetchone()
+          if row is None:
+              return None
+          return {"id": row[0], "email": row[1], "created_at": row[2]}
+    src/auth/session_repo.py: |
+      import datetime
+
+      def create_session(conn, user_id: int, ttl_hours: int = 24) -> str:
+          expires = datetime.datetime.utcnow() + datetime.timedelta(hours=ttl_hours)
+          cur = conn.cursor()
+          cur.execute(
+              "INSERT INTO sessions (user_id, expires_at) VALUES (%s, %s) RETURNING id",
+              (user_id, expires),
+          )
+          conn.commit()
+          return cur.fetchone()[0]
+    garbage/events.py: |
+      GARBAGE_CYC038_EVENTS_A = "events_marker"
+
+
+      def emit(event_name: str) -> None:
+          pass
+    garbage/feature_flags.py: |
+      GARBAGE_CYC038_FLAGS_B = "flags_marker"
+
+
+      def is_enabled(flag: str) -> bool:
+          return False
+    garbage/rate_limit.py: |
+      GARBAGE_CYC038_RATE_C = "rate_marker"
+
+
+      def check_limit(key: str) -> bool:
+          return True
+  commit_message: "feat: add display_name/is_active to users and ip/user_agent to sessions"
 fragments:
-- id: cycle_file
+- id: users_new_columns
   selector:
-    path: cycle.py
-- id: req_global_0
+    path: db/schema.sql
+    anchor: "display_name VARCHAR"
+- id: sessions_new_columns
   selector:
-    anchor: 'def func_alpha():'
-- id: req_global_1
+    path: db/schema.sql
+    anchor: "ip_address INET"
+- id: sessions_indexes
   selector:
-    anchor: 'def func_beta():'
+    path: db/schema.sql
+    anchor: "idx_sessions_expires_at"
+- id: user_repo_query
+  selector:
+    path: src/auth/user_repo.py
+    anchor: "SELECT id, email, created_at FROM users"
+- id: session_repo_insert
+  selector:
+    path: src/auth/session_repo.py
+    anchor: "INSERT INTO sessions"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_CYC038_EVENTS_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_CYC038_FLAGS_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_CYC038_RATE_C
 oracle:
   required:
-  - cycle_file
-  - req_global_0
-  - req_global_1
+  - users_new_columns
+  - sessions_new_columns
+  - sessions_indexes
+  - user_repo_query
+  - session_repo_insert
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

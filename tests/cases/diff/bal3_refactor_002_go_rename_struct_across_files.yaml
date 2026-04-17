@@ -1,0 +1,140 @@
+name: bal3_refactor_002_go_rename_struct_across_files
+tags:
+- lang:typescript
+- change:bug_fix
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/utils/format.ts: |
+      export function formatCurrency(amount: number, decimals: number = 2): string {
+        return amount.toFixed(decimals);
+      }
+
+      export function formatPercent(value: number): string {
+        return (value * 100).toFixed(1) + '%';
+      }
+    src/math/stats.ts: |
+      import { formatCurrency } from '../utils/format';
+
+      export function computeAverage(values: number[]): number {
+        if (values.length === 0) return 0;
+        return values.reduce((a, b) => a + b, 0) / values.length;
+      }
+
+      export function formatAverage(values: number[]): string {
+        return formatCurrency(computeAverage(values));
+      }
+    src/reports/summary.ts: |
+      import { formatAverage } from '../math/stats';
+
+      export interface ReportRow {
+        label: string;
+        values: number[];
+      }
+
+      export function buildSummaryRow(row: ReportRow): string {
+        return `${row.label}: ${formatAverage(row.values)}`;
+      }
+    src/api/reportsEndpoint.ts: |
+      import { buildSummaryRow, ReportRow } from '../reports/summary';
+
+      export function handleReportRequest(rows: ReportRow[]): string[] {
+        return rows.map(buildSummaryRow);
+      }
+    garbage/logger.ts: |
+      const GARBAGE_R002_LOGGER_A = "logger_marker";
+      export function log(msg: string): void { console.log(msg); }
+    garbage/cache.ts: |
+      const GARBAGE_R002_CACHE_B = "cache_marker";
+      export function cached<T>(fn: () => T): T { return fn(); }
+    garbage/retry.ts: |
+      const GARBAGE_R002_RETRY_C = "retry_marker";
+      export function retry(fn: () => void, times: number): void {}
+  changed_files:
+    src/utils/format.ts: |
+      export function formatCurrency(amount: number, decimals: number = 2): string {
+        if (!Number.isFinite(amount)) return '0.00';
+        return amount.toFixed(decimals);
+      }
+
+      export function formatPercent(value: number): string {
+        return (value * 100).toFixed(1) + '%';
+      }
+    src/math/stats.ts: |
+      import { formatCurrency } from '../utils/format';
+
+      export function computeAverage(values: number[]): number {
+        if (values.length === 0) return 0;
+        return values.reduce((a, b) => a + b, 0) / values.length;
+      }
+
+      export function formatAverage(values: number[]): string {
+        return formatCurrency(computeAverage(values));
+      }
+    src/reports/summary.ts: |
+      import { formatAverage } from '../math/stats';
+
+      export interface ReportRow {
+        label: string;
+        values: number[];
+      }
+
+      export function buildSummaryRow(row: ReportRow): string {
+        return `${row.label}: ${formatAverage(row.values)}`;
+      }
+    src/api/reportsEndpoint.ts: |
+      import { buildSummaryRow, ReportRow } from '../reports/summary';
+
+      export function handleReportRequest(rows: ReportRow[]): string[] {
+        return rows.map(buildSummaryRow);
+      }
+    garbage/logger.ts: |
+      const GARBAGE_R002_LOGGER_A = "logger_marker";
+      export function log(msg: string): void { console.log(msg); }
+    garbage/cache.ts: |
+      const GARBAGE_R002_CACHE_B = "cache_marker";
+      export function cached<T>(fn: () => T): T { return fn(); }
+    garbage/retry.ts: |
+      const GARBAGE_R002_RETRY_C = "retry_marker";
+      export function retry(fn: () => void, times: number): void {}
+  commit_message: "fix: guard formatCurrency against non-finite input"
+fragments:
+- id: format_currency_fix
+  selector:
+    path: src/utils/format.ts
+    anchor: "if (!Number.isFinite(amount))"
+- id: stats_calls_format
+  selector:
+    path: src/math/stats.ts
+    anchor: "formatCurrency(computeAverage"
+- id: summary_calls_stats
+  selector:
+    path: src/reports/summary.ts
+    anchor: "formatAverage(row.values)"
+- id: endpoint_calls_summary
+  selector:
+    path: src/api/reportsEndpoint.ts
+    anchor: "rows.map(buildSummaryRow)"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_R002_LOGGER_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_R002_CACHE_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_R002_RETRY_C
+oracle:
+  required:
+  - format_currency_fix
+  - stats_calls_format
+  - summary_calls_stats
+  - endpoint_calls_summary
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

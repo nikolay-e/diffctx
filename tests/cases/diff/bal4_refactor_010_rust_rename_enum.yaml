@@ -1,0 +1,102 @@
+name: bal4_refactor_010_rust_rename_enum
+tags:
+- lang:rust
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:1hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/status.rs: |
+      pub enum Status {
+          Ok,
+          Fail,
+      }
+    src/handler.rs: |
+      use crate::status::Status;
+
+      pub fn check() -> Status {
+          Status::Ok
+      }
+    src/garbage_db.rs: |
+      // GARBAGE_BAL4R010_DB_A
+      pub const GARBAGE_BAL4R010_DSN_B: &str = "localhost";
+
+      pub struct GarbageDb {
+          // GARBAGE_BAL4R010_DB_C
+      }
+    src/garbage_queue.rs: |
+      // GARBAGE_BAL4R010_Q_D
+      pub const GARBAGE_BAL4R010_CAP_E: usize = 50;
+  changed_files:
+    src/status.rs: |
+      pub enum Health {
+          Ok,
+          Fail,
+      }
+    src/handler.rs: |
+      use crate::status::Health;
+
+      pub fn check() -> Health {
+          Health::Ok
+      }
+    src/garbage_db.rs: |
+      // GARBAGE_BAL4R010_DB_A
+      pub const GARBAGE_BAL4R010_DSN_B: &str = "localhost";
+
+      pub struct GarbageDb {
+          // GARBAGE_BAL4R010_DB_C
+      }
+    src/garbage_queue.rs: |
+      // GARBAGE_BAL4R010_Q_D
+      pub const GARBAGE_BAL4R010_CAP_E: usize = 50;
+  commit_message: "refactor: rename Status enum to Health"
+fragments:
+- id: renamed_enum
+  selector:
+    path: src/status.rs
+    anchor: "pub enum Health"
+- id: handler_imports_health
+  selector:
+    path: src/handler.rs
+    anchor: "use crate::status::Health"
+- id: handler_returns_health
+  selector:
+    path: src/handler.rs
+    anchor: "Health::Ok"
+- id: no_garbage_db
+  selector:
+    path: src/garbage_db.rs
+- id: no_garbage_queue
+  selector:
+    path: src/garbage_queue.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL4R010_DB_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL4R010_DSN_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL4R010_DB_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL4R010_Q_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL4R010_CAP_E
+oracle:
+  required:
+  - renamed_enum
+  - handler_imports_health
+  - handler_returns_health
+  allowed: []
+  forbidden:
+  - no_garbage_db
+  - no_garbage_queue
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

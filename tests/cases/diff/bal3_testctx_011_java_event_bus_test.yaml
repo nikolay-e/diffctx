@@ -1,0 +1,184 @@
+name: bal3_testctx_011_java_event_bus_test
+tags:
+- lang:java
+- change:multi_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/events/Event.java: |
+      package com.events;
+
+      public class Event {
+          private final String type;
+          private final String payload;
+
+          public Event(String type, String payload) {
+              this.type = type;
+              this.payload = payload;
+          }
+
+          public String getType() { return type; }
+          public String getPayload() { return payload; }
+      }
+    src/main/java/com/events/EventBus.java: |
+      package com.events;
+
+      import java.util.ArrayList;
+      import java.util.HashMap;
+      import java.util.List;
+      import java.util.Map;
+      import java.util.function.Consumer;
+
+      public class EventBus {
+          private final Map<String, List<Consumer<Event>>> listeners = new HashMap<>();
+
+          public void subscribe(String eventType, Consumer<Event> listener) {
+              listeners.computeIfAbsent(eventType, k -> new ArrayList<>()).add(listener);
+          }
+
+          public void publish(Event event) {
+              List<Consumer<Event>> subs = listeners.get(event.getType());
+              if (subs != null) {
+                  for (Consumer<Event> sub : subs) {
+                      sub.accept(event);
+                  }
+              }
+          }
+      }
+    src/test/java/com/events/EventBusTest.java: |
+      package com.events;
+
+      import org.junit.jupiter.api.Test;
+      import static org.junit.jupiter.api.Assertions.*;
+      import java.util.concurrent.atomic.AtomicInteger;
+
+      class EventBusTest {
+          @Test
+          void testSubscribeAndPublish() {
+              EventBus bus = new EventBus();
+              AtomicInteger count = new AtomicInteger();
+              bus.subscribe("click", e -> count.incrementAndGet());
+              bus.publish(new Event("click", "button1"));
+              assertEquals(1, count.get());
+          }
+
+          @Test
+          void testNoSubscribers() {
+              EventBus bus = new EventBus();
+              bus.publish(new Event("unknown", "data"));
+          }
+      }
+    src/main/java/com/events/EventLogger.java: |
+      package com.events;
+
+      import java.util.ArrayList;
+      import java.util.List;
+
+      public class EventLogger {
+          private final List<String> logs = new ArrayList<>();
+
+          public void log(String message) {
+              logs.add(message);
+          }
+
+          public List<String> getLogs() {
+              return new ArrayList<>(logs);
+          }
+      }
+    src/main/java/com/config/AppConfig.java: |
+      package com.config;
+
+      public class AppConfig {
+          private int maxRetries = 3;
+          private long timeoutMs = 5000;
+
+          public int getMaxRetries() { return maxRetries; }
+          public long getTimeoutMs() { return timeoutMs; }
+      }
+  changed_files:
+    src/main/java/com/events/EventBus.java: |
+      package com.events;
+
+      import java.util.ArrayList;
+      import java.util.HashMap;
+      import java.util.List;
+      import java.util.Map;
+      import java.util.concurrent.CopyOnWriteArrayList;
+      import java.util.function.Consumer;
+
+      public class EventBus {
+          private final Map<String, List<Consumer<Event>>> listeners = new HashMap<>();
+          private final List<Event> deadLetters = new CopyOnWriteArrayList<>();
+
+          public void subscribe(String eventType, Consumer<Event> listener) {
+              listeners.computeIfAbsent(eventType, k -> new ArrayList<>()).add(listener);
+          }
+
+          public void unsubscribe(String eventType) {
+              listeners.remove(eventType);
+          }
+
+          public void publish(Event event) {
+              List<Consumer<Event>> subs = listeners.get(event.getType());
+              if (subs == null || subs.isEmpty()) {
+                  deadLetters.add(event);
+                  return;
+              }
+              for (Consumer<Event> sub : subs) {
+                  sub.accept(event);
+              }
+          }
+
+          public List<Event> getDeadLetters() {
+              return new ArrayList<>(deadLetters);
+          }
+      }
+  commit_message: "feat: add unsubscribe, dead letter queue to EventBus"
+fragments:
+- id: dead_letters_field
+  selector:
+    path: src/main/java/com/events/EventBus.java
+    anchor: "deadLetters = new CopyOnWriteArrayList"
+- id: unsubscribe_method
+  selector:
+    path: src/main/java/com/events/EventBus.java
+    anchor: "public void unsubscribe(String eventType)"
+- id: get_dead_letters
+  selector:
+    path: src/main/java/com/events/EventBus.java
+    anchor: "public List<Event> getDeadLetters()"
+- id: test_subscribe_publish
+  selector:
+    path: src/test/java/com/events/EventBusTest.java
+    anchor: "void testSubscribeAndPublish()"
+- id: test_no_subscribers
+  selector:
+    path: src/test/java/com/events/EventBusTest.java
+    anchor: "void testNoSubscribers()"
+- id: event_class
+  selector:
+    path: src/main/java/com/events/Event.java
+    anchor: "public class Event"
+- id: no_event_logger
+  selector:
+    path: src/main/java/com/events/EventLogger.java
+    anchor: "public class EventLogger"
+- id: no_app_config
+  selector:
+    path: src/main/java/com/config/AppConfig.java
+    anchor: "public class AppConfig"
+oracle:
+  required:
+  - dead_letters_field
+  - unsubscribe_method
+  - get_dead_letters
+  - test_subscribe_publish
+  allowed:
+  - test_no_subscribers
+  - event_class
+  forbidden:
+  - no_event_logger
+  - no_app_config

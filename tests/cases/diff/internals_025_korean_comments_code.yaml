@@ -1,26 +1,166 @@
 name: internals_025_korean_comments_code
+tags:
+- lang:julia
+- change:refactor
+- change:single_file
+- context:call_graph
+- distance:1hop
+- difficulty:hard
 repo:
   initial_files:
-    korean_comments.py: |
-      def placeholder():
-          pass
+    src/Inventory.jl: |
+      module Inventory
+
+      export Item, reorder_needed, value_on_hand
+
+      struct Item
+          sku::String
+          quantity::Int
+          unit_cost::Float64
+          reorder_threshold::Int
+      end
+
+      function reorder_needed(item::Item)::Bool
+          return item.quantity <= item.reorder_threshold
+      end
+
+      function value_on_hand(item::Item)::Float64
+          return item.quantity * item.unit_cost
+      end
+
+      end
+    src/PurchaseOrder.jl: |
+      module PurchaseOrder
+
+      include("Inventory.jl")
+      using .Inventory
+
+      function generate_orders(items::Vector{Item})::Vector{String}
+          return [i.sku for i in items if reorder_needed(i)]
+      end
+
+      end
+    src/Valuation.jl: |
+      module Valuation
+
+      include("Inventory.jl")
+      using .Inventory
+
+      function total_value(items::Vector{Item})::Float64
+          return sum(value_on_hand(i) for i in items)
+      end
+
+      end
+    src/INT025_Supplier.jl: |
+      module Supplier
+
+      INT025_GARBAGE_A = "supplier_marker"
+      INT025_GARBAGE_B = "lead_time_days"
+
+      function get_supplier(sku::String)::String
+          return "default_supplier"
+      end
+
+      end
+    src/INT025_Shipping.jl: |
+      module Shipping
+
+      INT025_GARBAGE_C = "shipping_marker"
+      INT025_GARBAGE_D = "carrier"
+
+      function estimate_delivery(days::Int)::String
+          return "$(days) business days"
+      end
+
+      end
   changed_files:
-    korean_comments.py: |
-      # 이것은 한국어 주석입니다
-      def calculate_total(items):
-          # 계산 로직
-          return sum(items)
-  commit_message: Update files
+    src/Inventory.jl: |
+      module Inventory
+
+      export Item, reorder_needed, value_on_hand, overstocked
+
+      struct Item
+          sku::String
+          quantity::Int
+          unit_cost::Float64
+          reorder_threshold::Int
+          max_stock::Int
+      end
+
+      function reorder_needed(item::Item)::Bool
+          return item.quantity <= item.reorder_threshold
+      end
+
+      function value_on_hand(item::Item)::Float64
+          return item.quantity * item.unit_cost
+      end
+
+      function overstocked(item::Item)::Bool
+          return item.quantity > item.max_stock
+      end
+
+      end
+    src/INT025_Supplier.jl: |
+      module Supplier
+
+      INT025_GARBAGE_A = "supplier_marker"
+      INT025_GARBAGE_B = "lead_time_days"
+
+      function get_supplier(sku::String)::String
+          return "default_supplier"
+      end
+
+      end
+    src/INT025_Shipping.jl: |
+      module Shipping
+
+      INT025_GARBAGE_C = "shipping_marker"
+      INT025_GARBAGE_D = "carrier"
+
+      function estimate_delivery(days::Int)::String
+          return "$(days) business days"
+      end
+
+      end
+  commit_message: "refactor: add max_stock field to Item, add overstocked function"
 fragments:
-- id: korean_comments_file
+- id: item_max_stock
   selector:
-    path: korean_comments.py
-- id: req_global_0
+    path: src/Inventory.jl
+    anchor: "max_stock::Int"
+- id: inventory_overstocked
   selector:
-    anchor: 'def calculate_total(items):'
+    path: src/Inventory.jl
+    anchor: "function overstocked(item::Item)"
+- id: purchase_uses_reorder
+  selector:
+    path: src/PurchaseOrder.jl
+    anchor: "reorder_needed(i)"
+- id: valuation_uses_value
+  selector:
+    path: src/Valuation.jl
+    anchor: "value_on_hand(i)"
+- id: no_garbage_a
+  selector:
+    anchor: INT025_GARBAGE_A
+- id: no_garbage_b
+  selector:
+    anchor: INT025_GARBAGE_B
+- id: no_garbage_c
+  selector:
+    anchor: INT025_GARBAGE_C
+- id: no_garbage_d
+  selector:
+    anchor: INT025_GARBAGE_D
 oracle:
   required:
-  - korean_comments_file
-  - req_global_0
+  - item_max_stock
+  - inventory_overstocked
+  - purchase_uses_reorder
+  - valuation_uses_value
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

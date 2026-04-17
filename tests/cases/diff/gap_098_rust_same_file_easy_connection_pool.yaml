@@ -1,0 +1,220 @@
+name: gap_098_rust_same_file_easy_connection_pool
+tags:
+- lang:rust
+- change:new_function
+- change:signature
+- change:single_file
+- context:same_file
+- difficulty:easy
+- distance:0hop
+repo:
+  initial_files:
+    src/pool.rs: |
+      pub struct Connection {
+          id: u32,
+          active: bool,
+      }
+
+      impl Connection {
+          pub fn new(id: u32) -> Self {
+              Connection { id, active: true }
+          }
+
+          pub fn id(&self) -> u32 {
+              self.id
+          }
+
+          pub fn is_active(&self) -> bool {
+              self.active
+          }
+
+          pub fn close(&mut self) {
+              self.active = false;
+          }
+      }
+
+      pub struct Pool {
+          connections: Vec<Connection>,
+          max_size: usize,
+      }
+
+      impl Pool {
+          pub fn new(max_size: usize) -> Self {
+              Pool {
+                  connections: Vec::new(),
+                  max_size,
+              }
+          }
+
+          pub fn acquire(&mut self) -> Option<u32> {
+              if self.connections.len() < self.max_size {
+                  let id = self.connections.len() as u32;
+                  self.connections.push(Connection::new(id));
+                  Some(id)
+              } else {
+                  None
+              }
+          }
+
+          pub fn release(&mut self, id: u32) {
+              if let Some(conn) = self.connections.iter_mut().find(|c| c.id() == id) {
+                  conn.close();
+              }
+          }
+
+          pub fn active_count(&self) -> usize {
+              self.connections.iter().filter(|c| c.is_active()).count()
+          }
+      }
+    src/retry.rs: |
+      pub struct RetryPolicy {
+          max_attempts: u32,
+          delay_ms: u64,
+      }
+
+      impl RetryPolicy {
+          pub fn new(max_attempts: u32, delay_ms: u64) -> Self {
+              RetryPolicy { max_attempts, delay_ms }
+          }
+
+          pub fn should_retry(&self, attempt: u32) -> bool {
+              attempt < self.max_attempts
+          }
+
+          pub fn delay_for(&self, attempt: u32) -> u64 {
+              self.delay_ms * (attempt as u64 + 1)
+          }
+      }
+    src/health.rs: |
+      pub enum HealthStatus {
+          Healthy,
+          Degraded,
+          Unhealthy,
+      }
+
+      pub fn check_health(active: usize, total: usize) -> HealthStatus {
+          let ratio = active as f64 / total.max(1) as f64;
+          if ratio > 0.8 {
+              HealthStatus::Healthy
+          } else if ratio > 0.3 {
+              HealthStatus::Degraded
+          } else {
+              HealthStatus::Unhealthy
+          }
+      }
+  changed_files:
+    src/pool.rs: |
+      pub struct Connection {
+          id: u32,
+          active: bool,
+      }
+
+      impl Connection {
+          pub fn new(id: u32) -> Self {
+              Connection { id, active: true }
+          }
+
+          pub fn id(&self) -> u32 {
+              self.id
+          }
+
+          pub fn is_active(&self) -> bool {
+              self.active
+          }
+
+          pub fn close(&mut self) {
+              self.active = false;
+          }
+      }
+
+      pub struct Pool {
+          connections: Vec<Connection>,
+          max_size: usize,
+          idle_timeout_ms: u64,
+      }
+
+      impl Pool {
+          pub fn new(max_size: usize) -> Self {
+              Pool {
+                  connections: Vec::new(),
+                  max_size,
+                  idle_timeout_ms: 30_000,
+              }
+          }
+
+          pub fn with_timeout(max_size: usize, idle_timeout_ms: u64) -> Self {
+              Pool {
+                  connections: Vec::new(),
+                  max_size,
+                  idle_timeout_ms,
+              }
+          }
+
+          pub fn acquire(&mut self) -> Option<u32> {
+              if let Some(conn) = self.connections.iter_mut().find(|c| !c.is_active()) {
+                  conn.active = true;
+                  return Some(conn.id());
+              }
+              if self.connections.len() < self.max_size {
+                  let id = self.connections.len() as u32;
+                  self.connections.push(Connection::new(id));
+                  Some(id)
+              } else {
+                  None
+              }
+          }
+
+          pub fn release(&mut self, id: u32) {
+              if let Some(conn) = self.connections.iter_mut().find(|c| c.id() == id) {
+                  conn.close();
+              }
+          }
+
+          pub fn active_count(&self) -> usize {
+              self.connections.iter().filter(|c| c.is_active()).count()
+          }
+
+          pub fn idle_timeout(&self) -> u64 {
+              self.idle_timeout_ms
+          }
+      }
+  commit_message: "feat(pool): add idle timeout and connection reuse"
+fixtures:
+  auto_garbage: true
+fragments:
+- id: pool_timeout_field
+  selector:
+    path: src/pool.rs
+    anchor: "idle_timeout_ms: u64"
+- id: pool_with_timeout
+  selector:
+    path: src/pool.rs
+    anchor: "pub fn with_timeout"
+- id: pool_reuse_conn
+  selector:
+    path: src/pool.rs
+    anchor: "self.connections.iter_mut().find(|c| !c.is_active())"
+- id: pool_struct
+  selector:
+    path: src/pool.rs
+    anchor: "pub struct Pool"
+- id: no_retry
+  selector:
+    path: src/retry.rs
+- id: no_health
+  selector:
+    path: src/health.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_098_A
+oracle:
+  required:
+  - pool_timeout_field
+  - pool_with_timeout
+  - pool_reuse_conn
+  - pool_struct
+  allowed: []
+  forbidden:
+  - no_retry
+  - no_health
+  - no_global_0

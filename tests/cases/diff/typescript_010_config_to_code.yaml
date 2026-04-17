@@ -1,0 +1,130 @@
+name: typescript_010_config_to_code
+tags:
+- lang:typescript
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    config/features.json: |
+      {
+        "enableDarkMode": true,
+        "maxUploadSizeMb": 10,
+        "supportedLocales": ["en", "es"],
+        "rateLimitPerMinute": 60
+      }
+    src/middleware/rateLimit.ts: |
+      import features from '../../config/features.json';
+
+      interface RateLimitConfig {
+          limit: number;
+          windowMs: number;
+      }
+
+      export function createRateLimiter(): RateLimitConfig {
+          return {
+              limit: features.rateLimitPerMinute,
+              windowMs: 60000,
+          };
+      }
+
+      export function isRateLimited(requestCount: number): boolean {
+          return requestCount > features.rateLimitPerMinute;
+      }
+    src/services/uploadService.ts: |
+      import features from '../../config/features.json';
+
+      export function validateUpload(fileSizeMb: number): boolean {
+          return fileSizeMb <= features.maxUploadSizeMb;
+      }
+
+      export function getMaxUploadSize(): number {
+          return features.maxUploadSizeMb;
+      }
+    src/utils/logger.ts: |
+      export function log(level: string, message: string): void {
+          const timestamp = new Date().toISOString();
+          console.log(`[${timestamp}] ${level}: ${message}`);
+      }
+
+      export function logError(message: string): void {
+          log('ERROR', message);
+      }
+  changed_files:
+    config/features.json: |
+      {
+        "enableDarkMode": true,
+        "maxUploadSizeMb": 50,
+        "supportedLocales": ["en", "es", "fr", "de"],
+        "rateLimitPerMinute": 120,
+        "enableBetaFeatures": false
+      }
+    src/middleware/rateLimit.ts: |
+      import features from '../../config/features.json';
+
+      interface RateLimitConfig {
+          limit: number;
+          windowMs: number;
+      }
+
+      export function createRateLimiter(): RateLimitConfig {
+          return {
+              limit: features.rateLimitPerMinute,
+              windowMs: 60000,
+          };
+      }
+
+      export function isRateLimited(requestCount: number): boolean {
+          return requestCount > features.rateLimitPerMinute;
+      }
+    src/services/uploadService.ts: |
+      import features from '../../config/features.json';
+
+      export function validateUpload(fileSizeMb: number): boolean {
+          return fileSizeMb <= features.maxUploadSizeMb;
+      }
+
+      export function getMaxUploadSize(): number {
+          return features.maxUploadSizeMb;
+      }
+    src/utils/logger.ts: |
+      export function log(level: string, message: string): void {
+          const timestamp = new Date().toISOString();
+          console.log(`[${timestamp}] ${level}: ${message}`);
+      }
+
+      export function logError(message: string): void {
+          log('ERROR', message);
+      }
+  commit_message: "config: increase rate limit and upload size, add locales"
+fragments:
+- id: config_rate_limit
+  selector:
+    path: config/features.json
+    anchor: '"rateLimitPerMinute": 120'
+- id: config_upload_size
+  selector:
+    path: config/features.json
+    anchor: '"maxUploadSizeMb": 50'
+- id: rate_limiter_reads_config
+  selector:
+    path: src/middleware/rateLimit.ts
+    anchor: "features.rateLimitPerMinute"
+- id: upload_reads_config
+  selector:
+    path: src/services/uploadService.ts
+    anchor: "features.maxUploadSizeMb"
+- id: no_logger
+  selector:
+    path: src/utils/logger.ts
+oracle:
+  required:
+  - config_rate_limit
+  - config_upload_size
+  - rate_limiter_reads_config
+  - upload_reads_config
+  allowed: []
+  forbidden:
+  - no_logger

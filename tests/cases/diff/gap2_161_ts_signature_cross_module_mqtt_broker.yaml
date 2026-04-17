@@ -1,0 +1,124 @@
+name: gap2_161_ts_signature_cross_module_mqtt_broker
+tags:
+- change:signature
+- change:single_file
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+- lang:typescript
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/broker/messageRouter.ts: |
+      import { TopicRegistry } from "../topics/topicRegistry";
+
+      export class MessageRouter {
+        constructor(private registry: TopicRegistry) {}
+
+        route(topic: string, payload: Buffer): boolean {
+          const handler = this.registry.resolve(topic);
+          if (!handler) return false;
+          handler(payload);
+          return true;
+        }
+      }
+    src/topics/topicRegistry.ts: |
+      export type MessageHandler = (payload: Buffer) => void;
+
+      export class TopicRegistry {
+        private handlers: Map<string, MessageHandler> = new Map();
+
+        register(topic: string, handler: MessageHandler): void {
+          this.handlers.set(topic, handler);
+        }
+
+        resolve(topic: string): MessageHandler | undefined {
+          return this.handlers.get(topic);
+        }
+
+        listTopics(): string[] {
+          return Array.from(this.handlers.keys());
+        }
+      }
+    src/transport/tcpSocket.ts: |
+      export class TcpSocket {
+        private connected = false;
+
+        connect(host: string, port: number): void {
+          this.connected = true;
+        }
+
+        disconnect(): void {
+          this.connected = false;
+        }
+
+        isAlive(): boolean {
+          return this.connected;
+        }
+      }
+  changed_files:
+    src/topics/topicRegistry.ts: |
+      export type MessageHandler = (payload: Buffer) => void;
+
+      export interface TopicFilter {
+        pattern: string;
+        qos: 0 | 1 | 2;
+      }
+
+      export class TopicRegistry {
+        private handlers: Map<string, MessageHandler> = new Map();
+
+        register(topic: string, handler: MessageHandler, qos?: 0 | 1 | 2): void {
+          this.handlers.set(topic, handler);
+        }
+
+        resolve(topic: string): MessageHandler | undefined {
+          for (const [pattern, handler] of this.handlers) {
+            if (this.matchWildcard(pattern, topic)) return handler;
+          }
+          return undefined;
+        }
+
+        listTopics(): string[] {
+          return Array.from(this.handlers.keys());
+        }
+
+        private matchWildcard(pattern: string, topic: string): boolean {
+          if (pattern === "#") return true;
+          const patternParts = pattern.split("/");
+          const topicParts = topic.split("/");
+          for (let i = 0; i < patternParts.length; i++) {
+            if (patternParts[i] === "#") return true;
+            if (patternParts[i] !== "+" && patternParts[i] !== topicParts[i]) return false;
+          }
+          return patternParts.length === topicParts.length;
+        }
+      }
+fragments:
+- id: register_qos
+  selector:
+    path: src/topics/topicRegistry.ts
+    anchor: "register(topic: string, handler: MessageHandler, qos"
+- id: wildcard_method
+  selector:
+    path: src/topics/topicRegistry.ts
+    anchor: "private matchWildcard"
+- id: topic_filter
+  selector:
+    path: src/topics/topicRegistry.ts
+    anchor: TopicFilter
+- id: router_import
+  selector:
+    path: src/broker/messageRouter.ts
+    anchor: TopicRegistry
+- id: no_tcp_socket
+  selector:
+    path: src/transport/tcpSocket.ts
+oracle:
+  required:
+  - register_qos
+  - wildcard_method
+  - topic_filter
+  forbidden:
+  - no_tcp_socket

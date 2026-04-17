@@ -1,0 +1,132 @@
+name: bal_cfgcode_014_typescript_cors_config
+tags:
+- lang:typescript
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    config/cors.json: |
+      {
+        "origins": ["http://localhost:3000"],
+        "methods": ["GET", "POST"],
+        "credentials": false,
+        "maxAge": 3600
+      }
+    src/server.ts: |
+      import { readFileSync } from 'fs';
+
+      const corsConfig = JSON.parse(readFileSync('config/cors.json', 'utf-8'));
+
+      export function applyCors(res: any): void {
+        const origins = corsConfig.origins;
+        const methods = corsConfig.methods.join(',');
+        res.setHeader('Access-Control-Allow-Origin', origins[0]);
+        res.setHeader('Access-Control-Allow-Methods', methods);
+        res.setHeader('Access-Control-Max-Age', corsConfig.maxAge);
+      }
+    src/router.ts: |
+      const GARBAGE_CFGCODE_014_ROUTE_A = "/api";
+      const GARBAGE_CFGCODE_014_ROUTE_B = "v1";
+
+      export function createRouter() {
+        return { routes: [] };
+      }
+    src/middleware.ts: |
+      const GARBAGE_CFGCODE_014_MW_C = "compression";
+      const GARBAGE_CFGCODE_014_MW_D = true;
+
+      export function compress(data: Buffer): Buffer {
+        return data;
+      }
+  changed_files:
+    config/cors.json: |
+      {
+        "origins": [
+          "http://localhost:3000",
+          "https://app.example.com",
+          "https://staging.example.com"
+        ],
+        "methods": ["GET", "POST", "PUT", "DELETE", "PATCH"],
+        "credentials": true,
+        "maxAge": 86400,
+        "exposedHeaders": ["X-Request-Id"]
+      }
+    src/server.ts: |
+      import { readFileSync } from 'fs';
+
+      const corsConfig = JSON.parse(readFileSync('config/cors.json', 'utf-8'));
+
+      export function applyCors(res: any): void {
+        const origins = corsConfig.origins;
+        const methods = corsConfig.methods.join(',');
+        res.setHeader('Access-Control-Allow-Origin', origins[0]);
+        res.setHeader('Access-Control-Allow-Methods', methods);
+        res.setHeader('Access-Control-Max-Age', corsConfig.maxAge);
+      }
+    src/router.ts: |
+      const GARBAGE_CFGCODE_014_ROUTE_A = "/api";
+      const GARBAGE_CFGCODE_014_ROUTE_B = "v1";
+
+      export function createRouter() {
+        return { routes: [] };
+      }
+    src/middleware.ts: |
+      const GARBAGE_CFGCODE_014_MW_C = "compression";
+      const GARBAGE_CFGCODE_014_MW_D = true;
+
+      export function compress(data: Buffer): Buffer {
+        return data;
+      }
+  commit_message: "config: expand CORS for production and staging"
+fragments:
+- id: config_origins
+  selector:
+    path: config/cors.json
+    anchor: "app.example.com"
+- id: config_credentials
+  selector:
+    path: config/cors.json
+    anchor: '"credentials": true'
+- id: config_exposed
+  selector:
+    path: config/cors.json
+    anchor: "X-Request-Id"
+- id: server_reads_cors
+  selector:
+    path: src/server.ts
+    anchor: "corsConfig.origins"
+- id: no_router
+  selector:
+    path: src/router.ts
+- id: no_middleware
+  selector:
+    path: src/middleware.ts
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_014_ROUTE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_014_ROUTE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_014_MW_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_014_MW_D
+oracle:
+  required:
+  - config_origins
+  - config_credentials
+  - config_exposed
+  - server_reads_cors
+  allowed: []
+  forbidden:
+  - no_router
+  - no_middleware
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

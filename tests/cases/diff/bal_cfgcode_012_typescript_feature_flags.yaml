@@ -1,0 +1,87 @@
+name: bal_cfgcode_012_typescript_feature_flags
+tags:
+- lang:typescript
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    config/features.json: |
+      {
+        "enableChat": false,
+        "enableNotifications": true,
+        "maxUploadSize": 5242880
+      }
+    src/feature-gate.ts: |
+      import features from '../config/features.json';
+
+      export function isEnabled(flag: string): boolean {
+        return (features as Record<string, boolean>)[flag] ?? false;
+      }
+
+      export const MAX_UPLOAD = features.maxUploadSize;
+    src/logger.ts: |
+      const GARBAGE_CFGCODE_012_LOG_A = "console";
+      const GARBAGE_CFGCODE_012_LOG_B = "info";
+
+      export function log(message: string): void {
+        console.log(message);
+      }
+  changed_files:
+    config/features.json: |
+      {
+        "enableChat": true,
+        "enableNotifications": true,
+        "enableVideoCall": false,
+        "maxUploadSize": 10485760
+      }
+    src/feature-gate.ts: |
+      import features from '../config/features.json';
+
+      export function isEnabled(flag: string): boolean {
+        return (features as Record<string, boolean>)[flag] ?? false;
+      }
+
+      export const MAX_UPLOAD = features.maxUploadSize;
+    src/logger.ts: |
+      const GARBAGE_CFGCODE_012_LOG_A = "console";
+      const GARBAGE_CFGCODE_012_LOG_B = "info";
+
+      export function log(message: string): void {
+        console.log(message);
+      }
+  commit_message: "config: enable chat and increase upload limit"
+fragments:
+- id: config_chat
+  selector:
+    path: config/features.json
+    anchor: '"enableChat": true'
+- id: config_upload
+  selector:
+    path: config/features.json
+    anchor: "10485760"
+- id: gate_reads_features
+  selector:
+    path: src/feature-gate.ts
+    anchor: "import features from '../config/features.json'"
+- id: no_logger
+  selector:
+    path: src/logger.ts
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_012_LOG_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_012_LOG_B
+oracle:
+  required:
+  - config_chat
+  - config_upload
+  - gate_reads_features
+  allowed: []
+  forbidden:
+  - no_logger
+  - no_global_0
+  - no_global_1

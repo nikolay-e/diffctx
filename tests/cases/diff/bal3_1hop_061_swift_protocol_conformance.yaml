@@ -1,0 +1,359 @@
+name: bal3_1hop_061_swift_protocol_conformance
+tags:
+- lang:swift
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    Sources/Networking/APIClient.swift: |
+      import Foundation
+
+      protocol APIClientProtocol {
+          func fetch(endpoint: String, completion: @escaping (Result<Data, Error>) -> Void)
+      }
+
+      class APIClient: APIClientProtocol {
+          private let session: URLSession
+
+          init(session: URLSession = .shared) {
+              self.session = session
+          }
+
+          func fetch(endpoint: String, completion: @escaping (Result<Data, Error>) -> Void) {
+              guard let url = URL(string: endpoint) else {
+                  completion(.failure(URLError(.badURL)))
+                  return
+              }
+              session.dataTask(with: url) { data, _, error in
+                  if let error = error {
+                      completion(.failure(error))
+                  } else if let data = data {
+                      completion(.success(data))
+                  }
+              }.resume()
+          }
+      }
+    Sources/Services/UserService.swift: |
+      import Foundation
+      import Networking
+
+      class UserService {
+          private let client: APIClientProtocol
+
+          init(client: APIClientProtocol) {
+              self.client = client
+          }
+
+          func loadUser(id: Int, completion: @escaping (Result<User, Error>) -> Void) {
+              client.fetch(endpoint: "/users/\(id)") { result in
+                  switch result {
+                  case .success(let data):
+                      let user = try? JSONDecoder().decode(User.self, from: data)
+                      completion(user.map { .success($0) } ?? .failure(URLError(.cannotParseResponse)))
+                  case .failure(let error):
+                      completion(.failure(error))
+                  }
+              }
+          }
+      }
+    Sources/Services/OrderService.swift: |
+      import Foundation
+      import Networking
+
+      class OrderService {
+          private let client: APIClientProtocol
+
+          init(client: APIClientProtocol) {
+              self.client = client
+          }
+
+          func loadOrders(completion: @escaping (Result<[Order], Error>) -> Void) {
+              client.fetch(endpoint: "/orders") { result in
+                  switch result {
+                  case .success(let data):
+                      let orders = try? JSONDecoder().decode([Order].self, from: data)
+                      completion(orders.map { .success($0) } ?? .failure(URLError(.cannotParseResponse)))
+                  case .failure(let error):
+                      completion(.failure(error))
+                  }
+              }
+          }
+      }
+    Sources/Services/AnalyticsService.swift: |
+      import Foundation
+      import Networking
+
+      class AnalyticsService {
+          private let client: APIClientProtocol
+
+          init(client: APIClientProtocol) {
+              self.client = client
+          }
+
+          func trackEvent(name: String, properties: [String: String]) {
+              client.fetch(endpoint: "/analytics/track") { _ in }
+          }
+      }
+    Sources/Cache/DiskCache.swift: |
+      import Foundation
+      GARBAGE_061_DISK_CACHE_A = "disk"
+      GARBAGE_061_CACHE_SIZE_B = 1024
+
+      class DiskCache {
+          private let directory: URL
+
+          init(directory: URL) {
+              self.directory = directory
+          }
+
+          func store(key: String, data: Data) {
+              let fileURL = directory.appendingPathComponent(key)
+              try? data.write(to: fileURL)
+          }
+
+          func retrieve(key: String) -> Data? {
+              let fileURL = directory.appendingPathComponent(key)
+              return try? Data(contentsOf: fileURL)
+          }
+      }
+    Sources/Utils/DateFormatter+Extensions.swift: |
+      import Foundation
+      GARBAGE_061_DATE_FORMAT_C = "yyyy-MM-dd"
+      GARBAGE_061_LOCALE_MARKER_D = "en_US"
+
+      extension DateFormatter {
+          static let iso8601Full: DateFormatter = {
+              let formatter = DateFormatter()
+              formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+              return formatter
+          }()
+      }
+    Sources/Utils/Logger.swift: |
+      import Foundation
+      GARBAGE_061_LOG_LEVEL_E = "debug"
+      GARBAGE_061_LOG_OUTPUT_F = "console"
+
+      class Logger {
+          static let shared = Logger()
+          func log(_ message: String) {
+              print("[LOG] \(message)")
+          }
+      }
+  changed_files:
+    Sources/Networking/APIClient.swift: |
+      import Foundation
+
+      protocol APIClientProtocol {
+          func fetch(endpoint: String, completion: @escaping (Result<Data, Error>) -> Void)
+          func fetch(endpoint: String, headers: [String: String], completion: @escaping (Result<Data, Error>) -> Void)
+      }
+
+      class APIClient: APIClientProtocol {
+          private let session: URLSession
+          private let baseURL: String
+
+          init(session: URLSession = .shared, baseURL: String = "https://api.example.com") {
+              self.session = session
+              self.baseURL = baseURL
+          }
+
+          func fetch(endpoint: String, completion: @escaping (Result<Data, Error>) -> Void) {
+              fetch(endpoint: endpoint, headers: [:], completion: completion)
+          }
+
+          func fetch(endpoint: String, headers: [String: String], completion: @escaping (Result<Data, Error>) -> Void) {
+              guard let url = URL(string: baseURL + endpoint) else {
+                  completion(.failure(URLError(.badURL)))
+                  return
+              }
+              var request = URLRequest(url: url)
+              headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+              session.dataTask(with: request) { data, _, error in
+                  if let error = error {
+                      completion(.failure(error))
+                  } else if let data = data {
+                      completion(.success(data))
+                  }
+              }.resume()
+          }
+      }
+    Sources/Services/UserService.swift: |
+      import Foundation
+      import Networking
+
+      class UserService {
+          private let client: APIClientProtocol
+
+          init(client: APIClientProtocol) {
+              self.client = client
+          }
+
+          func loadUser(id: Int, completion: @escaping (Result<User, Error>) -> Void) {
+              client.fetch(endpoint: "/users/\(id)") { result in
+                  switch result {
+                  case .success(let data):
+                      let user = try? JSONDecoder().decode(User.self, from: data)
+                      completion(user.map { .success($0) } ?? .failure(URLError(.cannotParseResponse)))
+                  case .failure(let error):
+                      completion(.failure(error))
+                  }
+              }
+          }
+      }
+    Sources/Services/OrderService.swift: |
+      import Foundation
+      import Networking
+
+      class OrderService {
+          private let client: APIClientProtocol
+
+          init(client: APIClientProtocol) {
+              self.client = client
+          }
+
+          func loadOrders(completion: @escaping (Result<[Order], Error>) -> Void) {
+              client.fetch(endpoint: "/orders") { result in
+                  switch result {
+                  case .success(let data):
+                      let orders = try? JSONDecoder().decode([Order].self, from: data)
+                      completion(orders.map { .success($0) } ?? .failure(URLError(.cannotParseResponse)))
+                  case .failure(let error):
+                      completion(.failure(error))
+                  }
+              }
+          }
+      }
+    Sources/Services/AnalyticsService.swift: |
+      import Foundation
+      import Networking
+
+      class AnalyticsService {
+          private let client: APIClientProtocol
+
+          init(client: APIClientProtocol) {
+              self.client = client
+          }
+
+          func trackEvent(name: String, properties: [String: String]) {
+              client.fetch(endpoint: "/analytics/track") { _ in }
+          }
+      }
+    Sources/Cache/DiskCache.swift: |
+      import Foundation
+      GARBAGE_061_DISK_CACHE_A = "disk"
+      GARBAGE_061_CACHE_SIZE_B = 1024
+
+      class DiskCache {
+          private let directory: URL
+
+          init(directory: URL) {
+              self.directory = directory
+          }
+
+          func store(key: String, data: Data) {
+              let fileURL = directory.appendingPathComponent(key)
+              try? data.write(to: fileURL)
+          }
+
+          func retrieve(key: String) -> Data? {
+              let fileURL = directory.appendingPathComponent(key)
+              return try? Data(contentsOf: fileURL)
+          }
+      }
+    Sources/Utils/DateFormatter+Extensions.swift: |
+      import Foundation
+      GARBAGE_061_DATE_FORMAT_C = "yyyy-MM-dd"
+      GARBAGE_061_LOCALE_MARKER_D = "en_US"
+
+      extension DateFormatter {
+          static let iso8601Full: DateFormatter = {
+              let formatter = DateFormatter()
+              formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+              return formatter
+          }()
+      }
+    Sources/Utils/Logger.swift: |
+      import Foundation
+      GARBAGE_061_LOG_LEVEL_E = "debug"
+      GARBAGE_061_LOG_OUTPUT_F = "console"
+
+      class Logger {
+          static let shared = Logger()
+          func log(_ message: String) {
+              print("[LOG] \(message)")
+          }
+      }
+  commit_message: "feat: add headers support and baseURL to APIClient protocol"
+fragments:
+- id: user_service_imports
+  selector:
+    path: Sources/Services/UserService.swift
+    anchor: "import Networking"
+- id: user_service_fetch_call
+  selector:
+    path: Sources/Services/UserService.swift
+    anchor: "client.fetch(endpoint:"
+- id: order_service_imports
+  selector:
+    path: Sources/Services/OrderService.swift
+    anchor: "import Networking"
+- id: order_service_fetch_call
+  selector:
+    path: Sources/Services/OrderService.swift
+    anchor: "client.fetch(endpoint:"
+- id: analytics_service_imports
+  selector:
+    path: Sources/Services/AnalyticsService.swift
+    anchor: "import Networking"
+- id: analytics_service_fetch_call
+  selector:
+    path: Sources/Services/AnalyticsService.swift
+    anchor: "client.fetch(endpoint:"
+- id: no_disk_cache
+  selector:
+    path: Sources/Cache/DiskCache.swift
+- id: no_date_formatter
+  selector:
+    path: Sources/Utils/DateFormatter+Extensions.swift
+- id: no_logger
+  selector:
+    path: Sources/Utils/Logger.swift
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_061_DISK_CACHE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_061_CACHE_SIZE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_061_DATE_FORMAT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_061_LOCALE_MARKER_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_061_LOG_LEVEL_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_061_LOG_OUTPUT_F
+oracle:
+  required:
+  - user_service_imports
+  - user_service_fetch_call
+  - order_service_imports
+  - order_service_fetch_call
+  - analytics_service_imports
+  - analytics_service_fetch_call
+  allowed: []
+  forbidden:
+  - no_disk_cache
+  - no_date_formatter
+  - no_logger
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

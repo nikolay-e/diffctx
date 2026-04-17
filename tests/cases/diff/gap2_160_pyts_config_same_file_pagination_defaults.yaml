@@ -1,0 +1,99 @@
+name: gap2_160_pyts_config_same_file_pagination_defaults
+tags:
+- change:config
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+- lang:python
+- lang:typescript
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    service/pagination.py: |
+      DEFAULT_PAGE_SIZE = 20
+      MAX_PAGE_SIZE = 100
+
+      def clamp_page_size(requested: int) -> int:
+          return max(1, min(requested, MAX_PAGE_SIZE))
+
+      def compute_offset(page: int, size: int) -> int:
+          return (page - 1) * size
+    components/pagination.ts: |
+      export const DEFAULT_PAGE_SIZE = 20;
+      export const MAX_PAGE_SIZE = 100;
+
+      export function clampPageSize(requested: number): number {
+        return Math.max(1, Math.min(requested, MAX_PAGE_SIZE));
+      }
+
+      export function computeOffset(page: number, size: number): number {
+        return (page - 1) * size;
+      }
+    service/cache_config.py: |
+      CACHE_TTL_SECONDS = 300
+      MAX_CACHE_ENTRIES = 5000
+
+      class CacheConfig:
+          def __init__(self):
+              self.ttl = CACHE_TTL_SECONDS
+              self.max_entries = MAX_CACHE_ENTRIES
+
+          def is_expired(self, age_seconds: int) -> bool:
+              return age_seconds > self.ttl
+  changed_files:
+    service/pagination.py: |
+      DEFAULT_PAGE_SIZE = 25
+      MAX_PAGE_SIZE = 200
+
+      def clamp_page_size(requested: int) -> int:
+          return max(1, min(requested, MAX_PAGE_SIZE))
+
+      def compute_offset(page: int, size: int) -> int:
+          return (page - 1) * size
+    components/pagination.ts: |
+      export const DEFAULT_PAGE_SIZE = 25;
+      export const MAX_PAGE_SIZE = 200;
+
+      export function clampPageSize(requested: number): number {
+        return Math.max(1, Math.min(requested, MAX_PAGE_SIZE));
+      }
+
+      export function computeOffset(page: number, size: number): number {
+        return (page - 1) * size;
+      }
+  commit_message: "config: increase default page size and max limit"
+fragments:
+- id: py_default_25
+  selector:
+    path: service/pagination.py
+    anchor: "DEFAULT_PAGE_SIZE = 25"
+- id: py_max_200
+  selector:
+    path: service/pagination.py
+    anchor: "MAX_PAGE_SIZE = 200"
+- id: ts_default_25
+  selector:
+    path: components/pagination.ts
+    anchor: "DEFAULT_PAGE_SIZE = 25"
+- id: ts_max_200
+  selector:
+    path: components/pagination.ts
+    anchor: "MAX_PAGE_SIZE = 200"
+- id: no_cache
+  selector:
+    path: service/cache_config.py
+- id: no_cache_ttl
+  selector:
+    anchor: CACHE_TTL_SECONDS
+oracle:
+  required:
+  - py_default_25
+  - py_max_200
+  - ts_default_25
+  - ts_max_200
+  allowed: []
+  forbidden:
+  - no_cache
+  - no_cache_ttl

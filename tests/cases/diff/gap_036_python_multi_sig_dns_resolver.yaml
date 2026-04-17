@@ -1,0 +1,167 @@
+name: gap_036_python_multi_sig_dns_resolver
+tags:
+- change:multi_file
+- change:signature
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:python
+repo:
+  initial_files:
+    resolver/cache.py: |
+      from dataclasses import dataclass
+      from datetime import datetime
+
+      @dataclass
+      class CacheEntry:
+          domain: str
+          ip_address: str
+          cached_at: datetime
+
+      class DNSCache:
+          def __init__(self):
+              self.entries: dict[str, CacheEntry] = {}
+
+          def put(self, domain: str, ip_address: str) -> None:
+              self.entries[domain] = CacheEntry(domain, ip_address, datetime.now())
+
+          def get(self, domain: str) -> str | None:
+              entry = self.entries.get(domain)
+              return entry.ip_address if entry else None
+
+          def size(self) -> int:
+              return len(self.entries)
+    resolver/lookup.py: |
+      class RecursiveResolver:
+          def __init__(self, upstream: str):
+              self.upstream = upstream
+              self.query_count = 0
+
+          def resolve(self, domain: str) -> str:
+              self.query_count += 1
+              return f"203.0.113.{hash(domain) % 256}"
+
+          def stats(self) -> dict:
+              return {"upstream": self.upstream, "queries": self.query_count}
+    resolver/blocklist.py: |
+      GARBAGE_GAP_036_BLOCK_A = "block_marker"
+      GARBAGE_GAP_036_LIST_B = "ads"
+
+      BLOCKED = {"ads.example.com", "tracker.example.com"}
+
+      def is_blocked(domain: str) -> bool:
+          return domain in BLOCKED
+    resolver/logging.py: |
+      GARBAGE_GAP_036_LOG_C = "query_log_marker"
+      GARBAGE_GAP_036_ROTATE_D = "daily"
+
+      def log_query(domain: str, result: str) -> None:
+          pass
+  changed_files:
+    resolver/cache.py: |
+      from dataclasses import dataclass
+      from datetime import datetime, timedelta
+
+      @dataclass
+      class CacheEntry:
+          domain: str
+          ip_address: str
+          cached_at: datetime
+          ttl_seconds: int = 300
+
+          def is_expired(self) -> bool:
+              return datetime.now() > self.cached_at + timedelta(seconds=self.ttl_seconds)
+
+      class DNSCache:
+          def __init__(self, max_entries: int = 10000):
+              self.entries: dict[str, CacheEntry] = {}
+              self.max_entries = max_entries
+
+          def put(self, domain: str, ip_address: str, ttl: int = 300) -> None:
+              if len(self.entries) >= self.max_entries:
+                  self.evict_expired()
+              self.entries[domain] = CacheEntry(domain, ip_address, datetime.now(), ttl)
+
+          def get(self, domain: str) -> str | None:
+              entry = self.entries.get(domain)
+              if entry and not entry.is_expired():
+                  return entry.ip_address
+              return None
+
+          def evict_expired(self) -> int:
+              expired = [k for k, v in self.entries.items() if v.is_expired()]
+              for k in expired:
+                  del self.entries[k]
+              return len(expired)
+
+          def size(self) -> int:
+              return len(self.entries)
+    resolver/lookup.py: |
+      class RecursiveResolver:
+          def __init__(self, upstream: str, timeout_ms: int = 5000):
+              self.upstream = upstream
+              self.timeout_ms = timeout_ms
+              self.query_count = 0
+
+          def resolve(self, domain: str) -> str:
+              self.query_count += 1
+              return f"203.0.113.{hash(domain) % 256}"
+
+          def stats(self) -> dict:
+              return {
+                  "upstream": self.upstream,
+                  "queries": self.query_count,
+                  "timeout_ms": self.timeout_ms,
+              }
+  commit_message: "add TTL-based cache eviction and resolver timeout"
+fixtures:
+  auto_garbage: true
+fragments:
+- id: cache_ttl
+  selector:
+    path: resolver/cache.py
+    anchor: "ttl_seconds: int"
+- id: cache_evict
+  selector:
+    path: resolver/cache.py
+    anchor: "def evict_expired"
+- id: cache_init
+  selector:
+    path: resolver/cache.py
+    anchor: "max_entries: int"
+- id: lookup_timeout
+  selector:
+    path: resolver/lookup.py
+    anchor: "timeout_ms: int"
+- id: no_blocklist
+  selector:
+    path: resolver/blocklist.py
+- id: no_logging
+  selector:
+    path: resolver/logging.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_036_BLOCK_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GAP_036_LIST_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GAP_036_LOG_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GAP_036_ROTATE_D
+oracle:
+  required:
+  - cache_ttl
+  - cache_evict
+  - cache_init
+  - lookup_timeout
+  allowed: []
+  forbidden:
+  - no_blocklist
+  - no_logging
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

@@ -1,0 +1,266 @@
+name: bal3_3hop_081_csharp_repository_pattern_chain
+tags:
+- lang:csharp
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/Data/DbContext.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Data
+      {
+          public class DbContext
+          {
+              private readonly Dictionary<string, object> _store = new();
+              public T Find<T>(string id) where T : class
+              {
+                  return _store.ContainsKey(id) ? (T)_store[id] : null;
+              }
+              public void Add<T>(string id, T entity) where T : class
+              {
+                  _store[id] = entity;
+              }
+          }
+      }
+    src/Repositories/CustomerRepository.cs: |
+      using System;
+      using App.Data;
+
+      namespace App.Repositories
+      {
+          public class CustomerRepository
+          {
+              private readonly DbContext _context;
+              public CustomerRepository(DbContext context)
+              {
+                  _context = context;
+              }
+              public Customer FindById(string id)
+              {
+                  return _context.Find<Customer>(id);
+              }
+          }
+      }
+    src/Services/CustomerService.cs: |
+      using System;
+      using App.Repositories;
+
+      namespace App.Services
+      {
+          public class CustomerService
+          {
+              private readonly CustomerRepository _repo;
+              public CustomerService(CustomerRepository repo)
+              {
+                  _repo = repo;
+              }
+              public Customer GetCustomer(string id)
+              {
+                  return _repo.FindById(id);
+              }
+          }
+      }
+    src/Controllers/CustomerController.cs: |
+      using System;
+      using App.Services;
+
+      namespace App.Controllers
+      {
+          public class CustomerController
+          {
+              private readonly CustomerService _service;
+              public CustomerController(CustomerService service)
+              {
+                  _service = service;
+              }
+              public Customer Show(string id)
+              {
+                  return _service.GetCustomer(id);
+              }
+          }
+      }
+    src/Utilities/GuidGenerator.cs: |
+      using System;
+      // GARBAGE_081_GUID_A = "generator"
+      // GARBAGE_081_FORMAT_B = "N"
+
+      namespace App.Utilities
+      {
+          public static class GuidGenerator
+          {
+              public static string Generate() => Guid.NewGuid().ToString("N");
+          }
+      }
+    src/Utilities/DateHelper.cs: |
+      using System;
+      // GARBAGE_081_DATE_C = "helper"
+      // GARBAGE_081_FORMAT_D = "iso"
+
+      namespace App.Utilities
+      {
+          public static class DateHelper
+          {
+              public static string ToIso(DateTime dt) => dt.ToString("o");
+          }
+      }
+  changed_files:
+    src/Data/DbContext.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Linq;
+
+      namespace App.Data
+      {
+          public class DbContext
+          {
+              private readonly Dictionary<string, object> _store = new();
+              public T Find<T>(string id) where T : class
+              {
+                  return _store.ContainsKey(id) ? (T)_store[id] : null;
+              }
+              public void Add<T>(string id, T entity) where T : class
+              {
+                  _store[id] = entity;
+              }
+              public IEnumerable<T> FindAll<T>() where T : class
+              {
+                  return _store.Values.OfType<T>();
+              }
+          }
+      }
+    src/Repositories/CustomerRepository.cs: |
+      using System;
+      using System.Collections.Generic;
+      using App.Data;
+
+      namespace App.Repositories
+      {
+          public class CustomerRepository
+          {
+              private readonly DbContext _context;
+              public CustomerRepository(DbContext context)
+              {
+                  _context = context;
+              }
+              public Customer FindById(string id)
+              {
+                  return _context.Find<Customer>(id);
+              }
+              public IEnumerable<Customer> GetAll()
+              {
+                  return _context.FindAll<Customer>();
+              }
+          }
+      }
+    src/Services/CustomerService.cs: |
+      using System;
+      using System.Collections.Generic;
+      using App.Repositories;
+
+      namespace App.Services
+      {
+          public class CustomerService
+          {
+              private readonly CustomerRepository _repo;
+              public CustomerService(CustomerRepository repo)
+              {
+                  _repo = repo;
+              }
+              public Customer GetCustomer(string id)
+              {
+                  return _repo.FindById(id);
+              }
+              public IEnumerable<Customer> ListCustomers()
+              {
+                  return _repo.GetAll();
+              }
+          }
+      }
+    src/Controllers/CustomerController.cs: |
+      using System;
+      using System.Collections.Generic;
+      using App.Services;
+
+      namespace App.Controllers
+      {
+          public class CustomerController
+          {
+              private readonly CustomerService _service;
+              public CustomerController(CustomerService service)
+              {
+                  _service = service;
+              }
+              public Customer Show(string id)
+              {
+                  return _service.GetCustomer(id);
+              }
+              public IEnumerable<Customer> Index()
+              {
+                  return _service.ListCustomers();
+              }
+          }
+      }
+    src/Utilities/GuidGenerator.cs: |
+      using System;
+      // GARBAGE_081_GUID_A = "generator"
+      // GARBAGE_081_FORMAT_B = "N"
+
+      namespace App.Utilities
+      {
+          public static class GuidGenerator
+          {
+              public static string Generate() => Guid.NewGuid().ToString("N");
+          }
+      }
+    src/Utilities/DateHelper.cs: |
+      using System;
+      // GARBAGE_081_DATE_C = "helper"
+      // GARBAGE_081_FORMAT_D = "iso"
+
+      namespace App.Utilities
+      {
+          public static class DateHelper
+          {
+              public static string ToIso(DateTime dt) => dt.ToString("o");
+          }
+      }
+  commit_message: "feat: add FindAll to DbContext and list customers endpoint"
+fragments:
+- id: context_find_all
+  selector:
+    path: src/Data/DbContext.cs
+    anchor: "FindAll<T>()"
+- id: repo_get_all
+  selector:
+    path: src/Repositories/CustomerRepository.cs
+    anchor: "GetAll()"
+- id: service_list
+  selector:
+    path: src/Services/CustomerService.cs
+    anchor: "ListCustomers()"
+- id: controller_index
+  selector:
+    path: src/Controllers/CustomerController.cs
+    anchor: "Index()"
+- id: no_guid_gen
+  selector:
+    path: src/Utilities/GuidGenerator.cs
+    anchor: "GARBAGE_081_GUID_A"
+- id: no_date_helper
+  selector:
+    path: src/Utilities/DateHelper.cs
+    anchor: "GARBAGE_081_DATE_C"
+oracle:
+  required:
+  - context_find_all
+  - repo_get_all
+  - service_list
+  - controller_index
+  allowed: []
+  forbidden:
+  - no_guid_gen
+  - no_date_helper

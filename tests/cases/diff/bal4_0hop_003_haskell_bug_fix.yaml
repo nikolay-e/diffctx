@@ -1,0 +1,102 @@
+name: bal4_0hop_003_haskell_bug_fix
+tags:
+- lang:haskell
+- change:single_file
+- change:bug_fix
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/Safe.hs: |
+      module Safe where
+
+      safeHead :: [a] -> a
+      safeHead (x:_) = x
+      safeHead [] = error "empty list"
+    src/garbage_tail.hs: |
+      module GarbageTail where
+
+      GARBAGE_B4H003_TAIL_A = "tail"
+      GARBAGE_B4H003_TAIL_B = True
+
+      garbageTail :: [a] -> [a]
+      garbageTail (_:xs) = xs
+    src/garbage_len.hs: |
+      module GarbageLen where
+
+      GARBAGE_B4H003_LEN_C = 0
+      GARBAGE_B4H003_LEN_D = "len"
+
+      garbageLen :: [a] -> Int
+      garbageLen [] = 0
+      garbageLen (_:xs) = 1 + garbageLen xs
+  changed_files:
+    src/Safe.hs: |
+      module Safe where
+
+      safeHead :: [a] -> Maybe a
+      safeHead (x:_) = Just x
+      safeHead [] = Nothing
+    src/garbage_tail.hs: |
+      module GarbageTail where
+
+      GARBAGE_B4H003_TAIL_A = "tail"
+      GARBAGE_B4H003_TAIL_B = True
+
+      garbageTail :: [a] -> [a]
+      garbageTail (_:xs) = xs
+    src/garbage_len.hs: |
+      module GarbageLen where
+
+      GARBAGE_B4H003_LEN_C = 0
+      GARBAGE_B4H003_LEN_D = "len"
+
+      garbageLen :: [a] -> Int
+      garbageLen [] = 0
+      garbageLen (_:xs) = 1 + garbageLen xs
+  commit_message: "fix: return Maybe instead of crashing on empty list"
+fragments:
+- id: fixed_sig
+  selector:
+    path: src/Safe.hs
+    anchor: "safeHead :: [a] -> Maybe a"
+- id: fixed_just
+  selector:
+    path: src/Safe.hs
+    anchor: "safeHead (x:_) = Just x"
+- id: fixed_nothing
+  selector:
+    path: src/Safe.hs
+    anchor: "safeHead [] = Nothing"
+- id: no_garbage_tail
+  selector:
+    path: src/garbage_tail.hs
+- id: no_garbage_len
+  selector:
+    path: src/garbage_len.hs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_B4H003_TAIL_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_B4H003_TAIL_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_B4H003_LEN_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_B4H003_LEN_D
+oracle:
+  required:
+  - fixed_sig
+  - fixed_just
+  - fixed_nothing
+  allowed: []
+  forbidden:
+  - no_garbage_tail
+  - no_garbage_len
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

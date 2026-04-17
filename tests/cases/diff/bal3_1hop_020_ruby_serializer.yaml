@@ -1,0 +1,219 @@
+name: bal3_1hop_020_ruby_serializer
+tags:
+- lang:kotlin
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:easy
+repo:
+  initial_files:
+    core/src/main/kotlin/com/store/money/Currency.kt: |
+      package com.store.money
+
+      enum class Currency(val code: String, val symbol: String, val decimalPlaces: Int) {
+          USD("USD", "$", 2),
+          EUR("EUR", "€", 2),
+          JPY("JPY", "¥", 0),
+          GBP("GBP", "£", 2);
+
+          fun format(amount: Long): String {
+              val divisor = Math.pow(10.0, decimalPlaces.toDouble()).toLong()
+              return if (decimalPlaces == 0) {
+                  "$symbol${amount}"
+              } else {
+                  "$symbol${amount / divisor}.${"%0${decimalPlaces}d".format(amount % divisor)}"
+              }
+          }
+      }
+    core/src/main/kotlin/com/store/money/Money.kt: |
+      package com.store.money
+
+      data class Money(val amount: Long, val currency: Currency) {
+          operator fun plus(other: Money): Money {
+              require(currency == other.currency) { "currency mismatch" }
+              return Money(amount + other.amount, currency)
+          }
+
+          operator fun minus(other: Money): Money {
+              require(currency == other.currency) { "currency mismatch" }
+              return Money(amount - other.amount, currency)
+          }
+
+          fun format(): String = currency.format(amount)
+      }
+    domain/src/main/kotlin/com/store/cart/CartItem.kt: |
+      package com.store.cart
+
+      import com.store.money.Money
+
+      data class CartItem(
+          val productId: String,
+          val name: String,
+          val unitPrice: Money,
+          val quantity: Int,
+      ) {
+          fun subtotal(): Money = Money(unitPrice.amount * quantity, unitPrice.currency)
+      }
+    api/src/main/kotlin/com/store/cart/CartSummaryService.kt: |
+      package com.store.cart
+
+      import com.store.money.Money
+
+      class CartSummaryService {
+          fun total(items: List<CartItem>): Money {
+              require(items.isNotEmpty()) { "cart is empty" }
+              return items.map { it.subtotal() }.reduce { acc, m -> acc + m }
+          }
+      }
+    garbage/src/main/kotlin/com/store/promo/PromoEngine.kt: |
+      package com.store.promo
+
+      // GARBAGE_RBSER_A = "promo_engine_unrelated"
+      class PromoEngine {
+          fun apply(code: String, discountPct: Int): Boolean = false
+      }
+    garbage/src/main/kotlin/com/store/loyalty/LoyaltyService.kt: |
+      package com.store.loyalty
+
+      // GARBAGE_RBSER_B = "loyalty_service_unrelated"
+      class LoyaltyService {
+          fun addPoints(userId: String, points: Int) {}
+          fun getBalance(userId: String): Int = 0
+      }
+    garbage/src/main/kotlin/com/store/tax/TaxCalculator.kt: |
+      package com.store.tax
+
+      // GARBAGE_RBSER_C = "tax_calculator_unrelated"
+      object TaxCalculator {
+          fun compute(amount: Long, ratePercent: Int): Long = amount * ratePercent / 100
+      }
+  changed_files:
+    core/src/main/kotlin/com/store/money/Currency.kt: |
+      package com.store.money
+
+      enum class Currency(val code: String, val symbol: String, val decimalPlaces: Int) {
+          USD("USD", "$", 2),
+          EUR("EUR", "€", 2),
+          JPY("JPY", "¥", 0),
+          GBP("GBP", "£", 2);
+
+          fun format(amount: Long): String {
+              val divisor = Math.pow(10.0, decimalPlaces.toDouble()).toLong()
+              return if (decimalPlaces == 0) {
+                  "$symbol${amount}"
+              } else {
+                  val major = amount / divisor
+                  val minor = Math.abs(amount % divisor)
+                  "$symbol${major}.${"%0${decimalPlaces}d".format(minor)}"
+              }
+          }
+      }
+    core/src/main/kotlin/com/store/money/Money.kt: |
+      package com.store.money
+
+      data class Money(val amount: Long, val currency: Currency) {
+          init {
+              require(amount >= 0) { "money amount must be non-negative" }
+          }
+
+          operator fun plus(other: Money): Money {
+              require(currency == other.currency) { "currency mismatch" }
+              return Money(amount + other.amount, currency)
+          }
+
+          operator fun minus(other: Money): Money {
+              require(currency == other.currency) { "currency mismatch" }
+              require(amount >= other.amount) { "result would be negative" }
+              return Money(amount - other.amount, currency)
+          }
+
+          fun format(): String = currency.format(amount)
+      }
+    domain/src/main/kotlin/com/store/cart/CartItem.kt: |
+      package com.store.cart
+
+      import com.store.money.Money
+
+      data class CartItem(
+          val productId: String,
+          val name: String,
+          val unitPrice: Money,
+          val quantity: Int,
+      ) {
+          init {
+              require(quantity > 0) { "quantity must be positive" }
+          }
+
+          fun subtotal(): Money = Money(unitPrice.amount * quantity, unitPrice.currency)
+      }
+    api/src/main/kotlin/com/store/cart/CartSummaryService.kt: |
+      package com.store.cart
+
+      import com.store.money.Money
+
+      class CartSummaryService {
+          fun total(items: List<CartItem>): Money {
+              require(items.isNotEmpty()) { "cart is empty" }
+              return items.map { it.subtotal() }.reduce { acc, m -> acc + m }
+          }
+      }
+    garbage/src/main/kotlin/com/store/promo/PromoEngine.kt: |
+      package com.store.promo
+
+      // GARBAGE_RBSER_A = "promo_engine_unrelated"
+      class PromoEngine {
+          fun apply(code: String, discountPct: Int): Boolean = false
+      }
+    garbage/src/main/kotlin/com/store/loyalty/LoyaltyService.kt: |
+      package com.store.loyalty
+
+      // GARBAGE_RBSER_B = "loyalty_service_unrelated"
+      class LoyaltyService {
+          fun addPoints(userId: String, points: Int) {}
+          fun getBalance(userId: String): Int = 0
+      }
+    garbage/src/main/kotlin/com/store/tax/TaxCalculator.kt: |
+      package com.store.tax
+
+      // GARBAGE_RBSER_C = "tax_calculator_unrelated"
+      object TaxCalculator {
+          fun compute(amount: Long, ratePercent: Int): Long = amount * ratePercent / 100
+      }
+  commit_message: "fix: guard negative Money amount, prevent negative subtraction, validate CartItem quantity"
+fragments:
+- id: money_init_guard
+  selector:
+    path: core/src/main/kotlin/com/store/money/Money.kt
+    anchor: "money amount must be non-negative"
+- id: minus_negative_guard
+  selector:
+    path: core/src/main/kotlin/com/store/money/Money.kt
+    anchor: "result would be negative"
+- id: cart_item_quantity_guard
+  selector:
+    path: domain/src/main/kotlin/com/store/cart/CartItem.kt
+    anchor: "quantity must be positive"
+- id: cart_uses_money
+  selector:
+    path: domain/src/main/kotlin/com/store/cart/CartItem.kt
+    anchor: "fun subtotal"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_RBSER_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_RBSER_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_RBSER_C
+oracle:
+  required:
+  - money_init_guard
+  - minus_negative_guard
+  - cart_item_quantity_guard
+  allowed:
+  - cart_uses_money
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

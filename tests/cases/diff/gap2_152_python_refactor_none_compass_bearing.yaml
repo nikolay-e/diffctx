@@ -1,0 +1,86 @@
+name: gap2_152_python_refactor_none_compass_bearing
+tags:
+- change:refactor
+- context:none
+- difficulty:trivial
+- distance:0hop
+- lang:python
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    navigation/bearing.py: |
+      import math
+
+      def calculate_bearing(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+          lat1_r = math.radians(lat1)
+          lat2_r = math.radians(lat2)
+          dlon = math.radians(lon2 - lon1)
+          x = math.sin(dlon) * math.cos(lat2_r)
+          y = math.cos(lat1_r) * math.sin(lat2_r) - math.sin(lat1_r) * math.cos(lat2_r) * math.cos(dlon)
+          bearing = math.degrees(math.atan2(x, y))
+          return (bearing + 360) % 360
+
+      def bearing_to_cardinal(bearing: float) -> str:
+          directions = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+          idx = int((bearing + 22.5) / 45) % 8
+          return directions[idx]
+    navigation/waypoint.py: |
+      WAYPOINT_RADIUS_M = 50
+
+      class Waypoint:
+          def __init__(self, name: str, lat: float, lon: float):
+              self.name = name
+              self.lat = lat
+              self.lon = lon
+
+          def distance_to(self, other_lat: float, other_lon: float) -> float:
+              return ((self.lat - other_lat) ** 2 + (self.lon - other_lon) ** 2) ** 0.5
+    navigation/route.py: |
+      MAX_WAYPOINTS = 100
+
+      class Route:
+          def __init__(self):
+              self._points: list[tuple[float, float]] = []
+
+          def add_point(self, lat: float, lon: float) -> None:
+              self._points.append((lat, lon))
+
+          def total_legs(self) -> int:
+              return max(0, len(self._points) - 1)
+  changed_files:
+    navigation/bearing.py: |
+      from math import radians, degrees, sin, cos, atan2
+
+      def calculate_bearing(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+          lat1_r, lat2_r = radians(lat1), radians(lat2)
+          dlon = radians(lon2 - lon1)
+          x = sin(dlon) * cos(lat2_r)
+          y = cos(lat1_r) * sin(lat2_r) - sin(lat1_r) * cos(lat2_r) * cos(dlon)
+          return (degrees(atan2(x, y)) + 360) % 360
+
+      def bearing_to_cardinal(bearing: float) -> str:
+          directions = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+          return directions[int((bearing + 22.5) / 45) % 8]
+  commit_message: "refactor: use direct math imports and simplify bearing"
+fragments:
+- id: no_waypoint
+  selector:
+    path: navigation/waypoint.py
+- id: no_route
+  selector:
+    path: navigation/route.py
+- id: no_waypoint_radius
+  selector:
+    anchor: WAYPOINT_RADIUS_M
+- id: no_max_waypoints
+  selector:
+    anchor: MAX_WAYPOINTS
+oracle:
+  required: []
+  allowed: []
+  forbidden:
+  - no_waypoint
+  - no_route
+  - no_waypoint_radius
+  - no_max_waypoints

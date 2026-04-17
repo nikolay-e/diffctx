@@ -1,0 +1,148 @@
+name: bal_1hop_006_go_api_calls_validator
+tags:
+- lang:go
+- change:multi_file
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    internal/validator/email.go: |
+      package validator
+
+      import "strings"
+
+      func IsValidEmail(email string) bool {
+          return strings.Contains(email, "@") && strings.Contains(email, ".")
+      }
+    internal/validator/phone.go: |
+      package validator
+
+      import "regexp"
+
+      var phoneRegex = regexp.MustCompile(`^\+?[0-9]{10,15}$`)
+
+      func IsValidPhone(phone string) bool {
+          return phoneRegex.MatchString(phone)
+      }
+    internal/api/registration.go: |
+      package api
+
+      import (
+          "encoding/json"
+          "net/http"
+          "myapp/internal/validator"
+      )
+
+      type RegisterRequest struct {
+          Email string `json:"email"`
+          Phone string `json:"phone"`
+          Name  string `json:"name"`
+      }
+
+      func HandleRegister(w http.ResponseWriter, r *http.Request) {
+          var req RegisterRequest
+          json.NewDecoder(r.Body).Decode(&req)
+          if !validator.IsValidEmail(req.Email) {
+              http.Error(w, "invalid email", 400)
+              return
+          }
+          if !validator.IsValidPhone(req.Phone) {
+              http.Error(w, "invalid phone", 400)
+              return
+          }
+          w.WriteHeader(201)
+      }
+    internal/cache/redis.go: |
+      package cache
+
+      type RedisClient struct {
+          Addr string
+      }
+
+      func NewRedis(addr string) *RedisClient {
+          return &RedisClient{Addr: addr}
+      }
+
+      func (c *RedisClient) Get(key string) (string, error) {
+          return "", nil
+      }
+    internal/migration/schema.go: |
+      package migration
+
+      func RunMigrations(dsn string) error {
+          return nil
+      }
+  changed_files:
+    internal/validator/email.go: |
+      package validator
+
+      import (
+          "net/mail"
+          "strings"
+      )
+
+      func IsValidEmail(email string) bool {
+          if !strings.Contains(email, "@") {
+              return false
+          }
+          _, err := mail.ParseAddress(email)
+          return err == nil
+      }
+
+      func NormalizeEmail(email string) string {
+          return strings.ToLower(strings.TrimSpace(email))
+      }
+    internal/validator/phone.go: |
+      package validator
+
+      import "regexp"
+
+      var phoneRegex = regexp.MustCompile(`^\+?[0-9]{10,15}$`)
+
+      func IsValidPhone(phone string) bool {
+          return phoneRegex.MatchString(phone)
+      }
+
+      func NormalizePhone(phone string) string {
+          if phone[0] == '8' {
+              return "+7" + phone[1:]
+          }
+          return phone
+      }
+  commit_message: "feat: improve email validation and add normalize helpers"
+fragments:
+- id: email_parse_address
+  selector:
+    path: internal/validator/email.go
+    anchor: "mail.ParseAddress(email)"
+- id: normalize_email
+  selector:
+    path: internal/validator/email.go
+    anchor: "func NormalizeEmail"
+- id: normalize_phone
+  selector:
+    path: internal/validator/phone.go
+    anchor: "func NormalizePhone"
+- id: api_uses_validator
+  selector:
+    path: internal/api/registration.go
+    anchor: "validator.IsValidEmail(req.Email)"
+- id: unrelated_redis
+  selector:
+    path: internal/cache/redis.go
+    anchor: "func NewRedis"
+- id: unrelated_migration
+  selector:
+    path: internal/migration/schema.go
+    anchor: "func RunMigrations"
+oracle:
+  required:
+  - email_parse_address
+  - api_uses_validator
+  allowed:
+  - normalize_email
+  - normalize_phone
+  forbidden:
+  - unrelated_redis
+  - unrelated_migration

@@ -1,0 +1,179 @@
+name: bal_3hop_022_python_inventory_system
+tags:
+- lang:python
+- change:single_file
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    inventory/product.py: |
+      class Product:
+          def __init__(self, sku: str, name: str, price: float):
+              self.sku = sku
+              self.name = name
+              self.price = price
+              self.quantity = 0
+          def restock(self, amount: int):
+              self.quantity += amount
+          def sell(self, amount: int) -> bool:
+              if self.quantity >= amount:
+                  self.quantity -= amount
+                  return True
+              return False
+    inventory/warehouse.py: |
+      from inventory.product import Product
+      class Warehouse:
+          def __init__(self, name: str):
+              self.name = name
+              self.products: dict[str, Product] = {}
+          def add_product(self, product: Product):
+              self.products[product.sku] = product
+          def get_stock(self, sku: str) -> int:
+              product = self.products.get(sku)
+              return product.quantity if product else 0
+    inventory/fulfillment.py: |
+      from inventory.warehouse import Warehouse
+      class FulfillmentService:
+          def __init__(self, warehouses: list[Warehouse]):
+              self.warehouses = warehouses
+          def find_stock(self, sku: str) -> Warehouse:
+              for wh in self.warehouses:
+                  if wh.get_stock(sku) > 0:
+                      return wh
+              return None
+          def fulfill(self, sku: str, qty: int) -> bool:
+              wh = self.find_stock(sku)
+              if wh is None:
+                  return False
+              product = wh.products[sku]
+              return product.sell(qty)
+    api/order_api.py: |
+      from inventory.fulfillment import FulfillmentService
+      from inventory.warehouse import Warehouse
+      class OrderAPI:
+          def __init__(self, fulfillment: FulfillmentService):
+              self.fulfillment = fulfillment
+          def place_order(self, sku: str, quantity: int) -> dict:
+              success = self.fulfillment.fulfill(sku, quantity)
+              status = "fulfilled" if success else "out_of_stock"
+              return {"sku": sku, "quantity": quantity, "status": status}
+    utils/barcode.py: |
+      def generate_barcode(sku: str) -> str:
+          return f"BC-{sku.upper()}-{len(sku):03d}"
+    reports/stock_report.py: |
+      class StockReport:
+          def __init__(self):
+              self.rows: list[dict] = []
+          def add_row(self, sku: str, warehouse: str, qty: int):
+              self.rows.append({"sku": sku, "warehouse": warehouse, "qty": qty})
+          def total_stock(self) -> int:
+              return sum(r["qty"] for r in self.rows)
+  changed_files:
+    inventory/product.py: |
+      class Product:
+          def __init__(self, sku: str, name: str, price: float):
+              self.sku = sku
+              self.name = name
+              self.price = price
+              self.quantity = 0
+              self.reserved = 0
+          def restock(self, amount: int):
+              self.quantity += amount
+          def sell(self, amount: int) -> bool:
+              available = self.quantity - self.reserved
+              if available >= amount:
+                  self.quantity -= amount
+                  return True
+              return False
+          def reserve(self, amount: int) -> bool:
+              available = self.quantity - self.reserved
+              if available >= amount:
+                  self.reserved += amount
+                  return True
+              return False
+    inventory/warehouse.py: |
+      from inventory.product import Product
+      class Warehouse:
+          def __init__(self, name: str):
+              self.name = name
+              self.products: dict[str, Product] = {}
+          def add_product(self, product: Product):
+              self.products[product.sku] = product
+          def get_stock(self, sku: str) -> int:
+              product = self.products.get(sku)
+              return product.quantity if product else 0
+    inventory/fulfillment.py: |
+      from inventory.warehouse import Warehouse
+      class FulfillmentService:
+          def __init__(self, warehouses: list[Warehouse]):
+              self.warehouses = warehouses
+          def find_stock(self, sku: str) -> Warehouse:
+              for wh in self.warehouses:
+                  if wh.get_stock(sku) > 0:
+                      return wh
+              return None
+          def fulfill(self, sku: str, qty: int) -> bool:
+              wh = self.find_stock(sku)
+              if wh is None:
+                  return False
+              product = wh.products[sku]
+              return product.sell(qty)
+    api/order_api.py: |
+      from inventory.fulfillment import FulfillmentService
+      from inventory.warehouse import Warehouse
+      class OrderAPI:
+          def __init__(self, fulfillment: FulfillmentService):
+              self.fulfillment = fulfillment
+          def place_order(self, sku: str, quantity: int) -> dict:
+              success = self.fulfillment.fulfill(sku, quantity)
+              status = "fulfilled" if success else "out_of_stock"
+              return {"sku": sku, "quantity": quantity, "status": status}
+    utils/barcode.py: |
+      def generate_barcode(sku: str) -> str:
+          return f"BC-{sku.upper()}-{len(sku):03d}"
+    reports/stock_report.py: |
+      class StockReport:
+          def __init__(self):
+              self.rows: list[dict] = []
+          def add_row(self, sku: str, warehouse: str, qty: int):
+              self.rows.append({"sku": sku, "warehouse": warehouse, "qty": qty})
+          def total_stock(self) -> int:
+              return sum(r["qty"] for r in self.rows)
+  commit_message: "fix: add reservation tracking to prevent overselling"
+fragments:
+- id: product_reservation
+  selector:
+    path: inventory/product.py
+    anchor: "def reserve(self, amount: int) -> bool"
+- id: warehouse_uses_product
+  selector:
+    path: inventory/warehouse.py
+    anchor: "from inventory.product import Product"
+- id: fulfillment_uses_warehouse
+  selector:
+    path: inventory/fulfillment.py
+    anchor: "from inventory.warehouse import Warehouse"
+- id: order_api_uses_fulfillment
+  selector:
+    path: api/order_api.py
+    anchor: "from inventory.fulfillment import FulfillmentService"
+- id: no_barcode
+  selector:
+    path: utils/barcode.py
+    anchor: "def generate_barcode"
+- id: no_stock_report
+  selector:
+    path: reports/stock_report.py
+    anchor: "class StockReport"
+oracle:
+  required:
+  - product_reservation
+  - warehouse_uses_product
+  - fulfillment_uses_warehouse
+  - order_api_uses_fulfillment
+  allowed: []
+  forbidden:
+  - no_barcode
+  - no_stock_report

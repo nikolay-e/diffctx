@@ -1,0 +1,134 @@
+name: gap2_021_java_refactor_extract_validator_service
+tags:
+- lang:elixir
+- change:new_function
+- change:single_file
+- context:import_chain
+- distance:2hop
+- difficulty:medium
+repo:
+  initial_files:
+    lib/iot/device.ex: |
+      defmodule IoT.Device do
+        defstruct [:id, :type, :firmware_version, :readings]
+
+        def latest_reading(%__MODULE__{readings: readings}) when readings != [] do
+          List.last(readings)
+        end
+        def latest_reading(_), do: nil
+
+        def add_reading(%__MODULE__{} = device, value) do
+          %{device | readings: device.readings ++ [value]}
+        end
+      end
+    lib/iot/aggregator.ex: |
+      defmodule IoT.Aggregator do
+        alias IoT.Device
+
+        def mean_reading(%Device{readings: readings}) when readings != [] do
+          Enum.sum(readings) / length(readings)
+        end
+        def mean_reading(_), do: nil
+      end
+    lib/iot/alert_engine.ex: |
+      defmodule IoT.AlertEngine do
+        alias IoT.Aggregator
+
+        def check_threshold(device, threshold) do
+          case Aggregator.mean_reading(device) do
+            nil -> :no_data
+            mean when mean > threshold -> {:alert, mean}
+            _ -> :ok
+          end
+        end
+      end
+    garbage/Provisioner.ex: |
+      # GARBAGE_IOT_A = "provisioner_marker"
+    garbage/Firmware.ex: |
+      # GARBAGE_IOT_B = "firmware_marker"
+    garbage/Gateway.ex: |
+      # GARBAGE_IOT_C = "gateway_marker"
+    garbage/Registry.ex: |
+      # GARBAGE_IOT_D = "registry_marker"
+  changed_files:
+    lib/iot/device.ex: |
+      defmodule IoT.Device do
+        defstruct [:id, :type, :firmware_version, :readings]
+
+        def latest_reading(%__MODULE__{readings: readings}) when readings != [] do
+          List.last(readings)
+        end
+        def latest_reading(_), do: nil
+
+        def add_reading(%__MODULE__{} = device, value) do
+          %{device | readings: device.readings ++ [value]}
+        end
+
+        def reading_count(%__MODULE__{readings: readings}), do: length(readings)
+
+        def clear_readings(%__MODULE__{} = device), do: %{device | readings: []}
+      end
+    lib/iot/aggregator.ex: |
+      defmodule IoT.Aggregator do
+        alias IoT.Device
+
+        def mean_reading(%Device{readings: readings}) when readings != [] do
+          Enum.sum(readings) / length(readings)
+        end
+        def mean_reading(_), do: nil
+      end
+    lib/iot/alert_engine.ex: |
+      defmodule IoT.AlertEngine do
+        alias IoT.Aggregator
+
+        def check_threshold(device, threshold) do
+          case Aggregator.mean_reading(device) do
+            nil -> :no_data
+            mean when mean > threshold -> {:alert, mean}
+            _ -> :ok
+          end
+        end
+      end
+    garbage/Provisioner.ex: |
+      # GARBAGE_IOT_A = "provisioner_marker"
+    garbage/Firmware.ex: |
+      # GARBAGE_IOT_B = "firmware_marker"
+    garbage/Gateway.ex: |
+      # GARBAGE_IOT_C = "gateway_marker"
+    garbage/Registry.ex: |
+      # GARBAGE_IOT_D = "registry_marker"
+  commit_message: "feat: add reading_count and clear_readings to IoT.Device"
+fragments:
+- id: reading_count
+  selector:
+    anchor: "def reading_count"
+- id: clear_readings
+  selector:
+    anchor: "def clear_readings"
+- id: aggregator_mean
+  selector:
+    path: lib/iot/aggregator.ex
+    anchor: "def mean_reading"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_IOT_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_IOT_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_IOT_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_IOT_D
+oracle:
+  required:
+  - reading_count
+  - clear_readings
+  allowed:
+  - aggregator_mean
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

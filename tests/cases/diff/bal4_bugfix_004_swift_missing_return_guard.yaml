@@ -1,0 +1,129 @@
+name: bal4_bugfix_004_swift_missing_return_guard
+tags:
+- lang:swift
+- change:single_file
+- change:bug_fix
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    Sources/Utils/Validator.swift: |
+      struct ValidationResult {
+          let isValid: Bool
+          let message: String
+      }
+
+      class InputValidator {
+          func validateEmail(_ email: String) -> ValidationResult {
+              if email.isEmpty {
+                  ValidationResult(isValid: false, message: "Email is empty")
+              }
+              let hasAt = email.contains("@")
+              return ValidationResult(isValid: hasAt, message: hasAt ? "OK" : "Invalid email")
+          }
+
+          func validateAge(_ age: Int) -> Bool {
+              return age >= 0 && age <= 150
+          }
+      }
+    garbage_bal4_004_storage.swift: |
+      GARBAGE_BAL4_004_STORAGE_A = "disk"
+      GARBAGE_BAL4_004_QUOTA_B = 1024
+
+      class StorageManager {
+          let GARBAGE_BAL4_004_PATH_C = "/data"
+          func save() {}
+      }
+    garbage_bal4_004_i18n.swift: |
+      GARBAGE_BAL4_004_LOCALE_D = "en"
+      GARBAGE_BAL4_004_FALLBACK_E = "en_US"
+
+      class Localization {
+          let GARBAGE_BAL4_004_BUNDLE_F = "main"
+          func translate(_ key: String) -> String { return key }
+      }
+  changed_files:
+    Sources/Utils/Validator.swift: |
+      struct ValidationResult {
+          let isValid: Bool
+          let message: String
+      }
+
+      class InputValidator {
+          func validateEmail(_ email: String) -> ValidationResult {
+              if email.isEmpty {
+                  return ValidationResult(isValid: false, message: "Email is empty")
+              }
+              let hasAt = email.contains("@")
+              return ValidationResult(isValid: hasAt, message: hasAt ? "OK" : "Invalid email")
+          }
+
+          func validateAge(_ age: Int) -> Bool {
+              return age >= 0 && age <= 150
+          }
+      }
+    garbage_bal4_004_storage.swift: |
+      GARBAGE_BAL4_004_STORAGE_A = "disk"
+      GARBAGE_BAL4_004_QUOTA_B = 1024
+
+      class StorageManager {
+          let GARBAGE_BAL4_004_PATH_C = "/data"
+          func save() {}
+      }
+    garbage_bal4_004_i18n.swift: |
+      GARBAGE_BAL4_004_LOCALE_D = "en"
+      GARBAGE_BAL4_004_FALLBACK_E = "en_US"
+
+      class Localization {
+          let GARBAGE_BAL4_004_BUNDLE_F = "main"
+          func translate(_ key: String) -> String { return key }
+      }
+  commit_message: "fix: add missing return in early guard for empty email"
+fragments:
+- id: validateEmail_func
+  selector:
+    path: Sources/Utils/Validator.swift
+    anchor: "func validateEmail(_ email: String) -> ValidationResult"
+- id: return_fix
+  selector:
+    path: Sources/Utils/Validator.swift
+    anchor: "return ValidationResult(isValid: false"
+- id: no_garbage_storage
+  selector:
+    path: garbage_bal4_004_storage.swift
+- id: no_garbage_i18n
+  selector:
+    path: garbage_bal4_004_i18n.swift
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL4_004_STORAGE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL4_004_QUOTA_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL4_004_PATH_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL4_004_LOCALE_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL4_004_FALLBACK_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL4_004_BUNDLE_F
+oracle:
+  required:
+  - validateEmail_func
+  - return_fix
+  allowed: []
+  forbidden:
+  - no_garbage_storage
+  - no_garbage_i18n
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

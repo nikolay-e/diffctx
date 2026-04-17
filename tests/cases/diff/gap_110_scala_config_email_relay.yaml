@@ -1,0 +1,135 @@
+name: gap_110_scala_config_email_relay
+tags:
+- lang:scala
+- change:single_file
+- context:config_to_code
+- difficulty:medium
+- distance:2hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/main/scala/mail/SmtpRelay.scala: |
+      package mail
+
+      import config.SmtpSettings
+
+      class SmtpRelay(settings: SmtpSettings) {
+        def send(to: String, subject: String, body: String): Boolean = {
+          if (to.isEmpty || subject.isEmpty) return false
+          val envelope = buildEnvelope(settings.host, settings.port, to)
+          transmit(envelope, body)
+        }
+
+        private def buildEnvelope(host: String, port: Int, recipient: String): String = {
+          s"$host:$port -> $recipient"
+        }
+
+        private def transmit(envelope: String, body: String): Boolean = {
+          body.nonEmpty
+        }
+      }
+    src/main/scala/config/SmtpSettings.scala: |
+      package config
+
+      case class SmtpSettings(
+        host: String,
+        port: Int,
+        useTls: Boolean,
+        fromAddress: String
+      )
+    src/main/resources/smtp.conf: |
+      smtp {
+        host = "mail.example.com"
+        port = 587
+        use-tls = true
+        from-address = "noreply@example.com"
+      }
+    src/main/scala/cache/RedisClient.scala: |
+      package cache
+
+      class RedisClient(host: String, port: Int) {
+        private var store: Map[String, String] = Map.empty
+
+        def get(key: String): Option[String] = store.get(key)
+
+        def set(key: String, value: String): Unit = {
+          store = store.updated(key, value)
+        }
+
+        def delete(key: String): Unit = {
+          store = store - key
+        }
+      }
+  changed_files:
+    src/main/resources/smtp.conf: |
+      smtp {
+        host = "mail.example.com"
+        port = 587
+        use-tls = true
+        from-address = "noreply@example.com"
+        max-retries = 3
+      }
+    src/main/scala/config/SmtpSettings.scala: |
+      package config
+
+      case class SmtpSettings(
+        host: String,
+        port: Int,
+        useTls: Boolean,
+        fromAddress: String,
+        maxRetries: Int
+      )
+    src/main/scala/mail/SmtpRelay.scala: |
+      package mail
+
+      import config.SmtpSettings
+
+      class SmtpRelay(settings: SmtpSettings) {
+        def send(to: String, subject: String, body: String): Boolean = {
+          if (to.isEmpty || subject.isEmpty) return false
+          val envelope = buildEnvelope(settings.host, settings.port, to)
+          sendWithRetry(envelope, body, settings.maxRetries)
+        }
+
+        private def sendWithRetry(envelope: String, body: String, retriesLeft: Int): Boolean = {
+          if (transmit(envelope, body)) return true
+          if (retriesLeft > 0) sendWithRetry(envelope, body, retriesLeft - 1)
+          else false
+        }
+
+        private def buildEnvelope(host: String, port: Int, recipient: String): String = {
+          s"$host:$port -> $recipient"
+        }
+
+        private def transmit(envelope: String, body: String): Boolean = {
+          body.nonEmpty
+        }
+      }
+fragments:
+- id: relay_send_retry
+  selector:
+    path: src/main/scala/mail/SmtpRelay.scala
+    anchor: "def sendWithRetry"
+- id: settings_retries
+  selector:
+    path: src/main/scala/config/SmtpSettings.scala
+    anchor: "maxRetries: Int"
+- id: conf_max_retries
+  selector:
+    path: src/main/resources/smtp.conf
+    anchor: "max-retries"
+- id: no_redis
+  selector:
+    path: src/main/scala/cache/RedisClient.scala
+- id: no_redis_client
+  selector:
+    anchor: RedisClient
+oracle:
+  required:
+  - relay_send_retry
+  - settings_retries
+  - conf_max_retries
+  forbidden:
+  - no_redis
+  - no_redis_client

@@ -1,0 +1,279 @@
+name: bal3_3hop_086_csharp_strategy_pattern_chain
+tags:
+- lang:csharp
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/Pricing/IPricingStrategy.cs: |
+      using System;
+
+      namespace App.Pricing
+      {
+          public interface IPricingStrategy
+          {
+              decimal Calculate(decimal basePrice, int quantity);
+          }
+      }
+    src/Pricing/StandardPricing.cs: |
+      using System;
+      using App.Pricing;
+
+      namespace App.Pricing
+      {
+          public class StandardPricing : IPricingStrategy
+          {
+              public decimal Calculate(decimal basePrice, int quantity)
+              {
+                  return basePrice * quantity;
+              }
+          }
+      }
+    src/Cart/CartCalculator.cs: |
+      using System;
+      using App.Pricing;
+
+      namespace App.Cart
+      {
+          public class CartCalculator
+          {
+              private readonly IPricingStrategy _strategy;
+              public CartCalculator(IPricingStrategy strategy)
+              {
+                  _strategy = strategy;
+              }
+              public decimal ComputeTotal(decimal price, int qty)
+              {
+                  return _strategy.Calculate(price, qty);
+              }
+          }
+      }
+    src/Services/CheckoutService.cs: |
+      using System;
+      using App.Cart;
+
+      namespace App.Services
+      {
+          public class CheckoutService
+          {
+              private readonly CartCalculator _calculator;
+              public CheckoutService(CartCalculator calculator)
+              {
+                  _calculator = calculator;
+              }
+              public decimal Checkout(decimal price, int qty)
+              {
+                  return _calculator.ComputeTotal(price, qty);
+              }
+          }
+      }
+    src/Controllers/CheckoutController.cs: |
+      using System;
+      using App.Services;
+
+      namespace App.Controllers
+      {
+          public class CheckoutController
+          {
+              private readonly CheckoutService _service;
+              public CheckoutController(CheckoutService service)
+              {
+                  _service = service;
+              }
+              public decimal Process(decimal price, int qty)
+              {
+                  return _service.Checkout(price, qty);
+              }
+          }
+      }
+    src/Shipping/ShippingCalculator.cs: |
+      using System;
+      // GARBAGE_086_SHIP_A = "calculator"
+      // GARBAGE_086_RATE_B = 5.99
+
+      namespace App.Shipping
+      {
+          public class ShippingCalculator
+          {
+              public decimal Calculate(decimal weight) => weight * 5.99m;
+          }
+      }
+    src/Shipping/TrackingService.cs: |
+      using System;
+      // GARBAGE_086_TRACK_C = "service"
+      // GARBAGE_086_CARRIER_D = "ups"
+
+      namespace App.Shipping
+      {
+          public class TrackingService
+          {
+              public string Track(string orderId) => "In Transit";
+          }
+      }
+  changed_files:
+    src/Pricing/IPricingStrategy.cs: |
+      using System;
+
+      namespace App.Pricing
+      {
+          public interface IPricingStrategy
+          {
+              decimal Calculate(decimal basePrice, int quantity);
+              decimal CalculateWithDiscount(decimal basePrice, int quantity, decimal discountPercent);
+          }
+      }
+    src/Pricing/StandardPricing.cs: |
+      using System;
+      using App.Pricing;
+
+      namespace App.Pricing
+      {
+          public class StandardPricing : IPricingStrategy
+          {
+              public decimal Calculate(decimal basePrice, int quantity)
+              {
+                  return basePrice * quantity;
+              }
+              public decimal CalculateWithDiscount(decimal basePrice, int quantity, decimal discountPercent)
+              {
+                  var total = basePrice * quantity;
+                  return total - (total * discountPercent / 100m);
+              }
+          }
+      }
+    src/Cart/CartCalculator.cs: |
+      using System;
+      using App.Pricing;
+
+      namespace App.Cart
+      {
+          public class CartCalculator
+          {
+              private readonly IPricingStrategy _strategy;
+              public CartCalculator(IPricingStrategy strategy)
+              {
+                  _strategy = strategy;
+              }
+              public decimal ComputeTotal(decimal price, int qty)
+              {
+                  return _strategy.Calculate(price, qty);
+              }
+              public decimal ComputeDiscountedTotal(decimal price, int qty, decimal discount)
+              {
+                  return _strategy.CalculateWithDiscount(price, qty, discount);
+              }
+          }
+      }
+    src/Services/CheckoutService.cs: |
+      using System;
+      using App.Cart;
+
+      namespace App.Services
+      {
+          public class CheckoutService
+          {
+              private readonly CartCalculator _calculator;
+              public CheckoutService(CartCalculator calculator)
+              {
+                  _calculator = calculator;
+              }
+              public decimal Checkout(decimal price, int qty)
+              {
+                  return _calculator.ComputeTotal(price, qty);
+              }
+              public decimal CheckoutWithDiscount(decimal price, int qty, decimal discount)
+              {
+                  return _calculator.ComputeDiscountedTotal(price, qty, discount);
+              }
+          }
+      }
+    src/Controllers/CheckoutController.cs: |
+      using System;
+      using App.Services;
+
+      namespace App.Controllers
+      {
+          public class CheckoutController
+          {
+              private readonly CheckoutService _service;
+              public CheckoutController(CheckoutService service)
+              {
+                  _service = service;
+              }
+              public decimal Process(decimal price, int qty)
+              {
+                  return _service.Checkout(price, qty);
+              }
+              public decimal ProcessWithDiscount(decimal price, int qty, decimal discount)
+              {
+                  return _service.CheckoutWithDiscount(price, qty, discount);
+              }
+          }
+      }
+    src/Shipping/ShippingCalculator.cs: |
+      using System;
+      // GARBAGE_086_SHIP_A = "calculator"
+      // GARBAGE_086_RATE_B = 5.99
+
+      namespace App.Shipping
+      {
+          public class ShippingCalculator
+          {
+              public decimal Calculate(decimal weight) => weight * 5.99m;
+          }
+      }
+    src/Shipping/TrackingService.cs: |
+      using System;
+      // GARBAGE_086_TRACK_C = "service"
+      // GARBAGE_086_CARRIER_D = "ups"
+
+      namespace App.Shipping
+      {
+          public class TrackingService
+          {
+              public string Track(string orderId) => "In Transit";
+          }
+      }
+  commit_message: "feat: add discount calculation through pricing strategy chain"
+fragments:
+- id: strategy_discount_method
+  selector:
+    path: src/Pricing/IPricingStrategy.cs
+    anchor: "CalculateWithDiscount"
+- id: standard_discount_impl
+  selector:
+    path: src/Pricing/StandardPricing.cs
+    anchor: "CalculateWithDiscount"
+- id: cart_discounted_total
+  selector:
+    path: src/Cart/CartCalculator.cs
+    anchor: "ComputeDiscountedTotal"
+- id: service_checkout_discount
+  selector:
+    path: src/Services/CheckoutService.cs
+    anchor: "CheckoutWithDiscount"
+- id: controller_process_discount
+  selector:
+    path: src/Controllers/CheckoutController.cs
+    anchor: "ProcessWithDiscount"
+- id: no_shipping
+  selector:
+    path: src/Shipping/ShippingCalculator.cs
+    anchor: "GARBAGE_086_SHIP_A"
+- id: no_tracking
+  selector:
+    path: src/Shipping/TrackingService.cs
+    anchor: "GARBAGE_086_TRACK_C"
+oracle:
+  required:
+  - strategy_discount_method
+  - standard_discount_impl
+  - cart_discounted_total
+  - service_checkout_discount
+  - controller_process_discount
+  allowed: []
+  forbidden:
+  - no_shipping
+  - no_tracking

@@ -1,0 +1,158 @@
+name: gap_125_swift_same_file_shopping_cart
+tags:
+- lang:swift
+- change:new_function
+- change:signature
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    Sources/Cart/ShoppingCart.swift: |
+      import Foundation
+
+      struct CartItem {
+          let productId: String
+          let name: String
+          var quantity: Int
+          let pricePerUnit: Decimal
+      }
+
+      class ShoppingCart {
+          private var items: [CartItem] = []
+
+          func addItem(_ item: CartItem) {
+              if let index = items.firstIndex(where: { $0.productId == item.productId }) {
+                  items[index].quantity += item.quantity
+              } else {
+                  items.append(item)
+              }
+          }
+
+          func removeItem(productId: String) {
+              items.removeAll { $0.productId == productId }
+          }
+
+          func totalPrice() -> Decimal {
+              items.reduce(Decimal.zero) { $0 + $1.pricePerUnit * Decimal($1.quantity) }
+          }
+
+          func itemCount() -> Int {
+              items.reduce(0) { $0 + $1.quantity }
+          }
+      }
+    Sources/Cart/DiscountEngine.swift: |
+      import Foundation
+
+      struct Discount {
+          let code: String
+          let percentage: Decimal
+          let minimumOrder: Decimal
+      }
+
+      class DiscountEngine {
+          private var availableDiscounts: [Discount] = []
+
+          func register(_ discount: Discount) {
+              availableDiscounts.append(discount)
+          }
+
+          func bestDiscount(for total: Decimal) -> Discount? {
+              availableDiscounts
+                  .filter { total >= $0.minimumOrder }
+                  .max { $0.percentage < $1.percentage }
+          }
+      }
+    Sources/Inventory/StockTracker.swift: |
+      import Foundation
+
+      class StockTracker {
+          private var stock: [String: Int] = [:]
+
+          func setStock(productId: String, quantity: Int) {
+              stock[productId] = quantity
+          }
+
+          func available(productId: String) -> Int {
+              stock[productId] ?? 0
+          }
+
+          func reserve(productId: String, quantity: Int) -> Bool {
+              guard let current = stock[productId], current >= quantity else {
+                  return false
+              }
+              stock[productId] = current - quantity
+              return true
+          }
+      }
+  changed_files:
+    Sources/Cart/ShoppingCart.swift: |
+      import Foundation
+
+      struct CartItem {
+          let productId: String
+          let name: String
+          var quantity: Int
+          let pricePerUnit: Decimal
+      }
+
+      class ShoppingCart {
+          private var items: [CartItem] = []
+
+          func addItem(_ item: CartItem) {
+              if let index = items.firstIndex(where: { $0.productId == item.productId }) {
+                  items[index].quantity += item.quantity
+              } else {
+                  items.append(item)
+              }
+          }
+
+          func removeItem(productId: String) {
+              items.removeAll { $0.productId == productId }
+          }
+
+          func totalPrice() -> Decimal {
+              items.reduce(Decimal.zero) { $0 + $1.pricePerUnit * Decimal($1.quantity) }
+          }
+
+          func itemCount() -> Int {
+              items.reduce(0) { $0 + $1.quantity }
+          }
+
+          func clearCart() {
+              items.removeAll()
+          }
+      }
+fragments:
+- id: clear_cart
+  selector:
+    path: Sources/Cart/ShoppingCart.swift
+    anchor: clearCart
+- id: cart_class
+  selector:
+    path: Sources/Cart/ShoppingCart.swift
+    anchor: class ShoppingCart
+- id: cart_item_struct
+  selector:
+    path: Sources/Cart/ShoppingCart.swift
+    anchor: struct CartItem
+- id: no_discount
+  selector:
+    path: Sources/Cart/DiscountEngine.swift
+- id: no_stock
+  selector:
+    path: Sources/Inventory/StockTracker.swift
+- id: no_stock_reserve
+  selector:
+    anchor: "func reserve"
+oracle:
+  required:
+  - clear_cart
+  - cart_class
+  forbidden:
+  - no_discount
+  - no_stock
+  - no_stock_reserve

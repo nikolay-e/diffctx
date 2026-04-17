@@ -1,0 +1,167 @@
+name: gap2_192_php_signature_import_chain_library_lending
+tags:
+- change:signature
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:2hop
+- lang:php
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/Library/LendingDesk.php: |
+      <?php
+
+      namespace App\Library;
+
+      use App\Library\Catalog\BookIndex;
+
+      class LendingDesk
+      {
+          private BookIndex $index;
+          private array $loans = [];
+
+          public function __construct(BookIndex $index)
+          {
+              $this->index = $index;
+          }
+
+          public function checkout(string $isbn, string $patronId): bool
+          {
+              if (!$this->index->isAvailable($isbn)) {
+                  return false;
+              }
+              $this->loans[] = ['isbn' => $isbn, 'patron' => $patronId];
+              return true;
+          }
+
+          public function activeLoans(): int
+          {
+              return count($this->loans);
+          }
+      }
+    src/Library/Catalog/BookIndex.php: |
+      <?php
+
+      namespace App\Library\Catalog;
+
+      use App\Library\Catalog\ShelfLocation;
+
+      class BookIndex
+      {
+          private array $entries = [];
+
+          public function register(string $isbn, ShelfLocation $location): void
+          {
+              $this->entries[$isbn] = ['location' => $location, 'available' => true];
+          }
+
+          public function isAvailable(string $isbn): bool
+          {
+              return isset($this->entries[$isbn]) && $this->entries[$isbn]['available'];
+          }
+      }
+    src/Library/Catalog/ShelfLocation.php: |
+      <?php
+
+      namespace App\Library\Catalog;
+
+      class ShelfLocation
+      {
+          private string $floor;
+          private string $aisle;
+          private int $shelf;
+
+          public function __construct(string $floor, string $aisle, int $shelf)
+          {
+              $this->floor = $floor;
+              $this->aisle = $aisle;
+              $this->shelf = $shelf;
+          }
+
+          public function label(): string
+          {
+              return sprintf("%s-%s-%d", $this->floor, $this->aisle, $this->shelf);
+          }
+      }
+    src/Events/ReadingClub.php: |
+      <?php
+
+      namespace App\Events;
+
+      class ReadingClub
+      {
+          public function schedule(string $bookTitle, string $date): string
+          {
+              return sprintf("Club: %s on %s", $bookTitle, $date);
+          }
+      }
+  changed_files:
+    src/Library/LendingDesk.php: |
+      <?php
+
+      namespace App\Library;
+
+      use App\Library\Catalog\BookIndex;
+
+      class LendingDesk
+      {
+          private BookIndex $index;
+          private array $loans = [];
+
+          public function __construct(BookIndex $index)
+          {
+              $this->index = $index;
+          }
+
+          public function checkout(string $isbn, string $patronId, int $durationDays = 14): bool
+          {
+              if (!$this->index->isAvailable($isbn)) {
+                  return false;
+              }
+              $this->loans[] = [
+                  'isbn' => $isbn,
+                  'patron' => $patronId,
+                  'due' => date('Y-m-d', strtotime("+{$durationDays} days")),
+              ];
+              return true;
+          }
+
+          public function activeLoans(): int
+          {
+              return count($this->loans);
+          }
+      }
+  commit_message: "feat: add loan duration to book checkout"
+fragments:
+- id: checkout_sig
+  selector:
+    path: src/Library/LendingDesk.php
+    anchor: "public function checkout"
+- id: due_date
+  selector:
+    path: src/Library/LendingDesk.php
+    anchor: "'due' =>"
+- id: book_index_available
+  selector:
+    path: src/Library/Catalog/BookIndex.php
+    anchor: "public function isAvailable"
+- id: shelf_location
+  selector:
+    path: src/Library/Catalog/ShelfLocation.php
+    anchor: class ShelfLocation
+- id: no_events
+  selector:
+    path: src/Events/ReadingClub.php
+- id: no_club
+  selector:
+    anchor: ReadingClub
+oracle:
+  required:
+  - checkout_sig
+  - due_date
+  - book_index_available
+  forbidden:
+  - no_events
+  - no_club

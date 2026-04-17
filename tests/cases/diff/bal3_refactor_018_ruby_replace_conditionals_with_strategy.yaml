@@ -1,0 +1,213 @@
+name: bal3_refactor_018_ruby_replace_conditionals_with_strategy
+tags:
+- lang:ruby
+- change:multi_file
+- change:refactor
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    app/services/discount_calculator.rb: |
+      class DiscountCalculator
+        def calculate(order_type, amount)
+          case order_type
+          when :standard
+            amount * 0.05
+          when :premium
+            amount * 0.15
+          when :wholesale
+            amount * 0.25
+          else
+            0
+          end
+        end
+      end
+    app/services/checkout_service.rb: |
+      require_relative 'discount_calculator'
+
+      class CheckoutService
+        def initialize
+          @calculator = DiscountCalculator.new
+        end
+
+        def process(order_type, amount)
+          discount = @calculator.calculate(order_type, amount)
+          { total: amount - discount, discount: discount }
+        end
+      end
+    app/controllers/checkout_controller.rb: |
+      require_relative '../services/checkout_service'
+
+      class CheckoutController
+        def initialize
+          @service = CheckoutService.new
+        end
+
+        def checkout(params)
+          @service.process(params[:type], params[:amount])
+        end
+      end
+    lib/reporting/sales.rb: |
+      GARBAGE_R018_SALES_A = "sales_report"
+
+      class SalesReport
+        def generate
+          []
+        end
+      end
+    lib/reporting/inventory.rb: |
+      GARBAGE_R018_INVENTORY_B = "inventory_report"
+
+      class InventoryReport
+        def generate
+          []
+        end
+      end
+    lib/reporting/tax.rb: |
+      GARBAGE_R018_TAX_C = "tax_report"
+
+      class TaxReport
+        def generate
+          []
+        end
+      end
+  changed_files:
+    app/strategies/discount/standard.rb: |
+      module Discount
+        class Standard
+          def calculate(amount)
+            amount * 0.05
+          end
+        end
+      end
+    app/strategies/discount/premium.rb: |
+      module Discount
+        class Premium
+          def calculate(amount)
+            amount * 0.15
+          end
+        end
+      end
+    app/strategies/discount/wholesale.rb: |
+      module Discount
+        class Wholesale
+          def calculate(amount)
+            amount * 0.25
+          end
+        end
+      end
+    app/services/discount_calculator.rb: |
+      require_relative '../strategies/discount/standard'
+      require_relative '../strategies/discount/premium'
+      require_relative '../strategies/discount/wholesale'
+
+      class DiscountCalculator
+        STRATEGIES = {
+          standard: Discount::Standard.new,
+          premium: Discount::Premium.new,
+          wholesale: Discount::Wholesale.new,
+        }.freeze
+
+        def calculate(order_type, amount)
+          strategy = STRATEGIES.fetch(order_type) { return 0 }
+          strategy.calculate(amount)
+        end
+      end
+    app/services/checkout_service.rb: |
+      require_relative 'discount_calculator'
+
+      class CheckoutService
+        def initialize
+          @calculator = DiscountCalculator.new
+        end
+
+        def process(order_type, amount)
+          discount = @calculator.calculate(order_type, amount)
+          { total: amount - discount, discount: discount }
+        end
+      end
+    app/controllers/checkout_controller.rb: |
+      require_relative '../services/checkout_service'
+
+      class CheckoutController
+        def initialize
+          @service = CheckoutService.new
+        end
+
+        def checkout(params)
+          @service.process(params[:type], params[:amount])
+        end
+      end
+    lib/reporting/sales.rb: |
+      GARBAGE_R018_SALES_A = "sales_report"
+
+      class SalesReport
+        def generate
+          []
+        end
+      end
+    lib/reporting/inventory.rb: |
+      GARBAGE_R018_INVENTORY_B = "inventory_report"
+
+      class InventoryReport
+        def generate
+          []
+        end
+      end
+    lib/reporting/tax.rb: |
+      GARBAGE_R018_TAX_C = "tax_report"
+
+      class TaxReport
+        def generate
+          []
+        end
+      end
+  commit_message: "refactor: replace discount conditionals with strategy pattern"
+fragments:
+- id: standard_strategy
+  selector:
+    path: app/strategies/discount/standard.rb
+    anchor: "class Standard"
+- id: premium_strategy
+  selector:
+    path: app/strategies/discount/premium.rb
+    anchor: "class Premium"
+- id: wholesale_strategy
+  selector:
+    path: app/strategies/discount/wholesale.rb
+    anchor: "class Wholesale"
+- id: calculator_uses_strategies
+  selector:
+    path: app/services/discount_calculator.rb
+    anchor: "STRATEGIES ="
+- id: calculator_fetch
+  selector:
+    path: app/services/discount_calculator.rb
+    anchor: "STRATEGIES.fetch(order_type)"
+- id: checkout_service_context
+  selector:
+    path: app/services/checkout_service.rb
+    anchor: "DiscountCalculator.new"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_R018_SALES_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_R018_INVENTORY_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_R018_TAX_C
+oracle:
+  required:
+  - standard_strategy
+  - premium_strategy
+  - wholesale_strategy
+  - calculator_uses_strategies
+  - calculator_fetch
+  allowed:
+  - checkout_service_context
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

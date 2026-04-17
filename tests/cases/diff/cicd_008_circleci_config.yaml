@@ -1,4 +1,11 @@
 name: cicd_008_circleci_config
+tags:
+- lang:python
+- change:single_file
+- change:config
+- context:same_file
+- distance:0hop
+- difficulty:easy
 repo:
   initial_files:
     .circleci/config.yml: |

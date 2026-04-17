@@ -1,591 +1,138 @@
 name: cpp_026_variadic_template
+tags:
+- lang:erlang
+- change:new_function
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
 repo:
   initial_files:
-    include/logging/logger.hpp: |
-      #pragma once
-      #include <iostream>
-      #include <sstream>
-      #include <string>
-      #include <chrono>
-      #include <iomanip>
+    src/hl7_parser.erl: |
+      -module(hl7_parser).
+      -export([parse_segment/1, segment_type/1]).
 
-      namespace app::logging {
+      parse_segment(Line) ->
+          Fields = binary:split(Line, <<"|">>, [global]),
+          Fields.
 
-      enum class LogLevel {
-          Debug,
-          Info,
-          Warning,
-          Error,
-          Fatal
-      };
+      segment_type(<<Type:3/binary, _/binary>>) -> Type;
+      segment_type(_) -> <<"UNK">>.
+    src/patient_record.erl: |
+      -module(patient_record).
+      -export([extract_pid/1]).
 
-      inline const char* levelToString(LogLevel level) {
-          switch (level) {
-              case LogLevel::Debug: return "DEBUG";
-              case LogLevel::Info: return "INFO";
-              case LogLevel::Warning: return "WARN";
-              case LogLevel::Error: return "ERROR";
-              case LogLevel::Fatal: return "FATAL";
-          }
-          return "UNKNOWN";
-      }
+      extract_pid(Message) ->
+          Segments = binary:split(Message, <<"\r">>, [global]),
+          Pids = [S || S <- Segments, hl7_parser:segment_type(S) =:= <<"PID">>],
+          case Pids of
+              [Pid | _] -> {ok, hl7_parser:parse_segment(Pid)};
+              [] -> {error, no_pid_segment}
+          end.
+    src/encounter.erl: |
+      -module(encounter).
+      -export([record_visit/2]).
 
-      template<typename... Args>
-      void log(Args... args) {
-          std::ostringstream oss;
-          ((oss << args << " "), ...);
-          std::cout << oss.str() << std::endl;
-      }
-
-      template<typename... Args>
-      void logWithLevel(LogLevel level, Args... args) {
-          auto now = std::chrono::system_clock::now();
-          auto time = std::chrono::system_clock::to_time_t(now);
-
-          std::ostringstream oss;
-          oss << "[" << std::put_time(std::localtime(&time), "%H:%M:%S") << "] ";
-          oss << "[" << levelToString(level) << "] ";
-          ((oss << args << " "), ...);
-          std::cout << oss.str() << std::endl;
-      }
-
-      template<typename... Args>
-      std::string format(const char* fmt, Args... args) {
-          std::ostringstream oss;
-          formatImpl(oss, fmt, args...);
-          return oss.str();
-      }
-
-      inline void formatImpl(std::ostringstream& oss, const char* fmt) {
-          oss << fmt;
-      }
-
-      template<typename T, typename... Args>
-      void formatImpl(std::ostringstream& oss, const char* fmt, T value, Args... args) {
-          while (*fmt) {
-              if (*fmt == '{' && *(fmt + 1) == '}') {
-                  oss << value;
-                  formatImpl(oss, fmt + 2, args...);
-                  return;
-              }
-              oss << *fmt++;
-          }
-      }
-
-      template<typename... Args>
-      size_t countArgs(Args...) {
-          return sizeof...(Args);
-      }
-
-      }
-    include/unrelated/video_encoder.hpp: |
-      #pragma once
-      // GARBAGE_CPP_VIDEO_267_001
-      #define GARBAGE_CPP_VIDEO_CODEC_267_002 "h264"
-
-      namespace app::unrelated::video {
-
-      // GARBAGE_CPP_VIDEO_FRAME_267_003
-      struct VideoFrame {
-          unsigned char* data;
-          int width;
-          int height;
-          // GARBAGE_CPP_VIDEO_TIMESTAMP_267_004
-          long timestamp;
-      };
-
-      // GARBAGE_CPP_VIDEO_ENCODER_267_005
-      class VideoEncoder {
-      public:
-          // GARBAGE_CPP_VIDEO_INIT_267_006
-          bool initialize(int width, int height, int bitrate) {
-              // GARBAGE_CPP_VIDEO_INIT_IMPL_267_007
-              return false;
-          }
-
-          // GARBAGE_CPP_VIDEO_ENCODE_267_008
-          size_t encode(const VideoFrame& frame, unsigned char* output) {
-              // GARBAGE_CPP_VIDEO_ENCODE_IMPL_267_009
-              return 0;
-          }
-
-          // GARBAGE_CPP_VIDEO_FLUSH_267_010
-          void flush() {
-              // GARBAGE_CPP_VIDEO_FLUSH_IMPL_267_011
-          }
-      };
-
-      }
-    src/unrelated/midi_controller.cpp: |
-      // GARBAGE_CPP_MIDI_267_012
-      #include <cstdint>
-
-      namespace app::unrelated::midi {
-
-      // GARBAGE_CPP_MIDI_MSG_267_013
-      struct MidiMessage {
-          uint8_t status;
-          uint8_t data1;
-          uint8_t data2;
-          // GARBAGE_CPP_MIDI_TIME_267_014
-      };
-
-      // GARBAGE_CPP_MIDI_CONTROLLER_267_015
-      class MidiController {
-      public:
-          // GARBAGE_CPP_MIDI_SEND_267_016
-          void sendMessage(const MidiMessage& msg) {
-              // GARBAGE_CPP_MIDI_SEND_IMPL_267_017
-          }
-
-          // GARBAGE_CPP_MIDI_RECEIVE_267_018
-          MidiMessage receiveMessage() {
-              // GARBAGE_CPP_MIDI_RECV_IMPL_267_019
-              return MidiMessage{};
-          }
-
-          // GARBAGE_CPP_MIDI_CONNECT_267_020
-          bool connect(const char* device) {
-              // GARBAGE_CPP_MIDI_CONN_IMPL_267_021
-              return false;
-          }
-      };
-
-      }
-    src/app.cpp: |
-      #include <iostream>
-      int main() { return 0; }
+      record_visit(PatientId, Timestamp) ->
+          io:format("Visit: patient=~p time=~p~n", [PatientId, Timestamp]).
+    garbage/imaging.erl: |
+      % GARBAGE_CPP26_IMG_A = "imaging_marker"
+    garbage/lab_results.erl: |
+      % GARBAGE_CPP26_LAB_B = "lab_results_marker"
+    garbage/prescriptions.erl: |
+      % GARBAGE_CPP26_PRESC_C = "prescriptions_marker"
+    garbage/insurance.erl: |
+      % GARBAGE_CPP26_INS_D = "insurance_marker"
   changed_files:
-    include/logging/logger.hpp: |
-      #pragma once
-      #include <iostream>
-      #include <sstream>
-      #include <string>
-      #include <chrono>
-      #include <iomanip>
+    src/hl7_parser.erl: |
+      -module(hl7_parser).
+      -export([parse_segment/1, segment_type/1, extract_field/2]).
 
-      namespace app::logging {
+      parse_segment(Line) ->
+          Fields = binary:split(Line, <<"|">>, [global]),
+          Fields.
 
-      enum class LogLevel {
-          Debug,
-          Info,
-          Warning,
-          Error,
-          Fatal
-      };
+      segment_type(<<Type:3/binary, _/binary>>) -> Type;
+      segment_type(_) -> <<"UNK">>.
 
-      inline const char* levelToString(LogLevel level) {
-          switch (level) {
-              case LogLevel::Debug: return "DEBUG";
-              case LogLevel::Info: return "INFO";
-              case LogLevel::Warning: return "WARN";
-              case LogLevel::Error: return "ERROR";
-              case LogLevel::Fatal: return "FATAL";
-          }
-          return "UNKNOWN";
-      }
+      extract_field(Fields, Index) when Index < length(Fields) ->
+          lists:nth(Index + 1, Fields);
+      extract_field(_, _) -> <<>>.
+    src/patient_record.erl: |
+      -module(patient_record).
+      -export([extract_pid/1, extract_patient_name/1]).
 
-      template<typename... Args>
-      void log(Args... args) {
-          std::ostringstream oss;
-          ((oss << args << " "), ...);
-          std::cout << oss.str() << std::endl;
-      }
+      extract_pid(Message) ->
+          Segments = binary:split(Message, <<"\r">>, [global]),
+          Pids = [S || S <- Segments, hl7_parser:segment_type(S) =:= <<"PID">>],
+          case Pids of
+              [Pid | _] -> {ok, hl7_parser:parse_segment(Pid)};
+              [] -> {error, no_pid_segment}
+          end.
 
-      template<typename... Args>
-      void logWithLevel(LogLevel level, Args... args) {
-          auto now = std::chrono::system_clock::now();
-          auto time = std::chrono::system_clock::to_time_t(now);
+      extract_patient_name(Message) ->
+          case extract_pid(Message) of
+              {ok, Fields} -> {ok, hl7_parser:extract_field(Fields, 5)};
+              Err -> Err
+          end.
+    src/encounter.erl: |
+      -module(encounter).
+      -export([record_visit/2]).
 
-          std::ostringstream oss;
-          oss << "[" << std::put_time(std::localtime(&time), "%H:%M:%S") << "] ";
-          oss << "[" << levelToString(level) << "] ";
-          ((oss << args << " "), ...);
-          std::cout << oss.str() << std::endl;
-      }
-
-      template<typename... Args>
-      std::string format(const char* fmt, Args... args) {
-          std::ostringstream oss;
-          formatImpl(oss, fmt, args...);
-          return oss.str();
-      }
-
-      inline void formatImpl(std::ostringstream& oss, const char* fmt) {
-          oss << fmt;
-      }
-
-      template<typename T, typename... Args>
-      void formatImpl(std::ostringstream& oss, const char* fmt, T value, Args... args) {
-          while (*fmt) {
-              if (*fmt == '{' && *(fmt + 1) == '}') {
-                  oss << value;
-                  formatImpl(oss, fmt + 2, args...);
-                  return;
-              }
-              oss << *fmt++;
-          }
-      }
-
-      template<typename... Args>
-      size_t countArgs(Args...) {
-          return sizeof...(Args);
-      }
-
-      }
-    include/unrelated/video_encoder.hpp: |
-      #pragma once
-      // GARBAGE_CPP_VIDEO_267_001
-      #define GARBAGE_CPP_VIDEO_CODEC_267_002 "h264"
-
-      namespace app::unrelated::video {
-
-      // GARBAGE_CPP_VIDEO_FRAME_267_003
-      struct VideoFrame {
-          unsigned char* data;
-          int width;
-          int height;
-          // GARBAGE_CPP_VIDEO_TIMESTAMP_267_004
-          long timestamp;
-      };
-
-      // GARBAGE_CPP_VIDEO_ENCODER_267_005
-      class VideoEncoder {
-      public:
-          // GARBAGE_CPP_VIDEO_INIT_267_006
-          bool initialize(int width, int height, int bitrate) {
-              // GARBAGE_CPP_VIDEO_INIT_IMPL_267_007
-              return false;
-          }
-
-          // GARBAGE_CPP_VIDEO_ENCODE_267_008
-          size_t encode(const VideoFrame& frame, unsigned char* output) {
-              // GARBAGE_CPP_VIDEO_ENCODE_IMPL_267_009
-              return 0;
-          }
-
-          // GARBAGE_CPP_VIDEO_FLUSH_267_010
-          void flush() {
-              // GARBAGE_CPP_VIDEO_FLUSH_IMPL_267_011
-          }
-      };
-
-      }
-    src/unrelated/midi_controller.cpp: |
-      // GARBAGE_CPP_MIDI_267_012
-      #include <cstdint>
-
-      namespace app::unrelated::midi {
-
-      // GARBAGE_CPP_MIDI_MSG_267_013
-      struct MidiMessage {
-          uint8_t status;
-          uint8_t data1;
-          uint8_t data2;
-          // GARBAGE_CPP_MIDI_TIME_267_014
-      };
-
-      // GARBAGE_CPP_MIDI_CONTROLLER_267_015
-      class MidiController {
-      public:
-          // GARBAGE_CPP_MIDI_SEND_267_016
-          void sendMessage(const MidiMessage& msg) {
-              // GARBAGE_CPP_MIDI_SEND_IMPL_267_017
-          }
-
-          // GARBAGE_CPP_MIDI_RECEIVE_267_018
-          MidiMessage receiveMessage() {
-              // GARBAGE_CPP_MIDI_RECV_IMPL_267_019
-              return MidiMessage{};
-          }
-
-          // GARBAGE_CPP_MIDI_CONNECT_267_020
-          bool connect(const char* device) {
-              // GARBAGE_CPP_MIDI_CONN_IMPL_267_021
-              return false;
-          }
-      };
-
-      }
-    src/app.cpp: |
-      #include "logging/logger.hpp"
-      #include <vector>
-      #include <string>
-      #include <functional>
-      #include <tuple>
-
-      namespace app::application {
-
-      class Logger {
-      public:
-          template<typename... Args>
-          void debug(Args... args) {
-              logging::logWithLevel(logging::LogLevel::Debug, args...);
-          }
-
-          template<typename... Args>
-          void info(Args... args) {
-              logging::logWithLevel(logging::LogLevel::Info, args...);
-          }
-
-          template<typename... Args>
-          void warning(Args... args) {
-              logging::logWithLevel(logging::LogLevel::Warning, args...);
-          }
-
-          template<typename... Args>
-          void error(Args... args) {
-              logging::logWithLevel(logging::LogLevel::Error, args...);
-          }
-
-          template<typename... Args>
-          std::string formatMessage(const char* fmt, Args... args) {
-              return logging::format(fmt, args...);
-          }
-      };
-
-      template<typename... Args>
-      class EventEmitter {
-      public:
-          using Callback = std::function<void(Args...)>;
-
-          void subscribe(Callback callback) {
-              callbacks_.push_back(callback);
-          }
-
-          void emit(Args... args) {
-              for (auto& callback : callbacks_) {
-                  callback(args...);
-              }
-          }
-
-          size_t subscriberCount() const {
-              return callbacks_.size();
-          }
-
-      private:
-          std::vector<Callback> callbacks_;
-      };
-
-      template<typename... Types>
-      class TypePrinter {
-      public:
-          static void printTypes() {
-              std::cout << "Number of types: " << sizeof...(Types) << "\n";
-              printTypesImpl<Types...>();
-          }
-
-      private:
-          template<typename First, typename... Rest>
-          static void printTypesImpl() {
-              std::cout << "  Type: " << typeid(First).name() << "\n";
-              if constexpr (sizeof...(Rest) > 0) {
-                  printTypesImpl<Rest...>();
-              }
-          }
-      };
-
-      template<typename... Args>
-      auto makeTuple(Args... args) {
-          return std::make_tuple(args...);
-      }
-
-      template<typename Func, typename... Args>
-      auto invoke(Func func, Args... args) {
-          return func(args...);
-      }
-
-      class MessageBuilder {
-      public:
-          template<typename... Args>
-          std::string build(Args... args) {
-              std::ostringstream oss;
-              appendAll(oss, args...);
-              return oss.str();
-          }
-
-      private:
-          void appendAll(std::ostringstream& oss) {}
-
-          template<typename T, typename... Rest>
-          void appendAll(std::ostringstream& oss, const T& first, Rest... rest) {
-              oss << first;
-              if constexpr (sizeof...(rest) > 0) {
-                  oss << ", ";
-                  appendAll(oss, rest...);
-              }
-          }
-      };
-
-      class CommandExecutor {
-      public:
-          template<typename Func, typename... Args>
-          void execute(const std::string& name, Func func, Args... args) {
-              std::cout << "Executing command: " << name << "\n";
-              std::cout << "Argument count: " << logging::countArgs(args...) << "\n";
-              func(args...);
-          }
-      };
-
-      }
-
-      int main() {
-          app::application::Logger logger;
-
-          logger.info("Application", "started", "successfully");
-          logger.debug("Processing", 42, "items");
-          logger.warning("Memory usage:", 85, "%");
-          logger.error("Failed to connect to", "database");
-
-          std::cout << "\n";
-          std::string formatted = logger.formatMessage("User {} logged in from {}", "Alice", "192.168.1.1");
-          std::cout << "Formatted: " << formatted << "\n";
-
-          std::cout << "\n=== Event Emitter ===\n";
-          app::application::EventEmitter<std::string, int> emitter;
-
-          emitter.subscribe([&logger](const std::string& msg, int code) {
-              logger.info("Event received:", msg, "code:", code);
-          });
-
-          emitter.subscribe([](const std::string& msg, int code) {
-              std::cout << "Handler 2: " << msg << " (" << code << ")\n";
-          });
-
-          emitter.emit("UserLogin", 200);
-          emitter.emit("DataUpdate", 100);
-
-          std::cout << "Subscriber count: " << emitter.subscriberCount() << "\n";
-
-          std::cout << "\n=== Type Printer ===\n";
-          app::application::TypePrinter<int, double, std::string, bool>::printTypes();
-
-          std::cout << "\n=== Tuple ===\n";
-          auto tuple = app::application::makeTuple(1, 2.5, "hello", true);
-          std::cout << "Tuple element 0: " << std::get<0>(tuple) << "\n";
-          std::cout << "Tuple element 2: " << std::get<2>(tuple) << "\n";
-
-          std::cout << "\n=== Message Builder ===\n";
-          app::application::MessageBuilder builder;
-          std::cout << "Message: " << builder.build("Name", 42, 3.14, "end") << "\n";
-
-          std::cout << "\n=== Command Executor ===\n";
-          app::application::CommandExecutor executor;
-          executor.execute("PrintSum", [](int a, int b, int c) {
-              std::cout << "Sum: " << (a + b + c) << "\n";
-          }, 10, 20, 30);
-
-          logging::log("Direct", "variadic", "log", 123, 45.6);
-
-          return 0;
-      }
-  commit_message: Update files
+      record_visit(PatientId, Timestamp) ->
+          io:format("Visit: patient=~p time=~p~n", [PatientId, Timestamp]).
+    garbage/imaging.erl: |
+      % GARBAGE_CPP26_IMG_A = "imaging_marker"
+    garbage/lab_results.erl: |
+      % GARBAGE_CPP26_LAB_B = "lab_results_marker"
+    garbage/prescriptions.erl: |
+      % GARBAGE_CPP26_PRESC_C = "prescriptions_marker"
+    garbage/insurance.erl: |
+      % GARBAGE_CPP26_INS_D = "insurance_marker"
+  commit_message: "feat: add extract_field/2 to hl7_parser and use it in patient_record"
 fragments:
-- id: app_file
+- id: extract_field_func
   selector:
-    path: src/app.cpp
-- id: req_global_0
+    path: src/hl7_parser.erl
+    anchor: "extract_field(Fields, Index) when Index < length(Fields) ->"
+- id: extract_field_export
   selector:
-    anchor: namespace app::application {
-- id: req_global_1
+    path: src/hl7_parser.erl
+    anchor: "-export([parse_segment/1, segment_type/1, extract_field/2])."
+- id: record_calls_extract_field
   selector:
-    anchor: void debug(Args... args) {
-- id: no_global_0
+    path: src/patient_record.erl
+    anchor: "hl7_parser:extract_field(Fields, 5)"
+- id: record_extract_name
   selector:
-    anchor: GARBAGE_CPP_MIDI_267_012
-- id: no_global_1
+    path: src/patient_record.erl
+    anchor: "extract_patient_name(Message) ->"
+- id: unrelated_encounter
   selector:
-    anchor: GARBAGE_CPP_MIDI_CONNECT_267_020
-- id: no_global_2
+    path: src/encounter.erl
+    anchor: "record_visit(PatientId, Timestamp) ->"
+- id: no_garbage_a
   selector:
-    anchor: GARBAGE_CPP_MIDI_CONN_IMPL_267_021
-- id: no_global_3
+    anchor: GARBAGE_CPP26_IMG_A
+- id: no_garbage_b
   selector:
-    anchor: GARBAGE_CPP_MIDI_CONTROLLER_267_015
-- id: no_global_4
+    anchor: GARBAGE_CPP26_LAB_B
+- id: no_garbage_c
   selector:
-    anchor: GARBAGE_CPP_MIDI_MSG_267_013
-- id: no_global_5
+    anchor: GARBAGE_CPP26_PRESC_C
+- id: no_garbage_d
   selector:
-    anchor: GARBAGE_CPP_MIDI_RECEIVE_267_018
-- id: no_global_6
-  selector:
-    anchor: GARBAGE_CPP_MIDI_RECV_IMPL_267_019
-- id: no_global_7
-  selector:
-    anchor: GARBAGE_CPP_MIDI_SEND_267_016
-- id: no_global_8
-  selector:
-    anchor: GARBAGE_CPP_MIDI_SEND_IMPL_267_017
-- id: no_global_9
-  selector:
-    anchor: GARBAGE_CPP_MIDI_TIME_267_014
-- id: no_global_10
-  selector:
-    anchor: GARBAGE_CPP_VIDEO_267_001
-- id: no_global_11
-  selector:
-    anchor: GARBAGE_CPP_VIDEO_CODEC_267_002
-- id: no_global_12
-  selector:
-    anchor: GARBAGE_CPP_VIDEO_ENCODER_267_005
-- id: no_global_13
-  selector:
-    anchor: GARBAGE_CPP_VIDEO_ENCODE_267_008
-- id: no_global_14
-  selector:
-    anchor: GARBAGE_CPP_VIDEO_ENCODE_IMPL_267_009
-- id: no_global_15
-  selector:
-    anchor: GARBAGE_CPP_VIDEO_FLUSH_267_010
-- id: no_global_16
-  selector:
-    anchor: GARBAGE_CPP_VIDEO_FLUSH_IMPL_267_011
-- id: no_global_17
-  selector:
-    anchor: GARBAGE_CPP_VIDEO_FRAME_267_003
-- id: no_global_18
-  selector:
-    anchor: GARBAGE_CPP_VIDEO_INIT_267_006
-- id: no_global_19
-  selector:
-    anchor: GARBAGE_CPP_VIDEO_INIT_IMPL_267_007
-- id: no_global_20
-  selector:
-    anchor: GARBAGE_CPP_VIDEO_TIMESTAMP_267_004
-- id: no_global_21
-  selector:
-    anchor: midi_controller.cpp
-- id: no_global_22
-  selector:
-    anchor: video_encoder.hpp
+    anchor: GARBAGE_CPP26_INS_D
 oracle:
   required:
-  - app_file
-  - req_global_0
-  - req_global_1
-  allowed: []
+  - extract_field_func
+  - record_calls_extract_field
+  allowed:
+  - extract_field_export
+  - record_extract_name
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
-  - no_global_8
-  - no_global_9
-  - no_global_10
-  - no_global_11
-  - no_global_12
-  - no_global_13
-  - no_global_14
-  - no_global_15
-  - no_global_16
-  - no_global_17
-  - no_global_18
-  - no_global_19
-  - no_global_20
-  - no_global_21
-  - no_global_22
+  - unrelated_encounter
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

@@ -1,0 +1,221 @@
+name: gap2_083_swift_cross_module_recipe_nutrition
+tags:
+- lang:typescript
+- change:multi_file
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/messaging/publisher.ts: |
+      import { MessageBroker } from './broker';
+      import { Message } from './message';
+
+      export class Publisher {
+          constructor(private broker: MessageBroker) {}
+
+          async publish(topic: string, payload: unknown): Promise<void> {
+              const msg: Message = { topic, payload, timestamp: Date.now() };
+              await this.broker.send(msg);
+          }
+      }
+    src/messaging/broker.ts: |
+      import { Message } from './message';
+
+      export interface MessageBroker {
+          send(message: Message): Promise<void>;
+      }
+
+      export class InMemoryBroker implements MessageBroker {
+          private handlers = new Map<string, ((msg: Message) => void)[]>();
+
+          async send(message: Message): Promise<void> {
+              const handlers = this.handlers.get(message.topic) ?? [];
+              handlers.forEach(h => h(message));
+          }
+
+          subscribe(topic: string, handler: (msg: Message) => void): void {
+              const existing = this.handlers.get(topic) ?? [];
+              this.handlers.set(topic, [...existing, handler]);
+          }
+      }
+    src/messaging/message.ts: |
+      export interface Message {
+          topic: string;
+          payload: unknown;
+          timestamp: number;
+      }
+    src/events/order_publisher.ts: |
+      import { Publisher } from '../messaging/publisher';
+
+      export class OrderPublisher {
+          constructor(private publisher: Publisher) {}
+
+          async orderCreated(orderId: string, customerId: string): Promise<void> {
+              await this.publisher.publish('order.created', { orderId, customerId });
+          }
+
+          async orderShipped(orderId: string): Promise<void> {
+              await this.publisher.publish('order.shipped', { orderId });
+          }
+      }
+    src/integrations/webhook.ts: |
+      export const GARBAGE_GAP083_A = 'webhook_retry_limit';
+
+      export class WebhookSender {
+          async send(url: string, body: unknown): Promise<boolean> { return true; }
+      }
+    src/auth/jwt.ts: |
+      export const GARBAGE_GAP083_B = 'jwt_algorithm_hs256';
+      export const GARBAGE_GAP083_C = 3600;
+
+      export function signJwt(payload: object, secret: string): string {
+          return `${JSON.stringify(payload)}.${secret}`;
+      }
+    src/storage/blob.ts: |
+      export const GARBAGE_GAP083_D = 'blob_storage_bucket';
+
+      export class BlobStorage {
+          async upload(key: string, data: Buffer): Promise<string> { return key; }
+      }
+  changed_files:
+    src/messaging/publisher.ts: |
+      import { MessageBroker } from './broker';
+      import { Message, MessageOptions } from './message';
+
+      export class Publisher {
+          constructor(private broker: MessageBroker) {}
+
+          async publish(topic: string, payload: unknown, options?: MessageOptions): Promise<string> {
+              const msg: Message = {
+                  id: crypto.randomUUID(),
+                  topic,
+                  payload,
+                  timestamp: Date.now(),
+                  priority: options?.priority ?? 0,
+              };
+              await this.broker.send(msg);
+              return msg.id;
+          }
+      }
+    src/messaging/broker.ts: |
+      import { Message } from './message';
+
+      export interface MessageBroker {
+          send(message: Message): Promise<void>;
+      }
+
+      export class InMemoryBroker implements MessageBroker {
+          private handlers = new Map<string, ((msg: Message) => void)[]>();
+
+          async send(message: Message): Promise<void> {
+              const handlers = this.handlers.get(message.topic) ?? [];
+              handlers.forEach(h => h(message));
+          }
+
+          subscribe(topic: string, handler: (msg: Message) => void): void {
+              const existing = this.handlers.get(topic) ?? [];
+              this.handlers.set(topic, [...existing, handler]);
+          }
+      }
+    src/messaging/message.ts: |
+      export interface MessageOptions {
+          priority?: number;
+      }
+
+      export interface Message {
+          id: string;
+          topic: string;
+          payload: unknown;
+          timestamp: number;
+          priority: number;
+      }
+    src/events/order_publisher.ts: |
+      import { Publisher } from '../messaging/publisher';
+      import { MessageOptions } from '../messaging/message';
+
+      export class OrderPublisher {
+          constructor(private publisher: Publisher) {}
+
+          async orderCreated(orderId: string, customerId: string, options?: MessageOptions): Promise<string> {
+              return this.publisher.publish('order.created', { orderId, customerId }, options);
+          }
+
+          async orderShipped(orderId: string): Promise<string> {
+              return this.publisher.publish('order.shipped', { orderId }, { priority: 10 });
+          }
+      }
+    src/integrations/webhook.ts: |
+      export const GARBAGE_GAP083_A = 'webhook_retry_limit';
+
+      export class WebhookSender {
+          async send(url: string, body: unknown): Promise<boolean> { return true; }
+      }
+    src/auth/jwt.ts: |
+      export const GARBAGE_GAP083_B = 'jwt_algorithm_hs256';
+      export const GARBAGE_GAP083_C = 3600;
+
+      export function signJwt(payload: object, secret: string): string {
+          return `${JSON.stringify(payload)}.${secret}`;
+      }
+    src/storage/blob.ts: |
+      export const GARBAGE_GAP083_D = 'blob_storage_bucket';
+
+      export class BlobStorage {
+          async upload(key: string, data: Buffer): Promise<string> { return key; }
+      }
+  commit_message: "feat: add message ID and priority to publisher and Message type"
+fragments:
+- id: message_options
+  selector:
+    path: src/messaging/message.ts
+    anchor: "export interface MessageOptions"
+- id: message_id_field
+  selector:
+    path: src/messaging/message.ts
+    anchor: "id: string"
+- id: publisher_publish_returns_id
+  selector:
+    path: src/messaging/publisher.ts
+    anchor: "async publish(topic: string, payload: unknown, options?: MessageOptions)"
+- id: order_publisher_order_created
+  selector:
+    path: src/events/order_publisher.ts
+    anchor: "async orderCreated"
+- id: no_webhook
+  selector:
+    path: src/integrations/webhook.ts
+- id: no_jwt
+  selector:
+    path: src/auth/jwt.ts
+- id: no_blob
+  selector:
+    path: src/storage/blob.ts
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP083_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GAP083_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GAP083_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GAP083_D
+oracle:
+  required:
+  - message_options
+  - message_id_field
+  - publisher_publish_returns_id
+  - order_publisher_order_created
+  allowed: []
+  forbidden:
+  - no_webhook
+  - no_jwt
+  - no_blob
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

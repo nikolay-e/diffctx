@@ -1,0 +1,92 @@
+name: bal3_bugfix_007_rust_unwrap_to_option
+tags:
+- lang:rust
+- change:single_file
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/config.rs: |
+      use std::collections::HashMap;
+
+      pub struct Config {
+          values: HashMap<String, String>,
+      }
+
+      impl Config {
+          pub fn new() -> Self {
+              Config { values: HashMap::new() }
+          }
+
+          pub fn get(&self, key: &str) -> String {
+              self.values.get(key).unwrap().clone()
+          }
+
+          pub fn set(&mut self, key: &str, value: &str) {
+              self.values.insert(key.to_string(), value.to_string());
+          }
+      }
+    src/server.rs: |
+      use crate::config::Config;
+
+      pub struct Server {
+          config: Config,
+      }
+
+      impl Server {
+          pub fn new(config: Config) -> Self {
+              Server { config }
+          }
+
+          pub fn port(&self) -> String {
+              self.config.get("port")
+          }
+      }
+    src/utils.rs: |
+      pub fn sanitize(input: &str) -> String {
+          input.trim().to_lowercase()
+      }
+  changed_files:
+    src/config.rs: |
+      use std::collections::HashMap;
+
+      pub struct Config {
+          values: HashMap<String, String>,
+      }
+
+      impl Config {
+          pub fn new() -> Self {
+              Config { values: HashMap::new() }
+          }
+
+          pub fn get(&self, key: &str) -> Option<String> {
+              self.values.get(key).cloned()
+          }
+
+          pub fn set(&mut self, key: &str, value: &str) {
+              self.values.insert(key.to_string(), value.to_string());
+          }
+      }
+  commit_message: "fix: return Option instead of panicking on missing key"
+fragments:
+- id: option_return
+  selector:
+    path: src/config.rs
+    anchor: "fn get(&self, key: &str) -> Option<String>"
+- id: server_calls_get
+  selector:
+    path: src/server.rs
+    anchor: "self.config.get(\"port\")"
+- id: no_utils
+  selector:
+    path: src/utils.rs
+    anchor: "fn sanitize"
+oracle:
+  required:
+  - option_return
+  - server_calls_get
+  allowed: []
+  forbidden:
+  - no_utils

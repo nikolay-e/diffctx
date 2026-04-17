@@ -1,0 +1,326 @@
+name: bal3_1hop_071_swift_multi_file_coordinator
+tags:
+- lang:swift
+- change:multi_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    Sources/Navigation/Router.swift: |
+      import Foundation
+
+      enum Route {
+          case home
+          case detail(id: Int)
+          case settings
+      }
+
+      class Router {
+          private var history: [Route] = []
+
+          func navigate(to route: Route) {
+              history.append(route)
+          }
+
+          func goBack() -> Route? {
+              return history.popLast()
+          }
+
+          func currentRoute() -> Route? {
+              return history.last
+          }
+      }
+    Sources/Coordinators/AppCoordinator.swift: |
+      import Foundation
+      import Navigation
+
+      class AppCoordinator {
+          private let router: Router
+
+          init(router: Router) {
+              self.router = router
+          }
+
+          func start() {
+              router.navigate(to: .home)
+          }
+
+          func showDetail(id: Int) {
+              router.navigate(to: .detail(id: id))
+          }
+
+          func showSettings() {
+              router.navigate(to: .settings)
+          }
+      }
+    Sources/Coordinators/OnboardingCoordinator.swift: |
+      import Foundation
+      import Navigation
+
+      class OnboardingCoordinator {
+          private let router: Router
+
+          init(router: Router) {
+              self.router = router
+          }
+
+          func begin() {
+              router.navigate(to: .home)
+          }
+      }
+    Sources/Coordinators/AuthCoordinator.swift: |
+      import Foundation
+      import Navigation
+
+      class AuthCoordinator {
+          private let router: Router
+
+          init(router: Router) {
+              self.router = router
+          }
+
+          func showLogin() {
+              router.navigate(to: .home)
+          }
+      }
+    Sources/Coordinators/SearchCoordinator.swift: |
+      import Foundation
+      import Navigation
+
+      class SearchCoordinator {
+          private let router: Router
+
+          init(router: Router) {
+              self.router = router
+          }
+
+          func showResults(for query: String) {
+              router.navigate(to: .home)
+          }
+      }
+    Sources/Helpers/DeviceInfo.swift: |
+      import Foundation
+      GARBAGE_071_DEVICE_MODEL_A = "iPhone"
+      GARBAGE_071_OS_VERSION_B = "17.0"
+
+      class DeviceInfo {
+          var modelName: String { return "iPhone" }
+      }
+    Sources/Helpers/AppVersion.swift: |
+      import Foundation
+      GARBAGE_071_BUILD_NUM_C = 1
+      GARBAGE_071_VERSION_STR_D = "1.0.0"
+
+      class AppVersion {
+          var version: String { return "1.0.0" }
+      }
+    Sources/Helpers/Haptics.swift: |
+      import Foundation
+      GARBAGE_071_HAPTIC_STYLE_E = "medium"
+      GARBAGE_071_HAPTIC_DURATION_F = 0.1
+
+      class HapticsEngine {
+          func trigger() {}
+      }
+  changed_files:
+    Sources/Navigation/Router.swift: |
+      import Foundation
+
+      enum Route: Equatable {
+          case home
+          case detail(id: Int)
+          case settings
+          case search(query: String)
+          case profile(userId: Int)
+      }
+
+      protocol RouterDelegate: AnyObject {
+          func routerDidNavigate(to route: Route)
+      }
+
+      class Router {
+          weak var delegate: RouterDelegate?
+          private var history: [Route] = []
+
+          func navigate(to route: Route) {
+              history.append(route)
+              delegate?.routerDidNavigate(to: route)
+          }
+
+          func goBack() -> Route? {
+              return history.popLast()
+          }
+
+          func currentRoute() -> Route? {
+              return history.last
+          }
+
+          func canGoBack() -> Bool {
+              return history.count > 1
+          }
+      }
+    Sources/Coordinators/AppCoordinator.swift: |
+      import Foundation
+      import Navigation
+
+      class AppCoordinator {
+          private let router: Router
+
+          init(router: Router) {
+              self.router = router
+          }
+
+          func start() {
+              router.navigate(to: .home)
+          }
+
+          func showDetail(id: Int) {
+              router.navigate(to: .detail(id: id))
+          }
+
+          func showSettings() {
+              router.navigate(to: .settings)
+          }
+      }
+    Sources/Coordinators/OnboardingCoordinator.swift: |
+      import Foundation
+      import Navigation
+
+      class OnboardingCoordinator {
+          private let router: Router
+
+          init(router: Router) {
+              self.router = router
+          }
+
+          func begin() {
+              router.navigate(to: .home)
+          }
+      }
+    Sources/Coordinators/AuthCoordinator.swift: |
+      import Foundation
+      import Navigation
+
+      class AuthCoordinator {
+          private let router: Router
+
+          init(router: Router) {
+              self.router = router
+          }
+
+          func showLogin() {
+              router.navigate(to: .home)
+          }
+      }
+    Sources/Coordinators/SearchCoordinator.swift: |
+      import Foundation
+      import Navigation
+
+      class SearchCoordinator {
+          private let router: Router
+
+          init(router: Router) {
+              self.router = router
+          }
+
+          func showResults(for query: String) {
+              router.navigate(to: .home)
+          }
+      }
+    Sources/Helpers/DeviceInfo.swift: |
+      import Foundation
+      GARBAGE_071_DEVICE_MODEL_A = "iPhone"
+      GARBAGE_071_OS_VERSION_B = "17.0"
+
+      class DeviceInfo {
+          var modelName: String { return "iPhone" }
+      }
+    Sources/Helpers/AppVersion.swift: |
+      import Foundation
+      GARBAGE_071_BUILD_NUM_C = 1
+      GARBAGE_071_VERSION_STR_D = "1.0.0"
+
+      class AppVersion {
+          var version: String { return "1.0.0" }
+      }
+    Sources/Helpers/Haptics.swift: |
+      import Foundation
+      GARBAGE_071_HAPTIC_STYLE_E = "medium"
+      GARBAGE_071_HAPTIC_DURATION_F = 0.1
+
+      class HapticsEngine {
+          func trigger() {}
+      }
+  commit_message: "feat: add new routes, RouterDelegate and canGoBack to Router"
+fragments:
+- id: app_coord_imports
+  selector:
+    path: Sources/Coordinators/AppCoordinator.swift
+    anchor: "import Navigation"
+- id: app_coord_navigate
+  selector:
+    path: Sources/Coordinators/AppCoordinator.swift
+    anchor: "router.navigate(to:"
+- id: onboarding_imports
+  selector:
+    path: Sources/Coordinators/OnboardingCoordinator.swift
+    anchor: "import Navigation"
+- id: auth_imports
+  selector:
+    path: Sources/Coordinators/AuthCoordinator.swift
+    anchor: "import Navigation"
+- id: search_imports
+  selector:
+    path: Sources/Coordinators/SearchCoordinator.swift
+    anchor: "import Navigation"
+- id: search_navigate
+  selector:
+    path: Sources/Coordinators/SearchCoordinator.swift
+    anchor: "router.navigate(to:"
+- id: no_device_info
+  selector:
+    path: Sources/Helpers/DeviceInfo.swift
+- id: no_app_version
+  selector:
+    path: Sources/Helpers/AppVersion.swift
+- id: no_haptics
+  selector:
+    path: Sources/Helpers/Haptics.swift
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_071_DEVICE_MODEL_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_071_OS_VERSION_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_071_BUILD_NUM_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_071_VERSION_STR_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_071_HAPTIC_STYLE_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_071_HAPTIC_DURATION_F
+oracle:
+  required:
+  - app_coord_imports
+  - app_coord_navigate
+  - onboarding_imports
+  - auth_imports
+  - search_imports
+  - search_navigate
+  allowed: []
+  forbidden:
+  - no_device_info
+  - no_app_version
+  - no_haptics
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

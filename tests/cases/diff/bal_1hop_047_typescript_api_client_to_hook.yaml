@@ -1,0 +1,262 @@
+name: bal_1hop_047_typescript_api_client_to_hook
+tags:
+- lang:typescript
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/plugins/registry.ts: |
+      import { Plugin, PluginConfig } from './plugin';
+
+      export class PluginRegistry {
+          private plugins = new Map<string, Plugin>();
+
+          register(plugin: Plugin): void {
+              this.plugins.set(plugin.name, plugin);
+          }
+
+          get(name: string): Plugin | undefined {
+              return this.plugins.get(name);
+          }
+
+          all(): Plugin[] {
+              return Array.from(this.plugins.values());
+          }
+      }
+    src/plugins/plugin.ts: |
+      export interface PluginConfig {
+          enabled: boolean;
+          options: Record<string, unknown>;
+      }
+
+      export interface Plugin {
+          name: string;
+          version: string;
+          initialize(config: PluginConfig): void;
+          teardown(): void;
+      }
+    src/plugins/loader.ts: |
+      import { PluginRegistry } from './registry';
+      import { Plugin, PluginConfig } from './plugin';
+
+      export class PluginLoader {
+          constructor(private registry: PluginRegistry) {}
+
+          load(plugin: Plugin, config: PluginConfig): void {
+              plugin.initialize(config);
+              this.registry.register(plugin);
+          }
+
+          unload(name: string): void {
+              const plugin = this.registry.get(name);
+              plugin?.teardown();
+          }
+      }
+    src/app/plugin_manager.ts: |
+      import { PluginLoader } from '../plugins/loader';
+      import { PluginRegistry } from '../plugins/registry';
+      import { Plugin, PluginConfig } from '../plugins/plugin';
+
+      export class PluginManager {
+          private registry = new PluginRegistry();
+          private loader: PluginLoader;
+
+          constructor() {
+              this.loader = new PluginLoader(this.registry);
+          }
+
+          install(plugin: Plugin, config: PluginConfig): void {
+              this.loader.load(plugin, config);
+          }
+
+          uninstall(name: string): void {
+              this.loader.unload(name);
+          }
+
+          listInstalled(): string[] {
+              return this.registry.all().map(p => p.name);
+          }
+      }
+    src/telemetry/events.ts: |
+      export const GARBAGE_1HOP047_A = 'plugin_installed_event';
+
+      export function emit(event: string, data: unknown): void { console.log(event, data); }
+    src/permissions/guard.ts: |
+      export const GARBAGE_1HOP047_B = 'plugin_permission_scope';
+      export const GARBAGE_1HOP047_C = 'admin';
+
+      export function canInstallPlugin(userId: string): boolean { return true; }
+    src/ui/plugin_list.ts: |
+      export const GARBAGE_1HOP047_D = 'plugin_list_component';
+
+      export class PluginListComponent {
+          render(names: string[]): string {
+              return names.map(n => `<li>${n}</li>`).join('');
+          }
+      }
+  changed_files:
+    src/plugins/registry.ts: |
+      import { Plugin, PluginConfig } from './plugin';
+
+      export interface PluginEntry {
+          plugin: Plugin;
+          config: PluginConfig;
+          installedAt: number;
+      }
+
+      export class PluginRegistry {
+          private entries = new Map<string, PluginEntry>();
+
+          register(plugin: Plugin, config: PluginConfig): void {
+              this.entries.set(plugin.name, { plugin, config, installedAt: Date.now() });
+          }
+
+          get(name: string): Plugin | undefined {
+              return this.entries.get(name)?.plugin;
+          }
+
+          getEntry(name: string): PluginEntry | undefined {
+              return this.entries.get(name);
+          }
+
+          all(): Plugin[] {
+              return Array.from(this.entries.values()).map(e => e.plugin);
+          }
+
+          remove(name: string): void {
+              this.entries.delete(name);
+          }
+      }
+    src/plugins/plugin.ts: |
+      export interface PluginConfig {
+          enabled: boolean;
+          options: Record<string, unknown>;
+      }
+
+      export interface Plugin {
+          name: string;
+          version: string;
+          initialize(config: PluginConfig): void;
+          teardown(): void;
+      }
+    src/plugins/loader.ts: |
+      import { PluginRegistry } from './registry';
+      import { Plugin, PluginConfig } from './plugin';
+
+      export class PluginLoader {
+          constructor(private registry: PluginRegistry) {}
+
+          load(plugin: Plugin, config: PluginConfig): void {
+              plugin.initialize(config);
+              this.registry.register(plugin, config);
+          }
+
+          unload(name: string): void {
+              const plugin = this.registry.get(name);
+              plugin?.teardown();
+              this.registry.remove(name);
+          }
+      }
+    src/app/plugin_manager.ts: |
+      import { PluginLoader } from '../plugins/loader';
+      import { PluginRegistry, PluginEntry } from '../plugins/registry';
+      import { Plugin, PluginConfig } from '../plugins/plugin';
+
+      export class PluginManager {
+          private registry = new PluginRegistry();
+          private loader: PluginLoader;
+
+          constructor() {
+              this.loader = new PluginLoader(this.registry);
+          }
+
+          install(plugin: Plugin, config: PluginConfig): void {
+              this.loader.load(plugin, config);
+          }
+
+          uninstall(name: string): void {
+              this.loader.unload(name);
+          }
+
+          listInstalled(): string[] {
+              return this.registry.all().map(p => p.name);
+          }
+
+          getPluginInfo(name: string): PluginEntry | undefined {
+              return this.registry.getEntry(name);
+          }
+      }
+    src/telemetry/events.ts: |
+      export const GARBAGE_1HOP047_A = 'plugin_installed_event';
+
+      export function emit(event: string, data: unknown): void { console.log(event, data); }
+    src/permissions/guard.ts: |
+      export const GARBAGE_1HOP047_B = 'plugin_permission_scope';
+      export const GARBAGE_1HOP047_C = 'admin';
+
+      export function canInstallPlugin(userId: string): boolean { return true; }
+    src/ui/plugin_list.ts: |
+      export const GARBAGE_1HOP047_D = 'plugin_list_component';
+
+      export class PluginListComponent {
+          render(names: string[]): string {
+              return names.map(n => `<li>${n}</li>`).join('');
+          }
+      }
+  commit_message: "refactor: add PluginEntry to registry and expose config/timestamp via getPluginInfo"
+fragments:
+- id: plugin_entry_interface
+  selector:
+    path: src/plugins/registry.ts
+    anchor: "export interface PluginEntry"
+- id: registry_register_with_config
+  selector:
+    path: src/plugins/registry.ts
+    anchor: "register(plugin: Plugin, config: PluginConfig)"
+- id: loader_unload_removes
+  selector:
+    path: src/plugins/loader.ts
+    anchor: "this.registry.remove(name)"
+- id: plugin_manager_get_info
+  selector:
+    path: src/app/plugin_manager.ts
+    anchor: "getPluginInfo"
+- id: no_events
+  selector:
+    path: src/telemetry/events.ts
+- id: no_guard
+  selector:
+    path: src/permissions/guard.ts
+- id: no_plugin_list
+  selector:
+    path: src/ui/plugin_list.ts
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_1HOP047_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_1HOP047_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_1HOP047_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_1HOP047_D
+oracle:
+  required:
+  - plugin_entry_interface
+  - registry_register_with_config
+  - loader_unload_removes
+  - plugin_manager_get_info
+  allowed: []
+  forbidden:
+  - no_events
+  - no_guard
+  - no_plugin_list
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

@@ -1,0 +1,216 @@
+name: bal_crossmod_013_cpp_database_to_repository
+tags:
+- lang:cpp
+- change:single_file
+- change:signature
+- context:cross_module
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/database/connection.hpp: |
+      #pragma once
+      #include <string>
+      #include <vector>
+      #include <map>
+
+      namespace database {
+
+      using Row = std::map<std::string, std::string>;
+
+      class Connection {
+      public:
+          explicit Connection(const std::string& conn_string);
+          std::vector<Row> query(const std::string& sql);
+          void execute(const std::string& sql);
+      private:
+          std::string conn_string_;
+      };
+
+      }
+    src/database/connection.cpp: |
+      #include "connection.hpp"
+
+      namespace database {
+
+      Connection::Connection(const std::string& conn_string)
+          : conn_string_(conn_string) {}
+
+      std::vector<Row> Connection::query(const std::string& sql) {
+          return {};
+      }
+
+      void Connection::execute(const std::string& sql) {
+      }
+
+      }
+    src/repository/user_repository.hpp: |
+      #pragma once
+      #include <string>
+      #include <optional>
+      #include "../database/connection.hpp"
+
+      namespace repository {
+
+      struct UserRecord {
+          int id;
+          std::string name;
+          std::string email;
+      };
+
+      class UserRepository {
+      public:
+          explicit UserRepository(database::Connection& conn);
+          std::optional<UserRecord> find_by_id(int id);
+      private:
+          database::Connection& conn_;
+      };
+
+      }
+    src/repository/user_repository.cpp: |
+      #include "user_repository.hpp"
+
+      namespace repository {
+
+      UserRepository::UserRepository(database::Connection& conn)
+          : conn_(conn) {}
+
+      std::optional<UserRecord> UserRepository::find_by_id(int id) {
+          auto rows = conn_.query("SELECT * FROM users WHERE id = " + std::to_string(id));
+          if (rows.empty()) return std::nullopt;
+          return UserRecord{id, rows[0]["name"], rows[0]["email"]};
+      }
+
+      }
+    src/logging/logger.hpp: |
+      #pragma once
+      #include <string>
+
+      namespace logging {
+
+      class Logger {
+      public:
+          static void info(const std::string& msg);
+          static void error(const std::string& msg);
+      };
+
+      }
+  changed_files:
+    src/database/connection.hpp: |
+      #pragma once
+      #include <string>
+      #include <vector>
+      #include <map>
+
+      namespace database {
+
+      using Row = std::map<std::string, std::string>;
+
+      class Connection {
+      public:
+          explicit Connection(const std::string& conn_string);
+          std::vector<Row> query(const std::string& sql);
+          std::vector<Row> query(const std::string& sql, int limit);
+          void execute(const std::string& sql);
+      private:
+          std::string conn_string_;
+      };
+
+      }
+    src/database/connection.cpp: |
+      #include "connection.hpp"
+
+      namespace database {
+
+      Connection::Connection(const std::string& conn_string)
+          : conn_string_(conn_string) {}
+
+      std::vector<Row> Connection::query(const std::string& sql) {
+          return {};
+      }
+
+      std::vector<Row> Connection::query(const std::string& sql, int limit) {
+          return query(sql + " LIMIT " + std::to_string(limit));
+      }
+
+      void Connection::execute(const std::string& sql) {
+      }
+
+      }
+    src/repository/user_repository.hpp: |
+      #pragma once
+      #include <string>
+      #include <optional>
+      #include "../database/connection.hpp"
+
+      namespace repository {
+
+      struct UserRecord {
+          int id;
+          std::string name;
+          std::string email;
+      };
+
+      class UserRepository {
+      public:
+          explicit UserRepository(database::Connection& conn);
+          std::optional<UserRecord> find_by_id(int id);
+      private:
+          database::Connection& conn_;
+      };
+
+      }
+    src/repository/user_repository.cpp: |
+      #include "user_repository.hpp"
+
+      namespace repository {
+
+      UserRepository::UserRepository(database::Connection& conn)
+          : conn_(conn) {}
+
+      std::optional<UserRecord> UserRepository::find_by_id(int id) {
+          auto rows = conn_.query("SELECT * FROM users WHERE id = " + std::to_string(id));
+          if (rows.empty()) return std::nullopt;
+          return UserRecord{id, rows[0]["name"], rows[0]["email"]};
+      }
+
+      }
+    src/logging/logger.hpp: |
+      #pragma once
+      #include <string>
+
+      namespace logging {
+
+      class Logger {
+      public:
+          static void info(const std::string& msg);
+          static void error(const std::string& msg);
+      };
+
+      }
+  commit_message: "feat: add query overload with limit parameter"
+fragments:
+- id: query_limit_decl
+  selector:
+    path: src/database/connection.hpp
+    anchor: "std::vector<Row> query(const std::string& sql, int limit)"
+- id: query_limit_impl
+  selector:
+    path: src/database/connection.cpp
+    anchor: "Connection::query(const std::string& sql, int limit)"
+- id: repo_calls_query
+  selector:
+    path: src/repository/user_repository.cpp
+    anchor: "conn_.query"
+- id: no_logger
+  selector:
+    path: src/logging/logger.hpp
+    anchor: "class Logger"
+oracle:
+  required:
+  - query_limit_decl
+  - repo_calls_query
+  allowed:
+  - query_limit_impl
+  forbidden:
+  - no_logger

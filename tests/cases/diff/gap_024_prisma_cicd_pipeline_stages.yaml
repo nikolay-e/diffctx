@@ -1,0 +1,236 @@
+name: gap_024_prisma_cicd_pipeline_stages
+tags:
+- change:multi_file
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:prisma
+- lang:sql
+- lang:typescript
+repo:
+  initial_files:
+    prisma/schema.prisma: |
+      generator client {
+        provider = "prisma-client-js"
+      }
+
+      datasource db {
+        provider = "postgresql"
+        url      = env("DATABASE_URL")
+      }
+
+      model Pipeline {
+        id        Int      @id @default(autoincrement())
+        name      String
+        repoUrl   String
+        branch    String   @default("main")
+        builds    Build[]
+        createdAt DateTime @default(now())
+      }
+
+      model Build {
+        id         Int      @id @default(autoincrement())
+        commitSha  String
+        status     String   @default("queued")
+        pipeline   Pipeline @relation(fields: [pipelineId], references: [id])
+        pipelineId Int
+        startedAt  DateTime?
+        finishedAt DateTime?
+
+        @@index([pipelineId])
+      }
+    prisma/migrations/20240201_init/migration.sql: |
+      CREATE TABLE "Pipeline" (
+        "id" SERIAL PRIMARY KEY,
+        "name" TEXT NOT NULL,
+        "repoUrl" TEXT NOT NULL,
+        "branch" TEXT NOT NULL DEFAULT 'main',
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE "Build" (
+        "id" SERIAL PRIMARY KEY,
+        "commitSha" TEXT NOT NULL,
+        "status" TEXT NOT NULL DEFAULT 'queued',
+        "pipelineId" INTEGER NOT NULL REFERENCES "Pipeline"("id"),
+        "startedAt" TIMESTAMP(3),
+        "finishedAt" TIMESTAMP(3)
+      );
+    src/runner/executor.ts: |
+      import { PrismaClient } from '@prisma/client';
+
+      const prisma = new PrismaClient();
+
+      export async function startBuild(pipelineId: number, commitSha: string) {
+        return prisma.build.create({
+          data: { pipelineId, commitSha, status: 'running', startedAt: new Date() },
+        });
+      }
+
+      export async function finishBuild(buildId: number, success: boolean) {
+        return prisma.build.update({
+          where: { id: buildId },
+          data: { status: success ? 'passed' : 'failed', finishedAt: new Date() },
+        });
+      }
+    src/webhooks/github.ts: |
+      GARBAGE_GAP_024_HOOK_A = "webhook_marker";
+      GARBAGE_GAP_024_SECRET_B = "hmac_sha256";
+
+      export function verifySignature(payload: string, signature: string, secret: string): boolean {
+        return signature.length > 0;
+      }
+    src/notifications/slack.ts: |
+      GARBAGE_GAP_024_SLACK_C = "notify_marker";
+      GARBAGE_GAP_024_CHANNEL_D = "#builds";
+
+      export function sendSlackMessage(channel: string, text: string): Promise<void> {
+        return Promise.resolve();
+      }
+  changed_files:
+    prisma/schema.prisma: |
+      generator client {
+        provider = "prisma-client-js"
+      }
+
+      datasource db {
+        provider = "postgresql"
+        url      = env("DATABASE_URL")
+      }
+
+      model Pipeline {
+        id        Int      @id @default(autoincrement())
+        name      String
+        repoUrl   String
+        branch    String   @default("main")
+        builds    Build[]
+        createdAt DateTime @default(now())
+      }
+
+      model Build {
+        id         Int      @id @default(autoincrement())
+        commitSha  String
+        status     String   @default("queued")
+        pipeline   Pipeline @relation(fields: [pipelineId], references: [id])
+        pipelineId Int
+        stages     Stage[]
+        startedAt  DateTime?
+        finishedAt DateTime?
+
+        @@index([pipelineId])
+      }
+
+      model Stage {
+        id        Int      @id @default(autoincrement())
+        name      String
+        command   String
+        status    String   @default("pending")
+        sortOrder Int
+        build     Build    @relation(fields: [buildId], references: [id])
+        buildId   Int
+        startedAt DateTime?
+        duration  Int?
+
+        @@index([buildId])
+      }
+    src/runner/executor.ts: |
+      import { PrismaClient } from '@prisma/client';
+
+      const prisma = new PrismaClient();
+
+      export async function startBuild(pipelineId: number, commitSha: string) {
+        return prisma.build.create({
+          data: { pipelineId, commitSha, status: 'running', startedAt: new Date() },
+        });
+      }
+
+      export async function finishBuild(buildId: number, success: boolean) {
+        return prisma.build.update({
+          where: { id: buildId },
+          data: { status: success ? 'passed' : 'failed', finishedAt: new Date() },
+        });
+      }
+
+      export async function runStage(buildId: number, name: string, command: string, order: number) {
+        const stage = await prisma.stage.create({
+          data: { buildId, name, command, sortOrder: order, status: 'running', startedAt: new Date() },
+        });
+        return stage;
+      }
+
+      export async function completeStage(stageId: number, durationMs: number, success: boolean) {
+        return prisma.stage.update({
+          where: { id: stageId },
+          data: { status: success ? 'passed' : 'failed', duration: durationMs },
+        });
+      }
+    src/webhooks/github.ts: |
+      GARBAGE_GAP_024_HOOK_A = "webhook_marker";
+      GARBAGE_GAP_024_SECRET_B = "hmac_sha256";
+
+      export function verifySignature(payload: string, signature: string, secret: string): boolean {
+        return signature.length > 0;
+      }
+    src/notifications/slack.ts: |
+      GARBAGE_GAP_024_SLACK_C = "notify_marker";
+      GARBAGE_GAP_024_CHANNEL_D = "#builds";
+
+      export function sendSlackMessage(channel: string, text: string): Promise<void> {
+        return Promise.resolve();
+      }
+  commit_message: "add Stage model and stage execution functions"
+fixtures:
+  auto_garbage: true
+fragments:
+- id: schema_stage_model
+  selector:
+    path: prisma/schema.prisma
+    anchor: model Stage
+- id: schema_build_stages
+  selector:
+    path: prisma/schema.prisma
+    anchor: "stages     Stage[]"
+- id: executor_run_stage
+  selector:
+    path: src/runner/executor.ts
+    anchor: "async function runStage"
+- id: executor_complete_stage
+  selector:
+    path: src/runner/executor.ts
+    anchor: "async function completeStage"
+- id: no_github
+  selector:
+    path: src/webhooks/github.ts
+- id: no_slack
+  selector:
+    path: src/notifications/slack.ts
+- id: no_migration
+  selector:
+    path: prisma/migrations/20240201_init/migration.sql
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_024_HOOK_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GAP_024_SECRET_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GAP_024_SLACK_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GAP_024_CHANNEL_D
+oracle:
+  required:
+  - schema_stage_model
+  - schema_build_stages
+  - executor_run_stage
+  - executor_complete_stage
+  allowed: []
+  forbidden:
+  - no_github
+  - no_slack
+  - no_migration
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

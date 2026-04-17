@@ -1,0 +1,128 @@
+name: bal_testctx_012_typescript_user_service_test
+tags:
+- lang:typescript
+- change:single_file
+- change:bug_fix
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/userService.ts: |
+      export interface User {
+        id: string;
+        name: string;
+        email: string;
+        active: boolean;
+      }
+
+      export class UserService {
+        private users: Map<string, User> = new Map();
+
+        addUser(user: User): void {
+          this.users.set(user.id, user);
+        }
+
+        getUser(id: string): User | undefined {
+          return this.users.get(id);
+        }
+
+        getActiveUsers(): User[] {
+          return Array.from(this.users.values()).filter(u => u.active);
+        }
+      }
+    __tests__/userService.test.ts: |
+      import { UserService, User } from '../src/userService';
+
+      describe('UserService', () => {
+        let service: UserService;
+
+        beforeEach(() => {
+          service = new UserService();
+        });
+
+        test('addUser and getUser', () => {
+          const user: User = { id: '1', name: 'Alice', email: 'alice@test.com', active: true };
+          service.addUser(user);
+          expect(service.getUser('1')).toEqual(user);
+        });
+
+        test('getActiveUsers returns only active', () => {
+          service.addUser({ id: '1', name: 'Alice', email: 'a@t.com', active: true });
+          service.addUser({ id: '2', name: 'Bob', email: 'b@t.com', active: false });
+          expect(service.getActiveUsers()).toHaveLength(1);
+        });
+      });
+    src/emailService.ts: |
+      export interface EmailMessage {
+        to: string;
+        subject: string;
+        body: string;
+      }
+
+      export function sendEmail(message: EmailMessage): boolean {
+        console.log(`Sending email to ${message.to}`);
+        return true;
+      }
+  changed_files:
+    src/userService.ts: |
+      export interface User {
+        id: string;
+        name: string;
+        email: string;
+        active: boolean;
+      }
+
+      export class UserService {
+        private users: Map<string, User> = new Map();
+
+        addUser(user: User): void {
+          if (!user.id || !user.email) {
+            throw new Error('User must have id and email');
+          }
+          this.users.set(user.id, user);
+        }
+
+        getUser(id: string): User | undefined {
+          return this.users.get(id);
+        }
+
+        removeUser(id: string): boolean {
+          return this.users.delete(id);
+        }
+
+        getActiveUsers(): User[] {
+          return Array.from(this.users.values()).filter(u => u.active);
+        }
+      }
+  commit_message: "fix: validate user fields on add, add removeUser"
+fragments:
+- id: add_user_validation
+  selector:
+    path: src/userService.ts
+    anchor: "addUser(user: User)"
+- id: remove_user_fn
+  selector:
+    path: src/userService.ts
+    anchor: "removeUser(id: string)"
+- id: test_imports_user
+  selector:
+    path: __tests__/userService.test.ts
+    anchor: "import { UserService, User } from"
+- id: test_add_and_get
+  selector:
+    path: __tests__/userService.test.ts
+    anchor: "test('addUser and getUser'"
+- id: no_email_service
+  selector:
+    path: src/emailService.ts
+    anchor: "export function sendEmail"
+oracle:
+  required:
+  - add_user_validation
+  - test_imports_user
+  allowed:
+  - remove_user_fn
+  - test_add_and_get
+  forbidden:
+  - no_email_service

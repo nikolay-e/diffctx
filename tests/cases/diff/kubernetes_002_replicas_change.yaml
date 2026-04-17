@@ -1,4 +1,11 @@
 name: kubernetes_002_replicas_change
+tags:
+- lang:yaml
+- change:single_file
+- change:config
+- context:same_file
+- distance:0hop
+- difficulty:trivial
 repo:
   initial_files:
     k8s/apps/web-frontend/deployment.yaml: |

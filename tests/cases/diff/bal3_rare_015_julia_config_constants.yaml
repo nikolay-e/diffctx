@@ -1,0 +1,149 @@
+name: bal3_rare_015_julia_config_constants
+tags:
+- lang:typescript
+- change:multi_file
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/components/Tooltip.tsx: |
+      import React, { useState } from 'react';
+
+      interface TooltipProps {
+        text: string;
+        children: React.ReactNode;
+      }
+
+      export const Tooltip: React.FC<TooltipProps> = ({ text, children }) => {
+        const [visible, setVisible] = useState(false);
+        return (
+          <span
+            onMouseEnter={() => setVisible(true)}
+            onMouseLeave={() => setVisible(false)}
+            style={{ position: 'relative' }}
+          >
+            {children}
+            {visible && <span className="tooltip">{text}</span>}
+          </span>
+        );
+      };
+    src/components/Spinner.tsx: |
+      import React from 'react';
+
+      interface SpinnerProps {
+        size?: number;
+      }
+
+      export const Spinner: React.FC<SpinnerProps> = ({ size = 24 }) => (
+        <div className="spinner" style={{ width: size, height: size }} />
+      );
+    garbage/events.ts: |
+      const GARBAGE_JUL015_EVENTS_A = "events_marker";
+      export function emit(name: string): void {}
+    garbage/hooks.ts: |
+      const GARBAGE_JUL015_HOOKS_B = "hooks_marker";
+      export function useMount(fn: () => void): void {}
+    garbage/context.ts: |
+      const GARBAGE_JUL015_CONTEXT_C = "context_marker";
+      export const AppContext = React.createContext(null);
+  changed_files:
+    src/components/Tooltip.tsx: |
+      import React, { useState } from 'react';
+
+      type TooltipPosition = 'top' | 'bottom' | 'left' | 'right';
+
+      interface TooltipProps {
+        text: string;
+        children: React.ReactNode;
+        position?: TooltipPosition;
+        delay?: number;
+      }
+
+      export const Tooltip: React.FC<TooltipProps> = ({
+        text,
+        children,
+        position = 'top',
+        delay = 0,
+      }) => {
+        const [visible, setVisible] = useState(false);
+        return (
+          <span
+            onMouseEnter={() => setTimeout(() => setVisible(true), delay)}
+            onMouseLeave={() => setVisible(false)}
+            style={{ position: 'relative' }}
+          >
+            {children}
+            {visible && (
+              <span className={`tooltip tooltip-${position}`}>{text}</span>
+            )}
+          </span>
+        );
+      };
+    src/components/Spinner.tsx: |
+      import React from 'react';
+
+      interface SpinnerProps {
+        size?: number;
+        color?: string;
+        label?: string;
+      }
+
+      export const Spinner: React.FC<SpinnerProps> = ({
+        size = 24,
+        color = 'currentColor',
+        label = 'Loading...',
+      }) => (
+        <div
+          className="spinner"
+          style={{ width: size, height: size, borderColor: color }}
+          aria-label={label}
+        />
+      );
+    garbage/events.ts: |
+      const GARBAGE_JUL015_EVENTS_A = "events_marker";
+      export function emit(name: string): void {}
+    garbage/hooks.ts: |
+      const GARBAGE_JUL015_HOOKS_B = "hooks_marker";
+      export function useMount(fn: () => void): void {}
+    garbage/context.ts: |
+      const GARBAGE_JUL015_CONTEXT_C = "context_marker";
+      export const AppContext = React.createContext(null);
+  commit_message: "feat: add position/delay to Tooltip and color/label to Spinner"
+fragments:
+- id: tooltip_position_type
+  selector:
+    path: src/components/Tooltip.tsx
+    anchor: "type TooltipPosition"
+- id: tooltip_delay_prop
+  selector:
+    path: src/components/Tooltip.tsx
+    anchor: "delay?: number"
+- id: spinner_color_prop
+  selector:
+    path: src/components/Spinner.tsx
+    anchor: "color?: string"
+- id: spinner_label_prop
+  selector:
+    path: src/components/Spinner.tsx
+    anchor: "label?: string"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_JUL015_EVENTS_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_JUL015_HOOKS_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_JUL015_CONTEXT_C
+oracle:
+  required:
+  - tooltip_position_type
+  - tooltip_delay_prop
+  - spinner_color_prop
+  - spinner_label_prop
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

@@ -1,0 +1,245 @@
+name: gap2_023_java_refactor_split_notification_channels
+tags:
+- lang:go
+- change:multi_file
+- change:new_function
+- context:same_file
+- distance:0hop
+- difficulty:easy
+repo:
+  initial_files:
+    internal/pipeline/stage.go: |
+      package pipeline
+
+      import "context"
+
+      type StageFunc func(ctx context.Context, input interface{}) (interface{}, error)
+
+      type Stage struct {
+          name string
+          fn   StageFunc
+      }
+
+      func NewStage(name string, fn StageFunc) *Stage {
+          return &Stage{name: name, fn: fn}
+      }
+
+      func (s *Stage) Name() string {
+          return s.name
+      }
+
+      func (s *Stage) Run(ctx context.Context, input interface{}) (interface{}, error) {
+          return s.fn(ctx, input)
+      }
+    internal/pipeline/runner.go: |
+      package pipeline
+
+      import "context"
+
+      type Runner struct {
+          stages []*Stage
+      }
+
+      func NewRunner() *Runner {
+          return &Runner{}
+      }
+
+      func (r *Runner) Add(s *Stage) {
+          r.stages = append(r.stages, s)
+      }
+
+      func (r *Runner) Execute(ctx context.Context, input interface{}) (interface{}, error) {
+          current := input
+          for _, stage := range r.stages {
+              out, err := stage.Run(ctx, current)
+              if err != nil {
+                  return nil, err
+              }
+              current = out
+          }
+          return current, nil
+      }
+    internal/storage/kv.go: |
+      package storage
+
+      import "sync"
+
+      type KVStore struct {
+          mu   sync.RWMutex
+          data map[string][]byte
+      }
+
+      func NewKVStore() *KVStore {
+          return &KVStore{data: make(map[string][]byte)}
+      }
+
+      func (s *KVStore) Set(key string, value []byte) {
+          s.mu.Lock()
+          defer s.mu.Unlock()
+          s.data[key] = value
+      }
+
+      func (s *KVStore) Get(key string) ([]byte, bool) {
+          s.mu.RLock()
+          defer s.mu.RUnlock()
+          v, ok := s.data[key]
+          return v, ok
+      }
+    garbage/tracing.go: |
+      // GARBAGE_GAP23_TRACE_A = "tracing_marker"
+    garbage/profiling.go: |
+      // GARBAGE_GAP23_PROF_B = "profiling_marker"
+    garbage/feature_flags.go: |
+      // GARBAGE_GAP23_FLAGS_C = "feature_flags_marker"
+    garbage/config.go: |
+      // GARBAGE_GAP23_CONF_D = "config_marker"
+  changed_files:
+    internal/pipeline/stage.go: |
+      package pipeline
+
+      import "context"
+
+      type StageFunc func(ctx context.Context, input interface{}) (interface{}, error)
+
+      type Stage struct {
+          name    string
+          fn      StageFunc
+          timeout int
+      }
+
+      func NewStage(name string, fn StageFunc) *Stage {
+          return &Stage{name: name, fn: fn}
+      }
+
+      func WithTimeout(name string, fn StageFunc, timeoutMs int) *Stage {
+          return &Stage{name: name, fn: fn, timeout: timeoutMs}
+      }
+
+      func (s *Stage) Name() string {
+          return s.name
+      }
+
+      func (s *Stage) HasTimeout() bool {
+          return s.timeout > 0
+      }
+
+      func (s *Stage) Run(ctx context.Context, input interface{}) (interface{}, error) {
+          return s.fn(ctx, input)
+      }
+    internal/pipeline/runner.go: |
+      package pipeline
+
+      import "context"
+
+      type Runner struct {
+          stages []*Stage
+      }
+
+      func NewRunner() *Runner {
+          return &Runner{}
+      }
+
+      func (r *Runner) Add(s *Stage) {
+          r.stages = append(r.stages, s)
+      }
+
+      func (r *Runner) StageNames() []string {
+          names := make([]string, len(r.stages))
+          for i, s := range r.stages {
+              names[i] = s.Name()
+          }
+          return names
+      }
+
+      func (r *Runner) Execute(ctx context.Context, input interface{}) (interface{}, error) {
+          current := input
+          for _, stage := range r.stages {
+              out, err := stage.Run(ctx, current)
+              if err != nil {
+                  return nil, err
+              }
+              current = out
+          }
+          return current, nil
+      }
+    internal/storage/kv.go: |
+      package storage
+
+      import "sync"
+
+      type KVStore struct {
+          mu   sync.RWMutex
+          data map[string][]byte
+      }
+
+      func NewKVStore() *KVStore {
+          return &KVStore{data: make(map[string][]byte)}
+      }
+
+      func (s *KVStore) Set(key string, value []byte) {
+          s.mu.Lock()
+          defer s.mu.Unlock()
+          s.data[key] = value
+      }
+
+      func (s *KVStore) Get(key string) ([]byte, bool) {
+          s.mu.RLock()
+          defer s.mu.RUnlock()
+          v, ok := s.data[key]
+          return v, ok
+      }
+    garbage/tracing.go: |
+      // GARBAGE_GAP23_TRACE_A = "tracing_marker"
+    garbage/profiling.go: |
+      // GARBAGE_GAP23_PROF_B = "profiling_marker"
+    garbage/feature_flags.go: |
+      // GARBAGE_GAP23_FLAGS_C = "feature_flags_marker"
+    garbage/config.go: |
+      // GARBAGE_GAP23_CONF_D = "config_marker"
+  commit_message: "feat: add WithTimeout/HasTimeout to Stage and StageNames to Runner"
+fragments:
+- id: stage_with_timeout
+  selector:
+    path: internal/pipeline/stage.go
+    anchor: "func WithTimeout(name string, fn StageFunc, timeoutMs int) *Stage {"
+- id: stage_has_timeout
+  selector:
+    path: internal/pipeline/stage.go
+    anchor: "func (s *Stage) HasTimeout() bool {"
+- id: stage_timeout_field
+  selector:
+    path: internal/pipeline/stage.go
+    anchor: "timeout int"
+- id: runner_stage_names
+  selector:
+    path: internal/pipeline/runner.go
+    anchor: "func (r *Runner) StageNames() []string {"
+- id: unrelated_kvstore
+  selector:
+    path: internal/storage/kv.go
+    anchor: "func NewKVStore()"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_GAP23_TRACE_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_GAP23_PROF_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_GAP23_FLAGS_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_GAP23_CONF_D
+oracle:
+  required:
+  - stage_with_timeout
+  - stage_has_timeout
+  - runner_stage_names
+  allowed:
+  - stage_timeout_field
+  forbidden:
+  - unrelated_kvstore
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

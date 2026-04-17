@@ -1,0 +1,239 @@
+name: bal3_1hop_024_ruby_auth_middleware
+tags:
+- lang:ruby
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    lib/auth/token_store.rb: |
+      module Auth
+        class TokenStore
+          def initialize
+            @tokens = {}
+          end
+
+          def store(user_id, token)
+            @tokens[user_id] = token
+          end
+
+          def fetch(user_id)
+            @tokens[user_id]
+          end
+
+          def revoke(user_id)
+            @tokens.delete(user_id)
+          end
+        end
+      end
+    lib/middleware/auth_middleware.rb: |
+      require_relative '../auth/token_store'
+
+      module Middleware
+        class AuthMiddleware
+          def initialize(app, token_store)
+            @app = app
+            @token_store = token_store
+          end
+
+          def call(env)
+            token = env['HTTP_AUTHORIZATION']
+            user_id = find_user_by_token(token)
+            if user_id
+              env['current_user_id'] = user_id
+              @app.call(env)
+            else
+              [401, {}, ['Unauthorized']]
+            end
+          end
+
+          private
+
+          def find_user_by_token(token)
+            nil
+          end
+        end
+      end
+    lib/middleware/admin_middleware.rb: |
+      require_relative '../auth/token_store'
+
+      module Middleware
+        class AdminMiddleware
+          def initialize(app, token_store)
+            @app = app
+            @token_store = token_store
+          end
+
+          def call(env)
+            token = env['HTTP_AUTHORIZATION']
+            unless admin_token?(token)
+              return [403, {}, ['Forbidden']]
+            end
+            @app.call(env)
+          end
+
+          private
+
+          def admin_token?(token)
+            false
+          end
+        end
+      end
+    lib/middleware/api_key_middleware.rb: |
+      require_relative '../auth/token_store'
+
+      module Middleware
+        class ApiKeyMiddleware
+          def initialize(app, token_store)
+            @app = app
+            @token_store = token_store
+          end
+
+          def call(env)
+            api_key = env['HTTP_X_API_KEY']
+            unless api_key
+              return [401, {}, ['API key required']]
+            end
+            @app.call(env)
+          end
+        end
+      end
+    lib/parsers/json_parser.rb: |
+      GARBAGE_024_JSON_A = "json_parser"
+
+      module Parsers
+        class JsonParser
+          def parse(str)
+            JSON.parse(str)
+          end
+        end
+      end
+    lib/parsers/xml_parser.rb: |
+      GARBAGE_024_XML_B = "xml_parser"
+
+      module Parsers
+        class XmlParser
+          def parse(str)
+            "parsed xml"
+          end
+        end
+      end
+    lib/parsers/csv_parser.rb: |
+      GARBAGE_024_CSV_C = "csv_parser"
+
+      module Parsers
+        class CsvParser
+          def parse(str)
+            str.split("\n").map { |line| line.split(",") }
+          end
+        end
+      end
+  changed_files:
+    lib/auth/token_store.rb: |
+      module Auth
+        class TokenStore
+          def initialize(expiry_seconds: 3600)
+            @tokens = {}
+            @expiry = {}
+            @expiry_seconds = expiry_seconds
+          end
+
+          def store(user_id, token)
+            @tokens[user_id] = token
+            @expiry[user_id] = Time.now + @expiry_seconds
+          end
+
+          def fetch(user_id)
+            return nil unless @tokens.key?(user_id)
+            if Time.now > @expiry[user_id]
+              revoke(user_id)
+              return nil
+            end
+            @tokens[user_id]
+          end
+
+          def revoke(user_id)
+            @tokens.delete(user_id)
+            @expiry.delete(user_id)
+          end
+
+          def valid?(user_id)
+            fetch(user_id) != nil
+          end
+
+          def refresh(user_id)
+            return false unless @tokens.key?(user_id)
+            @expiry[user_id] = Time.now + @expiry_seconds
+            true
+          end
+        end
+      end
+  commit_message: "feat: add token expiration, valid?, and refresh to TokenStore"
+fragments:
+- id: expiry_seconds_param
+  selector:
+    path: lib/auth/token_store.rb
+    anchor: "expiry_seconds: 3600"
+- id: expiry_check
+  selector:
+    path: lib/auth/token_store.rb
+    anchor: "Time.now > @expiry[user_id]"
+- id: valid_method
+  selector:
+    path: lib/auth/token_store.rb
+    anchor: "def valid?(user_id)"
+- id: refresh_method
+  selector:
+    path: lib/auth/token_store.rb
+    anchor: "def refresh(user_id)"
+- id: auth_mw_uses_store
+  selector:
+    path: lib/middleware/auth_middleware.rb
+    anchor: "@token_store = token_store"
+- id: admin_mw_uses_store
+  selector:
+    path: lib/middleware/admin_middleware.rb
+    anchor: "@token_store = token_store"
+- id: apikey_mw_uses_store
+  selector:
+    path: lib/middleware/api_key_middleware.rb
+    anchor: "@token_store = token_store"
+- id: unrelated_json
+  selector:
+    path: lib/parsers/json_parser.rb
+    anchor: "class JsonParser"
+- id: unrelated_xml
+  selector:
+    path: lib/parsers/xml_parser.rb
+    anchor: "class XmlParser"
+- id: unrelated_csv
+  selector:
+    path: lib/parsers/csv_parser.rb
+    anchor: "class CsvParser"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_024_JSON_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_024_XML_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_024_CSV_C
+oracle:
+  required:
+  - expiry_seconds_param
+  - expiry_check
+  - valid_method
+  - auth_mw_uses_store
+  allowed:
+  - refresh_method
+  - admin_mw_uses_store
+  - apikey_mw_uses_store
+  forbidden:
+  - unrelated_json
+  - unrelated_xml
+  - unrelated_csv
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

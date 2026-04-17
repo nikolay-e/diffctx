@@ -1,0 +1,217 @@
+name: bal2_1hop_072_csharp_config_options_pattern
+tags:
+- lang:csharp
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: csharp-no-tree-sitter
+repo:
+  initial_files:
+    src/Options/SmtpOptions.cs: |
+      using System;
+
+      namespace App.Options
+      {
+          public class SmtpOptions
+          {
+              public string Host { get; set; }
+              public int Port { get; set; }
+              public string Username { get; set; }
+              public string Password { get; set; }
+          }
+      }
+    src/Services/EmailService.cs: |
+      using System;
+      using System.Threading.Tasks;
+      using App.Options;
+      using Microsoft.Extensions.Options;
+
+      namespace App.Services
+      {
+          public class EmailService
+          {
+              private readonly SmtpOptions _options;
+
+              public EmailService(IOptions<SmtpOptions> options)
+              {
+                  _options = options.Value;
+              }
+
+              public async Task SendEmail(string to, string subject, string body)
+              {
+                  Console.WriteLine($"Sending via {_options.Host}:{_options.Port} to {to}");
+                  await Task.CompletedTask;
+              }
+          }
+      }
+    src/Services/AlertService.cs: |
+      using System;
+      using System.Threading.Tasks;
+      using App.Options;
+      using Microsoft.Extensions.Options;
+
+      namespace App.Services
+      {
+          public class AlertService
+          {
+              private readonly SmtpOptions _smtp;
+
+              public AlertService(IOptions<SmtpOptions> smtp)
+              {
+                  _smtp = smtp.Value;
+              }
+
+              public async Task SendAlert(string message)
+              {
+                  Console.WriteLine($"Alert via {_smtp.Host}: {message}");
+                  await Task.CompletedTask;
+              }
+          }
+      }
+    src/Startup/ConfigSetup.cs: |
+      using System;
+      using App.Options;
+      using Microsoft.Extensions.Configuration;
+      using Microsoft.Extensions.DependencyInjection;
+
+      namespace App.Startup
+      {
+          public static class ConfigSetup
+          {
+              public static void AddSmtpOptions(this IServiceCollection services, IConfiguration config)
+              {
+                  services.Configure<SmtpOptions>(config.GetSection("Smtp"));
+              }
+          }
+      }
+    src/Validation/SmtpOptionsValidator.cs: |
+      using System;
+      using App.Options;
+
+      namespace App.Validation
+      {
+          public class SmtpOptionsValidator
+          {
+              public bool Validate(SmtpOptions options)
+              {
+                  return !string.IsNullOrEmpty(options.Host) && options.Port > 0;
+              }
+          }
+      }
+    garbage/Queue/RabbitMqOptions.cs: |
+      using System;
+      GARBAGE_072_RABBIT_A = "amqp";
+      GARBAGE_072_VHOST_B = "/";
+
+      namespace App.Queue
+      {
+          public class RabbitMqOptions
+          {
+              GARBAGE_072_PREFETCH_C = 10;
+
+              public string ConnectionString { get; set; }
+          }
+      }
+    garbage/Storage/S3Options.cs: |
+      using System;
+      GARBAGE_072_S3_BUCKET_D = "uploads";
+      GARBAGE_072_ACL_E = "private";
+
+      namespace App.Storage
+      {
+          public class S3Options
+          {
+              GARBAGE_072_REGION_F = "us-east-1";
+
+              public string AccessKey { get; set; }
+          }
+      }
+    garbage/Telemetry/TracingOptions.cs: |
+      using System;
+      GARBAGE_072_TRACING_G = "jaeger";
+      GARBAGE_072_SAMPLE_RATE_H = 0.1;
+
+      namespace App.Telemetry
+      {
+          public class TracingOptions
+          {
+              GARBAGE_072_ENDPOINT_I = "localhost:6831";
+              GARBAGE_072_SERVICE_J = "app";
+
+              public bool Enabled { get; set; }
+          }
+      }
+  changed_files:
+    src/Options/SmtpOptions.cs: |
+      using System;
+
+      namespace App.Options
+      {
+          public class SmtpOptions
+          {
+              public string Host { get; set; }
+              public int Port { get; set; }
+              public string Username { get; set; }
+              public string Password { get; set; }
+              public bool UseSsl { get; set; }
+              public int TimeoutSeconds { get; set; } = 30;
+              public string FromAddress { get; set; }
+          }
+      }
+  commit_message: "Add SSL, timeout and from address to SMTP options"
+fragments:
+- id: email_service_options
+  selector:
+    path: src/Services/EmailService.cs
+    anchor: "_options = options.Value"
+- id: email_service_send
+  selector:
+    path: src/Services/EmailService.cs
+    anchor: "$\"Sending via {_options.Host}:{_options.Port}"
+- id: alert_service_options
+  selector:
+    path: src/Services/AlertService.cs
+    anchor: "_smtp = smtp.Value"
+- id: config_setup_section
+  selector:
+    path: src/Startup/ConfigSetup.cs
+    anchor: "config.GetSection(\"Smtp\")"
+- id: validator_check
+  selector:
+    path: src/Validation/SmtpOptionsValidator.cs
+    anchor: "!string.IsNullOrEmpty(options.Host) && options.Port > 0"
+- id: no_rabbitmq_options
+  selector:
+    path: garbage/Queue/RabbitMqOptions.cs
+- id: no_s3_options
+  selector:
+    path: garbage/Storage/S3Options.cs
+- id: no_tracing_options
+  selector:
+    path: garbage/Telemetry/TracingOptions.cs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_072_RABBIT_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_072_S3_BUCKET_D
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_072_TRACING_G
+oracle:
+  required:
+  - email_service_options
+  - email_service_send
+  - alert_service_options
+  - config_setup_section
+  - validator_check
+  allowed: []
+  forbidden:
+  - no_rabbitmq_options
+  - no_s3_options
+  - no_tracing_options
+  - no_global_0
+  - no_global_1
+  - no_global_2

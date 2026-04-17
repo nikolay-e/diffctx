@@ -1,294 +1,145 @@
 name: json_012_nodemon_config
+tags:
+- lang:python
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:2hop
+- difficulty:medium
 repo:
   initial_files:
-    nodemon.json: |
-      {
-        "watch": ["src"],
-        "ext": "js",
-        "exec": "node src/index.js",
-        "ignore": ["src/**/*.test.js", "node_modules"],
-        "delay": 1000,
-        "verbose": true
-      }
-    src/index.js: |
-      const http = require('http');
-      const { handleRequest } = require('./handler');
-      const { loadConfig } = require('./config');
+    src/search/index.py: |
+      def build_index(documents: list[dict]) -> dict[str, list[int]]:
+          index: dict[str, list[int]] = {}
+          for doc_id, doc in enumerate(documents):
+              for word in doc.get("text", "").split():
+                  index.setdefault(word.lower(), []).append(doc_id)
+          return index
 
-      const config = loadConfig();
+      def search(index: dict[str, list[int]], query: str) -> list[int]:
+          return index.get(query.lower(), [])
+    src/search/ranker.py: |
+      from src.search.index import search
 
-      const server = http.createServer((req, res) => {
-          handleRequest(req, res, config);
-      });
+      def rank_results(index: dict[str, list[int]], query: str, documents: list[dict]) -> list[dict]:
+          doc_ids = search(index, query)
+          return [documents[i] for i in doc_ids]
 
-      server.listen(config.port, () => {
-          console.log(`HTTP server running on port ${config.port}`);
-      });
+      def top_n(index: dict[str, list[int]], query: str, documents: list[dict], n: int = 10) -> list[dict]:
+          results = rank_results(index, query, documents)
+          return results[:n]
+    src/api/search_endpoint.py: |
+      from src.search.ranker import top_n
 
-      process.on('SIGTERM', () => {
-          console.log('Shutting down gracefully');
-          server.close(() => process.exit(0));
-      });
+      def handle_search(index: dict, query: str, documents: list, limit: int = 10) -> dict:
+          results = top_n(index, query, documents, limit)
+          return {"results": results, "count": len(results)}
+    garbage/metrics.py: |
+      GARBAGE_JSON012_A = "prometheus_marker"
 
-      module.exports = { server };
-    src/handler.js: |
-      function handleRequest(req, res, config) {
-          const url = new URL(req.url, `http://${req.headers.host}`);
+      def noop():
+          pass
+    garbage/cache.py: |
+      GARBAGE_JSON012_B = "redis_marker"
 
-          if (url.pathname === '/health') {
-              res.writeHead(200, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ status: 'ok', port: config.port }));
-              return;
-          }
+      def noop():
+          pass
+    garbage/logger.py: |
+      GARBAGE_JSON012_C = "log_marker"
 
-          if (url.pathname === '/api/echo') {
-              let body = '';
-              req.on('data', (chunk) => { body += chunk; });
-              req.on('end', () => {
-                  res.writeHead(200, { 'Content-Type': 'application/json' });
-                  res.end(JSON.stringify({ echo: body }));
-              });
-              return;
-          }
-
-          res.writeHead(404);
-          res.end('Not Found');
-      }
-
-      module.exports = { handleRequest };
-    unrelated/watcher.js: |
-      const GARBAGE_JSON_012_WATCH_DEBOUNCE_A = 300;
-
-      class GARBAGE_JSON_012_FILE_WATCHER_B {
-          constructor(debounce) {
-              this.debounce = debounce || GARBAGE_JSON_012_WATCH_DEBOUNCE_A;
-              this.watchers = new Map();
-              this.events = [];
-          }
-
-          watch(path, callback) {
-              this.watchers.set(path, { callback, active: true });
-          }
-
-          unwatch(path) {
-              this.watchers.delete(path);
-          }
-
-          emit(path, event) {
-              this.events.push({ path, event, timestamp: Date.now() });
-              const watcher = this.watchers.get(path);
-              if (watcher && watcher.active) watcher.callback(event);
-          }
-      }
-
-      function GARBAGE_JSON_012_WATCH_DIRECTORY_C(dir) {
-          const watcher = new GARBAGE_JSON_012_FILE_WATCHER_B();
-          watcher.watch(dir, () => {});
-          return watcher;
-      }
-
-      module.exports = { GARBAGE_JSON_012_FILE_WATCHER_B, GARBAGE_JSON_012_WATCH_DIRECTORY_C };
-    unrelated/spawner.js: |
-      const GARBAGE_JSON_012_SPAWN_TIMEOUT_D = 5000;
-
-      class GARBAGE_JSON_012_PROCESS_SPAWNER_E {
-          constructor(timeout) {
-              this.timeout = timeout || GARBAGE_JSON_012_SPAWN_TIMEOUT_D;
-              this.processes = [];
-          }
-
-          spawn(command, args) {
-              const proc = { command, args, pid: Math.floor(Math.random() * 10000), running: true };
-              this.processes.push(proc);
-              return proc;
-          }
-
-          kill(pid) {
-              const proc = this.processes.find(p => p.pid === pid);
-              if (proc) proc.running = false;
-          }
-
-          listRunning() {
-              return this.processes.filter(p => p.running);
-          }
-      }
-
-      function GARBAGE_JSON_012_RUN_PROCESS_F(command) {
-          const spawner = new GARBAGE_JSON_012_PROCESS_SPAWNER_E();
-          return spawner.spawn(command, []);
-      }
-
-      module.exports = { GARBAGE_JSON_012_PROCESS_SPAWNER_E, GARBAGE_JSON_012_RUN_PROCESS_F };
+      def noop():
+          pass
   changed_files:
-    nodemon.json: |
-      {
-        "watch": ["src", "config"],
-        "ext": "js,ts,json",
-        "exec": "ts-node src/index.ts",
-        "ignore": ["src/**/*.test.js", "src/**/*.test.ts", "node_modules"],
-        "delay": 1000,
-        "verbose": true
-      }
-    src/index.js: |
-      const http = require('http');
-      const { handleRequest } = require('./handler');
-      const { loadConfig } = require('./config');
+    src/search/index.py: |
+      def build_index(documents: list[dict]) -> dict[str, list[int]]:
+          index: dict[str, list[int]] = {}
+          for doc_id, doc in enumerate(documents):
+              for word in doc.get("text", "").split():
+                  index.setdefault(word.lower(), []).append(doc_id)
+          return index
 
-      const config = loadConfig();
+      def search(index: dict[str, list[int]], query: str) -> list[int]:
+          return index.get(query.lower(), [])
 
-      const server = http.createServer((req, res) => {
-          handleRequest(req, res, config);
-      });
+      def search_multi(index: dict[str, list[int]], queries: list[str]) -> list[int]:
+          result: set[int] = set()
+          for q in queries:
+              result.update(index.get(q.lower(), []))
+          return sorted(result)
+    src/search/ranker.py: |
+      from src.search.index import search, search_multi
 
-      server.listen(config.port, () => {
-          console.log(`HTTP server running on port ${config.port}`);
-      });
+      def rank_results(index: dict[str, list[int]], query: str, documents: list[dict]) -> list[dict]:
+          doc_ids = search(index, query)
+          return [documents[i] for i in doc_ids]
 
-      process.on('SIGTERM', () => {
-          console.log('Shutting down gracefully');
-          server.close(() => process.exit(0));
-      });
+      def rank_multi(index: dict[str, list[int]], queries: list[str], documents: list[dict]) -> list[dict]:
+          doc_ids = search_multi(index, queries)
+          return [documents[i] for i in doc_ids]
 
-      module.exports = { server };
-    src/handler.js: |
-      function handleRequest(req, res, config) {
-          const url = new URL(req.url, `http://${req.headers.host}`);
+      def top_n(index: dict[str, list[int]], query: str, documents: list[dict], n: int = 10) -> list[dict]:
+          results = rank_results(index, query, documents)
+          return results[:n]
+    src/api/search_endpoint.py: |
+      from src.search.ranker import top_n, rank_multi
 
-          if (url.pathname === '/health') {
-              res.writeHead(200, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ status: 'ok', port: config.port }));
-              return;
-          }
+      def handle_search(index: dict, query: str, documents: list, limit: int = 10) -> dict:
+          results = top_n(index, query, documents, limit)
+          return {"results": results, "count": len(results)}
 
-          if (url.pathname === '/api/echo') {
-              let body = '';
-              req.on('data', (chunk) => { body += chunk; });
-              req.on('end', () => {
-                  res.writeHead(200, { 'Content-Type': 'application/json' });
-                  res.end(JSON.stringify({ echo: body }));
-              });
-              return;
-          }
+      def handle_multi_search(index: dict, queries: list[str], documents: list) -> dict:
+          results = rank_multi(index, queries, documents)
+          return {"results": results, "count": len(results)}
+    garbage/metrics.py: |
+      GARBAGE_JSON012_A = "prometheus_marker"
 
-          res.writeHead(404);
-          res.end('Not Found');
-      }
+      def noop():
+          pass
+    garbage/cache.py: |
+      GARBAGE_JSON012_B = "redis_marker"
 
-      module.exports = { handleRequest };
-    unrelated/watcher.js: |
-      const GARBAGE_JSON_012_WATCH_DEBOUNCE_A = 300;
+      def noop():
+          pass
+    garbage/logger.py: |
+      GARBAGE_JSON012_C = "log_marker"
 
-      class GARBAGE_JSON_012_FILE_WATCHER_B {
-          constructor(debounce) {
-              this.debounce = debounce || GARBAGE_JSON_012_WATCH_DEBOUNCE_A;
-              this.watchers = new Map();
-              this.events = [];
-          }
-
-          watch(path, callback) {
-              this.watchers.set(path, { callback, active: true });
-          }
-
-          unwatch(path) {
-              this.watchers.delete(path);
-          }
-
-          emit(path, event) {
-              this.events.push({ path, event, timestamp: Date.now() });
-              const watcher = this.watchers.get(path);
-              if (watcher && watcher.active) watcher.callback(event);
-          }
-      }
-
-      function GARBAGE_JSON_012_WATCH_DIRECTORY_C(dir) {
-          const watcher = new GARBAGE_JSON_012_FILE_WATCHER_B();
-          watcher.watch(dir, () => {});
-          return watcher;
-      }
-
-      module.exports = { GARBAGE_JSON_012_FILE_WATCHER_B, GARBAGE_JSON_012_WATCH_DIRECTORY_C };
-    unrelated/spawner.js: |
-      const GARBAGE_JSON_012_SPAWN_TIMEOUT_D = 5000;
-
-      class GARBAGE_JSON_012_PROCESS_SPAWNER_E {
-          constructor(timeout) {
-              this.timeout = timeout || GARBAGE_JSON_012_SPAWN_TIMEOUT_D;
-              this.processes = [];
-          }
-
-          spawn(command, args) {
-              const proc = { command, args, pid: Math.floor(Math.random() * 10000), running: true };
-              this.processes.push(proc);
-              return proc;
-          }
-
-          kill(pid) {
-              const proc = this.processes.find(p => p.pid === pid);
-              if (proc) proc.running = false;
-          }
-
-          listRunning() {
-              return this.processes.filter(p => p.running);
-          }
-      }
-
-      function GARBAGE_JSON_012_RUN_PROCESS_F(command) {
-          const spawner = new GARBAGE_JSON_012_PROCESS_SPAWNER_E();
-          return spawner.spawn(command, []);
-      }
-
-      module.exports = { GARBAGE_JSON_012_PROCESS_SPAWNER_E, GARBAGE_JSON_012_RUN_PROCESS_F };
-  commit_message: Update files
+      def noop():
+          pass
+  commit_message: "feat: add multi-query search through index, ranker, and API endpoint"
 fragments:
-- id: nodemon_file
+- id: index_search_multi
   selector:
-    path: nodemon.json
-- id: req_global_0
+    path: src/search/index.py
+    anchor: "def search_multi("
+- id: ranker_rank_multi
   selector:
-    anchor: '"watch": ["src", "config"],'
-- id: req_global_1
+    path: src/search/ranker.py
+    anchor: "def rank_multi("
+- id: ranker_imports_search_multi
   selector:
-    anchor: '"ext": "js,ts,json",'
-- id: no_global_0
+    path: src/search/ranker.py
+    anchor: "from src.search.index import search, search_multi"
+- id: endpoint_handle_multi
   selector:
-    anchor: GARBAGE_JSON_012_FILE_WATCHER_B
-- id: no_global_1
+    path: src/api/search_endpoint.py
+    anchor: "def handle_multi_search("
+- id: no_garbage_a
   selector:
-    anchor: GARBAGE_JSON_012_PROCESS_SPAWNER_E
-- id: no_global_2
+    anchor: GARBAGE_JSON012_A
+- id: no_garbage_b
   selector:
-    anchor: GARBAGE_JSON_012_RUN_PROCESS_F
-- id: no_global_3
+    anchor: GARBAGE_JSON012_B
+- id: no_garbage_c
   selector:
-    anchor: GARBAGE_JSON_012_RUN_PROCESS_F(command
-- id: no_global_4
-  selector:
-    anchor: GARBAGE_JSON_012_SPAWN_TIMEOUT_D
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_JSON_012_WATCH_DEBOUNCE_A
-- id: no_global_6
-  selector:
-    anchor: GARBAGE_JSON_012_WATCH_DIRECTORY_C
-- id: no_global_7
-  selector:
-    anchor: GARBAGE_JSON_012_WATCH_DIRECTORY_C(dir
-- id: no_global_8
-  selector:
-    anchor: spawner.js
+    anchor: GARBAGE_JSON012_C
 oracle:
   required:
-  - nodemon_file
-  - req_global_0
-  - req_global_1
+  - index_search_multi
+  - ranker_rank_multi
+  - ranker_imports_search_multi
+  - endpoint_handle_multi
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
-  - no_global_8
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

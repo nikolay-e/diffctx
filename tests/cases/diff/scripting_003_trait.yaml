@@ -1,249 +1,226 @@
 name: scripting_003_trait
+tags:
+- lang:python
+- change:bug_fix
+- change:multi_file
+- context:test_file
+- distance:1hop
+- difficulty:medium
 repo:
   initial_files:
-    src/Services/Service.php: |
-      <?php
-      namespace App\Services;
+    src/search/indexer.py: |
+      from typing import List, Dict, Any
+      import re
 
-      class Service {
-      }
-    src/Traits/LoggingTrait.php: |
-      <?php
-      namespace App\Traits;
+      class DocumentIndexer:
+          def __init__(self):
+              self._index: Dict[str, List[int]] = {}
+              self._docs: Dict[int, str] = {}
+              self._next_id = 0
 
-      trait LoggingTrait {
-          private array $logEntries = [];
+          def add_document(self, text: str) -> int:
+              doc_id = self._next_id
+              self._next_id += 1
+              self._docs[doc_id] = text
+              for word in self._tokenize(text):
+                  if word not in self._index:
+                      self._index[word] = []
+                  self._index[word].append(doc_id)
+              return doc_id
 
-          public function log(string $message, string $level = 'INFO'): void {
-              $entry = sprintf("[%s] %s: %s", date('Y-m-d H:i:s'), $level, $message);
-              $this->logEntries[] = $entry;
-              echo $entry . "\n";
-          }
+          def search(self, query: str) -> List[int]:
+              words = self._tokenize(query)
+              if not words:
+                  return []
+              result = set(self._index.get(words[0], []))
+              for word in words[1:]:
+                  result &= set(self._index.get(word, []))
+              return sorted(result)
 
-          public function logError(string $message): void {
-              $this->log($message, 'ERROR');
-          }
+          def _tokenize(self, text: str) -> List[str]:
+              return re.findall(r'\w+', text.lower())
+    src/search/ranker.py: |
+      from typing import List, Dict
 
-          public function logWarning(string $message): void {
-              $this->log($message, 'WARNING');
-          }
+      class SearchRanker:
+          def rank(self, doc_ids: List[int], scores: Dict[int, float]) -> List[int]:
+              return sorted(doc_ids, key=lambda d: scores.get(d, 0.0), reverse=True)
+    tests/test_indexer.py: |
+      from src.search.indexer import DocumentIndexer
 
-          public function getLogEntries(): array {
-              return $this->logEntries;
-          }
+      def test_add_and_search_single_word():
+          indexer = DocumentIndexer()
+          indexer.add_document("the quick brown fox")
+          result = indexer.search("quick")
+          assert 0 in result
 
-          public function clearLog(): void {
-              $this->logEntries = [];
-          }
-      }
-    src/Traits/CacheTrait.php: |
-      <?php
-      namespace App\Traits;
+      def test_search_multiple_words_returns_intersection():
+          indexer = DocumentIndexer()
+          indexer.add_document("the quick brown fox")
+          indexer.add_document("quick lazy dog")
+          result = indexer.search("quick fox")
+          assert len(result) == 1
 
-      trait CacheTrait {
-          private array $cache = [];
-
-          public function cacheGet(string $key): mixed {
-              return $this->cache[$key] ?? null;
-          }
-
-          public function cacheSet(string $key, mixed $value, int $ttl = 3600): void {
-              $this->cache[$key] = ['value' => $value, 'expires' => time() + $ttl];
-          }
-
-          public function cacheFlush(): void {
-              $this->cache = [];
-          }
-      }
-    src/Traits/EventEmitterTrait.php: |
-      <?php
-      namespace App\Traits;
-
-      trait EventEmitterTrait {
-          private array $listeners = [];
-
-          public function on(string $event, callable $callback): void {
-              $this->listeners[$event][] = $callback;
-          }
-
-          public function emit(string $event, array $data = []): void {
-              foreach ($this->listeners[$event] ?? [] as $callback) {
-                  $callback($data);
-              }
-          }
-
-          public function removeListeners(string $event): void {
-              unset($this->listeners[$event]);
-          }
-      }
-    src/Services/NotificationService.php: |
-      <?php
-      namespace App\Services;
-
-      use App\Traits\LoggingTrait;
-
-      class NotificationService {
-          use LoggingTrait;
-
-          private array $recipients = [];
-
-          public function addRecipient(string $email): void {
-              $this->recipients[] = $email;
-              $this->log("Added recipient: $email");
-          }
-
-          public function send(string $message): void {
-              foreach ($this->recipients as $email) {
-                  $this->log("Sending to $email: $message");
-              }
-              if (empty($this->recipients)) {
-                  $this->logError("No recipients configured");
-              }
-          }
-      }
-    src/Services/QueueService.php: |
-      <?php
-      namespace App\Services;
-
-      use App\Traits\LoggingTrait;
-
-      class QueueService {
-          use LoggingTrait;
-
-          private array $queue = [];
-
-          public function push(mixed $item): void {
-              $this->queue[] = $item;
-              $this->log("Item added to queue, size: " . count($this->queue));
-          }
-
-          public function pop(): mixed {
-              if (empty($this->queue)) {
-                  $this->logError("Cannot pop from empty queue");
-                  return null;
-              }
-              return array_shift($this->queue);
-          }
-      }
-    src/Formatters/JsonFormatter.php: |
-      <?php
-      namespace App\Formatters;
-
-      class JsonFormatter {
-          public static function format(array $data): string {
-              return json_encode($data, JSON_PRETTY_PRINT);
-          }
-
-          public static function decode(string $json): array {
-              return json_decode($json, true) ?? [];
-          }
-      }
+      def test_search_no_match_returns_empty():
+          indexer = DocumentIndexer()
+          indexer.add_document("hello world")
+          result = indexer.search("missing")
+          assert result == []
+    src/pipeline/transform.py: |
+      # GARBAGE_SC3_A = "pipeline_transform_unrelated"
+      def normalize(value: float, min_val: float, max_val: float) -> float:
+          if max_val == min_val:
+              return 0.0
+          return (value - min_val) / (max_val - min_val)
+    src/pipeline/filter.py: |
+      # GARBAGE_SC3_B = "pipeline_filter_unrelated"
+      def filter_duplicates(items: list) -> list:
+          return list(dict.fromkeys(items))
+    src/pipeline/aggregate.py: |
+      # GARBAGE_SC3_C = "pipeline_aggregate_unrelated"
+      def group_by(items: list, key_fn) -> dict:
+          result = {}
+          for item in items:
+              k = key_fn(item)
+              result.setdefault(k, []).append(item)
+          return result
   changed_files:
-    src/Services/Service.php: |
-      <?php
-      namespace App\Services;
+    src/search/indexer.py: |
+      from typing import List, Dict, Any, Optional
+      import re
 
-      use App\Traits\LoggingTrait;
+      class DocumentIndexer:
+          def __init__(self):
+              self._index: Dict[str, List[int]] = {}
+              self._docs: Dict[int, str] = {}
+              self._next_id = 0
 
-      class Service {
-          use LoggingTrait;
+          def add_document(self, text: str) -> int:
+              if not text or not text.strip():
+                  raise ValueError("document text must not be empty")
+              doc_id = self._next_id
+              self._next_id += 1
+              self._docs[doc_id] = text
+              for word in self._tokenize(text):
+                  if word not in self._index:
+                      self._index[word] = []
+                  self._index[word].append(doc_id)
+              return doc_id
 
-          public function process(array $data): array {
-              $this->log("Processing started with " . count($data) . " items");
-              $result = array_filter($data, fn($item) => $item !== null);
-              if (count($result) < count($data)) {
-                  $this->logError("Filtered out " . (count($data) - count($result)) . " null items");
-              }
-              $this->log("Processing completed, " . count($result) . " valid items");
-              return $result;
-          }
-      }
-  commit_message: Update files
+          def get_document(self, doc_id: int) -> Optional[str]:
+              return self._docs.get(doc_id)
+
+          def search(self, query: str) -> List[int]:
+              words = self._tokenize(query)
+              if not words:
+                  return []
+              result = set(self._index.get(words[0], []))
+              for word in words[1:]:
+                  result &= set(self._index.get(word, []))
+              return sorted(result)
+
+          def document_count(self) -> int:
+              return len(self._docs)
+
+          def _tokenize(self, text: str) -> List[str]:
+              return re.findall(r'\w+', text.lower())
+    src/search/ranker.py: |
+      from typing import List, Dict
+
+      class SearchRanker:
+          def rank(self, doc_ids: List[int], scores: Dict[int, float]) -> List[int]:
+              return sorted(doc_ids, key=lambda d: scores.get(d, 0.0), reverse=True)
+    tests/test_indexer.py: |
+      import pytest
+      from src.search.indexer import DocumentIndexer
+
+      def test_add_and_search_single_word():
+          indexer = DocumentIndexer()
+          indexer.add_document("the quick brown fox")
+          result = indexer.search("quick")
+          assert 0 in result
+
+      def test_search_multiple_words_returns_intersection():
+          indexer = DocumentIndexer()
+          indexer.add_document("the quick brown fox")
+          indexer.add_document("quick lazy dog")
+          result = indexer.search("quick fox")
+          assert len(result) == 1
+
+      def test_search_no_match_returns_empty():
+          indexer = DocumentIndexer()
+          indexer.add_document("hello world")
+          result = indexer.search("missing")
+          assert result == []
+
+      def test_add_empty_document_raises():
+          indexer = DocumentIndexer()
+          with pytest.raises(ValueError, match="empty"):
+              indexer.add_document("   ")
+
+      def test_document_count_increments():
+          indexer = DocumentIndexer()
+          indexer.add_document("first document")
+          indexer.add_document("second document")
+          assert indexer.document_count() == 2
+
+      def test_get_document_returns_text():
+          indexer = DocumentIndexer()
+          doc_id = indexer.add_document("hello world")
+          assert indexer.get_document(doc_id) == "hello world"
+    src/pipeline/transform.py: |
+      # GARBAGE_SC3_A = "pipeline_transform_unrelated"
+      def normalize(value: float, min_val: float, max_val: float) -> float:
+          if max_val == min_val:
+              return 0.0
+          return (value - min_val) / (max_val - min_val)
+    src/pipeline/filter.py: |
+      # GARBAGE_SC3_B = "pipeline_filter_unrelated"
+      def filter_duplicates(items: list) -> list:
+          return list(dict.fromkeys(items))
+    src/pipeline/aggregate.py: |
+      # GARBAGE_SC3_C = "pipeline_aggregate_unrelated"
+      def group_by(items: list, key_fn) -> dict:
+          result = {}
+          for item in items:
+              k = key_fn(item)
+              result.setdefault(k, []).append(item)
+          return result
+  commit_message: "fix: guard empty documents in add_document and add get_document, document_count"
 fragments:
-- id: loggingtrait
+- id: add_document_guard
   selector:
-    path: src/Traits/LoggingTrait.php
-    anchor: 'public function log(string $message, string $level = ''INFO''): void'
-- id: loggingtrait_1
+    path: src/search/indexer.py
+    anchor: "document text must not be empty"
+- id: get_document_fn
   selector:
-    path: src/Traits/LoggingTrait.php
-    anchor: 'public function logError(string $message): void'
-- id: loggingtrait_2
+    path: src/search/indexer.py
+    anchor: "def get_document"
+- id: test_empty_document_raises
   selector:
-    path: src/Traits/LoggingTrait.php
-    anchor: $this->logEntries[] = $entry
-- id: no_cachetrait
+    path: tests/test_indexer.py
+    anchor: "test_add_empty_document_raises"
+- id: test_get_document
   selector:
-    path: src/Traits/CacheTrait.php
-- id: no_eventemittertrait
+    path: tests/test_indexer.py
+    anchor: "test_get_document_returns_text"
+- id: no_garbage_a
   selector:
-    path: src/Traits/EventEmitterTrait.php
-- id: no_notificationservice
+    anchor: GARBAGE_SC3_A
+- id: no_garbage_b
   selector:
-    path: src/Services/NotificationService.php
-- id: no_queueservice
+    anchor: GARBAGE_SC3_B
+- id: no_garbage_c
   selector:
-    path: src/Services/QueueService.php
-- id: no_jsonformatter
-  selector:
-    path: src/Formatters/JsonFormatter.php
-- id: no_global_0
-  selector:
-    anchor: trait CacheTrait
-- id: no_global_1
-  selector:
-    anchor: cacheGet
-- id: no_global_2
-  selector:
-    anchor: cacheFlush
-- id: no_global_3
-  selector:
-    anchor: trait EventEmitterTrait
-- id: no_global_4
-  selector:
-    anchor: emit
-- id: no_global_5
-  selector:
-    anchor: removeListeners
-- id: no_global_6
-  selector:
-    anchor: class NotificationService
-- id: no_global_7
-  selector:
-    anchor: addRecipient
-- id: no_global_8
-  selector:
-    anchor: class QueueService
-- id: no_global_9
-  selector:
-    anchor: Cannot pop from empty queue
-- id: no_global_10
-  selector:
-    anchor: class JsonFormatter
-- id: no_global_11
-  selector:
-    anchor: JSON_PRETTY_PRINT
+    anchor: GARBAGE_SC3_C
 oracle:
   required:
-  - loggingtrait
-  - loggingtrait_1
-  - loggingtrait_2
-  allowed: []
+  - add_document_guard
+  - test_empty_document_raises
+  allowed:
+  - get_document_fn
+  - test_get_document
   forbidden:
-  - no_cachetrait
-  - no_eventemittertrait
-  - no_notificationservice
-  - no_queueservice
-  - no_jsonformatter
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
-  - no_global_8
-  - no_global_9
-  - no_global_10
-  - no_global_11
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

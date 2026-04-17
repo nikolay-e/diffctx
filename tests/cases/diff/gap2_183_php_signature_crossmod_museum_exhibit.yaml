@@ -1,0 +1,138 @@
+name: gap2_183_php_signature_crossmod_museum_exhibit
+tags:
+- change:signature
+- change:single_file
+- context:cross_module
+- difficulty:easy
+- distance:0hop
+- lang:php
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/Museum/ExhibitCatalog.php: |
+      <?php
+
+      namespace App\Museum;
+
+      use App\Museum\Artifact;
+
+      class ExhibitCatalog
+      {
+          private array $artifacts = [];
+
+          public function register(Artifact $artifact): void
+          {
+              $this->artifacts[$artifact->catalogId()] = $artifact;
+          }
+
+          public function findByEra(string $era): array
+          {
+              $matches = [];
+              foreach ($this->artifacts as $artifact) {
+                  if ($artifact->era() === $era) {
+                      $matches[] = $artifact;
+                  }
+              }
+              return $matches;
+          }
+      }
+    src/Museum/Artifact.php: |
+      <?php
+
+      namespace App\Museum;
+
+      class Artifact
+      {
+          private string $id;
+          private string $title;
+          private string $era;
+
+          public function __construct(string $id, string $title, string $era)
+          {
+              $this->id = $id;
+              $this->title = $title;
+              $this->era = $era;
+          }
+
+          public function catalogId(): string
+          {
+              return $this->id;
+          }
+
+          public function era(): string
+          {
+              return $this->era;
+          }
+      }
+    src/Ticketing/VisitorPass.php: |
+      <?php
+
+      namespace App\Ticketing;
+
+      class VisitorPass
+      {
+          public function issue(string $visitorName): string
+          {
+              return sprintf("PASS-%s-%d", $visitorName, time());
+          }
+      }
+  changed_files:
+    src/Museum/ExhibitCatalog.php: |
+      <?php
+
+      namespace App\Museum;
+
+      use App\Museum\Artifact;
+
+      class ExhibitCatalog
+      {
+          private array $artifacts = [];
+
+          public function register(Artifact $artifact): void
+          {
+              $this->artifacts[$artifact->catalogId()] = $artifact;
+          }
+
+          public function findByEra(string $era, int $limit = 0): array
+          {
+              $matches = [];
+              foreach ($this->artifacts as $artifact) {
+                  if ($artifact->era() === $era) {
+                      $matches[] = $artifact;
+                      if ($limit > 0 && count($matches) >= $limit) {
+                          break;
+                      }
+                  }
+              }
+              return $matches;
+          }
+      }
+  commit_message: "feat: add limit parameter to exhibit era search"
+fragments:
+- id: find_by_era_sig
+  selector:
+    path: src/Museum/ExhibitCatalog.php
+    anchor: "public function findByEra"
+- id: limit_break
+  selector:
+    path: src/Museum/ExhibitCatalog.php
+    anchor: "count($matches) >= $limit"
+- id: artifact_era
+  selector:
+    path: src/Museum/Artifact.php
+    anchor: "public function era"
+- id: no_ticketing
+  selector:
+    path: src/Ticketing/VisitorPass.php
+- id: no_visitor_pass
+  selector:
+    anchor: VisitorPass
+oracle:
+  required:
+  - find_by_era_sig
+  - limit_break
+  - artifact_era
+  forbidden:
+  - no_ticketing
+  - no_visitor_pass

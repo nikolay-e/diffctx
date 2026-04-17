@@ -1,291 +1,189 @@
 name: perl_003_catalyst_controller
+tags:
+- lang:rust
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:hard
 repo:
   initial_files:
-    lib/MyApp/Model/User.pm: |
-      package MyApp::Model::User;
-      use strict;
-      use warnings;
-      use base 'MyApp::Model::Base';
+    src/finance/ledger.rs: |
+      use std::collections::HashMap;
 
-      sub find {
-          my ($self, $id) = @_;
-          return $self->db->query(
-              "SELECT * FROM users WHERE id = ?", $id
-          )->[0];
+      #[derive(Debug, Clone)]
+      pub struct Account {
+          pub id: String,
+          pub balance_cents: i64,
       }
 
-      sub search_by_name {
-          my ($self, $name, $limit) = @_;
-          $limit ||= 20;
-          return $self->db->query(
-              "SELECT id, name, email FROM users WHERE name ILIKE ? LIMIT ?",
-              "%${name}%", $limit
-          );
+      pub struct Ledger {
+          accounts: HashMap<String, Account>,
       }
 
-      sub create {
-          my ($self, %attrs) = @_;
-          $self->db->execute(
-              "INSERT INTO users (name, email, role) VALUES (?, ?, ?)",
-              $attrs{name}, $attrs{email}, $attrs{role} || 'user'
-          );
-      }
-
-      sub count_active {
-          my ($self) = @_;
-          my $rows = $self->db->query(
-              "SELECT COUNT(*) as cnt FROM users WHERE active = true"
-          );
-          return $rows->[0]{cnt};
-      }
-
-      1;
-    lib/MyApp/Controller/User.pm: |
-      package MyApp::Controller::User;
-      use strict;
-      use warnings;
-      use base 'Catalyst::Controller';
-
-      sub index :Path :Args(0) {
-          my ($self, $c) = @_;
-          my $users = $c->model('User')->count_active;
-          $c->stash(active_count => $users);
-          $c->stash(template => 'user/index.tt');
-      }
-
-      sub view :Path :Args(1) {
-          my ($self, $c, $id) = @_;
-          my $user = $c->model('User')->find($id);
-          unless ($user) {
-              $c->response->status(404);
-              $c->stash(template => 'error/not_found.tt');
-              return;
+      impl Ledger {
+          pub fn new() -> Self {
+              Self { accounts: HashMap::new() }
           }
-          $c->stash(user => $user, template => 'user/view.tt');
+
+          pub fn open_account(&mut self, id: &str, initial_cents: i64) {
+              self.accounts.insert(id.to_string(), Account {
+                  id: id.to_string(),
+                  balance_cents: initial_cents,
+              });
+          }
+
+          pub fn transfer(&mut self, from: &str, to: &str, amount_cents: i64) -> bool {
+              let from_balance = self.accounts.get(from).map(|a| a.balance_cents).unwrap_or(0);
+              if from_balance < amount_cents {
+                  return false;
+              }
+              if let Some(acc) = self.accounts.get_mut(from) {
+                  acc.balance_cents -= amount_cents;
+              }
+              if let Some(acc) = self.accounts.get_mut(to) {
+                  acc.balance_cents += amount_cents;
+              }
+              true
+          }
+
+          pub fn balance(&self, id: &str) -> Option<i64> {
+              self.accounts.get(id).map(|a| a.balance_cents)
+          }
+      }
+    src/finance/transaction_log.rs: |
+      use crate::finance::ledger::Ledger;
+
+      pub struct TransactionLog {
+          ledger: Ledger,
+          entries: Vec<String>,
       }
 
-      1;
-    lib/MyApp/Controller/Admin.pm: |
-      package MyApp::Controller::Admin;
-      use strict;
-      use warnings;
-      use base 'Catalyst::Controller';
+      impl TransactionLog {
+          pub fn new() -> Self {
+              Self { ledger: Ledger::new(), entries: Vec::new() }
+          }
 
-      sub dashboard :Path('/admin') :Args(0) {
-          my ($self, $c) = @_;
-          my $count = $c->model('User')->count_active;
-          $c->stash(
-              user_count => $count,
-              template   => 'admin/dashboard.tt',
-          );
+          pub fn record_transfer(&mut self, from: &str, to: &str, amount_cents: i64) -> bool {
+              let ok = self.ledger.transfer(from, to, amount_cents);
+              if ok {
+                  self.entries.push(format!("TRANSFER {} -> {} : {} cents", from, to, amount_cents));
+              }
+              ok
+          }
       }
-
-      sub settings :Path('/admin/settings') :Args(0) {
-          my ($self, $c) = @_;
-          $c->stash(template => 'admin/settings.tt');
-      }
-
-      sub audit_log :Path('/admin/audit') :Args(0) {
-          my ($self, $c) = @_;
-          $c->stash(template => 'admin/audit.tt');
-      }
-
-      1;
-    lib/MyApp/View/JSON.pm: |
-      package MyApp::View::JSON;
-      use strict;
-      use warnings;
-      use base 'Catalyst::View::JSON';
-      use JSON::XS;
-
-      __PACKAGE__->config(
-          expose_stash => 'json_data',
-          json_encoder => JSON::XS->new->utf8->pretty->canonical,
-      );
-
-      1;
+    garbage/reporting.rs: |
+      // GARBAGE_CATCTRL_A = "pdf_report_marker"
+    garbage/compliance.rs: |
+      // GARBAGE_CATCTRL_B = "kyc_compliance_marker"
+    garbage/notifications.rs: |
+      // GARBAGE_CATCTRL_C = "sms_notification_marker"
   changed_files:
-    lib/MyApp/Model/User.pm: |
-      package MyApp::Model::User;
-      use strict;
-      use warnings;
-      use base 'MyApp::Model::Base';
+    src/finance/ledger.rs: |
+      use std::collections::HashMap;
 
-      sub find {
-          my ($self, $id) = @_;
-          return $self->db->query(
-              "SELECT * FROM users WHERE id = ?", $id
-          )->[0];
+      #[derive(Debug, Clone)]
+      pub struct Account {
+          pub id: String,
+          pub balance_cents: i64,
       }
 
-      sub search_by_name {
-          my ($self, $name, $limit) = @_;
-          $limit ||= 20;
-          return $self->db->query(
-              "SELECT id, name, email FROM users WHERE name ILIKE ? LIMIT ?",
-              "%${name}%", $limit
-          );
+      pub struct Ledger {
+          accounts: HashMap<String, Account>,
       }
 
-      sub create {
-          my ($self, %attrs) = @_;
-          $self->db->execute(
-              "INSERT INTO users (name, email, role) VALUES (?, ?, ?)",
-              $attrs{name}, $attrs{email}, $attrs{role} || 'user'
-          );
-      }
-
-      sub count_active {
-          my ($self) = @_;
-          my $rows = $self->db->query(
-              "SELECT COUNT(*) as cnt FROM users WHERE active = true"
-          );
-          return $rows->[0]{cnt};
-      }
-
-      1;
-    lib/MyApp/Controller/User.pm: |
-      package MyApp::Controller::User;
-      use strict;
-      use warnings;
-      use base 'Catalyst::Controller';
-
-      sub index :Path :Args(0) {
-          my ($self, $c) = @_;
-          my $users = $c->model('User')->count_active;
-          $c->stash(active_count => $users);
-          $c->stash(template => 'user/index.tt');
-      }
-
-      sub view :Path :Args(1) {
-          my ($self, $c, $id) = @_;
-          my $user = $c->model('User')->find($id);
-          unless ($user) {
-              $c->response->status(404);
-              $c->stash(template => 'error/not_found.tt');
-              return;
+      impl Ledger {
+          pub fn new() -> Self {
+              Self { accounts: HashMap::new() }
           }
-          $c->stash(user => $user, template => 'user/view.tt');
-      }
 
-      sub search :Path('search') :Args(0) {
-          my ($self, $c) = @_;
-          my $query = $c->request->params->{q};
-          unless ($query && length($query) >= 2) {
-              $c->stash(
-                  error    => 'Search query must be at least 2 characters',
-                  template => 'user/search.tt',
-              );
-              return;
+          pub fn open_account(&mut self, id: &str, initial_cents: i64) {
+              self.accounts.insert(id.to_string(), Account {
+                  id: id.to_string(),
+                  balance_cents: initial_cents,
+              });
           }
-          my $results = $c->model('User')->search_by_name($query, 50);
-          $c->stash(
-              results  => $results,
-              query    => $query,
-              template => 'user/search.tt',
-          );
+
+          pub fn transfer(&mut self, from: &str, to: &str, amount_cents: i64) -> bool {
+              if amount_cents <= 0 {
+                  return false;
+              }
+              let from_balance = self.accounts.get(from).map(|a| a.balance_cents).unwrap_or(0);
+              if from_balance < amount_cents {
+                  return false;
+              }
+              if !self.accounts.contains_key(to) {
+                  return false;
+              }
+              if let Some(acc) = self.accounts.get_mut(from) {
+                  acc.balance_cents -= amount_cents;
+              }
+              if let Some(acc) = self.accounts.get_mut(to) {
+                  acc.balance_cents += amount_cents;
+              }
+              true
+          }
+
+          pub fn balance(&self, id: &str) -> Option<i64> {
+              self.accounts.get(id).map(|a| a.balance_cents)
+          }
+      }
+    src/finance/transaction_log.rs: |
+      use crate::finance::ledger::Ledger;
+
+      pub struct TransactionLog {
+          ledger: Ledger,
+          entries: Vec<String>,
       }
 
-      1;
-    lib/MyApp/Controller/Admin.pm: |
-      package MyApp::Controller::Admin;
-      use strict;
-      use warnings;
-      use base 'Catalyst::Controller';
+      impl TransactionLog {
+          pub fn new() -> Self {
+              Self { ledger: Ledger::new(), entries: Vec::new() }
+          }
 
-      sub dashboard :Path('/admin') :Args(0) {
-          my ($self, $c) = @_;
-          my $count = $c->model('User')->count_active;
-          $c->stash(
-              user_count => $count,
-              template   => 'admin/dashboard.tt',
-          );
+          pub fn record_transfer(&mut self, from: &str, to: &str, amount_cents: i64) -> bool {
+              let ok = self.ledger.transfer(from, to, amount_cents);
+              if ok {
+                  self.entries.push(format!("TRANSFER {} -> {} : {} cents", from, to, amount_cents));
+              }
+              ok
+          }
       }
-
-      sub settings :Path('/admin/settings') :Args(0) {
-          my ($self, $c) = @_;
-          $c->stash(template => 'admin/settings.tt');
-      }
-
-      sub audit_log :Path('/admin/audit') :Args(0) {
-          my ($self, $c) = @_;
-          $c->stash(template => 'admin/audit.tt');
-      }
-
-      1;
-    lib/MyApp/View/JSON.pm: |
-      package MyApp::View::JSON;
-      use strict;
-      use warnings;
-      use base 'Catalyst::View::JSON';
-      use JSON::XS;
-
-      __PACKAGE__->config(
-          expose_stash => 'json_data',
-          json_encoder => JSON::XS->new->utf8->pretty->canonical,
-      );
-
-      1;
-  commit_message: Update files
+    garbage/reporting.rs: |
+      // GARBAGE_CATCTRL_A = "pdf_report_marker"
+    garbage/compliance.rs: |
+      // GARBAGE_CATCTRL_B = "kyc_compliance_marker"
+    garbage/notifications.rs: |
+      // GARBAGE_CATCTRL_C = "sms_notification_marker"
+  commit_message: "fix: guard against zero/negative transfers and unknown destination account"
 fragments:
-- id: controller_search_action
+- id: negative_amount_guard
   selector:
-    path: lib/MyApp/Controller/User.pm
-    anchor: sub search
-- id: controller_calls_search_by_name
+    path: src/finance/ledger.rs
+    anchor: "if amount_cents <= 0"
+- id: unknown_dest_guard
   selector:
-    path: lib/MyApp/Controller/User.pm
-    anchor: search_by_name
-- id: model_search_by_name
+    path: src/finance/ledger.rs
+    anchor: "if !self.accounts.contains_key(to)"
+- id: log_calls_transfer
   selector:
-    path: lib/MyApp/Model/User.pm
-    anchor: sub search_by_name
-- id: model_ilike_query
+    path: src/finance/transaction_log.rs
+    anchor: "let ok = self.ledger.transfer(from, to, amount_cents)"
+- id: no_garbage_a
   selector:
-    path: lib/MyApp/Model/User.pm
-    anchor: ILIKE
-- id: no_admin
+    anchor: GARBAGE_CATCTRL_A
+- id: no_garbage_b
   selector:
-    path: lib/MyApp/Controller/Admin.pm
-- id: no_json
+    anchor: GARBAGE_CATCTRL_B
+- id: no_garbage_c
   selector:
-    path: lib/MyApp/View/JSON.pm
-- id: no_admin_dashboard
-  selector:
-    anchor: sub dashboard
-- id: no_admin_settings
-  selector:
-    anchor: sub settings
-- id: no_admin_audit_log
-  selector:
-    anchor: sub audit_log
-- id: no_admin_count_active
-  selector:
-    path: lib/MyApp/Controller/Admin.pm
-    anchor: count_active
-- id: no_json_view
-  selector:
-    anchor: "Catalyst::View::JSON"
-- id: no_json_expose_stash
-  selector:
-    anchor: expose_stash
-- id: no_json_encoder
-  selector:
-    anchor: json_encoder
+    anchor: GARBAGE_CATCTRL_C
 oracle:
   required:
-  - controller_search_action
-  - controller_calls_search_by_name
-  - model_search_by_name
-  - model_ilike_query
+  - negative_amount_guard
+  - unknown_dest_guard
+  - log_calls_transfer
   allowed: []
   forbidden:
-  - no_admin
-  - no_json
-  - no_admin_dashboard
-  - no_admin_settings
-  - no_admin_audit_log
-  - no_admin_count_active
-  - no_json_view
-  - no_json_expose_stash
-  - no_json_encoder
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

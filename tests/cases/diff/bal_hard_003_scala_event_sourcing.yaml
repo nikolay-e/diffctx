@@ -1,0 +1,151 @@
+name: bal_hard_003_scala_event_sourcing
+tags:
+- lang:scala
+- change:multi_file
+- change:new_function
+- context:cross_module
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/domain/Event.scala: |
+      package domain
+      sealed trait Event
+      case class ItemAdded(itemId: String, quantity: Int) extends Event
+      case class ItemRemoved(itemId: String) extends Event
+    src/main/scala/domain/State.scala: |
+      package domain
+      case class CartState(items: Map[String, Int] = Map.empty) {
+        def applyEvent(event: Event): CartState = event match {
+          case ItemAdded(id, qty) => copy(items = items + (id -> qty))
+          case ItemRemoved(id) => copy(items = items - id)
+        }
+      }
+    src/main/scala/store/EventStore.scala: |
+      package store
+      import domain.Event
+      class EventStore {
+        private var events: List[Event] = List.empty
+        def append(event: Event): Unit = { events = events :+ event }
+        def getAll: List[Event] = events
+      }
+    src/main/scala/service/CartService.scala: |
+      package service
+      import domain._
+      import store.EventStore
+      class CartService {
+        private val store = new EventStore()
+        def addItem(itemId: String, qty: Int): Unit = {
+          store.append(ItemAdded(itemId, qty))
+        }
+        def removeItem(itemId: String): Unit = {
+          store.append(ItemRemoved(itemId))
+        }
+        def currentState: CartState = {
+          store.getAll.foldLeft(CartState())(_.applyEvent(_))
+        }
+      }
+    src/main/scala/api/CartController.scala: |
+      package api
+      import service.CartService
+      class CartController {
+        private val cartService = new CartService()
+        def add(itemId: String, qty: Int): String = {
+          cartService.addItem(itemId, qty)
+          "added"
+        }
+        def remove(itemId: String): String = {
+          cartService.removeItem(itemId)
+          "removed"
+        }
+      }
+    src/main/scala/util/IdGenerator.scala: |
+      package util
+      import java.util.UUID
+      object IdGenerator {
+        def next(): String = UUID.randomUUID().toString
+      }
+    src/main/scala/util/TimeProvider.scala: |
+      package util
+      import java.time.Instant
+      object TimeProvider {
+        def now(): Instant = Instant.now()
+      }
+  changed_files:
+    src/main/scala/domain/Event.scala: |
+      package domain
+      sealed trait Event
+      case class ItemAdded(itemId: String, quantity: Int) extends Event
+      case class ItemRemoved(itemId: String) extends Event
+      case class QuantityUpdated(itemId: String, newQuantity: Int) extends Event
+    src/main/scala/domain/State.scala: |
+      package domain
+      case class CartState(items: Map[String, Int] = Map.empty) {
+        def applyEvent(event: Event): CartState = event match {
+          case ItemAdded(id, qty) => copy(items = items + (id -> qty))
+          case ItemRemoved(id) => copy(items = items - id)
+          case QuantityUpdated(id, qty) => copy(items = items.updated(id, qty))
+        }
+      }
+    src/main/scala/service/CartService.scala: |
+      package service
+      import domain._
+      import store.EventStore
+      class CartService {
+        private val store = new EventStore()
+        def addItem(itemId: String, qty: Int): Unit = {
+          store.append(ItemAdded(itemId, qty))
+        }
+        def removeItem(itemId: String): Unit = {
+          store.append(ItemRemoved(itemId))
+        }
+        def updateQuantity(itemId: String, newQty: Int): Unit = {
+          store.append(QuantityUpdated(itemId, newQty))
+        }
+        def currentState: CartState = {
+          store.getAll.foldLeft(CartState())(_.applyEvent(_))
+        }
+      }
+  commit_message: "feat: add QuantityUpdated event to cart"
+fragments:
+- id: quantity_updated_event
+  selector:
+    path: Event.scala
+    anchor: "QuantityUpdated(itemId: String, newQuantity: Int)"
+- id: state_handles_update
+  selector:
+    path: State.scala
+    anchor: "QuantityUpdated(id, qty)"
+- id: service_update_method
+  selector:
+    path: CartService.scala
+    anchor: "def updateQuantity"
+- id: store_append
+  selector:
+    path: EventStore.scala
+    anchor: "def append(event: Event)"
+- id: controller_add
+  selector:
+    path: CartController.scala
+    anchor: "cartService.addItem"
+- id: no_id_generator
+  selector:
+    path: util/IdGenerator.scala
+- id: no_time_provider
+  selector:
+    path: util/TimeProvider.scala
+- id: no_uuid
+  selector:
+    anchor: "UUID.randomUUID"
+oracle:
+  required:
+  - quantity_updated_event
+  - state_handles_update
+  - service_update_method
+  - store_append
+  - controller_add
+  allowed: []
+  forbidden:
+  - no_id_generator
+  - no_time_provider
+  - no_uuid

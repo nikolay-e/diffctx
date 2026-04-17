@@ -1,0 +1,212 @@
+name: bal_3hop_033_typescript_middleware_auth_chain
+tags:
+- lang:typescript
+- change:single_file
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/config/jwt.ts: |
+      export interface JwtConfig {
+        secret: string;
+        expiresIn: string;
+      }
+
+      export const defaultJwtConfig: JwtConfig = {
+        secret: 'default-secret',
+        expiresIn: '1h',
+      };
+    src/auth/token.ts: |
+      import { JwtConfig, defaultJwtConfig } from '../config/jwt';
+
+      export function verifyToken(token: string, config: JwtConfig = defaultJwtConfig): boolean {
+        return token.length > 0 && config.secret.length > 0;
+      }
+
+      export function decodeToken(token: string): Record<string, unknown> {
+        return { sub: 'user-1', exp: Date.now() + 3600000 };
+      }
+    src/middleware/auth.ts: |
+      import { verifyToken, decodeToken } from '../auth/token';
+
+      export function authMiddleware(req: any, res: any, next: any): void {
+        const header = req.headers['authorization'];
+        if (!header) {
+          res.status(401).json({ error: 'No token' });
+          return;
+        }
+        const token = header.replace('Bearer ', '');
+        if (!verifyToken(token)) {
+          res.status(401).json({ error: 'Invalid token' });
+          return;
+        }
+        req.user = decodeToken(token);
+        next();
+      }
+    src/routes/protected.ts: |
+      import { authMiddleware } from '../middleware/auth';
+      import { Router } from 'express';
+
+      const router = Router();
+      router.use(authMiddleware);
+
+      router.get('/profile', (req: any, res: any) => {
+        res.json({ user: req.user });
+      });
+
+      router.get('/settings', (req: any, res: any) => {
+        res.json({ theme: 'dark' });
+      });
+
+      export default router;
+    src/utils/email.ts: |
+      GARBAGE_033_EMAIL_MARKER_A = "email";
+      GARBAGE_033_SMTP_MARKER_B = true;
+
+      export function sendEmail(to: string, subject: string): void {
+        console.log(`Sending to ${to}: ${subject}`);
+      }
+    src/utils/file.ts: |
+      GARBAGE_033_FILE_MARKER_C = "file";
+      GARBAGE_033_FS_MARKER_D = true;
+
+      export function readFile(path: string): string {
+        return '';
+      }
+    src/services/notification.ts: |
+      GARBAGE_033_NOTIFY_MARKER_E = "notify";
+      GARBAGE_033_PUSH_MARKER_F = true;
+
+      export class NotificationService {
+        send(userId: string, message: string): void {}
+      }
+  changed_files:
+    src/config/jwt.ts: |
+      export interface JwtConfig {
+        secret: string;
+        expiresIn: string;
+        issuer: string;
+      }
+
+      export const defaultJwtConfig: JwtConfig = {
+        secret: 'default-secret',
+        expiresIn: '1h',
+        issuer: 'my-app',
+      };
+    src/auth/token.ts: |
+      import { JwtConfig, defaultJwtConfig } from '../config/jwt';
+
+      export function verifyToken(token: string, config: JwtConfig = defaultJwtConfig): boolean {
+        return token.length > 0 && config.secret.length > 0 && config.issuer.length > 0;
+      }
+
+      export function decodeToken(token: string): Record<string, unknown> {
+        return { sub: 'user-1', iss: 'my-app', exp: Date.now() + 3600000 };
+      }
+    src/middleware/auth.ts: |
+      import { verifyToken, decodeToken } from '../auth/token';
+
+      export function authMiddleware(req: any, res: any, next: any): void {
+        const header = req.headers['authorization'];
+        if (!header) {
+          res.status(401).json({ error: 'No token' });
+          return;
+        }
+        const token = header.replace('Bearer ', '');
+        if (!verifyToken(token)) {
+          res.status(401).json({ error: 'Invalid token' });
+          return;
+        }
+        req.user = decodeToken(token);
+        next();
+      }
+    src/routes/protected.ts: |
+      import { authMiddleware } from '../middleware/auth';
+      import { Router } from 'express';
+
+      const router = Router();
+      router.use(authMiddleware);
+
+      router.get('/profile', (req: any, res: any) => {
+        res.json({ user: req.user });
+      });
+
+      router.get('/settings', (req: any, res: any) => {
+        res.json({ theme: 'dark' });
+      });
+
+      export default router;
+    src/utils/email.ts: |
+      GARBAGE_033_EMAIL_MARKER_A = "email";
+      GARBAGE_033_SMTP_MARKER_B = true;
+
+      export function sendEmail(to: string, subject: string): void {
+        console.log(`Sending to ${to}: ${subject}`);
+      }
+    src/utils/file.ts: |
+      GARBAGE_033_FILE_MARKER_C = "file";
+      GARBAGE_033_FS_MARKER_D = true;
+
+      export function readFile(path: string): string {
+        return '';
+      }
+    src/services/notification.ts: |
+      GARBAGE_033_NOTIFY_MARKER_E = "notify";
+      GARBAGE_033_PUSH_MARKER_F = true;
+
+      export class NotificationService {
+        send(userId: string, message: string): void {}
+      }
+  commit_message: "fix: add issuer validation to JWT config"
+fragments:
+- id: jwt_issuer_field
+  selector:
+    path: src/config/jwt.ts
+    anchor: "issuer: string"
+- id: jwt_default_issuer
+  selector:
+    path: src/config/jwt.ts
+    anchor: "issuer: 'my-app'"
+- id: token_verify_issuer
+  selector:
+    path: src/auth/token.ts
+    anchor: "config.issuer.length > 0"
+- id: middleware_imports_token
+  selector:
+    path: src/middleware/auth.ts
+    anchor: "import { verifyToken, decodeToken } from '../auth/token'"
+- id: route_imports_auth
+  selector:
+    path: src/routes/protected.ts
+    anchor: "import { authMiddleware } from '../middleware/auth'"
+- id: route_uses_middleware
+  selector:
+    path: src/routes/protected.ts
+    anchor: "router.use(authMiddleware)"
+- id: no_email
+  selector:
+    path: src/utils/email.ts
+    anchor: "GARBAGE_033_EMAIL_MARKER_A"
+- id: no_file
+  selector:
+    path: src/utils/file.ts
+    anchor: "GARBAGE_033_FILE_MARKER_C"
+- id: no_notification
+  selector:
+    path: src/services/notification.ts
+    anchor: "GARBAGE_033_NOTIFY_MARKER_E"
+oracle:
+  required:
+  - jwt_issuer_field
+  - jwt_default_issuer
+  - token_verify_issuer
+  - middleware_imports_token
+  - route_imports_auth
+  - route_uses_middleware
+  allowed: []
+  forbidden:
+  - no_email
+  - no_file
+  - no_notification

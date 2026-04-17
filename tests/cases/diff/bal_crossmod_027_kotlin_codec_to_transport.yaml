@@ -1,0 +1,174 @@
+name: bal_crossmod_027_kotlin_codec_to_transport
+tags:
+- lang:kotlin
+- change:multi_file
+- change:signature
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/kotlin/codec/MessageCodec.kt: |
+      package codec
+
+      data class Envelope(
+          val type: String,
+          val payload: ByteArray
+      )
+
+      class MessageCodec {
+          fun encode(type: String, payload: ByteArray): ByteArray {
+              val header = type.toByteArray()
+              return header + byteArrayOf(0) + payload
+          }
+
+          fun decode(raw: ByteArray): Envelope {
+              val separator = raw.indexOf(0)
+              val type = String(raw.sliceArray(0 until separator))
+              val payload = raw.sliceArray(separator + 1 until raw.size)
+              return Envelope(type, payload)
+          }
+      }
+    src/main/kotlin/transport/TcpTransport.kt: |
+      package transport
+
+      import codec.MessageCodec
+      import codec.Envelope
+
+      class TcpTransport(private val codec: MessageCodec) {
+          fun send(type: String, payload: ByteArray): Boolean {
+              val data = codec.encode(type, payload)
+              return transmit(data)
+          }
+
+          fun receive(raw: ByteArray): Envelope {
+              return codec.decode(raw)
+          }
+
+          private fun transmit(data: ByteArray): Boolean {
+              return data.isNotEmpty()
+          }
+      }
+    src/main/kotlin/handler/MessageHandler.kt: |
+      package handler
+
+      import transport.TcpTransport
+      import codec.Envelope
+
+      class MessageHandler(private val transport: TcpTransport) {
+          fun process(raw: ByteArray): String {
+              val envelope = transport.receive(raw)
+              return "Handled: ${envelope.type}"
+          }
+      }
+    src/main/kotlin/metrics/TransportMetrics.kt: |
+      package metrics
+
+      object TransportMetrics {
+          private var sentCount = 0L
+          private var receivedCount = 0L
+
+          fun recordSent() { sentCount++ }
+          fun recordReceived() { receivedCount++ }
+          fun stats(): Map<String, Long> = mapOf("sent" to sentCount, "received" to receivedCount)
+      }
+  changed_files:
+    src/main/kotlin/codec/MessageCodec.kt: |
+      package codec
+
+      data class Envelope(
+          val type: String,
+          val payload: ByteArray,
+          val version: Int = 1
+      )
+
+      class MessageCodec {
+          fun encode(type: String, payload: ByteArray, version: Int = 1): ByteArray {
+              val header = "$type:$version".toByteArray()
+              return header + byteArrayOf(0) + payload
+          }
+
+          fun decode(raw: ByteArray): Envelope {
+              val separator = raw.indexOf(0)
+              val headerStr = String(raw.sliceArray(0 until separator))
+              val parts = headerStr.split(":")
+              val type = parts[0]
+              val version = parts.getOrNull(1)?.toIntOrNull() ?: 1
+              val payload = raw.sliceArray(separator + 1 until raw.size)
+              return Envelope(type, payload, version)
+          }
+      }
+    src/main/kotlin/transport/TcpTransport.kt: |
+      package transport
+
+      import codec.MessageCodec
+      import codec.Envelope
+
+      class TcpTransport(private val codec: MessageCodec) {
+          fun send(type: String, payload: ByteArray): Boolean {
+              val data = codec.encode(type, payload)
+              return transmit(data)
+          }
+
+          fun receive(raw: ByteArray): Envelope {
+              return codec.decode(raw)
+          }
+
+          private fun transmit(data: ByteArray): Boolean {
+              return data.isNotEmpty()
+          }
+      }
+    src/main/kotlin/handler/MessageHandler.kt: |
+      package handler
+
+      import transport.TcpTransport
+      import codec.Envelope
+
+      class MessageHandler(private val transport: TcpTransport) {
+          fun process(raw: ByteArray): String {
+              val envelope = transport.receive(raw)
+              return "Handled: ${envelope.type}"
+          }
+      }
+    src/main/kotlin/metrics/TransportMetrics.kt: |
+      package metrics
+
+      object TransportMetrics {
+          private var sentCount = 0L
+          private var receivedCount = 0L
+
+          fun recordSent() { sentCount++ }
+          fun recordReceived() { receivedCount++ }
+          fun stats(): Map<String, Long> = mapOf("sent" to sentCount, "received" to receivedCount)
+      }
+  commit_message: "feat: add version field to message envelope"
+fragments:
+- id: envelope_version
+  selector:
+    path: src/main/kotlin/codec/MessageCodec.kt
+    anchor: "val version: Int = 1"
+- id: encode_with_version
+  selector:
+    path: src/main/kotlin/codec/MessageCodec.kt
+    anchor: "fun encode(type: String, payload: ByteArray, version: Int = 1)"
+- id: transport_calls_encode
+  selector:
+    path: src/main/kotlin/transport/TcpTransport.kt
+    anchor: "codec.encode(type, payload)"
+- id: handler_calls_transport
+  selector:
+    path: src/main/kotlin/handler/MessageHandler.kt
+    anchor: "transport.receive(raw)"
+- id: no_transport_metrics
+  selector:
+    path: src/main/kotlin/metrics/TransportMetrics.kt
+    anchor: "object TransportMetrics"
+oracle:
+  required:
+  - envelope_version
+  - transport_calls_encode
+  - handler_calls_transport
+  allowed:
+  - encode_with_version
+  forbidden:
+  - no_transport_metrics

@@ -1,0 +1,280 @@
+name: gap_066_py_crossmod_inventory_allocator
+tags:
+- change:multi_file
+- change:new_function
+- change:new_function
+- change:signature
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+- lang:python
+repo:
+  initial_files:
+    src/warehouse/allocator.py: |
+      from typing import List, Optional
+      from src.warehouse.stock import StockEntry, StockLedger
+
+      class InventoryAllocator:
+          def __init__(self, ledger: StockLedger):
+              self.ledger = ledger
+
+          def allocate(self, sku: str, quantity: int) -> bool:
+              entry = self.ledger.find_entry(sku)
+              if entry is None or entry.available < quantity:
+                  return False
+              entry.available -= quantity
+              return True
+
+          def release(self, sku: str, quantity: int) -> None:
+              entry = self.ledger.find_entry(sku)
+              if entry:
+                  entry.available += quantity
+    src/warehouse/stock.py: |
+      from typing import Optional, List
+      from dataclasses import dataclass
+
+      @dataclass
+      class StockEntry:
+          sku: str
+          available: int
+          reserved: int = 0
+
+      class StockLedger:
+          def __init__(self):
+              self._entries: List[StockEntry] = []
+
+          def add_entry(self, entry: StockEntry) -> None:
+              self._entries.append(entry)
+
+          def find_entry(self, sku: str) -> Optional[StockEntry]:
+              for e in self._entries:
+                  if e.sku == sku:
+                      return e
+              return None
+
+          def total_available(self) -> int:
+              return sum(e.available for e in self._entries)
+    src/warehouse/location.py: |
+      from dataclasses import dataclass
+      from typing import List
+
+      @dataclass
+      class BinLocation:
+          zone: str
+          aisle: int
+          shelf: int
+          slot: int
+
+          def code(self) -> str:
+              return f"{self.zone}-{self.aisle:02d}-{self.shelf:02d}-{self.slot:02d}"
+
+      class LocationRegistry:
+          def __init__(self):
+              self._bins: List[BinLocation] = []
+
+          def register_bin(self, loc: BinLocation) -> None:
+              self._bins.append(loc)
+
+          def find_by_zone(self, zone: str) -> List[BinLocation]:
+              return [b for b in self._bins if b.zone == zone]
+    src/warehouse/report.py: |
+      TRAP_GAP066_REPORT_A = "warehouse_report"
+      TRAP_GAP066_FORMAT_B = "tabular"
+
+      class StockReport:
+          def __init__(self, title: str = "Inventory Report"):
+              self.title = title
+
+          def header(self) -> str:
+              return f"=== {self.title} ==="
+
+          def row(self, sku: str, qty: int) -> str:
+              return f"{sku:20s} {qty:>8d}"
+    src/warehouse/audit.py: |
+      TRAP_GAP066_AUDIT_C = "audit_log"
+      TRAP_GAP066_LEVEL_D = "INFO"
+
+      class AuditTrail:
+          def __init__(self):
+              self._entries = []
+
+          def log(self, action: str, detail: str) -> None:
+              self._entries.append({"action": action, "detail": detail})
+
+          def recent(self, count: int = 10) -> list:
+              return self._entries[-count:]
+  changed_files:
+    src/warehouse/allocator.py: |
+      from typing import List, Optional, Dict
+      from src.warehouse.stock import StockEntry, StockLedger
+
+      class AllocationResult:
+          def __init__(self, sku: str, allocated: int, remaining: int):
+              self.sku = sku
+              self.allocated = allocated
+              self.remaining = remaining
+
+      class InventoryAllocator:
+          def __init__(self, ledger: StockLedger, allow_partial: bool = False):
+              self.ledger = ledger
+              self.allow_partial = allow_partial
+
+          def allocate(self, sku: str, quantity: int) -> bool:
+              entry = self.ledger.find_entry(sku)
+              if entry is None or entry.available < quantity:
+                  return False
+              entry.available -= quantity
+              return True
+
+          def allocate_detailed(self, sku: str, quantity: int) -> Optional[AllocationResult]:
+              entry = self.ledger.find_entry(sku)
+              if entry is None:
+                  return None
+              actual = min(quantity, entry.available) if self.allow_partial else quantity
+              if actual > entry.available:
+                  return None
+              entry.available -= actual
+              return AllocationResult(sku=sku, allocated=actual, remaining=entry.available)
+
+          def bulk_allocate(self, requests: Dict[str, int]) -> Dict[str, AllocationResult]:
+              results = {}
+              for sku, qty in requests.items():
+                  result = self.allocate_detailed(sku, qty)
+                  if result:
+                      results[sku] = result
+              return results
+
+          def release(self, sku: str, quantity: int) -> None:
+              entry = self.ledger.find_entry(sku)
+              if entry:
+                  entry.available += quantity
+    src/warehouse/stock.py: |
+      from typing import Optional, List
+      from dataclasses import dataclass
+
+      @dataclass
+      class StockEntry:
+          sku: str
+          available: int
+          reserved: int = 0
+
+      class StockLedger:
+          def __init__(self):
+              self._entries: List[StockEntry] = []
+
+          def add_entry(self, entry: StockEntry) -> None:
+              self._entries.append(entry)
+
+          def find_entry(self, sku: str) -> Optional[StockEntry]:
+              for e in self._entries:
+                  if e.sku == sku:
+                      return e
+              return None
+
+          def total_available(self) -> int:
+              return sum(e.available for e in self._entries)
+    src/warehouse/location.py: |
+      from dataclasses import dataclass
+      from typing import List
+
+      @dataclass
+      class BinLocation:
+          zone: str
+          aisle: int
+          shelf: int
+          slot: int
+
+          def code(self) -> str:
+              return f"{self.zone}-{self.aisle:02d}-{self.shelf:02d}-{self.slot:02d}"
+
+      class LocationRegistry:
+          def __init__(self):
+              self._bins: List[BinLocation] = []
+
+          def register_bin(self, loc: BinLocation) -> None:
+              self._bins.append(loc)
+
+          def find_by_zone(self, zone: str) -> List[BinLocation]:
+              return [b for b in self._bins if b.zone == zone]
+    src/warehouse/report.py: |
+      TRAP_GAP066_REPORT_A = "warehouse_report"
+      TRAP_GAP066_FORMAT_B = "tabular"
+
+      class StockReport:
+          def __init__(self, title: str = "Inventory Report"):
+              self.title = title
+
+          def header(self) -> str:
+              return f"=== {self.title} ==="
+
+          def row(self, sku: str, qty: int) -> str:
+              return f"{sku:20s} {qty:>8d}"
+    src/warehouse/audit.py: |
+      TRAP_GAP066_AUDIT_C = "audit_log"
+      TRAP_GAP066_LEVEL_D = "INFO"
+
+      class AuditTrail:
+          def __init__(self):
+              self._entries = []
+
+          def log(self, action: str, detail: str) -> None:
+              self._entries.append({"action": action, "detail": detail})
+
+          def recent(self, count: int = 10) -> list:
+              return self._entries[-count:]
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: allocator_detailed
+  selector:
+    path: src/warehouse/allocator.py
+    anchor: 'def allocate_detailed(self, sku: str, quantity: int) -> Optional[AllocationResult]:'
+- id: allocator_bulk
+  selector:
+    path: src/warehouse/allocator.py
+    anchor: 'def bulk_allocate(self, requests: Dict[str, int]) -> Dict[str, AllocationResult]:'
+- id: allocation_result_class
+  selector:
+    path: src/warehouse/allocator.py
+    anchor: 'class AllocationResult:'
+- id: stock_find_entry
+  selector:
+    path: src/warehouse/stock.py
+    anchor: 'def find_entry(self, sku: str) -> Optional[StockEntry]:'
+- id: no_report
+  selector:
+    path: src/warehouse/report.py
+- id: no_audit
+  selector:
+    path: src/warehouse/audit.py
+- id: no_location
+  selector:
+    path: src/warehouse/location.py
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP066_REPORT_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP066_FORMAT_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP066_AUDIT_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP066_LEVEL_D
+oracle:
+  required:
+  - allocator_detailed
+  - allocator_bulk
+  - allocation_result_class
+  - stock_find_entry
+  allowed: []
+  forbidden:
+  - no_report
+  - no_audit
+  - no_location
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

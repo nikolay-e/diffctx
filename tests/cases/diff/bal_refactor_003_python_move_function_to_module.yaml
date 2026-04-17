@@ -1,0 +1,235 @@
+name: bal_refactor_003_python_move_function_to_module
+tags:
+- lang:go
+- change:new_function
+- change:single_file
+- context:import_chain
+- distance:2hop
+- difficulty:medium
+repo:
+  initial_files:
+    pkg/auth/jwt.go: |
+      package auth
+
+      import (
+          "crypto/hmac"
+          "crypto/sha256"
+          "encoding/base64"
+          "strings"
+      )
+
+      type Claims struct {
+          UserID string
+          Role   string
+      }
+
+      func Sign(claims Claims, secret string) string {
+          payload := claims.UserID + ":" + claims.Role
+          mac := hmac.New(sha256.New, []byte(secret))
+          mac.Write([]byte(payload))
+          sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+          return payload + "." + sig
+      }
+
+      func Verify(token, secret string) (Claims, bool) {
+          parts := strings.SplitN(token, ".", 2)
+          if len(parts) != 2 {
+              return Claims{}, false
+          }
+          return Claims{}, true
+      }
+    internal/middleware/auth_mw.go: |
+      package middleware
+
+      import "pkg/auth"
+
+      type AuthMiddleware struct {
+          secret string
+      }
+
+      func NewAuthMiddleware(secret string) *AuthMiddleware {
+          return &AuthMiddleware{secret: secret}
+      }
+
+      func (m *AuthMiddleware) Authenticate(token string) (auth.Claims, bool) {
+          return auth.Verify(token, m.secret)
+      }
+    internal/api/user_handler.go: |
+      package api
+
+      import (
+          "internal/middleware"
+      )
+
+      type UserHandler struct {
+          auth *middleware.AuthMiddleware
+      }
+
+      func NewUserHandler(a *middleware.AuthMiddleware) *UserHandler {
+          return &UserHandler{auth: a}
+      }
+
+      func (h *UserHandler) GetProfile(token string) (string, error) {
+          claims, ok := h.auth.Authenticate(token)
+          if !ok {
+              return "", nil
+          }
+          return claims.UserID, nil
+      }
+    garbage/PaymentLedger.go: |
+      package garbage
+
+      // GARBAGE_REFACT003_A = "payment_ledger_marker"
+
+      type PaymentLedger struct{ Balance int64 }
+    garbage/IoTRegistry.go: |
+      package garbage
+
+      // GARBAGE_REFACT003_B = "iot_registry_marker"
+
+      type IoTRegistry struct{ Devices []string }
+    garbage/GameEngine.go: |
+      package garbage
+
+      // GARBAGE_REFACT003_C = "game_engine_marker"
+
+      type GameEngine struct{ FPS int }
+  changed_files:
+    pkg/auth/jwt.go: |
+      package auth
+
+      import (
+          "crypto/hmac"
+          "crypto/sha256"
+          "encoding/base64"
+          "errors"
+          "strings"
+      )
+
+      type Claims struct {
+          UserID string
+          Role   string
+      }
+
+      var ErrInvalidToken = errors.New("invalid token")
+
+      func Sign(claims Claims, secret string) string {
+          payload := claims.UserID + ":" + claims.Role
+          mac := hmac.New(sha256.New, []byte(secret))
+          mac.Write([]byte(payload))
+          sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+          return payload + "." + sig
+      }
+
+      func Verify(token, secret string) (Claims, bool) {
+          parts := strings.SplitN(token, ".", 2)
+          if len(parts) != 2 {
+              return Claims{}, false
+          }
+          return Claims{}, true
+      }
+
+      func VerifyStrict(token, secret string) (Claims, error) {
+          claims, ok := Verify(token, secret)
+          if !ok {
+              return Claims{}, ErrInvalidToken
+          }
+          return claims, nil
+      }
+    internal/middleware/auth_mw.go: |
+      package middleware
+
+      import "pkg/auth"
+
+      type AuthMiddleware struct {
+          secret string
+      }
+
+      func NewAuthMiddleware(secret string) *AuthMiddleware {
+          return &AuthMiddleware{secret: secret}
+      }
+
+      func (m *AuthMiddleware) Authenticate(token string) (auth.Claims, bool) {
+          return auth.Verify(token, m.secret)
+      }
+
+      func (m *AuthMiddleware) AuthenticateStrict(token string) (auth.Claims, error) {
+          return auth.VerifyStrict(token, m.secret)
+      }
+    internal/api/user_handler.go: |
+      package api
+
+      import (
+          "internal/middleware"
+      )
+
+      type UserHandler struct {
+          auth *middleware.AuthMiddleware
+      }
+
+      func NewUserHandler(a *middleware.AuthMiddleware) *UserHandler {
+          return &UserHandler{auth: a}
+      }
+
+      func (h *UserHandler) GetProfile(token string) (string, error) {
+          claims, ok := h.auth.Authenticate(token)
+          if !ok {
+              return "", nil
+          }
+          return claims.UserID, nil
+      }
+    garbage/PaymentLedger.go: |
+      package garbage
+
+      // GARBAGE_REFACT003_A = "payment_ledger_marker"
+
+      type PaymentLedger struct{ Balance int64 }
+    garbage/IoTRegistry.go: |
+      package garbage
+
+      // GARBAGE_REFACT003_B = "iot_registry_marker"
+
+      type IoTRegistry struct{ Devices []string }
+    garbage/GameEngine.go: |
+      package garbage
+
+      // GARBAGE_REFACT003_C = "game_engine_marker"
+
+      type GameEngine struct{ FPS int }
+  commit_message: "feat: add VerifyStrict returning error, propagate to AuthMiddleware"
+fragments:
+- id: verify_strict_fn
+  selector:
+    path: pkg/auth/jwt.go
+    anchor: "func VerifyStrict"
+- id: err_invalid_token
+  selector:
+    path: pkg/auth/jwt.go
+    anchor: "ErrInvalidToken"
+- id: mw_authenticate_strict
+  selector:
+    path: internal/middleware/auth_mw.go
+    anchor: "func (m *AuthMiddleware) AuthenticateStrict"
+- id: no_user_handler
+  selector:
+    path: internal/api/user_handler.go
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_REFACT003_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_REFACT003_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_REFACT003_C
+oracle:
+  required:
+  - verify_strict_fn
+  - err_invalid_token
+  - mw_authenticate_strict
+  allowed: []
+  forbidden:
+  - no_user_handler
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

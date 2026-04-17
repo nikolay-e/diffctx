@@ -1,0 +1,250 @@
+name: bal4_3hop_008_ruby_finance_ledger
+tags:
+- lang:ruby
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:medium
+repo:
+  initial_files:
+    lib/finance/currency.rb: |
+      module Finance
+        class Currency
+          RATES = { "USD" => 1.0, "EUR" => 0.85, "GBP" => 0.73 }
+          attr_reader :code
+          def initialize(code)
+            @code = code
+          end
+          def convert(amount, target)
+            amount / RATES[code] * RATES[target]
+          end
+        end
+      end
+    lib/finance/entry.rb: |
+      require_relative 'currency'
+      module Finance
+        class Entry
+          attr_reader :amount, :currency, :label
+          def initialize(amount, currency_code, label)
+            @amount = amount
+            @currency = Currency.new(currency_code)
+            @label = label
+          end
+          def in_currency(target)
+            @currency.convert(@amount, target)
+          end
+        end
+      end
+    lib/finance/ledger.rb: |
+      require_relative 'entry'
+      module Finance
+        class Ledger
+          def initialize
+            @entries = []
+          end
+          def add(amount, currency, label)
+            @entries << Entry.new(amount, currency, label)
+          end
+          def balance(currency)
+            @entries.sum { |e| e.in_currency(currency) }
+          end
+        end
+      end
+    lib/finance/report.rb: |
+      require_relative 'ledger'
+      module Finance
+        class Report
+          def initialize(ledger)
+            @ledger = ledger
+          end
+          def summary(currency)
+            total = @ledger.balance(currency)
+            "Total: #{total} #{currency}"
+          end
+        end
+      end
+    lib/finance/controller.rb: |
+      require_relative 'report'
+      module Finance
+        class Controller
+          def initialize
+            @ledger = Ledger.new
+            @report = Report.new(@ledger)
+          end
+          def add_entry(amount, currency, label)
+            @ledger.add(amount, currency, label)
+          end
+          def show_report(currency)
+            @report.summary(currency)
+          end
+        end
+      end
+    lib/audit/trail.rb: |
+      module Audit
+        GARBAGE_008_TRAIL_A = "log"
+        GARBAGE_008_RETENTION_B = 90
+        class Trail
+          def self.log(action)
+            action
+          end
+        end
+      end
+    lib/audit/compliance.rb: |
+      module Audit
+        GARBAGE_008_COMPLIANCE_C = "sox"
+        GARBAGE_008_LEVEL_D = "high"
+        class Compliance
+          def self.check
+            true
+          end
+        end
+      end
+  changed_files:
+    lib/finance/currency.rb: |
+      module Finance
+        class Currency
+          RATES = { "USD" => 1.0, "EUR" => 0.85, "GBP" => 0.73, "JPY" => 110.0 }
+          attr_reader :code
+          def initialize(code)
+            raise ArgumentError, "Unknown currency: #{code}" unless RATES.key?(code)
+            @code = code
+          end
+          def convert(amount, target)
+            raise ArgumentError, "Unknown target: #{target}" unless RATES.key?(target)
+            amount / RATES[code] * RATES[target]
+          end
+        end
+      end
+    lib/finance/entry.rb: |
+      require_relative 'currency'
+      module Finance
+        class Entry
+          attr_reader :amount, :currency, :label
+          def initialize(amount, currency_code, label)
+            @amount = amount
+            @currency = Currency.new(currency_code)
+            @label = label
+          end
+          def in_currency(target)
+            @currency.convert(@amount, target)
+          end
+        end
+      end
+    lib/finance/ledger.rb: |
+      require_relative 'entry'
+      module Finance
+        class Ledger
+          def initialize
+            @entries = []
+          end
+          def add(amount, currency, label)
+            @entries << Entry.new(amount, currency, label)
+          end
+          def balance(currency)
+            @entries.sum { |e| e.in_currency(currency) }
+          end
+        end
+      end
+    lib/finance/report.rb: |
+      require_relative 'ledger'
+      module Finance
+        class Report
+          def initialize(ledger)
+            @ledger = ledger
+          end
+          def summary(currency)
+            total = @ledger.balance(currency)
+            "Total: #{total} #{currency}"
+          end
+        end
+      end
+    lib/finance/controller.rb: |
+      require_relative 'report'
+      module Finance
+        class Controller
+          def initialize
+            @ledger = Ledger.new
+            @report = Report.new(@ledger)
+          end
+          def add_entry(amount, currency, label)
+            @ledger.add(amount, currency, label)
+          end
+          def show_report(currency)
+            @report.summary(currency)
+          end
+        end
+      end
+    lib/audit/trail.rb: |
+      module Audit
+        GARBAGE_008_TRAIL_A = "log"
+        GARBAGE_008_RETENTION_B = 90
+        class Trail
+          def self.log(action)
+            action
+          end
+        end
+      end
+    lib/audit/compliance.rb: |
+      module Audit
+        GARBAGE_008_COMPLIANCE_C = "sox"
+        GARBAGE_008_LEVEL_D = "high"
+        class Compliance
+          def self.check
+            true
+          end
+        end
+      end
+  commit_message: "feat: add JPY rate and validation to Currency"
+fragments:
+- id: currency_jpy
+  selector:
+    path: lib/finance/currency.rb
+    anchor: "JPY"
+- id: currency_validation
+  selector:
+    path: lib/finance/currency.rb
+    anchor: "raise ArgumentError"
+- id: entry_uses_currency
+  selector:
+    path: lib/finance/entry.rb
+    anchor: "require_relative 'currency'"
+- id: ledger_uses_entry
+  selector:
+    path: lib/finance/ledger.rb
+    anchor: "require_relative 'entry'"
+- id: report_uses_ledger
+  selector:
+    path: lib/finance/report.rb
+    anchor: "require_relative 'ledger'"
+- id: controller_uses_report
+  selector:
+    path: lib/finance/controller.rb
+    anchor: "require_relative 'report'"
+- id: no_trail
+  selector:
+    path: lib/audit/trail.rb
+    anchor: "GARBAGE_008_TRAIL_A"
+- id: no_compliance
+  selector:
+    path: lib/audit/compliance.rb
+    anchor: "GARBAGE_008_COMPLIANCE_C"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_008_RETENTION_B
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_008_LEVEL_D
+oracle:
+  required:
+  - currency_jpy
+  - currency_validation
+  - entry_uses_currency
+  - ledger_uses_entry
+  - report_uses_ledger
+  - controller_uses_report
+  allowed: []
+  forbidden:
+  - no_trail
+  - no_compliance
+  - no_global_0
+  - no_global_1

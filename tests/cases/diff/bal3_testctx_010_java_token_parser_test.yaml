@@ -1,0 +1,136 @@
+name: bal3_testctx_010_java_token_parser_test
+tags:
+- lang:java
+- change:single_file
+- change:refactor
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/main/java/com/lang/TokenParser.java: |
+      package com.lang;
+
+      import java.util.ArrayList;
+      import java.util.List;
+
+      public class TokenParser {
+          public List<String> parse(String input) {
+              List<String> tokens = new ArrayList<>();
+              StringBuilder current = new StringBuilder();
+              for (char c : input.toCharArray()) {
+                  if (Character.isWhitespace(c)) {
+                      if (current.length() > 0) {
+                          tokens.add(current.toString());
+                          current.setLength(0);
+                      }
+                  } else {
+                      current.append(c);
+                  }
+              }
+              if (current.length() > 0) {
+                  tokens.add(current.toString());
+              }
+              return tokens;
+          }
+      }
+    src/test/java/com/lang/TokenParserTest.java: |
+      package com.lang;
+
+      import org.junit.jupiter.api.Test;
+      import static org.junit.jupiter.api.Assertions.*;
+      import java.util.List;
+
+      class TokenParserTest {
+          private final TokenParser parser = new TokenParser();
+
+          @Test
+          void testSimpleParse() {
+              List<String> tokens = parser.parse("hello world");
+              assertEquals(2, tokens.size());
+              assertEquals("hello", tokens.get(0));
+          }
+
+          @Test
+          void testEmptyInput() {
+              List<String> tokens = parser.parse("");
+              assertTrue(tokens.isEmpty());
+          }
+
+          @Test
+          void testMultipleSpaces() {
+              List<String> tokens = parser.parse("a   b   c");
+              assertEquals(3, tokens.size());
+          }
+      }
+    src/main/java/com/lang/Compiler.java: |
+      package com.lang;
+
+      public class Compiler {
+          public String compile(String source) {
+              return "compiled: " + source;
+          }
+      }
+  changed_files:
+    src/main/java/com/lang/TokenParser.java: |
+      package com.lang;
+
+      import java.util.ArrayList;
+      import java.util.List;
+
+      public class TokenParser {
+          private static final String DELIMITERS = " \t\n\r;,";
+
+          public List<String> parse(String input) {
+              List<String> tokens = new ArrayList<>();
+              StringBuilder current = new StringBuilder();
+              boolean inQuote = false;
+              for (char c : input.toCharArray()) {
+                  if (c == '"') {
+                      inQuote = !inQuote;
+                  } else if (!inQuote && DELIMITERS.indexOf(c) >= 0) {
+                      if (current.length() > 0) {
+                          tokens.add(current.toString());
+                          current.setLength(0);
+                      }
+                  } else {
+                      current.append(c);
+                  }
+              }
+              if (current.length() > 0) {
+                  tokens.add(current.toString());
+              }
+              return tokens;
+          }
+      }
+  commit_message: "refactor: support quoted strings and extended delimiters"
+fragments:
+- id: delimiters_const
+  selector:
+    path: src/main/java/com/lang/TokenParser.java
+    anchor: "DELIMITERS ="
+- id: quote_handling
+  selector:
+    path: src/main/java/com/lang/TokenParser.java
+    anchor: "inQuote = !inQuote"
+- id: test_simple_parse
+  selector:
+    path: src/test/java/com/lang/TokenParserTest.java
+    anchor: "void testSimpleParse()"
+- id: test_multiple_spaces
+  selector:
+    path: src/test/java/com/lang/TokenParserTest.java
+    anchor: "void testMultipleSpaces()"
+- id: no_compiler
+  selector:
+    path: src/main/java/com/lang/Compiler.java
+    anchor: "public class Compiler"
+oracle:
+  required:
+  - delimiters_const
+  - quote_handling
+  - test_simple_parse
+  allowed:
+  - test_multiple_spaces
+  forbidden:
+  - no_compiler

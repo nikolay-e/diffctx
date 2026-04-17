@@ -1,0 +1,225 @@
+name: bal_hard_018_php_orm_relations
+tags:
+- lang:php
+- change:multi_file
+- change:signature
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/ORM/Entity.php: |
+      <?php
+      namespace App\ORM;
+      abstract class Entity {
+          public string $id;
+          abstract public function tableName(): string;
+          abstract public function toArray(): array;
+      }
+    src/ORM/QueryBuilder.php: |
+      <?php
+      namespace App\ORM;
+      class QueryBuilder {
+          private string $table;
+          private array $conditions = [];
+          public function from(string $table): self {
+              $this->table = $table;
+              return $this;
+          }
+          public function where(string $column, string $value): self {
+              $this->conditions[] = "$column = '$value'";
+              return $this;
+          }
+          public function build(): string {
+              $sql = "SELECT * FROM {$this->table}";
+              if (!empty($this->conditions)) {
+                  $sql .= ' WHERE ' . implode(' AND ', $this->conditions);
+              }
+              return $sql;
+          }
+      }
+    src/Models/Author.php: |
+      <?php
+      namespace App\Models;
+      use App\ORM\Entity;
+      class Author extends Entity {
+          public string $name;
+          public string $email;
+          public function __construct(string $id, string $name, string $email) {
+              $this->id = $id;
+              $this->name = $name;
+              $this->email = $email;
+          }
+          public function tableName(): string { return 'authors'; }
+          public function toArray(): array {
+              return ['id' => $this->id, 'name' => $this->name, 'email' => $this->email];
+          }
+      }
+    src/Models/Book.php: |
+      <?php
+      namespace App\Models;
+      use App\ORM\Entity;
+      class Book extends Entity {
+          public string $title;
+          public string $authorId;
+          public function __construct(string $id, string $title, string $authorId) {
+              $this->id = $id;
+              $this->title = $title;
+              $this->authorId = $authorId;
+          }
+          public function tableName(): string { return 'books'; }
+          public function toArray(): array {
+              return ['id' => $this->id, 'title' => $this->title, 'author_id' => $this->authorId];
+          }
+      }
+    src/Repository/BookRepository.php: |
+      <?php
+      namespace App\Repository;
+      use App\ORM\QueryBuilder;
+      class BookRepository {
+          private QueryBuilder $qb;
+          public function __construct() {
+              $this->qb = new QueryBuilder();
+          }
+          public function findByAuthor(string $authorId): string {
+              return $this->qb->from('books')->where('author_id', $authorId)->build();
+          }
+      }
+    src/Service/LibraryService.php: |
+      <?php
+      namespace App\Service;
+      use App\Repository\BookRepository;
+      class LibraryService {
+          private BookRepository $bookRepo;
+          public function __construct(BookRepository $bookRepo) {
+              $this->bookRepo = $bookRepo;
+          }
+          public function getBooksByAuthor(string $authorId): string {
+              return $this->bookRepo->findByAuthor($authorId);
+          }
+      }
+    src/Helpers/Slugger.php: |
+      <?php
+      namespace App\Helpers;
+      class Slugger {
+          public static function slugify(string $text): string {
+              return strtolower(preg_replace('/[^a-zA-Z0-9]+/', '-', $text));
+          }
+      }
+  changed_files:
+    src/ORM/QueryBuilder.php: |
+      <?php
+      namespace App\ORM;
+      class QueryBuilder {
+          private string $table;
+          private array $conditions = [];
+          private ?string $joinClause = null;
+          public function from(string $table): self {
+              $this->table = $table;
+              return $this;
+          }
+          public function where(string $column, string $value): self {
+              $this->conditions[] = "$column = '$value'";
+              return $this;
+          }
+          public function join(string $table, string $on): self {
+              $this->joinClause = "JOIN $table ON $on";
+              return $this;
+          }
+          public function build(): string {
+              $sql = "SELECT * FROM {$this->table}";
+              if ($this->joinClause) {
+                  $sql .= ' ' . $this->joinClause;
+              }
+              if (!empty($this->conditions)) {
+                  $sql .= ' WHERE ' . implode(' AND ', $this->conditions);
+              }
+              return $sql;
+          }
+      }
+    src/Repository/BookRepository.php: |
+      <?php
+      namespace App\Repository;
+      use App\ORM\QueryBuilder;
+      class BookRepository {
+          private QueryBuilder $qb;
+          public function __construct() {
+              $this->qb = new QueryBuilder();
+          }
+          public function findByAuthor(string $authorId): string {
+              return $this->qb->from('books')->where('author_id', $authorId)->build();
+          }
+          public function findWithAuthor(string $bookId): string {
+              return (new QueryBuilder())
+                  ->from('books')
+                  ->join('authors', 'books.author_id = authors.id')
+                  ->where('books.id', $bookId)
+                  ->build();
+          }
+      }
+    src/Service/LibraryService.php: |
+      <?php
+      namespace App\Service;
+      use App\Repository\BookRepository;
+      class LibraryService {
+          private BookRepository $bookRepo;
+          public function __construct(BookRepository $bookRepo) {
+              $this->bookRepo = $bookRepo;
+          }
+          public function getBooksByAuthor(string $authorId): string {
+              return $this->bookRepo->findByAuthor($authorId);
+          }
+          public function getBookWithAuthor(string $bookId): string {
+              return $this->bookRepo->findWithAuthor($bookId);
+          }
+      }
+  commit_message: "feat: add JOIN support to query builder"
+fragments:
+- id: qb_join_method
+  selector:
+    path: QueryBuilder.php
+    anchor: "public function join(string $table, string $on)"
+- id: qb_join_clause_field
+  selector:
+    path: QueryBuilder.php
+    anchor: "private ?string $joinClause"
+- id: repo_find_with_author
+  selector:
+    path: BookRepository.php
+    anchor: "public function findWithAuthor"
+- id: repo_uses_join
+  selector:
+    path: BookRepository.php
+    anchor: "->join('authors', 'books.author_id = authors.id')"
+- id: service_get_with_author
+  selector:
+    path: LibraryService.php
+    anchor: "public function getBookWithAuthor"
+- id: book_model
+  selector:
+    path: Book.php
+    anchor: "class Book extends Entity"
+- id: author_model
+  selector:
+    path: Author.php
+    anchor: "class Author extends Entity"
+- id: no_slugger
+  selector:
+    path: Helpers/Slugger.php
+- id: no_entity_to_array
+  selector:
+    path: Entity.php
+    anchor: "abstract public function toArray()"
+oracle:
+  required:
+  - qb_join_method
+  - qb_join_clause_field
+  - repo_find_with_author
+  - repo_uses_join
+  - service_get_with_author
+  - book_model
+  - author_model
+  allowed: []
+  forbidden:
+  - no_slugger
+  - no_entity_to_array

@@ -1,0 +1,264 @@
+name: bal_refactor_019_typescript_replace_inheritance_composition
+tags:
+- lang:typescript
+- change:multi_file
+- change:refactor
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/base/BaseRepository.ts: |
+      export class BaseRepository<T extends { id: string }> {
+          protected items: T[] = [];
+
+          findById(id: string): T | undefined {
+              return this.items.find(item => item.id === id);
+          }
+
+          findAll(): T[] {
+              return [...this.items];
+          }
+
+          save(item: T): void {
+              const idx = this.items.findIndex(i => i.id === item.id);
+              if (idx >= 0) {
+                  this.items[idx] = item;
+              } else {
+                  this.items.push(item);
+              }
+          }
+
+          delete(id: string): void {
+              this.items = this.items.filter(i => i.id !== id);
+          }
+      }
+    src/repos/UserRepository.ts: |
+      import { BaseRepository } from '../base/BaseRepository';
+
+      interface User {
+          id: string;
+          name: string;
+          email: string;
+      }
+
+      export class UserRepository extends BaseRepository<User> {
+          findByEmail(email: string): User | undefined {
+              return this.items.find(u => u.email === email);
+          }
+      }
+    src/repos/PostRepository.ts: |
+      import { BaseRepository } from '../base/BaseRepository';
+
+      interface Post {
+          id: string;
+          title: string;
+          authorId: string;
+      }
+
+      export class PostRepository extends BaseRepository<Post> {
+          findByAuthor(authorId: string): Post[] {
+              return this.items.filter(p => p.authorId === authorId);
+          }
+      }
+    src/services/userService.ts: |
+      import { UserRepository } from '../repos/UserRepository';
+
+      export class UserService {
+          constructor(private repo: UserRepository) {}
+
+          getUser(id: string) {
+              return this.repo.findById(id);
+          }
+
+          getUserByEmail(email: string) {
+              return this.repo.findByEmail(email);
+          }
+      }
+    src/middleware/cors.ts: |
+      const GARBAGE_REFACTOR_019_CORS_A = 'cors';
+      const GARBAGE_REFACTOR_019_ORIGIN_B = '*';
+
+      export function corsMiddleware() {
+          return { headers: { 'Access-Control-Allow-Origin': '*' } };
+      }
+    garbage_session.ts: |
+      const GARBAGE_REFACTOR_019_SESSION_C = 'session';
+      const GARBAGE_REFACTOR_019_TTL_D = 3600;
+
+      export class SessionStore {
+          static GARBAGE_REFACTOR_019_STORE_E = true;
+
+          get(id: string): unknown { return null; }
+      }
+  changed_files:
+    src/base/InMemoryStore.ts: |
+      export class InMemoryStore<T extends { id: string }> {
+          private items: T[] = [];
+
+          findById(id: string): T | undefined {
+              return this.items.find(item => item.id === id);
+          }
+
+          findAll(): T[] {
+              return [...this.items];
+          }
+
+          save(item: T): void {
+              const idx = this.items.findIndex(i => i.id === item.id);
+              if (idx >= 0) {
+                  this.items[idx] = item;
+              } else {
+                  this.items.push(item);
+              }
+          }
+
+          delete(id: string): void {
+              this.items = this.items.filter(i => i.id !== id);
+          }
+
+          filter(predicate: (item: T) => boolean): T[] {
+              return this.items.filter(predicate);
+          }
+      }
+    src/repos/UserRepository.ts: |
+      import { InMemoryStore } from '../base/InMemoryStore';
+
+      interface User {
+          id: string;
+          name: string;
+          email: string;
+      }
+
+      export class UserRepository {
+          private store = new InMemoryStore<User>();
+
+          findById(id: string) { return this.store.findById(id); }
+          findAll() { return this.store.findAll(); }
+          save(user: User) { this.store.save(user); }
+          delete(id: string) { this.store.delete(id); }
+
+          findByEmail(email: string): User | undefined {
+              return this.store.filter(u => u.email === email)[0];
+          }
+      }
+    src/repos/PostRepository.ts: |
+      import { InMemoryStore } from '../base/InMemoryStore';
+
+      interface Post {
+          id: string;
+          title: string;
+          authorId: string;
+      }
+
+      export class PostRepository {
+          private store = new InMemoryStore<Post>();
+
+          findById(id: string) { return this.store.findById(id); }
+          findAll() { return this.store.findAll(); }
+          save(post: Post) { this.store.save(post); }
+          delete(id: string) { this.store.delete(id); }
+
+          findByAuthor(authorId: string): Post[] {
+              return this.store.filter(p => p.authorId === authorId);
+          }
+      }
+    src/services/userService.ts: |
+      import { UserRepository } from '../repos/UserRepository';
+
+      export class UserService {
+          constructor(private repo: UserRepository) {}
+
+          getUser(id: string) {
+              return this.repo.findById(id);
+          }
+
+          getUserByEmail(email: string) {
+              return this.repo.findByEmail(email);
+          }
+      }
+    src/middleware/cors.ts: |
+      const GARBAGE_REFACTOR_019_CORS_A = 'cors';
+      const GARBAGE_REFACTOR_019_ORIGIN_B = '*';
+
+      export function corsMiddleware() {
+          return { headers: { 'Access-Control-Allow-Origin': '*' } };
+      }
+    garbage_session.ts: |
+      const GARBAGE_REFACTOR_019_SESSION_C = 'session';
+      const GARBAGE_REFACTOR_019_TTL_D = 3600;
+
+      export class SessionStore {
+          static GARBAGE_REFACTOR_019_STORE_E = true;
+
+          get(id: string): unknown { return null; }
+      }
+  commit_message: "refactor: replace BaseRepository inheritance with InMemoryStore composition"
+fragments:
+- id: new_store_class
+  selector:
+    path: src/base/InMemoryStore.ts
+    anchor: "export class InMemoryStore"
+- id: store_filter_method
+  selector:
+    path: src/base/InMemoryStore.ts
+    anchor: "filter(predicate"
+- id: user_repo_imports_store
+  selector:
+    path: src/repos/UserRepository.ts
+    anchor: "from '../base/InMemoryStore'"
+- id: user_repo_composes_store
+  selector:
+    path: src/repos/UserRepository.ts
+    anchor: "private store = new InMemoryStore<User>()"
+- id: post_repo_imports_store
+  selector:
+    path: src/repos/PostRepository.ts
+    anchor: "from '../base/InMemoryStore'"
+- id: post_repo_composes_store
+  selector:
+    path: src/repos/PostRepository.ts
+    anchor: "private store = new InMemoryStore<Post>()"
+- id: service_uses_repo
+  selector:
+    path: src/services/userService.ts
+    anchor: "from '../repos/UserRepository'"
+- id: no_cors
+  selector:
+    path: src/middleware/cors.ts
+- id: no_garbage_session
+  selector:
+    path: garbage_session.ts
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_REFACTOR_019_CORS_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_REFACTOR_019_ORIGIN_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_REFACTOR_019_SESSION_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_REFACTOR_019_TTL_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_REFACTOR_019_STORE_E
+oracle:
+  required:
+  - new_store_class
+  - store_filter_method
+  - user_repo_imports_store
+  - user_repo_composes_store
+  - post_repo_imports_store
+  - post_repo_composes_store
+  - service_uses_repo
+  allowed: []
+  forbidden:
+  - no_cors
+  - no_garbage_session
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

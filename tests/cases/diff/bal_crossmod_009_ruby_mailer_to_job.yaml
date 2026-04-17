@@ -1,0 +1,114 @@
+name: bal_crossmod_009_ruby_mailer_to_job
+tags:
+- lang:ruby
+- change:single_file
+- change:signature
+- context:cross_module
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    lib/mailers/welcome_mailer.rb: |
+      module Mailers
+        class WelcomeMailer
+          def initialize(smtp_client)
+            @smtp = smtp_client
+          end
+
+          def send_welcome(email, name)
+            subject = "Welcome, #{name}!"
+            body = "Thanks for joining us."
+            @smtp.deliver(email, subject, body)
+          end
+        end
+      end
+    lib/jobs/onboarding_job.rb: |
+      require_relative '../mailers/welcome_mailer'
+      module Jobs
+        class OnboardingJob
+          def initialize(mailer)
+            @mailer = mailer
+          end
+
+          def perform(user)
+            @mailer.send_welcome(user[:email], user[:name])
+          end
+        end
+      end
+    lib/templates/email_template.rb: |
+      module Templates
+        class EmailTemplate
+          def self.render(name, vars)
+            template = load_template(name)
+            vars.each { |k, v| template.gsub!("{{#{k}}}", v.to_s) }
+            template
+          end
+
+          def self.load_template(name)
+            "Hello {{name}}, welcome!"
+          end
+        end
+      end
+  changed_files:
+    lib/mailers/welcome_mailer.rb: |
+      module Mailers
+        class WelcomeMailer
+          def initialize(smtp_client)
+            @smtp = smtp_client
+          end
+
+          def send_welcome(email, name, locale: 'en')
+            subject = locale == 'en' ? "Welcome, #{name}!" : "Bienvenue, #{name}!"
+            body = "Thanks for joining us."
+            @smtp.deliver(email, subject, body)
+          end
+        end
+      end
+    lib/jobs/onboarding_job.rb: |
+      require_relative '../mailers/welcome_mailer'
+      module Jobs
+        class OnboardingJob
+          def initialize(mailer)
+            @mailer = mailer
+          end
+
+          def perform(user)
+            @mailer.send_welcome(user[:email], user[:name])
+          end
+        end
+      end
+    lib/templates/email_template.rb: |
+      module Templates
+        class EmailTemplate
+          def self.render(name, vars)
+            template = load_template(name)
+            vars.each { |k, v| template.gsub!("{{#{k}}}", v.to_s) }
+            template
+          end
+
+          def self.load_template(name)
+            "Hello {{name}}, welcome!"
+          end
+        end
+      end
+  commit_message: "feat: add locale support to welcome mailer"
+fragments:
+- id: send_welcome_locale
+  selector:
+    path: lib/mailers/welcome_mailer.rb
+    anchor: "def send_welcome(email, name, locale: 'en')"
+- id: job_calls_mailer
+  selector:
+    path: lib/jobs/onboarding_job.rb
+    anchor: "@mailer.send_welcome(user[:email], user[:name])"
+- id: no_template
+  selector:
+    path: lib/templates/email_template.rb
+    anchor: "def self.render"
+oracle:
+  required:
+  - send_welcome_locale
+  - job_calls_mailer
+  allowed: []
+  forbidden:
+  - no_template

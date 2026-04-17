@@ -1,0 +1,98 @@
+name: gap_145_python_terraform_django_settings_same_file
+tags:
+- change:config
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+- lang:python
+- lang:terraform
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    app/settings.py: |
+      import os
+
+      DATABASE_ENGINE = "django.db.backends.postgresql"
+      DATABASE_NAME = os.getenv("DB_NAME", "appdb")
+      DATABASE_HOST = os.getenv("DB_HOST", "localhost")
+      DATABASE_PORT = int(os.getenv("DB_PORT", "5432"))
+
+      CACHE_BACKEND = "redis"
+      CACHE_TIMEOUT = 300
+
+      ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
+      DEBUG = os.getenv("DEBUG", "false").lower() == "true"
+
+      SESSION_COOKIE_AGE = 86400
+      CSRF_COOKIE_SECURE = True
+    infra/rds.tf: |
+      resource "aws_db_instance" "app" {
+        engine         = "postgres"
+        engine_version = "15.4"
+        instance_class = "db.t3.micro"
+        db_name        = "appdb"
+        username       = "admin"
+        password       = var.db_password
+      }
+
+      variable "db_password" {
+        type      = string
+        sensitive = true
+      }
+    deploy/nginx.conf: |
+      server {
+          listen 80;
+          server_name example.com;
+
+          location / {
+              proxy_pass http://127.0.0.1:8000;
+              proxy_set_header Host $host;
+          }
+
+          location /static/ {
+              alias /var/www/static/;
+          }
+      }
+  changed_files:
+    app/settings.py: |
+      import os
+
+      DATABASE_ENGINE = "django.db.backends.postgresql"
+      DATABASE_NAME = os.getenv("DB_NAME", "appdb")
+      DATABASE_HOST = os.getenv("DB_HOST", "localhost")
+      DATABASE_PORT = int(os.getenv("DB_PORT", "5432"))
+      DATABASE_CONN_MAX_AGE = int(os.getenv("DB_CONN_MAX_AGE", "600"))
+
+      CACHE_BACKEND = "redis"
+      CACHE_TIMEOUT = 300
+
+      ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
+      DEBUG = os.getenv("DEBUG", "false").lower() == "true"
+
+      SESSION_COOKIE_AGE = 86400
+      CSRF_COOKIE_SECURE = True
+      SECURE_SSL_REDIRECT = True
+fragments:
+- id: conn_max_age
+  selector:
+    path: app/settings.py
+    anchor: DATABASE_CONN_MAX_AGE
+- id: ssl_redirect
+  selector:
+    path: app/settings.py
+    anchor: SECURE_SSL_REDIRECT
+- id: no_rds
+  selector:
+    path: infra/rds.tf
+- id: no_nginx
+  selector:
+    path: deploy/nginx.conf
+oracle:
+  required:
+  - conn_max_age
+  - ssl_redirect
+  forbidden:
+  - no_rds
+  - no_nginx

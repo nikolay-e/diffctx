@@ -1,0 +1,68 @@
+name: gap2_090_python_config_cross_module_logging_level
+tags:
+- change:config
+- change:single_file
+- context:cross_module
+- difficulty:easy
+- distance:0hop
+- lang:python
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    settings/logging_config.py: |
+      LOG_LEVEL = "WARNING"
+      LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+      LOG_FILE = "/var/log/app/main.log"
+      MAX_LOG_SIZE_MB = 50
+      BACKUP_COUNT = 5
+    app/server.py: |
+      from settings.logging_config import LOG_LEVEL, LOG_FORMAT
+
+      class AppServer:
+          def __init__(self):
+              self.log_level = LOG_LEVEL
+
+          def start(self, port: int) -> None:
+              pass
+    lib/mailer.py: |
+      TRAP_GAP2_090_MAILER_A = "mailer_noise"
+      TRAP_GAP2_090_MAILER_B = 587
+
+      class Mailer:
+          def send(self, to: str, body: str) -> bool:
+              return True
+  changed_files:
+    settings/logging_config.py: |
+      LOG_LEVEL = "DEBUG"
+      LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s [%(process)d]: %(message)s"
+      LOG_FILE = "/var/log/app/main.log"
+      MAX_LOG_SIZE_MB = 100
+      BACKUP_COUNT = 10
+  commit_message: Update files
+fragments:
+- id: log_level
+  selector:
+    path: settings/logging_config.py
+    anchor: 'LOG_LEVEL = "DEBUG"'
+- id: log_format
+  selector:
+    path: settings/logging_config.py
+    anchor: "%(process)d"
+- id: no_mailer
+  selector:
+    path: lib/mailer.py
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_090_MAILER_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_090_MAILER_B
+oracle:
+  required:
+  - log_level
+  - log_format
+  forbidden:
+  - no_mailer
+  - no_global_0
+  - no_global_1

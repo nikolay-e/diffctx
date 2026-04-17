@@ -1,0 +1,199 @@
+name: bal3_3hop_004_go_api_usecase_gateway_client
+tags:
+- lang:go
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    internal/client/http_client.go: |
+      package client
+
+      import (
+          "io"
+          "net/http"
+      )
+
+      type HTTPClient struct {
+          baseURL string
+      }
+
+      func NewHTTPClient(baseURL string) *HTTPClient {
+          return &HTTPClient{baseURL: baseURL}
+      }
+
+      func (c *HTTPClient) Get(path string) ([]byte, error) {
+          resp, err := http.Get(c.baseURL + path)
+          if err != nil {
+              return nil, err
+          }
+          defer resp.Body.Close()
+          return io.ReadAll(resp.Body)
+      }
+    internal/gateway/order_gateway.go: |
+      package gateway
+
+      import "myapp/internal/client"
+
+      type OrderGateway struct {
+          client *client.HTTPClient
+      }
+
+      func NewOrderGateway(c *client.HTTPClient) *OrderGateway {
+          return &OrderGateway{client: c}
+      }
+
+      func (g *OrderGateway) FetchOrder(id string) ([]byte, error) {
+          return g.client.Get("/orders/" + id)
+      }
+    internal/usecase/order_usecase.go: |
+      package usecase
+
+      import "myapp/internal/gateway"
+
+      type OrderUsecase struct {
+          gw *gateway.OrderGateway
+      }
+
+      func NewOrderUsecase(gw *gateway.OrderGateway) *OrderUsecase {
+          return &OrderUsecase{gw: gw}
+      }
+
+      func (u *OrderUsecase) GetOrder(id string) ([]byte, error) {
+          return u.gw.FetchOrder(id)
+      }
+    internal/api/order_api.go: |
+      package api
+
+      import (
+          "myapp/internal/usecase"
+          "net/http"
+      )
+
+      type OrderAPI struct {
+          uc *usecase.OrderUsecase
+      }
+
+      func NewOrderAPI(uc *usecase.OrderUsecase) *OrderAPI {
+          return &OrderAPI{uc: uc}
+      }
+
+      func (a *OrderAPI) HandleGetOrder(w http.ResponseWriter, r *http.Request) {
+          id := r.URL.Query().Get("id")
+          data, err := a.uc.GetOrder(id)
+          if err != nil {
+              http.Error(w, "error", 500)
+              return
+          }
+          w.Write(data)
+      }
+    internal/metrics/counter.go: |
+      package metrics
+
+      var GARBAGE_BAL3_004_COUNTER_MARKER_A = "counter"
+      var GARBAGE_BAL3_004_GAUGE_MARKER_B = "gauge"
+
+      type Counter struct {
+          val int
+      }
+
+      func (c *Counter) Inc() { c.val++ }
+    internal/metrics/histogram.go: |
+      package metrics
+
+      var GARBAGE_BAL3_004_HIST_MARKER_C = "histogram"
+      var GARBAGE_BAL3_004_BUCKET_MARKER_D = 10
+
+      type Histogram struct {
+          buckets []int
+      }
+
+      func (h *Histogram) Observe(v int) {
+          h.buckets = append(h.buckets, v)
+      }
+  changed_files:
+    internal/client/http_client.go: |
+      package client
+
+      import (
+          "fmt"
+          "io"
+          "net/http"
+      )
+
+      type HTTPClient struct {
+          baseURL string
+          timeout int
+      }
+
+      func NewHTTPClient(baseURL string) *HTTPClient {
+          return &HTTPClient{baseURL: baseURL, timeout: 30}
+      }
+
+      func (c *HTTPClient) Get(path string) ([]byte, error) {
+          resp, err := http.Get(c.baseURL + path)
+          if err != nil {
+              return nil, fmt.Errorf("GET %s failed: %w", path, err)
+          }
+          defer resp.Body.Close()
+          if resp.StatusCode != http.StatusOK {
+              return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
+          }
+          return io.ReadAll(resp.Body)
+      }
+  commit_message: "Fix missing status code check in HTTP client"
+fragments:
+- id: client_status_check
+  selector:
+    path: internal/client/http_client.go
+    anchor: "resp.StatusCode != http.StatusOK"
+- id: client_error_wrap
+  selector:
+    path: internal/client/http_client.go
+    anchor: "GET %s failed"
+- id: gateway_fetch
+  selector:
+    path: internal/gateway/order_gateway.go
+    anchor: "func (g *OrderGateway) FetchOrder"
+- id: usecase_get
+  selector:
+    path: internal/usecase/order_usecase.go
+    anchor: "func (u *OrderUsecase) GetOrder"
+- id: api_handle
+  selector:
+    path: internal/api/order_api.go
+    anchor: "func (a *OrderAPI) HandleGetOrder"
+- id: no_counter
+  selector:
+    path: internal/metrics/counter.go
+- id: no_histogram
+  selector:
+    path: internal/metrics/histogram.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_004_COUNTER_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_004_GAUGE_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_004_HIST_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_004_BUCKET_MARKER_D
+oracle:
+  required:
+  - client_status_check
+  - client_error_wrap
+  - gateway_fetch
+  - usecase_get
+  - api_handle
+  allowed: []
+  forbidden:
+  - no_counter
+  - no_histogram
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

@@ -1,0 +1,85 @@
+name: toml_010_cargo_profile_release
+tags:
+- lang:toml
+- change:single_file
+- change:config
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "cruncher"
+      version = "1.2.0"
+      edition = "2021"
+
+      [dependencies]
+      rayon = "1.8"
+      nalgebra = "0.32"
+    src/main.rs: |
+      use rayon::prelude::*;
+
+      fn main() {
+          let result: f64 = (0..1_000_000u64)
+              .into_par_iter()
+              .map(|x| (x as f64).sqrt())
+              .sum();
+          println!("sum: {result}");
+      }
+    src/lib.rs: |
+      pub mod compute;
+    TOML_NOISE_010_notifications.toml: |
+      [TOML_NOISE_010_slack]
+      TOML_NOISE_010_webhook = "https://hooks.slack.com/services/XXX"
+      TOML_NOISE_010_channel = "#alerts"
+      TOML_NOISE_010_username = "buildbot"
+
+      [TOML_NOISE_010_pagerduty]
+      TOML_NOISE_010_routing_key = "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+    src/toml_noise_010_bench.rs: |
+      // TOML_NOISE_010_benchmark harness placeholder
+      pub fn toml_noise_010_bench_noop() {}
+  changed_files:
+    Cargo.toml: |
+      [package]
+      name = "cruncher"
+      version = "1.2.0"
+      edition = "2021"
+
+      [dependencies]
+      rayon = "1.8"
+      nalgebra = "0.32"
+
+      [profile.release]
+      opt-level = 3
+      lto = true
+      codegen-units = 1
+      strip = "symbols"
+  commit_message: "perf: tune release profile with LTO, max opt-level, and symbol stripping"
+fragments:
+- id: cargo_profile_release
+  selector:
+    path: Cargo.toml
+    anchor: "[profile.release]"
+- id: no_noise_toml
+  selector:
+    path: TOML_NOISE_010_notifications.toml
+- id: no_bench_rs
+  selector:
+    path: src/toml_noise_010_bench.rs
+- id: no_global_0
+  selector:
+    anchor: TOML_NOISE_010_webhook
+- id: no_global_1
+  selector:
+    anchor: toml_noise_010_bench_noop
+oracle:
+  required:
+  - cargo_profile_release
+  allowed: []
+  forbidden:
+  - no_noise_toml
+  - no_bench_rs
+  - no_global_0
+  - no_global_1

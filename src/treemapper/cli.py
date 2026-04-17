@@ -63,6 +63,37 @@ def _resolve_root_dir(directory: str) -> Path:
         _exit_error(f"Cannot access '{directory}': {e}")
 
 
+def _expand_paths(raw_paths: list[str]) -> tuple[list[Path], list[Path]]:
+    import glob as globmod
+
+    dirs: list[Path] = []
+    files: list[Path] = []
+    seen: set[Path] = set()
+    for pattern in raw_paths:
+        matches = sorted(globmod.glob(pattern, recursive=True))
+        if not matches:
+            try:
+                p = Path(pattern).resolve(strict=True)
+            except FileNotFoundError:
+                _exit_error(f"No matches for '{pattern}'")
+            except OSError as e:
+                _exit_error(f"Cannot access '{pattern}': {e}")
+            matches = [str(p)]
+        for m in matches:
+            try:
+                resolved = Path(m).resolve()
+            except OSError as e:
+                _exit_error(f"Cannot access '{m}': {e}")
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            if resolved.is_dir():
+                dirs.append(resolved)
+            elif resolved.is_file():
+                files.append(resolved)
+    return dirs, files
+
+
 def _resolve_output_file(output_file_arg: str | None, save: bool, output_format: str) -> tuple[Path | None, bool]:
     if save and output_file_arg is not None:
         _exit_error("--save and -o/--output-file are mutually exclusive")
@@ -148,6 +179,8 @@ class ParsedArgs:
     full_diff: bool = False
     command: str | None = None
     graph: GraphArgs | None = None
+    extra_dirs: list[Path] | None = None
+    extra_files: list[Path] | None = None
 
 
 DEFAULT_IGNORES_HELP = """
@@ -255,7 +288,7 @@ def _build_main_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument("-v", "--version", action="version", version=f"%(prog)s {__version__}")
-    parser.add_argument("directory", nargs="?", default=".", help="The directory to analyze")
+    parser.add_argument("paths", nargs="*", default=["."], help="Directories, files, or glob patterns to analyze")
     parser.add_argument(
         "-f",
         "--format",
@@ -382,7 +415,11 @@ def _build_tree_parsed_args(args: argparse.Namespace) -> ParsedArgs:
     _validate_tau(args.tau)
     _warn_diff_only_flags(args)
 
-    root_dir = _resolve_root_dir(args.directory)
+    dirs, files = _expand_paths(args.paths)
+    root_dir = dirs[0] if dirs else Path(".").resolve()
+    extra_dirs = dirs or None
+    extra_files = files or None
+
     output_format = args.format
     output_file, force_stdout = _resolve_output_file(args.output_file, args.save, output_format)
     ignore_file = _resolve_ignore_file(args.ignore, root_dir)
@@ -409,6 +446,8 @@ def _build_tree_parsed_args(args: argparse.Namespace) -> ParsedArgs:
         tau=args.tau,
         scoring=args.scoring,
         full_diff=args.full,
+        extra_dirs=extra_dirs,
+        extra_files=extra_files,
     )
 
 

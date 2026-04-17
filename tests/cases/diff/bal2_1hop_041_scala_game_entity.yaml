@@ -1,0 +1,173 @@
+name: bal2_1hop_041_scala_game_entity
+tags:
+- lang:scala
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/engine/Entity.scala: |
+      package engine
+
+      trait Entity {
+        def id: String
+        def position: (Double, Double)
+        def update(dt: Double): Entity
+      }
+    src/main/scala/engine/Physics.scala: |
+      package engine
+
+      object Physics {
+        def applyGravity(entity: Entity, dt: Double): (Double, Double) = {
+          val (x, y) = entity.position
+          (x, y - 9.81 * dt)
+        }
+
+        def checkCollision(a: Entity, b: Entity): Boolean = {
+          val (ax, ay) = a.position
+          val (bx, by) = b.position
+          math.abs(ax - bx) < 1.0 && math.abs(ay - by) < 1.0
+        }
+      }
+    src/main/scala/game/Player.scala: |
+      package game
+
+      import engine.Entity
+
+      case class Player(id: String, position: (Double, Double), health: Int) extends Entity {
+        def update(dt: Double): Player = {
+          val (x, y) = position
+          copy(position = (x, y - 9.81 * dt))
+        }
+      }
+    src/main/scala/game/Enemy.scala: |
+      package game
+
+      import engine.Entity
+
+      case class Enemy(id: String, position: (Double, Double), damage: Int) extends Entity {
+        def update(dt: Double): Enemy = {
+          val (x, y) = position
+          copy(position = (x + 0.5 * dt, y))
+        }
+      }
+    src/main/scala/game/World.scala: |
+      package game
+
+      import engine.{Entity, Physics}
+
+      class World(entities: List[Entity]) {
+        def tick(dt: Double): World = {
+          new World(entities.map(_.update(dt)))
+        }
+
+        def collisions: List[(Entity, Entity)] = {
+          for {
+            a <- entities
+            b <- entities if a.id != b.id && Physics.checkCollision(a, b)
+          } yield (a, b)
+        }
+      }
+    src/main/scala/render/Sprite.scala: |
+      package render
+
+      GARBAGE_041_SPRITE_A = "sprite"
+
+      class Sprite(texture: String, width: Int, height: Int) {
+        def draw(x: Double, y: Double): Unit = ()
+      }
+    src/main/scala/audio/SoundEngine.scala: |
+      package audio
+
+      GARBAGE_041_SOUND_B = "sound"
+
+      class SoundEngine {
+        def play(clip: String): Unit = ()
+        def stop(clip: String): Unit = ()
+      }
+    src/main/scala/input/KeyboardHandler.scala: |
+      package input
+
+      GARBAGE_041_KEYBOARD_C = "keyboard"
+
+      class KeyboardHandler {
+        def isPressed(key: String): Boolean = false
+      }
+  changed_files:
+    src/main/scala/engine/Entity.scala: |
+      package engine
+
+      trait Entity {
+        def id: String
+        def position: (Double, Double)
+        def velocity: (Double, Double) = (0.0, 0.0)
+        def update(dt: Double): Entity
+        def boundingBox: (Double, Double, Double, Double) = {
+          val (x, y) = position
+          (x - 0.5, y - 0.5, x + 0.5, y + 0.5)
+        }
+      }
+  commit_message: "feat: add velocity and boundingBox to Entity trait"
+fragments:
+- id: entity_velocity
+  selector:
+    path: src/main/scala/engine/Entity.scala
+    anchor: "def velocity: (Double, Double)"
+- id: entity_bounding_box
+  selector:
+    path: src/main/scala/engine/Entity.scala
+    anchor: "def boundingBox"
+- id: physics_uses_entity
+  selector:
+    path: src/main/scala/engine/Physics.scala
+    anchor: "entity: Entity"
+- id: player_extends_entity
+  selector:
+    path: src/main/scala/game/Player.scala
+    anchor: "extends Entity"
+- id: enemy_extends_entity
+  selector:
+    path: src/main/scala/game/Enemy.scala
+    anchor: "extends Entity"
+- id: world_uses_entity
+  selector:
+    path: src/main/scala/game/World.scala
+    anchor: "entities: List[Entity]"
+- id: unrelated_sprite
+  selector:
+    path: src/main/scala/render/Sprite.scala
+    anchor: "class Sprite"
+- id: unrelated_sound
+  selector:
+    path: src/main/scala/audio/SoundEngine.scala
+    anchor: "class SoundEngine"
+- id: unrelated_keyboard
+  selector:
+    path: src/main/scala/input/KeyboardHandler.scala
+    anchor: "class KeyboardHandler"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_041_SPRITE_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_041_SOUND_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_041_KEYBOARD_C
+oracle:
+  required:
+  - entity_velocity
+  - entity_bounding_box
+  - physics_uses_entity
+  - player_extends_entity
+  - enemy_extends_entity
+  allowed:
+  - world_uses_entity
+  forbidden:
+  - unrelated_sprite
+  - unrelated_sound
+  - unrelated_keyboard
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

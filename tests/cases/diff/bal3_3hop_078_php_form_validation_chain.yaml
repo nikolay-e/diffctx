@@ -1,0 +1,251 @@
+name: bal3_3hop_078_php_form_validation_chain
+tags:
+- lang:php
+- change:multi_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/Rules/ValidationRule.php: |
+      <?php
+      namespace App\Rules;
+
+      interface ValidationRule {
+          public function passes(string $field, mixed $value): bool;
+          public function message(): string;
+      }
+    src/Rules/RequiredRule.php: |
+      <?php
+      namespace App\Rules;
+
+      use App\Rules\ValidationRule;
+
+      class RequiredRule implements ValidationRule {
+          public function passes(string $field, mixed $value): bool {
+              return $value !== null && $value !== '';
+          }
+          public function message(): string {
+              return 'This field is required.';
+          }
+      }
+    src/Validation/Validator.php: |
+      <?php
+      namespace App\Validation;
+
+      use App\Rules\ValidationRule;
+
+      class Validator {
+          private array $rules;
+          public function __construct(array $rules) {
+              $this->rules = $rules;
+          }
+          public function validate(array $data): array {
+              $errors = [];
+              foreach ($this->rules as $field => $fieldRules) {
+                  foreach ($fieldRules as $rule) {
+                      if (!$rule->passes($field, $data[$field] ?? null)) {
+                          $errors[$field][] = $rule->message();
+                      }
+                  }
+              }
+              return $errors;
+          }
+      }
+    src/Forms/FormHandler.php: |
+      <?php
+      namespace App\Forms;
+
+      use App\Validation\Validator;
+
+      class FormHandler {
+          private Validator $validator;
+          public function __construct(Validator $validator) {
+              $this->validator = $validator;
+          }
+          public function handle(array $data): array {
+              $errors = $this->validator->validate($data);
+              if (!empty($errors)) {
+                  return ['valid' => false, 'errors' => $errors];
+              }
+              return ['valid' => true];
+          }
+      }
+    src/Controllers/RegistrationController.php: |
+      <?php
+      namespace App\Controllers;
+
+      use App\Forms\FormHandler;
+
+      class RegistrationController {
+          private FormHandler $form;
+          public function __construct(FormHandler $form) {
+              $this->form = $form;
+          }
+          public function register(array $data): array {
+              return $this->form->handle($data);
+          }
+      }
+    src/Encryption/Hasher.php: |
+      <?php
+      namespace App\Encryption;
+      define('GARBAGE_078_HASH_A', 'bcrypt');
+      define('GARBAGE_078_ROUNDS_B', 12);
+
+      class Hasher {
+          public function hash(string $value): string { return password_hash($value, PASSWORD_BCRYPT); }
+      }
+    src/Encryption/Encryptor.php: |
+      <?php
+      namespace App\Encryption;
+      define('GARBAGE_078_ENCRYPT_C', 'aes');
+      define('GARBAGE_078_KEY_D', 'secret');
+
+      class Encryptor {
+          public function encrypt(string $data): string { return base64_encode($data); }
+      }
+  changed_files:
+    src/Rules/ValidationRule.php: |
+      <?php
+      namespace App\Rules;
+
+      interface ValidationRule {
+          public function passes(string $field, mixed $value): bool;
+          public function message(): string;
+          public function priority(): int;
+      }
+    src/Rules/RequiredRule.php: |
+      <?php
+      namespace App\Rules;
+
+      use App\Rules\ValidationRule;
+
+      class RequiredRule implements ValidationRule {
+          public function passes(string $field, mixed $value): bool {
+              return $value !== null && $value !== '';
+          }
+          public function message(): string {
+              return 'This field is required.';
+          }
+          public function priority(): int {
+              return 100;
+          }
+      }
+    src/Validation/Validator.php: |
+      <?php
+      namespace App\Validation;
+
+      use App\Rules\ValidationRule;
+
+      class Validator {
+          private array $rules;
+          public function __construct(array $rules) {
+              $this->rules = $rules;
+          }
+          public function validate(array $data): array {
+              $errors = [];
+              foreach ($this->rules as $field => $fieldRules) {
+                  usort($fieldRules, fn(ValidationRule $a, ValidationRule $b) => $b->priority() - $a->priority());
+                  foreach ($fieldRules as $rule) {
+                      if (!$rule->passes($field, $data[$field] ?? null)) {
+                          $errors[$field][] = $rule->message();
+                          break;
+                      }
+                  }
+              }
+              return $errors;
+          }
+      }
+    src/Forms/FormHandler.php: |
+      <?php
+      namespace App\Forms;
+
+      use App\Validation\Validator;
+
+      class FormHandler {
+          private Validator $validator;
+          public function __construct(Validator $validator) {
+              $this->validator = $validator;
+          }
+          public function handle(array $data): array {
+              $errors = $this->validator->validate($data);
+              if (!empty($errors)) {
+                  return ['valid' => false, 'errors' => $errors];
+              }
+              return ['valid' => true];
+          }
+      }
+    src/Controllers/RegistrationController.php: |
+      <?php
+      namespace App\Controllers;
+
+      use App\Forms\FormHandler;
+
+      class RegistrationController {
+          private FormHandler $form;
+          public function __construct(FormHandler $form) {
+              $this->form = $form;
+          }
+          public function register(array $data): array {
+              return $this->form->handle($data);
+          }
+      }
+    src/Encryption/Hasher.php: |
+      <?php
+      namespace App\Encryption;
+      define('GARBAGE_078_HASH_A', 'bcrypt');
+      define('GARBAGE_078_ROUNDS_B', 12);
+
+      class Hasher {
+          public function hash(string $value): string { return password_hash($value, PASSWORD_BCRYPT); }
+      }
+    src/Encryption/Encryptor.php: |
+      <?php
+      namespace App\Encryption;
+      define('GARBAGE_078_ENCRYPT_C', 'aes');
+      define('GARBAGE_078_KEY_D', 'secret');
+
+      class Encryptor {
+          public function encrypt(string $data): string { return base64_encode($data); }
+      }
+  commit_message: "feat: add priority-based rule ordering with early termination"
+fragments:
+- id: rule_priority
+  selector:
+    path: src/Rules/ValidationRule.php
+    anchor: "function priority(): int"
+- id: required_priority
+  selector:
+    path: src/Rules/RequiredRule.php
+    anchor: "function priority(): int"
+- id: validator_sort
+  selector:
+    path: src/Validation/Validator.php
+    anchor: "usort($fieldRules"
+- id: form_uses_validator
+  selector:
+    path: src/Forms/FormHandler.php
+    anchor: "use App\\Validation\\Validator"
+- id: controller_uses_form
+  selector:
+    path: src/Controllers/RegistrationController.php
+    anchor: "use App\\Forms\\FormHandler"
+- id: no_hasher
+  selector:
+    path: src/Encryption/Hasher.php
+    anchor: "GARBAGE_078_HASH_A"
+- id: no_encryptor
+  selector:
+    path: src/Encryption/Encryptor.php
+    anchor: "GARBAGE_078_ENCRYPT_C"
+oracle:
+  required:
+  - rule_priority
+  - required_priority
+  - validator_sort
+  - form_uses_validator
+  - controller_uses_form
+  allowed: []
+  forbidden:
+  - no_hasher
+  - no_encryptor

@@ -1,0 +1,202 @@
+name: bal3_testctx_023_ruby_event_dispatcher_spec
+tags:
+- lang:ruby
+- change:multi_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    lib/event.rb: |
+      class Event
+        attr_reader :name, :payload
+
+        def initialize(name, payload = {})
+          @name = name
+          @payload = payload
+        end
+      end
+    lib/event_dispatcher.rb: |
+      class EventDispatcher
+        def initialize
+          @listeners = Hash.new { |h, k| h[k] = [] }
+        end
+
+        def on(event_name, &block)
+          @listeners[event_name] << block
+        end
+
+        def emit(event)
+          @listeners[event.name].each { |listener| listener.call(event) }
+        end
+      end
+    spec/event_dispatcher_spec.rb: |
+      require_relative '../lib/event'
+      require_relative '../lib/event_dispatcher'
+
+      RSpec.describe EventDispatcher do
+        subject { described_class.new }
+
+        describe '#on and #emit' do
+          it 'calls registered listener' do
+            received = nil
+            subject.on('click') { |e| received = e.payload }
+            subject.emit(Event.new('click', { button: 'left' }))
+            expect(received).to eq({ button: 'left' })
+          end
+
+          it 'handles multiple listeners' do
+            count = 0
+            subject.on('tick') { count += 1 }
+            subject.on('tick') { count += 1 }
+            subject.emit(Event.new('tick'))
+            expect(count).to eq(2)
+          end
+
+          it 'ignores unregistered events' do
+            subject.emit(Event.new('unknown'))
+          end
+        end
+      end
+    lib/logger.rb: |
+      class Logger
+        def initialize(output = $stdout)
+          @output = output
+        end
+
+        def info(msg)
+          @output.puts "[INFO] #{msg}"
+        end
+
+        def error(msg)
+          @output.puts "[ERROR] #{msg}"
+        end
+      end
+    lib/config_loader.rb: |
+      class ConfigLoader
+        def self.load(path)
+          require 'yaml'
+          YAML.safe_load(File.read(path))
+        end
+      end
+    lib/serializer.rb: |
+      require 'json'
+
+      class Serializer
+        def self.to_json(obj)
+          JSON.generate(obj)
+        end
+
+        def self.from_json(str)
+          JSON.parse(str)
+        end
+      end
+  changed_files:
+    lib/event_dispatcher.rb: |
+      class EventDispatcher
+        def initialize
+          @listeners = Hash.new { |h, k| h[k] = [] }
+          @once_listeners = Hash.new { |h, k| h[k] = [] }
+          @history = []
+        end
+
+        def on(event_name, &block)
+          @listeners[event_name] << block
+        end
+
+        def once(event_name, &block)
+          @once_listeners[event_name] << block
+        end
+
+        def off(event_name)
+          @listeners.delete(event_name)
+          @once_listeners.delete(event_name)
+        end
+
+        def emit(event)
+          @history << event
+          @listeners[event.name].each { |listener| listener.call(event) }
+          @once_listeners[event.name].each { |listener| listener.call(event) }
+          @once_listeners.delete(event.name)
+        end
+
+        def history
+          @history.dup
+        end
+
+        def clear_history
+          @history.clear
+        end
+      end
+    lib/event.rb: |
+      class Event
+        attr_reader :name, :payload, :timestamp
+
+        def initialize(name, payload = {})
+          @name = name
+          @payload = payload
+          @timestamp = Time.now
+        end
+      end
+  commit_message: "feat: add once, off, event history, and timestamp"
+fragments:
+- id: once_method
+  selector:
+    path: lib/event_dispatcher.rb
+    anchor: "def once(event_name, &block)"
+- id: off_method
+  selector:
+    path: lib/event_dispatcher.rb
+    anchor: "def off(event_name)"
+- id: history_tracking
+  selector:
+    path: lib/event_dispatcher.rb
+    anchor: "@history << event"
+- id: clear_history
+  selector:
+    path: lib/event_dispatcher.rb
+    anchor: "def clear_history"
+- id: event_timestamp
+  selector:
+    path: lib/event.rb
+    anchor: "@timestamp = Time.now"
+- id: spec_on_emit
+  selector:
+    path: spec/event_dispatcher_spec.rb
+    anchor: "describe '#on and #emit'"
+- id: spec_calls_listener
+  selector:
+    path: spec/event_dispatcher_spec.rb
+    anchor: "it 'calls registered listener'"
+- id: spec_multiple_listeners
+  selector:
+    path: spec/event_dispatcher_spec.rb
+    anchor: "it 'handles multiple listeners'"
+- id: no_logger
+  selector:
+    path: lib/logger.rb
+    anchor: "class Logger"
+- id: no_config_loader
+  selector:
+    path: lib/config_loader.rb
+    anchor: "class ConfigLoader"
+- id: no_serializer
+  selector:
+    path: lib/serializer.rb
+    anchor: "class Serializer"
+oracle:
+  required:
+  - once_method
+  - off_method
+  - history_tracking
+  - spec_on_emit
+  - spec_calls_listener
+  allowed:
+  - clear_history
+  - event_timestamp
+  - spec_multiple_listeners
+  forbidden:
+  - no_logger
+  - no_config_loader
+  - no_serializer

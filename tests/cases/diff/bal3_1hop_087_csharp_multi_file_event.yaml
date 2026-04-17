@@ -1,0 +1,337 @@
+name: bal3_1hop_087_csharp_multi_file_event
+tags:
+- lang:csharp
+- change:multi_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: csharp-no-tree-sitter
+repo:
+  initial_files:
+    src/Events/DomainEvent.cs: |
+      using System;
+
+      namespace App.Events
+      {
+          public abstract class DomainEvent
+          {
+              public DateTime OccurredAt { get; }
+
+              protected DomainEvent()
+              {
+                  OccurredAt = DateTime.UtcNow;
+              }
+          }
+      }
+    src/Events/OrderPlacedEvent.cs: |
+      using System;
+
+      namespace App.Events
+      {
+          public class OrderPlacedEvent : DomainEvent
+          {
+              public int OrderId { get; }
+              public decimal Total { get; }
+
+              public OrderPlacedEvent(int orderId, decimal total)
+              {
+                  OrderId = orderId;
+                  Total = total;
+              }
+          }
+      }
+    src/Handlers/InventoryHandler.cs: |
+      using System;
+      using App.Events;
+
+      namespace App.Handlers
+      {
+          public class InventoryHandler
+          {
+              public void Handle(OrderPlacedEvent evt)
+              {
+                  Console.WriteLine($"Reserving stock for order {evt.OrderId}");
+              }
+          }
+      }
+    src/Handlers/BillingHandler.cs: |
+      using System;
+      using App.Events;
+
+      namespace App.Handlers
+      {
+          public class BillingHandler
+          {
+              public void Handle(OrderPlacedEvent evt)
+              {
+                  Console.WriteLine($"Creating invoice for {evt.Total}");
+              }
+          }
+      }
+    src/Handlers/ShippingHandler.cs: |
+      using System;
+      using App.Events;
+
+      namespace App.Handlers
+      {
+          public class ShippingHandler
+          {
+              public void Handle(OrderPlacedEvent evt)
+              {
+                  Console.WriteLine($"Preparing shipment for order {evt.OrderId}");
+              }
+          }
+      }
+    src/Handlers/AnalyticsHandler.cs: |
+      using System;
+      using App.Events;
+
+      namespace App.Handlers
+      {
+          public class AnalyticsHandler
+          {
+              public void Handle(DomainEvent evt)
+              {
+                  Console.WriteLine($"Event at {evt.OccurredAt}");
+              }
+          }
+      }
+    src/Providers/AWSProvider.cs: |
+      using System;
+      GARBAGE_087_AWS_REGION_A = "us-east-1";
+      GARBAGE_087_AWS_PROFILE_B = "default";
+
+      namespace App.Providers
+      {
+          public class AWSProvider
+          {
+              public void Initialize() { }
+          }
+      }
+    src/Providers/AzureProvider.cs: |
+      using System;
+      GARBAGE_087_AZURE_TENANT_C = "tenant-xxx";
+      GARBAGE_087_AZURE_SUB_D = "sub-xxx";
+
+      namespace App.Providers
+      {
+          public class AzureProvider
+          {
+              public void Initialize() { }
+          }
+      }
+    src/Providers/GCPProvider.cs: |
+      using System;
+      GARBAGE_087_GCP_PROJECT_E = "my-project";
+      GARBAGE_087_GCP_REGION_F = "us-central1";
+
+      namespace App.Providers
+      {
+          public class GCPProvider
+          {
+              public void Initialize() { }
+          }
+      }
+  changed_files:
+    src/Events/DomainEvent.cs: |
+      using System;
+
+      namespace App.Events
+      {
+          public abstract class DomainEvent
+          {
+              public Guid EventId { get; }
+              public DateTime OccurredAt { get; }
+              public string CorrelationId { get; set; }
+
+              protected DomainEvent()
+              {
+                  EventId = Guid.NewGuid();
+                  OccurredAt = DateTime.UtcNow;
+              }
+          }
+      }
+    src/Events/OrderPlacedEvent.cs: |
+      using System;
+
+      namespace App.Events
+      {
+          public class OrderPlacedEvent : DomainEvent
+          {
+              public int OrderId { get; }
+              public decimal Total { get; }
+              public string Currency { get; }
+
+              public OrderPlacedEvent(int orderId, decimal total, string currency = "USD")
+              {
+                  OrderId = orderId;
+                  Total = total;
+                  Currency = currency;
+              }
+          }
+      }
+    src/Handlers/InventoryHandler.cs: |
+      using System;
+      using App.Events;
+
+      namespace App.Handlers
+      {
+          public class InventoryHandler
+          {
+              public void Handle(OrderPlacedEvent evt)
+              {
+                  Console.WriteLine($"Reserving stock for order {evt.OrderId}");
+              }
+          }
+      }
+    src/Handlers/BillingHandler.cs: |
+      using System;
+      using App.Events;
+
+      namespace App.Handlers
+      {
+          public class BillingHandler
+          {
+              public void Handle(OrderPlacedEvent evt)
+              {
+                  Console.WriteLine($"Creating invoice for {evt.Total}");
+              }
+          }
+      }
+    src/Handlers/ShippingHandler.cs: |
+      using System;
+      using App.Events;
+
+      namespace App.Handlers
+      {
+          public class ShippingHandler
+          {
+              public void Handle(OrderPlacedEvent evt)
+              {
+                  Console.WriteLine($"Preparing shipment for order {evt.OrderId}");
+              }
+          }
+      }
+    src/Handlers/AnalyticsHandler.cs: |
+      using System;
+      using App.Events;
+
+      namespace App.Handlers
+      {
+          public class AnalyticsHandler
+          {
+              public void Handle(DomainEvent evt)
+              {
+                  Console.WriteLine($"Event at {evt.OccurredAt}");
+              }
+          }
+      }
+    src/Providers/AWSProvider.cs: |
+      using System;
+      GARBAGE_087_AWS_REGION_A = "us-east-1";
+      GARBAGE_087_AWS_PROFILE_B = "default";
+
+      namespace App.Providers
+      {
+          public class AWSProvider
+          {
+              public void Initialize() { }
+          }
+      }
+    src/Providers/AzureProvider.cs: |
+      using System;
+      GARBAGE_087_AZURE_TENANT_C = "tenant-xxx";
+      GARBAGE_087_AZURE_SUB_D = "sub-xxx";
+
+      namespace App.Providers
+      {
+          public class AzureProvider
+          {
+              public void Initialize() { }
+          }
+      }
+    src/Providers/GCPProvider.cs: |
+      using System;
+      GARBAGE_087_GCP_PROJECT_E = "my-project";
+      GARBAGE_087_GCP_REGION_F = "us-central1";
+
+      namespace App.Providers
+      {
+          public class GCPProvider
+          {
+              public void Initialize() { }
+          }
+      }
+  commit_message: "feat: add EventId, CorrelationId and Currency to domain events"
+fragments:
+- id: inventory_using
+  selector:
+    path: src/Handlers/InventoryHandler.cs
+    anchor: "using App.Events"
+- id: inventory_handle
+  selector:
+    path: src/Handlers/InventoryHandler.cs
+    anchor: "Handle(OrderPlacedEvent evt)"
+- id: billing_using
+  selector:
+    path: src/Handlers/BillingHandler.cs
+    anchor: "using App.Events"
+- id: shipping_using
+  selector:
+    path: src/Handlers/ShippingHandler.cs
+    anchor: "using App.Events"
+- id: analytics_using
+  selector:
+    path: src/Handlers/AnalyticsHandler.cs
+    anchor: "using App.Events"
+- id: analytics_handle
+  selector:
+    path: src/Handlers/AnalyticsHandler.cs
+    anchor: "Handle(DomainEvent evt)"
+- id: no_aws
+  selector:
+    path: src/Providers/AWSProvider.cs
+- id: no_azure
+  selector:
+    path: src/Providers/AzureProvider.cs
+- id: no_gcp
+  selector:
+    path: src/Providers/GCPProvider.cs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_087_AWS_REGION_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_087_AWS_PROFILE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_087_AZURE_TENANT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_087_AZURE_SUB_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_087_GCP_PROJECT_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_087_GCP_REGION_F
+oracle:
+  required:
+  - inventory_using
+  - inventory_handle
+  - billing_using
+  - shipping_using
+  - analytics_using
+  - analytics_handle
+  allowed: []
+  forbidden:
+  - no_aws
+  - no_azure
+  - no_gcp
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

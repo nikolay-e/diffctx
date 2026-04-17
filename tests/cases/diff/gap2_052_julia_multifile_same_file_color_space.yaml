@@ -1,0 +1,127 @@
+name: gap2_052_julia_multifile_same_file_color_space
+tags:
+- lang:lua
+- change:bug_fix
+- change:single_file
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/pathfinding.lua: |
+      local M = {}
+
+      function M.find_path(grid, start, goal)
+          local open = {start}
+          local came_from = {}
+
+          while #open > 0 do
+              local current = table.remove(open, 1)
+              if current == goal then
+                  return M.reconstruct(came_from, start, goal)
+              end
+              for _, neighbor in ipairs(M.neighbors(grid, current)) do
+                  table.insert(open, neighbor)
+                  came_from[neighbor] = current
+              end
+          end
+          return nil
+      end
+
+      function M.neighbors(grid, node)
+          return {}
+      end
+
+      function M.reconstruct(came_from, start, goal)
+          local path = {goal}
+          local current = goal
+          while current ~= start do
+              current = came_from[current]
+              if not current then return nil end
+              table.insert(path, 1, current)
+          end
+          return path
+      end
+
+      return M
+    garbage/GAP052_renderer.lua: |
+      -- GAP052_GARBAGE_A = "renderer_marker"
+    garbage/GAP052_physics.lua: |
+      -- GAP052_GARBAGE_B = "physics_marker"
+    garbage/GAP052_input.lua: |
+      -- GAP052_GARBAGE_C = "input_marker"
+  changed_files:
+    src/pathfinding.lua: |
+      local M = {}
+
+      function M.find_path(grid, start, goal)
+          local open = {start}
+          local came_from = {}
+          local visited = {}
+
+          while #open > 0 do
+              local current = table.remove(open, 1)
+              if current == goal then
+                  return M.reconstruct(came_from, start, goal)
+              end
+              if not visited[current] then
+                  visited[current] = true
+                  for _, neighbor in ipairs(M.neighbors(grid, current)) do
+                      if not visited[neighbor] then
+                          table.insert(open, neighbor)
+                          came_from[neighbor] = current
+                      end
+                  end
+              end
+          end
+          return nil
+      end
+
+      function M.neighbors(grid, node)
+          return {}
+      end
+
+      function M.reconstruct(came_from, start, goal)
+          local path = {goal}
+          local current = goal
+          while current ~= start do
+              current = came_from[current]
+              if not current then return nil end
+              table.insert(path, 1, current)
+          end
+          return path
+      end
+
+      return M
+    garbage/GAP052_renderer.lua: |
+      -- GAP052_GARBAGE_A = "renderer_marker"
+    garbage/GAP052_physics.lua: |
+      -- GAP052_GARBAGE_B = "physics_marker"
+    garbage/GAP052_input.lua: |
+      -- GAP052_GARBAGE_C = "input_marker"
+  commit_message: "fix: add visited set to find_path to prevent infinite loops on cyclic graphs"
+fragments:
+- id: find_path_func
+  selector:
+    anchor: "function M.find_path"
+- id: visited_set
+  selector:
+    anchor: "local visited = {}"
+- id: no_garbage_a
+  selector:
+    anchor: GAP052_GARBAGE_A
+- id: no_garbage_b
+  selector:
+    anchor: GAP052_GARBAGE_B
+- id: no_garbage_c
+  selector:
+    anchor: GAP052_GARBAGE_C
+oracle:
+  required:
+  - find_path_func
+  - visited_set
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

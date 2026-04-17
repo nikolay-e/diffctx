@@ -1,0 +1,71 @@
+name: css_013_transition_timing
+tags:
+- lang:css
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    transitions.css: |
+      :root {
+        --transition-fast: 150ms ease-in-out;
+        --transition-base: 250ms ease-in-out;
+        --transition-slow: 400ms ease-in-out;
+      }
+    nav.css: |
+      @import "transitions.css";
+      .nav-link {
+        color: #374151;
+        transition: color var(--transition-fast);
+      }
+      .nav-link:hover { color: #6366f1; }
+      .nav-submenu {
+        opacity: 0;
+        transition: opacity var(--transition-base);
+      }
+    CSS_NOISE_013_progress.css: |
+      .CSS_NOISE_013_progress_bar { height: 4px; background: #e5e7eb; border-radius: 2px; }
+      .CSS_NOISE_013_progress_fill { height: 100%; background: #3b82f6; }
+    CSS_NOISE_013_skeleton.css: |
+      .CSS_NOISE_013_skeleton_block { background: #e5e7eb; border-radius: 4px; }
+      .CSS_NOISE_013_skeleton_shimmer { animation: shimmer 1.5s infinite; }
+  changed_files:
+    transitions.css: |
+      :root {
+        --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+        --transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+        --transition-slow: 400ms cubic-bezier(0.4, 0, 0.2, 1);
+      }
+  commit_message: "style: replace ease-in-out with material cubic-bezier timing"
+fragments:
+- id: transition_fast_cubic
+  selector:
+    path: transitions.css
+    anchor: cubic-bezier
+- id: nav_imports_transitions
+  selector:
+    path: nav.css
+    anchor: transitions.css
+- id: no_progress
+  selector:
+    path: CSS_NOISE_013_progress.css
+- id: no_skeleton
+  selector:
+    path: CSS_NOISE_013_skeleton.css
+- id: no_global_0
+  selector:
+    anchor: CSS_NOISE_013_progress_bar
+- id: no_global_1
+  selector:
+    anchor: CSS_NOISE_013_skeleton_block
+oracle:
+  required:
+  - transition_fast_cubic
+  - nav_imports_transitions
+  allowed: []
+  forbidden:
+  - no_progress
+  - no_skeleton
+  - no_global_0
+  - no_global_1

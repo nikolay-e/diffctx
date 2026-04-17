@@ -1,0 +1,205 @@
+name: bal_hard_022_php_config_loader
+tags:
+- lang:php
+- change:multi_file
+- change:bug_fix
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/Config/ConfigInterface.php: |
+      <?php
+      namespace App\Config;
+      interface ConfigInterface {
+          public function get(string $key, $default = null);
+          public function has(string $key): bool;
+          public function all(): array;
+      }
+    src/Config/ArrayConfig.php: |
+      <?php
+      namespace App\Config;
+      class ArrayConfig implements ConfigInterface {
+          private array $data;
+          public function __construct(array $data) {
+              $this->data = $data;
+          }
+          public function get(string $key, $default = null) {
+              return $this->data[$key] ?? $default;
+          }
+          public function has(string $key): bool {
+              return array_key_exists($key, $this->data);
+          }
+          public function all(): array {
+              return $this->data;
+          }
+      }
+    src/Config/ConfigFactory.php: |
+      <?php
+      namespace App\Config;
+      class ConfigFactory {
+          public static function fromArray(array $data): ConfigInterface {
+              return new ArrayConfig($data);
+          }
+      }
+    src/Database/Connection.php: |
+      <?php
+      namespace App\Database;
+      use App\Config\ConfigInterface;
+      class Connection {
+          private string $dsn;
+          public function __construct(ConfigInterface $config) {
+              $host = $config->get('db_host', 'localhost');
+              $port = $config->get('db_port', '5432');
+              $name = $config->get('db_name', 'app');
+              $this->dsn = "pgsql:host=$host;port=$port;dbname=$name";
+          }
+          public function getDsn(): string { return $this->dsn; }
+      }
+    src/Cache/CacheManager.php: |
+      <?php
+      namespace App\Cache;
+      use App\Config\ConfigInterface;
+      class CacheManager {
+          private string $driver;
+          private int $ttl;
+          public function __construct(ConfigInterface $config) {
+              $this->driver = $config->get('cache_driver', 'file');
+              $this->ttl = (int) $config->get('cache_ttl', 3600);
+          }
+          public function getDriver(): string { return $this->driver; }
+          public function getTtl(): int { return $this->ttl; }
+      }
+    src/App/Bootstrap.php: |
+      <?php
+      namespace App\App;
+      use App\Config\ConfigFactory;
+      use App\Database\Connection;
+      use App\Cache\CacheManager;
+      class Bootstrap {
+          public static function init(array $env): array {
+              $config = ConfigFactory::fromArray($env);
+              $db = new Connection($config);
+              $cache = new CacheManager($config);
+              return ['db' => $db, 'cache' => $cache];
+          }
+      }
+    src/Helpers/EnvParser.php: |
+      <?php
+      namespace App\Helpers;
+      class EnvParser {
+          public static function parse(string $content): array {
+              $result = [];
+              foreach (explode("\n", $content) as $line) {
+                  if (strpos($line, '=') !== false) {
+                      [$key, $value] = explode('=', $line, 2);
+                      $result[trim($key)] = trim($value);
+                  }
+              }
+              return $result;
+          }
+      }
+  changed_files:
+    src/Config/ArrayConfig.php: |
+      <?php
+      namespace App\Config;
+      class ArrayConfig implements ConfigInterface {
+          private array $data;
+          public function __construct(array $data) {
+              $this->data = $this->flatten($data);
+          }
+          public function get(string $key, $default = null) {
+              return $this->data[$key] ?? $default;
+          }
+          public function has(string $key): bool {
+              return array_key_exists($key, $this->data);
+          }
+          public function all(): array {
+              return $this->data;
+          }
+          private function flatten(array $data, string $prefix = ''): array {
+              $result = [];
+              foreach ($data as $key => $value) {
+                  $fullKey = $prefix ? "{$prefix}.{$key}" : $key;
+                  if (is_array($value)) {
+                      $result = array_merge($result, $this->flatten($value, $fullKey));
+                  } else {
+                      $result[$fullKey] = $value;
+                  }
+              }
+              return $result;
+          }
+      }
+    src/Database/Connection.php: |
+      <?php
+      namespace App\Database;
+      use App\Config\ConfigInterface;
+      class Connection {
+          private string $dsn;
+          public function __construct(ConfigInterface $config) {
+              $host = $config->get('database.host', 'localhost');
+              $port = $config->get('database.port', '5432');
+              $name = $config->get('database.name', 'app');
+              $this->dsn = "pgsql:host=$host;port=$port;dbname=$name";
+          }
+          public function getDsn(): string { return $this->dsn; }
+      }
+    src/Cache/CacheManager.php: |
+      <?php
+      namespace App\Cache;
+      use App\Config\ConfigInterface;
+      class CacheManager {
+          private string $driver;
+          private int $ttl;
+          public function __construct(ConfigInterface $config) {
+              $this->driver = $config->get('cache.driver', 'file');
+              $this->ttl = (int) $config->get('cache.ttl', 3600);
+          }
+          public function getDriver(): string { return $this->driver; }
+          public function getTtl(): int { return $this->ttl; }
+      }
+  commit_message: "fix: support nested config keys with dot notation"
+fragments:
+- id: array_config_flatten
+  selector:
+    path: ArrayConfig.php
+    anchor: "private function flatten"
+- id: array_config_uses_flatten
+  selector:
+    path: ArrayConfig.php
+    anchor: "$this->flatten($data)"
+- id: connection_dot_notation
+  selector:
+    path: Connection.php
+    anchor: "database.host"
+- id: cache_dot_notation
+  selector:
+    path: CacheManager.php
+    anchor: "cache.driver"
+- id: config_interface
+  selector:
+    path: ConfigInterface.php
+    anchor: "interface ConfigInterface"
+- id: bootstrap_creates
+  selector:
+    path: Bootstrap.php
+    anchor: "ConfigFactory::fromArray($env)"
+- id: no_env_parser
+  selector:
+    path: Helpers/EnvParser.php
+- id: no_config_factory_body
+  selector:
+    path: ConfigFactory.php
+    anchor: "new ArrayConfig($data)"
+oracle:
+  required:
+  - array_config_flatten
+  - array_config_uses_flatten
+  - connection_dot_notation
+  - cache_dot_notation
+  - config_interface
+  - bootstrap_creates
+  allowed: []
+  forbidden:
+  - no_env_parser
+  - no_config_factory_body

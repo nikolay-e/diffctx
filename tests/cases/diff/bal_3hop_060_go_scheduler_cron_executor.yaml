@@ -1,0 +1,291 @@
+name: bal_3hop_060_go_scheduler_cron_executor
+tags:
+- lang:go
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    pkg/scheduler/job.go: |
+      package scheduler
+
+      type JobStatus string
+
+      const (
+        JobPending  JobStatus = "pending"
+        JobRunning  JobStatus = "running"
+        JobComplete JobStatus = "complete"
+      )
+
+      type Job struct {
+        ID       string
+        Name     string
+        Schedule string
+        Status   JobStatus
+        Fn       func() error
+      }
+    pkg/scheduler/queue.go: |
+      package scheduler
+
+      type JobQueue struct {
+        jobs []*Job
+      }
+
+      func NewJobQueue() *JobQueue {
+        return &JobQueue{}
+      }
+
+      func (q *JobQueue) Add(job *Job) {
+        q.jobs = append(q.jobs, job)
+      }
+
+      func (q *JobQueue) GetPending() []*Job {
+        var result []*Job
+        for _, j := range q.jobs {
+          if j.Status == JobPending {
+            result = append(result, j)
+          }
+        }
+        return result
+      }
+    pkg/scheduler/executor.go: |
+      package scheduler
+
+      import "fmt"
+
+      type Executor struct {
+        queue *JobQueue
+      }
+
+      func NewExecutor(q *JobQueue) *Executor {
+        return &Executor{queue: q}
+      }
+
+      func (e *Executor) RunPending() {
+        for _, job := range e.queue.GetPending() {
+          job.Status = JobRunning
+          if err := job.Fn(); err != nil {
+            fmt.Printf("Job %s failed: %v\n", job.Name, err)
+          }
+          job.Status = JobComplete
+        }
+      }
+    cmd/cron/main.go: |
+      package main
+
+      import (
+        "fmt"
+        "pkg/scheduler"
+      )
+
+      func main() {
+        queue := scheduler.NewJobQueue()
+        queue.Add(&scheduler.Job{
+          ID: "1", Name: "cleanup", Schedule: "0 * * * *",
+          Status: scheduler.JobPending,
+          Fn: func() error { fmt.Println("Running cleanup"); return nil },
+        })
+        exec := scheduler.NewExecutor(queue)
+        exec.RunPending()
+      }
+    pkg/util/cron.go: |
+      package util
+
+      var GARBAGE_060_CRON_MARKER_A = "cron"
+      var GARBAGE_060_PARSE_MARKER_B = true
+
+      func ParseCron(expr string) bool { return true }
+    pkg/util/lock.go: |
+      package util
+
+      var GARBAGE_060_LOCK_MARKER_C = "lock"
+      var GARBAGE_060_MUTEX_MARKER_D = true
+
+      type DistributedLock struct{}
+
+      func AcquireLock(name string) *DistributedLock { return nil }
+  changed_files:
+    pkg/scheduler/job.go: |
+      package scheduler
+
+      import "time"
+
+      type JobStatus string
+
+      const (
+        JobPending  JobStatus = "pending"
+        JobRunning  JobStatus = "running"
+        JobComplete JobStatus = "complete"
+        JobFailed   JobStatus = "failed"
+      )
+
+      type Job struct {
+        ID        string
+        Name      string
+        Schedule  string
+        Status    JobStatus
+        Fn        func() error
+        LastRun   time.Time
+        RunCount  int
+        MaxRetry  int
+      }
+    pkg/scheduler/queue.go: |
+      package scheduler
+
+      type JobQueue struct {
+        jobs []*Job
+      }
+
+      func NewJobQueue() *JobQueue {
+        return &JobQueue{}
+      }
+
+      func (q *JobQueue) Add(job *Job) {
+        q.jobs = append(q.jobs, job)
+      }
+
+      func (q *JobQueue) GetPending() []*Job {
+        var result []*Job
+        for _, j := range q.jobs {
+          if j.Status == JobPending || (j.Status == JobFailed && j.RunCount < j.MaxRetry) {
+            result = append(result, j)
+          }
+        }
+        return result
+      }
+
+      func (q *JobQueue) GetFailed() []*Job {
+        var result []*Job
+        for _, j := range q.jobs {
+          if j.Status == JobFailed {
+            result = append(result, j)
+          }
+        }
+        return result
+      }
+    pkg/scheduler/executor.go: |
+      package scheduler
+
+      import (
+        "fmt"
+        "time"
+      )
+
+      type Executor struct {
+        queue *JobQueue
+      }
+
+      func NewExecutor(q *JobQueue) *Executor {
+        return &Executor{queue: q}
+      }
+
+      func (e *Executor) RunPending() {
+        for _, job := range e.queue.GetPending() {
+          job.Status = JobRunning
+          job.RunCount++
+          job.LastRun = time.Now()
+          if err := job.Fn(); err != nil {
+            fmt.Printf("Job %s failed (attempt %d): %v\n", job.Name, job.RunCount, err)
+            job.Status = JobFailed
+          } else {
+            job.Status = JobComplete
+          }
+        }
+      }
+
+      func (e *Executor) GetFailedJobs() []*Job {
+        return e.queue.GetFailed()
+      }
+    cmd/cron/main.go: |
+      package main
+
+      import (
+        "fmt"
+        "pkg/scheduler"
+      )
+
+      func main() {
+        queue := scheduler.NewJobQueue()
+        queue.Add(&scheduler.Job{
+          ID: "1", Name: "cleanup", Schedule: "0 * * * *",
+          Status: scheduler.JobPending, MaxRetry: 3,
+          Fn: func() error { fmt.Println("Running cleanup"); return nil },
+        })
+        exec := scheduler.NewExecutor(queue)
+        exec.RunPending()
+        failed := exec.GetFailedJobs()
+        fmt.Printf("Failed jobs: %d\n", len(failed))
+      }
+    pkg/util/cron.go: |
+      package util
+
+      var GARBAGE_060_CRON_MARKER_A = "cron"
+      var GARBAGE_060_PARSE_MARKER_B = true
+
+      func ParseCron(expr string) bool { return true }
+    pkg/util/lock.go: |
+      package util
+
+      var GARBAGE_060_LOCK_MARKER_C = "lock"
+      var GARBAGE_060_MUTEX_MARKER_D = true
+
+      type DistributedLock struct{}
+
+      func AcquireLock(name string) *DistributedLock { return nil }
+  commit_message: "feat: add job retry, failure tracking, and run count to scheduler"
+fragments:
+- id: job_failed_status
+  selector:
+    path: pkg/scheduler/job.go
+    anchor: 'JobFailed   JobStatus = "failed"'
+- id: job_max_retry_field
+  selector:
+    path: pkg/scheduler/job.go
+    anchor: "MaxRetry  int"
+- id: job_run_count_field
+  selector:
+    path: pkg/scheduler/job.go
+    anchor: "RunCount  int"
+- id: queue_retry_logic
+  selector:
+    path: pkg/scheduler/queue.go
+    anchor: "j.RunCount < j.MaxRetry"
+- id: queue_get_failed
+  selector:
+    path: pkg/scheduler/queue.go
+    anchor: "func (q *JobQueue) GetFailed"
+- id: executor_get_failed
+  selector:
+    path: pkg/scheduler/executor.go
+    anchor: "func (e *Executor) GetFailedJobs"
+- id: main_imports_scheduler
+  selector:
+    path: cmd/cron/main.go
+    anchor: "pkg/scheduler"
+- id: main_checks_failed
+  selector:
+    path: cmd/cron/main.go
+    anchor: "exec.GetFailedJobs()"
+- id: no_cron
+  selector:
+    path: pkg/util/cron.go
+    anchor: "GARBAGE_060_CRON_MARKER_A"
+- id: no_lock
+  selector:
+    path: pkg/util/lock.go
+    anchor: "GARBAGE_060_LOCK_MARKER_C"
+oracle:
+  required:
+  - job_failed_status
+  - job_max_retry_field
+  - job_run_count_field
+  - queue_retry_logic
+  - queue_get_failed
+  - executor_get_failed
+  - main_imports_scheduler
+  - main_checks_failed
+  allowed: []
+  forbidden:
+  - no_cron
+  - no_lock

@@ -1,0 +1,132 @@
+name: bal3_3hop_039_java_strategy_discount
+tags:
+- lang:java
+- change:single_file
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/app/pricing/DiscountStrategy.java: |
+      package com.app.pricing;
+
+      public interface DiscountStrategy {
+          double apply(double price, int quantity);
+      }
+    src/main/java/com/app/pricing/BulkDiscount.java: |
+      package com.app.pricing;
+
+      public class BulkDiscount implements DiscountStrategy {
+          public double apply(double price, int quantity) {
+              if (quantity > 10) return price * 0.9;
+              return price;
+          }
+      }
+    src/main/java/com/app/pricing/PriceCalculator.java: |
+      package com.app.pricing;
+
+      public class PriceCalculator {
+          private final DiscountStrategy strategy;
+          public PriceCalculator(DiscountStrategy strategy) {
+              this.strategy = strategy;
+          }
+          public double calculate(double unitPrice, int quantity) {
+              double discounted = strategy.apply(unitPrice, quantity);
+              return discounted * quantity;
+          }
+      }
+    src/main/java/com/app/service/PricingService.java: |
+      package com.app.service;
+
+      import com.app.pricing.PriceCalculator;
+
+      public class PricingService {
+          private final PriceCalculator calculator;
+          public PricingService(PriceCalculator calculator) {
+              this.calculator = calculator;
+          }
+          public double getTotal(double unitPrice, int qty) {
+              return calculator.calculate(unitPrice, qty);
+          }
+      }
+    src/main/java/com/app/web/PriceController.java: |
+      package com.app.web;
+
+      import com.app.service.PricingService;
+
+      public class PriceController {
+          private final PricingService pricingService;
+          public PriceController(PricingService pricingService) {
+              this.pricingService = pricingService;
+          }
+          public String quote(double price, int qty) {
+              double total = pricingService.getTotal(price, qty);
+              return "Total: " + total;
+          }
+      }
+    src/main/java/com/app/util/TaxCalculator.java: |
+      package com.app.util;
+
+      public class TaxCalculator {
+          public static String GARBAGE_039_TAX_MARKER_A = "vat";
+          public static double GARBAGE_039_RATE_MARKER_B = 0.2;
+          public static double tax(double amt) { return amt * 0.2; }
+      }
+    src/main/java/com/app/util/CurrencyConverter.java: |
+      package com.app.util;
+
+      public class CurrencyConverter {
+          public static String GARBAGE_039_CURR_MARKER_C = "usd";
+          public static double GARBAGE_039_RATE_MARKER_D = 1.0;
+          public static double convert(double amt) { return amt; }
+      }
+  changed_files:
+    src/main/java/com/app/pricing/DiscountStrategy.java: |
+      package com.app.pricing;
+
+      public interface DiscountStrategy {
+          double apply(double price, int quantity);
+          default double maxDiscount() { return 0.5; }
+      }
+  commit_message: "fix: add maxDiscount default method to DiscountStrategy"
+fragments:
+- id: strategy_max_discount
+  selector:
+    path: src/main/java/com/app/pricing/DiscountStrategy.java
+    anchor: "maxDiscount"
+- id: bulk_implements_strategy
+  selector:
+    path: src/main/java/com/app/pricing/BulkDiscount.java
+    anchor: "implements DiscountStrategy"
+- id: calculator_uses_strategy
+  selector:
+    path: src/main/java/com/app/pricing/PriceCalculator.java
+    anchor: "private final DiscountStrategy strategy"
+- id: service_imports_calculator
+  selector:
+    path: src/main/java/com/app/service/PricingService.java
+    anchor: "import com.app.pricing.PriceCalculator"
+- id: controller_imports_service
+  selector:
+    path: src/main/java/com/app/web/PriceController.java
+    anchor: "import com.app.service.PricingService"
+- id: no_tax
+  selector:
+    path: src/main/java/com/app/util/TaxCalculator.java
+    anchor: "GARBAGE_039_TAX_MARKER_A"
+- id: no_currency
+  selector:
+    path: src/main/java/com/app/util/CurrencyConverter.java
+    anchor: "GARBAGE_039_CURR_MARKER_C"
+oracle:
+  required:
+  - strategy_max_discount
+  - bulk_implements_strategy
+  - calculator_uses_strategy
+  - service_imports_calculator
+  allowed:
+  - controller_imports_service
+  forbidden:
+  - no_tax
+  - no_currency

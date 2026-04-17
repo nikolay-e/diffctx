@@ -1,0 +1,154 @@
+name: gap2_189_php_signature_import_chain_telescope_control
+tags:
+- change:signature
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:2hop
+- lang:php
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/Observatory/TelescopeController.php: |
+      <?php
+
+      namespace App\Observatory;
+
+      use App\Observatory\Mount\EquatorialMount;
+
+      class TelescopeController
+      {
+          private EquatorialMount $mount;
+
+          public function __construct(EquatorialMount $mount)
+          {
+              $this->mount = $mount;
+          }
+
+          public function pointAt(float $ra, float $dec): bool
+          {
+              return $this->mount->slew($ra, $dec);
+          }
+
+          public function currentPosition(): array
+          {
+              return $this->mount->coordinates();
+          }
+      }
+    src/Observatory/Mount/EquatorialMount.php: |
+      <?php
+
+      namespace App\Observatory\Mount;
+
+      use App\Observatory\Mount\StepperMotor;
+
+      class EquatorialMount
+      {
+          private StepperMotor $raMotor;
+          private StepperMotor $decMotor;
+
+          public function __construct(StepperMotor $raMotor, StepperMotor $decMotor)
+          {
+              $this->raMotor = $raMotor;
+              $this->decMotor = $decMotor;
+          }
+
+          public function slew(float $ra, float $dec): bool
+          {
+              $this->raMotor->moveTo($ra);
+              $this->decMotor->moveTo($dec);
+              return true;
+          }
+
+          public function coordinates(): array
+          {
+              return ['ra' => $this->raMotor->position(), 'dec' => $this->decMotor->position()];
+          }
+      }
+    src/Observatory/Mount/StepperMotor.php: |
+      <?php
+
+      namespace App\Observatory\Mount;
+
+      class StepperMotor
+      {
+          private float $pos = 0.0;
+
+          public function moveTo(float $target): void
+          {
+              $this->pos = $target;
+          }
+
+          public function position(): float
+          {
+              return $this->pos;
+          }
+      }
+    src/Weather/SkyCondition.php: |
+      <?php
+
+      namespace App\Weather;
+
+      class SkyCondition
+      {
+          public function cloudCover(): float
+          {
+              return 0.3;
+          }
+      }
+  changed_files:
+    src/Observatory/TelescopeController.php: |
+      <?php
+
+      namespace App\Observatory;
+
+      use App\Observatory\Mount\EquatorialMount;
+
+      class TelescopeController
+      {
+          private EquatorialMount $mount;
+
+          public function __construct(EquatorialMount $mount)
+          {
+              $this->mount = $mount;
+          }
+
+          public function pointAt(float $ra, float $dec, float $slewRate = 1.0): bool
+          {
+              return $this->mount->slew($ra, $dec);
+          }
+
+          public function currentPosition(): array
+          {
+              return $this->mount->coordinates();
+          }
+      }
+  commit_message: "feat: add slew rate parameter to telescope pointing"
+fragments:
+- id: point_at_sig
+  selector:
+    path: src/Observatory/TelescopeController.php
+    anchor: "public function pointAt"
+- id: mount_slew
+  selector:
+    path: src/Observatory/Mount/EquatorialMount.php
+    anchor: "public function slew"
+- id: stepper_move
+  selector:
+    path: src/Observatory/Mount/StepperMotor.php
+    anchor: "public function moveTo"
+- id: no_weather
+  selector:
+    path: src/Weather/SkyCondition.php
+- id: no_sky
+  selector:
+    anchor: SkyCondition
+oracle:
+  required:
+  - point_at_sig
+  - mount_slew
+  - stepper_move
+  forbidden:
+  - no_weather
+  - no_sky

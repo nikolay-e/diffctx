@@ -1,0 +1,238 @@
+name: gap_099_rust_same_file_easy_task_scheduler
+tags:
+- lang:rust
+- change:new_function
+- change:signature
+- change:single_file
+- context:same_file
+- difficulty:easy
+- distance:0hop
+repo:
+  initial_files:
+    src/task.rs: |
+      #[derive(Clone, PartialEq)]
+      pub enum Priority {
+          Low,
+          Normal,
+          High,
+      }
+
+      pub struct Task {
+          id: u32,
+          name: String,
+          priority: Priority,
+          done: bool,
+      }
+
+      impl Task {
+          pub fn new(id: u32, name: &str, priority: Priority) -> Self {
+              Task {
+                  id,
+                  name: name.to_string(),
+                  priority,
+                  done: false,
+              }
+          }
+
+          pub fn id(&self) -> u32 {
+              self.id
+          }
+
+          pub fn name(&self) -> &str {
+              &self.name
+          }
+
+          pub fn complete(&mut self) {
+              self.done = true;
+          }
+
+          pub fn is_done(&self) -> bool {
+              self.done
+          }
+      }
+
+      pub struct Scheduler {
+          tasks: Vec<Task>,
+      }
+
+      impl Scheduler {
+          pub fn new() -> Self {
+              Scheduler { tasks: Vec::new() }
+          }
+
+          pub fn add(&mut self, task: Task) {
+              self.tasks.push(task);
+          }
+
+          pub fn pending(&self) -> Vec<&Task> {
+              self.tasks.iter().filter(|t| !t.is_done()).collect()
+          }
+
+          pub fn count(&self) -> usize {
+              self.tasks.len()
+          }
+      }
+    src/worker.rs: |
+      pub struct Worker {
+          id: u32,
+          busy: bool,
+      }
+
+      impl Worker {
+          pub fn new(id: u32) -> Self {
+              Worker { id, busy: false }
+          }
+
+          pub fn assign(&mut self) {
+              self.busy = true;
+          }
+
+          pub fn release(&mut self) {
+              self.busy = false;
+          }
+
+          pub fn is_busy(&self) -> bool {
+              self.busy
+          }
+      }
+    src/metrics.rs: |
+      pub struct Metrics {
+          completed: u64,
+          failed: u64,
+          total_duration_ms: u64,
+      }
+
+      impl Metrics {
+          pub fn new() -> Self {
+              Metrics { completed: 0, failed: 0, total_duration_ms: 0 }
+          }
+
+          pub fn record_success(&mut self, duration_ms: u64) {
+              self.completed += 1;
+              self.total_duration_ms += duration_ms;
+          }
+
+          pub fn record_failure(&mut self) {
+              self.failed += 1;
+          }
+
+          pub fn success_rate(&self) -> f64 {
+              let total = self.completed + self.failed;
+              if total == 0 { 0.0 } else { self.completed as f64 / total as f64 }
+          }
+      }
+  changed_files:
+    src/task.rs: |
+      #[derive(Clone, PartialEq, Ord, PartialOrd, Eq)]
+      pub enum Priority {
+          Low,
+          Normal,
+          High,
+          Critical,
+      }
+
+      pub struct Task {
+          id: u32,
+          name: String,
+          priority: Priority,
+          done: bool,
+      }
+
+      impl Task {
+          pub fn new(id: u32, name: &str, priority: Priority) -> Self {
+              Task {
+                  id,
+                  name: name.to_string(),
+                  priority,
+                  done: false,
+              }
+          }
+
+          pub fn id(&self) -> u32 {
+              self.id
+          }
+
+          pub fn name(&self) -> &str {
+              &self.name
+          }
+
+          pub fn priority(&self) -> &Priority {
+              &self.priority
+          }
+
+          pub fn complete(&mut self) {
+              self.done = true;
+          }
+
+          pub fn is_done(&self) -> bool {
+              self.done
+          }
+      }
+
+      pub struct Scheduler {
+          tasks: Vec<Task>,
+      }
+
+      impl Scheduler {
+          pub fn new() -> Self {
+              Scheduler { tasks: Vec::new() }
+          }
+
+          pub fn add(&mut self, task: Task) {
+              self.tasks.push(task);
+          }
+
+          pub fn next_by_priority(&self) -> Option<&Task> {
+              self.tasks.iter()
+                  .filter(|t| !t.is_done())
+                  .max_by_key(|t| t.priority().clone())
+          }
+
+          pub fn pending(&self) -> Vec<&Task> {
+              self.tasks.iter().filter(|t| !t.is_done()).collect()
+          }
+
+          pub fn count(&self) -> usize {
+              self.tasks.len()
+          }
+      }
+  commit_message: "feat(task): add Critical priority and priority scheduling"
+fixtures:
+  auto_garbage: true
+fragments:
+- id: task_critical_variant
+  selector:
+    path: src/task.rs
+    anchor: Critical
+- id: task_priority_getter
+  selector:
+    path: src/task.rs
+    anchor: "pub fn priority(&self)"
+- id: scheduler_next
+  selector:
+    path: src/task.rs
+    anchor: "pub fn next_by_priority"
+- id: task_enum
+  selector:
+    path: src/task.rs
+    anchor: "pub enum Priority"
+- id: no_worker
+  selector:
+    path: src/worker.rs
+- id: no_metrics
+  selector:
+    path: src/metrics.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_099_A
+oracle:
+  required:
+  - task_critical_variant
+  - task_priority_getter
+  - scheduler_next
+  - task_enum
+  allowed: []
+  forbidden:
+  - no_worker
+  - no_metrics
+  - no_global_0

@@ -1,0 +1,178 @@
+name: gap_048_pyts_multifile_temperature_converter
+tags:
+- lang:python
+- lang:typescript
+- change:multi_file
+- change:new_function
+- change:signature
+- context:same_file
+- distance:0hop
+- difficulty:easy
+repo:
+  initial_files:
+    lib/temperature.py: |
+      from dataclasses import dataclass
+      from enum import Enum
+
+      class Unit(Enum):
+          CELSIUS = "celsius"
+          FAHRENHEIT = "fahrenheit"
+
+      @dataclass
+      class Reading:
+          value: float
+          unit: Unit
+          sensor_id: str
+
+      def to_celsius(reading: Reading) -> float:
+          if reading.unit == Unit.CELSIUS:
+              return reading.value
+          return (reading.value - 32) * 5 / 9
+
+      def to_fahrenheit(reading: Reading) -> float:
+          if reading.unit == Unit.FAHRENHEIT:
+              return reading.value
+          return reading.value * 9 / 5 + 32
+
+      def average_readings(readings: list[Reading]) -> float:
+          celsius_values = [to_celsius(r) for r in readings]
+          return sum(celsius_values) / len(celsius_values)
+    app/temperature.ts: |
+      type Unit = "celsius" | "fahrenheit";
+
+      interface Reading {
+        value: number;
+        unit: Unit;
+        sensorId: string;
+      }
+
+      function toCelsius(reading: Reading): number {
+        if (reading.unit === "celsius") return reading.value;
+        return ((reading.value - 32) * 5) / 9;
+      }
+
+      function toFahrenheit(reading: Reading): number {
+        if (reading.unit === "fahrenheit") return reading.value;
+        return (reading.value * 9) / 5 + 32;
+      }
+
+      function formatReading(reading: Reading): string {
+        const symbol = reading.unit === "celsius" ? "C" : "F";
+        return `${reading.value.toFixed(1)} ${symbol}`;
+      }
+    app/dashboard.ts: |
+      function renderGauge(label: string, value: number): string {
+        return `<span class="gauge">${label}: ${value.toFixed(1)}</span>`;
+      }
+
+      function renderReadingList(readings: Reading[]): string {
+        return readings.map((r) => formatReading(r)).join(", ");
+      }
+  changed_files:
+    lib/temperature.py: |
+      from dataclasses import dataclass
+      from enum import Enum
+
+      class Unit(Enum):
+          CELSIUS = "celsius"
+          FAHRENHEIT = "fahrenheit"
+          KELVIN = "kelvin"
+
+      @dataclass
+      class Reading:
+          value: float
+          unit: Unit
+          sensor_id: str
+          timestamp: float = 0.0
+
+      def to_celsius(reading: Reading) -> float:
+          if reading.unit == Unit.CELSIUS:
+              return reading.value
+          if reading.unit == Unit.KELVIN:
+              return reading.value - 273.15
+          return (reading.value - 32) * 5 / 9
+
+      def to_fahrenheit(reading: Reading) -> float:
+          if reading.unit == Unit.FAHRENHEIT:
+              return reading.value
+          celsius = to_celsius(reading)
+          return celsius * 9 / 5 + 32
+
+      def to_kelvin(reading: Reading) -> float:
+          celsius = to_celsius(reading)
+          return celsius + 273.15
+
+      def average_readings(readings: list[Reading]) -> float:
+          celsius_values = [to_celsius(r) for r in readings]
+          return sum(celsius_values) / len(celsius_values)
+    app/temperature.ts: |
+      type Unit = "celsius" | "fahrenheit" | "kelvin";
+
+      interface Reading {
+        value: number;
+        unit: Unit;
+        sensorId: string;
+        timestamp: number;
+      }
+
+      function toCelsius(reading: Reading): number {
+        if (reading.unit === "celsius") return reading.value;
+        if (reading.unit === "kelvin") return reading.value - 273.15;
+        return ((reading.value - 32) * 5) / 9;
+      }
+
+      function toFahrenheit(reading: Reading): number {
+        if (reading.unit === "fahrenheit") return reading.value;
+        const celsius = toCelsius(reading);
+        return (celsius * 9) / 5 + 32;
+      }
+
+      function toKelvin(reading: Reading): number {
+        const celsius = toCelsius(reading);
+        return celsius + 273.15;
+      }
+
+      function formatReading(reading: Reading): string {
+        const symbols: Record<Unit, string> = { celsius: "C", fahrenheit: "F", kelvin: "K" };
+        return `${reading.value.toFixed(1)} ${symbols[reading.unit]}`;
+      }
+    app/dashboard.ts: |
+      function renderGauge(label: string, value: number): string {
+        return `<span class="gauge">${label}: ${value.toFixed(1)}</span>`;
+      }
+
+      function renderReadingList(readings: Reading[]): string {
+        return readings.map((r) => formatReading(r)).join(", ");
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: py_kelvin_unit
+  selector:
+    path: lib/temperature.py
+    anchor: 'KELVIN = "kelvin"'
+- id: py_to_kelvin
+  selector:
+    path: lib/temperature.py
+    anchor: "def to_kelvin(reading: Reading) -> float:"
+- id: py_timestamp_field
+  selector:
+    path: lib/temperature.py
+    anchor: "timestamp: float = 0.0"
+- id: ts_kelvin_type
+  selector:
+    path: app/temperature.ts
+    anchor: '"kelvin"'
+- id: ts_to_kelvin
+  selector:
+    path: app/temperature.ts
+    anchor: "function toKelvin(reading: Reading): number"
+oracle:
+  required:
+  - py_kelvin_unit
+  - py_to_kelvin
+  - ts_kelvin_type
+  - ts_to_kelvin
+  allowed: []
+  forbidden: []

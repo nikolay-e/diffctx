@@ -1,0 +1,205 @@
+name: gap2_061_csharp_cross_module_event_dispatcher
+tags:
+- change:single_file
+- context:cross_module
+- difficulty:medium
+- distance:2hop
+- lang:csharp
+repo:
+  initial_files:
+    Events/DomainEvent.cs: |
+      namespace Events
+      {
+          public abstract class DomainEvent
+          {
+              public DateTime OccurredAt { get; } = DateTime.UtcNow;
+              public string EventId { get; } = Guid.NewGuid().ToString();
+          }
+      }
+    Events/OrderPlacedEvent.cs: |
+      namespace Events
+      {
+          public class OrderPlacedEvent : DomainEvent
+          {
+              public string OrderId { get; set; }
+              public decimal Total { get; set; }
+          }
+      }
+    Handlers/OrderHandler.cs: |
+      using Events;
+
+      namespace Handlers
+      {
+          public class OrderHandler
+          {
+              public void Handle(OrderPlacedEvent evt)
+              {
+                  Console.WriteLine($"Processing order {evt.OrderId}");
+              }
+          }
+      }
+    Logging/AuditLogger.cs: |
+      const string TRAP_GAP2_061_AUDIT_A = "audit_noise";
+      const int TRAP_GAP2_061_AUDIT_B = 99;
+
+      namespace Logging
+      {
+          public class AuditLogger
+          {
+              public void Log(string message) { }
+          }
+      }
+    Caching/RedisCache.cs: |
+      const string TRAP_GAP2_061_CACHE_C = "cache_noise";
+      const bool TRAP_GAP2_061_CACHE_D = true;
+
+      namespace Caching
+      {
+          public class RedisCache
+          {
+              public void Set(string key, string value) { }
+              public string Get(string key) => "";
+          }
+      }
+    Metrics/Telemetry.cs: |
+      const string TRAP_GAP2_061_TELEM_E = "telemetry_noise";
+      const int TRAP_GAP2_061_TELEM_F = 42;
+
+      namespace Metrics
+      {
+          public class Telemetry
+          {
+              public void Record(string name, double value) { }
+          }
+      }
+  changed_files:
+    Events/DomainEvent.cs: |
+      namespace Events
+      {
+          public abstract class DomainEvent
+          {
+              public DateTime OccurredAt { get; } = DateTime.UtcNow;
+              public string EventId { get; } = Guid.NewGuid().ToString();
+              public string CorrelationId { get; set; }
+          }
+      }
+    Events/OrderPlacedEvent.cs: |
+      namespace Events
+      {
+          public class OrderPlacedEvent : DomainEvent
+          {
+              public string OrderId { get; set; }
+              public decimal Total { get; set; }
+          }
+      }
+    Handlers/OrderHandler.cs: |
+      using Events;
+
+      namespace Handlers
+      {
+          public class OrderHandler
+          {
+              public void Handle(OrderPlacedEvent evt)
+              {
+                  Console.WriteLine($"Processing order {evt.OrderId}");
+              }
+          }
+      }
+    Logging/AuditLogger.cs: |
+      const string TRAP_GAP2_061_AUDIT_A = "audit_noise";
+      const int TRAP_GAP2_061_AUDIT_B = 99;
+
+      namespace Logging
+      {
+          public class AuditLogger
+          {
+              public void Log(string message) { }
+          }
+      }
+    Caching/RedisCache.cs: |
+      const string TRAP_GAP2_061_CACHE_C = "cache_noise";
+      const bool TRAP_GAP2_061_CACHE_D = true;
+
+      namespace Caching
+      {
+          public class RedisCache
+          {
+              public void Set(string key, string value) { }
+              public string Get(string key) => "";
+          }
+      }
+    Metrics/Telemetry.cs: |
+      const string TRAP_GAP2_061_TELEM_E = "telemetry_noise";
+      const int TRAP_GAP2_061_TELEM_F = 42;
+
+      namespace Metrics
+      {
+          public class Telemetry
+          {
+              public void Record(string name, double value) { }
+          }
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: correlation_id
+  selector:
+    path: Events/DomainEvent.cs
+    anchor: "public string CorrelationId { get; set; }"
+- id: domain_event_class
+  selector:
+    path: Events/DomainEvent.cs
+    anchor: "public abstract class DomainEvent"
+- id: order_placed_inherits
+  selector:
+    path: Events/OrderPlacedEvent.cs
+    anchor: "public class OrderPlacedEvent : DomainEvent"
+- id: handler_uses_event
+  selector:
+    path: Handlers/OrderHandler.cs
+    anchor: "public void Handle(OrderPlacedEvent evt)"
+- id: no_audit
+  selector:
+    path: Logging/AuditLogger.cs
+- id: no_cache
+  selector:
+    path: Caching/RedisCache.cs
+- id: no_telemetry
+  selector:
+    path: Metrics/Telemetry.cs
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_061_AUDIT_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_061_AUDIT_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP2_061_CACHE_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP2_061_CACHE_D
+- id: no_global_4
+  selector:
+    anchor: TRAP_GAP2_061_TELEM_E
+- id: no_global_5
+  selector:
+    anchor: TRAP_GAP2_061_TELEM_F
+oracle:
+  required:
+  - correlation_id
+  - domain_event_class
+  - order_placed_inherits
+  - handler_uses_event
+  allowed: []
+  forbidden:
+  - no_audit
+  - no_cache
+  - no_telemetry
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

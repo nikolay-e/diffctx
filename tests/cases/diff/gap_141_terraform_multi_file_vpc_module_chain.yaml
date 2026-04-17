@@ -1,0 +1,209 @@
+name: gap_141_terraform_multi_file_vpc_module_chain
+tags:
+- change:config
+- change:multi_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:terraform
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    infra/network/main.tf: |
+      variable "vpc_cidr" {
+        type    = string
+        default = "10.0.0.0/16"
+      }
+
+      resource "aws_vpc" "main" {
+        cidr_block           = var.vpc_cidr
+        enable_dns_hostnames = true
+        enable_dns_support   = true
+
+        tags = {
+          Name = "production-vpc"
+        }
+      }
+
+      output "vpc_id" {
+        value = aws_vpc.main.id
+      }
+    infra/subnets/main.tf: |
+      variable "vpc_id" {
+        type = string
+      }
+
+      variable "public_cidrs" {
+        type    = list(string)
+        default = ["10.0.1.0/24", "10.0.2.0/24"]
+      }
+
+      resource "aws_subnet" "public" {
+        count             = length(var.public_cidrs)
+        vpc_id            = var.vpc_id
+        cidr_block        = var.public_cidrs[count.index]
+        availability_zone = element(["us-east-1a", "us-east-1b"], count.index)
+
+        tags = {
+          Name = "public-subnet-${count.index}"
+        }
+      }
+
+      output "subnet_ids" {
+        value = aws_subnet.public[*].id
+      }
+    infra/cluster/main.tf: |
+      variable "subnet_ids" {
+        type = list(string)
+      }
+
+      resource "aws_ecs_cluster" "app" {
+        name = "app-cluster"
+      }
+
+      resource "aws_ecs_service" "web" {
+        name            = "web-service"
+        cluster         = aws_ecs_cluster.app.id
+        desired_count   = 2
+        launch_type     = "FARGATE"
+
+        network_configuration {
+          subnets = var.subnet_ids
+        }
+      }
+    infra/dns/main.tf: |
+      variable "domain_name" {
+        type    = string
+        default = "internal.corp"
+      }
+
+      resource "aws_route53_zone" "private" {
+        name = var.domain_name
+
+        vpc {
+          vpc_id = "vpc-placeholder"
+        }
+      }
+
+      resource "aws_route53_record" "api" {
+        zone_id = aws_route53_zone.private.zone_id
+        name    = "api.${var.domain_name}"
+        type    = "A"
+        ttl     = 300
+        records = ["10.0.0.50"]
+      }
+  changed_files:
+    infra/network/main.tf: |
+      variable "vpc_cidr" {
+        type    = string
+        default = "10.0.0.0/16"
+      }
+
+      variable "secondary_cidr" {
+        type    = string
+        default = "10.1.0.0/16"
+      }
+
+      resource "aws_vpc" "main" {
+        cidr_block           = var.vpc_cidr
+        enable_dns_hostnames = true
+        enable_dns_support   = true
+
+        tags = {
+          Name = "production-vpc"
+        }
+      }
+
+      resource "aws_vpc_ipv4_cidr_block_association" "secondary" {
+        vpc_id     = aws_vpc.main.id
+        cidr_block = var.secondary_cidr
+      }
+
+      output "vpc_id" {
+        value = aws_vpc.main.id
+      }
+
+      output "secondary_cidr_association" {
+        value = aws_vpc_ipv4_cidr_block_association.secondary.id
+      }
+    infra/subnets/main.tf: |
+      variable "vpc_id" {
+        type = string
+      }
+
+      variable "public_cidrs" {
+        type    = list(string)
+        default = ["10.0.1.0/24", "10.0.2.0/24"]
+      }
+
+      variable "private_cidrs" {
+        type    = list(string)
+        default = ["10.1.1.0/24", "10.1.2.0/24"]
+      }
+
+      resource "aws_subnet" "public" {
+        count             = length(var.public_cidrs)
+        vpc_id            = var.vpc_id
+        cidr_block        = var.public_cidrs[count.index]
+        availability_zone = element(["us-east-1a", "us-east-1b"], count.index)
+
+        tags = {
+          Name = "public-subnet-${count.index}"
+        }
+      }
+
+      resource "aws_subnet" "private" {
+        count             = length(var.private_cidrs)
+        vpc_id            = var.vpc_id
+        cidr_block        = var.private_cidrs[count.index]
+        availability_zone = element(["us-east-1a", "us-east-1b"], count.index)
+
+        tags = {
+          Name = "private-subnet-${count.index}"
+        }
+      }
+
+      output "subnet_ids" {
+        value = aws_subnet.public[*].id
+      }
+
+      output "private_subnet_ids" {
+        value = aws_subnet.private[*].id
+      }
+fragments:
+- id: network_secondary_cidr
+  selector:
+    path: infra/network/main.tf
+    anchor: secondary_cidr
+- id: network_vpc
+  selector:
+    path: infra/network/main.tf
+    anchor: aws_vpc.main
+- id: subnets_private
+  selector:
+    path: infra/subnets/main.tf
+    anchor: aws_subnet.private
+- id: subnets_vpc_id
+  selector:
+    path: infra/subnets/main.tf
+    anchor: variable "vpc_id"
+- id: no_cluster
+  selector:
+    path: infra/cluster/main.tf
+- id: no_dns
+  selector:
+    path: infra/dns/main.tf
+- id: no_route53
+  selector:
+    anchor: aws_route53_zone
+oracle:
+  required:
+  - network_secondary_cidr
+  - network_vpc
+  - subnets_private
+  - subnets_vpc_id
+  forbidden:
+  - no_cluster
+  - no_dns
+  - no_route53

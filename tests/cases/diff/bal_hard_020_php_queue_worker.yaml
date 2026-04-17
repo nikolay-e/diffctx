@@ -1,0 +1,223 @@
+name: bal_hard_020_php_queue_worker
+tags:
+- lang:php
+- change:multi_file
+- change:new_function
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/Queue/Job.php: |
+      <?php
+      namespace App\Queue;
+      class Job {
+          public string $id;
+          public string $type;
+          public array $payload;
+          public string $status;
+          public function __construct(string $id, string $type, array $payload) {
+              $this->id = $id;
+              $this->type = $type;
+              $this->payload = $payload;
+              $this->status = 'pending';
+          }
+      }
+    src/Queue/QueueInterface.php: |
+      <?php
+      namespace App\Queue;
+      interface QueueInterface {
+          public function push(Job $job): void;
+          public function pop(): ?Job;
+          public function size(): int;
+      }
+    src/Queue/InMemoryQueue.php: |
+      <?php
+      namespace App\Queue;
+      class InMemoryQueue implements QueueInterface {
+          private array $jobs = [];
+          public function push(Job $job): void {
+              $this->jobs[] = $job;
+          }
+          public function pop(): ?Job {
+              return array_shift($this->jobs);
+          }
+          public function size(): int {
+              return count($this->jobs);
+          }
+      }
+    src/Worker/JobHandler.php: |
+      <?php
+      namespace App\Worker;
+      use App\Queue\Job;
+      interface JobHandler {
+          public function handle(Job $job): bool;
+      }
+    src/Worker/EmailJobHandler.php: |
+      <?php
+      namespace App\Worker;
+      use App\Queue\Job;
+      class EmailJobHandler implements JobHandler {
+          public function handle(Job $job): bool {
+              $to = $job->payload['to'] ?? '';
+              $subject = $job->payload['subject'] ?? '';
+              echo "Sending email to $to: $subject\n";
+              return true;
+          }
+      }
+    src/Worker/Worker.php: |
+      <?php
+      namespace App\Worker;
+      use App\Queue\QueueInterface;
+      use App\Queue\Job;
+      class Worker {
+          private QueueInterface $queue;
+          private array $handlers = [];
+          public function __construct(QueueInterface $queue) {
+              $this->queue = $queue;
+          }
+          public function registerHandler(string $type, JobHandler $handler): void {
+              $this->handlers[$type] = $handler;
+          }
+          public function processNext(): bool {
+              $job = $this->queue->pop();
+              if ($job === null) return false;
+              $handler = $this->handlers[$job->type] ?? null;
+              if ($handler === null) return false;
+              $job->status = 'processing';
+              $result = $handler->handle($job);
+              $job->status = $result ? 'completed' : 'failed';
+              return $result;
+          }
+      }
+    src/App/QueueSetup.php: |
+      <?php
+      namespace App\App;
+      use App\Queue\InMemoryQueue;
+      use App\Worker\Worker;
+      use App\Worker\EmailJobHandler;
+      class QueueSetup {
+          public static function create(): Worker {
+              $queue = new InMemoryQueue();
+              $worker = new Worker($queue);
+              $worker->registerHandler('email', new EmailJobHandler());
+              return $worker;
+          }
+      }
+    src/Helpers/RetryHelper.php: |
+      <?php
+      namespace App\Helpers;
+      class RetryHelper {
+          public static function retry(callable $fn, int $maxAttempts = 3): bool {
+              for ($i = 0; $i < $maxAttempts; $i++) {
+                  if ($fn()) return true;
+              }
+              return false;
+          }
+      }
+  changed_files:
+    src/Queue/Job.php: |
+      <?php
+      namespace App\Queue;
+      class Job {
+          public string $id;
+          public string $type;
+          public array $payload;
+          public string $status;
+          public int $attempts;
+          public int $maxAttempts;
+          public function __construct(string $id, string $type, array $payload, int $maxAttempts = 3) {
+              $this->id = $id;
+              $this->type = $type;
+              $this->payload = $payload;
+              $this->status = 'pending';
+              $this->attempts = 0;
+              $this->maxAttempts = $maxAttempts;
+          }
+          public function canRetry(): bool {
+              return $this->attempts < $this->maxAttempts;
+          }
+      }
+    src/Worker/Worker.php: |
+      <?php
+      namespace App\Worker;
+      use App\Queue\QueueInterface;
+      use App\Queue\Job;
+      class Worker {
+          private QueueInterface $queue;
+          private array $handlers = [];
+          public function __construct(QueueInterface $queue) {
+              $this->queue = $queue;
+          }
+          public function registerHandler(string $type, JobHandler $handler): void {
+              $this->handlers[$type] = $handler;
+          }
+          public function processNext(): bool {
+              $job = $this->queue->pop();
+              if ($job === null) return false;
+              $handler = $this->handlers[$job->type] ?? null;
+              if ($handler === null) return false;
+              $job->status = 'processing';
+              $job->attempts++;
+              $result = $handler->handle($job);
+              if ($result) {
+                  $job->status = 'completed';
+              } elseif ($job->canRetry()) {
+                  $job->status = 'pending';
+                  $this->queue->push($job);
+              } else {
+                  $job->status = 'failed';
+              }
+              return $result;
+          }
+      }
+  commit_message: "feat: add retry logic with max attempts to job worker"
+fragments:
+- id: job_attempts_field
+  selector:
+    path: Job.php
+    anchor: "public int $attempts"
+- id: job_max_attempts
+  selector:
+    path: Job.php
+    anchor: "public int $maxAttempts"
+- id: job_can_retry
+  selector:
+    path: Job.php
+    anchor: "public function canRetry()"
+- id: worker_retry_logic
+  selector:
+    path: Worker.php
+    anchor: "$job->canRetry()"
+- id: worker_requeue
+  selector:
+    path: Worker.php
+    anchor: "$this->queue->push($job)"
+- id: queue_interface
+  selector:
+    path: QueueInterface.php
+    anchor: "interface QueueInterface"
+- id: job_handler_interface
+  selector:
+    path: JobHandler.php
+    anchor: "interface JobHandler"
+- id: no_retry_helper
+  selector:
+    path: Helpers/RetryHelper.php
+- id: no_email_handler_body
+  selector:
+    path: EmailJobHandler.php
+    anchor: "Sending email to"
+oracle:
+  required:
+  - job_attempts_field
+  - job_max_attempts
+  - job_can_retry
+  - worker_retry_logic
+  - worker_requeue
+  - queue_interface
+  - job_handler_interface
+  allowed: []
+  forbidden:
+  - no_retry_helper
+  - no_email_handler_body

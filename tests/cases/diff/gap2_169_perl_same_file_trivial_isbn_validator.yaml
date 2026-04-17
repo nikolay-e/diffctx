@@ -1,0 +1,131 @@
+name: gap2_169_perl_same_file_trivial_isbn_validator
+tags:
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+- lang:perl
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    lib/ISBN.pm: |
+      package ISBN;
+      use strict;
+      use warnings;
+
+      sub new {
+          my ($class, %args) = @_;
+          return bless { code => $args{code} }, $class;
+      }
+
+      sub is_valid_10 {
+          my ($self) = @_;
+          my $code = $self->{code};
+          return 0 unless length($code) == 10;
+          my $sum = 0;
+          for my $i (0..8) {
+              $sum += substr($code, $i, 1) * (10 - $i);
+          }
+          my $check = substr($code, 9, 1);
+          $check = 10 if $check eq 'X';
+          return ($sum + $check) % 11 == 0;
+      }
+
+      1;
+    lib/Barcode.pm: |
+      package Barcode;
+      use strict;
+      use warnings;
+
+      sub new {
+          my ($class, %args) = @_;
+          return bless { data => $args{data} }, $class;
+      }
+
+      sub encode {
+          my ($self) = @_;
+          return join('-', split(//, $self->{data}));
+      }
+
+      1;
+    lib/Catalog.pm: |
+      package Catalog;
+      use strict;
+      use warnings;
+
+      sub new {
+          my ($class) = @_;
+          return bless { entries => [] }, $class;
+      }
+
+      sub add_entry {
+          my ($self, $entry) = @_;
+          push @{$self->{entries}}, $entry;
+      }
+
+      sub count {
+          my ($self) = @_;
+          return scalar @{$self->{entries}};
+      }
+
+      1;
+  changed_files:
+    lib/ISBN.pm: |
+      package ISBN;
+      use strict;
+      use warnings;
+
+      sub new {
+          my ($class, %args) = @_;
+          return bless { code => $args{code} }, $class;
+      }
+
+      sub is_valid_10 {
+          my ($self) = @_;
+          my $code = $self->{code};
+          return 0 unless length($code) == 10;
+          my $sum = 0;
+          for my $i (0..8) {
+              $sum += substr($code, $i, 1) * (10 - $i);
+          }
+          my $check = substr($code, 9, 1);
+          $check = 10 if $check eq 'X';
+          return ($sum + $check) % 11 == 0;
+      }
+
+      sub is_valid_13 {
+          my ($self) = @_;
+          my $code = $self->{code};
+          return 0 unless length($code) == 13;
+          my $sum = 0;
+          for my $i (0..11) {
+              my $weight = ($i % 2 == 0) ? 1 : 3;
+              $sum += substr($code, $i, 1) * $weight;
+          }
+          return (10 - ($sum % 10)) % 10 == substr($code, 12, 1);
+      }
+
+      1;
+fragments:
+- id: valid_13
+  selector:
+    path: lib/ISBN.pm
+    anchor: sub is_valid_13
+- id: isbn_file
+  selector:
+    path: lib/ISBN.pm
+    anchor: package ISBN
+- id: no_barcode
+  selector:
+    path: lib/Barcode.pm
+- id: no_catalog
+  selector:
+    path: lib/Catalog.pm
+oracle:
+  required:
+  - valid_13
+  - isbn_file
+  forbidden:
+  - no_barcode
+  - no_catalog

@@ -1,0 +1,80 @@
+name: bal3_bugfix_001_go_off_by_one_slice
+tags:
+- lang:go
+- change:single_file
+- change:bug_fix
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    pkg/pagination/pager.go: |
+      package pagination
+
+      type Page struct {
+          Items []string
+          Total int
+      }
+
+      func Paginate(items []string, page, size int) Page {
+          start := page * size
+          end := start + size
+          if end > len(items) {
+              end = len(items)
+          }
+          return Page{Items: items[start:end], Total: len(items)}
+      }
+    pkg/handlers/list.go: |
+      package handlers
+
+      import "myapp/pkg/pagination"
+
+      func ListItems(items []string, page int) pagination.Page {
+          return pagination.Paginate(items, page, 10)
+      }
+    pkg/db/store.go: |
+      package db
+
+      type Store struct {
+          DSN string
+      }
+
+      func NewStore(dsn string) *Store {
+          return &Store{DSN: dsn}
+      }
+  changed_files:
+    pkg/pagination/pager.go: |
+      package pagination
+
+      type Page struct {
+          Items []string
+          Total int
+      }
+
+      func Paginate(items []string, page, size int) Page {
+          start := page * size
+          if start >= len(items) {
+              return Page{Items: nil, Total: len(items)}
+          }
+          end := start + size
+          if end > len(items) {
+              end = len(items)
+          }
+          return Page{Items: items[start:end], Total: len(items)}
+      }
+  commit_message: "fix: prevent out-of-bounds when page exceeds item count"
+fragments:
+- id: paginate_bounds_check
+  selector:
+    path: pkg/pagination/pager.go
+    anchor: "if start >= len(items)"
+- id: no_store
+  selector:
+    path: pkg/db/store.go
+    anchor: "func NewStore"
+oracle:
+  required:
+  - paginate_bounds_check
+  allowed: []
+  forbidden:
+  - no_store

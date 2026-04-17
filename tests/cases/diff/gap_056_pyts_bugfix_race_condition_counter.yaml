@@ -1,0 +1,211 @@
+name: gap_056_pyts_bugfix_race_condition_counter
+tags:
+- lang:python
+- lang:typescript
+- change:bug_fix
+- change:single_file
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    backend/leaderboard/scorer.py: |
+      from dataclasses import dataclass, field
+
+      @dataclass
+      class PlayerScore:
+          player_id: str
+          points: int = 0
+          streak: int = 0
+          highest_streak: int = 0
+
+      class Leaderboard:
+          def __init__(self):
+              self._scores: dict[str, PlayerScore] = {}
+
+          def record_win(self, player_id: str, points: int) -> PlayerScore:
+              score = self._get_or_create(player_id)
+              score.points += points
+              score.streak += 1
+              if score.streak > score.highest_streak:
+                  score.highest_streak = score.streak
+              return score
+
+          def record_loss(self, player_id: str) -> PlayerScore:
+              score = self._get_or_create(player_id)
+              score.streak = 0
+              return score
+
+          def top_players(self, limit: int = 10) -> list[PlayerScore]:
+              ranked = sorted(self._scores.values(), key=lambda s: s.points, reverse=True)
+              return ranked[:limit]
+
+          def _get_or_create(self, player_id: str) -> PlayerScore:
+              if player_id not in self._scores:
+                  self._scores[player_id] = PlayerScore(player_id=player_id)
+              return self._scores[player_id]
+    backend/leaderboard/persistence.py: |
+      import json
+      from pathlib import Path
+
+      class ScoreStore:
+          def __init__(self, filepath: Path):
+              self._filepath = filepath
+
+          def save(self, data: dict) -> None:
+              self._filepath.write_text(json.dumps(data))
+
+          def load(self) -> dict:
+              if not self._filepath.exists():
+                  return {}
+              return json.loads(self._filepath.read_text())
+    frontend/src/game/scoreboard.ts: |
+      interface PlayerScore {
+        playerId: string;
+        points: number;
+        streak: number;
+        highestStreak: number;
+      }
+
+      function sortByPoints(scores: PlayerScore[]): PlayerScore[] {
+        return [...scores].sort((a, b) => b.points - a.points);
+      }
+
+      function formatRank(index: number, score: PlayerScore): string {
+        return `#${index + 1} ${score.playerId}: ${score.points} pts (streak: ${score.streak})`;
+      }
+
+      function renderLeaderboard(scores: PlayerScore[]): string {
+        const sorted = sortByPoints(scores);
+        return sorted.map((s, i) => formatRank(i, s)).join("\n");
+      }
+    frontend/src/game/animations.ts: |
+      function fadeIn(elementId: string, durationMs: number): void {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+        el.style.transition = `opacity ${durationMs}ms`;
+        el.style.opacity = "1";
+      }
+
+      function slideUp(elementId: string, pixels: number): void {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+        el.style.transform = `translateY(-${pixels}px)`;
+      }
+  changed_files:
+    backend/leaderboard/scorer.py: |
+      from dataclasses import dataclass, field
+      import threading
+
+      @dataclass
+      class PlayerScore:
+          player_id: str
+          points: int = 0
+          streak: int = 0
+          highest_streak: int = 0
+
+      class Leaderboard:
+          def __init__(self):
+              self._scores: dict[str, PlayerScore] = {}
+              self._lock = threading.Lock()
+
+          def record_win(self, player_id: str, points: int) -> PlayerScore:
+              with self._lock:
+                  score = self._get_or_create(player_id)
+                  score.points += points
+                  score.streak += 1
+                  if score.streak > score.highest_streak:
+                      score.highest_streak = score.streak
+                  return score
+
+          def record_loss(self, player_id: str) -> PlayerScore:
+              with self._lock:
+                  score = self._get_or_create(player_id)
+                  score.streak = 0
+                  return score
+
+          def top_players(self, limit: int = 10) -> list[PlayerScore]:
+              with self._lock:
+                  ranked = sorted(self._scores.values(), key=lambda s: s.points, reverse=True)
+                  return ranked[:limit]
+
+          def _get_or_create(self, player_id: str) -> PlayerScore:
+              if player_id not in self._scores:
+                  self._scores[player_id] = PlayerScore(player_id=player_id)
+              return self._scores[player_id]
+    backend/leaderboard/persistence.py: |
+      import json
+      from pathlib import Path
+
+      class ScoreStore:
+          def __init__(self, filepath: Path):
+              self._filepath = filepath
+
+          def save(self, data: dict) -> None:
+              self._filepath.write_text(json.dumps(data))
+
+          def load(self) -> dict:
+              if not self._filepath.exists():
+                  return {}
+              return json.loads(self._filepath.read_text())
+    frontend/src/game/scoreboard.ts: |
+      interface PlayerScore {
+        playerId: string;
+        points: number;
+        streak: number;
+        highestStreak: number;
+      }
+
+      function sortByPoints(scores: PlayerScore[]): PlayerScore[] {
+        return [...scores].sort((a, b) => b.points - a.points);
+      }
+
+      function formatRank(index: number, score: PlayerScore): string {
+        return `#${index + 1} ${score.playerId}: ${score.points} pts (streak: ${score.streak})`;
+      }
+
+      function renderLeaderboard(scores: PlayerScore[]): string {
+        const sorted = sortByPoints(scores);
+        return sorted.map((s, i) => formatRank(i, s)).join("\n");
+      }
+    frontend/src/game/animations.ts: |
+      function fadeIn(elementId: string, durationMs: number): void {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+        el.style.transition = `opacity ${durationMs}ms`;
+        el.style.opacity = "1";
+      }
+
+      function slideUp(elementId: string, pixels: number): void {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+        el.style.transform = `translateY(-${pixels}px)`;
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: threading_import
+  selector:
+    path: backend/leaderboard/scorer.py
+    anchor: "import threading"
+- id: lock_init
+  selector:
+    path: backend/leaderboard/scorer.py
+    anchor: "self._lock = threading.Lock()"
+- id: record_win_lock
+  selector:
+    path: backend/leaderboard/scorer.py
+    anchor: "with self._lock:"
+- id: leaderboard_class
+  selector:
+    path: backend/leaderboard/scorer.py
+    anchor: "class Leaderboard:"
+oracle:
+  required:
+  - threading_import
+  - lock_init
+  - record_win_lock
+  - leaderboard_class
+  allowed: []
+  forbidden: []

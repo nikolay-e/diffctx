@@ -1,0 +1,234 @@
+name: bal_cfgcode_018_typescript_deploy_targets
+tags:
+- lang:typescript
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    config/deploy.json: |
+      {
+        "environment": "development",
+        "region": "us-east-1",
+        "replicas": 1,
+        "resources": {
+          "cpu": "250m",
+          "memory": "256Mi"
+        },
+        "healthCheck": "/health"
+      }
+    src/deploy.ts: |
+      import deployConfig from '../config/deploy.json';
+
+      export const ENV = deployConfig.environment;
+      export const REGION = deployConfig.region;
+      export const REPLICAS = deployConfig.replicas;
+
+      export function getResourceLimits() {
+        return deployConfig.resources;
+      }
+
+      export function healthEndpoint(): string {
+        return deployConfig.healthCheck;
+      }
+    src/scaling.ts: |
+      import { readFileSync } from 'fs';
+
+      const cfg = JSON.parse(readFileSync('config/deploy.json', 'utf-8'));
+
+      export function shouldScale(currentLoad: number): boolean {
+        return currentLoad > cfg.replicas * 100;
+      }
+
+      export function targetReplicas(load: number): number {
+        return Math.ceil(load / 100);
+      }
+    src/monitoring.ts: |
+      import { readFileSync } from 'fs';
+
+      const deployCfg = JSON.parse(readFileSync('config/deploy.json', 'utf-8'));
+
+      export function getHealthPath(): string {
+        return deployCfg.healthCheck;
+      }
+    src/migrations.ts: |
+      const GARBAGE_CFGCODE_018_MIG_A = "v2";
+      const GARBAGE_CFGCODE_018_MIG_B = "pending";
+
+      export function runMigrations(): void {
+        return;
+      }
+    src/seed.ts: |
+      const GARBAGE_CFGCODE_018_SEED_C = "test-data";
+      const GARBAGE_CFGCODE_018_SEED_D = 100;
+
+      export function seedDatabase(): void {
+        return;
+      }
+    garbage_ci.ts: |
+      const GARBAGE_CFGCODE_018_CI_E = "github-actions";
+      const GARBAGE_CFGCODE_018_CI_F = "main";
+
+      export function triggerBuild(): void {
+        return;
+      }
+  changed_files:
+    config/deploy.json: |
+      {
+        "environment": "production",
+        "region": "eu-west-1",
+        "replicas": 5,
+        "resources": {
+          "cpu": "1000m",
+          "memory": "1Gi"
+        },
+        "healthCheck": "/health",
+        "autoscaling": {
+          "minReplicas": 3,
+          "maxReplicas": 20,
+          "targetCpuPercent": 70
+        },
+        "rollout": {
+          "strategy": "canary",
+          "canaryPercent": 10
+        }
+      }
+    src/deploy.ts: |
+      import deployConfig from '../config/deploy.json';
+
+      export const ENV = deployConfig.environment;
+      export const REGION = deployConfig.region;
+      export const REPLICAS = deployConfig.replicas;
+
+      export function getResourceLimits() {
+        return deployConfig.resources;
+      }
+
+      export function healthEndpoint(): string {
+        return deployConfig.healthCheck;
+      }
+    src/scaling.ts: |
+      import { readFileSync } from 'fs';
+
+      const cfg = JSON.parse(readFileSync('config/deploy.json', 'utf-8'));
+
+      export function shouldScale(currentLoad: number): boolean {
+        return currentLoad > cfg.replicas * 100;
+      }
+
+      export function targetReplicas(load: number): number {
+        return Math.ceil(load / 100);
+      }
+    src/monitoring.ts: |
+      import { readFileSync } from 'fs';
+
+      const deployCfg = JSON.parse(readFileSync('config/deploy.json', 'utf-8'));
+
+      export function getHealthPath(): string {
+        return deployCfg.healthCheck;
+      }
+    src/migrations.ts: |
+      const GARBAGE_CFGCODE_018_MIG_A = "v2";
+      const GARBAGE_CFGCODE_018_MIG_B = "pending";
+
+      export function runMigrations(): void {
+        return;
+      }
+    src/seed.ts: |
+      const GARBAGE_CFGCODE_018_SEED_C = "test-data";
+      const GARBAGE_CFGCODE_018_SEED_D = 100;
+
+      export function seedDatabase(): void {
+        return;
+      }
+    garbage_ci.ts: |
+      const GARBAGE_CFGCODE_018_CI_E = "github-actions";
+      const GARBAGE_CFGCODE_018_CI_F = "main";
+
+      export function triggerBuild(): void {
+        return;
+      }
+  commit_message: "config: production deploy with autoscaling and canary"
+fragments:
+- id: config_env
+  selector:
+    path: config/deploy.json
+    anchor: '"environment": "production"'
+- id: config_replicas
+  selector:
+    path: config/deploy.json
+    anchor: '"replicas": 5'
+- id: config_autoscaling
+  selector:
+    path: config/deploy.json
+    anchor: "targetCpuPercent"
+- id: config_canary
+  selector:
+    path: config/deploy.json
+    anchor: "canaryPercent"
+- id: deploy_reads_env
+  selector:
+    path: src/deploy.ts
+    anchor: "deployConfig.environment"
+- id: deploy_reads_resources
+  selector:
+    path: src/deploy.ts
+    anchor: "deployConfig.resources"
+- id: scaling_reads_replicas
+  selector:
+    path: src/scaling.ts
+    anchor: "cfg.replicas"
+- id: monitoring_reads_health
+  selector:
+    path: src/monitoring.ts
+    anchor: "deployCfg.healthCheck"
+- id: no_migrations
+  selector:
+    path: src/migrations.ts
+- id: no_seed
+  selector:
+    path: src/seed.ts
+- id: no_ci
+  selector:
+    path: garbage_ci.ts
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_018_MIG_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_018_MIG_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_018_SEED_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_018_SEED_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CFGCODE_018_CI_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CFGCODE_018_CI_F
+oracle:
+  required:
+  - config_env
+  - config_replicas
+  - config_autoscaling
+  - config_canary
+  - deploy_reads_env
+  - deploy_reads_resources
+  - scaling_reads_replicas
+  - monitoring_reads_health
+  allowed: []
+  forbidden:
+  - no_migrations
+  - no_seed
+  - no_ci
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

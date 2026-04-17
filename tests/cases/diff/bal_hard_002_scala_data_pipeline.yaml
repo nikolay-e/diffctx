@@ -1,0 +1,136 @@
+name: bal_hard_002_scala_data_pipeline
+tags:
+- lang:scala
+- change:multi_file
+- change:signature
+- context:cross_module
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/pipeline/Schema.scala: |
+      package pipeline
+      case class Record(key: String, value: String)
+      case class Batch(records: List[Record])
+    src/main/scala/pipeline/Parser.scala: |
+      package pipeline
+      class Parser {
+        def parse(raw: String): Record = {
+          val parts = raw.split("=")
+          Record(parts(0), parts(1))
+        }
+      }
+    src/main/scala/pipeline/Transformer.scala: |
+      package pipeline
+      class Transformer {
+        def transform(record: Record): Record = {
+          Record(record.key.toUpperCase, record.value.trim)
+        }
+      }
+    src/main/scala/pipeline/Validator.scala: |
+      package pipeline
+      class Validator {
+        def validate(record: Record): Boolean = {
+          record.key.nonEmpty && record.value.nonEmpty
+        }
+      }
+    src/main/scala/pipeline/Sink.scala: |
+      package pipeline
+      class Sink {
+        def write(batch: Batch): Unit = {
+          batch.records.foreach(r => println(s"${r.key} -> ${r.value}"))
+        }
+      }
+    src/main/scala/pipeline/Pipeline.scala: |
+      package pipeline
+      class Pipeline {
+        private val parser = new Parser()
+        private val transformer = new Transformer()
+        private val validator = new Validator()
+        private val sink = new Sink()
+        def run(lines: List[String]): Unit = {
+          val records = lines.map(parser.parse).map(transformer.transform).filter(validator.validate)
+          sink.write(Batch(records))
+        }
+      }
+    src/main/scala/util/Config.scala: |
+      package util
+      object Config {
+        val batchSize: Int = 100
+        val delimiter: String = ","
+      }
+    src/main/scala/util/FileHelper.scala: |
+      package util
+      object FileHelper {
+        def readLines(path: String): List[String] = {
+          scala.io.Source.fromFile(path).getLines().toList
+        }
+      }
+  changed_files:
+    src/main/scala/pipeline/Schema.scala: |
+      package pipeline
+      case class Record(key: String, value: String, metadata: Map[String, String] = Map.empty)
+      case class Batch(records: List[Record])
+    src/main/scala/pipeline/Parser.scala: |
+      package pipeline
+      class Parser {
+        def parse(raw: String): Record = {
+          val parts = raw.split("=")
+          Record(parts(0), parts(1), Map("source" -> "raw"))
+        }
+      }
+    src/main/scala/pipeline/Transformer.scala: |
+      package pipeline
+      class Transformer {
+        def transform(record: Record): Record = {
+          Record(record.key.toUpperCase, record.value.trim, record.metadata + ("transformed" -> "true"))
+        }
+      }
+  commit_message: "feat: add metadata map to Record"
+fragments:
+- id: record_metadata
+  selector:
+    path: Schema.scala
+    anchor: "metadata: Map[String, String]"
+- id: parser_sets_metadata
+  selector:
+    path: Parser.scala
+    anchor: 'Map("source" -> "raw")'
+- id: transformer_appends_metadata
+  selector:
+    path: Transformer.scala
+    anchor: 'record.metadata + ("transformed"'
+- id: validator_uses_record
+  selector:
+    path: Validator.scala
+    anchor: "record.key.nonEmpty"
+- id: pipeline_orchestrates
+  selector:
+    path: Pipeline.scala
+    anchor: "parser.parse"
+- id: sink_writes_batch
+  selector:
+    path: Sink.scala
+    anchor: "batch.records.foreach"
+- id: no_config
+  selector:
+    path: util/Config.scala
+- id: no_file_helper
+  selector:
+    path: util/FileHelper.scala
+- id: no_batch_size
+  selector:
+    anchor: "val batchSize"
+oracle:
+  required:
+  - record_metadata
+  - parser_sets_metadata
+  - transformer_appends_metadata
+  - validator_uses_record
+  - pipeline_orchestrates
+  - sink_writes_batch
+  allowed: []
+  forbidden:
+  - no_config
+  - no_file_helper
+  - no_batch_size

@@ -1,0 +1,196 @@
+name: bal2_3hop_001_java_spring_auth_chain
+tags:
+- lang:java
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/app/auth/TokenProvider.java: |
+      package com.app.auth;
+
+      public class TokenProvider {
+          public String generateToken(String userId) {
+              return "token-" + userId;
+          }
+          public boolean validateToken(String token) {
+              return token != null && token.startsWith("token-");
+          }
+      }
+    src/main/java/com/app/auth/AuthService.java: |
+      package com.app.auth;
+
+      import com.app.auth.TokenProvider;
+
+      public class AuthService {
+          private final TokenProvider tokenProvider;
+          public AuthService(TokenProvider tokenProvider) {
+              this.tokenProvider = tokenProvider;
+          }
+          public String authenticate(String userId, String password) {
+              return tokenProvider.generateToken(userId);
+          }
+      }
+    src/main/java/com/app/security/SecurityFilter.java: |
+      package com.app.security;
+
+      import com.app.auth.AuthService;
+
+      public class SecurityFilter {
+          private final AuthService authService;
+          public SecurityFilter(AuthService authService) {
+              this.authService = authService;
+          }
+          public boolean doFilter(String userId, String password) {
+              String token = authService.authenticate(userId, password);
+              return token != null;
+          }
+      }
+    src/main/java/com/app/web/LoginController.java: |
+      package com.app.web;
+
+      import com.app.security.SecurityFilter;
+
+      public class LoginController {
+          private final SecurityFilter securityFilter;
+          public LoginController(SecurityFilter securityFilter) {
+              this.securityFilter = securityFilter;
+          }
+          public String handleLogin(String userId, String password) {
+              boolean ok = securityFilter.doFilter(userId, password);
+              return ok ? "success" : "failure";
+          }
+      }
+    src/main/java/com/app/util/StringUtils.java: |
+      package com.app.util;
+
+      public class StringUtils {
+          public static String capitalize(String s) {
+              return s.substring(0, 1).toUpperCase() + s.substring(1);
+          }
+      }
+    src/main/java/com/app/util/DateUtils.java: |
+      package com.app.util;
+
+      public class DateUtils {
+          public static String formatDate(long millis) {
+              return String.valueOf(millis);
+          }
+      }
+  changed_files:
+    src/main/java/com/app/auth/TokenProvider.java: |
+      package com.app.auth;
+
+      import java.time.Instant;
+
+      public class TokenProvider {
+          private final long expirationSeconds;
+          public TokenProvider(long expirationSeconds) {
+              this.expirationSeconds = expirationSeconds;
+          }
+          public String generateToken(String userId) {
+              long expiry = Instant.now().getEpochSecond() + expirationSeconds;
+              return "token-" + userId + "-" + expiry;
+          }
+          public boolean validateToken(String token) {
+              return token != null && token.startsWith("token-");
+          }
+      }
+    src/main/java/com/app/auth/AuthService.java: |
+      package com.app.auth;
+
+      import com.app.auth.TokenProvider;
+
+      public class AuthService {
+          private final TokenProvider tokenProvider;
+          public AuthService(TokenProvider tokenProvider) {
+              this.tokenProvider = tokenProvider;
+          }
+          public String authenticate(String userId, String password) {
+              return tokenProvider.generateToken(userId);
+          }
+      }
+    src/main/java/com/app/security/SecurityFilter.java: |
+      package com.app.security;
+
+      import com.app.auth.AuthService;
+
+      public class SecurityFilter {
+          private final AuthService authService;
+          public SecurityFilter(AuthService authService) {
+              this.authService = authService;
+          }
+          public boolean doFilter(String userId, String password) {
+              String token = authService.authenticate(userId, password);
+              return token != null;
+          }
+      }
+    src/main/java/com/app/web/LoginController.java: |
+      package com.app.web;
+
+      import com.app.security.SecurityFilter;
+
+      public class LoginController {
+          private final SecurityFilter securityFilter;
+          public LoginController(SecurityFilter securityFilter) {
+              this.securityFilter = securityFilter;
+          }
+          public String handleLogin(String userId, String password) {
+              boolean ok = securityFilter.doFilter(userId, password);
+              return ok ? "success" : "failure";
+          }
+      }
+    src/main/java/com/app/util/StringUtils.java: |
+      package com.app.util;
+
+      public class StringUtils {
+          public static String capitalize(String s) {
+              return s.substring(0, 1).toUpperCase() + s.substring(1);
+          }
+      }
+    src/main/java/com/app/util/DateUtils.java: |
+      package com.app.util;
+
+      public class DateUtils {
+          public static String formatDate(long millis) {
+              return String.valueOf(millis);
+          }
+      }
+  commit_message: "feat: add token expiration to TokenProvider"
+fragments:
+- id: token_expiration
+  selector:
+    path: src/main/java/com/app/auth/TokenProvider.java
+    anchor: "private final long expirationSeconds"
+- id: auth_imports_token
+  selector:
+    path: src/main/java/com/app/auth/AuthService.java
+    anchor: "import com.app.auth.TokenProvider"
+- id: filter_imports_auth
+  selector:
+    path: src/main/java/com/app/security/SecurityFilter.java
+    anchor: "import com.app.auth.AuthService"
+- id: controller_imports_filter
+  selector:
+    path: src/main/java/com/app/web/LoginController.java
+    anchor: "import com.app.security.SecurityFilter"
+- id: no_string_utils
+  selector:
+    path: src/main/java/com/app/util/StringUtils.java
+    anchor: "class StringUtils"
+- id: no_date_utils
+  selector:
+    path: src/main/java/com/app/util/DateUtils.java
+    anchor: "class DateUtils"
+oracle:
+  required:
+  - token_expiration
+  - auth_imports_token
+  - filter_imports_auth
+  - controller_imports_filter
+  allowed: []
+  forbidden:
+  - no_string_utils
+  - no_date_utils

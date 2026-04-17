@@ -1,0 +1,238 @@
+name: bal3_1hop_060_scala_multi_file_di_container
+tags:
+- lang:scala
+- change:multi_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: scala-no-tree-sitter
+repo:
+  initial_files:
+    src/main/scala/di/Container.scala: |
+      package di
+
+      class Container {
+        private var bindings: Map[String, () => Any] = Map.empty
+
+        def register[T](name: String, factory: () => T): Unit = {
+          bindings = bindings + (name -> factory)
+        }
+
+        def resolve[T](name: String): T = {
+          bindings(name)().asInstanceOf[T]
+        }
+      }
+    src/main/scala/di/ServiceProvider.scala: |
+      package di
+
+      class ServiceProvider(container: Container) {
+        def registerAll(): Unit = {
+          container.register("greeting", () => "Hello, World!")
+        }
+      }
+    src/main/scala/app/WebApp.scala: |
+      package app
+
+      import di.Container
+
+      class WebApp(container: Container) {
+        def start(): String = {
+          val greeting: String = container.resolve("greeting")
+          s"App started: $greeting"
+        }
+      }
+    src/main/scala/app/CliApp.scala: |
+      package app
+
+      import di.Container
+
+      class CliApp(container: Container) {
+        def run(command: String): String = {
+          val greeting: String = container.resolve("greeting")
+          s"CLI[$command]: $greeting"
+        }
+      }
+    src/main/scala/app/WorkerApp.scala: |
+      package app
+
+      import di.Container
+
+      class WorkerApp(container: Container) {
+        def process(): String = {
+          val greeting: String = container.resolve("greeting")
+          s"Worker: $greeting"
+        }
+      }
+    src/main/scala/app/SchedulerApp.scala: |
+      package app
+
+      import di.Container
+
+      class SchedulerApp(container: Container) {
+        def tick(): String = {
+          val greeting: String = container.resolve("greeting")
+          s"Scheduler tick: $greeting"
+        }
+      }
+    src/main/scala/app/TestRunner.scala: |
+      package app
+
+      import di.Container
+      import di.ServiceProvider
+
+      class TestRunner(container: Container, provider: ServiceProvider) {
+        def setup(): Unit = {
+          provider.registerAll()
+        }
+
+        def run(): String = {
+          val greeting: String = container.resolve("greeting")
+          s"Test: $greeting"
+        }
+      }
+    src/main/scala/metrics/Counter.scala: |
+      package metrics
+
+      object Counter {
+        val GARBAGE_BAL3_060_CTR_A = "counter"
+        val GARBAGE_BAL3_060_INIT_B = 0
+
+        def increment(name: String): Unit = ()
+      }
+    src/main/scala/metrics/Histogram.scala: |
+      package metrics
+
+      object Histogram {
+        val GARBAGE_BAL3_060_HIST_C = "histogram"
+        val GARBAGE_BAL3_060_BUCKETS_D = 10
+
+        def observe(name: String, value: Double): Unit = ()
+      }
+    src/main/scala/metrics/Gauge.scala: |
+      package metrics
+
+      object Gauge {
+        val GARBAGE_BAL3_060_GAUGE_E = "gauge"
+        val GARBAGE_BAL3_060_VALUE_F = 0.0
+
+        def set(name: String, value: Double): Unit = ()
+      }
+  changed_files:
+    src/main/scala/di/Container.scala: |
+      package di
+
+      class Container {
+        private var bindings: Map[String, () => Any] = Map.empty
+        private var singletons: Map[String, Any] = Map.empty
+
+        def register[T](name: String, factory: () => T): Unit = {
+          bindings = bindings + (name -> factory)
+        }
+
+        def registerSingleton[T](name: String, factory: () => T): Unit = {
+          bindings = bindings + (name -> factory)
+          singletons = singletons + (name -> factory())
+        }
+
+        def resolve[T](name: String): T = {
+          singletons.get(name) match {
+            case Some(instance) => instance.asInstanceOf[T]
+            case None => bindings(name)().asInstanceOf[T]
+          }
+        }
+
+        def has(name: String): Boolean = {
+          bindings.contains(name) || singletons.contains(name)
+        }
+
+        def reset(): Unit = {
+          bindings = Map.empty
+          singletons = Map.empty
+        }
+      }
+    src/main/scala/di/ServiceProvider.scala: |
+      package di
+
+      class ServiceProvider(container: Container) {
+        def registerAll(): Unit = {
+          container.register("greeting", () => "Hello, World!")
+          container.registerSingleton("config", () => Map("env" -> "production"))
+        }
+
+        def isRegistered(name: String): Boolean = {
+          container.has(name)
+        }
+      }
+  commit_message: "Add singleton support, has check, and reset to DI Container"
+fragments:
+- id: web_app
+  selector:
+    path: src/main/scala/app/WebApp.scala
+    anchor: "import di.Container"
+- id: web_resolve
+  selector:
+    path: src/main/scala/app/WebApp.scala
+    anchor: "container.resolve"
+- id: cli_app
+  selector:
+    path: src/main/scala/app/CliApp.scala
+    anchor: "import di.Container"
+- id: worker_app
+  selector:
+    path: src/main/scala/app/WorkerApp.scala
+    anchor: "import di.Container"
+- id: scheduler_app
+  selector:
+    path: src/main/scala/app/SchedulerApp.scala
+    anchor: "import di.Container"
+- id: test_runner
+  selector:
+    path: src/main/scala/app/TestRunner.scala
+    anchor: "import di.Container"
+- id: no_counter
+  selector:
+    path: src/main/scala/metrics/Counter.scala
+- id: no_histogram
+  selector:
+    path: src/main/scala/metrics/Histogram.scala
+- id: no_gauge
+  selector:
+    path: src/main/scala/metrics/Gauge.scala
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_060_CTR_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_060_INIT_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_060_HIST_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_060_BUCKETS_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL3_060_GAUGE_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL3_060_VALUE_F
+oracle:
+  required:
+  - web_app
+  - web_resolve
+  - cli_app
+  - worker_app
+  - scheduler_app
+  - test_runner
+  allowed: []
+  forbidden:
+  - no_counter
+  - no_histogram
+  - no_gauge
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

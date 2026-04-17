@@ -1,0 +1,234 @@
+name: bal3_3hop_015_go_gateway_circuit_breaker_pool_transport
+tags:
+- lang:go
+- change:multi_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    net/transport/tcp.go: |
+      package transport
+
+      type TCPTransport struct {
+          addr    string
+          timeout int
+      }
+
+      func NewTCPTransport(addr string, timeout int) *TCPTransport {
+          return &TCPTransport{addr: addr, timeout: timeout}
+      }
+
+      func (t *TCPTransport) Send(data []byte) error {
+          return nil
+      }
+
+      func (t *TCPTransport) Addr() string {
+          return t.addr
+      }
+    net/pool/conn_pool.go: |
+      package pool
+
+      import "myapp/net/transport"
+
+      type ConnPool struct {
+          transports []*transport.TCPTransport
+          maxSize    int
+      }
+
+      func NewConnPool(maxSize int) *ConnPool {
+          return &ConnPool{maxSize: maxSize}
+      }
+
+      func (p *ConnPool) Add(t *transport.TCPTransport) {
+          if len(p.transports) < p.maxSize {
+              p.transports = append(p.transports, t)
+          }
+      }
+
+      func (p *ConnPool) Get() *transport.TCPTransport {
+          if len(p.transports) == 0 {
+              return nil
+          }
+          t := p.transports[0]
+          p.transports = p.transports[1:]
+          return t
+      }
+    net/breaker/circuit.go: |
+      package breaker
+
+      import "myapp/net/pool"
+
+      type CircuitBreaker struct {
+          pool     *pool.ConnPool
+          failures int
+          maxFails int
+          open     bool
+      }
+
+      func NewCircuitBreaker(p *pool.ConnPool, maxFails int) *CircuitBreaker {
+          return &CircuitBreaker{pool: p, maxFails: maxFails}
+      }
+
+      func (cb *CircuitBreaker) Execute(data []byte) error {
+          if cb.open {
+              return nil
+          }
+          t := cb.pool.Get()
+          if t == nil {
+              cb.failures++
+              if cb.failures >= cb.maxFails {
+                  cb.open = true
+              }
+              return nil
+          }
+          return t.Send(data)
+      }
+    net/gateway/gateway.go: |
+      package gateway
+
+      import "myapp/net/breaker"
+
+      type Gateway struct {
+          breaker *breaker.CircuitBreaker
+          name    string
+      }
+
+      func NewGateway(name string, cb *breaker.CircuitBreaker) *Gateway {
+          return &Gateway{breaker: cb, name: name}
+      }
+
+      func (g *Gateway) Forward(data []byte) error {
+          return g.breaker.Execute(data)
+      }
+    net/dns/resolver.go: |
+      package dns
+
+      var GARBAGE_BAL3_015_DNS_MARKER_A = "dns"
+      var GARBAGE_BAL3_015_TTL_MARKER_B = 300
+
+      type Resolver struct{}
+
+      func (r *Resolver) Lookup(host string) string { return "" }
+    net/dns/cache.go: |
+      package dns
+
+      var GARBAGE_BAL3_015_CACHE_MARKER_C = "cache"
+      var GARBAGE_BAL3_015_SIZE_MARKER_D = 1000
+
+      type Cache struct{}
+
+      func (c *Cache) Get(host string) string { return "" }
+  changed_files:
+    net/transport/tcp.go: |
+      package transport
+
+      import "time"
+
+      type TCPTransport struct {
+          addr      string
+          timeout   int
+          lastUsed  time.Time
+      }
+
+      func NewTCPTransport(addr string, timeout int) *TCPTransport {
+          return &TCPTransport{addr: addr, timeout: timeout, lastUsed: time.Now()}
+      }
+
+      func (t *TCPTransport) Send(data []byte) error {
+          t.lastUsed = time.Now()
+          return nil
+      }
+
+      func (t *TCPTransport) Addr() string {
+          return t.addr
+      }
+
+      func (t *TCPTransport) IsStale(maxAge time.Duration) bool {
+          return time.Since(t.lastUsed) > maxAge
+      }
+    net/gateway/gateway.go: |
+      package gateway
+
+      import "myapp/net/breaker"
+
+      type Gateway struct {
+          breaker *breaker.CircuitBreaker
+          name    string
+          retries int
+      }
+
+      func NewGateway(name string, cb *breaker.CircuitBreaker, retries int) *Gateway {
+          return &Gateway{breaker: cb, name: name, retries: retries}
+      }
+
+      func (g *Gateway) Forward(data []byte) error {
+          var err error
+          for i := 0; i <= g.retries; i++ {
+              err = g.breaker.Execute(data)
+              if err == nil {
+                  return nil
+              }
+          }
+          return err
+      }
+  commit_message: "Add stale detection to transport and retry logic to gateway"
+fragments:
+- id: transport_last_used
+  selector:
+    path: net/transport/tcp.go
+    anchor: "lastUsed  time.Time"
+- id: transport_is_stale
+  selector:
+    path: net/transport/tcp.go
+    anchor: "func (t *TCPTransport) IsStale"
+- id: pool_get
+  selector:
+    path: net/pool/conn_pool.go
+    anchor: "func (p *ConnPool) Get"
+- id: breaker_execute
+  selector:
+    path: net/breaker/circuit.go
+    anchor: "func (cb *CircuitBreaker) Execute"
+- id: gateway_retries
+  selector:
+    path: net/gateway/gateway.go
+    anchor: "retries int"
+- id: gateway_forward
+  selector:
+    path: net/gateway/gateway.go
+    anchor: "func (g *Gateway) Forward"
+- id: no_dns_resolver
+  selector:
+    path: net/dns/resolver.go
+- id: no_dns_cache
+  selector:
+    path: net/dns/cache.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_015_DNS_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_015_TTL_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_015_CACHE_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_015_SIZE_MARKER_D
+oracle:
+  required:
+  - transport_last_used
+  - transport_is_stale
+  - pool_get
+  - breaker_execute
+  - gateway_retries
+  - gateway_forward
+  allowed: []
+  forbidden:
+  - no_dns_resolver
+  - no_dns_cache
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

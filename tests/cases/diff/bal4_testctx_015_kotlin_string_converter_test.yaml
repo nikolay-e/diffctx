@@ -1,0 +1,72 @@
+name: bal4_testctx_015_kotlin_string_converter_test
+tags:
+- lang:kotlin
+- change:single_file
+- change:signature
+- context:test_file
+- distance:1hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/main/kotlin/text/StringConverter.kt: |
+      package text
+
+      class StringConverter {
+          fun toCamelCase(input: String): String {
+              return input.split("_")
+                  .mapIndexed { i, w -> if (i == 0) w else w.replaceFirstChar { it.uppercase() } }
+                  .joinToString("")
+          }
+      }
+    src/test/kotlin/text/StringConverterTest.kt: |
+      package text
+
+      import org.junit.jupiter.api.Test
+      import org.junit.jupiter.api.Assertions.assertEquals
+
+      class StringConverterTest {
+          private val converter = StringConverter()
+
+          @Test
+          fun testToCamelCase() {
+              assertEquals("helloWorld", converter.toCamelCase("hello_world"))
+          }
+      }
+    src/main/kotlin/text/Slugify.kt: |
+      package text
+
+      class Slugify {
+          fun slugify(input: String): String = input.lowercase().replace(" ", "-")
+      }
+  changed_files:
+    src/main/kotlin/text/StringConverter.kt: |
+      package text
+
+      class StringConverter {
+          fun toCamelCase(input: String, delimiter: String = "_"): String {
+              return input.split(delimiter)
+                  .mapIndexed { i, w -> if (i == 0) w else w.replaceFirstChar { it.uppercase() } }
+                  .joinToString("")
+          }
+      }
+  commit_message: "refactor: configurable delimiter for toCamelCase"
+fragments:
+- id: to_camel_fn
+  selector:
+    path: src/main/kotlin/text/StringConverter.kt
+    anchor: "fun toCamelCase(input: String, delimiter: String"
+- id: test_to_camel
+  selector:
+    path: src/test/kotlin/text/StringConverterTest.kt
+    anchor: "fun testToCamelCase()"
+- id: no_slugify
+  selector:
+    path: src/main/kotlin/text/Slugify.kt
+    anchor: "class Slugify"
+oracle:
+  required:
+  - to_camel_fn
+  - test_to_camel
+  allowed: []
+  forbidden:
+  - no_slugify

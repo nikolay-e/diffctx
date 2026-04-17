@@ -1,0 +1,154 @@
+name: gap_124_shell_import_chain_cert_renewal
+tags:
+- lang:shell
+- change:single_file
+- context:import_chain
+- difficulty:hard
+- distance:2hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    bin/certbot-wrapper.sh: |
+      #!/usr/bin/env bash
+      source lib/tls/renew.sh
+
+      CERT_BASE="/etc/letsencrypt/live"
+
+      check_expiry() {
+          local domain="$1"
+          local cert_file="$CERT_BASE/$domain/fullchain.pem"
+          local expiry
+          expiry=$(openssl x509 -enddate -noout -in "$cert_file" | cut -d= -f2)
+          date -d "$expiry" +%s
+      }
+
+      renew_if_needed() {
+          local domain="$1"
+          local threshold_days="${2:-30}"
+          local expiry_epoch
+          expiry_epoch=$(check_expiry "$domain")
+          local now
+          now=$(date +%s)
+          local diff_days=$(( (expiry_epoch - now) / 86400 ))
+          if (( diff_days < threshold_days )); then
+              renew_certificate "$domain"
+          fi
+      }
+    lib/tls/renew.sh: |
+      #!/usr/bin/env bash
+      source lib/tls/validate.sh
+
+      renew_certificate() {
+          local domain="$1"
+          certbot renew --cert-name "$domain" --quiet
+          local exit_code=$?
+          if (( exit_code == 0 )); then
+              validate_cert_chain "$domain"
+          fi
+          return $exit_code
+      }
+
+      force_renew() {
+          local domain="$1"
+          certbot certonly --force-renewal -d "$domain" --quiet
+      }
+    lib/tls/validate.sh: |
+      #!/usr/bin/env bash
+
+      validate_cert_chain() {
+          local domain="$1"
+          local cert_path="/etc/letsencrypt/live/$domain/fullchain.pem"
+          openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt "$cert_path"
+      }
+
+      check_cert_san() {
+          local domain="$1"
+          local cert_path="/etc/letsencrypt/live/$domain/cert.pem"
+          openssl x509 -noout -text -in "$cert_path" | grep -A1 "Subject Alternative Name"
+      }
+
+      get_cert_fingerprint() {
+          local cert_path="$1"
+          openssl x509 -noout -fingerprint -sha256 -in "$cert_path"
+      }
+    lib/deploy/nginx_reload.sh: |
+      #!/usr/bin/env bash
+
+      reload_nginx() {
+          nginx -t 2>/dev/null && systemctl reload nginx
+      }
+
+      restart_nginx() {
+          systemctl restart nginx
+      }
+
+      check_nginx_status() {
+          systemctl is-active nginx
+      }
+  changed_files:
+    bin/certbot-wrapper.sh: |
+      #!/usr/bin/env bash
+      source lib/tls/renew.sh
+
+      CERT_BASE="/etc/letsencrypt/live"
+
+      check_expiry() {
+          local domain="$1"
+          local cert_file="$CERT_BASE/$domain/fullchain.pem"
+          local expiry
+          expiry=$(openssl x509 -enddate -noout -in "$cert_file" | cut -d= -f2)
+          date -d "$expiry" +%s
+      }
+
+      renew_if_needed() {
+          local domain="$1"
+          local threshold_days="${2:-30}"
+          local expiry_epoch
+          expiry_epoch=$(check_expiry "$domain")
+          local now
+          now=$(date +%s)
+          local diff_days=$(( (expiry_epoch - now) / 86400 ))
+          if (( diff_days < threshold_days )); then
+              renew_certificate "$domain"
+          fi
+      }
+
+      renew_all_domains() {
+          local domains_file="$1"
+          local failed=0
+          while IFS= read -r domain; do
+              [[ "$domain" =~ ^# ]] && continue
+              [[ -z "$domain" ]] && continue
+              renew_if_needed "$domain" 14
+              (( $? != 0 )) && (( failed++ ))
+          done < "$domains_file"
+          return $failed
+      }
+fragments:
+- id: renew_all
+  selector:
+    path: bin/certbot-wrapper.sh
+    anchor: renew_all_domains
+- id: renew_cert
+  selector:
+    path: lib/tls/renew.sh
+    anchor: renew_certificate
+- id: validate_chain
+  selector:
+    path: lib/tls/validate.sh
+    anchor: validate_cert_chain
+- id: no_nginx
+  selector:
+    path: lib/deploy/nginx_reload.sh
+- id: no_reload
+  selector:
+    anchor: reload_nginx
+oracle:
+  required:
+  - renew_all
+  - renew_cert
+  - validate_chain
+  forbidden:
+  - no_nginx
+  - no_reload

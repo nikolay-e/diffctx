@@ -1,0 +1,160 @@
+name: gap_062_pyts_multifile_recipe_scaling
+tags:
+- lang:python
+- lang:protobuf
+- change:multi_file
+- context:same_file
+- distance:0hop
+- difficulty:easy
+repo:
+  initial_files:
+    proto/order.proto: |
+      syntax = "proto3";
+
+      message OrderItem {
+        string product_id = 1;
+        int32 quantity = 2;
+        double unit_price = 3;
+      }
+
+      message Order {
+        string order_id = 1;
+        string customer_id = 2;
+        repeated OrderItem items = 3;
+      }
+    service/order_service.py: |
+      from proto import order_pb2
+
+      class OrderService:
+          def create_order(
+              self,
+              order_id: str,
+              customer_id: str,
+              items: list,
+          ) -> order_pb2.Order:
+              proto_items = [
+                  order_pb2.OrderItem(
+                      product_id=i["product_id"],
+                      quantity=i["quantity"],
+                      unit_price=i["unit_price"],
+                  )
+                  for i in items
+              ]
+              return order_pb2.Order(
+                  order_id=order_id,
+                  customer_id=customer_id,
+                  items=proto_items,
+              )
+    garbage/stock.py: |
+      GARBAGE_GAP062_A = "stock_marker"
+
+      def noop():
+          pass
+    garbage/returns.py: |
+      GARBAGE_GAP062_B = "returns_marker"
+
+      def noop():
+          pass
+    garbage/invoicing.py: |
+      GARBAGE_GAP062_C = "invoice_marker"
+
+      def noop():
+          pass
+    garbage/dispatch.py: |
+      GARBAGE_GAP062_D = "dispatch_marker"
+
+      def noop():
+          pass
+  changed_files:
+    proto/order.proto: |
+      syntax = "proto3";
+
+      message OrderItem {
+        string product_id = 1;
+        int32 quantity = 2;
+        double unit_price = 3;
+        string discount_code = 4;
+      }
+
+      message Order {
+        string order_id = 1;
+        string customer_id = 2;
+        repeated OrderItem items = 3;
+        string status = 4;
+      }
+    service/order_service.py: |
+      from proto import order_pb2
+
+      class OrderService:
+          def create_order(
+              self,
+              order_id: str,
+              customer_id: str,
+              items: list,
+              status: str = "pending",
+          ) -> order_pb2.Order:
+              proto_items = [
+                  order_pb2.OrderItem(
+                      product_id=i["product_id"],
+                      quantity=i["quantity"],
+                      unit_price=i["unit_price"],
+                      discount_code=i.get("discount_code", ""),
+                  )
+                  for i in items
+              ]
+              return order_pb2.Order(
+                  order_id=order_id,
+                  customer_id=customer_id,
+                  items=proto_items,
+                  status=status,
+              )
+    garbage/stock.py: |
+      GARBAGE_GAP062_A = "stock_marker"
+
+      def noop():
+          pass
+    garbage/returns.py: |
+      GARBAGE_GAP062_B = "returns_marker"
+
+      def noop():
+          pass
+    garbage/invoicing.py: |
+      GARBAGE_GAP062_C = "invoice_marker"
+
+      def noop():
+          pass
+    garbage/dispatch.py: |
+      GARBAGE_GAP062_D = "dispatch_marker"
+
+      def noop():
+          pass
+  commit_message: "feat: add discount_code to OrderItem and status to Order proto and service"
+fragments:
+- id: proto_file
+  selector:
+    path: proto/order.proto
+- id: service_file
+  selector:
+    path: service/order_service.py
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_GAP062_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_GAP062_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_GAP062_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_GAP062_D
+oracle:
+  required:
+  - proto_file
+  - service_file
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

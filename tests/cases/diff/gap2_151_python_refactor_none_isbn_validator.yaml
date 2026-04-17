@@ -1,0 +1,98 @@
+name: gap2_151_python_refactor_none_isbn_validator
+tags:
+- change:refactor
+- context:none
+- difficulty:trivial
+- distance:0hop
+- lang:python
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    books/isbn.py: |
+      def validate_isbn10(isbn: str) -> bool:
+          digits = isbn.replace('-', '')
+          if len(digits) != 10:
+              return False
+          total = 0
+          for i in range(9):
+              if not digits[i].isdigit():
+                  return False
+              total += int(digits[i]) * (10 - i)
+          check = digits[9]
+          if check == 'X':
+              total += 10
+          elif check.isdigit():
+              total += int(check)
+          else:
+              return False
+          return total % 11 == 0
+
+      def format_isbn(isbn: str) -> str:
+          raw = isbn.replace('-', '')
+          return raw
+    books/catalog.py: |
+      MAX_CATALOG_SIZE = 10000
+
+      class BookCatalog:
+          def __init__(self):
+              self._books: dict[str, str] = {}
+
+          def add_book(self, isbn: str, title: str) -> None:
+              self._books[isbn] = title
+
+          def find_by_isbn(self, isbn: str) -> str:
+              return self._books.get(isbn, "")
+    books/search.py: |
+      SEARCH_LIMIT = 50
+
+      class SearchIndex:
+          def __init__(self):
+              self._index: dict[str, list[str]] = {}
+
+          def index_title(self, isbn: str, title: str) -> None:
+              for word in title.lower().split():
+                  self._index.setdefault(word, []).append(isbn)
+
+          def search(self, query: str) -> list[str]:
+              return self._index.get(query.lower(), [])[:SEARCH_LIMIT]
+  changed_files:
+    books/isbn.py: |
+      def validate_isbn10(isbn: str) -> bool:
+          digits = isbn.replace('-', '')
+          if len(digits) != 10:
+              return False
+          weights = list(range(10, 0, -1))
+          total = 0
+          for char, weight in zip(digits[:9], weights[:9]):
+              if not char.isdigit():
+                  return False
+              total += int(char) * weight
+          check = digits[9]
+          total += 10 if check == 'X' else int(check) if check.isdigit() else -1
+          return total >= 0 and total % 11 == 0
+
+      def format_isbn(isbn: str) -> str:
+          return isbn.replace('-', '')
+  commit_message: "refactor: simplify isbn10 validation loop"
+fragments:
+- id: no_catalog
+  selector:
+    path: books/catalog.py
+- id: no_search
+  selector:
+    path: books/search.py
+- id: no_max_catalog
+  selector:
+    anchor: MAX_CATALOG_SIZE
+- id: no_search_limit
+  selector:
+    anchor: SEARCH_LIMIT
+oracle:
+  required: []
+  allowed: []
+  forbidden:
+  - no_catalog
+  - no_search
+  - no_max_catalog
+  - no_search_limit

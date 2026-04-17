@@ -1,0 +1,190 @@
+name: bal3_3hop_065_swift_error_propagation_chain
+tags:
+- lang:swift
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    Sources/Errors/AppError.swift: |
+      import Foundation
+
+      enum AppError: Error {
+          case networkError(String)
+          case decodingError(String)
+      }
+    Sources/Network/HTTPClient.swift: |
+      import Foundation
+      import Errors
+
+      class HTTPClient {
+          func get(url: String) throws -> Data {
+              throw AppError.networkError("timeout")
+          }
+      }
+    Sources/API/PaymentGateway.swift: |
+      import Foundation
+      import Network
+
+      class PaymentGateway {
+          private let client: HTTPClient
+          init(client: HTTPClient) {
+              self.client = client
+          }
+          func charge(amount: Double) throws -> String {
+              let data = try client.get(url: "/charge")
+              return "receipt"
+          }
+      }
+    Sources/Services/CheckoutService.swift: |
+      import Foundation
+      import API
+
+      class CheckoutService {
+          private let gateway: PaymentGateway
+          init(gateway: PaymentGateway) {
+              self.gateway = gateway
+          }
+          func processCheckout(total: Double) throws -> String {
+              return try gateway.charge(amount: total)
+          }
+      }
+    Sources/Views/CartView.swift: |
+      import SwiftUI
+      import Services
+
+      struct CartView: View {
+          let checkout: CheckoutService
+          var body: some View {
+              Text("Cart")
+          }
+      }
+    Sources/Config/AppConfig.swift: |
+      import Foundation
+      let GARBAGE_065_CONFIG_A = "config"
+      let GARBAGE_065_ENV_B = "prod"
+
+      struct AppConfig {
+          static let apiURL = "https://api.example.com"
+      }
+    Sources/Config/FeatureFlags.swift: |
+      import Foundation
+      let GARBAGE_065_FLAG_C = "feature"
+      let GARBAGE_065_TOGGLE_D = true
+
+      struct FeatureFlags {
+          static let darkMode = true
+      }
+  changed_files:
+    Sources/Errors/AppError.swift: |
+      import Foundation
+
+      enum AppError: Error {
+          case networkError(String)
+          case decodingError(String)
+          case paymentDeclined(reason: String)
+          case insufficientFunds
+      }
+    Sources/Network/HTTPClient.swift: |
+      import Foundation
+      import Errors
+
+      class HTTPClient {
+          func get(url: String) throws -> Data {
+              throw AppError.networkError("timeout")
+          }
+      }
+    Sources/API/PaymentGateway.swift: |
+      import Foundation
+      import Network
+
+      class PaymentGateway {
+          private let client: HTTPClient
+          init(client: HTTPClient) {
+              self.client = client
+          }
+          func charge(amount: Double) throws -> String {
+              do {
+                  let data = try client.get(url: "/charge")
+                  return "receipt"
+              } catch AppError.networkError(let msg) {
+                  throw AppError.paymentDeclined(reason: msg)
+              }
+          }
+      }
+    Sources/Services/CheckoutService.swift: |
+      import Foundation
+      import API
+
+      class CheckoutService {
+          private let gateway: PaymentGateway
+          init(gateway: PaymentGateway) {
+              self.gateway = gateway
+          }
+          func processCheckout(total: Double) throws -> String {
+              return try gateway.charge(amount: total)
+          }
+      }
+    Sources/Views/CartView.swift: |
+      import SwiftUI
+      import Services
+
+      struct CartView: View {
+          let checkout: CheckoutService
+          var body: some View {
+              Text("Cart")
+          }
+      }
+    Sources/Config/AppConfig.swift: |
+      import Foundation
+      let GARBAGE_065_CONFIG_A = "config"
+      let GARBAGE_065_ENV_B = "prod"
+
+      struct AppConfig {
+          static let apiURL = "https://api.example.com"
+      }
+    Sources/Config/FeatureFlags.swift: |
+      import Foundation
+      let GARBAGE_065_FLAG_C = "feature"
+      let GARBAGE_065_TOGGLE_D = true
+
+      struct FeatureFlags {
+          static let darkMode = true
+      }
+  commit_message: "fix: add payment-specific error types for better error handling"
+fragments:
+- id: payment_declined_error
+  selector:
+    path: Sources/Errors/AppError.swift
+    anchor: "case paymentDeclined"
+- id: gateway_catches_network
+  selector:
+    path: Sources/API/PaymentGateway.swift
+    anchor: "catch AppError.networkError"
+- id: checkout_imports_api
+  selector:
+    path: Sources/Services/CheckoutService.swift
+    anchor: "import API"
+- id: cart_imports_services
+  selector:
+    path: Sources/Views/CartView.swift
+    anchor: "import Services"
+- id: no_config
+  selector:
+    path: Sources/Config/AppConfig.swift
+    anchor: "GARBAGE_065_CONFIG_A"
+- id: no_flags
+  selector:
+    path: Sources/Config/FeatureFlags.swift
+    anchor: "GARBAGE_065_FLAG_C"
+oracle:
+  required:
+  - payment_declined_error
+  - gateway_catches_network
+  - checkout_imports_api
+  - cart_imports_services
+  allowed: []
+  forbidden:
+  - no_config
+  - no_flags

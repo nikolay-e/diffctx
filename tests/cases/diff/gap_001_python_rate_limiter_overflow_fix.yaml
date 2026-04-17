@@ -1,0 +1,115 @@
+name: gap_001_python_rate_limiter_overflow_fix
+tags:
+- lang:python
+- change:bug_fix
+- change:multi_file
+- context:import_chain
+- difficulty:hard
+- distance:1hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/gateway/limiter.py: |
+      from src.gateway.config import RATE_WINDOW, MAX_REQUESTS
+      from src.gateway.clock import monotonic_seconds
+
+      class RateLimiter:
+          def __init__(self):
+              self._buckets: dict[str, list[float]] = {}
+
+          def allow(self, client_id: str) -> bool:
+              now = monotonic_seconds()
+              window_start = now - RATE_WINDOW
+              history = self._buckets.get(client_id, [])
+              history = [t for t in history if t > window_start]
+              if len(history) >= MAX_REQUESTS:
+                  return False
+              history.append(now)
+              self._buckets[client_id] = history
+              return True
+
+          def reset(self, client_id: str) -> None:
+              self._buckets.pop(client_id, None)
+    src/gateway/config.py: |
+      RATE_WINDOW = 60
+      MAX_REQUESTS = 100
+      BURST_MULTIPLIER = 1.5
+      COOLDOWN_PERIOD = 120
+    src/gateway/clock.py: |
+      import time
+
+      def monotonic_seconds() -> float:
+          return time.monotonic()
+
+      def wall_clock() -> float:
+          return time.time()
+    src/gateway/middleware.py: |
+      class CorsMiddleware:
+          def __init__(self, allowed_origins: list[str]):
+              self._origins = allowed_origins
+
+          def is_allowed(self, origin: str) -> bool:
+              return origin in self._origins or "*" in self._origins
+
+          def headers(self, origin: str) -> dict[str, str]:
+              if self.is_allowed(origin):
+                  return {"Access-Control-Allow-Origin": origin}
+              return {}
+  changed_files:
+    src/gateway/limiter.py: |
+      from src.gateway.config import RATE_WINDOW, MAX_REQUESTS
+      from src.gateway.clock import monotonic_seconds
+
+      class RateLimiter:
+          def __init__(self):
+              self._buckets: dict[str, list[float]] = {}
+
+          def allow(self, client_id: str) -> bool:
+              now = monotonic_seconds()
+              window_start = now - RATE_WINDOW
+              history = self._buckets.get(client_id, [])
+              history = [t for t in history if t > window_start]
+              if len(history) >= MAX_REQUESTS:
+                  self._buckets[client_id] = history
+                  return False
+              history.append(now)
+              self._buckets[client_id] = history
+              return True
+
+          def reset(self, client_id: str) -> None:
+              self._buckets.pop(client_id, None)
+
+          def remaining(self, client_id: str) -> int:
+              now = monotonic_seconds()
+              window_start = now - RATE_WINDOW
+              history = self._buckets.get(client_id, [])
+              active = [t for t in history if t > window_start]
+              return max(0, MAX_REQUESTS - len(active))
+fragments:
+- id: limiter_allow
+  selector:
+    path: src/gateway/limiter.py
+    anchor: "def allow"
+- id: config_rate
+  selector:
+    path: src/gateway/config.py
+    anchor: MAX_REQUESTS
+- id: clock_monotonic
+  selector:
+    path: src/gateway/clock.py
+    anchor: "def monotonic_seconds"
+- id: no_middleware
+  selector:
+    path: src/gateway/middleware.py
+- id: no_cors
+  selector:
+    anchor: CorsMiddleware
+oracle:
+  required:
+  - limiter_allow
+  - config_rate
+  - clock_monotonic
+  forbidden:
+  - no_middleware
+  - no_cors

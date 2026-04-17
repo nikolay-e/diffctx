@@ -1,0 +1,239 @@
+name: bal3_1hop_028_ruby_logger_adapter
+tags:
+- lang:ruby
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    lib/logging/logger.rb: |
+      module Logging
+        class Logger
+          attr_reader :level
+
+          def initialize(level: :info)
+            @level = level
+            @outputs = []
+          end
+
+          def info(message)
+            log(:info, message)
+          end
+
+          def warn(message)
+            log(:warn, message)
+          end
+
+          def error(message)
+            log(:error, message)
+          end
+
+          private
+
+          def log(level, message)
+            @outputs << "[#{level}] #{message}"
+          end
+        end
+      end
+    lib/services/order_service.rb: |
+      require_relative '../logging/logger'
+
+      module Services
+        class OrderService
+          def initialize(logger)
+            @logger = logger
+          end
+
+          def create_order(items)
+            @logger.info("Creating order with #{items.size} items")
+            { id: "order-1", items: items }
+          end
+
+          def cancel_order(id)
+            @logger.warn("Cancelling order #{id}")
+          end
+        end
+      end
+    lib/services/payment_service.rb: |
+      require_relative '../logging/logger'
+
+      module Services
+        class PaymentService
+          def initialize(logger)
+            @logger = logger
+          end
+
+          def process(amount)
+            @logger.info("Processing payment: #{amount}")
+            { success: true }
+          rescue => e
+            @logger.error("Payment failed: #{e.message}")
+            { success: false }
+          end
+        end
+      end
+    lib/services/shipping_service.rb: |
+      require_relative '../logging/logger'
+
+      module Services
+        class ShippingService
+          def initialize(logger)
+            @logger = logger
+          end
+
+          def ship(order_id, address)
+            @logger.info("Shipping order #{order_id} to #{address}")
+            "tracking-#{order_id}"
+          end
+        end
+      end
+    lib/middleware/cors.rb: |
+      GARBAGE_028_CORS_A = "cors"
+
+      module Middleware
+        class Cors
+          def call(env)
+            [200, { 'Access-Control-Allow-Origin' => '*' }, ['']]
+          end
+        end
+      end
+    lib/middleware/compression.rb: |
+      GARBAGE_028_COMPRESS_B = "compression"
+
+      module Middleware
+        class Compression
+          def call(env)
+            [200, {}, ['compressed']]
+          end
+        end
+      end
+    lib/middleware/timeout.rb: |
+      GARBAGE_028_TIMEOUT_C = "timeout"
+
+      module Middleware
+        class Timeout
+          def initialize(seconds: 30)
+            @seconds = seconds
+          end
+
+          def call(env)
+            [200, {}, ['ok']]
+          end
+        end
+      end
+  changed_files:
+    lib/logging/logger.rb: |
+      module Logging
+        LEVELS = { debug: 0, info: 1, warn: 2, error: 3, fatal: 4 }.freeze
+
+        class Logger
+          attr_reader :level, :formatter
+
+          def initialize(level: :info, formatter: nil)
+            @level = level
+            @formatter = formatter || method(:default_format)
+            @outputs = []
+          end
+
+          def debug(message)
+            log(:debug, message)
+          end
+
+          def info(message)
+            log(:info, message)
+          end
+
+          def warn(message)
+            log(:warn, message)
+          end
+
+          def error(message)
+            log(:error, message)
+          end
+
+          def fatal(message)
+            log(:fatal, message)
+          end
+
+          private
+
+          def log(msg_level, message)
+            return if LEVELS[msg_level] < LEVELS[@level]
+            formatted = @formatter.call(msg_level, message)
+            @outputs << formatted
+          end
+
+          def default_format(level, message)
+            "[#{Time.now.iso8601}] [#{level.upcase}] #{message}"
+          end
+        end
+      end
+  commit_message: "fix: add level filtering, debug/fatal levels, and custom formatter"
+fragments:
+- id: levels_constant
+  selector:
+    path: lib/logging/logger.rb
+    anchor: "LEVELS = { debug: 0"
+- id: formatter_param
+  selector:
+    path: lib/logging/logger.rb
+    anchor: "formatter: nil"
+- id: level_filtering
+  selector:
+    path: lib/logging/logger.rb
+    anchor: "LEVELS[msg_level] < LEVELS[@level]"
+- id: fatal_method
+  selector:
+    path: lib/logging/logger.rb
+    anchor: "def fatal(message)"
+- id: order_service_logs
+  selector:
+    path: lib/services/order_service.rb
+    anchor: "@logger.info(\"Creating order"
+- id: payment_service_logs
+  selector:
+    path: lib/services/payment_service.rb
+    anchor: "@logger.error(\"Payment failed"
+- id: shipping_service_logs
+  selector:
+    path: lib/services/shipping_service.rb
+    anchor: "@logger.info(\"Shipping order"
+- id: unrelated_cors
+  selector:
+    path: lib/middleware/cors.rb
+    anchor: "class Cors"
+- id: unrelated_compress
+  selector:
+    path: lib/middleware/compression.rb
+    anchor: "class Compression"
+- id: unrelated_timeout
+  selector:
+    path: lib/middleware/timeout.rb
+    anchor: "class Timeout"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_028_CORS_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_028_COMPRESS_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_028_TIMEOUT_C
+oracle:
+  required:
+  - levels_constant
+  - formatter_param
+  - level_filtering
+  - order_service_logs
+  allowed:
+  - fatal_method
+  - payment_service_logs
+  - shipping_service_logs
+  forbidden:
+  - unrelated_cors
+  - unrelated_compress
+  - unrelated_timeout
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

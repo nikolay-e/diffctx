@@ -1,0 +1,217 @@
+name: gap_198_zig_same_file_scheduler_priority
+tags:
+- lang:zig
+- change:single_file
+- context:same_file
+- difficulty:easy
+- distance:0hop
+repo:
+  initial_files:
+    src/scheduler.zig: |
+      const std = @import("std");
+
+      pub const Priority = enum { low, normal, high };
+
+      pub const Task = struct {
+          id: u64,
+          priority: Priority,
+          deadline_ms: u64,
+
+          pub fn isOverdue(self: Task, now_ms: u64) bool {
+              return now_ms > self.deadline_ms;
+          }
+      };
+
+      pub const Scheduler = struct {
+          queue: [128]?Task,
+          len: usize,
+
+          pub fn init() Scheduler {
+              return Scheduler{
+                  .queue = [_]?Task{null} ** 128,
+                  .len = 0,
+              };
+          }
+
+          pub fn submit(self: *Scheduler, task: Task) void {
+              self.queue[self.len] = task;
+              self.len += 1;
+          }
+
+          pub fn nextTask(self: *Scheduler) ?Task {
+              if (self.len == 0) return null;
+              self.len -= 1;
+              const t = self.queue[self.len];
+              self.queue[self.len] = null;
+              return t;
+          }
+      };
+    src/worker.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_198_WORKER_MARKER_A: []const u8 = "worker_noise";
+      const TRAP_GAP_198_WORKER_FLAG_B: u32 = 4;
+
+      pub fn spawnWorker(id: u32) void {
+          _ = id;
+      }
+
+      pub fn joinWorker(id: u32) void {
+          _ = id;
+      }
+    src/barrier.zig: |
+      const TRAP_GAP_198_BARRIER_MARKER_C: []const u8 = "barrier_noise";
+      const TRAP_GAP_198_BARRIER_FLAG_D: bool = false;
+
+      pub fn waitAll(count: u32) void {
+          _ = count;
+      }
+
+      pub fn signal() void {}
+    src/channel.zig: |
+      const TRAP_GAP_198_CHANNEL_MARKER_E: []const u8 = "channel_noise";
+      const TRAP_GAP_198_CHANNEL_FLAG_F: usize = 256;
+
+      pub fn send(data: []const u8) void {
+          _ = data;
+      }
+
+      pub fn recv() []const u8 {
+          return "";
+      }
+  changed_files:
+    src/scheduler.zig: |
+      const std = @import("std");
+
+      pub const Priority = enum { low, normal, high, critical };
+
+      pub const Task = struct {
+          id: u64,
+          priority: Priority,
+          deadline_ms: u64,
+
+          pub fn isOverdue(self: Task, now_ms: u64) bool {
+              return now_ms > self.deadline_ms;
+          }
+
+          pub fn isCritical(self: Task) bool {
+              return self.priority == .critical;
+          }
+      };
+
+      pub const Scheduler = struct {
+          queue: [128]?Task,
+          len: usize,
+
+          pub fn init() Scheduler {
+              return Scheduler{
+                  .queue = [_]?Task{null} ** 128,
+                  .len = 0,
+              };
+          }
+
+          pub fn submit(self: *Scheduler, task: Task) void {
+              self.queue[self.len] = task;
+              self.len += 1;
+          }
+
+          pub fn nextTask(self: *Scheduler) ?Task {
+              if (self.len == 0) return null;
+              self.len -= 1;
+              const t = self.queue[self.len];
+              self.queue[self.len] = null;
+              return t;
+          }
+      };
+    src/worker.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_198_WORKER_MARKER_A: []const u8 = "worker_noise";
+      const TRAP_GAP_198_WORKER_FLAG_B: u32 = 4;
+
+      pub fn spawnWorker(id: u32) void {
+          _ = id;
+      }
+
+      pub fn joinWorker(id: u32) void {
+          _ = id;
+      }
+    src/barrier.zig: |
+      const TRAP_GAP_198_BARRIER_MARKER_C: []const u8 = "barrier_noise";
+      const TRAP_GAP_198_BARRIER_FLAG_D: bool = false;
+
+      pub fn waitAll(count: u32) void {
+          _ = count;
+      }
+
+      pub fn signal() void {}
+    src/channel.zig: |
+      const TRAP_GAP_198_CHANNEL_MARKER_E: []const u8 = "channel_noise";
+      const TRAP_GAP_198_CHANNEL_FLAG_F: usize = 256;
+
+      pub fn send(data: []const u8) void {
+          _ = data;
+      }
+
+      pub fn recv() []const u8 {
+          return "";
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: priority_critical
+  selector:
+    path: src/scheduler.zig
+    anchor: critical
+- id: task_is_critical
+  selector:
+    path: src/scheduler.zig
+    anchor: "pub fn isCritical(self: Task) bool"
+- id: task_struct
+  selector:
+    path: src/scheduler.zig
+    anchor: "pub const Task = struct"
+- id: no_worker
+  selector:
+    path: src/worker.zig
+- id: no_barrier
+  selector:
+    path: src/barrier.zig
+- id: no_channel
+  selector:
+    path: src/channel.zig
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP_198_WORKER_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP_198_WORKER_FLAG_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP_198_BARRIER_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP_198_BARRIER_FLAG_D
+- id: no_global_4
+  selector:
+    anchor: TRAP_GAP_198_CHANNEL_MARKER_E
+- id: no_global_5
+  selector:
+    anchor: TRAP_GAP_198_CHANNEL_FLAG_F
+oracle:
+  required:
+  - priority_critical
+  - task_is_critical
+  - task_struct
+  allowed: []
+  forbidden:
+  - no_worker
+  - no_barrier
+  - no_channel
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

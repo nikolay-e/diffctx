@@ -1,0 +1,85 @@
+name: bal3_testctx_019_ruby_calculator_spec
+tags:
+- lang:ruby
+- change:single_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    lib/calculator.rb: |
+      class Calculator
+        def add(a, b)
+          a + b
+        end
+
+        def subtract(a, b)
+          a - b
+        end
+      end
+    spec/calculator_spec.rb: |
+      require_relative '../lib/calculator'
+
+      RSpec.describe Calculator do
+        subject { described_class.new }
+
+        describe '#add' do
+          it 'adds two numbers' do
+            expect(subject.add(2, 3)).to eq(5)
+          end
+        end
+
+        describe '#subtract' do
+          it 'subtracts two numbers' do
+            expect(subject.subtract(5, 3)).to eq(2)
+          end
+        end
+      end
+    lib/formatter.rb: |
+      class Formatter
+        def format_number(value)
+          value.to_s.reverse.gsub(/(\d{3})(?=\d)/, '\\1,').reverse
+        end
+      end
+  changed_files:
+    lib/calculator.rb: |
+      class Calculator
+        def add(a, b)
+          a + b
+        end
+
+        def subtract(a, b)
+          a - b
+        end
+
+        def multiply(a, b)
+          a * b
+        end
+      end
+  commit_message: "feat: add multiply method"
+fragments:
+- id: multiply_method
+  selector:
+    path: lib/calculator.rb
+    anchor: "def multiply(a, b)"
+- id: spec_imports_calc
+  selector:
+    path: spec/calculator_spec.rb
+    anchor: "require_relative '../lib/calculator'"
+- id: spec_describe
+  selector:
+    path: spec/calculator_spec.rb
+    anchor: "RSpec.describe Calculator"
+- id: no_formatter
+  selector:
+    path: lib/formatter.rb
+    anchor: "class Formatter"
+oracle:
+  required:
+  - multiply_method
+  - spec_imports_calc
+  allowed:
+  - spec_describe
+  forbidden:
+  - no_formatter

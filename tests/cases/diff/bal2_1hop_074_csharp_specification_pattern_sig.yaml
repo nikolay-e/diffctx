@@ -1,0 +1,235 @@
+name: bal2_1hop_074_csharp_specification_pattern_sig
+tags:
+- lang:csharp
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: csharp-no-tree-sitter
+repo:
+  initial_files:
+    src/Specifications/ISpecification.cs: |
+      using System;
+      using System.Linq.Expressions;
+
+      namespace App.Specifications
+      {
+          public interface ISpecification<T>
+          {
+              Expression<Func<T, bool>> ToExpression();
+              bool IsSatisfiedBy(T entity);
+          }
+      }
+    src/Specifications/ActiveUserSpec.cs: |
+      using System;
+      using System.Linq.Expressions;
+      using App.Specifications;
+      using App.Entities;
+
+      namespace App.Specifications
+      {
+          public class ActiveUserSpec : ISpecification<User>
+          {
+              public Expression<Func<User, bool>> ToExpression()
+              {
+                  return u => u.IsActive;
+              }
+
+              public bool IsSatisfiedBy(User entity)
+              {
+                  return entity.IsActive;
+              }
+          }
+      }
+    src/Specifications/PremiumUserSpec.cs: |
+      using System;
+      using System.Linq.Expressions;
+      using App.Specifications;
+      using App.Entities;
+
+      namespace App.Specifications
+      {
+          public class PremiumUserSpec : ISpecification<User>
+          {
+              public Expression<Func<User, bool>> ToExpression()
+              {
+                  return u => u.SubscriptionTier == "premium";
+              }
+
+              public bool IsSatisfiedBy(User entity)
+              {
+                  return entity.SubscriptionTier == "premium";
+              }
+          }
+      }
+    src/Entities/User.cs: |
+      using System;
+
+      namespace App.Entities
+      {
+          public class User
+          {
+              public int Id { get; set; }
+              public string Name { get; set; }
+              public bool IsActive { get; set; }
+              public string SubscriptionTier { get; set; }
+          }
+      }
+    src/Repositories/UserRepository.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Linq;
+      using App.Specifications;
+      using App.Entities;
+
+      namespace App.Repositories
+      {
+          public class UserRepository
+          {
+              private readonly List<User> _users = new();
+
+              public List<User> Find(ISpecification<User> spec)
+              {
+                  return _users.Where(u => spec.IsSatisfiedBy(u)).ToList();
+              }
+          }
+      }
+    src/Services/UserQueryService.cs: |
+      using System;
+      using System.Collections.Generic;
+      using App.Repositories;
+      using App.Specifications;
+      using App.Entities;
+
+      namespace App.Services
+      {
+          public class UserQueryService
+          {
+              private readonly UserRepository _repo;
+
+              public UserQueryService(UserRepository repo)
+              {
+                  _repo = repo;
+              }
+
+              public List<User> GetActiveUsers()
+              {
+                  return _repo.Find(new ActiveUserSpec());
+              }
+
+              public List<User> GetPremiumUsers()
+              {
+                  return _repo.Find(new PremiumUserSpec());
+              }
+          }
+      }
+    garbage/Export/ExcelExporter.cs: |
+      using System;
+      GARBAGE_074_EXCEL_A = "xlsx";
+      GARBAGE_074_SHEET_NAME_B = "Sheet1";
+
+      namespace App.Export
+      {
+          public class ExcelExporter
+          {
+              GARBAGE_074_MAX_ROWS_C = 65536;
+
+              public byte[] Export(object data) { return new byte[0]; }
+          }
+      }
+    garbage/Notification/PushService.cs: |
+      using System;
+      GARBAGE_074_PUSH_D = "firebase";
+      GARBAGE_074_PLATFORM_E = "android";
+
+      namespace App.Notification
+      {
+          public class PushService
+          {
+              GARBAGE_074_TTL_F = 86400;
+
+              public void Send(string token, string message) { }
+          }
+      }
+    garbage/Workflow/StateMachine.cs: |
+      using System;
+      GARBAGE_074_FSM_G = "stateless";
+      GARBAGE_074_INITIAL_H = "created";
+
+      namespace App.Workflow
+      {
+          public class StateMachine
+          {
+              GARBAGE_074_MAX_TRANSITIONS_I = 50;
+              GARBAGE_074_LOG_TRANSITIONS_J = true;
+
+              public void Transition(string from, string to) { }
+          }
+      }
+  changed_files:
+    src/Specifications/ISpecification.cs: |
+      using System;
+      using System.Linq.Expressions;
+
+      namespace App.Specifications
+      {
+          public interface ISpecification<T>
+          {
+              Expression<Func<T, bool>> ToExpression();
+              bool IsSatisfiedBy(T entity);
+              ISpecification<T> And(ISpecification<T> other);
+              ISpecification<T> Or(ISpecification<T> other);
+              ISpecification<T> Not();
+          }
+      }
+  commit_message: "Add composable And/Or/Not to specification interface"
+fragments:
+- id: active_spec_satisfied
+  selector:
+    path: src/Specifications/ActiveUserSpec.cs
+    anchor: "public bool IsSatisfiedBy(User entity)"
+- id: premium_spec_satisfied
+  selector:
+    path: src/Specifications/PremiumUserSpec.cs
+    anchor: "public bool IsSatisfiedBy(User entity)"
+- id: repo_find
+  selector:
+    path: src/Repositories/UserRepository.cs
+    anchor: "spec.IsSatisfiedBy(u)"
+- id: query_service_active
+  selector:
+    path: src/Services/UserQueryService.cs
+    anchor: "_repo.Find(new ActiveUserSpec())"
+- id: no_excel
+  selector:
+    path: garbage/Export/ExcelExporter.cs
+- id: no_push
+  selector:
+    path: garbage/Notification/PushService.cs
+- id: no_state_machine
+  selector:
+    path: garbage/Workflow/StateMachine.cs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_074_EXCEL_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_074_PUSH_D
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_074_FSM_G
+oracle:
+  required:
+  - active_spec_satisfied
+  - premium_spec_satisfied
+  - repo_find
+  - query_service_active
+  allowed: []
+  forbidden:
+  - no_excel
+  - no_push
+  - no_state_machine
+  - no_global_0
+  - no_global_1
+  - no_global_2

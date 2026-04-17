@@ -1,0 +1,89 @@
+name: bal4_0hop_009_nim_new_type
+tags:
+- lang:nim
+- change:single_file
+- change:new_function
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/point.nim: |
+      type
+        Point = object
+          x, y: float
+
+      proc newPoint(x, y: float): Point =
+        Point(x: x, y: y)
+    src/garbage_color.nim: |
+      const GARBAGE_B4N009_CLR_A = "color"
+      const GARBAGE_B4N009_CLR_B = 255
+
+      type GarbageColor = object
+        r, g, b: int
+    src/garbage_size.nim: |
+      const GARBAGE_B4N009_SZ_C = "size"
+      const GARBAGE_B4N009_SZ_D = 0.0
+
+      proc garbageArea(w, h: float): float =
+        w * h
+  changed_files:
+    src/point.nim: |
+      import math
+
+      type
+        Point = object
+          x, y: float
+
+      proc newPoint(x, y: float): Point =
+        Point(x: x, y: y)
+
+      proc distance(a, b: Point): float =
+        sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y))
+    src/garbage_color.nim: |
+      const GARBAGE_B4N009_CLR_A = "color"
+      const GARBAGE_B4N009_CLR_B = 255
+
+      type GarbageColor = object
+        r, g, b: int
+    src/garbage_size.nim: |
+      const GARBAGE_B4N009_SZ_C = "size"
+      const GARBAGE_B4N009_SZ_D = 0.0
+
+      proc garbageArea(w, h: float): float =
+        w * h
+  commit_message: "feat: add distance proc for Point"
+fragments:
+- id: new_distance
+  selector:
+    path: src/point.nim
+    anchor: "proc distance(a, b: Point): float ="
+- id: no_garbage_color
+  selector:
+    path: src/garbage_color.nim
+- id: no_garbage_size
+  selector:
+    path: src/garbage_size.nim
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_B4N009_CLR_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_B4N009_CLR_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_B4N009_SZ_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_B4N009_SZ_D
+oracle:
+  required:
+  - new_distance
+  allowed: []
+  forbidden:
+  - no_garbage_color
+  - no_garbage_size
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

@@ -1,0 +1,131 @@
+name: bal_refactor_028_java_inheritance_to_composition
+tags:
+- lang:python
+- lang:shell
+- change:multi_file
+- context:same_file
+- distance:0hop
+- difficulty:easy
+repo:
+  initial_files:
+    scripts/migrate.py: |
+      import subprocess
+      import os
+
+      MIGRATIONS_DIR = "migrations"
+
+
+      def run_migrations(db_url: str) -> None:
+          for filename in sorted(os.listdir(MIGRATIONS_DIR)):
+              if filename.endswith(".sql"):
+                  path = os.path.join(MIGRATIONS_DIR, filename)
+                  subprocess.run(["psql", db_url, "-f", path], check=True)
+    scripts/migrate.sh: |
+      #!/usr/bin/env bash
+      python3 scripts/migrate.py "$DATABASE_URL"
+    garbage/seed.py: |
+      GARBAGE_REF028_SEED_A = "seed_marker"
+
+
+      def seed_db() -> None:
+          pass
+    garbage/fixtures.py: |
+      GARBAGE_REF028_FIX_B = "fixtures_marker"
+
+
+      def load_fixtures() -> None:
+          pass
+    garbage/cleanup.py: |
+      GARBAGE_REF028_CLEAN_C = "cleanup_marker"
+
+
+      def cleanup_old_data() -> None:
+          pass
+  changed_files:
+    scripts/migrate.py: |
+      import subprocess
+      import os
+
+      MIGRATIONS_DIR = "migrations"
+
+
+      def list_pending(db_url: str) -> list[str]:
+          applied = _get_applied(db_url)
+          all_files = sorted(f for f in os.listdir(MIGRATIONS_DIR) if f.endswith(".sql"))
+          return [f for f in all_files if f not in applied]
+
+
+      def _get_applied(db_url: str) -> set[str]:
+          result = subprocess.run(
+              ["psql", db_url, "-t", "-c", "SELECT filename FROM schema_migrations"],
+              capture_output=True, text=True, check=True
+          )
+          return {line.strip() for line in result.stdout.splitlines() if line.strip()}
+
+
+      def run_migrations(db_url: str) -> None:
+          for filename in list_pending(db_url):
+              path = os.path.join(MIGRATIONS_DIR, filename)
+              subprocess.run(["psql", db_url, "-f", path], check=True)
+    scripts/migrate.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      echo "Running migrations against $DATABASE_URL"
+      python3 scripts/migrate.py "$DATABASE_URL"
+      echo "Done"
+    garbage/seed.py: |
+      GARBAGE_REF028_SEED_A = "seed_marker"
+
+
+      def seed_db() -> None:
+          pass
+    garbage/fixtures.py: |
+      GARBAGE_REF028_FIX_B = "fixtures_marker"
+
+
+      def load_fixtures() -> None:
+          pass
+    garbage/cleanup.py: |
+      GARBAGE_REF028_CLEAN_C = "cleanup_marker"
+
+
+      def cleanup_old_data() -> None:
+          pass
+  commit_message: "feat: add list_pending migrations and skip already-applied files"
+fragments:
+- id: list_pending_fn
+  selector:
+    path: scripts/migrate.py
+    anchor: "def list_pending"
+- id: get_applied_fn
+  selector:
+    path: scripts/migrate.py
+    anchor: "def _get_applied"
+- id: run_migrations_uses_pending
+  selector:
+    path: scripts/migrate.py
+    anchor: "for filename in list_pending"
+- id: shell_echo
+  selector:
+    path: scripts/migrate.sh
+    anchor: "Running migrations"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_REF028_SEED_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_REF028_FIX_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_REF028_CLEAN_C
+oracle:
+  required:
+  - list_pending_fn
+  - get_applied_fn
+  - run_migrations_uses_pending
+  - shell_echo
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

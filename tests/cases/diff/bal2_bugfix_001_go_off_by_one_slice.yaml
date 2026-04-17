@@ -1,0 +1,150 @@
+name: bal2_bugfix_001_go_off_by_one_slice
+tags:
+- lang:go
+- change:single_file
+- change:bug_fix
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    pkg/pagination/paginator.go: |
+      package pagination
+
+      type Page struct {
+          Items  []string
+          Offset int
+          Limit  int
+          Total  int
+      }
+
+      func Paginate(items []string, offset, limit int) Page {
+          if offset > len(items) {
+              offset = len(items)
+          }
+          end := offset + limit
+          if end > len(items) {
+              end = len(items)
+          }
+          return Page{
+              Items:  items[offset:end],
+              Offset: offset,
+              Limit:  limit,
+              Total:  len(items),
+          }
+      }
+
+      func LastPageOffset(total, limit int) int {
+          return total / limit * limit
+      }
+    garbage/metrics/collector.go: |
+      package metrics
+      GARBAGE_001_COLLECTOR_A = "collector"
+      GARBAGE_001_INTERVAL_B = 30
+
+      type Collector struct {
+          GARBAGE_001_BUFFER_C int
+      }
+
+      func (c *Collector) Flush() {}
+    garbage/logging/rotator.go: |
+      package logging
+      GARBAGE_001_ROTATOR_D = "rotator"
+      GARBAGE_001_MAX_SIZE_E = 1048576
+
+      type Rotator struct {
+          GARBAGE_001_PATH_F string
+      }
+
+      func (r *Rotator) Rotate() {}
+    garbage/cache/lru.go: |
+      package cache
+      GARBAGE_001_LRU_G = "lru"
+      GARBAGE_001_CAPACITY_H = 256
+
+      type LRU struct {
+          GARBAGE_001_EVICT_I int
+          GARBAGE_001_HIT_J   float64
+      }
+  changed_files:
+    pkg/pagination/paginator.go: |
+      package pagination
+
+      type Page struct {
+          Items  []string
+          Offset int
+          Limit  int
+          Total  int
+      }
+
+      func Paginate(items []string, offset, limit int) Page {
+          if offset >= len(items) {
+              offset = len(items)
+          }
+          end := offset + limit
+          if end > len(items) {
+              end = len(items)
+          }
+          return Page{
+              Items:  items[offset:end],
+              Offset: offset,
+              Limit:  limit,
+              Total:  len(items),
+          }
+      }
+
+      func LastPageOffset(total, limit int) int {
+          if limit <= 0 {
+              return 0
+          }
+          return total / limit * limit
+      }
+  commit_message: "Fix off-by-one in paginator offset boundary check"
+fragments:
+- id: paginate_func
+  selector:
+    path: pkg/pagination/paginator.go
+    anchor: "func Paginate(items []string, offset, limit int) Page"
+- id: last_page_offset
+  selector:
+    path: pkg/pagination/paginator.go
+    anchor: "func LastPageOffset(total, limit int) int"
+- id: page_struct
+  selector:
+    path: pkg/pagination/paginator.go
+    anchor: "type Page struct"
+- id: no_collector
+  selector:
+    path: garbage/metrics/collector.go
+- id: no_rotator
+  selector:
+    path: garbage/logging/rotator.go
+- id: no_lru
+  selector:
+    path: garbage/cache/lru.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_001_COLLECTOR_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_001_INTERVAL_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_001_ROTATOR_D
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_001_LRU_G
+oracle:
+  required:
+  - paginate_func
+  - last_page_offset
+  allowed:
+  - page_struct
+  forbidden:
+  - no_collector
+  - no_rotator
+  - no_lru
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

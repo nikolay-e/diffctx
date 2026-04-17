@@ -1,0 +1,113 @@
+name: gap2_167_py_multi_sig_cross_module_greenhouse_monitor
+tags:
+- change:multi_file
+- change:new_function
+- change:signature
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+- lang:python
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    greenhouse/controller.py: |
+      from greenhouse.sensor import SensorHub
+
+      class ClimateController:
+          def __init__(self, hub: SensorHub):
+              self.hub = hub
+
+          def should_water(self) -> bool:
+              moisture = self.hub.read("moisture")
+              return moisture < 30.0
+    greenhouse/sensor.py: |
+      class SensorHub:
+          def __init__(self):
+              self._readings = {}
+
+          def update(self, sensor: str, value: float) -> None:
+              self._readings[sensor] = value
+
+          def read(self, sensor: str) -> float:
+              return self._readings.get(sensor, 0.0)
+    greenhouse/sprinkler.py: |
+      class SprinklerValve:
+          def __init__(self):
+              self._open = False
+
+          def open(self) -> None:
+              self._open = True
+
+          def close(self) -> None:
+              self._open = False
+
+          def is_open(self) -> bool:
+              return self._open
+  changed_files:
+    greenhouse/controller.py: |
+      from greenhouse.sensor import SensorHub, AlertThreshold
+
+      class ClimateController:
+          def __init__(self, hub: SensorHub, thresholds: list):
+              self.hub = hub
+              self.thresholds = thresholds
+
+          def should_water(self) -> bool:
+              moisture = self.hub.read("moisture")
+              return moisture < 30.0
+
+          def check_alerts(self) -> list:
+              alerts = []
+              for t in self.thresholds:
+                  value = self.hub.read(t.sensor)
+                  if value > t.max_value or value < t.min_value:
+                      alerts.append(f"{t.sensor}: {value}")
+              return alerts
+    greenhouse/sensor.py: |
+      from dataclasses import dataclass
+
+      @dataclass
+      class AlertThreshold:
+          sensor: str
+          min_value: float
+          max_value: float
+
+      class SensorHub:
+          def __init__(self):
+              self._readings = {}
+              self._history = {}
+
+          def update(self, sensor: str, value: float) -> None:
+              self._readings[sensor] = value
+              self._history.setdefault(sensor, []).append(value)
+
+          def read(self, sensor: str) -> float:
+              return self._readings.get(sensor, 0.0)
+
+          def average(self, sensor: str, window: int = 10) -> float:
+              vals = self._history.get(sensor, [])[-window:]
+              return sum(vals) / len(vals) if vals else 0.0
+fragments:
+- id: alert_threshold
+  selector:
+    path: greenhouse/sensor.py
+    anchor: "class AlertThreshold"
+- id: average_method
+  selector:
+    path: greenhouse/sensor.py
+    anchor: "def average"
+- id: check_alerts
+  selector:
+    path: greenhouse/controller.py
+    anchor: "def check_alerts"
+- id: no_sprinkler
+  selector:
+    path: greenhouse/sprinkler.py
+oracle:
+  required:
+  - alert_threshold
+  - average_method
+  - check_alerts
+  forbidden:
+  - no_sprinkler

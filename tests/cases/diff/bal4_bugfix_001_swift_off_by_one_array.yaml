@@ -1,0 +1,128 @@
+name: bal4_bugfix_001_swift_off_by_one_array
+tags:
+- lang:swift
+- change:single_file
+- change:bug_fix
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    Sources/Models/Playlist.swift: |
+      struct Playlist {
+          let name: String
+          var tracks: [String]
+
+          func trackAt(index: Int) -> String? {
+              guard index >= 0 && index <= tracks.count else {
+                  return nil
+              }
+              return tracks[index]
+          }
+
+          func isEmpty() -> Bool {
+              return tracks.count == 0
+          }
+      }
+    garbage_bal4_001_logger.swift: |
+      GARBAGE_BAL4_001_LOGGER_A = "logger"
+      GARBAGE_BAL4_001_LEVEL_B = true
+
+      class Logger {
+          let GARBAGE_BAL4_001_TAG_C = "debug"
+          func log(_ msg: String) {}
+      }
+    garbage_bal4_001_cache.swift: |
+      GARBAGE_BAL4_001_CACHE_D = "lru"
+      GARBAGE_BAL4_001_SIZE_E = 256
+
+      class CacheManager {
+          let GARBAGE_BAL4_001_TTL_F = 3600
+          func evict() {}
+      }
+  changed_files:
+    Sources/Models/Playlist.swift: |
+      struct Playlist {
+          let name: String
+          var tracks: [String]
+
+          func trackAt(index: Int) -> String? {
+              guard index >= 0 && index < tracks.count else {
+                  return nil
+              }
+              return tracks[index]
+          }
+
+          func isEmpty() -> Bool {
+              return tracks.count == 0
+          }
+      }
+    garbage_bal4_001_logger.swift: |
+      GARBAGE_BAL4_001_LOGGER_A = "logger"
+      GARBAGE_BAL4_001_LEVEL_B = true
+
+      class Logger {
+          let GARBAGE_BAL4_001_TAG_C = "debug"
+          func log(_ msg: String) {}
+      }
+    garbage_bal4_001_cache.swift: |
+      GARBAGE_BAL4_001_CACHE_D = "lru"
+      GARBAGE_BAL4_001_SIZE_E = 256
+
+      class CacheManager {
+          let GARBAGE_BAL4_001_TTL_F = 3600
+          func evict() {}
+      }
+  commit_message: "fix: correct off-by-one in array bounds check"
+fragments:
+- id: trackAt_func
+  selector:
+    path: Sources/Models/Playlist.swift
+    anchor: "func trackAt(index: Int) -> String?"
+- id: guard_line
+  selector:
+    path: Sources/Models/Playlist.swift
+    anchor: "index < tracks.count"
+- id: playlist_struct
+  selector:
+    path: Sources/Models/Playlist.swift
+    anchor: "struct Playlist"
+- id: no_garbage_logger
+  selector:
+    path: garbage_bal4_001_logger.swift
+- id: no_garbage_cache
+  selector:
+    path: garbage_bal4_001_cache.swift
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL4_001_LOGGER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL4_001_LEVEL_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL4_001_TAG_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL4_001_CACHE_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL4_001_SIZE_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL4_001_TTL_F
+oracle:
+  required:
+  - trackAt_func
+  - guard_line
+  allowed:
+  - playlist_struct
+  forbidden:
+  - no_garbage_logger
+  - no_garbage_cache
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

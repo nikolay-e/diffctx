@@ -1,0 +1,132 @@
+name: bal3_3hop_054_scala_config_hierarchy
+tags:
+- lang:scala
+- change:single_file
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/com/app/config/ConfigValue.scala: |
+      package com.app.config
+
+      case class ConfigValue(
+        key: String,
+        value: String,
+        source: String
+      )
+    src/main/scala/com/app/config/ConfigProvider.scala: |
+      package com.app.config
+
+      trait ConfigProvider {
+        def get(key: String): Option[ConfigValue]
+      }
+    src/main/scala/com/app/config/ChainedProvider.scala: |
+      package com.app.config
+
+      class ChainedProvider(providers: List[ConfigProvider]) extends ConfigProvider {
+        def get(key: String): Option[ConfigValue] = {
+          providers.flatMap(_.get(key)).headOption
+        }
+      }
+    src/main/scala/com/app/service/SettingsService.scala: |
+      package com.app.service
+
+      import com.app.config.{ChainedProvider, ConfigValue}
+
+      class SettingsService(provider: ChainedProvider) {
+        def resolve(key: String): String = {
+          provider.get(key).map(_.value).getOrElse("")
+        }
+      }
+    src/main/scala/com/app/api/ConfigEndpoint.scala: |
+      package com.app.api
+
+      import com.app.service.SettingsService
+
+      class ConfigEndpoint(service: SettingsService) {
+        def fetch(key: String): String = service.resolve(key)
+      }
+    src/main/scala/com/app/util/YamlParser.scala: |
+      package com.app.util
+
+      var GARBAGE_054_YAML_MARKER_A = "yaml"
+      var GARBAGE_054_INDENT_MARKER_B = 2
+
+      object YamlParser {
+        def parse(content: String): Map[String, String] = Map.empty
+      }
+    src/main/scala/com/app/util/EnvLoader.scala: |
+      package com.app.util
+
+      var GARBAGE_054_ENV_MARKER_C = "env"
+      var GARBAGE_054_PREFIX_MARKER_D = "APP_"
+
+      object EnvLoader {
+        def load(prefix: String): Map[String, String] = Map.empty
+      }
+  changed_files:
+    src/main/scala/com/app/config/ConfigValue.scala: |
+      package com.app.config
+
+      case class ConfigValue(
+        key: String,
+        value: String,
+        source: String,
+        encrypted: Boolean = false,
+        sensitive: Boolean = false
+      ) {
+        def displayValue: String = if (sensitive) "****" else value
+      }
+  commit_message: "fix: add encryption and sensitivity flags with display masking"
+fragments:
+- id: config_encrypted
+  selector:
+    path: src/main/scala/com/app/config/ConfigValue.scala
+    anchor: "encrypted: Boolean"
+- id: config_sensitive
+  selector:
+    path: src/main/scala/com/app/config/ConfigValue.scala
+    anchor: "sensitive: Boolean"
+- id: config_display_value
+  selector:
+    path: src/main/scala/com/app/config/ConfigValue.scala
+    anchor: "def displayValue"
+- id: provider_returns_value
+  selector:
+    path: src/main/scala/com/app/config/ConfigProvider.scala
+    anchor: "Option[ConfigValue]"
+- id: chained_extends_provider
+  selector:
+    path: src/main/scala/com/app/config/ChainedProvider.scala
+    anchor: "extends ConfigProvider"
+- id: service_imports_chained
+  selector:
+    path: src/main/scala/com/app/service/SettingsService.scala
+    anchor: "import com.app.config"
+- id: endpoint_imports_service
+  selector:
+    path: src/main/scala/com/app/api/ConfigEndpoint.scala
+    anchor: "import com.app.service.SettingsService"
+- id: no_yaml_parser
+  selector:
+    path: src/main/scala/com/app/util/YamlParser.scala
+    anchor: "GARBAGE_054_YAML_MARKER_A"
+- id: no_env_loader
+  selector:
+    path: src/main/scala/com/app/util/EnvLoader.scala
+    anchor: "GARBAGE_054_ENV_MARKER_C"
+oracle:
+  required:
+  - config_encrypted
+  - config_sensitive
+  - config_display_value
+  - provider_returns_value
+  - chained_extends_provider
+  - service_imports_chained
+  allowed:
+  - endpoint_imports_service
+  forbidden:
+  - no_yaml_parser
+  - no_env_loader

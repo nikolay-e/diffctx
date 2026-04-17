@@ -1,0 +1,217 @@
+name: bal_refactor_020_typescript_nested_callbacks_to_promises
+tags:
+- lang:typescript
+- change:multi_file
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/upload/uploader.ts: |
+      import { StorageBackend } from './storage_backend';
+      import { UploadMetadata } from './metadata';
+
+      export class FileUploader {
+          constructor(private storage: StorageBackend) {}
+
+          async upload(file: Buffer, metadata: UploadMetadata): Promise<string> {
+              const key = `${metadata.userId}/${metadata.filename}`;
+              await this.storage.put(key, file);
+              return key;
+          }
+      }
+    src/upload/storage_backend.ts: |
+      export interface StorageBackend {
+          put(key: string, data: Buffer): Promise<void>;
+          get(key: string): Promise<Buffer | null>;
+          delete(key: string): Promise<void>;
+      }
+
+      export class S3StorageBackend implements StorageBackend {
+          constructor(private bucket: string) {}
+
+          async put(key: string, data: Buffer): Promise<void> {
+              console.log(`Uploading ${key} to s3://${this.bucket}`);
+          }
+
+          async get(key: string): Promise<Buffer | null> {
+              return null;
+          }
+
+          async delete(key: string): Promise<void> {
+              console.log(`Deleting ${key}`);
+          }
+      }
+    src/upload/metadata.ts: |
+      export interface UploadMetadata {
+          userId: string;
+          filename: string;
+          contentType: string;
+      }
+    src/api/upload_handler.ts: |
+      import { FileUploader } from '../upload/uploader';
+      import { UploadMetadata } from '../upload/metadata';
+
+      export class UploadHandler {
+          constructor(private uploader: FileUploader) {}
+
+          async handle(file: Buffer, userId: string, filename: string): Promise<{ key: string }> {
+              const metadata: UploadMetadata = { userId, filename, contentType: 'application/octet-stream' };
+              const key = await this.uploader.upload(file, metadata);
+              return { key };
+          }
+      }
+    src/virus/scanner.ts: |
+      export const GARBAGE_REFACT020_A = 'virus_scanner_endpoint';
+
+      export class VirusScanner {
+          async scan(data: Buffer): Promise<boolean> { return true; }
+      }
+    src/cdn/invalidator.ts: |
+      export const GARBAGE_REFACT020_B = 'cdn_invalidation_api';
+      export const GARBAGE_REFACT020_C = 300;
+
+      export class CdnInvalidator {
+          async invalidate(path: string): Promise<void> { console.log(`Invalidated: ${path}`); }
+      }
+    src/thumbnail/generator.ts: |
+      export const GARBAGE_REFACT020_D = 'thumbnail_service_url';
+
+      export class ThumbnailGenerator {
+          async generate(data: Buffer, size: number): Promise<Buffer> { return data; }
+      }
+  changed_files:
+    src/upload/uploader.ts: |
+      import { StorageBackend } from './storage_backend';
+      import { UploadMetadata, UploadResult } from './metadata';
+
+      export class FileUploader {
+          constructor(private storage: StorageBackend) {}
+
+          async upload(file: Buffer, metadata: UploadMetadata): Promise<UploadResult> {
+              const key = `${metadata.userId}/${metadata.filename}`;
+              await this.storage.put(key, file);
+              return {
+                  key,
+                  url: `https://cdn.example.com/${key}`,
+                  sizeBytes: file.length,
+                  contentType: metadata.contentType,
+              };
+          }
+      }
+    src/upload/storage_backend.ts: |
+      export interface StorageBackend {
+          put(key: string, data: Buffer): Promise<void>;
+          get(key: string): Promise<Buffer | null>;
+          delete(key: string): Promise<void>;
+      }
+
+      export class S3StorageBackend implements StorageBackend {
+          constructor(private bucket: string) {}
+
+          async put(key: string, data: Buffer): Promise<void> {
+              console.log(`Uploading ${key} to s3://${this.bucket}`);
+          }
+
+          async get(key: string): Promise<Buffer | null> {
+              return null;
+          }
+
+          async delete(key: string): Promise<void> {
+              console.log(`Deleting ${key}`);
+          }
+      }
+    src/upload/metadata.ts: |
+      export interface UploadMetadata {
+          userId: string;
+          filename: string;
+          contentType: string;
+      }
+
+      export interface UploadResult {
+          key: string;
+          url: string;
+          sizeBytes: number;
+          contentType: string;
+      }
+    src/api/upload_handler.ts: |
+      import { FileUploader } from '../upload/uploader';
+      import { UploadMetadata, UploadResult } from '../upload/metadata';
+
+      export class UploadHandler {
+          constructor(private uploader: FileUploader) {}
+
+          async handle(file: Buffer, userId: string, filename: string, contentType = 'application/octet-stream'): Promise<UploadResult> {
+              const metadata: UploadMetadata = { userId, filename, contentType };
+              return this.uploader.upload(file, metadata);
+          }
+      }
+    src/virus/scanner.ts: |
+      export const GARBAGE_REFACT020_A = 'virus_scanner_endpoint';
+
+      export class VirusScanner {
+          async scan(data: Buffer): Promise<boolean> { return true; }
+      }
+    src/cdn/invalidator.ts: |
+      export const GARBAGE_REFACT020_B = 'cdn_invalidation_api';
+      export const GARBAGE_REFACT020_C = 300;
+
+      export class CdnInvalidator {
+          async invalidate(path: string): Promise<void> { console.log(`Invalidated: ${path}`); }
+      }
+    src/thumbnail/generator.ts: |
+      export const GARBAGE_REFACT020_D = 'thumbnail_service_url';
+
+      export class ThumbnailGenerator {
+          async generate(data: Buffer, size: number): Promise<Buffer> { return data; }
+      }
+  commit_message: "feat: return UploadResult with URL and size from FileUploader.upload"
+fragments:
+- id: upload_result_interface
+  selector:
+    path: src/upload/metadata.ts
+    anchor: "export interface UploadResult"
+- id: uploader_upload_returns_result
+  selector:
+    path: src/upload/uploader.ts
+    anchor: "async upload(file: Buffer, metadata: UploadMetadata): Promise<UploadResult>"
+- id: upload_handler_returns_result
+  selector:
+    path: src/api/upload_handler.ts
+    anchor: "async handle(file: Buffer, userId: string, filename: string"
+- id: no_virus_scanner
+  selector:
+    path: src/virus/scanner.ts
+- id: no_cdn_invalidator
+  selector:
+    path: src/cdn/invalidator.ts
+- id: no_thumbnail
+  selector:
+    path: src/thumbnail/generator.ts
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_REFACT020_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_REFACT020_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_REFACT020_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_REFACT020_D
+oracle:
+  required:
+  - upload_result_interface
+  - uploader_upload_returns_result
+  - upload_handler_returns_result
+  allowed: []
+  forbidden:
+  - no_virus_scanner
+  - no_cdn_invalidator
+  - no_thumbnail
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

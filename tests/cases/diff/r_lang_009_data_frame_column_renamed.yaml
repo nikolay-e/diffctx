@@ -1,0 +1,96 @@
+name: r_lang_009_data_frame_column_renamed
+tags:
+- lang:r
+- change:single_file
+- change:refactor
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    R/transform.R: |
+      library(dplyr)
+
+      enrich_orders <- function(orders, products) {
+        orders |>
+          left_join(products, by = "product_id") |>
+          mutate(
+            line_total = qty * unit_price,
+            discount_amt = line_total * discount_rate
+          ) |>
+          select(order_id, product_id, qty, unit_price, line_total, discount_amt, region)
+      }
+    R/summary.R: |
+      source("R/transform.R")
+      library(dplyr)
+
+      order_summary <- function(orders, products) {
+        enriched <- enrich_orders(orders, products)
+        enriched |>
+          group_by(region) |>
+          summarise(
+            total_line_total = sum(line_total, na.rm = TRUE),
+            total_discount = sum(discount_amt, na.rm = TRUE),
+            order_count = n()
+          )
+      }
+    R/R_NOISE_009_geo_utils.R: |
+      R_NOISE_009_haversine_km <- function(lat1, lon1, lat2, lon2) {
+        r <- 6371
+        dlat <- (lat2 - lat1) * pi / 180
+        dlon <- (lon2 - lon1) * pi / 180
+        a <- sin(dlat / 2)^2 + cos(lat1 * pi / 180) * cos(lat2 * pi / 180) * sin(dlon / 2)^2
+        2 * r * asin(sqrt(a))
+      }
+    R/R_NOISE_009_token_utils.R: |
+      R_NOISE_009_make_token <- function(n = 32) {
+        paste(sample(c(letters, LETTERS, 0:9), n, replace = TRUE), collapse = "")
+      }
+      R_NOISE_009_mask_token <- function(tok, show = 4) {
+        paste0(strrep("*", nchar(tok) - show), substr(tok, nchar(tok) - show + 1, nchar(tok)))
+      }
+  changed_files:
+    R/transform.R: |
+      library(dplyr)
+
+      enrich_orders <- function(orders, products) {
+        orders |>
+          left_join(products, by = "product_id") |>
+          mutate(
+            gross_amount = qty * unit_price,
+            discount_amt = gross_amount * discount_rate
+          ) |>
+          select(order_id, product_id, qty, unit_price, gross_amount, discount_amt, region)
+      }
+  commit_message: "Update files"
+fragments:
+- id: transform_column_renamed
+  selector:
+    path: R/transform.R
+    anchor: gross_amount
+- id: summary_uses_column
+  selector:
+    path: R/summary.R
+    anchor: line_total
+- id: no_geo_utils
+  selector:
+    path: R/R_NOISE_009_geo_utils.R
+- id: no_token_utils
+  selector:
+    path: R/R_NOISE_009_token_utils.R
+- id: no_global_0
+  selector:
+    anchor: R_NOISE_009_haversine_km
+- id: no_global_1
+  selector:
+    anchor: R_NOISE_009_make_token
+oracle:
+  required:
+  - transform_column_renamed
+  - summary_uses_column
+  allowed: []
+  forbidden:
+  - no_geo_utils
+  - no_token_utils
+  - no_global_0
+  - no_global_1

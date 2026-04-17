@@ -1,0 +1,149 @@
+name: gap_153_shell_terraform_ci_pipeline_import_chain
+tags:
+- change:config
+- change:multi_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:shell
+- lang:terraform
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    ci/build.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      source ci/env.sh
+
+      docker build \
+        --build-arg APP_VERSION="${APP_VERSION}" \
+        --tag "${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}" \
+        --file Dockerfile \
+        .
+
+      docker push "${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
+    ci/env.sh: |
+      #!/usr/bin/env bash
+
+      export REGISTRY="${REGISTRY:-012345678901.dkr.ecr.us-east-1.amazonaws.com}"
+      export IMAGE_NAME="${IMAGE_NAME:-payment-gateway}"
+      export IMAGE_TAG="${IMAGE_TAG:-$(git rev-parse --short HEAD)}"
+      export APP_VERSION="${APP_VERSION:-1.0.0}"
+      export AWS_REGION="${AWS_REGION:-us-east-1}"
+    terraform/ecr.tf: |
+      resource "aws_ecr_repository" "payment" {
+        name                 = "payment-gateway"
+        image_tag_mutability = "IMMUTABLE"
+
+        image_scanning_configuration {
+          scan_on_push = true
+        }
+      }
+
+      output "repository_url" {
+        value = aws_ecr_repository.payment.repository_url
+      }
+    terraform/ssm.tf: |
+      resource "aws_ssm_parameter" "stripe_key" {
+        name  = "/payment/stripe-api-key"
+        type  = "SecureString"
+        value = "placeholder"
+
+        lifecycle {
+          ignore_changes = [value]
+        }
+      }
+
+      resource "aws_ssm_parameter" "webhook_secret" {
+        name  = "/payment/webhook-secret"
+        type  = "SecureString"
+        value = "placeholder"
+
+        lifecycle {
+          ignore_changes = [value]
+        }
+      }
+  changed_files:
+    ci/build.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      source ci/env.sh
+
+      docker build \
+        --build-arg APP_VERSION="${APP_VERSION}" \
+        --build-arg BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        --tag "${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}" \
+        --tag "${REGISTRY}/${IMAGE_NAME}:latest" \
+        --file Dockerfile \
+        .
+
+      docker push "${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
+      docker push "${REGISTRY}/${IMAGE_NAME}:latest"
+    ci/env.sh: |
+      #!/usr/bin/env bash
+
+      export REGISTRY="${REGISTRY:-012345678901.dkr.ecr.us-east-1.amazonaws.com}"
+      export IMAGE_NAME="${IMAGE_NAME:-payment-gateway}"
+      export IMAGE_TAG="${IMAGE_TAG:-$(git rev-parse --short HEAD)}"
+      export APP_VERSION="${APP_VERSION:-2.0.0}"
+      export AWS_REGION="${AWS_REGION:-us-east-1}"
+      export DOCKER_BUILDKIT=1
+    terraform/ecr.tf: |
+      resource "aws_ecr_repository" "payment" {
+        name                 = "payment-gateway"
+        image_tag_mutability = "IMMUTABLE"
+
+        image_scanning_configuration {
+          scan_on_push = true
+        }
+      }
+
+      resource "aws_ecr_lifecycle_policy" "payment" {
+        repository = aws_ecr_repository.payment.name
+        policy = jsonencode({
+          rules = [{
+            rulePriority = 1
+            selection = {
+              tagStatus   = "untagged"
+              countType   = "sinceImagePushed"
+              countUnit   = "days"
+              countNumber = 7
+            }
+            action = { type = "expire" }
+          }]
+        })
+      }
+
+      output "repository_url" {
+        value = aws_ecr_repository.payment.repository_url
+      }
+fragments:
+- id: build_latest_tag
+  selector:
+    path: ci/build.sh
+    anchor: "latest"
+- id: env_buildkit
+  selector:
+    path: ci/env.sh
+    anchor: DOCKER_BUILDKIT
+- id: ecr_lifecycle
+  selector:
+    path: terraform/ecr.tf
+    anchor: aws_ecr_lifecycle_policy
+- id: no_ssm
+  selector:
+    path: terraform/ssm.tf
+- id: no_stripe
+  selector:
+    anchor: stripe-api-key
+oracle:
+  required:
+  - build_latest_tag
+  - env_buildkit
+  - ecr_lifecycle
+  forbidden:
+  - no_ssm
+  - no_stripe

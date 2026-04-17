@@ -1,0 +1,81 @@
+name: css_022_critical_inline_extract
+tags:
+- lang:css
+- lang:html
+- change:multi_file
+- context:cross_module
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    critical.css: |
+      body { margin: 0; font-family: system-ui, sans-serif; }
+      .header { background: #1e293b; color: #f8fafc; padding: 0 24px; height: 56px; display: flex; align-items: center; }
+    index.html: |
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <title>App</title>
+        <style>
+          body { margin: 0; font-family: system-ui, sans-serif; }
+          .header { background: #1e293b; color: #f8fafc; padding: 0 24px; height: 56px; display: flex; align-items: center; }
+        </style>
+        <link rel="stylesheet" href="app.css">
+      </head>
+      <body>
+        <header class="header"><span>My App</span></header>
+      </body>
+      </html>
+    CSS_NOISE_022_mobile_app.css: |
+      .CSS_NOISE_022_mobile_nav { display: none; }
+      .CSS_NOISE_022_mobile_menu { position: fixed; inset: 0; background: #fff; z-index: 900; }
+    CSS_NOISE_022_widget.css: |
+      .CSS_NOISE_022_widget_container { border: 1px solid #e5e7eb; border-radius: 8px; }
+      .CSS_NOISE_022_widget_title { font-size: 14px; font-weight: 600; padding: 12px 16px; }
+  changed_files:
+    index.html: |
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <title>App</title>
+        <link rel="stylesheet" href="critical.css">
+        <link rel="stylesheet" href="app.css">
+      </head>
+      <body>
+        <header class="header"><span>My App</span></header>
+      </body>
+      </html>
+  commit_message: "style: replace inline critical styles with external critical.css link"
+fragments:
+- id: critical_css_link
+  selector:
+    path: index.html
+    anchor: critical.css
+- id: critical_css_rules
+  selector:
+    path: critical.css
+    anchor: ".header"
+- id: no_mobile_app
+  selector:
+    path: CSS_NOISE_022_mobile_app.css
+- id: no_widget
+  selector:
+    path: CSS_NOISE_022_widget.css
+- id: no_global_0
+  selector:
+    anchor: CSS_NOISE_022_mobile_nav
+- id: no_global_1
+  selector:
+    anchor: CSS_NOISE_022_widget_container
+oracle:
+  required:
+  - critical_css_link
+  - critical_css_rules
+  allowed: []
+  forbidden:
+  - no_mobile_app
+  - no_widget
+  - no_global_0
+  - no_global_1

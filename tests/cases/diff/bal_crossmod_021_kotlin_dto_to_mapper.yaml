@@ -1,0 +1,119 @@
+name: bal_crossmod_021_kotlin_dto_to_mapper
+tags:
+- lang:kotlin
+- change:single_file
+- change:signature
+- context:cross_module
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/main/kotlin/domain/model/Customer.kt: |
+      package domain.model
+
+      data class Customer(
+          val id: Long,
+          val name: String,
+          val email: String
+      )
+    src/main/kotlin/api/dto/CustomerDto.kt: |
+      package api.dto
+
+      data class CustomerDto(
+          val id: Long,
+          val name: String,
+          val email: String
+      )
+    src/main/kotlin/api/mapper/CustomerMapper.kt: |
+      package api.mapper
+
+      import domain.model.Customer
+      import api.dto.CustomerDto
+
+      object CustomerMapper {
+          fun toDto(customer: Customer): CustomerDto {
+              return CustomerDto(
+                  id = customer.id,
+                  name = customer.name,
+                  email = customer.email
+              )
+          }
+      }
+    src/main/kotlin/infra/logging/AppLogger.kt: |
+      package infra.logging
+
+      object AppLogger {
+          fun info(message: String) {
+              println("[INFO] $message")
+          }
+
+          fun error(message: String) {
+              println("[ERROR] $message")
+          }
+      }
+  changed_files:
+    src/main/kotlin/domain/model/Customer.kt: |
+      package domain.model
+
+      data class Customer(
+          val id: Long,
+          val name: String,
+          val email: String,
+          val phone: String? = null
+      )
+    src/main/kotlin/api/dto/CustomerDto.kt: |
+      package api.dto
+
+      data class CustomerDto(
+          val id: Long,
+          val name: String,
+          val email: String
+      )
+    src/main/kotlin/api/mapper/CustomerMapper.kt: |
+      package api.mapper
+
+      import domain.model.Customer
+      import api.dto.CustomerDto
+
+      object CustomerMapper {
+          fun toDto(customer: Customer): CustomerDto {
+              return CustomerDto(
+                  id = customer.id,
+                  name = customer.name,
+                  email = customer.email
+              )
+          }
+      }
+    src/main/kotlin/infra/logging/AppLogger.kt: |
+      package infra.logging
+
+      object AppLogger {
+          fun info(message: String) {
+              println("[INFO] $message")
+          }
+
+          fun error(message: String) {
+              println("[ERROR] $message")
+          }
+      }
+  commit_message: "feat: add optional phone field to Customer"
+fragments:
+- id: customer_phone_field
+  selector:
+    path: src/main/kotlin/domain/model/Customer.kt
+    anchor: "val phone: String? = null"
+- id: mapper_maps_customer
+  selector:
+    path: src/main/kotlin/api/mapper/CustomerMapper.kt
+    anchor: "fun toDto(customer: Customer)"
+- id: no_logger
+  selector:
+    path: src/main/kotlin/infra/logging/AppLogger.kt
+    anchor: "object AppLogger"
+oracle:
+  required:
+  - customer_phone_field
+  - mapper_maps_customer
+  allowed: []
+  forbidden:
+  - no_logger

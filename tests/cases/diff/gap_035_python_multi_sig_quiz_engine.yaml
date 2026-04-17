@@ -1,0 +1,156 @@
+name: gap_035_python_multi_sig_quiz_engine
+tags:
+- change:multi_file
+- change:signature
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:python
+repo:
+  initial_files:
+    quiz/question.py: |
+      from dataclasses import dataclass
+
+      @dataclass
+      class Question:
+          text: str
+          choices: list[str]
+          correct_index: int
+
+          def is_correct(self, answer_index: int) -> bool:
+              return answer_index == self.correct_index
+
+      class QuestionBank:
+          def __init__(self):
+              self.questions: list[Question] = []
+
+          def add(self, question: Question) -> None:
+              self.questions.append(question)
+
+          def count(self) -> int:
+              return len(self.questions)
+    quiz/session.py: |
+      from datetime import datetime
+
+      class QuizSession:
+          def __init__(self, participant: str):
+              self.participant = participant
+              self.answers: list[int] = []
+              self.started_at = datetime.now()
+
+          def submit_answer(self, choice_index: int) -> None:
+              self.answers.append(choice_index)
+
+          def score(self, correct_indices: list[int]) -> int:
+              return sum(1 for a, c in zip(self.answers, correct_indices) if a == c)
+    quiz/analytics.py: |
+      GARBAGE_GAP_035_STATS_A = "analytics_marker"
+      GARBAGE_GAP_035_AVG_B = "mean_score"
+
+      def average_score(scores: list[int]) -> float:
+          return sum(scores) / max(len(scores), 1)
+    quiz/export.py: |
+      GARBAGE_GAP_035_CSV_C = "export_marker"
+      GARBAGE_GAP_035_FMT_D = "csv"
+
+      def export_results(results: list[dict]) -> str:
+          return "\n".join(str(r) for r in results)
+  changed_files:
+    quiz/question.py: |
+      from dataclasses import dataclass
+
+      @dataclass
+      class Question:
+          text: str
+          choices: list[str]
+          correct_index: int
+          difficulty: int = 1
+
+          def is_correct(self, answer_index: int) -> bool:
+              return answer_index == self.correct_index
+
+      class QuestionBank:
+          def __init__(self):
+              self.questions: list[Question] = []
+
+          def add(self, question: Question) -> None:
+              self.questions.append(question)
+
+          def count(self) -> int:
+              return len(self.questions)
+
+          def filter_by_difficulty(self, max_difficulty: int) -> list[Question]:
+              return [q for q in self.questions if q.difficulty <= max_difficulty]
+    quiz/session.py: |
+      from datetime import datetime
+
+      class QuizSession:
+          def __init__(self, participant: str, time_limit_seconds: int = 0):
+              self.participant = participant
+              self.time_limit_seconds = time_limit_seconds
+              self.answers: list[int] = []
+              self.started_at = datetime.now()
+
+          def submit_answer(self, choice_index: int) -> None:
+              self.answers.append(choice_index)
+
+          def is_expired(self) -> bool:
+              if self.time_limit_seconds <= 0:
+                  return False
+              elapsed = (datetime.now() - self.started_at).total_seconds()
+              return elapsed > self.time_limit_seconds
+
+          def score(self, correct_indices: list[int]) -> int:
+              return sum(1 for a, c in zip(self.answers, correct_indices) if a == c)
+  commit_message: "add difficulty filter and session time limit"
+fixtures:
+  auto_garbage: true
+fragments:
+- id: question_difficulty
+  selector:
+    path: quiz/question.py
+    anchor: "difficulty: int"
+- id: bank_filter
+  selector:
+    path: quiz/question.py
+    anchor: "def filter_by_difficulty"
+- id: session_init
+  selector:
+    path: quiz/session.py
+    anchor: "def __init__"
+- id: session_expired
+  selector:
+    path: quiz/session.py
+    anchor: "def is_expired"
+- id: no_analytics
+  selector:
+    path: quiz/analytics.py
+- id: no_export
+  selector:
+    path: quiz/export.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_035_STATS_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GAP_035_AVG_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GAP_035_CSV_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GAP_035_FMT_D
+oracle:
+  required:
+  - question_difficulty
+  - bank_filter
+  - session_init
+  - session_expired
+  allowed: []
+  forbidden:
+  - no_analytics
+  - no_export
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

@@ -1,0 +1,243 @@
+name: gap2_063_csharp_cross_module_middleware_pipeline
+tags:
+- change:single_file
+- context:cross_module
+- difficulty:medium
+- distance:2hop
+- lang:csharp
+repo:
+  initial_files:
+    Middleware/IMiddleware.cs: |
+      namespace Middleware
+      {
+          public interface IMiddleware
+          {
+              Task InvokeAsync(HttpContext context, Func<Task> next);
+          }
+      }
+    Middleware/AuthMiddleware.cs: |
+      using Middleware;
+
+      namespace Middleware.Impl
+      {
+          public class AuthMiddleware : IMiddleware
+          {
+              public async Task InvokeAsync(HttpContext context, Func<Task> next)
+              {
+                  if (context.User.Identity.IsAuthenticated)
+                      await next();
+              }
+          }
+      }
+    Pipeline/PipelineBuilder.cs: |
+      using Middleware;
+
+      namespace Pipeline
+      {
+          public class PipelineBuilder
+          {
+              private readonly List<IMiddleware> _middlewares = new();
+
+              public PipelineBuilder Use(IMiddleware mw)
+              {
+                  _middlewares.Add(mw);
+                  return this;
+              }
+
+              public Func<HttpContext, Task> Build()
+              {
+                  return ctx => Execute(ctx, 0);
+              }
+
+              private async Task Execute(HttpContext ctx, int index)
+              {
+                  if (index < _middlewares.Count)
+                      await _middlewares[index].InvokeAsync(ctx, () => Execute(ctx, index + 1));
+              }
+          }
+      }
+    Serialization/JsonHelper.cs: |
+      const string TRAP_GAP2_063_JSON_A = "json_noise";
+      const int TRAP_GAP2_063_JSON_B = 8192;
+
+      namespace Serialization
+      {
+          public static class JsonHelper
+          {
+              public static string Serialize(object obj) => "{}";
+              public static T Deserialize<T>(string json) => default;
+          }
+      }
+    Validation/InputValidator.cs: |
+      const string TRAP_GAP2_063_VALID_C = "validation_noise";
+      const bool TRAP_GAP2_063_VALID_D = false;
+
+      namespace Validation
+      {
+          public class InputValidator
+          {
+              public bool IsValid(string input) => !string.IsNullOrEmpty(input);
+          }
+      }
+    Config/FeatureFlags.cs: |
+      const string TRAP_GAP2_063_FLAGS_E = "flags_noise";
+      const int TRAP_GAP2_063_FLAGS_F = 0;
+
+      namespace Config
+      {
+          public class FeatureFlags
+          {
+              public bool IsEnabled(string flag) => false;
+          }
+      }
+  changed_files:
+    Middleware/IMiddleware.cs: |
+      namespace Middleware
+      {
+          public interface IMiddleware
+          {
+              Task InvokeAsync(HttpContext context, Func<Task> next);
+              int Order { get; }
+          }
+      }
+    Middleware/AuthMiddleware.cs: |
+      using Middleware;
+
+      namespace Middleware.Impl
+      {
+          public class AuthMiddleware : IMiddleware
+          {
+              public int Order => 10;
+
+              public async Task InvokeAsync(HttpContext context, Func<Task> next)
+              {
+                  if (context.User.Identity.IsAuthenticated)
+                      await next();
+              }
+          }
+      }
+    Pipeline/PipelineBuilder.cs: |
+      using Middleware;
+
+      namespace Pipeline
+      {
+          public class PipelineBuilder
+          {
+              private readonly List<IMiddleware> _middlewares = new();
+
+              public PipelineBuilder Use(IMiddleware mw)
+              {
+                  _middlewares.Add(mw);
+                  return this;
+              }
+
+              public Func<HttpContext, Task> Build()
+              {
+                  return ctx => Execute(ctx, 0);
+              }
+
+              private async Task Execute(HttpContext ctx, int index)
+              {
+                  if (index < _middlewares.Count)
+                      await _middlewares[index].InvokeAsync(ctx, () => Execute(ctx, index + 1));
+              }
+          }
+      }
+    Serialization/JsonHelper.cs: |
+      const string TRAP_GAP2_063_JSON_A = "json_noise";
+      const int TRAP_GAP2_063_JSON_B = 8192;
+
+      namespace Serialization
+      {
+          public static class JsonHelper
+          {
+              public static string Serialize(object obj) => "{}";
+              public static T Deserialize<T>(string json) => default;
+          }
+      }
+    Validation/InputValidator.cs: |
+      const string TRAP_GAP2_063_VALID_C = "validation_noise";
+      const bool TRAP_GAP2_063_VALID_D = false;
+
+      namespace Validation
+      {
+          public class InputValidator
+          {
+              public bool IsValid(string input) => !string.IsNullOrEmpty(input);
+          }
+      }
+    Config/FeatureFlags.cs: |
+      const string TRAP_GAP2_063_FLAGS_E = "flags_noise";
+      const int TRAP_GAP2_063_FLAGS_F = 0;
+
+      namespace Config
+      {
+          public class FeatureFlags
+          {
+              public bool IsEnabled(string flag) => false;
+          }
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: order_property
+  selector:
+    path: Middleware/IMiddleware.cs
+    anchor: "int Order { get; }"
+- id: interface_def
+  selector:
+    path: Middleware/IMiddleware.cs
+    anchor: "public interface IMiddleware"
+- id: auth_order
+  selector:
+    path: Middleware/AuthMiddleware.cs
+    anchor: "public int Order => 10"
+- id: pipeline_uses_middleware
+  selector:
+    path: Pipeline/PipelineBuilder.cs
+    anchor: "_middlewares[index].InvokeAsync"
+- id: no_json
+  selector:
+    path: Serialization/JsonHelper.cs
+- id: no_validator
+  selector:
+    path: Validation/InputValidator.cs
+- id: no_flags
+  selector:
+    path: Config/FeatureFlags.cs
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_063_JSON_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_063_JSON_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP2_063_VALID_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP2_063_VALID_D
+- id: no_global_4
+  selector:
+    anchor: TRAP_GAP2_063_FLAGS_E
+- id: no_global_5
+  selector:
+    anchor: TRAP_GAP2_063_FLAGS_F
+oracle:
+  required:
+  - order_property
+  - interface_def
+  - auth_order
+  - pipeline_uses_middleware
+  allowed: []
+  forbidden:
+  - no_json
+  - no_validator
+  - no_flags
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

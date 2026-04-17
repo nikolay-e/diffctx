@@ -1,0 +1,212 @@
+name: gap_023_prisma_social_media_reactions
+tags:
+- change:multi_file
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:prisma
+- lang:sql
+- lang:typescript
+repo:
+  initial_files:
+    prisma/schema.prisma: |
+      generator client {
+        provider = "prisma-client-js"
+      }
+
+      datasource db {
+        provider = "postgresql"
+        url      = env("DATABASE_URL")
+      }
+
+      model Profile {
+        id       Int    @id @default(autoincrement())
+        handle   String @unique
+        bio      String?
+        posts    Post[]
+      }
+
+      model Post {
+        id        Int      @id @default(autoincrement())
+        body      String
+        author    Profile  @relation(fields: [authorId], references: [id])
+        authorId  Int
+        postedAt  DateTime @default(now())
+
+        @@index([authorId])
+      }
+    prisma/migrations/20240501_init/migration.sql: |
+      CREATE TABLE "Profile" (
+        "id" SERIAL PRIMARY KEY,
+        "handle" TEXT NOT NULL UNIQUE,
+        "bio" TEXT
+      );
+
+      CREATE TABLE "Post" (
+        "id" SERIAL PRIMARY KEY,
+        "body" TEXT NOT NULL,
+        "authorId" INTEGER NOT NULL REFERENCES "Profile"("id"),
+        "postedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    src/feed/timeline.ts: |
+      import { PrismaClient } from '@prisma/client';
+
+      const prisma = new PrismaClient();
+
+      export async function getTimeline(profileId: number, limit: number = 20) {
+        return prisma.post.findMany({
+          where: { authorId: profileId },
+          orderBy: { postedAt: 'desc' },
+          take: limit,
+        });
+      }
+    src/moderation/filter.ts: |
+      GARBAGE_GAP_023_FILTER_A = "content_filter";
+      GARBAGE_GAP_023_BANNED_B = "spam";
+
+      const bannedWords = ["spam", "scam"];
+
+      export function isClean(text: string): boolean {
+        return !bannedWords.some(w => text.toLowerCase().includes(w));
+      }
+    src/search/indexer.ts: |
+      GARBAGE_GAP_023_INDEX_C = "search_index";
+      GARBAGE_GAP_023_SHARD_D = 4;
+
+      export function tokenize(text: string): string[] {
+        return text.toLowerCase().split(/\s+/);
+      }
+  changed_files:
+    prisma/schema.prisma: |
+      generator client {
+        provider = "prisma-client-js"
+      }
+
+      datasource db {
+        provider = "postgresql"
+        url      = env("DATABASE_URL")
+      }
+
+      model Profile {
+        id        Int        @id @default(autoincrement())
+        handle    String     @unique
+        bio       String?
+        posts     Post[]
+        reactions Reaction[]
+      }
+
+      model Post {
+        id        Int        @id @default(autoincrement())
+        body      String
+        author    Profile    @relation(fields: [authorId], references: [id])
+        authorId  Int
+        reactions Reaction[]
+        postedAt  DateTime   @default(now())
+
+        @@index([authorId])
+      }
+
+      model Reaction {
+        id        Int      @id @default(autoincrement())
+        emoji     String
+        profile   Profile  @relation(fields: [profileId], references: [id])
+        profileId Int
+        post      Post     @relation(fields: [postId], references: [id])
+        postId    Int
+        reactedAt DateTime @default(now())
+
+        @@unique([profileId, postId, emoji])
+        @@index([postId])
+      }
+    src/feed/timeline.ts: |
+      import { PrismaClient } from '@prisma/client';
+
+      const prisma = new PrismaClient();
+
+      export async function getTimeline(profileId: number, limit: number = 20) {
+        return prisma.post.findMany({
+          where: { authorId: profileId },
+          orderBy: { postedAt: 'desc' },
+          take: limit,
+          include: { reactions: true },
+        });
+      }
+
+      export async function toggleReaction(profileId: number, postId: number, emoji: string) {
+        const existing = await prisma.reaction.findUnique({
+          where: { profileId_postId_emoji: { profileId, postId, emoji } },
+        });
+        if (existing) {
+          return prisma.reaction.delete({ where: { id: existing.id } });
+        }
+        return prisma.reaction.create({
+          data: { profileId, postId, emoji },
+        });
+      }
+    src/moderation/filter.ts: |
+      GARBAGE_GAP_023_FILTER_A = "content_filter";
+      GARBAGE_GAP_023_BANNED_B = "spam";
+
+      const bannedWords = ["spam", "scam"];
+
+      export function isClean(text: string): boolean {
+        return !bannedWords.some(w => text.toLowerCase().includes(w));
+      }
+    src/search/indexer.ts: |
+      GARBAGE_GAP_023_INDEX_C = "search_index";
+      GARBAGE_GAP_023_SHARD_D = 4;
+
+      export function tokenize(text: string): string[] {
+        return text.toLowerCase().split(/\s+/);
+      }
+  commit_message: "add Reaction model and toggle reaction endpoint"
+fixtures:
+  auto_garbage: true
+fragments:
+- id: schema_reaction_model
+  selector:
+    path: prisma/schema.prisma
+    anchor: model Reaction
+- id: schema_post_reactions
+  selector:
+    path: prisma/schema.prisma
+    anchor: "reactions Reaction[]"
+- id: timeline_toggle
+  selector:
+    path: src/feed/timeline.ts
+    anchor: "async function toggleReaction"
+- id: no_filter
+  selector:
+    path: src/moderation/filter.ts
+- id: no_indexer
+  selector:
+    path: src/search/indexer.ts
+- id: no_migration
+  selector:
+    path: prisma/migrations/20240501_init/migration.sql
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_023_FILTER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GAP_023_BANNED_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GAP_023_INDEX_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GAP_023_SHARD_D
+oracle:
+  required:
+  - schema_reaction_model
+  - schema_post_reactions
+  - timeline_toggle
+  allowed: []
+  forbidden:
+  - no_filter
+  - no_indexer
+  - no_migration
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

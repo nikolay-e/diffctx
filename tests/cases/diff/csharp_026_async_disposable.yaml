@@ -1,136 +1,293 @@
 name: csharp_026_async_disposable
+tags:
+- lang:ruby
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:medium
 repo:
   initial_files:
-    Resources/AsyncResource.cs: |
-      namespace MyApp.Resources;
+    lib/core/middleware.rb: |
+      module Core
+        module Middleware
+          def call(env)
+            raise NotImplementedError
+          end
+        end
+      end
+    lib/core/rack_app.rb: |
+      require_relative 'middleware'
 
-      public class AsyncResource : IAsyncDisposable
-      {
-          private readonly HttpClient _client;
+      module Core
+        class RackApp
+          def initialize
+            @middlewares = []
+          end
 
-          public AsyncResource()
-          {
-              _client = new HttpClient();
-          }
+          def use(middleware_class, *args)
+            @middlewares << [middleware_class, args]
+            self
+          end
 
-          public async Task<string> FetchAsync(string url)
-          {
-              return await _client.GetStringAsync(url);
-          }
+          def call(env)
+            build_stack.call(env)
+          end
 
-          public async ValueTask DisposeAsync()
-          {
-              _client.Dispose();
-              await Task.CompletedTask;
-          }
-      }
-    Services/AsyncService.cs: |
-      namespace MyApp.Services;
+          private
 
-      public class AsyncService { }
-    Unrelated/SnapshotService.cs: |
-      namespace MyApp.Unrelated;
+          def build_stack
+            app = ->(env) { [200, {}, ['OK']] }
+            @middlewares.reverse.reduce(app) do |inner, (klass, args)|
+              klass.new(inner, *args)
+            end
+          end
+        end
+      end
+    lib/middleware/auth_middleware.rb: |
+      require_relative '../core/middleware'
 
-      public class SnapshotService
-      {
-          private const string GARBAGE_CS_026_SNAPSHOT_SERVICE_A = "snapshot_service_marker";
+      module Middleware
+        class AuthMiddleware
+          include Core::Middleware
 
-          public void TakeSnapshot() => _ = GARBAGE_CS_026_SNAPSHOT_SERVICE_A;
-      }
-    Unrelated/ReplayBuffer.cs: |
-      namespace MyApp.Unrelated;
+          def initialize(app)
+            @app = app
+          end
 
-      public class ReplayBuffer
-      {
-          public const string GARBAGE_CS_026_REPLAY_BUFFER_B = "replay_buffer_marker";
+          def call(env)
+            token = env['HTTP_AUTHORIZATION']
+            if token.nil?
+              [401, {}, ['Unauthorized']]
+            else
+              @app.call(env)
+            end
+          end
+        end
+      end
+    lib/middleware/cors_middleware.rb: |
+      require_relative '../core/middleware'
 
-          public void Replay() => _ = GARBAGE_CS_026_REPLAY_BUFFER_B;
-      }
+      module Middleware
+        class CorsMiddleware
+          include Core::Middleware
+
+          def initialize(app, allowed_origins: ['*'])
+            @app = app
+            @allowed_origins = allowed_origins
+          end
+
+          def call(env)
+            status, headers, body = @app.call(env)
+            headers['Access-Control-Allow-Origin'] = @allowed_origins.join(', ')
+            [status, headers, body]
+          end
+        end
+      end
+    lib/app/server.rb: |
+      require_relative '../core/rack_app'
+      require_relative '../middleware/auth_middleware'
+      require_relative '../middleware/cors_middleware'
+
+      module App
+        def self.build
+          Core::RackApp.new
+            .use(Middleware::CorsMiddleware, allowed_origins: ['https://example.com'])
+            .use(Middleware::AuthMiddleware)
+        end
+      end
+    lib/utils/logger.rb: |
+      GARBAGE_CSHARP026_A = 'rack_logger_format'
+
+      module Utils
+        class Logger
+          def log(level, msg)
+            puts "[#{level}] #{msg}"
+          end
+        end
+      end
+    lib/config/env.rb: |
+      GARBAGE_CSHARP026_B = 'environment_production'
+      GARBAGE_CSHARP026_C = 'rack_env'
+
+      module Config
+        ENV_NAME = ENV.fetch('RACK_ENV', 'development')
+      end
+    lib/monitoring/request_timer.rb: |
+      GARBAGE_CSHARP026_D = 'request_timer_metric'
+
+      module Monitoring
+        class RequestTimer
+          def measure
+            start = Time.now
+            yield
+            Time.now - start
+          end
+        end
+      end
   changed_files:
-    Resources/AsyncResource.cs: |
-      namespace MyApp.Resources;
+    lib/core/middleware.rb: |
+      module Core
+        module Middleware
+          def call(env)
+            raise NotImplementedError
+          end
+        end
+      end
+    lib/core/rack_app.rb: |
+      require_relative 'middleware'
 
-      public class AsyncResource : IAsyncDisposable
-      {
-          private readonly HttpClient _client;
+      module Core
+        class RackApp
+          def initialize
+            @middlewares = []
+          end
 
-          public AsyncResource()
-          {
-              _client = new HttpClient();
-          }
+          def use(middleware_class, *args, **kwargs)
+            @middlewares << [middleware_class, args, kwargs]
+            self
+          end
 
-          public async Task<string> FetchAsync(string url)
-          {
-              return await _client.GetStringAsync(url);
-          }
+          def call(env)
+            build_stack.call(env)
+          end
 
-          public async ValueTask DisposeAsync()
-          {
-              _client.Dispose();
-              await Task.CompletedTask;
-          }
-      }
-    Services/AsyncService.cs: |
-      using MyApp.Resources;
+          private
 
-      namespace MyApp.Services;
+          def build_stack
+            app = ->(env) { [200, {}, ['OK']] }
+            @middlewares.reverse.reduce(app) do |inner, (klass, args, kwargs)|
+              klass.new(inner, *args, **kwargs)
+            end
+          end
+        end
+      end
+    lib/middleware/auth_middleware.rb: |
+      require_relative '../core/middleware'
 
-      public class AsyncService
-      {
-          public async Task<string> FetchDataAsync(string url)
-          {
-              await using var resource = new AsyncResource();
-              return await resource.FetchAsync(url);
-          }
-      }
-    Unrelated/SnapshotService.cs: |
-      namespace MyApp.Unrelated;
+      module Middleware
+        class AuthMiddleware
+          include Core::Middleware
 
-      public class SnapshotService
-      {
-          private const string GARBAGE_CS_026_SNAPSHOT_SERVICE_A = "snapshot_service_marker";
+          def initialize(app, realm: 'Application')
+            @app = app
+            @realm = realm
+          end
 
-          public void TakeSnapshot() => _ = GARBAGE_CS_026_SNAPSHOT_SERVICE_A;
-      }
-    Unrelated/ReplayBuffer.cs: |
-      namespace MyApp.Unrelated;
+          def call(env)
+            token = env['HTTP_AUTHORIZATION']
+            if token.nil?
+              [401, { 'WWW-Authenticate' => "Bearer realm=\"#{@realm}\"" }, ['Unauthorized']]
+            else
+              @app.call(env)
+            end
+          end
+        end
+      end
+    lib/middleware/cors_middleware.rb: |
+      require_relative '../core/middleware'
 
-      public class ReplayBuffer
-      {
-          public const string GARBAGE_CS_026_REPLAY_BUFFER_B = "replay_buffer_marker";
+      module Middleware
+        class CorsMiddleware
+          include Core::Middleware
 
-          public void Replay() => _ = GARBAGE_CS_026_REPLAY_BUFFER_B;
-      }
-  commit_message: Update files
+          def initialize(app, allowed_origins: ['*'])
+            @app = app
+            @allowed_origins = allowed_origins
+          end
+
+          def call(env)
+            status, headers, body = @app.call(env)
+            headers['Access-Control-Allow-Origin'] = @allowed_origins.join(', ')
+            [status, headers, body]
+          end
+        end
+      end
+    lib/app/server.rb: |
+      require_relative '../core/rack_app'
+      require_relative '../middleware/auth_middleware'
+      require_relative '../middleware/cors_middleware'
+
+      module App
+        def self.build
+          Core::RackApp.new
+            .use(Middleware::CorsMiddleware, allowed_origins: ['https://example.com'])
+            .use(Middleware::AuthMiddleware, realm: 'MyApp')
+        end
+      end
+    lib/utils/logger.rb: |
+      GARBAGE_CSHARP026_A = 'rack_logger_format'
+
+      module Utils
+        class Logger
+          def log(level, msg)
+            puts "[#{level}] #{msg}"
+          end
+        end
+      end
+    lib/config/env.rb: |
+      GARBAGE_CSHARP026_B = 'environment_production'
+      GARBAGE_CSHARP026_C = 'rack_env'
+
+      module Config
+        ENV_NAME = ENV.fetch('RACK_ENV', 'development')
+      end
+    lib/monitoring/request_timer.rb: |
+      GARBAGE_CSHARP026_D = 'request_timer_metric'
+
+      module Monitoring
+        class RequestTimer
+          def measure
+            start = Time.now
+            yield
+            Time.now - start
+          end
+        end
+      end
+  commit_message: "feat: add keyword args support and realm param to auth middleware"
 fragments:
-- id: asyncservice_file
+- id: rack_app_use_kwargs
   selector:
-    path: Services/AsyncService.cs
-- id: req_global_0
+    path: lib/core/rack_app.rb
+    anchor: "def use(middleware_class, *args, **kwargs)"
+- id: auth_middleware_realm
   selector:
-    anchor: using MyApp.Resources;
-- id: req_global_1
+    path: lib/middleware/auth_middleware.rb
+    anchor: "def initialize(app, realm:"
+- id: server_auth_realm
   selector:
-    anchor: public class AsyncService
+    path: lib/app/server.rb
+    anchor: "realm: 'MyApp'"
+- id: no_logger
+  selector:
+    path: lib/utils/logger.rb
+- id: no_env_config
+  selector:
+    path: lib/config/env.rb
+- id: no_request_timer
+  selector:
+    path: lib/monitoring/request_timer.rb
 - id: no_global_0
   selector:
-    anchor: GARBAGE_CS_026_REPLAY_BUFFER_B
+    anchor: GARBAGE_CSHARP026_A
 - id: no_global_1
   selector:
-    anchor: GARBAGE_CS_026_SNAPSHOT_SERVICE_A
+    anchor: GARBAGE_CSHARP026_B
 - id: no_global_2
   selector:
-    anchor: ReplayBuffer.cs
+    anchor: GARBAGE_CSHARP026_C
 - id: no_global_3
   selector:
-    anchor: SnapshotService.cs
+    anchor: GARBAGE_CSHARP026_D
 oracle:
   required:
-  - asyncservice_file
-  - req_global_0
-  - req_global_1
+  - rack_app_use_kwargs
+  - auth_middleware_realm
+  - server_auth_realm
   allowed: []
   forbidden:
+  - no_logger
+  - no_env_config
+  - no_request_timer
   - no_global_0
   - no_global_1
   - no_global_2

@@ -1,0 +1,222 @@
+name: bal_cfgcode_020_typescript_email_config
+tags:
+- lang:typescript
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    config/email.json: |
+      {
+        "provider": "smtp",
+        "host": "localhost",
+        "port": 1025,
+        "from": "dev@localhost",
+        "templates": {
+          "welcome": "Hello {name}",
+          "passwordReset": "Reset: {link}"
+        }
+      }
+    src/mailer.ts: |
+      import { readFileSync } from 'fs';
+
+      const emailConfig = JSON.parse(readFileSync('config/email.json', 'utf-8'));
+
+      export class Mailer {
+        private host = emailConfig.host;
+        private port = emailConfig.port;
+        private from = emailConfig.from;
+
+        send(to: string, templateName: string, vars: Record<string, string>) {
+          const tpl = emailConfig.templates[templateName];
+          let body = tpl;
+          for (const [k, v] of Object.entries(vars)) {
+            body = body.replace(`{${k}}`, v);
+          }
+          return { from: this.from, to, body };
+        }
+      }
+    src/notification-service.ts: |
+      import { readFileSync } from 'fs';
+
+      const cfg = JSON.parse(readFileSync('config/email.json', 'utf-8'));
+
+      export function getFromAddress(): string {
+        return cfg.from;
+      }
+
+      export function hasTemplate(name: string): boolean {
+        return name in cfg.templates;
+      }
+    src/webhook.ts: |
+      const GARBAGE_CFGCODE_020_HOOK_A = "https://hooks.example.com";
+      const GARBAGE_CFGCODE_020_HOOK_B = "POST";
+
+      export function sendWebhook(url: string, payload: object): void {
+        return;
+      }
+    src/scheduler.ts: |
+      const GARBAGE_CFGCODE_020_SCHED_C = "cron";
+      const GARBAGE_CFGCODE_020_SCHED_D = "0 * * * *";
+
+      export function schedule(expr: string, fn: () => void): void {
+        return;
+      }
+    garbage_queue.ts: |
+      const GARBAGE_CFGCODE_020_QUEUE_E = "bull";
+      const GARBAGE_CFGCODE_020_QUEUE_F = 5;
+
+      export function enqueue(job: string): void {
+        return;
+      }
+  changed_files:
+    config/email.json: |
+      {
+        "provider": "sendgrid",
+        "apiKey": "SG.placeholder",
+        "from": "hello@example.com",
+        "replyTo": "support@example.com",
+        "templates": {
+          "welcome": "Welcome aboard, {name}! Start here: {link}",
+          "passwordReset": "Reset: {link}",
+          "invoice": "Invoice #{id}: ${amount}",
+          "trialExpiring": "Your trial ends in {days} days"
+        },
+        "rateLimitPerMinute": 100
+      }
+    src/mailer.ts: |
+      import { readFileSync } from 'fs';
+
+      const emailConfig = JSON.parse(readFileSync('config/email.json', 'utf-8'));
+
+      export class Mailer {
+        private host = emailConfig.host;
+        private port = emailConfig.port;
+        private from = emailConfig.from;
+
+        send(to: string, templateName: string, vars: Record<string, string>) {
+          const tpl = emailConfig.templates[templateName];
+          let body = tpl;
+          for (const [k, v] of Object.entries(vars)) {
+            body = body.replace(`{${k}}`, v);
+          }
+          return { from: this.from, to, body };
+        }
+      }
+    src/notification-service.ts: |
+      import { readFileSync } from 'fs';
+
+      const cfg = JSON.parse(readFileSync('config/email.json', 'utf-8'));
+
+      export function getFromAddress(): string {
+        return cfg.from;
+      }
+
+      export function hasTemplate(name: string): boolean {
+        return name in cfg.templates;
+      }
+    src/webhook.ts: |
+      const GARBAGE_CFGCODE_020_HOOK_A = "https://hooks.example.com";
+      const GARBAGE_CFGCODE_020_HOOK_B = "POST";
+
+      export function sendWebhook(url: string, payload: object): void {
+        return;
+      }
+    src/scheduler.ts: |
+      const GARBAGE_CFGCODE_020_SCHED_C = "cron";
+      const GARBAGE_CFGCODE_020_SCHED_D = "0 * * * *";
+
+      export function schedule(expr: string, fn: () => void): void {
+        return;
+      }
+    garbage_queue.ts: |
+      const GARBAGE_CFGCODE_020_QUEUE_E = "bull";
+      const GARBAGE_CFGCODE_020_QUEUE_F = 5;
+
+      export function enqueue(job: string): void {
+        return;
+      }
+  commit_message: "config: switch to sendgrid with new templates"
+fragments:
+- id: config_provider
+  selector:
+    path: config/email.json
+    anchor: '"provider": "sendgrid"'
+- id: config_reply_to
+  selector:
+    path: config/email.json
+    anchor: "support@example.com"
+- id: config_invoice_tpl
+  selector:
+    path: config/email.json
+    anchor: "Invoice #{id}"
+- id: config_rate_limit
+  selector:
+    path: config/email.json
+    anchor: "rateLimitPerMinute"
+- id: mailer_reads_templates
+  selector:
+    path: src/mailer.ts
+    anchor: "emailConfig.templates[templateName]"
+- id: mailer_reads_from
+  selector:
+    path: src/mailer.ts
+    anchor: "emailConfig.from"
+- id: notification_reads_from
+  selector:
+    path: src/notification-service.ts
+    anchor: "cfg.from"
+- id: notification_reads_templates
+  selector:
+    path: src/notification-service.ts
+    anchor: "cfg.templates"
+- id: no_webhook
+  selector:
+    path: src/webhook.ts
+- id: no_scheduler
+  selector:
+    path: src/scheduler.ts
+- id: no_queue
+  selector:
+    path: garbage_queue.ts
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_020_HOOK_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_020_HOOK_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_020_SCHED_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_020_SCHED_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CFGCODE_020_QUEUE_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CFGCODE_020_QUEUE_F
+oracle:
+  required:
+  - config_provider
+  - config_reply_to
+  - config_invoice_tpl
+  - config_rate_limit
+  - mailer_reads_templates
+  - mailer_reads_from
+  - notification_reads_from
+  - notification_reads_templates
+  allowed: []
+  forbidden:
+  - no_webhook
+  - no_scheduler
+  - no_queue
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

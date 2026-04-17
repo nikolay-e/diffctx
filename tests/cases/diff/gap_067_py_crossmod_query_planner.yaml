@@ -1,0 +1,273 @@
+name: gap_067_py_crossmod_query_planner
+tags:
+- change:multi_file
+- change:new_function
+- change:new_function
+- change:signature
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+- lang:python
+repo:
+  initial_files:
+    src/db/planner.py: |
+      from typing import List
+      from src.db.index import IndexCatalog, IndexSpec
+
+      class QueryPlanner:
+          def __init__(self, catalog: IndexCatalog):
+              self.catalog = catalog
+
+          def plan(self, table: str, columns: List[str]) -> str:
+              idx = self.catalog.best_index(table, columns)
+              if idx:
+                  return f"INDEX_SCAN({idx.name})"
+              return f"SEQ_SCAN({table})"
+
+          def explain(self, table: str, columns: List[str]) -> str:
+              strategy = self.plan(table, columns)
+              return f"EXPLAIN: {strategy} on {', '.join(columns)}"
+    src/db/index.py: |
+      from typing import List, Optional
+      from dataclasses import dataclass
+
+      @dataclass
+      class IndexSpec:
+          name: str
+          table: str
+          columns: List[str]
+          unique: bool = False
+
+      class IndexCatalog:
+          def __init__(self):
+              self._indexes: List[IndexSpec] = []
+
+          def register(self, spec: IndexSpec) -> None:
+              self._indexes.append(spec)
+
+          def best_index(self, table: str, columns: List[str]) -> Optional[IndexSpec]:
+              candidates = [
+                  idx for idx in self._indexes
+                  if idx.table == table and set(columns).issubset(set(idx.columns))
+              ]
+              if not candidates:
+                  return None
+              return min(candidates, key=lambda i: len(i.columns))
+
+          def list_for_table(self, table: str) -> List[IndexSpec]:
+              return [idx for idx in self._indexes if idx.table == table]
+    src/db/executor.py: |
+      from typing import Any, List, Dict
+
+      class QueryExecutor:
+          def __init__(self, connection_string: str):
+              self.connection_string = connection_string
+              self._query_log: List[str] = []
+
+          def execute(self, sql: str) -> List[Dict[str, Any]]:
+              self._query_log.append(sql)
+              return []
+
+          def last_queries(self, count: int = 5) -> List[str]:
+              return self._query_log[-count:]
+    src/db/migration.py: |
+      TRAP_GAP067_MIGRATE_A = "migration_runner"
+      TRAP_GAP067_VERSION_B = "0.1"
+
+      class MigrationRunner:
+          def __init__(self):
+              self._applied = []
+
+          def apply(self, name: str, sql: str) -> None:
+              self._applied.append(name)
+
+          def rollback(self, name: str) -> None:
+              self._applied = [m for m in self._applied if m != name]
+    src/db/connection_pool.py: |
+      TRAP_GAP067_POOL_C = "conn_pool"
+      TRAP_GAP067_MAX_D = 10
+
+      class ConnectionPool:
+          def __init__(self, max_size: int = 10):
+              self.max_size = max_size
+              self._active = 0
+
+          def acquire(self) -> str:
+              if self._active >= self.max_size:
+                  raise RuntimeError("Pool exhausted")
+              self._active += 1
+              return f"conn_{self._active}"
+
+          def release(self) -> None:
+              if self._active > 0:
+                  self._active -= 1
+  changed_files:
+    src/db/planner.py: |
+      from typing import List, Optional
+      from src.db.index import IndexCatalog, IndexSpec
+
+      class CostEstimate:
+          def __init__(self, strategy: str, cost: float, uses_index: bool):
+              self.strategy = strategy
+              self.cost = cost
+              self.uses_index = uses_index
+
+      class QueryPlanner:
+          def __init__(self, catalog: IndexCatalog, seq_cost_per_row: float = 1.0):
+              self.catalog = catalog
+              self.seq_cost_per_row = seq_cost_per_row
+
+          def estimate_cost(self, table: str, columns: List[str], row_count: int) -> CostEstimate:
+              idx = self.catalog.best_index(table, columns)
+              if idx:
+                  index_cost = row_count * 0.1 * len(idx.columns)
+                  return CostEstimate(f"INDEX_SCAN({idx.name})", index_cost, True)
+              seq_cost = row_count * self.seq_cost_per_row
+              return CostEstimate(f"SEQ_SCAN({table})", seq_cost, False)
+
+          def plan(self, table: str, columns: List[str]) -> str:
+              idx = self.catalog.best_index(table, columns)
+              if idx:
+                  return f"INDEX_SCAN({idx.name})"
+              return f"SEQ_SCAN({table})"
+
+          def suggest_indexes(self, table: str, query_columns: List[List[str]]) -> List[str]:
+              suggestions = []
+              for cols in query_columns:
+                  if not self.catalog.best_index(table, cols):
+                      suggestions.append(f"CREATE INDEX ON {table}({', '.join(cols)})")
+              return suggestions
+
+          def explain(self, table: str, columns: List[str]) -> str:
+              strategy = self.plan(table, columns)
+              return f"EXPLAIN: {strategy} on {', '.join(columns)}"
+    src/db/index.py: |
+      from typing import List, Optional
+      from dataclasses import dataclass
+
+      @dataclass
+      class IndexSpec:
+          name: str
+          table: str
+          columns: List[str]
+          unique: bool = False
+
+      class IndexCatalog:
+          def __init__(self):
+              self._indexes: List[IndexSpec] = []
+
+          def register(self, spec: IndexSpec) -> None:
+              self._indexes.append(spec)
+
+          def best_index(self, table: str, columns: List[str]) -> Optional[IndexSpec]:
+              candidates = [
+                  idx for idx in self._indexes
+                  if idx.table == table and set(columns).issubset(set(idx.columns))
+              ]
+              if not candidates:
+                  return None
+              return min(candidates, key=lambda i: len(i.columns))
+
+          def list_for_table(self, table: str) -> List[IndexSpec]:
+              return [idx for idx in self._indexes if idx.table == table]
+    src/db/executor.py: |
+      from typing import Any, List, Dict
+
+      class QueryExecutor:
+          def __init__(self, connection_string: str):
+              self.connection_string = connection_string
+              self._query_log: List[str] = []
+
+          def execute(self, sql: str) -> List[Dict[str, Any]]:
+              self._query_log.append(sql)
+              return []
+
+          def last_queries(self, count: int = 5) -> List[str]:
+              return self._query_log[-count:]
+    src/db/migration.py: |
+      TRAP_GAP067_MIGRATE_A = "migration_runner"
+      TRAP_GAP067_VERSION_B = "0.1"
+
+      class MigrationRunner:
+          def __init__(self):
+              self._applied = []
+
+          def apply(self, name: str, sql: str) -> None:
+              self._applied.append(name)
+
+          def rollback(self, name: str) -> None:
+              self._applied = [m for m in self._applied if m != name]
+    src/db/connection_pool.py: |
+      TRAP_GAP067_POOL_C = "conn_pool"
+      TRAP_GAP067_MAX_D = 10
+
+      class ConnectionPool:
+          def __init__(self, max_size: int = 10):
+              self.max_size = max_size
+              self._active = 0
+
+          def acquire(self) -> str:
+              if self._active >= self.max_size:
+                  raise RuntimeError("Pool exhausted")
+              self._active += 1
+              return f"conn_{self._active}"
+
+          def release(self) -> None:
+              if self._active > 0:
+                  self._active -= 1
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: planner_estimate
+  selector:
+    path: src/db/planner.py
+    anchor: 'def estimate_cost(self, table: str, columns: List[str], row_count: int) -> CostEstimate:'
+- id: planner_suggest
+  selector:
+    path: src/db/planner.py
+    anchor: 'def suggest_indexes(self, table: str, query_columns: List[List[str]]) -> List[str]:'
+- id: cost_estimate_class
+  selector:
+    path: src/db/planner.py
+    anchor: 'class CostEstimate:'
+- id: index_best
+  selector:
+    path: src/db/index.py
+    anchor: 'def best_index(self, table: str, columns: List[str]) -> Optional[IndexSpec]:'
+- id: no_migration
+  selector:
+    path: src/db/migration.py
+- id: no_pool
+  selector:
+    path: src/db/connection_pool.py
+- id: no_executor
+  selector:
+    path: src/db/executor.py
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP067_MIGRATE_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP067_VERSION_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP067_POOL_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP067_MAX_D
+oracle:
+  required:
+  - planner_estimate
+  - planner_suggest
+  - cost_estimate_class
+  - index_best
+  allowed: []
+  forbidden:
+  - no_migration
+  - no_pool
+  - no_executor
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

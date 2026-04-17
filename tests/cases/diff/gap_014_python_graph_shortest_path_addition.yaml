@@ -1,0 +1,241 @@
+name: gap_014_python_graph_shortest_path_addition
+tags:
+- lang:python
+- change:multi_file
+- change:new_function
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    graph/core.py: |
+      from collections import defaultdict
+
+      class Graph:
+          def __init__(self, directed: bool = False):
+              self._directed = directed
+              self._adj: dict[str, dict[str, float]] = defaultdict(dict)
+
+          def add_edge(self, src: str, dst: str, weight: float = 1.0) -> None:
+              self._adj[src][dst] = weight
+              if not self._directed:
+                  self._adj[dst][src] = weight
+
+          def neighbors(self, node: str) -> dict[str, float]:
+              return dict(self._adj.get(node, {}))
+
+          def nodes(self) -> set[str]:
+              result = set()
+              for src, edges in self._adj.items():
+                  result.add(src)
+                  result.update(edges.keys())
+              return result
+    graph/traversal.py: |
+      from collections import deque
+      from graph.core import Graph
+
+      def bfs(graph: Graph, start: str) -> list[str]:
+          visited = set()
+          queue = deque([start])
+          order = []
+          while queue:
+              node = queue.popleft()
+              if node in visited:
+                  continue
+              visited.add(node)
+              order.append(node)
+              for neighbor in sorted(graph.neighbors(node)):
+                  if neighbor not in visited:
+                      queue.append(neighbor)
+          return order
+
+      def dfs(graph: Graph, start: str) -> list[str]:
+          visited = set()
+          stack = [start]
+          order = []
+          while stack:
+              node = stack.pop()
+              if node in visited:
+                  continue
+              visited.add(node)
+              order.append(node)
+              for neighbor in sorted(graph.neighbors(node), reverse=True):
+                  if neighbor not in visited:
+                      stack.append(neighbor)
+          return order
+    analysis/centrality.py: |
+      from graph.core import Graph
+      from graph.traversal import bfs
+
+      def degree_centrality(graph: Graph) -> dict[str, float]:
+          nodes = graph.nodes()
+          n = len(nodes)
+          if n <= 1:
+              return {node: 0.0 for node in nodes}
+          result = {}
+          for node in nodes:
+              result[node] = len(graph.neighbors(node)) / (n - 1)
+          return result
+
+      def closeness_centrality(graph: Graph) -> dict[str, float]:
+          nodes = graph.nodes()
+          result = {}
+          for node in nodes:
+              reachable = bfs(graph, node)
+              if len(reachable) <= 1:
+                  result[node] = 0.0
+              else:
+                  result[node] = (len(reachable) - 1) / len(nodes)
+          return result
+    graph/io_format.py: |
+      from graph.core import Graph
+
+      class GraphSerializer:
+          def to_edge_list(self, graph: Graph) -> list[tuple[str, str, float]]:
+              edges = []
+              seen = set()
+              for node in graph.nodes():
+                  for neighbor, weight in graph.neighbors(node).items():
+                      edge_key = tuple(sorted([node, neighbor]))
+                      if edge_key not in seen:
+                          edges.append((node, neighbor, weight))
+                          seen.add(edge_key)
+              return edges
+
+          def from_edge_list(self, edges: list[tuple[str, str, float]]) -> Graph:
+              g = Graph()
+              for src, dst, weight in edges:
+                  g.add_edge(src, dst, weight)
+              return g
+    graph/visualization.py: |
+      class AsciiRenderer:
+          def __init__(self, width: int = 80):
+              self._width = width
+
+          def render_adjacency(self, adj: dict[str, list[str]]) -> str:
+              lines = []
+              for node in sorted(adj):
+                  neighbors = ", ".join(sorted(adj[node]))
+                  lines.append(f"{node} -> [{neighbors}]")
+              return "\n".join(lines)
+  changed_files:
+    graph/traversal.py: |
+      import heapq
+      from collections import deque
+      from graph.core import Graph
+
+      def bfs(graph: Graph, start: str) -> list[str]:
+          visited = set()
+          queue = deque([start])
+          order = []
+          while queue:
+              node = queue.popleft()
+              if node in visited:
+                  continue
+              visited.add(node)
+              order.append(node)
+              for neighbor in sorted(graph.neighbors(node)):
+                  if neighbor not in visited:
+                      queue.append(neighbor)
+          return order
+
+      def dfs(graph: Graph, start: str) -> list[str]:
+          visited = set()
+          stack = [start]
+          order = []
+          while stack:
+              node = stack.pop()
+              if node in visited:
+                  continue
+              visited.add(node)
+              order.append(node)
+              for neighbor in sorted(graph.neighbors(node), reverse=True):
+                  if neighbor not in visited:
+                      stack.append(neighbor)
+          return order
+
+      def dijkstra(graph: Graph, start: str, end: str) -> tuple[float, list[str]]:
+          dist: dict[str, float] = {start: 0.0}
+          prev: dict[str, str | None] = {start: None}
+          heap = [(0.0, start)]
+          while heap:
+              d, node = heapq.heappop(heap)
+              if node == end:
+                  break
+              if d > dist.get(node, float("inf")):
+                  continue
+              for neighbor, weight in graph.neighbors(node).items():
+                  new_dist = d + weight
+                  if new_dist < dist.get(neighbor, float("inf")):
+                      dist[neighbor] = new_dist
+                      prev[neighbor] = node
+                      heapq.heappush(heap, (new_dist, neighbor))
+          if end not in dist:
+              return float("inf"), []
+          path = []
+          current: str | None = end
+          while current is not None:
+              path.append(current)
+              current = prev.get(current)
+          return dist[end], list(reversed(path))
+    analysis/centrality.py: |
+      from graph.core import Graph
+      from graph.traversal import bfs, dijkstra
+
+      def degree_centrality(graph: Graph) -> dict[str, float]:
+          nodes = graph.nodes()
+          n = len(nodes)
+          if n <= 1:
+              return {node: 0.0 for node in nodes}
+          result = {}
+          for node in nodes:
+              result[node] = len(graph.neighbors(node)) / (n - 1)
+          return result
+
+      def closeness_centrality(graph: Graph) -> dict[str, float]:
+          nodes = graph.nodes()
+          result = {}
+          for node in nodes:
+              total_dist = 0.0
+              reachable = 0
+              for target in nodes:
+                  if target == node:
+                      continue
+                  dist, path = dijkstra(graph, node, target)
+                  if dist < float("inf"):
+                      total_dist += dist
+                      reachable += 1
+              if reachable == 0:
+                  result[node] = 0.0
+              else:
+                  result[node] = reachable / total_dist
+          return result
+fragments:
+- id: dijkstra
+  selector:
+    path: graph/traversal.py
+    anchor: "def dijkstra"
+- id: closeness_updated
+  selector:
+    path: analysis/centrality.py
+    anchor: "def closeness_centrality"
+- id: graph_neighbors
+  selector:
+    path: graph/core.py
+    anchor: "def neighbors"
+- id: no_io_format
+  selector:
+    path: graph/io_format.py
+- id: no_visualization
+  selector:
+    path: graph/visualization.py
+oracle:
+  required:
+  - dijkstra
+  - closeness_updated
+  - graph_neighbors
+  forbidden:
+  - no_io_format
+  - no_visualization

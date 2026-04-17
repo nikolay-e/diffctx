@@ -1,0 +1,109 @@
+name: xml_001_maven_dependency_added
+tags:
+- lang:xml
+- lang:java
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    pom.xml: |
+      <project>
+        <modelVersion>4.0.0</modelVersion>
+        <groupId>com.example</groupId>
+        <artifactId>myapp</artifactId>
+        <version>1.0.0</version>
+        <dependencies>
+          <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-core</artifactId>
+            <version>6.0.0</version>
+          </dependency>
+        </dependencies>
+      </project>
+    src/main/java/com/example/AppConfig.java: |
+      package com.example;
+      import org.springframework.context.annotation.Configuration;
+      @Configuration
+      public class AppConfig {}
+    src/main/java/com/example/DataService.java: |
+      package com.example;
+      import org.springframework.jdbc.core.JdbcTemplate;
+      public class DataService {
+          private final JdbcTemplate jdbc;
+          public DataService(JdbcTemplate jdbc) { this.jdbc = jdbc; }
+          public int countUsers() {
+              return jdbc.queryForObject("SELECT COUNT(*) FROM users", Integer.class);
+          }
+      }
+    XML_NOISE_001_logback.xml: |
+      <configuration>
+        <appender name="XML_NOISE_001_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+          <encoder><pattern>%d %msg%n</pattern></encoder>
+        </appender>
+        <root level="INFO"><appender-ref ref="XML_NOISE_001_CONSOLE"/></root>
+      </configuration>
+    src/main/java/com/example/ReportService.java: |
+      package com.example;
+      // XML_NOISE_001_ReportService placeholder
+      public class ReportService {}
+    garbage/EmailTemplate.java: |
+      // XML_NOISE_001_EmailTemplate = "email_template_marker"
+  changed_files:
+    pom.xml: |
+      <project>
+        <modelVersion>4.0.0</modelVersion>
+        <groupId>com.example</groupId>
+        <artifactId>myapp</artifactId>
+        <version>1.0.0</version>
+        <dependencies>
+          <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-core</artifactId>
+            <version>6.0.0</version>
+          </dependency>
+          <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-jdbc</artifactId>
+            <version>6.0.0</version>
+          </dependency>
+        </dependencies>
+      </project>
+  commit_message: "feat: add spring-jdbc dependency to pom.xml"
+fragments:
+- id: pom_xml
+  selector:
+    path: pom.xml
+    anchor: spring-jdbc
+- id: data_service
+  selector:
+    path: src/main/java/com/example/DataService.java
+    anchor: JdbcTemplate
+- id: no_logback
+  selector:
+    path: XML_NOISE_001_logback.xml
+- id: no_report_service
+  selector:
+    path: src/main/java/com/example/ReportService.java
+- id: no_global_0
+  selector:
+    anchor: XML_NOISE_001_CONSOLE
+- id: no_global_1
+  selector:
+    anchor: XML_NOISE_001_ReportService
+- id: no_global_2
+  selector:
+    anchor: XML_NOISE_001_EmailTemplate
+oracle:
+  required:
+  - pom_xml
+  - data_service
+  allowed: []
+  forbidden:
+  - no_logback
+  - no_report_service
+  - no_global_0
+  - no_global_1
+  - no_global_2

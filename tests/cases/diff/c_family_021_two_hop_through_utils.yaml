@@ -1,0 +1,134 @@
+name: c_family_021_two_hop_through_utils
+tags:
+- lang:c
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    base_types.h: |
+      #ifndef BASE_TYPES_H
+      #define BASE_TYPES_H
+      typedef unsigned char  u8;
+      typedef unsigned short u16;
+      typedef unsigned int   u32;
+      #endif
+    utils.h: |
+      #ifndef UTILS_H
+      #define UTILS_H
+      #include "base_types.h"
+      u32 utils_checksum(const u8 *data, u32 len);
+      void utils_reverse(u8 *buf, u32 len);
+      #endif
+    utils.c: |
+      #include "utils.h"
+      u32 utils_checksum(const u8 *data, u32 len) {
+          u32 sum = 0;
+          for (u32 i = 0; i < len; i++) sum += data[i];
+          return sum;
+      }
+      void utils_reverse(u8 *buf, u32 len) {
+          for (u32 i = 0; i < len / 2; i++) {
+              u8 tmp = buf[i]; buf[i] = buf[len-1-i]; buf[len-1-i] = tmp;
+          }
+      }
+    algorithm.c: |
+      #include "utils.h"
+      u32 algo_process(const u8 *input, u32 size) {
+          u32 cs = utils_checksum(input, size);
+          return cs;
+      }
+    C_NOISE_021_rfid.h: |
+      #ifndef C_NOISE_021_RFID_H
+      #define C_NOISE_021_RFID_H
+      int C_NOISE_021_rfid_read(u8 *buf, int max);
+      void C_NOISE_021_rfid_reset(void);
+      #endif
+    C_NOISE_021_rfid.c: |
+      #include "C_NOISE_021_rfid.h"
+      int C_NOISE_021_rfid_read(u8 *buf, int max) { return 0; }
+      void C_NOISE_021_rfid_reset(void) {}
+  changed_files:
+    base_types.h: |
+      #ifndef BASE_TYPES_H
+      #define BASE_TYPES_H
+      typedef unsigned char      u8;
+      typedef unsigned short     u16;
+      typedef unsigned int       u32;
+      typedef unsigned long long u64;
+      #endif
+    utils.h: |
+      #ifndef UTILS_H
+      #define UTILS_H
+      #include "base_types.h"
+      u64 utils_checksum(const u8 *data, u32 len);
+      void utils_reverse(u8 *buf, u32 len);
+      #endif
+    utils.c: |
+      #include "utils.h"
+      u64 utils_checksum(const u8 *data, u32 len) {
+          u64 sum = 0;
+          for (u32 i = 0; i < len; i++) sum += data[i];
+          return sum;
+      }
+      void utils_reverse(u8 *buf, u32 len) {
+          for (u32 i = 0; i < len / 2; i++) {
+              u8 tmp = buf[i]; buf[i] = buf[len-1-i]; buf[len-1-i] = tmp;
+          }
+      }
+    algorithm.c: |
+      #include "utils.h"
+      u64 algo_process(const u8 *input, u32 size) {
+          u64 cs = utils_checksum(input, size);
+          return cs;
+      }
+    C_NOISE_021_rfid.h: |
+      #ifndef C_NOISE_021_RFID_H
+      #define C_NOISE_021_RFID_H
+      int C_NOISE_021_rfid_read(u8 *buf, int max);
+      void C_NOISE_021_rfid_reset(void);
+      #endif
+    C_NOISE_021_rfid.c: |
+      #include "C_NOISE_021_rfid.h"
+      int C_NOISE_021_rfid_read(u8 *buf, int max) { return 0; }
+      void C_NOISE_021_rfid_reset(void) {}
+  commit_message: "feat: add u64 type to base_types.h; widen checksum return to u64 in utils and algorithm"
+fragments:
+- id: base_types_h_u64
+  selector:
+    path: base_types.h
+    anchor: "u64"
+- id: utils_h_checksum
+  selector:
+    path: utils.h
+    anchor: "u64 utils_checksum"
+- id: utils_c_checksum
+  selector:
+    path: utils.c
+    anchor: "u64 utils_checksum"
+- id: algorithm_c
+  selector:
+    path: algorithm.c
+    anchor: "u64 algo_process"
+- id: no_rfid_h
+  selector:
+    anchor: C_NOISE_021_rfid_read
+- id: no_rfid_c
+  selector:
+    path: C_NOISE_021_rfid.c
+- id: no_global_rfid_reset
+  selector:
+    anchor: C_NOISE_021_rfid_reset
+oracle:
+  required:
+  - base_types_h_u64
+  - utils_h_checksum
+  - utils_c_checksum
+  - algorithm_c
+  allowed: []
+  forbidden:
+  - no_rfid_h
+  - no_rfid_c
+  - no_global_rfid_reset

@@ -1,0 +1,86 @@
+name: powershell_002_module_export_added
+tags:
+- lang:powershell
+- change:single_file
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    AuthModule.psm1: |
+      function Test-UserCredential {
+          param([string]$Username, [string]$Password)
+          return ($Username -eq "admin" -and $Password -eq "secret")
+      }
+      Export-ModuleMember -Function Test-UserCredential
+    Connect-Portal.ps1: |
+      Import-Module ./AuthModule.psm1
+      $valid = Test-UserCredential -Username "admin" -Password "secret"
+      if (-not $valid) { throw "Authentication failed" }
+      Write-Output "Connected"
+    PS_NOISE_002_DiskUtils.psm1: |
+      function PS_NOISE_002_Get-DiskFreeSpace {
+          param([string]$DriveLetter)
+          $disk = Get-PSDrive -Name $DriveLetter
+          return $disk.Free
+      }
+      Export-ModuleMember -Function PS_NOISE_002_Get-DiskFreeSpace
+    PS_NOISE_002_LogUtils.psm1: |
+      function PS_NOISE_002_Write-TimestampedLog {
+          param([string]$Message, [string]$LogPath)
+          $entry = "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] $Message"
+          Add-Content -Path $LogPath -Value $entry
+      }
+      Export-ModuleMember -Function PS_NOISE_002_Write-TimestampedLog
+  changed_files:
+    AuthModule.psm1: |
+      function Test-UserCredential {
+          param([string]$Username, [string]$Password)
+          return ($Username -eq "admin" -and $Password -eq "secret")
+      }
+
+      function Get-CurrentUserRole {
+          param([string]$Username)
+          $roles = @{ admin = "Administrator"; guest = "ReadOnly" }
+          return $roles[$Username] ?? "Unknown"
+      }
+
+      Export-ModuleMember -Function Test-UserCredential, Get-CurrentUserRole
+  commit_message: "feat: add Get-CurrentUserRole to AuthModule"
+fragments:
+- id: auth_module_new_function
+  selector:
+    path: AuthModule.psm1
+    anchor: Get-CurrentUserRole
+- id: auth_module_export
+  selector:
+    path: AuthModule.psm1
+    anchor: Export-ModuleMember
+- id: connect_portal
+  selector:
+    path: Connect-Portal.ps1
+    anchor: Import-Module
+- id: no_disk_utils
+  selector:
+    path: PS_NOISE_002_DiskUtils.psm1
+- id: no_log_utils
+  selector:
+    path: PS_NOISE_002_LogUtils.psm1
+- id: no_global_0
+  selector:
+    anchor: PS_NOISE_002_Get-DiskFreeSpace
+- id: no_global_1
+  selector:
+    anchor: PS_NOISE_002_Write-TimestampedLog
+oracle:
+  required:
+  - auth_module_new_function
+  - auth_module_export
+  - connect_portal
+  allowed: []
+  forbidden:
+  - no_disk_utils
+  - no_log_utils
+  - no_global_0
+  - no_global_1

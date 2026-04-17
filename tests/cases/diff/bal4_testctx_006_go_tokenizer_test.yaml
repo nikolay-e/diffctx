@@ -1,0 +1,124 @@
+name: bal4_testctx_006_go_tokenizer_test
+tags:
+- lang:go
+- change:single_file
+- change:signature
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    lexer/tokenizer.go: |
+      package lexer
+
+      import "strings"
+
+      type Token struct {
+          Kind  string
+          Value string
+      }
+
+      func Tokenize(input string) []Token {
+          words := strings.Fields(input)
+          tokens := make([]Token, 0, len(words))
+          for _, w := range words {
+              tokens = append(tokens, Token{Kind: "word", Value: w})
+          }
+          return tokens
+      }
+    lexer/tokenizer_test.go: |
+      package lexer
+
+      import "testing"
+
+      func TestTokenize(t *testing.T) {
+          tokens := Tokenize("hello world")
+          if len(tokens) != 2 {
+              t.Fatalf("expected 2 tokens, got %d", len(tokens))
+          }
+          if tokens[0].Value != "hello" {
+              t.Fatalf("expected hello, got %s", tokens[0].Value)
+          }
+      }
+
+      func TestTokenizeEmpty(t *testing.T) {
+          tokens := Tokenize("")
+          if len(tokens) != 0 {
+              t.Fatalf("expected 0 tokens, got %d", len(tokens))
+          }
+      }
+    parser/ast.go: |
+      package parser
+
+      type Node struct {
+          Type     string
+          Children []Node
+      }
+
+      func NewNode(typ string) Node {
+          return Node{Type: typ}
+      }
+    io/reader.go: |
+      package io
+
+      type FileReader struct {
+          Path string
+      }
+
+      func (r *FileReader) Read() string {
+          return "content of " + r.Path
+      }
+  changed_files:
+    lexer/tokenizer.go: |
+      package lexer
+
+      import "strings"
+
+      type Token struct {
+          Kind  string
+          Value string
+          Pos   int
+      }
+
+      func Tokenize(input string) []Token {
+          words := strings.Fields(input)
+          tokens := make([]Token, 0, len(words))
+          pos := 0
+          for _, w := range words {
+              idx := strings.Index(input[pos:], w)
+              tokens = append(tokens, Token{Kind: "word", Value: w, Pos: pos + idx})
+              pos += idx + len(w)
+          }
+          return tokens
+      }
+  commit_message: "refactor: add position tracking to Token struct"
+fragments:
+- id: token_struct
+  selector:
+    path: lexer/tokenizer.go
+    anchor: "type Token struct"
+- id: tokenize_fn
+  selector:
+    path: lexer/tokenizer.go
+    anchor: "func Tokenize(input string) []Token"
+- id: test_tokenize
+  selector:
+    path: lexer/tokenizer_test.go
+    anchor: "func TestTokenize(t *testing.T)"
+- id: no_ast
+  selector:
+    path: parser/ast.go
+    anchor: "type Node struct"
+- id: no_reader
+  selector:
+    path: io/reader.go
+    anchor: "type FileReader struct"
+oracle:
+  required:
+  - token_struct
+  - tokenize_fn
+  - test_tokenize
+  allowed: []
+  forbidden:
+  - no_ast
+  - no_reader

@@ -1,0 +1,175 @@
+name: gap_127_swift_same_file_task_scheduler
+tags:
+- lang:swift
+- change:new_function
+- change:signature
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    Sources/Scheduler/TaskScheduler.swift: |
+      import Foundation
+
+      enum TaskPriority: Int, Comparable {
+          case low = 0
+          case medium = 1
+          case high = 2
+          case critical = 3
+
+          static func < (lhs: TaskPriority, rhs: TaskPriority) -> Bool {
+              lhs.rawValue < rhs.rawValue
+          }
+      }
+
+      struct ScheduledTask {
+          let id: String
+          let name: String
+          let priority: TaskPriority
+          let scheduledAt: Date
+          var completed: Bool
+      }
+
+      class TaskScheduler {
+          private var tasks: [ScheduledTask] = []
+
+          func schedule(_ task: ScheduledTask) {
+              tasks.append(task)
+          }
+
+          func pendingTasks() -> [ScheduledTask] {
+              tasks.filter { !$0.completed }
+                  .sorted { $0.priority > $1.priority }
+          }
+
+          func completeTask(id: String) {
+              if let index = tasks.firstIndex(where: { $0.id == id }) {
+                  tasks[index].completed = true
+              }
+          }
+      }
+    Sources/Scheduler/RecurrenceRule.swift: |
+      import Foundation
+
+      enum RecurrenceInterval {
+          case daily
+          case weekly
+          case monthly
+      }
+
+      struct RecurrenceRule {
+          let interval: RecurrenceInterval
+          let count: Int?
+
+          func nextOccurrence(after date: Date) -> Date {
+              let calendar = Calendar.current
+              switch interval {
+              case .daily:
+                  return calendar.date(byAdding: .day, value: 1, to: date) ?? date
+              case .weekly:
+                  return calendar.date(byAdding: .weekOfYear, value: 1, to: date) ?? date
+              case .monthly:
+                  return calendar.date(byAdding: .month, value: 1, to: date) ?? date
+              }
+          }
+      }
+    Sources/Analytics/UsageTracker.swift: |
+      import Foundation
+
+      class UsageTracker {
+          private var events: [(String, Date)] = []
+
+          func trackEvent(_ name: String) {
+              events.append((name, Date()))
+          }
+
+          func eventCount(for name: String) -> Int {
+              events.filter { $0.0 == name }.count
+          }
+
+          func recentEvents(limit: Int) -> [(String, Date)] {
+              Array(events.suffix(limit))
+          }
+      }
+  changed_files:
+    Sources/Scheduler/TaskScheduler.swift: |
+      import Foundation
+
+      enum TaskPriority: Int, Comparable {
+          case low = 0
+          case medium = 1
+          case high = 2
+          case critical = 3
+
+          static func < (lhs: TaskPriority, rhs: TaskPriority) -> Bool {
+              lhs.rawValue < rhs.rawValue
+          }
+      }
+
+      struct ScheduledTask {
+          let id: String
+          let name: String
+          let priority: TaskPriority
+          let scheduledAt: Date
+          var completed: Bool
+      }
+
+      class TaskScheduler {
+          private var tasks: [ScheduledTask] = []
+
+          func schedule(_ task: ScheduledTask) {
+              tasks.append(task)
+          }
+
+          func pendingTasks() -> [ScheduledTask] {
+              tasks.filter { !$0.completed }
+                  .sorted { $0.priority > $1.priority }
+          }
+
+          func completeTask(id: String) {
+              if let index = tasks.firstIndex(where: { $0.id == id }) {
+                  tasks[index].completed = true
+              }
+          }
+
+          func cancelTask(id: String) -> Bool {
+              guard let index = tasks.firstIndex(where: { $0.id == id && !$0.completed }) else {
+                  return false
+              }
+              tasks.remove(at: index)
+              return true
+          }
+      }
+fragments:
+- id: cancel_task
+  selector:
+    path: Sources/Scheduler/TaskScheduler.swift
+    anchor: cancelTask
+- id: scheduler_class
+  selector:
+    path: Sources/Scheduler/TaskScheduler.swift
+    anchor: class TaskScheduler
+- id: scheduled_task
+  selector:
+    path: Sources/Scheduler/TaskScheduler.swift
+    anchor: struct ScheduledTask
+- id: no_recurrence
+  selector:
+    path: Sources/Scheduler/RecurrenceRule.swift
+- id: no_usage
+  selector:
+    path: Sources/Analytics/UsageTracker.swift
+- id: no_track_event
+  selector:
+    anchor: func trackEvent
+oracle:
+  required:
+  - cancel_task
+  - scheduler_class
+  forbidden:
+  - no_recurrence
+  - no_usage
+  - no_track_event

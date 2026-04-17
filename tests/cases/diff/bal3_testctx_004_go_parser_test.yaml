@@ -1,0 +1,158 @@
+name: bal3_testctx_004_go_parser_test
+tags:
+- lang:go
+- change:single_file
+- change:refactor
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    parser/parser.go: |
+      package parser
+
+      import (
+          "fmt"
+          "strconv"
+          "strings"
+      )
+
+      type Token struct {
+          Kind  string
+          Value string
+      }
+
+      func Tokenize(input string) []Token {
+          var tokens []Token
+          for _, word := range strings.Fields(input) {
+              if _, err := strconv.Atoi(word); err == nil {
+                  tokens = append(tokens, Token{Kind: "number", Value: word})
+              } else {
+                  tokens = append(tokens, Token{Kind: "word", Value: word})
+              }
+          }
+          return tokens
+      }
+
+      func Format(tokens []Token) string {
+          var parts []string
+          for _, t := range tokens {
+              parts = append(parts, fmt.Sprintf("%s:%s", t.Kind, t.Value))
+          }
+          return strings.Join(parts, " ")
+      }
+    parser/parser_test.go: |
+      package parser
+
+      import "testing"
+
+      func TestTokenize_Numbers(t *testing.T) {
+          tokens := Tokenize("42 hello 7")
+          if len(tokens) != 3 {
+              t.Fatalf("expected 3 tokens, got %d", len(tokens))
+          }
+          if tokens[0].Kind != "number" {
+              t.Errorf("expected number, got %s", tokens[0].Kind)
+          }
+      }
+
+      func TestTokenize_Empty(t *testing.T) {
+          tokens := Tokenize("")
+          if len(tokens) != 0 {
+              t.Errorf("expected 0 tokens, got %d", len(tokens))
+          }
+      }
+
+      func TestFormat(t *testing.T) {
+          tokens := []Token{{Kind: "word", Value: "hi"}}
+          result := Format(tokens)
+          if result != "word:hi" {
+              t.Errorf("unexpected format: %s", result)
+          }
+      }
+    config/config.go: |
+      package config
+
+      type Settings struct {
+          Verbose bool
+          Output  string
+      }
+
+      func DefaultSettings() Settings {
+          return Settings{Verbose: false, Output: "stdout"}
+      }
+  changed_files:
+    parser/parser.go: |
+      package parser
+
+      import (
+          "fmt"
+          "strconv"
+          "strings"
+      )
+
+      type TokenKind int
+
+      const (
+          TokenNumber TokenKind = iota
+          TokenWord
+          TokenFloat
+      )
+
+      type Token struct {
+          Kind  TokenKind
+          Value string
+      }
+
+      func Tokenize(input string) []Token {
+          var tokens []Token
+          for _, word := range strings.Fields(input) {
+              if _, err := strconv.Atoi(word); err == nil {
+                  tokens = append(tokens, Token{Kind: TokenNumber, Value: word})
+              } else if _, err := strconv.ParseFloat(word, 64); err == nil {
+                  tokens = append(tokens, Token{Kind: TokenFloat, Value: word})
+              } else {
+                  tokens = append(tokens, Token{Kind: TokenWord, Value: word})
+              }
+          }
+          return tokens
+      }
+
+      func Format(tokens []Token) string {
+          var parts []string
+          for _, t := range tokens {
+              parts = append(parts, fmt.Sprintf("%d:%s", t.Kind, t.Value))
+          }
+          return strings.Join(parts, " ")
+      }
+  commit_message: "refactor: use typed enum for token kinds, add float support"
+fragments:
+- id: token_kind_enum
+  selector:
+    path: parser/parser.go
+    anchor: "TokenNumber TokenKind = iota"
+- id: tokenize_float
+  selector:
+    path: parser/parser.go
+    anchor: "ParseFloat(word, 64)"
+- id: test_tokenize_numbers
+  selector:
+    path: parser/parser_test.go
+    anchor: "func TestTokenize_Numbers(t *testing.T)"
+- id: test_format
+  selector:
+    path: parser/parser_test.go
+    anchor: "func TestFormat(t *testing.T)"
+- id: no_config
+  selector:
+    path: config/config.go
+    anchor: "func DefaultSettings"
+oracle:
+  required:
+  - token_kind_enum
+  - tokenize_float
+  - test_tokenize_numbers
+  allowed:
+  - test_format
+  forbidden:
+  - no_config

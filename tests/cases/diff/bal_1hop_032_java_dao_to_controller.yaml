@@ -1,0 +1,86 @@
+name: bal_1hop_032_java_dao_to_controller
+tags:
+- lang:java
+- change:new_function
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/main/java/com/shop/dao/ProductDao.java: |
+      package com.shop.dao;
+      import java.util.List;
+      import java.util.ArrayList;
+      public class ProductDao {
+          private final List<String> products = new ArrayList<>();
+          public List<String> findAll() {
+              return new ArrayList<>(products);
+          }
+      }
+    src/main/java/com/shop/controller/ProductController.java: |
+      package com.shop.controller;
+      import com.shop.dao.ProductDao;
+      public class ProductController {
+          private final ProductDao dao;
+          public ProductController(ProductDao dao) { this.dao = dao; }
+          public String listProducts() {
+              return String.join(", ", dao.findAll());
+          }
+      }
+    src/main/java/com/shop/config/AppConfig.java: |
+      package com.shop.config;
+      public class AppConfig {
+          public static final String APP_NAME = "ShopApp";
+          public static final int MAX_PAGE_SIZE = 50;
+      }
+    src/main/java/com/shop/util/DateFormatter.java: |
+      package com.shop.util;
+      import java.time.LocalDate;
+      public class DateFormatter {
+          public static String format(LocalDate date) {
+              return date.toString();
+          }
+      }
+  changed_files:
+    src/main/java/com/shop/dao/ProductDao.java: |
+      package com.shop.dao;
+      import java.util.List;
+      import java.util.ArrayList;
+      public class ProductDao {
+          private final List<String> products = new ArrayList<>();
+          public List<String> findAll() {
+              return new ArrayList<>(products);
+          }
+          public List<String> findByCategory(String category) {
+              return products.stream()
+                  .filter(p -> p.startsWith(category))
+                  .collect(java.util.stream.Collectors.toList());
+          }
+      }
+  commit_message: "feat: add findByCategory to ProductDao"
+fragments:
+- id: dao_find_by_category
+  selector:
+    path: ProductDao.java
+    anchor: "findByCategory"
+- id: controller_uses_dao
+  selector:
+    path: ProductController.java
+    anchor: "dao.findAll()"
+- id: no_app_config
+  selector:
+    path: AppConfig.java
+    anchor: "APP_NAME"
+- id: no_date_formatter
+  selector:
+    path: DateFormatter.java
+    anchor: "format"
+oracle:
+  required:
+  - dao_find_by_category
+  - controller_uses_dao
+  allowed: []
+  forbidden:
+  - no_app_config
+  - no_date_formatter

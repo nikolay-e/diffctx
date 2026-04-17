@@ -1,0 +1,259 @@
+name: bal3_3hop_073_php_middleware_pipeline_chain
+tags:
+- lang:php
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/Http/Request.php: |
+      <?php
+      namespace App\Http;
+
+      class Request {
+          private array $headers;
+          private string $method;
+          private string $path;
+          public function __construct(string $method, string $path, array $headers = []) {
+              $this->method = $method;
+              $this->path = $path;
+              $this->headers = $headers;
+          }
+          public function getMethod(): string { return $this->method; }
+          public function getPath(): string { return $this->path; }
+          public function getHeader(string $name): ?string {
+              return $this->headers[$name] ?? null;
+          }
+      }
+    src/Middleware/AuthMiddleware.php: |
+      <?php
+      namespace App\Middleware;
+
+      use App\Http\Request;
+
+      class AuthMiddleware {
+          public function handle(Request $request): bool {
+              $token = $request->getHeader('Authorization');
+              return $token !== null;
+          }
+      }
+    src/Middleware/Pipeline.php: |
+      <?php
+      namespace App\Middleware;
+
+      use App\Http\Request;
+      use App\Middleware\AuthMiddleware;
+
+      class Pipeline {
+          private AuthMiddleware $auth;
+          public function __construct(AuthMiddleware $auth) {
+              $this->auth = $auth;
+          }
+          public function process(Request $request): bool {
+              return $this->auth->handle($request);
+          }
+      }
+    src/Routing/Router.php: |
+      <?php
+      namespace App\Routing;
+
+      use App\Middleware\Pipeline;
+      use App\Http\Request;
+
+      class Router {
+          private Pipeline $pipeline;
+          public function __construct(Pipeline $pipeline) {
+              $this->pipeline = $pipeline;
+          }
+          public function dispatch(Request $request): string {
+              if (!$this->pipeline->process($request)) {
+                  return '403 Forbidden';
+              }
+              return '200 OK';
+          }
+      }
+    src/Kernel/Application.php: |
+      <?php
+      namespace App\Kernel;
+
+      use App\Routing\Router;
+      use App\Http\Request;
+
+      class Application {
+          private Router $router;
+          public function __construct(Router $router) {
+              $this->router = $router;
+          }
+          public function run(Request $request): string {
+              return $this->router->dispatch($request);
+          }
+      }
+    src/Cache/RedisAdapter.php: |
+      <?php
+      namespace App\Cache;
+      define('GARBAGE_073_REDIS_A', 'cache');
+      define('GARBAGE_073_TTL_B', 3600);
+
+      class RedisAdapter {
+          public function get(string $key): ?string { return null; }
+      }
+    src/Queue/SyncDriver.php: |
+      <?php
+      namespace App\Queue;
+      define('GARBAGE_073_QUEUE_C', 'sync');
+      define('GARBAGE_073_RETRY_D', 3);
+
+      class SyncDriver {
+          public function push(string $job): void {}
+      }
+  changed_files:
+    src/Http/Request.php: |
+      <?php
+      namespace App\Http;
+
+      class Request {
+          private array $headers;
+          private string $method;
+          private string $path;
+          private string $ip;
+          public function __construct(string $method, string $path, array $headers = [], string $ip = '127.0.0.1') {
+              $this->method = $method;
+              $this->path = $path;
+              $this->headers = $headers;
+              $this->ip = $ip;
+          }
+          public function getMethod(): string { return $this->method; }
+          public function getPath(): string { return $this->path; }
+          public function getHeader(string $name): ?string {
+              return $this->headers[$name] ?? null;
+          }
+          public function getIp(): string { return $this->ip; }
+      }
+    src/Middleware/AuthMiddleware.php: |
+      <?php
+      namespace App\Middleware;
+
+      use App\Http\Request;
+
+      class AuthMiddleware {
+          public function handle(Request $request): bool {
+              $token = $request->getHeader('Authorization');
+              return $token !== null;
+          }
+      }
+    src/Middleware/Pipeline.php: |
+      <?php
+      namespace App\Middleware;
+
+      use App\Http\Request;
+      use App\Middleware\AuthMiddleware;
+
+      class Pipeline {
+          private AuthMiddleware $auth;
+          public function __construct(AuthMiddleware $auth) {
+              $this->auth = $auth;
+          }
+          public function process(Request $request): bool {
+              return $this->auth->handle($request);
+          }
+      }
+    src/Routing/Router.php: |
+      <?php
+      namespace App\Routing;
+
+      use App\Middleware\Pipeline;
+      use App\Http\Request;
+
+      class Router {
+          private Pipeline $pipeline;
+          public function __construct(Pipeline $pipeline) {
+              $this->pipeline = $pipeline;
+          }
+          public function dispatch(Request $request): string {
+              if (!$this->pipeline->process($request)) {
+                  return '403 Forbidden';
+              }
+              return '200 OK';
+          }
+      }
+    src/Kernel/Application.php: |
+      <?php
+      namespace App\Kernel;
+
+      use App\Routing\Router;
+      use App\Http\Request;
+
+      class Application {
+          private Router $router;
+          public function __construct(Router $router) {
+              $this->router = $router;
+          }
+          public function run(Request $request): string {
+              return $this->router->dispatch($request);
+          }
+      }
+    src/Cache/RedisAdapter.php: |
+      <?php
+      namespace App\Cache;
+      define('GARBAGE_073_REDIS_A', 'cache');
+      define('GARBAGE_073_TTL_B', 3600);
+
+      class RedisAdapter {
+          public function get(string $key): ?string { return null; }
+      }
+    src/Queue/SyncDriver.php: |
+      <?php
+      namespace App\Queue;
+      define('GARBAGE_073_QUEUE_C', 'sync');
+      define('GARBAGE_073_RETRY_D', 3);
+
+      class SyncDriver {
+          public function push(string $job): void {}
+      }
+  commit_message: "feat: add IP address tracking to Request"
+fragments:
+- id: request_ip_field
+  selector:
+    path: src/Http/Request.php
+    anchor: "private string $ip"
+- id: request_get_ip
+  selector:
+    path: src/Http/Request.php
+    anchor: "function getIp"
+- id: auth_uses_request
+  selector:
+    path: src/Middleware/AuthMiddleware.php
+    anchor: "use App\\Http\\Request"
+- id: pipeline_uses_auth
+  selector:
+    path: src/Middleware/Pipeline.php
+    anchor: "use App\\Middleware\\AuthMiddleware"
+- id: router_uses_pipeline
+  selector:
+    path: src/Routing/Router.php
+    anchor: "use App\\Middleware\\Pipeline"
+- id: app_uses_router
+  selector:
+    path: src/Kernel/Application.php
+    anchor: "use App\\Routing\\Router"
+- id: no_redis
+  selector:
+    path: src/Cache/RedisAdapter.php
+    anchor: "GARBAGE_073_REDIS_A"
+- id: no_queue
+  selector:
+    path: src/Queue/SyncDriver.php
+    anchor: "GARBAGE_073_QUEUE_C"
+oracle:
+  required:
+  - request_ip_field
+  - auth_uses_request
+  - pipeline_uses_auth
+  - router_uses_pipeline
+  - app_uses_router
+  allowed:
+  - request_get_ip
+  forbidden:
+  - no_redis
+  - no_queue

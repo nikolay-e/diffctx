@@ -1,0 +1,118 @@
+name: r_lang_005_package_description_dep
+tags:
+- lang:r
+- change:multi_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    DESCRIPTION: |
+      Package: myanalytics
+      Title: My Analytics Package
+      Version: 0.1.0
+      Authors@R: person("Jane", "Doe", email = "jane@example.com", role = c("aut", "cre"))
+      Description: Analytics utilities for internal reporting.
+      License: MIT + file LICENSE
+      Encoding: UTF-8
+      Imports:
+          dplyr (>= 1.0.0),
+          ggplot2 (>= 3.4.0),
+          stringr (>= 1.5.0)
+      Suggests:
+          testthat (>= 3.0.0)
+      RoxygenNote: 7.2.3
+    R/date_utils.R: |
+      parse_date_range <- function(start, end) {
+        list(
+          start = as.Date(start),
+          end = as.Date(end),
+          days = as.integer(as.Date(end) - as.Date(start))
+        )
+      }
+
+      format_fiscal_quarter <- function(d) {
+        d <- as.Date(d)
+        q <- ceiling(as.integer(format(d, "%m")) / 3)
+        paste0("Q", q, " ", format(d, "%Y"))
+      }
+    R/R_NOISE_005_logging.R: |
+      R_NOISE_005_log_info <- function(msg, ...) {
+        cat(sprintf("[INFO] %s\n", sprintf(msg, ...)))
+      }
+      R_NOISE_005_log_error <- function(msg, ...) {
+        cat(sprintf("[ERROR] %s\n", sprintf(msg, ...)), file = stderr())
+      }
+    R/R_NOISE_005_env_utils.R: |
+      R_NOISE_005_require_env <- function(key) {
+        val <- Sys.getenv(key)
+        if (nchar(val) == 0) stop("Required env var not set: ", key)
+        val
+      }
+      R_NOISE_005_is_production <- function() {
+        Sys.getenv("APP_ENV") == "production"
+      }
+  changed_files:
+    DESCRIPTION: |
+      Package: myanalytics
+      Title: My Analytics Package
+      Version: 0.1.0
+      Authors@R: person("Jane", "Doe", email = "jane@example.com", role = c("aut", "cre"))
+      Description: Analytics utilities for internal reporting.
+      License: MIT + file LICENSE
+      Encoding: UTF-8
+      Imports:
+          dplyr (>= 1.0.0),
+          ggplot2 (>= 3.4.0),
+          lubridate (>= 1.9.0),
+          stringr (>= 1.5.0)
+      Suggests:
+          testthat (>= 3.0.0)
+      RoxygenNote: 7.2.3
+    R/date_utils.R: |
+      parse_date_range <- function(start, end) {
+        list(
+          start = lubridate::ymd(start),
+          end = lubridate::ymd(end),
+          days = as.integer(lubridate::ymd(end) - lubridate::ymd(start))
+        )
+      }
+
+      format_fiscal_quarter <- function(d) {
+        d <- lubridate::ymd(d)
+        q <- lubridate::quarter(d)
+        paste0("Q", q, " ", lubridate::year(d))
+      }
+  commit_message: "Update files"
+fragments:
+- id: description_imports
+  selector:
+    path: DESCRIPTION
+    anchor: lubridate
+- id: date_utils_uses_lubridate
+  selector:
+    path: R/date_utils.R
+    anchor: lubridate::ymd
+- id: no_logging
+  selector:
+    path: R/R_NOISE_005_logging.R
+- id: no_env_utils
+  selector:
+    path: R/R_NOISE_005_env_utils.R
+- id: no_global_0
+  selector:
+    anchor: R_NOISE_005_log_info
+- id: no_global_1
+  selector:
+    anchor: R_NOISE_005_require_env
+oracle:
+  required:
+  - description_imports
+  - date_utils_uses_lubridate
+  allowed: []
+  forbidden:
+  - no_logging
+  - no_env_utils
+  - no_global_0
+  - no_global_1

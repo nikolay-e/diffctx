@@ -1,0 +1,71 @@
+name: bal3_bugfix_008_rust_overflow_guard
+tags:
+- lang:rust
+- change:single_file
+- change:bug_fix
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+xfail:
+  category: rust-score-regression
+repo:
+  initial_files:
+    src/counter.rs: |
+      pub struct Counter {
+          value: u32,
+      }
+
+      impl Counter {
+          pub fn new() -> Self {
+              Counter { value: 0 }
+          }
+
+          pub fn increment(&mut self, amount: u32) {
+              self.value += amount;
+          }
+
+          pub fn get(&self) -> u32 {
+              self.value
+          }
+      }
+    src/display.rs: |
+      use crate::counter::Counter;
+
+      pub fn show(counter: &Counter) -> String {
+          format!("Count: {}", counter.get())
+      }
+  changed_files:
+    src/counter.rs: |
+      pub struct Counter {
+          value: u32,
+      }
+
+      impl Counter {
+          pub fn new() -> Self {
+              Counter { value: 0 }
+          }
+
+          pub fn increment(&mut self, amount: u32) {
+              self.value = self.value.saturating_add(amount);
+          }
+
+          pub fn get(&self) -> u32 {
+              self.value
+          }
+      }
+  commit_message: "fix: use saturating_add to prevent u32 overflow panic"
+fragments:
+- id: saturating_fix
+  selector:
+    path: src/counter.rs
+    anchor: "self.value.saturating_add(amount)"
+- id: no_display
+  selector:
+    path: src/display.rs
+    anchor: "fn show"
+oracle:
+  required:
+  - saturating_fix
+  allowed: []
+  forbidden:
+  - no_display

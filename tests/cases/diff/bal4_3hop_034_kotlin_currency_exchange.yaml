@@ -1,0 +1,124 @@
+name: bal4_3hop_034_kotlin_currency_exchange
+tags:
+- lang:kotlin
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:trivial
+repo:
+  initial_files:
+    src/model/Currency.kt: |
+      package model
+
+      enum class Currency { USD, EUR }
+    src/rate/RateProvider.kt: |
+      package rate
+
+      import model.Currency
+
+      fun rate(from: Currency, to: Currency): Double =
+          if (from == to) 1.0 else 0.85
+    src/exchange/Exchanger.kt: |
+      package exchange
+
+      import rate.rate
+      import model.Currency
+
+      fun exchange(amount: Double, from: Currency, to: Currency): Double =
+          amount * rate(from, to)
+    src/api/ExchangeApi.kt: |
+      package api
+
+      import exchange.exchange
+      import model.Currency
+
+      fun convert(amount: Double): Double =
+          exchange(amount, Currency.USD, Currency.EUR)
+    src/utils/Filler.kt: |
+      package utils
+      val GARBAGE_034_FILLER_A = "fill"
+      val GARBAGE_034_PAD_B = 0
+    src/utils/Spacer.kt: |
+      package utils
+      val GARBAGE_034_SPACER_C = "space"
+      val GARBAGE_034_GAP_D = 1
+  changed_files:
+    src/model/Currency.kt: |
+      package model
+
+      enum class Currency { USD, EUR, GBP }
+    src/rate/RateProvider.kt: |
+      package rate
+
+      import model.Currency
+
+      fun rate(from: Currency, to: Currency): Double =
+          if (from == to) 1.0 else 0.85
+    src/exchange/Exchanger.kt: |
+      package exchange
+
+      import rate.rate
+      import model.Currency
+
+      fun exchange(amount: Double, from: Currency, to: Currency): Double =
+          amount * rate(from, to)
+    src/api/ExchangeApi.kt: |
+      package api
+
+      import exchange.exchange
+      import model.Currency
+
+      fun convert(amount: Double): Double =
+          exchange(amount, Currency.USD, Currency.EUR)
+    src/utils/Filler.kt: |
+      package utils
+      val GARBAGE_034_FILLER_A = "fill"
+      val GARBAGE_034_PAD_B = 0
+    src/utils/Spacer.kt: |
+      package utils
+      val GARBAGE_034_SPACER_C = "space"
+      val GARBAGE_034_GAP_D = 1
+  commit_message: "feat: add GBP currency"
+fragments:
+- id: currency_gbp
+  selector:
+    path: src/model/Currency.kt
+    anchor: "GBP"
+- id: rate_import
+  selector:
+    path: src/rate/RateProvider.kt
+    anchor: "import model.Currency"
+- id: exchanger_import
+  selector:
+    path: src/exchange/Exchanger.kt
+    anchor: "import rate.rate"
+- id: api_import
+  selector:
+    path: src/api/ExchangeApi.kt
+    anchor: "import exchange.exchange"
+- id: no_filler
+  selector:
+    path: src/utils/Filler.kt
+    anchor: "GARBAGE_034_FILLER_A"
+- id: no_spacer
+  selector:
+    path: src/utils/Spacer.kt
+    anchor: "GARBAGE_034_SPACER_C"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_034_PAD_B
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_034_GAP_D
+oracle:
+  required:
+  - currency_gbp
+  - rate_import
+  - exchanger_import
+  - api_import
+  allowed: []
+  forbidden:
+  - no_filler
+  - no_spacer
+  - no_global_0
+  - no_global_1

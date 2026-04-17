@@ -1,0 +1,174 @@
+name: bal4_3hop_092_scala_di_container
+tags:
+- lang:scala
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/di/Binding.scala: |
+      package di
+
+      trait Binding[T] {
+        def resolve: T
+      }
+
+      class SingletonBinding[T](instance: T) extends Binding[T] {
+        override def resolve: T = instance
+      }
+
+      class FactoryBinding[T](factory: () => T) extends Binding[T] {
+        override def resolve: T = factory()
+      }
+    src/main/scala/di/Container.scala: |
+      package di
+
+      import di.Binding
+
+      class Container {
+        private val bindings = scala.collection.mutable.Map.empty[String, Binding[_]]
+
+        def register[T](name: String, binding: Binding[T]): Unit = {
+          bindings(name) = binding
+        }
+
+        def resolve[T](name: String): T = {
+          bindings(name).resolve.asInstanceOf[T]
+        }
+      }
+    src/main/scala/di/Module.scala: |
+      package di
+
+      import di.Container
+
+      trait Module {
+        def configure(container: Container): Unit
+      }
+
+      class CompositeModule(modules: Seq[Module]) extends Module {
+        override def configure(container: Container): Unit = {
+          modules.foreach(_.configure(container))
+        }
+      }
+    src/main/scala/app/Bootstrap.scala: |
+      package app
+
+      import di.{Container, Module, CompositeModule}
+
+      object Bootstrap {
+        def start(modules: Module*): Container = {
+          val container = new Container
+          val composite = new CompositeModule(modules.toSeq)
+          composite.configure(container)
+          container
+        }
+      }
+    src/main/scala/app/ServiceModule.scala: |
+      package app
+
+      import di.{Container, Module, SingletonBinding}
+
+      class ServiceModule extends Module {
+        override def configure(container: Container): Unit = {
+          container.register("userService", new SingletonBinding("default-user-svc"))
+        }
+      }
+    src/main/scala/util/StringOps.scala: |
+      package util
+
+      object StringOps {
+        val GARBAGE_092_STR_A = "pad-left"
+        val GARBAGE_092_STR_B = "pad-right"
+
+        def capitalize(s: String): String = s.capitalize
+      }
+    src/main/scala/util/NumberOps.scala: |
+      package util
+
+      object NumberOps {
+        val GARBAGE_092_NUM_C = "round"
+        val GARBAGE_092_NUM_D = "floor"
+
+        def clamp(v: Int, lo: Int, hi: Int): Int = math.max(lo, math.min(v, hi))
+      }
+    src/main/scala/util/DateOps.scala: |
+      package util
+
+      object DateOps {
+        val GARBAGE_092_DATE_E = "epoch"
+
+        def nowMillis: Long = System.currentTimeMillis()
+      }
+  changed_files:
+    src/main/scala/di/Binding.scala: |
+      package di
+
+      trait Binding[T] {
+        def resolve: T
+        def lifecycle: String
+      }
+
+      class SingletonBinding[T](instance: T) extends Binding[T] {
+        override def resolve: T = instance
+        override def lifecycle: String = "singleton"
+      }
+
+      class FactoryBinding[T](factory: () => T) extends Binding[T] {
+        override def resolve: T = factory()
+        override def lifecycle: String = "factory"
+      }
+  commit_message: "feat: add lifecycle method to Binding trait"
+fragments:
+- id: binding_lifecycle
+  selector:
+    path: src/main/scala/di/Binding.scala
+    anchor: "def lifecycle"
+- id: container_resolve
+  selector:
+    path: src/main/scala/di/Container.scala
+    anchor: "import di.Binding"
+- id: module_configure
+  selector:
+    path: src/main/scala/di/Module.scala
+    anchor: "import di.Container"
+- id: bootstrap_start
+  selector:
+    path: src/main/scala/app/Bootstrap.scala
+    anchor: "import di."
+- id: service_module
+  selector:
+    path: src/main/scala/app/ServiceModule.scala
+    anchor: "SingletonBinding"
+- id: no_string_ops
+  selector:
+    path: src/main/scala/util/StringOps.scala
+    anchor: "GARBAGE_092_STR_A"
+- id: no_number_ops
+  selector:
+    path: src/main/scala/util/NumberOps.scala
+    anchor: "GARBAGE_092_NUM_C"
+- id: no_date_ops
+  selector:
+    path: src/main/scala/util/DateOps.scala
+    anchor: "GARBAGE_092_DATE_E"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_092_STR_B
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_092_NUM_D
+oracle:
+  required:
+  - binding_lifecycle
+  - container_resolve
+  - module_configure
+  - bootstrap_start
+  - service_module
+  allowed: []
+  forbidden:
+  - no_string_ops
+  - no_number_ops
+  - no_date_ops
+  - no_global_0
+  - no_global_1

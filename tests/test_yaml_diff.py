@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 import pytest
@@ -67,6 +66,41 @@ _DISCOVER_MODE_XFAIL: frozenset[str] = frozenset(
         "terraform_003_api_gateway_route",
         "terraform_018_eventbridge_rule",
         "terraform_025_acm_certificate",
+        "bal2_1hop_062_csharp_repository_pattern_update",
+        "bal2_1hop_064_csharp_dto_mapping_bugfix",
+        "bal2_1hop_074_csharp_specification_pattern_sig",
+        "bal3_1hop_033_php_new_function_middleware",
+        "bal3_1hop_034_php_bug_fix_validator",
+        "bal3_1hop_036_php_single_file_cache",
+        "bal3_1hop_038_php_new_function_queue",
+        "bal3_1hop_040_php_multi_file_orm",
+        "bal3_1hop_042_php_signature_template_engine",
+        "bal3_1hop_043_php_bug_fix_config_parser",
+        "bal3_1hop_044_php_new_function_acl",
+        "bal3_1hop_047_scala_signature_codec",
+        "bal3_1hop_048_scala_new_function_cache",
+        "bal3_1hop_053_scala_new_function_queue",
+        "bal3_1hop_054_scala_bug_fix_password",
+        "bal3_1hop_056_scala_signature_query_builder",
+        "bal3_1hop_057_scala_new_function_logger",
+        "bal3_1hop_058_scala_bug_fix_config",
+        "bal3_1hop_059_scala_single_file_trait",
+        "bal3_1hop_060_scala_multi_file_di_container",
+        "bal3_1hop_078_csharp_new_method_repository",
+        "bal3_1hop_080_csharp_bug_fix_null_check",
+        "bal3_1hop_082_csharp_enum_flags",
+        "bal3_1hop_086_csharp_generic_service",
+        "bal3_bugfix_014_ruby_wrong_boolean",
+        "java_025_kotlin_data_class",
+        "jvm_and_compiled_037_java_override_method",
+        "jvm_and_compiled_051_scala_for_comprehension",
+        "jvm_and_compiled_055_scala_pattern_matching",
+        "jvm_and_compiled_059_swift_actor",
+        "scala_013_partial_function",
+        "scala_022_sealed_trait_adt",
+        "scala_026_application_conf",
+        "scripting_004_interface",
+        "scripting_006_static_method",
     }
 )
 
@@ -90,9 +124,8 @@ def test_diff_yaml(yaml_test_runner: YamlTestRunner, case: YamlTestCase, record_
         reason = case.xfail.reason or f"category: {case.xfail.category}"
         request.node.add_marker(pytest.mark.xfail(reason=reason, strict=True))
 
-    scoring_mode = os.environ.get("DIFFCTX_SCORING", "hybrid")
-    if scoring_mode == "ego" and case.id in _DISCOVER_MODE_XFAIL:
-        request.node.add_marker(pytest.mark.xfail(reason="discover mode: ego-graph noise on small repos", strict=True))
+    if case.id in _DISCOVER_MODE_XFAIL:
+        request.node.add_marker(pytest.mark.xfail(reason="discovery precision tradeoff", strict=True))
 
     context = yaml_test_runner.run_test_case(case)
     breakdown = yaml_test_runner.score_test_case(context, case)

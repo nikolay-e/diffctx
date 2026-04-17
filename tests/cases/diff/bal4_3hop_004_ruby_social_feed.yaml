@@ -1,0 +1,201 @@
+name: bal4_3hop_004_ruby_social_feed
+tags:
+- lang:ruby
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:easy
+repo:
+  initial_files:
+    lib/social/post.rb: |
+      module Social
+        class Post
+          attr_reader :body, :author
+          def initialize(body, author)
+            @body = body
+            @author = author
+          end
+          def preview
+            body[0..99]
+          end
+        end
+      end
+    lib/social/feed.rb: |
+      require_relative 'post'
+      module Social
+        class Feed
+          def initialize
+            @posts = []
+          end
+          def add(body, author)
+            @posts << Post.new(body, author)
+          end
+          def latest(n)
+            @posts.last(n)
+          end
+        end
+      end
+    lib/social/timeline.rb: |
+      require_relative 'feed'
+      module Social
+        class Timeline
+          def initialize(feed)
+            @feed = feed
+          end
+          def render(n)
+            @feed.latest(n).map(&:preview)
+          end
+        end
+      end
+    lib/social/api.rb: |
+      require_relative 'timeline'
+      module Social
+        class Api
+          def initialize
+            @feed = Feed.new
+            @timeline = Timeline.new(@feed)
+          end
+          def show(n)
+            @timeline.render(n)
+          end
+        end
+      end
+    lib/mailer/sender.rb: |
+      module Mailer
+        GARBAGE_004_SENDER_A = "smtp"
+        GARBAGE_004_PORT_B = 587
+        class Sender
+          def self.deliver(to, body)
+            true
+          end
+        end
+      end
+    lib/mailer/template.rb: |
+      module Mailer
+        GARBAGE_004_TEMPLATE_C = "html"
+        GARBAGE_004_LAYOUT_D = "default"
+        class Template
+          def self.render(name)
+            "<html>#{name}</html>"
+          end
+        end
+      end
+  changed_files:
+    lib/social/post.rb: |
+      module Social
+        class Post
+          attr_reader :body, :author
+          def initialize(body, author)
+            @body = body
+            @author = author
+          end
+          def preview
+            return "" if body.nil?
+            body[0..99]
+          end
+        end
+      end
+    lib/social/feed.rb: |
+      require_relative 'post'
+      module Social
+        class Feed
+          def initialize
+            @posts = []
+          end
+          def add(body, author)
+            @posts << Post.new(body, author)
+          end
+          def latest(n)
+            @posts.last(n)
+          end
+        end
+      end
+    lib/social/timeline.rb: |
+      require_relative 'feed'
+      module Social
+        class Timeline
+          def initialize(feed)
+            @feed = feed
+          end
+          def render(n)
+            @feed.latest(n).map(&:preview)
+          end
+        end
+      end
+    lib/social/api.rb: |
+      require_relative 'timeline'
+      module Social
+        class Api
+          def initialize
+            @feed = Feed.new
+            @timeline = Timeline.new(@feed)
+          end
+          def show(n)
+            @timeline.render(n)
+          end
+        end
+      end
+    lib/mailer/sender.rb: |
+      module Mailer
+        GARBAGE_004_SENDER_A = "smtp"
+        GARBAGE_004_PORT_B = 587
+        class Sender
+          def self.deliver(to, body)
+            true
+          end
+        end
+      end
+    lib/mailer/template.rb: |
+      module Mailer
+        GARBAGE_004_TEMPLATE_C = "html"
+        GARBAGE_004_LAYOUT_D = "default"
+        class Template
+          def self.render(name)
+            "<html>#{name}</html>"
+          end
+        end
+      end
+  commit_message: "fix: handle nil body in post preview"
+fragments:
+- id: post_nil_guard
+  selector:
+    path: lib/social/post.rb
+    anchor: "return \"\" if body.nil?"
+- id: feed_uses_post
+  selector:
+    path: lib/social/feed.rb
+    anchor: "require_relative 'post'"
+- id: timeline_uses_feed
+  selector:
+    path: lib/social/timeline.rb
+    anchor: "require_relative 'feed'"
+- id: api_uses_timeline
+  selector:
+    path: lib/social/api.rb
+    anchor: "require_relative 'timeline'"
+- id: no_sender
+  selector:
+    path: lib/mailer/sender.rb
+    anchor: "GARBAGE_004_SENDER_A"
+- id: no_template
+  selector:
+    path: lib/mailer/template.rb
+    anchor: "GARBAGE_004_TEMPLATE_C"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_004_PORT_B
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_004_LAYOUT_D
+oracle:
+  required:
+  - post_nil_guard
+  - feed_uses_post
+  - timeline_uses_feed
+  - api_uses_timeline
+  allowed: []
+  forbidden:
+  - no_sender
+  - no_template
+  - no_global_0
+  - no_global_1

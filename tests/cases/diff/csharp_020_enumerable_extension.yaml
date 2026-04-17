@@ -1,160 +1,208 @@
 name: csharp_020_enumerable_extension
+tags:
+- lang:python
+- change:bug_fix
+- change:multi_file
+- context:test_file
+- distance:1hop
+- difficulty:medium
 repo:
   initial_files:
-    Extensions/EnumerableExtensions.cs: |
-      namespace MyApp.Extensions;
+    src/payments/processor.py: |
+      from decimal import Decimal
+      from typing import Optional
 
-      public static class EnumerableExtensions
-      {
-          public static IEnumerable<T> WhereNotNull<T>(this IEnumerable<T?> source) where T : class
-          {
-              return source.Where(x => x != null)!;
-          }
+      class PaymentProcessor:
+          def __init__(self, gateway):
+              self.gateway = gateway
 
-          public static IEnumerable<IEnumerable<T>> Batch<T>(this IEnumerable<T> source, int size)
-          {
-              var batch = new List<T>(size);
-              foreach (var item in source)
-              {
-                  batch.Add(item);
-                  if (batch.Count == size)
-                  {
-                      yield return batch;
-                      batch = new List<T>(size);
-                  }
-              }
-              if (batch.Count > 0)
-                  yield return batch;
-          }
-      }
-    Services/BatchProcessor.cs: |
-      namespace MyApp.Services;
+          def charge(self, amount: Decimal, currency: str, card_token: str) -> dict:
+              if amount <= Decimal("0"):
+                  raise ValueError("amount must be positive")
+              result = self.gateway.charge(amount, currency, card_token)
+              return {"status": result["status"], "transaction_id": result["id"]}
 
-      public class BatchProcessor { }
-    Unrelated/HealthMonitor.cs: |
-      namespace MyApp.Unrelated;
+          def refund(self, transaction_id: str, amount: Optional[Decimal] = None) -> dict:
+              result = self.gateway.refund(transaction_id, amount)
+              return {"status": result["status"], "refund_id": result["id"]}
+    src/payments/validator.py: |
+      from decimal import Decimal
 
-      public class HealthMonitor
-      {
-          private const string GARBAGE_CS_020_HEALTH_MONITOR_A = "health_monitor_marker";
+      SUPPORTED_CURRENCIES = {"USD", "EUR", "GBP"}
 
-          public bool IsHealthy() => GARBAGE_CS_020_HEALTH_MONITOR_A.Length > 0;
-      }
-    Unrelated/ConfigWatcher.cs: |
-      namespace MyApp.Unrelated;
+      def validate_charge_request(amount: Decimal, currency: str, card_token: str) -> None:
+          if not card_token:
+              raise ValueError("card_token is required")
+          if currency not in SUPPORTED_CURRENCIES:
+              raise ValueError(f"unsupported currency: {currency}")
+          if amount <= Decimal("0"):
+              raise ValueError("amount must be positive")
+    tests/test_processor.py: |
+      import pytest
+      from decimal import Decimal
+      from unittest.mock import MagicMock
+      from src.payments.processor import PaymentProcessor
 
-      public class ConfigWatcher
-      {
-          public const string GARBAGE_CS_020_CONFIG_WATCHER_B = "config_watcher_marker";
+      def make_processor():
+          gateway = MagicMock()
+          gateway.charge.return_value = {"status": "ok", "id": "txn_1"}
+          gateway.refund.return_value = {"status": "ok", "id": "ref_1"}
+          return PaymentProcessor(gateway), gateway
 
-          public void Watch(string path) => _ = GARBAGE_CS_020_CONFIG_WATCHER_B + path;
-      }
+      def test_charge_positive_amount_succeeds():
+          processor, _ = make_processor()
+          result = processor.charge(Decimal("50.00"), "USD", "tok_abc")
+          assert result["status"] == "ok"
+          assert result["transaction_id"] == "txn_1"
+
+      def test_charge_zero_amount_raises():
+          processor, _ = make_processor()
+          with pytest.raises(ValueError, match="positive"):
+              processor.charge(Decimal("0"), "USD", "tok_abc")
+
+      def test_charge_negative_amount_raises():
+          processor, _ = make_processor()
+          with pytest.raises(ValueError):
+              processor.charge(Decimal("-10"), "USD", "tok_abc")
+    src/analytics/tracker.py: |
+      # GARBAGE_CS20_A = "analytics_tracker_unrelated"
+      class EventTracker:
+          def track(self, event_name: str, properties: dict) -> None:
+              pass
+    src/notifications/email.py: |
+      # GARBAGE_CS20_B = "email_notifications_unrelated"
+      class EmailNotifier:
+          def notify(self, recipient: str, message: str) -> None:
+              pass
+    src/storage/s3.py: |
+      # GARBAGE_CS20_C = "s3_storage_unrelated"
+      class S3Storage:
+          def upload(self, key: str, data: bytes) -> str:
+              return f"s3://bucket/{key}"
   changed_files:
-    Extensions/EnumerableExtensions.cs: |
-      namespace MyApp.Extensions;
+    src/payments/processor.py: |
+      from decimal import Decimal
+      from typing import Optional
+      from src.payments.validator import validate_charge_request
 
-      public static class EnumerableExtensions
-      {
-          public static IEnumerable<T> WhereNotNull<T>(this IEnumerable<T?> source) where T : class
-          {
-              return source.Where(x => x != null)!;
-          }
+      class PaymentProcessor:
+          def __init__(self, gateway):
+              self.gateway = gateway
 
-          public static IEnumerable<IEnumerable<T>> Batch<T>(this IEnumerable<T> source, int size)
-          {
-              var batch = new List<T>(size);
-              foreach (var item in source)
-              {
-                  batch.Add(item);
-                  if (batch.Count == size)
-                  {
-                      yield return batch;
-                      batch = new List<T>(size);
-                  }
-              }
-              if (batch.Count > 0)
-                  yield return batch;
-          }
-      }
-    Services/BatchProcessor.cs: |
-      using MyApp.Extensions;
-      using MyApp.Models;
+          def charge(self, amount: Decimal, currency: str, card_token: str) -> dict:
+              validate_charge_request(amount, currency, card_token)
+              result = self.gateway.charge(amount, currency, card_token)
+              return {"status": result["status"], "transaction_id": result["id"]}
 
-      namespace MyApp.Services;
+          def refund(self, transaction_id: str, amount: Optional[Decimal] = None) -> dict:
+              if amount is not None and amount <= Decimal("0"):
+                  raise ValueError("refund amount must be positive")
+              result = self.gateway.refund(transaction_id, amount)
+              return {"status": result["status"], "refund_id": result["id"]}
+    src/payments/validator.py: |
+      from decimal import Decimal
 
-      public class BatchProcessor
-      {
-          public void ProcessUsers(IEnumerable<User?> users)
-          {
-              var validUsers = users.WhereNotNull();
+      SUPPORTED_CURRENCIES = {"USD", "EUR", "GBP"}
 
-              foreach (var batch in validUsers.Batch(100))
-              {
-                  ProcessBatch(batch);
-              }
-          }
+      def validate_charge_request(amount: Decimal, currency: str, card_token: str) -> None:
+          if not card_token:
+              raise ValueError("card_token is required")
+          if currency not in SUPPORTED_CURRENCIES:
+              raise ValueError(f"unsupported currency: {currency}")
+          if amount <= Decimal("0"):
+              raise ValueError("amount must be positive")
+    tests/test_processor.py: |
+      import pytest
+      from decimal import Decimal
+      from unittest.mock import MagicMock
+      from src.payments.processor import PaymentProcessor
 
-          private void ProcessBatch(IEnumerable<User> batch)
-          {
-              foreach (var user in batch)
-              {
-                  Console.WriteLine(user.Name);
-              }
-          }
-      }
-    Unrelated/HealthMonitor.cs: |
-      namespace MyApp.Unrelated;
+      def make_processor():
+          gateway = MagicMock()
+          gateway.charge.return_value = {"status": "ok", "id": "txn_1"}
+          gateway.refund.return_value = {"status": "ok", "id": "ref_1"}
+          return PaymentProcessor(gateway), gateway
 
-      public class HealthMonitor
-      {
-          private const string GARBAGE_CS_020_HEALTH_MONITOR_A = "health_monitor_marker";
+      def test_charge_positive_amount_succeeds():
+          processor, _ = make_processor()
+          result = processor.charge(Decimal("50.00"), "USD", "tok_abc")
+          assert result["status"] == "ok"
+          assert result["transaction_id"] == "txn_1"
 
-          public bool IsHealthy() => GARBAGE_CS_020_HEALTH_MONITOR_A.Length > 0;
-      }
-    Unrelated/ConfigWatcher.cs: |
-      namespace MyApp.Unrelated;
+      def test_charge_zero_amount_raises():
+          processor, _ = make_processor()
+          with pytest.raises(ValueError, match="positive"):
+              processor.charge(Decimal("0"), "USD", "tok_abc")
 
-      public class ConfigWatcher
-      {
-          public const string GARBAGE_CS_020_CONFIG_WATCHER_B = "config_watcher_marker";
+      def test_charge_negative_amount_raises():
+          processor, _ = make_processor()
+          with pytest.raises(ValueError):
+              processor.charge(Decimal("-10"), "USD", "tok_abc")
 
-          public void Watch(string path) => _ = GARBAGE_CS_020_CONFIG_WATCHER_B + path;
-      }
-  commit_message: Update files
+      def test_charge_unsupported_currency_raises():
+          processor, _ = make_processor()
+          with pytest.raises(ValueError, match="unsupported currency"):
+              processor.charge(Decimal("10"), "JPY", "tok_abc")
+
+      def test_charge_empty_token_raises():
+          processor, _ = make_processor()
+          with pytest.raises(ValueError, match="card_token"):
+              processor.charge(Decimal("10"), "USD", "")
+
+      def test_refund_negative_amount_raises():
+          processor, _ = make_processor()
+          with pytest.raises(ValueError, match="positive"):
+              processor.refund("txn_1", Decimal("-5"))
+    src/analytics/tracker.py: |
+      # GARBAGE_CS20_A = "analytics_tracker_unrelated"
+      class EventTracker:
+          def track(self, event_name: str, properties: dict) -> None:
+              pass
+    src/notifications/email.py: |
+      # GARBAGE_CS20_B = "email_notifications_unrelated"
+      class EmailNotifier:
+          def notify(self, recipient: str, message: str) -> None:
+              pass
+    src/storage/s3.py: |
+      # GARBAGE_CS20_C = "s3_storage_unrelated"
+      class S3Storage:
+          def upload(self, key: str, data: bytes) -> str:
+              return f"s3://bucket/{key}"
+  commit_message: "fix: delegate validation to validator module and guard refund amount"
 fragments:
-- id: batchprocessor_file
+- id: charge_uses_validator
   selector:
-    path: Services/BatchProcessor.cs
-- id: req_global_0
+    path: src/payments/processor.py
+    anchor: "validate_charge_request"
+- id: validator_currencies
   selector:
-    anchor: using MyApp.Extensions;
-- id: req_global_1
+    path: src/payments/validator.py
+    anchor: "SUPPORTED_CURRENCIES"
+- id: test_unsupported_currency
   selector:
-    anchor: public void ProcessUsers(IEnumerable<User?> users)
-- id: no_global_0
+    path: tests/test_processor.py
+    anchor: "test_charge_unsupported_currency_raises"
+- id: test_empty_token
   selector:
-    anchor: GARBAGE_CS_020_CONFIG_WATCHER_B
-- id: no_global_1
+    path: tests/test_processor.py
+    anchor: "test_charge_empty_token_raises"
+- id: no_garbage_a
   selector:
-    anchor: GARBAGE_CS_020_HEALTH_MONITOR_A
-- id: no_global_2
+    anchor: GARBAGE_CS20_A
+- id: no_garbage_b
   selector:
-    anchor: GARBAGE_CS_020_HEALTH_MONITOR_A.Length
-- id: no_global_3
+    anchor: GARBAGE_CS20_B
+- id: no_garbage_c
   selector:
-    anchor: ConfigWatcher.cs
-- id: no_global_4
-  selector:
-    anchor: HealthMonitor.cs
+    anchor: GARBAGE_CS20_C
 oracle:
   required:
-  - batchprocessor_file
-  - req_global_0
-  - req_global_1
-  allowed: []
+  - charge_uses_validator
+  - validator_currencies
+  - test_unsupported_currency
+  allowed:
+  - test_empty_token
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

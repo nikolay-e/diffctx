@@ -1,0 +1,210 @@
+name: bal_crossmod_016_cpp_shader_to_material
+tags:
+- lang:cpp
+- change:single_file
+- change:new_function
+- context:cross_module
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/graphics/shader.hpp: |
+      #pragma once
+      #include <string>
+
+      namespace graphics {
+
+      class Shader {
+      public:
+          explicit Shader(const std::string& source);
+          void bind();
+          void set_uniform_float(const std::string& name, float value);
+          void set_uniform_int(const std::string& name, int value);
+      private:
+          unsigned int program_id_;
+      };
+
+      }
+    src/graphics/shader.cpp: |
+      #include "shader.hpp"
+
+      namespace graphics {
+
+      Shader::Shader(const std::string& source) : program_id_(0) {}
+
+      void Shader::bind() {}
+
+      void Shader::set_uniform_float(const std::string& name, float value) {}
+
+      void Shader::set_uniform_int(const std::string& name, int value) {}
+
+      }
+    src/material/material.hpp: |
+      #pragma once
+      #include <string>
+      #include "../graphics/shader.hpp"
+
+      namespace material {
+
+      class Material {
+      public:
+          Material(const std::string& name, graphics::Shader& shader);
+          void apply();
+          void set_color(float r, float g, float b);
+      private:
+          std::string name_;
+          graphics::Shader& shader_;
+          float color_[3];
+      };
+
+      }
+    src/material/material.cpp: |
+      #include "material.hpp"
+
+      namespace material {
+
+      Material::Material(const std::string& name, graphics::Shader& shader)
+          : name_(name), shader_(shader), color_{1.0f, 1.0f, 1.0f} {}
+
+      void Material::apply() {
+          shader_.bind();
+          shader_.set_uniform_float("r", color_[0]);
+          shader_.set_uniform_float("g", color_[1]);
+          shader_.set_uniform_float("b", color_[2]);
+      }
+
+      void Material::set_color(float r, float g, float b) {
+          color_[0] = r;
+          color_[1] = g;
+          color_[2] = b;
+      }
+
+      }
+    src/io/file_loader.hpp: |
+      #pragma once
+      #include <string>
+
+      namespace io {
+
+      class FileLoader {
+      public:
+          static std::string read_text(const std::string& path);
+          static std::vector<char> read_binary(const std::string& path);
+      };
+
+      }
+  changed_files:
+    src/graphics/shader.hpp: |
+      #pragma once
+      #include <string>
+
+      namespace graphics {
+
+      class Shader {
+      public:
+          explicit Shader(const std::string& source);
+          void bind();
+          void set_uniform_float(const std::string& name, float value);
+          void set_uniform_int(const std::string& name, int value);
+          void set_uniform_vec3(const std::string& name, float x, float y, float z);
+      private:
+          unsigned int program_id_;
+      };
+
+      }
+    src/graphics/shader.cpp: |
+      #include "shader.hpp"
+
+      namespace graphics {
+
+      Shader::Shader(const std::string& source) : program_id_(0) {}
+
+      void Shader::bind() {}
+
+      void Shader::set_uniform_float(const std::string& name, float value) {}
+
+      void Shader::set_uniform_int(const std::string& name, int value) {}
+
+      void Shader::set_uniform_vec3(const std::string& name, float x, float y, float z) {}
+
+      }
+    src/material/material.hpp: |
+      #pragma once
+      #include <string>
+      #include "../graphics/shader.hpp"
+
+      namespace material {
+
+      class Material {
+      public:
+          Material(const std::string& name, graphics::Shader& shader);
+          void apply();
+          void set_color(float r, float g, float b);
+      private:
+          std::string name_;
+          graphics::Shader& shader_;
+          float color_[3];
+      };
+
+      }
+    src/material/material.cpp: |
+      #include "material.hpp"
+
+      namespace material {
+
+      Material::Material(const std::string& name, graphics::Shader& shader)
+          : name_(name), shader_(shader), color_{1.0f, 1.0f, 1.0f} {}
+
+      void Material::apply() {
+          shader_.bind();
+          shader_.set_uniform_float("r", color_[0]);
+          shader_.set_uniform_float("g", color_[1]);
+          shader_.set_uniform_float("b", color_[2]);
+      }
+
+      void Material::set_color(float r, float g, float b) {
+          color_[0] = r;
+          color_[1] = g;
+          color_[2] = b;
+      }
+
+      }
+    src/io/file_loader.hpp: |
+      #pragma once
+      #include <string>
+
+      namespace io {
+
+      class FileLoader {
+      public:
+          static std::string read_text(const std::string& path);
+          static std::vector<char> read_binary(const std::string& path);
+      };
+
+      }
+  commit_message: "feat: add vec3 uniform setter to Shader"
+fragments:
+- id: set_uniform_vec3_decl
+  selector:
+    path: src/graphics/shader.hpp
+    anchor: "void set_uniform_vec3"
+- id: material_calls_shader
+  selector:
+    path: src/material/material.cpp
+    anchor: "shader_.set_uniform_float"
+- id: material_holds_shader
+  selector:
+    path: src/material/material.hpp
+    anchor: "graphics::Shader& shader_"
+- id: no_file_loader
+  selector:
+    path: src/io/file_loader.hpp
+    anchor: "class FileLoader"
+oracle:
+  required:
+  - set_uniform_vec3_decl
+  - material_calls_shader
+  allowed:
+  - material_holds_shader
+  forbidden:
+  - no_file_loader

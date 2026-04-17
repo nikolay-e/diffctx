@@ -1,0 +1,209 @@
+name: bal3_1hop_029_ruby_permission_system
+tags:
+- lang:ruby
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    lib/auth/permission.rb: |
+      module Auth
+        class Permission
+          attr_reader :resource, :action
+
+          def initialize(resource:, action:)
+            @resource = resource
+            @action = action
+          end
+
+          def matches?(resource, action)
+            @resource == resource && @action == action
+          end
+
+          def to_s
+            "#{resource}:#{action}"
+          end
+        end
+      end
+    lib/auth/role.rb: |
+      require_relative 'permission'
+
+      module Auth
+        class Role
+          attr_reader :name, :permissions
+
+          def initialize(name:)
+            @name = name
+            @permissions = []
+          end
+
+          def grant(permission)
+            @permissions << permission
+          end
+
+          def can?(resource, action)
+            @permissions.any? { |p| p.matches?(resource, action) }
+          end
+        end
+      end
+    lib/auth/access_control.rb: |
+      require_relative 'permission'
+
+      module Auth
+        class AccessControl
+          def initialize
+            @user_permissions = Hash.new { |h, k| h[k] = [] }
+          end
+
+          def assign(user_id, permission)
+            @user_permissions[user_id] << permission
+          end
+
+          def allowed?(user_id, resource, action)
+            @user_permissions[user_id].any? { |p| p.matches?(resource, action) }
+          end
+        end
+      end
+    lib/api/protected_endpoint.rb: |
+      require_relative '../auth/permission'
+
+      module Api
+        class ProtectedEndpoint
+          def initialize(required_permission)
+            @required_permission = required_permission
+          end
+
+          def authorize(user_permissions)
+            user_permissions.any? { |p| p.matches?(@required_permission.resource, @required_permission.action) }
+          end
+        end
+      end
+    lib/reports/dashboard.rb: |
+      GARBAGE_029_DASHBOARD_A = "dashboard"
+
+      module Reports
+        class Dashboard
+          def render
+            "dashboard"
+          end
+        end
+      end
+    lib/reports/export.rb: |
+      GARBAGE_029_EXPORT_B = "export"
+
+      module Reports
+        class Export
+          def to_csv
+            "csv data"
+          end
+        end
+      end
+    lib/reports/chart.rb: |
+      GARBAGE_029_CHART_C = "chart"
+
+      module Reports
+        class Chart
+          def draw(data)
+            "chart"
+          end
+        end
+      end
+  changed_files:
+    lib/auth/permission.rb: |
+      module Auth
+        class Permission
+          attr_reader :resource, :action, :conditions
+
+          def initialize(resource:, action:, conditions: {})
+            @resource = resource
+            @action = action
+            @conditions = conditions
+          end
+
+          def matches?(resource, action)
+            @resource == resource && @action == action
+          end
+
+          def matches_with_conditions?(resource, action, context = {})
+            return false unless matches?(resource, action)
+            @conditions.all? { |key, value| context[key] == value }
+          end
+
+          def wildcard?
+            @resource == '*' || @action == '*'
+          end
+
+          def to_s
+            "#{resource}:#{action}"
+          end
+        end
+      end
+  commit_message: "feat: add conditions, matches_with_conditions?, and wildcard?"
+fragments:
+- id: conditions_attr
+  selector:
+    path: lib/auth/permission.rb
+    anchor: ":conditions"
+- id: conditions_param
+  selector:
+    path: lib/auth/permission.rb
+    anchor: "conditions: {}"
+- id: matches_with_conditions
+  selector:
+    path: lib/auth/permission.rb
+    anchor: "def matches_with_conditions?"
+- id: wildcard_method
+  selector:
+    path: lib/auth/permission.rb
+    anchor: "def wildcard?"
+- id: role_calls_matches
+  selector:
+    path: lib/auth/role.rb
+    anchor: "p.matches?(resource, action)"
+- id: access_control_calls_matches
+  selector:
+    path: lib/auth/access_control.rb
+    anchor: "p.matches?(resource, action)"
+- id: endpoint_calls_matches
+  selector:
+    path: lib/api/protected_endpoint.rb
+    anchor: "p.matches?(@required_permission.resource"
+- id: unrelated_dashboard
+  selector:
+    path: lib/reports/dashboard.rb
+    anchor: "class Dashboard"
+- id: unrelated_export
+  selector:
+    path: lib/reports/export.rb
+    anchor: "class Export"
+- id: unrelated_chart
+  selector:
+    path: lib/reports/chart.rb
+    anchor: "class Chart"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_029_DASHBOARD_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_029_EXPORT_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_029_CHART_C
+oracle:
+  required:
+  - conditions_attr
+  - conditions_param
+  - matches_with_conditions
+  - role_calls_matches
+  allowed:
+  - wildcard_method
+  - access_control_calls_matches
+  - endpoint_calls_matches
+  forbidden:
+  - unrelated_dashboard
+  - unrelated_export
+  - unrelated_chart
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

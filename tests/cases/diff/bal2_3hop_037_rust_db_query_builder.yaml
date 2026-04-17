@@ -1,0 +1,198 @@
+name: bal2_3hop_037_rust_db_query_builder
+tags:
+- lang:rust
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/db/column.rs: |
+      #[derive(Debug, Clone)]
+      pub struct Column {
+          pub name: String,
+          pub col_type: ColumnType,
+      }
+
+      #[derive(Debug, Clone)]
+      pub enum ColumnType {
+          Integer,
+          Text,
+          Boolean,
+      }
+
+      impl Column {
+          pub fn new(name: &str, col_type: ColumnType) -> Self {
+              Self { name: name.to_string(), col_type }
+          }
+
+          pub fn to_sql(&self) -> String {
+              let t = match self.col_type {
+                  ColumnType::Integer => "INTEGER",
+                  ColumnType::Text => "TEXT",
+                  ColumnType::Boolean => "BOOLEAN",
+              };
+              format!("{} {}", self.name, t)
+          }
+      }
+    src/db/table.rs: |
+      use crate::db::column::Column;
+
+      pub struct Table {
+          pub name: String,
+          pub columns: Vec<Column>,
+      }
+
+      impl Table {
+          pub fn new(name: &str) -> Self {
+              Self { name: name.to_string(), columns: Vec::new() }
+          }
+
+          pub fn add_column(&mut self, col: Column) {
+              self.columns.push(col);
+          }
+
+          pub fn create_sql(&self) -> String {
+              let cols: Vec<String> = self.columns.iter().map(|c| c.to_sql()).collect();
+              format!("CREATE TABLE {} ({})", self.name, cols.join(", "))
+          }
+      }
+    src/db/query.rs: |
+      use crate::db::table::Table;
+
+      pub struct QueryBuilder {
+          table: Table,
+          where_clause: Option<String>,
+      }
+
+      impl QueryBuilder {
+          pub fn new(table: Table) -> Self {
+              Self { table, where_clause: None }
+          }
+
+          pub fn where_eq(&mut self, col: &str, val: &str) -> &mut Self {
+              self.where_clause = Some(format!("{} = '{}'", col, val));
+              self
+          }
+
+          pub fn select_all(&self) -> String {
+              let mut sql = format!("SELECT * FROM {}", self.table.name);
+              if let Some(ref w) = self.where_clause {
+                  sql.push_str(&format!(" WHERE {}", w));
+              }
+              sql
+          }
+      }
+    src/api/repository.rs: |
+      use crate::db::query::QueryBuilder;
+      use crate::db::table::Table;
+
+      pub struct UserRepository {
+          table: Table,
+      }
+
+      impl UserRepository {
+          pub fn new(table: Table) -> Self {
+              Self { table }
+          }
+
+          pub fn find_by_email(&self, email: &str) -> String {
+              let mut qb = QueryBuilder::new(self.table.clone());
+              qb.where_eq("email", email);
+              qb.select_all()
+          }
+      }
+    src/db/migration.rs: |
+      GARBAGE_037_MIG_MARKER_A = "migration_v1";
+      GARBAGE_037_VERSION_MARKER_B = 1;
+
+      pub struct Migration {
+          version: u32,
+          sql: String,
+      }
+    src/db/pool.rs: |
+      GARBAGE_037_POOL_MARKER_C = "conn_pool";
+      GARBAGE_037_MAX_MARKER_D = 10;
+
+      pub struct ConnectionPool {
+          max_size: usize,
+      }
+    src/cache/redis.rs: |
+      GARBAGE_037_REDIS_MARKER_E = "cache_client";
+      GARBAGE_037_TTL_MARKER_F = 3600;
+
+      pub struct RedisClient {
+          url: String,
+      }
+  changed_files:
+    src/db/column.rs: |
+      #[derive(Debug, Clone)]
+      pub struct Column {
+          pub name: String,
+          pub col_type: ColumnType,
+      }
+
+      #[derive(Debug, Clone)]
+      pub enum ColumnType {
+          Integer,
+          Text,
+          Boolean,
+          Float,
+      }
+
+      impl Column {
+          pub fn new(name: &str, col_type: ColumnType) -> Self {
+              Self { name: name.to_string(), col_type }
+          }
+
+          pub fn to_sql(&self) -> String {
+              let t = match self.col_type {
+                  ColumnType::Integer => "INTEGER",
+                  ColumnType::Text => "TEXT",
+                  ColumnType::Boolean => "BOOLEAN",
+                  ColumnType::Float => "REAL",
+              };
+              format!("{} {}", self.name, t)
+          }
+      }
+  commit_message: "feat: add Float column type to query builder"
+fragments:
+- id: column_float
+  selector:
+    path: src/db/column.rs
+    anchor: "Float"
+- id: table_create_sql
+  selector:
+    path: src/db/table.rs
+    anchor: "pub fn create_sql"
+- id: query_select_all
+  selector:
+    path: src/db/query.rs
+    anchor: "pub fn select_all"
+- id: repo_find_by_email
+  selector:
+    path: src/api/repository.rs
+    anchor: "pub fn find_by_email"
+- id: no_migration
+  selector:
+    path: src/db/migration.rs
+    anchor: "GARBAGE_037_MIG_MARKER_A"
+- id: no_pool
+  selector:
+    path: src/db/pool.rs
+    anchor: "GARBAGE_037_POOL_MARKER_C"
+- id: no_redis
+  selector:
+    path: src/cache/redis.rs
+    anchor: "GARBAGE_037_REDIS_MARKER_E"
+oracle:
+  required:
+  - column_float
+  - table_create_sql
+  - query_select_all
+  - repo_find_by_email
+  allowed: []
+  forbidden:
+  - no_migration
+  - no_pool
+  - no_redis

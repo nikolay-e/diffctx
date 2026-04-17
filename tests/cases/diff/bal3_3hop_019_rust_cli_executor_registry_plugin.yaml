@@ -1,0 +1,186 @@
+name: bal3_3hop_019_rust_cli_executor_registry_plugin
+tags:
+- lang:rust
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/plugin/base.rs: |
+      pub struct Plugin {
+          pub name: String,
+          pub version: String,
+      }
+
+      impl Plugin {
+          pub fn new(name: &str, version: &str) -> Self {
+              Self {
+                  name: name.to_string(),
+                  version: version.to_string(),
+              }
+          }
+
+          pub fn run(&self, args: &[String]) -> String {
+              format!("{} v{} executed with {} args", self.name, self.version, args.len())
+          }
+      }
+    src/plugin/mod.rs: |
+      pub mod base;
+    src/registry/registry.rs: |
+      use crate::plugin::base::Plugin;
+      use std::collections::HashMap;
+
+      pub struct Registry {
+          plugins: HashMap<String, Plugin>,
+      }
+
+      impl Registry {
+          pub fn new() -> Self {
+              Self { plugins: HashMap::new() }
+          }
+
+          pub fn register(&mut self, plugin: Plugin) {
+              self.plugins.insert(plugin.name.clone(), plugin);
+          }
+
+          pub fn get(&self, name: &str) -> Option<&Plugin> {
+              self.plugins.get(name)
+          }
+      }
+    src/registry/mod.rs: |
+      pub mod registry;
+    src/executor/executor.rs: |
+      use crate::registry::registry::Registry;
+
+      pub struct Executor {
+          registry: Registry,
+      }
+
+      impl Executor {
+          pub fn new(registry: Registry) -> Self {
+              Self { registry }
+          }
+
+          pub fn execute(&self, name: &str, args: &[String]) -> Result<String, String> {
+              match self.registry.get(name) {
+                  Some(plugin) => Ok(plugin.run(args)),
+                  None => Err(format!("plugin {} not found", name)),
+              }
+          }
+      }
+    src/executor/mod.rs: |
+      pub mod executor;
+    src/cli/app.rs: |
+      use crate::executor::executor::Executor;
+
+      pub struct App {
+          executor: Executor,
+      }
+
+      impl App {
+          pub fn new(executor: Executor) -> Self {
+              Self { executor }
+          }
+
+          pub fn run_command(&self, name: &str, args: &[String]) -> String {
+              match self.executor.execute(name, args) {
+                  Ok(result) => result,
+                  Err(e) => format!("Error: {}", e),
+              }
+          }
+      }
+    src/cli/mod.rs: |
+      pub mod app;
+    src/telemetry/tracer.rs: |
+      pub static GARBAGE_BAL3_019_TRACER_MARKER_A: &str = "tracer";
+      pub static GARBAGE_BAL3_019_SPAN_MARKER_B: &str = "span";
+
+      pub struct Tracer;
+      impl Tracer {
+          pub fn trace(&self, _msg: &str) {}
+      }
+    src/telemetry/mod.rs: |
+      pub mod tracer;
+    src/lib.rs: |
+      pub mod plugin;
+      pub mod registry;
+      pub mod executor;
+      pub mod cli;
+      pub mod telemetry;
+  changed_files:
+    src/plugin/base.rs: |
+      pub struct Plugin {
+          pub name: String,
+          pub version: String,
+          pub enabled: bool,
+      }
+
+      impl Plugin {
+          pub fn new(name: &str, version: &str) -> Self {
+              Self {
+                  name: name.to_string(),
+                  version: version.to_string(),
+                  enabled: true,
+              }
+          }
+
+          pub fn run(&self, args: &[String]) -> Result<String, String> {
+              if !self.enabled {
+                  return Err(format!("{} is disabled", self.name));
+              }
+              Ok(format!("{} v{} executed with {} args", self.name, self.version, args.len()))
+          }
+
+          pub fn disable(&mut self) {
+              self.enabled = false;
+          }
+      }
+  commit_message: "Add enabled flag and disable method to plugin"
+fragments:
+- id: plugin_enabled
+  selector:
+    path: src/plugin/base.rs
+    anchor: "pub enabled: bool"
+- id: plugin_disable
+  selector:
+    path: src/plugin/base.rs
+    anchor: "pub fn disable"
+- id: plugin_run_check
+  selector:
+    path: src/plugin/base.rs
+    anchor: "is disabled"
+- id: registry_get
+  selector:
+    path: src/registry/registry.rs
+    anchor: "pub fn get"
+- id: executor_execute
+  selector:
+    path: src/executor/executor.rs
+    anchor: "pub fn execute"
+- id: cli_run
+  selector:
+    path: src/cli/app.rs
+    anchor: "pub fn run_command"
+- id: no_tracer
+  selector:
+    path: src/telemetry/tracer.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_019_TRACER_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_019_SPAN_MARKER_B
+oracle:
+  required:
+  - plugin_enabled
+  - plugin_disable
+  - plugin_run_check
+  - registry_get
+  - executor_execute
+  - cli_run
+  allowed: []
+  forbidden:
+  - no_tracer
+  - no_global_0
+  - no_global_1

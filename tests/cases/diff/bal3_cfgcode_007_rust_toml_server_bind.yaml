@@ -1,0 +1,135 @@
+name: bal3_cfgcode_007_rust_toml_server_bind
+tags:
+- lang:rust
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    config/server.toml: |
+      [server]
+      host = "127.0.0.1"
+      port = 3000
+      workers = 4
+    src/config/server.rs: |
+      use serde::Deserialize;
+      use std::fs;
+
+      #[derive(Deserialize, Clone)]
+      pub struct ServerConfig {
+          pub host: String,
+          pub port: u16,
+          pub workers: usize,
+      }
+
+      pub fn load_server_config(path: &str) -> Result<ServerConfig, Box<dyn std::error::Error>> {
+          let content = fs::read_to_string(path)?;
+          let wrapper: toml::Value = toml::from_str(&content)?;
+          let server = wrapper.get("server").unwrap();
+          let cfg: ServerConfig = server.clone().try_into()?;
+          Ok(cfg)
+      }
+
+      impl ServerConfig {
+          pub fn bind_address(&self) -> String {
+              format!("{}:{}", self.host, self.port)
+          }
+      }
+    src/main.rs: |
+      mod config;
+
+      use config::server::load_server_config;
+
+      fn main() {
+          let cfg = load_server_config("config/server.toml").unwrap();
+          println!("Listening on {}", cfg.bind_address());
+      }
+    src/routes/api.rs: |
+      GARBAGE_CFGCODE_007_API_A: &str = "v1";
+      GARBAGE_CFGCODE_007_PREFIX_B: &str = "/api";
+
+      pub fn setup_api_routes() {}
+    src/db/pool.rs: |
+      GARBAGE_CFGCODE_007_POOL_C: u32 = 10;
+      GARBAGE_CFGCODE_007_IDLE_D: u64 = 300;
+
+      pub fn create_pool() {}
+    src/cache/store.rs: |
+      GARBAGE_CFGCODE_007_STORE_E: &str = "redis";
+      GARBAGE_CFGCODE_007_TTL_F: u64 = 600;
+
+      pub fn cache_get(key: &str) -> Option<String> { None }
+  changed_files:
+    config/server.toml: |
+      [server]
+      host = "0.0.0.0"
+      port = 8080
+      workers = 16
+      keep_alive = 75
+  commit_message: "bind to all interfaces, increase workers, add keep_alive"
+fragments:
+- id: server_struct
+  selector:
+    path: src/config/server.rs
+    anchor: "pub struct ServerConfig"
+- id: load_server
+  selector:
+    path: src/config/server.rs
+    anchor: "pub fn load_server_config"
+- id: bind_address
+  selector:
+    path: src/config/server.rs
+    anchor: "fn bind_address"
+- id: main_uses_config
+  selector:
+    path: src/main.rs
+    anchor: "load_server_config"
+- id: no_api
+  selector:
+    path: src/routes/api.rs
+    anchor: "setup_api_routes"
+- id: no_pool
+  selector:
+    path: src/db/pool.rs
+    anchor: "create_pool"
+- id: no_cache
+  selector:
+    path: src/cache/store.rs
+    anchor: "cache_get"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_007_API_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_007_PREFIX_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_007_POOL_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_007_IDLE_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CFGCODE_007_STORE_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CFGCODE_007_TTL_F
+oracle:
+  required:
+  - server_struct
+  - load_server
+  - bind_address
+  - main_uses_config
+  allowed: []
+  forbidden:
+  - no_api
+  - no_pool
+  - no_cache
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

@@ -1,0 +1,116 @@
+name: gap2_156_python_import_chain_permission_resolver
+tags:
+- change:new_function
+- change:signature
+- change:single_file
+- context:import_chain
+- difficulty:hard
+- distance:2hop
+- lang:python
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    auth/resolver.py: |
+      from auth.roles import permissions_for_role
+
+      class PermissionResolver:
+          def __init__(self, user_roles: list[str]):
+              self.user_roles = user_roles
+
+          def can_access(self, resource: str) -> bool:
+              for role in self.user_roles:
+                  perms = permissions_for_role(role)
+                  if resource in perms:
+                      return True
+              return False
+    auth/roles.py: |
+      from auth.policies import load_policy
+
+      def permissions_for_role(role: str) -> set[str]:
+          policy = load_policy(role)
+          return set(policy.get("allow", []))
+
+      def inherited_roles(role: str) -> list[str]:
+          policy = load_policy(role)
+          return policy.get("inherits", [])
+    auth/policies.py: |
+      ROLE_POLICIES = {
+          "admin": {"allow": ["read", "write", "delete", "manage"], "inherits": ["editor"]},
+          "editor": {"allow": ["read", "write"], "inherits": ["viewer"]},
+          "viewer": {"allow": ["read"], "inherits": []},
+      }
+
+      def load_policy(role: str) -> dict:
+          return ROLE_POLICIES.get(role, {"allow": [], "inherits": []})
+
+      def all_roles() -> list[str]:
+          return list(ROLE_POLICIES.keys())
+    auth/tokens.py: |
+      TOKEN_EXPIRY_SECONDS = 3600
+      REFRESH_WINDOW_SECONDS = 300
+
+      class TokenManager:
+          def __init__(self):
+              self._tokens: dict[str, float] = {}
+
+          def issue_token(self, user_id: str) -> str:
+              return f"tok_{user_id}"
+
+          def revoke_token(self, token: str) -> None:
+              self._tokens.pop(token, None)
+  changed_files:
+    auth/resolver.py: |
+      from auth.roles import permissions_for_role, inherited_roles
+
+      class PermissionResolver:
+          def __init__(self, user_roles: list[str]):
+              self.user_roles = user_roles
+
+          def can_access(self, resource: str) -> bool:
+              for role in self.user_roles:
+                  perms = permissions_for_role(role)
+                  if resource in perms:
+                      return True
+              return False
+
+          def effective_permissions(self) -> set[str]:
+              all_perms: set[str] = set()
+              visited: set[str] = set()
+              stack = list(self.user_roles)
+              while stack:
+                  role = stack.pop()
+                  if role in visited:
+                      continue
+                  visited.add(role)
+                  all_perms |= permissions_for_role(role)
+                  stack.extend(inherited_roles(role))
+              return all_perms
+  commit_message: "feat: add effective permissions with role inheritance"
+fragments:
+- id: resolver_effective
+  selector:
+    path: auth/resolver.py
+    anchor: "def effective_permissions"
+- id: roles_inherited
+  selector:
+    path: auth/roles.py
+    anchor: "def inherited_roles"
+- id: policies_map
+  selector:
+    path: auth/policies.py
+    anchor: ROLE_POLICIES
+- id: no_tokens
+  selector:
+    path: auth/tokens.py
+- id: no_token_expiry
+  selector:
+    anchor: TOKEN_EXPIRY_SECONDS
+oracle:
+  required:
+  - resolver_effective
+  - roles_inherited
+  - policies_map
+  forbidden:
+  - no_tokens
+  - no_token_expiry

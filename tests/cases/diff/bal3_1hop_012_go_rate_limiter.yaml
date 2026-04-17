@@ -1,0 +1,146 @@
+name: bal3_1hop_012_go_rate_limiter
+tags:
+- lang:rust
+- change:bug_fix
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/cache/store.rs: |
+      use std::collections::HashMap;
+
+      pub struct CacheStore {
+          data: HashMap<String, String>,
+          max_size: usize,
+      }
+
+      impl CacheStore {
+          pub fn new(max_size: usize) -> Self {
+              CacheStore { data: HashMap::new(), max_size }
+          }
+
+          pub fn get(&self, key: &str) -> Option<&String> {
+              // BUG: no capacity check before insert
+              self.data.get(key)
+          }
+
+          pub fn set(&mut self, key: String, value: String) {
+              self.data.insert(key, value);
+          }
+      }
+    src/api/session.rs: |
+      use crate::cache::store::CacheStore;
+
+      pub struct SessionManager {
+          store: CacheStore,
+      }
+
+      impl SessionManager {
+          pub fn new() -> Self {
+              SessionManager { store: CacheStore::new(1000) }
+          }
+
+          pub fn put_session(&mut self, id: String, token: String) {
+              self.store.set(id, token);
+          }
+
+          pub fn get_session(&self, id: &str) -> Option<&String> {
+              self.store.get(id)
+          }
+      }
+    garbage/metrics.rs: |
+      // GARBAGE_RLIM_A = "metrics_marker"
+      pub fn record_metric(_name: &str) {}
+    garbage/logger.rs: |
+      // GARBAGE_RLIM_B = "logger_marker"
+      pub fn log_event(_msg: &str) {}
+    garbage/config.rs: |
+      // GARBAGE_RLIM_C = "config_marker"
+      pub struct AppConfig { pub port: u16 }
+  changed_files:
+    src/cache/store.rs: |
+      use std::collections::HashMap;
+
+      pub struct CacheStore {
+          data: HashMap<String, String>,
+          max_size: usize,
+      }
+
+      impl CacheStore {
+          pub fn new(max_size: usize) -> Self {
+              CacheStore { data: HashMap::new(), max_size }
+          }
+
+          pub fn get(&self, key: &str) -> Option<&String> {
+              self.data.get(key)
+          }
+
+          pub fn set(&mut self, key: String, value: String) -> bool {
+              if self.data.len() >= self.max_size {
+                  return false;
+              }
+              self.data.insert(key, value);
+              true
+          }
+      }
+    src/api/session.rs: |
+      use crate::cache::store::CacheStore;
+
+      pub struct SessionManager {
+          store: CacheStore,
+      }
+
+      impl SessionManager {
+          pub fn new() -> Self {
+              SessionManager { store: CacheStore::new(1000) }
+          }
+
+          pub fn put_session(&mut self, id: String, token: String) {
+              self.store.set(id, token);
+          }
+
+          pub fn get_session(&self, id: &str) -> Option<&String> {
+              self.store.get(id)
+          }
+      }
+    garbage/metrics.rs: |
+      // GARBAGE_RLIM_A = "metrics_marker"
+      pub fn record_metric(_name: &str) {}
+    garbage/logger.rs: |
+      // GARBAGE_RLIM_B = "logger_marker"
+      pub fn log_event(_msg: &str) {}
+    garbage/config.rs: |
+      // GARBAGE_RLIM_C = "config_marker"
+      pub struct AppConfig { pub port: u16 }
+  commit_message: "fix: enforce max_size capacity check in CacheStore::set"
+fragments:
+- id: cache_set_func
+  selector:
+    anchor: "pub fn set(&mut self, key: String, value: String) -> bool"
+- id: capacity_check
+  selector:
+    anchor: "if self.data.len() >= self.max_size"
+- id: session_uses_store
+  selector:
+    anchor: "use crate::cache::store::CacheStore"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_RLIM_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_RLIM_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_RLIM_C
+oracle:
+  required:
+  - cache_set_func
+  - capacity_check
+  - session_uses_store
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

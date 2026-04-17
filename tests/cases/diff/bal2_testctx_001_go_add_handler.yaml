@@ -1,0 +1,249 @@
+name: bal2_testctx_001_go_add_handler
+tags:
+- lang:go
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    handler/user.go: |
+      package handler
+
+      import (
+          "encoding/json"
+          "net/http"
+      )
+
+      type UserHandler struct {
+          store UserStore
+      }
+
+      func (h *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
+          id := r.URL.Query().Get("id")
+          user, err := h.store.FindByID(id)
+          if err != nil {
+              http.Error(w, "not found", http.StatusNotFound)
+              return
+          }
+          json.NewEncoder(w).Encode(user)
+      }
+    handler/user_test.go: |
+      package handler
+
+      import (
+          "net/http"
+          "net/http/httptest"
+          "testing"
+      )
+
+      func TestGetUser(t *testing.T) {
+          h := &UserHandler{store: &mockStore{}}
+          req := httptest.NewRequest("GET", "/user?id=1", nil)
+          w := httptest.NewRecorder()
+          h.GetUser(w, req)
+          if w.Code != http.StatusOK {
+              t.Fatalf("expected 200, got %d", w.Code)
+          }
+      }
+    handler/health.go: |
+      package handler
+
+      GARBAGE_BAL2_001_HEALTH_A = "health"
+
+      import "net/http"
+
+      func HealthCheck(w http.ResponseWriter, r *http.Request) {
+          w.WriteHeader(http.StatusOK)
+          w.Write([]byte("ok"))
+      }
+    handler/health_test.go: |
+      package handler
+
+      GARBAGE_BAL2_001_HEALTH_TEST_B = "health_test"
+
+      import (
+          "net/http"
+          "net/http/httptest"
+          "testing"
+      )
+
+      func TestHealthCheck(t *testing.T) {
+          req := httptest.NewRequest("GET", "/health", nil)
+          w := httptest.NewRecorder()
+          HealthCheck(w, req)
+          if w.Code != http.StatusOK {
+              t.Fatalf("expected 200, got %d", w.Code)
+          }
+      }
+    middleware/logging.go: |
+      package middleware
+
+      GARBAGE_BAL2_001_LOGGING_C = "logging"
+      GARBAGE_BAL2_001_MW_MARKER_D = true
+
+      import (
+          "log"
+          "net/http"
+          "time"
+      )
+
+      func LoggingMiddleware(next http.Handler) http.Handler {
+          return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              start := time.Now()
+              next.ServeHTTP(w, r)
+              log.Printf("%s %s %v", r.Method, r.URL.Path, time.Since(start))
+          })
+      }
+  changed_files:
+    handler/user.go: |
+      package handler
+
+      import (
+          "encoding/json"
+          "net/http"
+      )
+
+      type UserHandler struct {
+          store UserStore
+      }
+
+      func (h *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
+          id := r.URL.Query().Get("id")
+          user, err := h.store.FindByID(id)
+          if err != nil {
+              http.Error(w, "not found", http.StatusNotFound)
+              return
+          }
+          json.NewEncoder(w).Encode(user)
+      }
+
+      func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
+          id := r.URL.Query().Get("id")
+          if err := h.store.Delete(id); err != nil {
+              http.Error(w, "delete failed", http.StatusInternalServerError)
+              return
+          }
+          w.WriteHeader(http.StatusNoContent)
+      }
+    handler/user_test.go: |
+      package handler
+
+      import (
+          "net/http"
+          "net/http/httptest"
+          "testing"
+      )
+
+      func TestGetUser(t *testing.T) {
+          h := &UserHandler{store: &mockStore{}}
+          req := httptest.NewRequest("GET", "/user?id=1", nil)
+          w := httptest.NewRecorder()
+          h.GetUser(w, req)
+          if w.Code != http.StatusOK {
+              t.Fatalf("expected 200, got %d", w.Code)
+          }
+      }
+
+      func TestDeleteUser(t *testing.T) {
+          h := &UserHandler{store: &mockStore{}}
+          req := httptest.NewRequest("DELETE", "/user?id=1", nil)
+          w := httptest.NewRecorder()
+          h.DeleteUser(w, req)
+          if w.Code != http.StatusNoContent {
+              t.Fatalf("expected 204, got %d", w.Code)
+          }
+      }
+    handler/health.go: |
+      package handler
+
+      GARBAGE_BAL2_001_HEALTH_A = "health"
+
+      import "net/http"
+
+      func HealthCheck(w http.ResponseWriter, r *http.Request) {
+          w.WriteHeader(http.StatusOK)
+          w.Write([]byte("ok"))
+      }
+    handler/health_test.go: |
+      package handler
+
+      GARBAGE_BAL2_001_HEALTH_TEST_B = "health_test"
+
+      import (
+          "net/http"
+          "net/http/httptest"
+          "testing"
+      )
+
+      func TestHealthCheck(t *testing.T) {
+          req := httptest.NewRequest("GET", "/health", nil)
+          w := httptest.NewRecorder()
+          HealthCheck(w, req)
+          if w.Code != http.StatusOK {
+              t.Fatalf("expected 200, got %d", w.Code)
+          }
+      }
+    middleware/logging.go: |
+      package middleware
+
+      GARBAGE_BAL2_001_LOGGING_C = "logging"
+      GARBAGE_BAL2_001_MW_MARKER_D = true
+
+      import (
+          "log"
+          "net/http"
+          "time"
+      )
+
+      func LoggingMiddleware(next http.Handler) http.Handler {
+          return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              start := time.Now()
+              next.ServeHTTP(w, r)
+              log.Printf("%s %s %v", r.Method, r.URL.Path, time.Since(start))
+          })
+      }
+  commit_message: "Add DeleteUser handler"
+fragments:
+- id: user_handler_delete
+  selector:
+    path: handler/user.go
+    anchor: "func (h *UserHandler) DeleteUser"
+- id: user_test_delete
+  selector:
+    path: handler/user_test.go
+    anchor: "func TestDeleteUser"
+- id: no_health
+  selector:
+    path: handler/health.go
+- id: no_health_test
+  selector:
+    path: handler/health_test.go
+- id: no_logging
+  selector:
+    path: middleware/logging.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL2_001_HEALTH_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL2_001_HEALTH_TEST_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL2_001_LOGGING_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL2_001_MW_MARKER_D
+oracle:
+  required:
+  - user_handler_delete
+  - user_test_delete
+  allowed: []
+  forbidden:
+  - no_health
+  - no_health_test
+  - no_logging
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

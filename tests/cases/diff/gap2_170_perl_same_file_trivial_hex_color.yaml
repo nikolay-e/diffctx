@@ -1,0 +1,118 @@
+name: gap2_170_perl_same_file_trivial_hex_color
+tags:
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+- lang:perl
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    lib/HexColor.pm: |
+      package HexColor;
+      use strict;
+      use warnings;
+
+      sub new {
+          my ($class, $hex) = @_;
+          $hex =~ s/^#//;
+          return bless { hex => $hex }, $class;
+      }
+
+      sub to_rgb {
+          my ($self) = @_;
+          my $h = $self->{hex};
+          return (hex(substr($h,0,2)), hex(substr($h,2,2)), hex(substr($h,4,2)));
+      }
+
+      sub is_dark {
+          my ($self) = @_;
+          my ($r, $g, $b) = $self->to_rgb();
+          return ($r * 0.299 + $g * 0.587 + $b * 0.114) < 128;
+      }
+
+      1;
+    lib/Gradient.pm: |
+      package Gradient;
+      use strict;
+      use warnings;
+
+      sub new {
+          my ($class, $start, $end) = @_;
+          return bless { start => $start, end_color => $end }, $class;
+      }
+
+      sub steps {
+          my ($self, $n) = @_;
+          return $n;
+      }
+
+      1;
+    lib/Palette.pm: |
+      package Palette;
+      use strict;
+      use warnings;
+
+      my @COLORS = ('#ff0000', '#00ff00', '#0000ff');
+
+      sub all { return @COLORS; }
+
+      1;
+  changed_files:
+    lib/HexColor.pm: |
+      package HexColor;
+      use strict;
+      use warnings;
+
+      sub new {
+          my ($class, $hex) = @_;
+          $hex =~ s/^#//;
+          return bless { hex => $hex }, $class;
+      }
+
+      sub to_rgb {
+          my ($self) = @_;
+          my $h = $self->{hex};
+          return (hex(substr($h,0,2)), hex(substr($h,2,2)), hex(substr($h,4,2)));
+      }
+
+      sub is_dark {
+          my ($self) = @_;
+          my ($r, $g, $b) = $self->to_rgb();
+          return ($r * 0.299 + $g * 0.587 + $b * 0.114) < 128;
+      }
+
+      sub lighten {
+          my ($self, $amount) = @_;
+          $amount //= 20;
+          my ($r, $g, $b) = $self->to_rgb();
+          $r = ($r + $amount > 255) ? 255 : $r + $amount;
+          $g = ($g + $amount > 255) ? 255 : $g + $amount;
+          $b = ($b + $amount > 255) ? 255 : $b + $amount;
+          return sprintf("#%02x%02x%02x", $r, $g, $b);
+      }
+
+      1;
+fragments:
+- id: lighten
+  selector:
+    path: lib/HexColor.pm
+    anchor: sub lighten
+- id: hex_file
+  selector:
+    path: lib/HexColor.pm
+    anchor: package HexColor
+- id: no_gradient
+  selector:
+    path: lib/Gradient.pm
+- id: no_palette
+  selector:
+    path: lib/Palette.pm
+oracle:
+  required:
+  - lighten
+  - hex_file
+  forbidden:
+  - no_gradient
+  - no_palette

@@ -1,0 +1,144 @@
+name: gap_061_pyts_multifile_sensor_calibration
+tags:
+- lang:php
+- change:bug_fix
+- change:single_file
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/Sensor/TemperatureReader.php: |
+      <?php
+      namespace App\Sensor;
+
+      class TemperatureReader
+      {
+          private float $offset;
+
+          public function __construct(float $offset = 0.0)
+          {
+              $this->offset = $offset;
+          }
+
+          public function toCelsius(float $fahrenheit): float
+          {
+              return ($fahrenheit - 32) / 1.8 + $this->offset;
+          }
+
+          public function toFahrenheit(float $celsius): float
+          {
+              return ($celsius - $this->offset) * 1.8 + 32;
+          }
+
+          public function isFebrile(float $celsius): bool
+          {
+              return $celsius > 37.5;
+          }
+      }
+    src/Sensor/HumidityReader.php: |
+      <?php
+      namespace App\Sensor;
+
+      class HumidityReader
+      {
+          public function normalize(float $raw): float
+          {
+              return max(0.0, min(100.0, $raw));
+          }
+      }
+    garbage/AlertDispatcher.php: |
+      <?php
+      // GARBAGE_SENSCAL_A = "alert_dispatcher_marker"
+    garbage/CalibrationLogger.php: |
+      <?php
+      // GARBAGE_SENSCAL_B = "calibration_logger_marker"
+    garbage/DeviceRegistry.php: |
+      <?php
+      // GARBAGE_SENSCAL_C = "device_registry_marker"
+  changed_files:
+    src/Sensor/TemperatureReader.php: |
+      <?php
+      namespace App\Sensor;
+
+      class TemperatureReader
+      {
+          private float $offset;
+
+          public function __construct(float $offset = 0.0)
+          {
+              $this->offset = $offset;
+          }
+
+          public function toCelsius(float $fahrenheit): float
+          {
+              return ($fahrenheit - 32) / 1.8 + $this->offset;
+          }
+
+          public function toFahrenheit(float $celsius): float
+          {
+              return ($celsius - $this->offset) * 1.8 + 32;
+          }
+
+          public function isFebrile(float $celsius): bool
+          {
+              return $celsius >= 38.0;
+          }
+
+          public function isCritical(float $celsius): bool
+          {
+              return $celsius >= 40.0;
+          }
+      }
+    src/Sensor/HumidityReader.php: |
+      <?php
+      namespace App\Sensor;
+
+      class HumidityReader
+      {
+          public function normalize(float $raw): float
+          {
+              return max(0.0, min(100.0, $raw));
+          }
+      }
+    garbage/AlertDispatcher.php: |
+      <?php
+      // GARBAGE_SENSCAL_A = "alert_dispatcher_marker"
+    garbage/CalibrationLogger.php: |
+      <?php
+      // GARBAGE_SENSCAL_B = "calibration_logger_marker"
+    garbage/DeviceRegistry.php: |
+      <?php
+      // GARBAGE_SENSCAL_C = "device_registry_marker"
+  commit_message: "fix: correct febrile threshold to 38.0 and add critical check"
+fragments:
+- id: febrile_fix
+  selector:
+    path: src/Sensor/TemperatureReader.php
+    anchor: "return $celsius >= 38.0"
+- id: critical_added
+  selector:
+    path: src/Sensor/TemperatureReader.php
+    anchor: "isCritical"
+- id: no_humidity
+  selector:
+    path: src/Sensor/HumidityReader.php
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_SENSCAL_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_SENSCAL_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_SENSCAL_C
+oracle:
+  required:
+  - febrile_fix
+  - critical_added
+  allowed: []
+  forbidden:
+  - no_humidity
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

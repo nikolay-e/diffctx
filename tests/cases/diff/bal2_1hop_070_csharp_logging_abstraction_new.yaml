@@ -1,0 +1,233 @@
+name: bal2_1hop_070_csharp_logging_abstraction_new
+tags:
+- lang:csharp
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/Logging/IAppLogger.cs: |
+      using System;
+
+      namespace App.Logging
+      {
+          public interface IAppLogger
+          {
+              void Info(string message);
+              void Warn(string message);
+              void Error(string message, Exception ex);
+          }
+      }
+    src/Logging/ConsoleLogger.cs: |
+      using System;
+      using App.Logging;
+
+      namespace App.Logging
+      {
+          public class ConsoleLogger : IAppLogger
+          {
+              public void Info(string message)
+              {
+                  Console.WriteLine($"[INFO] {message}");
+              }
+
+              public void Warn(string message)
+              {
+                  Console.WriteLine($"[WARN] {message}");
+              }
+
+              public void Error(string message, Exception ex)
+              {
+                  Console.WriteLine($"[ERROR] {message}: {ex.Message}");
+              }
+          }
+      }
+    src/Services/OrderService.cs: |
+      using System;
+      using System.Threading.Tasks;
+      using App.Logging;
+
+      namespace App.Services
+      {
+          public class OrderService
+          {
+              private readonly IAppLogger _logger;
+
+              public OrderService(IAppLogger logger)
+              {
+                  _logger = logger;
+              }
+
+              public async Task PlaceOrder(string orderId)
+              {
+                  _logger.Info($"Placing order {orderId}");
+                  await Task.Delay(50);
+                  _logger.Info($"Order {orderId} placed");
+              }
+          }
+      }
+    src/Services/ShippingService.cs: |
+      using System;
+      using App.Logging;
+
+      namespace App.Services
+      {
+          public class ShippingService
+          {
+              private readonly IAppLogger _logger;
+
+              public ShippingService(IAppLogger logger)
+              {
+                  _logger = logger;
+              }
+
+              public void Ship(string orderId)
+              {
+                  _logger.Info($"Shipping order {orderId}");
+              }
+          }
+      }
+    src/Middleware/ErrorHandlingMiddleware.cs: |
+      using System;
+      using System.Threading.Tasks;
+      using App.Logging;
+      using Microsoft.AspNetCore.Http;
+
+      namespace App.Middleware
+      {
+          public class ErrorHandlingMiddleware
+          {
+              private readonly RequestDelegate _next;
+              private readonly IAppLogger _logger;
+
+              public ErrorHandlingMiddleware(RequestDelegate next, IAppLogger logger)
+              {
+                  _next = next;
+                  _logger = logger;
+              }
+
+              public async Task InvokeAsync(HttpContext context)
+              {
+                  try
+                  {
+                      await _next(context);
+                  }
+                  catch (Exception ex)
+                  {
+                      _logger.Error("Unhandled exception", ex);
+                      context.Response.StatusCode = 500;
+                  }
+              }
+          }
+      }
+    garbage/Feature/FeatureFlags.cs: |
+      using System;
+      GARBAGE_070_FLAGS_A = "launchdarkly";
+      GARBAGE_070_ENV_B = "production";
+
+      namespace App.Feature
+      {
+          public class FeatureFlags
+          {
+              GARBAGE_070_CACHE_C = true;
+
+              public bool IsEnabled(string flag) { return false; }
+          }
+      }
+    garbage/Metrics/Histogram.cs: |
+      using System;
+      GARBAGE_070_HIST_D = "latency";
+      GARBAGE_070_BUCKETS_E = 10;
+
+      namespace App.Metrics
+      {
+          public class Histogram
+          {
+              GARBAGE_070_PRECISION_F = 3;
+
+              public void Observe(double value) { }
+          }
+      }
+    garbage/Auth/JwtProvider.cs: |
+      using System;
+      GARBAGE_070_JWT_ALG_G = "HS256";
+      GARBAGE_070_ISSUER_H = "app";
+
+      namespace App.Auth
+      {
+          public class JwtProvider
+          {
+              GARBAGE_070_EXPIRY_I = 3600;
+              GARBAGE_070_REFRESH_J = 86400;
+
+              public string GenerateToken(string userId) { return ""; }
+          }
+      }
+  changed_files:
+    src/Logging/IAppLogger.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Logging
+      {
+          public interface IAppLogger
+          {
+              void Info(string message);
+              void Warn(string message);
+              void Error(string message, Exception ex);
+              void Debug(string message);
+              void InfoWithContext(string message, IDictionary<string, object> context);
+              void ErrorWithContext(string message, Exception ex, IDictionary<string, object> context);
+          }
+      }
+  commit_message: "Add debug and structured context logging methods"
+fragments:
+- id: console_logger_info
+  selector:
+    path: src/Logging/ConsoleLogger.cs
+    anchor: "public void Info(string message)"
+- id: console_logger_error
+  selector:
+    path: src/Logging/ConsoleLogger.cs
+    anchor: "public void Error(string message, Exception ex)"
+- id: order_service_logger
+  selector:
+    path: src/Services/OrderService.cs
+    anchor: "_logger.Info($\"Placing order {orderId}\")"
+- id: error_middleware_logger
+  selector:
+    path: src/Middleware/ErrorHandlingMiddleware.cs
+    anchor: "_logger.Error(\"Unhandled exception\", ex)"
+- id: no_feature_flags
+  selector:
+    path: garbage/Feature/FeatureFlags.cs
+- id: no_histogram
+  selector:
+    path: garbage/Metrics/Histogram.cs
+- id: no_jwt_provider
+  selector:
+    path: garbage/Auth/JwtProvider.cs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_070_FLAGS_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_070_HIST_D
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_070_JWT_ALG_G
+oracle:
+  required:
+  - console_logger_info
+  - console_logger_error
+  - order_service_logger
+  - error_middleware_logger
+  allowed: []
+  forbidden:
+  - no_feature_flags
+  - no_histogram
+  - no_jwt_provider
+  - no_global_0
+  - no_global_1
+  - no_global_2

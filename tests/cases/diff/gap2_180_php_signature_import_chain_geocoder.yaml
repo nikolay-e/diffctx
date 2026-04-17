@@ -1,0 +1,146 @@
+name: gap2_180_php_signature_import_chain_geocoder
+tags:
+- change:signature
+- change:single_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:php
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/Location/AddressResolver.php: |
+      <?php
+
+      namespace App\Location;
+
+      use App\Location\Geocoder;
+
+      class AddressResolver
+      {
+          private Geocoder $geocoder;
+
+          public function __construct(Geocoder $geocoder)
+          {
+              $this->geocoder = $geocoder;
+          }
+
+          public function resolve(string $address): ?array
+          {
+              return $this->geocoder->lookup($address);
+          }
+      }
+    src/Location/Geocoder.php: |
+      <?php
+
+      namespace App\Location;
+
+      class Geocoder
+      {
+          private array $cache = [];
+
+          public function lookup(string $address): ?array
+          {
+              if (isset($this->cache[$address])) {
+                  return $this->cache[$address];
+              }
+              $coords = $this->fetch($address);
+              if ($coords) {
+                  $this->cache[$address] = $coords;
+              }
+              return $coords;
+          }
+
+          private function fetch(string $address): ?array
+          {
+              return ['lat' => 0.0, 'lng' => 0.0];
+          }
+      }
+    src/Location/TimezoneMapper.php: |
+      <?php
+
+      namespace App\Location;
+
+      class TimezoneMapper
+      {
+          public function fromCoords(float $lat, float $lng): string
+          {
+              return 'UTC';
+          }
+      }
+  changed_files:
+    src/Location/Geocoder.php: |
+      <?php
+
+      namespace App\Location;
+
+      class GeoResult
+      {
+          public float $lat;
+          public float $lng;
+          public float $confidence;
+
+          public function __construct(float $lat, float $lng, float $confidence)
+          {
+              $this->lat = $lat;
+              $this->lng = $lng;
+              $this->confidence = $confidence;
+          }
+      }
+
+      class Geocoder
+      {
+          private array $cache = [];
+          private float $minConfidence;
+
+          public function __construct(float $minConfidence = 0.5)
+          {
+              $this->minConfidence = $minConfidence;
+          }
+
+          public function lookup(string $address, string $countryHint = ''): ?GeoResult
+          {
+              $key = $address . ':' . $countryHint;
+              if (isset($this->cache[$key])) {
+                  return $this->cache[$key];
+              }
+              $result = $this->fetch($address, $countryHint);
+              if ($result && $result->confidence >= $this->minConfidence) {
+                  $this->cache[$key] = $result;
+                  return $result;
+              }
+              return null;
+          }
+
+          private function fetch(string $address, string $countryHint): ?GeoResult
+          {
+              return new GeoResult(0.0, 0.0, 1.0);
+          }
+      }
+fragments:
+- id: geo_result
+  selector:
+    path: src/Location/Geocoder.php
+    anchor: "class GeoResult"
+- id: lookup_sig
+  selector:
+    path: src/Location/Geocoder.php
+    anchor: "public function lookup(string $address, string $countryHint"
+- id: min_confidence
+  selector:
+    path: src/Location/Geocoder.php
+    anchor: minConfidence
+- id: no_timezone
+  selector:
+    path: src/Location/TimezoneMapper.php
+- id: no_resolver
+  selector:
+    path: src/Location/AddressResolver.php
+oracle:
+  required:
+  - geo_result
+  - lookup_sig
+  - min_confidence
+  forbidden:
+  - no_timezone

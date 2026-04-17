@@ -1,0 +1,240 @@
+name: bal3_refactor_028_csharp_extract_extension_methods
+tags:
+- lang:csharp
+- change:multi_file
+- change:refactor
+- context:cross_module
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    Services/OrderService.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Linq;
+
+      namespace App.Services
+      {
+          public class OrderService
+          {
+              public decimal CalculateTotal(List<decimal> prices)
+              {
+                  return Math.Round(prices.Sum(), 2);
+              }
+
+              public string FormatPrice(decimal price)
+              {
+                  return $"${price:F2}";
+              }
+
+              public List<decimal> ApplyDiscount(List<decimal> prices, decimal rate)
+              {
+                  return prices.Select(p => Math.Round(p * (1 - rate), 2)).ToList();
+              }
+          }
+      }
+    Services/InvoiceService.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Linq;
+
+      namespace App.Services
+      {
+          public class InvoiceService
+          {
+              public string GenerateInvoice(List<decimal> prices)
+              {
+                  var total = Math.Round(prices.Sum(), 2);
+                  var formatted = $"${total:F2}";
+                  return $"Invoice Total: {formatted}";
+              }
+          }
+      }
+    Controllers/CartController.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Linq;
+
+      namespace App.Controllers
+      {
+          public class CartController
+          {
+              public string GetCartSummary(List<decimal> prices, decimal discount)
+              {
+                  var discounted = prices.Select(p => Math.Round(p * (1 - discount), 2)).ToList();
+                  var total = Math.Round(discounted.Sum(), 2);
+                  return $"${total:F2}";
+              }
+          }
+      }
+    Data/Migrations.cs: |
+      namespace App.Data
+      {
+          // GARBAGE_R028_MIGRATE_A
+          public class Migrations
+          {
+              public void Run() { }
+          }
+      }
+    Data/Seeder.cs: |
+      namespace App.Data
+      {
+          // GARBAGE_R028_SEEDER_B
+          public class Seeder
+          {
+              public void Seed() { }
+          }
+      }
+    Data/Backup.cs: |
+      namespace App.Data
+      {
+          // GARBAGE_R028_BACKUP_C
+          public class Backup
+          {
+              public void Create() { }
+          }
+      }
+  changed_files:
+    Extensions/DecimalExtensions.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Linq;
+
+      namespace App.Extensions
+      {
+          public static class DecimalExtensions
+          {
+              public static decimal RoundedSum(this List<decimal> prices) =>
+                  Math.Round(prices.Sum(), 2);
+
+              public static string ToFormattedPrice(this decimal price) =>
+                  $"${price:F2}";
+
+              public static List<decimal> WithDiscount(this List<decimal> prices, decimal rate) =>
+                  prices.Select(p => Math.Round(p * (1 - rate), 2)).ToList();
+          }
+      }
+    Services/OrderService.cs: |
+      using System.Collections.Generic;
+      using App.Extensions;
+
+      namespace App.Services
+      {
+          public class OrderService
+          {
+              public decimal CalculateTotal(List<decimal> prices) =>
+                  prices.RoundedSum();
+
+              public string FormatPrice(decimal price) =>
+                  price.ToFormattedPrice();
+
+              public List<decimal> ApplyDiscount(List<decimal> prices, decimal rate) =>
+                  prices.WithDiscount(rate);
+          }
+      }
+    Services/InvoiceService.cs: |
+      using System.Collections.Generic;
+      using App.Extensions;
+
+      namespace App.Services
+      {
+          public class InvoiceService
+          {
+              public string GenerateInvoice(List<decimal> prices)
+              {
+                  var total = prices.RoundedSum();
+                  return $"Invoice Total: {total.ToFormattedPrice()}";
+              }
+          }
+      }
+    Controllers/CartController.cs: |
+      using System.Collections.Generic;
+      using App.Extensions;
+
+      namespace App.Controllers
+      {
+          public class CartController
+          {
+              public string GetCartSummary(List<decimal> prices, decimal discount)
+              {
+                  var discounted = prices.WithDiscount(discount);
+                  var total = discounted.RoundedSum();
+                  return total.ToFormattedPrice();
+              }
+          }
+      }
+    Data/Migrations.cs: |
+      namespace App.Data
+      {
+          // GARBAGE_R028_MIGRATE_A
+          public class Migrations
+          {
+              public void Run() { }
+          }
+      }
+    Data/Seeder.cs: |
+      namespace App.Data
+      {
+          // GARBAGE_R028_SEEDER_B
+          public class Seeder
+          {
+              public void Seed() { }
+          }
+      }
+    Data/Backup.cs: |
+      namespace App.Data
+      {
+          // GARBAGE_R028_BACKUP_C
+          public class Backup
+          {
+              public void Create() { }
+          }
+      }
+  commit_message: "refactor: extract decimal formatting and calculation into extension methods"
+fragments:
+- id: extension_class
+  selector:
+    path: Extensions/DecimalExtensions.cs
+    anchor: "public static class DecimalExtensions"
+- id: rounded_sum
+  selector:
+    path: Extensions/DecimalExtensions.cs
+    anchor: "public static decimal RoundedSum"
+- id: to_formatted_price
+  selector:
+    path: Extensions/DecimalExtensions.cs
+    anchor: "public static string ToFormattedPrice"
+- id: order_uses_extensions
+  selector:
+    path: Services/OrderService.cs
+    anchor: "prices.RoundedSum()"
+- id: invoice_uses_extensions
+  selector:
+    path: Services/InvoiceService.cs
+    anchor: "total.ToFormattedPrice()"
+- id: cart_uses_extensions
+  selector:
+    path: Controllers/CartController.cs
+    anchor: "prices.WithDiscount(discount)"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_R028_MIGRATE_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_R028_SEEDER_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_R028_BACKUP_C
+oracle:
+  required:
+  - extension_class
+  - rounded_sum
+  - to_formatted_price
+  - order_uses_extensions
+  - invoice_uses_extensions
+  - cart_uses_extensions
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

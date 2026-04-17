@@ -1,0 +1,213 @@
+name: bal3_bugfix_025_kotlin_empty_list_first
+tags:
+- lang:rust
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/search/indexer.rs: |
+      use crate::storage::document::DocumentStore;
+
+      pub struct Indexer {
+          store: DocumentStore,
+          term_freq: std::collections::HashMap<String, u32>,
+      }
+
+      impl Indexer {
+          pub fn new(store: DocumentStore) -> Self {
+              Indexer { store, term_freq: std::collections::HashMap::new() }
+          }
+
+          pub fn index(&mut self, doc_id: &str, content: &str) {
+              self.store.save(doc_id, content);
+              for word in content.split_whitespace() {
+                  let normalized = word.to_lowercase();
+                  *self.term_freq.entry(normalized).or_insert(0) += 1;
+              }
+          }
+
+          pub fn term_count(&self, term: &str) -> u32 {
+              // BUG: normalization inconsistency — query not lowercased before lookup
+              *self.term_freq.get(term).unwrap_or(&0)
+          }
+
+          pub fn doc_count(&self) -> usize {
+              self.store.count()
+          }
+      }
+    src/storage/document.rs: |
+      use std::collections::HashMap;
+
+      pub struct DocumentStore {
+          docs: HashMap<String, String>,
+      }
+
+      impl DocumentStore {
+          pub fn new() -> Self {
+              DocumentStore { docs: HashMap::new() }
+          }
+
+          pub fn save(&mut self, doc_id: &str, content: &str) {
+              self.docs.insert(doc_id.to_string(), content.to_string());
+          }
+
+          pub fn get(&self, doc_id: &str) -> Option<&str> {
+              self.docs.get(doc_id).map(String::as_str)
+          }
+
+          pub fn count(&self) -> usize {
+              self.docs.len()
+          }
+      }
+    src/search/query_engine.rs: |
+      use crate::search::indexer::Indexer;
+
+      pub struct QueryEngine {
+          indexer: Indexer,
+      }
+
+      impl QueryEngine {
+          pub fn new(indexer: Indexer) -> Self {
+              QueryEngine { indexer }
+          }
+
+          pub fn frequency(&self, term: &str) -> u32 {
+              self.indexer.term_count(term)
+          }
+      }
+    garbage/ranking.rs: |
+      // GARBAGE_BAL3BFX25_RANK_A = "ranking_marker"
+    garbage/stemming.rs: |
+      // GARBAGE_BAL3BFX25_STEM_B = "stemming_marker"
+    garbage/synonyms.rs: |
+      // GARBAGE_BAL3BFX25_SYN_C = "synonyms_marker"
+    garbage/spell_check.rs: |
+      // GARBAGE_BAL3BFX25_SPELL_D = "spell_check_marker"
+  changed_files:
+    src/search/indexer.rs: |
+      use crate::storage::document::DocumentStore;
+
+      pub struct Indexer {
+          store: DocumentStore,
+          term_freq: std::collections::HashMap<String, u32>,
+      }
+
+      impl Indexer {
+          pub fn new(store: DocumentStore) -> Self {
+              Indexer { store, term_freq: std::collections::HashMap::new() }
+          }
+
+          pub fn index(&mut self, doc_id: &str, content: &str) {
+              self.store.save(doc_id, content);
+              for word in content.split_whitespace() {
+                  let normalized = word.to_lowercase();
+                  *self.term_freq.entry(normalized).or_insert(0) += 1;
+              }
+          }
+
+          pub fn term_count(&self, term: &str) -> u32 {
+              let normalized = term.to_lowercase();
+              *self.term_freq.get(&normalized).unwrap_or(&0)
+          }
+
+          pub fn doc_count(&self) -> usize {
+              self.store.count()
+          }
+      }
+    src/storage/document.rs: |
+      use std::collections::HashMap;
+
+      pub struct DocumentStore {
+          docs: HashMap<String, String>,
+      }
+
+      impl DocumentStore {
+          pub fn new() -> Self {
+              DocumentStore { docs: HashMap::new() }
+          }
+
+          pub fn save(&mut self, doc_id: &str, content: &str) {
+              self.docs.insert(doc_id.to_string(), content.to_string());
+          }
+
+          pub fn get(&self, doc_id: &str) -> Option<&str> {
+              self.docs.get(doc_id).map(String::as_str)
+          }
+
+          pub fn count(&self) -> usize {
+              self.docs.len()
+          }
+      }
+    src/search/query_engine.rs: |
+      use crate::search::indexer::Indexer;
+
+      pub struct QueryEngine {
+          indexer: Indexer,
+      }
+
+      impl QueryEngine {
+          pub fn new(indexer: Indexer) -> Self {
+              QueryEngine { indexer }
+          }
+
+          pub fn frequency(&self, term: &str) -> u32 {
+              self.indexer.term_count(term)
+          }
+      }
+    garbage/ranking.rs: |
+      // GARBAGE_BAL3BFX25_RANK_A = "ranking_marker"
+    garbage/stemming.rs: |
+      // GARBAGE_BAL3BFX25_STEM_B = "stemming_marker"
+    garbage/synonyms.rs: |
+      // GARBAGE_BAL3BFX25_SYN_C = "synonyms_marker"
+    garbage/spell_check.rs: |
+      // GARBAGE_BAL3BFX25_SPELL_D = "spell_check_marker"
+  commit_message: "fix: normalize query term to lowercase in term_count for consistent lookup"
+fragments:
+- id: term_count_normalize
+  selector:
+    path: src/search/indexer.rs
+    anchor: "let normalized = term.to_lowercase();"
+- id: term_count_lookup
+  selector:
+    path: src/search/indexer.rs
+    anchor: "*self.term_freq.get(&normalized).unwrap_or(&0)"
+- id: index_normalizes
+  selector:
+    path: src/search/indexer.rs
+    anchor: "let normalized = word.to_lowercase();"
+- id: query_calls_term_count
+  selector:
+    path: src/search/query_engine.rs
+    anchor: "self.indexer.term_count(term)"
+- id: doc_store_save
+  selector:
+    path: src/storage/document.rs
+    anchor: "pub fn save(&mut self, doc_id: &str, content: &str) {"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_BAL3BFX25_RANK_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_BAL3BFX25_STEM_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_BAL3BFX25_SYN_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_BAL3BFX25_SPELL_D
+oracle:
+  required:
+  - term_count_normalize
+  - term_count_lookup
+  - index_normalizes
+  - query_calls_term_count
+  allowed:
+  - doc_store_save
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

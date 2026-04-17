@@ -1,0 +1,181 @@
+name: gap2_050_julia_multifile_same_file_signal_filter
+tags:
+- lang:julia
+- change:refactor
+- change:single_file
+- context:call_graph
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/RiskModel.jl: |
+      module RiskModel
+
+      export RiskFactor, score_risk, high_risk
+
+      struct RiskFactor
+          name::String
+          weight::Float64
+          value::Float64
+      end
+
+      function score_risk(factors::Vector{RiskFactor})::Float64
+          return sum(f.weight * f.value for f in factors)
+      end
+
+      function high_risk(factors::Vector{RiskFactor}, threshold::Float64)::Bool
+          return score_risk(factors) >= threshold
+      end
+
+      end
+    src/UnderwritingEngine.jl: |
+      module UnderwritingEngine
+
+      include("RiskModel.jl")
+      using .RiskModel
+
+      function underwrite(factors::Vector{RiskFactor}, threshold::Float64)::String
+          if high_risk(factors, threshold)
+              return "declined"
+          else
+              score = score_risk(factors)
+              premium = score * 100.0
+              return "approved: premium \$$premium"
+          end
+      end
+
+      end
+    src/ActuarialReport.jl: |
+      module ActuarialReport
+
+      include("RiskModel.jl")
+      using .RiskModel
+
+      function factor_breakdown(factors::Vector{RiskFactor})::Vector{String}
+          return ["$(f.name): $(f.weight * f.value)" for f in factors]
+      end
+
+      function total_exposure(portfolios::Vector{Vector{RiskFactor}})::Float64
+          return sum(score_risk(p) for p in portfolios)
+      end
+
+      end
+    src/GAP050_Compliance.jl: |
+      module Compliance
+
+      GAP050_GARBAGE_A = "compliance_marker"
+      GAP050_GARBAGE_B = "regulation_id"
+
+      function check_compliance(policy::String)::Bool
+          return length(policy) > 0
+      end
+
+      end
+    src/GAP050_Storage.jl: |
+      module Storage
+
+      GAP050_GARBAGE_C = "storage_marker"
+      GAP050_GARBAGE_D = "table_name"
+
+      function persist(key::String, data::Any)
+          println("Persisting $key")
+      end
+
+      end
+  changed_files:
+    src/RiskModel.jl: |
+      module RiskModel
+
+      export RiskFactor, score_risk, high_risk, normalize_factors
+
+      struct RiskFactor
+          name::String
+          weight::Float64
+          value::Float64
+          category::String
+      end
+
+      function score_risk(factors::Vector{RiskFactor})::Float64
+          return sum(f.weight * f.value for f in factors)
+      end
+
+      function high_risk(factors::Vector{RiskFactor}, threshold::Float64)::Bool
+          return score_risk(factors) >= threshold
+      end
+
+      function normalize_factors(factors::Vector{RiskFactor})::Vector{RiskFactor}
+          total_weight = sum(f.weight for f in factors)
+          total_weight == 0.0 && return factors
+          return [RiskFactor(f.name, f.weight / total_weight, f.value, f.category) for f in factors]
+      end
+
+      end
+    src/GAP050_Compliance.jl: |
+      module Compliance
+
+      GAP050_GARBAGE_A = "compliance_marker"
+      GAP050_GARBAGE_B = "regulation_id"
+
+      function check_compliance(policy::String)::Bool
+          return length(policy) > 0
+      end
+
+      end
+    src/GAP050_Storage.jl: |
+      module Storage
+
+      GAP050_GARBAGE_C = "storage_marker"
+      GAP050_GARBAGE_D = "table_name"
+
+      function persist(key::String, data::Any)
+          println("Persisting $key")
+      end
+
+      end
+  commit_message: "refactor: add category field to RiskFactor, add normalize_factors function"
+fragments:
+- id: risk_factor_category
+  selector:
+    path: src/RiskModel.jl
+    anchor: "category::String"
+- id: normalize_factors_func
+  selector:
+    path: src/RiskModel.jl
+    anchor: "function normalize_factors(factors::Vector{RiskFactor})"
+- id: underwriting_uses_high_risk
+  selector:
+    path: src/UnderwritingEngine.jl
+    anchor: "high_risk(factors, threshold)"
+- id: underwriting_uses_score
+  selector:
+    path: src/UnderwritingEngine.jl
+    anchor: "score = score_risk(factors)"
+- id: actuarial_uses_score
+  selector:
+    path: src/ActuarialReport.jl
+    anchor: "score_risk(p)"
+- id: no_garbage_a
+  selector:
+    anchor: GAP050_GARBAGE_A
+- id: no_garbage_b
+  selector:
+    anchor: GAP050_GARBAGE_B
+- id: no_garbage_c
+  selector:
+    anchor: GAP050_GARBAGE_C
+- id: no_garbage_d
+  selector:
+    anchor: GAP050_GARBAGE_D
+oracle:
+  required:
+  - risk_factor_category
+  - normalize_factors_func
+  - underwriting_uses_high_risk
+  - actuarial_uses_score
+  allowed:
+  - underwriting_uses_score
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

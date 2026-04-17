@@ -1,0 +1,209 @@
+name: bal_rare_029_clojure_ring_middleware
+tags:
+- lang:clojure
+- change:multi_file
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/web/middleware.clj: |
+      (ns web.middleware)
+
+      (defn wrap-logging [handler]
+        (fn [request]
+          (println "Request:" (:uri request))
+          (let [response (handler request)]
+            (println "Response:" (:status response))
+            response)))
+
+      (defn wrap-content-type [handler content-type]
+        (fn [request]
+          (let [response (handler request)]
+            (assoc-in response [:headers "Content-Type"] content-type))))
+    src/web/handler.clj: |
+      (ns web.handler
+        (:require [web.middleware :as mw]))
+
+      (defn hello-handler [request]
+        {:status 200
+         :body "Hello, World!"})
+
+      (def app
+        (-> hello-handler
+            mw/wrap-logging
+            (mw/wrap-content-type "text/plain")))
+    src/web/routes.clj: |
+      (ns web.routes
+        (:require [web.handler :as h]))
+
+      (def route-map
+        {"/" h/hello-handler})
+
+      (defn dispatch [request]
+        (if-let [handler (get route-map (:uri request))]
+          (handler request)
+          {:status 404 :body "Not Found"}))
+    garbage_auth.clj: |
+      (ns garbage-auth)
+
+      (def ^:const GARBAGE_RARE_029_ALGO_A "bcrypt")
+      (def ^:const GARBAGE_RARE_029_ROUNDS_B 12)
+
+      (defn garbage-hash []
+        GARBAGE_RARE_029_ALGO_A)
+
+      (def ^:const GARBAGE_RARE_029_SALT_C 16)
+    garbage_session.clj: |
+      (ns garbage-session)
+
+      (def ^:const GARBAGE_RARE_029_TTL_D 3600)
+      (def ^:const GARBAGE_RARE_029_STORE_E "redis")
+
+      (defn garbage-create []
+        GARBAGE_RARE_029_TTL_D)
+
+      (def ^:const GARBAGE_RARE_029_SECURE_F true)
+  changed_files:
+    src/web/middleware.clj: |
+      (ns web.middleware
+        (:require [clojure.string :as str]))
+
+      (defn wrap-logging [handler]
+        (fn [request]
+          (println "Request:" (:uri request))
+          (let [response (handler request)]
+            (println "Response:" (:status response))
+            response)))
+
+      (defn wrap-content-type [handler content-type]
+        (fn [request]
+          (let [response (handler request)]
+            (assoc-in response [:headers "Content-Type"] content-type))))
+
+      (defn wrap-cors [handler allowed-origins]
+        (fn [request]
+          (let [origin (get-in request [:headers "origin"])
+                response (handler request)]
+            (if (and origin (some #{origin} allowed-origins))
+              (-> response
+                  (assoc-in [:headers "Access-Control-Allow-Origin"] origin)
+                  (assoc-in [:headers "Access-Control-Allow-Methods"] "GET, POST, PUT, DELETE"))
+              response))))
+
+      (defn wrap-json-body [handler]
+        (fn [request]
+          (let [response (handler request)]
+            (if (map? (:body response))
+              (-> response
+                  (update :body pr-str)
+                  (assoc-in [:headers "Content-Type"] "application/json"))
+              response))))
+    src/web/handler.clj: |
+      (ns web.handler
+        (:require [web.middleware :as mw]))
+
+      (defn hello-handler [request]
+        {:status 200
+         :body {:message "Hello, World!"}})
+
+      (def app
+        (-> hello-handler
+            mw/wrap-json-body
+            mw/wrap-logging
+            (mw/wrap-cors ["http://localhost:3000"])
+            (mw/wrap-content-type "application/json")))
+    src/web/routes.clj: |
+      (ns web.routes
+        (:require [web.handler :as h]))
+
+      (def route-map
+        {"/" h/hello-handler})
+
+      (defn dispatch [request]
+        (if-let [handler (get route-map (:uri request))]
+          (handler request)
+          {:status 404 :body "Not Found"}))
+    garbage_auth.clj: |
+      (ns garbage-auth)
+
+      (def ^:const GARBAGE_RARE_029_ALGO_A "bcrypt")
+      (def ^:const GARBAGE_RARE_029_ROUNDS_B 12)
+
+      (defn garbage-hash []
+        GARBAGE_RARE_029_ALGO_A)
+
+      (def ^:const GARBAGE_RARE_029_SALT_C 16)
+    garbage_session.clj: |
+      (ns garbage-session)
+
+      (def ^:const GARBAGE_RARE_029_TTL_D 3600)
+      (def ^:const GARBAGE_RARE_029_STORE_E "redis")
+
+      (defn garbage-create []
+        GARBAGE_RARE_029_TTL_D)
+
+      (def ^:const GARBAGE_RARE_029_SECURE_F true)
+  commit_message: "feat: add CORS and JSON body middleware"
+fragments:
+- id: wrap_cors
+  selector:
+    path: src/web/middleware.clj
+    anchor: "(defn wrap-cors [handler allowed-origins]"
+- id: wrap_json_body
+  selector:
+    path: src/web/middleware.clj
+    anchor: "(defn wrap-json-body [handler]"
+- id: handler_uses_json
+  selector:
+    path: src/web/handler.clj
+    anchor: "mw/wrap-json-body"
+- id: handler_uses_cors
+  selector:
+    path: src/web/handler.clj
+    anchor: "mw/wrap-cors"
+- id: no_routes
+  selector:
+    path: src/web/routes.clj
+- id: no_garbage_auth
+  selector:
+    path: garbage_auth.clj
+- id: no_garbage_session
+  selector:
+    path: garbage_session.clj
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_RARE_029_ALGO_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_RARE_029_ROUNDS_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_RARE_029_SALT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_RARE_029_TTL_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_RARE_029_STORE_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_RARE_029_SECURE_F
+oracle:
+  required:
+  - wrap_cors
+  - wrap_json_body
+  - handler_uses_json
+  - handler_uses_cors
+  allowed: []
+  forbidden:
+  - no_routes
+  - no_garbage_auth
+  - no_garbage_session
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

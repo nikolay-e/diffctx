@@ -1,0 +1,118 @@
+name: xml_004_csproj_package_reference
+tags:
+- lang:xml
+- lang:csharp
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    MyApp/MyApp.csproj: |
+      <Project Sdk="Microsoft.NET.Sdk">
+        <PropertyGroup>
+          <OutputType>Exe</OutputType>
+          <TargetFramework>net8.0</TargetFramework>
+          <Nullable>enable</Nullable>
+        </PropertyGroup>
+        <ItemGroup>
+          <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.0"/>
+        </ItemGroup>
+      </Project>
+    MyApp/Services/ReportService.cs: |
+      using Microsoft.Extensions.Logging;
+      namespace MyApp.Services;
+      public class ReportService
+      {
+          private readonly ILogger<ReportService> _logger;
+          public ReportService(ILogger<ReportService> logger) { _logger = logger; }
+          public void Generate(string reportName)
+          {
+              _logger.LogInformation("Generating report {Name}", reportName);
+          }
+      }
+    MyApp/Services/PdfExporter.cs: |
+      using QuestPDF.Fluent;
+      using QuestPDF.Helpers;
+      using QuestPDF.Infrastructure;
+      namespace MyApp.Services;
+      public class PdfExporter
+      {
+          public byte[] Export(string title, string body)
+          {
+              return Document.Create(container =>
+              {
+                  container.Page(page =>
+                  {
+                      page.Content().Text(t =>
+                      {
+                          t.Span(title).Bold();
+                          t.Line(body);
+                      });
+                  });
+              }).GeneratePdf();
+          }
+      }
+    XML_NOISE_004_launchSettings.json: |
+      {
+        "profiles": {
+          "XML_NOISE_004_MyApp": {
+            "commandName": "Project",
+            "applicationUrl": "https://localhost:7001"
+          }
+        }
+      }
+    MyApp/Services/CacheService.cs: |
+      // XML_NOISE_004_CacheService = "in_memory_cache_marker"
+    garbage/EmailSender.cs: |
+      // XML_NOISE_004_EmailSender = "smtp_email_sender_marker"
+  changed_files:
+    MyApp/MyApp.csproj: |
+      <Project Sdk="Microsoft.NET.Sdk">
+        <PropertyGroup>
+          <OutputType>Exe</OutputType>
+          <TargetFramework>net8.0</TargetFramework>
+          <Nullable>enable</Nullable>
+        </PropertyGroup>
+        <ItemGroup>
+          <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.0"/>
+          <PackageReference Include="QuestPDF" Version="2024.3.0"/>
+        </ItemGroup>
+      </Project>
+  commit_message: "feat: add QuestPDF package reference to project file"
+fragments:
+- id: csproj_questpdf
+  selector:
+    path: MyApp/MyApp.csproj
+    anchor: QuestPDF
+- id: pdf_exporter
+  selector:
+    path: MyApp/Services/PdfExporter.cs
+    anchor: QuestPDF.Fluent
+- id: no_launch_settings
+  selector:
+    path: XML_NOISE_004_launchSettings.json
+- id: no_cache_service
+  selector:
+    path: MyApp/Services/CacheService.cs
+- id: no_global_0
+  selector:
+    anchor: XML_NOISE_004_MyApp
+- id: no_global_1
+  selector:
+    anchor: XML_NOISE_004_CacheService
+- id: no_global_2
+  selector:
+    anchor: XML_NOISE_004_EmailSender
+oracle:
+  required:
+  - csproj_questpdf
+  - pdf_exporter
+  allowed: []
+  forbidden:
+  - no_launch_settings
+  - no_cache_service
+  - no_global_0
+  - no_global_1
+  - no_global_2

@@ -108,34 +108,37 @@ def _process_ignore_line(line: str, rel: str) -> str:
     return ("!" + full) if neg else full
 
 
+def _collect_from_git(ignore_files: list[Path], root: Path, out: list[str]) -> None:
+    for ignore_path in ignore_files:
+        ignore_dir = ignore_path.parent
+        rel = "" if ignore_dir == root else ignore_dir.relative_to(root).as_posix()
+        for line in read_ignore_file(ignore_path):
+            out.append(_process_ignore_line(line, rel))
+
+
+def _collect_from_walk(root: Path, filenames_set: set[str], out: list[str]) -> None:
+    for dirpath, dirnames, filenames in os.walk(root, topdown=True):
+        dirnames[:] = sorted(d for d in dirnames if d not in PRUNE_DIRS and not _is_cache_dir(d))
+        ignore_dir = Path(dirpath)
+        rel = "" if ignore_dir == root else ignore_dir.relative_to(root).as_posix()
+
+        for ignore_filename in sorted(filenames_set & set(filenames)):
+            for line in read_ignore_file(ignore_dir / ignore_filename):
+                out.append(_process_ignore_line(line, rel))
+
+        config_ignore = ignore_dir / TREEMAPPER_CONFIG_DIR / TREEMAPPER_DIR_IGNORE
+        if config_ignore.is_file():
+            for line in read_ignore_file(config_ignore):
+                out.append(_process_ignore_line(line, rel))
+
+
 def _aggregate_all_ignore_patterns(root: Path, ignore_filenames: list[str]) -> list[str]:
     out: list[str] = []
-    filenames_set = set(ignore_filenames)
-
     ignore_files = _find_ignore_files_via_git(root, ignore_filenames)
     if ignore_files is not None:
-        for ignore_path in ignore_files:
-            ignore_dir = ignore_path.parent
-            rel = "" if ignore_dir == root else ignore_dir.relative_to(root).as_posix()
-            for line in read_ignore_file(ignore_path):
-                out.append(_process_ignore_line(line, rel))
+        _collect_from_git(ignore_files, root, out)
     else:
-        for dirpath, dirnames, filenames in os.walk(root, topdown=True):
-            dirnames[:] = sorted(d for d in dirnames if d not in PRUNE_DIRS and not _is_cache_dir(d))
-
-            ignore_dir = Path(dirpath)
-            rel = "" if ignore_dir == root else ignore_dir.relative_to(root).as_posix()
-
-            found_files = filenames_set & set(filenames)
-            for ignore_filename in sorted(found_files):
-                for line in read_ignore_file(ignore_dir / ignore_filename):
-                    out.append(_process_ignore_line(line, rel))
-
-            config_ignore = ignore_dir / TREEMAPPER_CONFIG_DIR / TREEMAPPER_DIR_IGNORE
-            if config_ignore.is_file():
-                for line in read_ignore_file(config_ignore):
-                    out.append(_process_ignore_line(line, rel))
-
+        _collect_from_walk(root, set(ignore_filenames), out)
     logger.debug("Aggregated %d ignore patterns from %s", len(out), root)
     return out
 

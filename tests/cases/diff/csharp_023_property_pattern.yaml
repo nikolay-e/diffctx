@@ -1,121 +1,167 @@
 name: csharp_023_property_pattern
+tags:
+- lang:sql
+- change:single_file
+- context:cross_module
+- distance:0hop
+- difficulty:medium
 repo:
   initial_files:
-    Models/Request.cs: |
-      namespace MyApp.Models;
+    db/schema.sql: |
+      CREATE TABLE orders (
+          id SERIAL PRIMARY KEY,
+          customer_id INTEGER NOT NULL REFERENCES customers(id),
+          status VARCHAR(20) NOT NULL DEFAULT 'pending',
+          total_amount NUMERIC(12, 2) NOT NULL,
+          created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
 
-      public class Request
-      {
-          public string Method { get; set; }
-          public string Path { get; set; }
-          public bool IsAuthenticated { get; set; }
-          public string? UserId { get; set; }
-      }
-    Services/RequestHandler.cs: |
-      namespace MyApp.Services;
+      CREATE TABLE order_items (
+          id SERIAL PRIMARY KEY,
+          order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+          product_id INTEGER NOT NULL,
+          quantity INTEGER NOT NULL CHECK (quantity > 0),
+          unit_price NUMERIC(10, 2) NOT NULL
+      );
+    src/orders/order_repo.py: |
+      def get_order(conn, order_id: int) -> dict | None:
+          cur = conn.cursor()
+          cur.execute(
+              "SELECT id, customer_id, status, total_amount FROM orders WHERE id = %s",
+              (order_id,)
+          )
+          row = cur.fetchone()
+          if row is None:
+              return None
+          return {"id": row[0], "customer_id": row[1], "status": row[2], "total": row[3]}
+    src/orders/item_repo.py: |
+      def get_order_items(conn, order_id: int) -> list:
+          cur = conn.cursor()
+          cur.execute(
+              "SELECT id, product_id, quantity, unit_price FROM order_items WHERE order_id = %s",
+              (order_id,)
+          )
+          return cur.fetchall()
+    garbage/shipping.py: |
+      GARBAGE_CS023_SHIP_A = "shipping_marker"
 
-      public class RequestHandler { }
-    Unrelated/CorsHandler.cs: |
-      namespace MyApp.Unrelated;
 
-      public class CorsHandler
-      {
-          private const string GARBAGE_CS_023_CORS_HANDLER_A = "cors_handler_marker";
+      def calculate_shipping(weight: float) -> float:
+          return weight * 0.5
+    garbage/tax.py: |
+      GARBAGE_CS023_TAX_B = "tax_marker"
 
-          public bool IsAllowed(string origin) => GARBAGE_CS_023_CORS_HANDLER_A.Length > 0;
-      }
-    Unrelated/CompressionMiddleware.cs: |
-      namespace MyApp.Unrelated;
 
-      public class CompressionMiddleware
-      {
-          public const string GARBAGE_CS_023_COMPRESSION_MW_B = "compression_middleware_marker";
+      def calculate_tax(amount: float, rate: float) -> float:
+          return amount * rate
+    garbage/coupon.py: |
+      GARBAGE_CS023_COUPON_C = "coupon_marker"
 
-          public byte[] Compress(byte[] data) => data;
-      }
+
+      def apply_coupon(total: float, code: str) -> float:
+          return total
   changed_files:
-    Models/Request.cs: |
-      namespace MyApp.Models;
+    db/schema.sql: |
+      CREATE TABLE orders (
+          id SERIAL PRIMARY KEY,
+          customer_id INTEGER NOT NULL REFERENCES customers(id),
+          status VARCHAR(20) NOT NULL DEFAULT 'pending',
+          total_amount NUMERIC(12, 2) NOT NULL,
+          currency CHAR(3) NOT NULL DEFAULT 'USD',
+          notes TEXT,
+          shipped_at TIMESTAMP,
+          created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
 
-      public class Request
-      {
-          public string Method { get; set; }
-          public string Path { get; set; }
-          public bool IsAuthenticated { get; set; }
-          public string? UserId { get; set; }
-      }
-    Services/RequestHandler.cs: |
-      using MyApp.Models;
+      CREATE TABLE order_items (
+          id SERIAL PRIMARY KEY,
+          order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+          product_id INTEGER NOT NULL,
+          quantity INTEGER NOT NULL CHECK (quantity > 0),
+          unit_price NUMERIC(10, 2) NOT NULL,
+          discount_amount NUMERIC(10, 2) NOT NULL DEFAULT 0
+      );
 
-      namespace MyApp.Services;
+      CREATE INDEX idx_orders_customer ON orders(customer_id);
+      CREATE INDEX idx_orders_status ON orders(status);
+    src/orders/order_repo.py: |
+      def get_order(conn, order_id: int) -> dict | None:
+          cur = conn.cursor()
+          cur.execute(
+              "SELECT id, customer_id, status, total_amount FROM orders WHERE id = %s",
+              (order_id,)
+          )
+          row = cur.fetchone()
+          if row is None:
+              return None
+          return {"id": row[0], "customer_id": row[1], "status": row[2], "total": row[3]}
+    src/orders/item_repo.py: |
+      def get_order_items(conn, order_id: int) -> list:
+          cur = conn.cursor()
+          cur.execute(
+              "SELECT id, product_id, quantity, unit_price FROM order_items WHERE order_id = %s",
+              (order_id,)
+          )
+          return cur.fetchall()
+    garbage/shipping.py: |
+      GARBAGE_CS023_SHIP_A = "shipping_marker"
 
-      public class RequestHandler
-      {
-          public string Route(Request request)
-          {
-              return request switch
-              {
-                  { Method: "GET", Path: "/" } => "Home",
-                  { Method: "GET", Path: "/api", IsAuthenticated: true } => "API",
-                  { Method: "POST", IsAuthenticated: true, UserId: not null } => "Authorized Post",
-                  { IsAuthenticated: false } => "Unauthorized",
-                  _ => "Not Found"
-              };
-          }
-      }
-    Unrelated/CorsHandler.cs: |
-      namespace MyApp.Unrelated;
 
-      public class CorsHandler
-      {
-          private const string GARBAGE_CS_023_CORS_HANDLER_A = "cors_handler_marker";
+      def calculate_shipping(weight: float) -> float:
+          return weight * 0.5
+    garbage/tax.py: |
+      GARBAGE_CS023_TAX_B = "tax_marker"
 
-          public bool IsAllowed(string origin) => GARBAGE_CS_023_CORS_HANDLER_A.Length > 0;
-      }
-    Unrelated/CompressionMiddleware.cs: |
-      namespace MyApp.Unrelated;
 
-      public class CompressionMiddleware
-      {
-          public const string GARBAGE_CS_023_COMPRESSION_MW_B = "compression_middleware_marker";
+      def calculate_tax(amount: float, rate: float) -> float:
+          return amount * rate
+    garbage/coupon.py: |
+      GARBAGE_CS023_COUPON_C = "coupon_marker"
 
-          public byte[] Compress(byte[] data) => data;
-      }
-  commit_message: Update files
+
+      def apply_coupon(total: float, code: str) -> float:
+          return total
+  commit_message: "feat: add currency/notes/shipped_at to orders and discount to items"
 fragments:
-- id: requesthandler_file
+- id: orders_currency_col
   selector:
-    path: Services/RequestHandler.cs
-- id: req_global_0
+    path: db/schema.sql
+    anchor: "currency CHAR(3)"
+- id: orders_shipped_at
   selector:
-    anchor: using MyApp.Models;
-- id: req_global_1
+    path: db/schema.sql
+    anchor: "shipped_at TIMESTAMP"
+- id: items_discount_col
   selector:
-    anchor: public class RequestHandler
-- id: no_global_0
+    path: db/schema.sql
+    anchor: "discount_amount NUMERIC"
+- id: orders_indexes
   selector:
-    anchor: GARBAGE_CS_023_COMPRESSION_MW_B
-- id: no_global_1
+    path: db/schema.sql
+    anchor: "idx_orders_status"
+- id: order_repo_query
   selector:
-    anchor: GARBAGE_CS_023_CORS_HANDLER_A
-- id: no_global_2
+    path: src/orders/order_repo.py
+    anchor: "SELECT id, customer_id, status, total_amount FROM orders"
+- id: no_garbage_a
   selector:
-    anchor: GARBAGE_CS_023_CORS_HANDLER_A.Length
-- id: no_global_3
+    anchor: GARBAGE_CS023_SHIP_A
+- id: no_garbage_b
   selector:
-    anchor: CompressionMiddleware.cs
-- id: no_global_4
+    anchor: GARBAGE_CS023_TAX_B
+- id: no_garbage_c
   selector:
-    anchor: CorsHandler.cs
+    anchor: GARBAGE_CS023_COUPON_C
 oracle:
   required:
-  - requesthandler_file
-  - req_global_0
-  - req_global_1
+  - orders_currency_col
+  - orders_shipped_at
+  - items_discount_col
+  - orders_indexes
+  - order_repo_query
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

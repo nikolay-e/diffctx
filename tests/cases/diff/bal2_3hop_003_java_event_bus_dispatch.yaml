@@ -1,0 +1,196 @@
+name: bal2_3hop_003_java_event_bus_dispatch
+tags:
+- lang:java
+- change:single_file
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/app/event/Event.java: |
+      package com.app.event;
+
+      public class Event {
+          private final String type;
+          private final String payload;
+          public Event(String type, String payload) {
+              this.type = type;
+              this.payload = payload;
+          }
+          public String getType() { return type; }
+          public String getPayload() { return payload; }
+      }
+    src/main/java/com/app/event/EventBus.java: |
+      package com.app.event;
+
+      import com.app.event.Event;
+      import java.util.ArrayList;
+      import java.util.List;
+
+      public class EventBus {
+          private final List<Event> events = new ArrayList<>();
+          public void publish(Event event) {
+              events.add(event);
+          }
+          public List<Event> getEvents() { return events; }
+      }
+    src/main/java/com/app/service/NotificationService.java: |
+      package com.app.service;
+
+      import com.app.event.EventBus;
+      import com.app.event.Event;
+
+      public class NotificationService {
+          private final EventBus eventBus;
+          public NotificationService(EventBus eventBus) {
+              this.eventBus = eventBus;
+          }
+          public void notifyUser(String userId, String message) {
+              eventBus.publish(new Event("notify", userId + ":" + message));
+          }
+      }
+    src/main/java/com/app/controller/AlertController.java: |
+      package com.app.controller;
+
+      import com.app.service.NotificationService;
+
+      public class AlertController {
+          private final NotificationService notificationService;
+          public AlertController(NotificationService notificationService) {
+              this.notificationService = notificationService;
+          }
+          public void sendAlert(String userId, String alert) {
+              notificationService.notifyUser(userId, alert);
+          }
+      }
+    src/main/java/com/app/util/JsonParser.java: |
+      package com.app.util;
+
+      public class JsonParser {
+          public static String toJson(Object obj) {
+              return obj.toString();
+          }
+      }
+    src/main/java/com/app/util/Validator.java: |
+      package com.app.util;
+
+      public class Validator {
+          public static boolean isNonEmpty(String s) {
+              return s != null && !s.isEmpty();
+          }
+      }
+  changed_files:
+    src/main/java/com/app/event/Event.java: |
+      package com.app.event;
+
+      import java.time.Instant;
+
+      public class Event {
+          private final String type;
+          private final String payload;
+          private final Instant timestamp;
+          public Event(String type, String payload) {
+              this.type = type;
+              this.payload = payload;
+              this.timestamp = Instant.now();
+          }
+          public String getType() { return type; }
+          public String getPayload() { return payload; }
+          public Instant getTimestamp() { return timestamp; }
+      }
+    src/main/java/com/app/event/EventBus.java: |
+      package com.app.event;
+
+      import com.app.event.Event;
+      import java.util.ArrayList;
+      import java.util.List;
+
+      public class EventBus {
+          private final List<Event> events = new ArrayList<>();
+          public void publish(Event event) {
+              events.add(event);
+          }
+          public List<Event> getEvents() { return events; }
+      }
+    src/main/java/com/app/service/NotificationService.java: |
+      package com.app.service;
+
+      import com.app.event.EventBus;
+      import com.app.event.Event;
+
+      public class NotificationService {
+          private final EventBus eventBus;
+          public NotificationService(EventBus eventBus) {
+              this.eventBus = eventBus;
+          }
+          public void notifyUser(String userId, String message) {
+              eventBus.publish(new Event("notify", userId + ":" + message));
+          }
+      }
+    src/main/java/com/app/controller/AlertController.java: |
+      package com.app.controller;
+
+      import com.app.service.NotificationService;
+
+      public class AlertController {
+          private final NotificationService notificationService;
+          public AlertController(NotificationService notificationService) {
+              this.notificationService = notificationService;
+          }
+          public void sendAlert(String userId, String alert) {
+              notificationService.notifyUser(userId, alert);
+          }
+      }
+    src/main/java/com/app/util/JsonParser.java: |
+      package com.app.util;
+
+      public class JsonParser {
+          public static String toJson(Object obj) {
+              return obj.toString();
+          }
+      }
+    src/main/java/com/app/util/Validator.java: |
+      package com.app.util;
+
+      public class Validator {
+          public static boolean isNonEmpty(String s) {
+              return s != null && !s.isEmpty();
+          }
+      }
+  commit_message: "feat: add timestamp to Event"
+fragments:
+- id: event_timestamp
+  selector:
+    path: src/main/java/com/app/event/Event.java
+    anchor: "private final Instant timestamp"
+- id: bus_imports_event
+  selector:
+    path: src/main/java/com/app/event/EventBus.java
+    anchor: "import com.app.event.Event"
+- id: notif_imports_bus
+  selector:
+    path: src/main/java/com/app/service/NotificationService.java
+    anchor: "import com.app.event.EventBus"
+- id: alert_imports_notif
+  selector:
+    path: src/main/java/com/app/controller/AlertController.java
+    anchor: "import com.app.service.NotificationService"
+- id: no_json_parser
+  selector:
+    path: src/main/java/com/app/util/JsonParser.java
+    anchor: "class JsonParser"
+- id: no_validator
+  selector:
+    path: src/main/java/com/app/util/Validator.java
+    anchor: "class Validator"
+oracle:
+  required:
+  - event_timestamp
+  - bus_imports_event
+  - notif_imports_bus
+  - alert_imports_notif
+  allowed: []
+  forbidden:
+  - no_json_parser
+  - no_validator

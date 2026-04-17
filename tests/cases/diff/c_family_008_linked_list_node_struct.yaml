@@ -1,0 +1,122 @@
+name: c_family_008_linked_list_node_struct
+tags:
+- lang:c
+- change:multi_file
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    node.h: |
+      #ifndef NODE_H
+      #define NODE_H
+      typedef struct node_t {
+          int value;
+          struct node_t *next;
+      } node_t;
+      node_t *node_create(int value);
+      void node_free(node_t *n);
+      #endif
+    list.c: |
+      #include "node.h"
+      #include <stdlib.h>
+      node_t *node_create(int value) {
+          node_t *n = malloc(sizeof(node_t));
+          n->value = value;
+          n->next = 0;
+          return n;
+      }
+      void node_free(node_t *n) { free(n); }
+    iterator.c: |
+      #include "node.h"
+      void iter_forward(node_t *head, void (*fn)(int)) {
+          for (node_t *cur = head; cur != 0; cur = cur->next)
+              fn(cur->value);
+      }
+    C_NOISE_008_timer.h: |
+      #ifndef C_NOISE_008_TIMER_H
+      #define C_NOISE_008_TIMER_H
+      void C_NOISE_008_timer_start(void);
+      long C_NOISE_008_timer_elapsed_ms(void);
+      #endif
+    C_NOISE_008_timer.c: |
+      #include "C_NOISE_008_timer.h"
+      void C_NOISE_008_timer_start(void) {}
+      long C_NOISE_008_timer_elapsed_ms(void) { return 0L; }
+  changed_files:
+    node.h: |
+      #ifndef NODE_H
+      #define NODE_H
+      typedef struct node_t {
+          int value;
+          struct node_t *next;
+          struct node_t *prev;
+      } node_t;
+      node_t *node_create(int value);
+      void node_free(node_t *n);
+      #endif
+    list.c: |
+      #include "node.h"
+      #include <stdlib.h>
+      node_t *node_create(int value) {
+          node_t *n = malloc(sizeof(node_t));
+          n->value = value;
+          n->next = 0;
+          n->prev = 0;
+          return n;
+      }
+      void node_free(node_t *n) { free(n); }
+    iterator.c: |
+      #include "node.h"
+      void iter_forward(node_t *head, void (*fn)(int)) {
+          for (node_t *cur = head; cur != 0; cur = cur->next)
+              fn(cur->value);
+      }
+      void iter_backward(node_t *tail, void (*fn)(int)) {
+          for (node_t *cur = tail; cur != 0; cur = cur->prev)
+              fn(cur->value);
+      }
+    C_NOISE_008_timer.h: |
+      #ifndef C_NOISE_008_TIMER_H
+      #define C_NOISE_008_TIMER_H
+      void C_NOISE_008_timer_start(void);
+      long C_NOISE_008_timer_elapsed_ms(void);
+      #endif
+    C_NOISE_008_timer.c: |
+      #include "C_NOISE_008_timer.h"
+      void C_NOISE_008_timer_start(void) {}
+      long C_NOISE_008_timer_elapsed_ms(void) { return 0L; }
+  commit_message: "feat: add prev pointer to node_t making list doubly-linked; add iter_backward"
+fragments:
+- id: node_h_prev
+  selector:
+    path: node.h
+    anchor: "struct node_t *prev;"
+- id: list_c_prev
+  selector:
+    path: list.c
+    anchor: "n->prev = 0;"
+- id: iterator_c_backward
+  selector:
+    path: iterator.c
+    anchor: iter_backward
+- id: no_timer_h
+  selector:
+    anchor: C_NOISE_008_timer_start
+- id: no_timer_c
+  selector:
+    path: C_NOISE_008_timer.c
+- id: no_global_elapsed
+  selector:
+    anchor: C_NOISE_008_timer_elapsed_ms
+oracle:
+  required:
+  - node_h_prev
+  - list_c_prev
+  - iterator_c_backward
+  allowed: []
+  forbidden:
+  - no_timer_h
+  - no_timer_c
+  - no_global_elapsed

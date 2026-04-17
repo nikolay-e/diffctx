@@ -1,0 +1,214 @@
+name: gap_193_zig_same_file_matrix_dimensions
+tags:
+- lang:zig
+- change:multi_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+repo:
+  initial_files:
+    src/matrix.zig: |
+      const std = @import("std");
+
+      pub const Matrix = struct {
+          rows: u32,
+          cols: u32,
+          data: []f64,
+
+          pub fn init(rows: u32, cols: u32, allocator: std.mem.Allocator) !Matrix {
+              const data = try allocator.alloc(f64, rows * cols);
+              return Matrix{ .rows = rows, .cols = cols, .data = data };
+          }
+
+          pub fn get(self: Matrix, r: u32, c: u32) f64 {
+              return self.data[r * self.cols + c];
+          }
+
+          pub fn set(self: *Matrix, r: u32, c: u32, val: f64) void {
+              self.data[r * self.cols + c] = val;
+          }
+
+          pub fn transpose(self: Matrix, allocator: std.mem.Allocator) !Matrix {
+              var result = try init(self.cols, self.rows, allocator);
+              var r: u32 = 0;
+              while (r < self.rows) : (r += 1) {
+                  var c: u32 = 0;
+                  while (c < self.cols) : (c += 1) {
+                      result.set(c, r, self.get(r, c));
+                  }
+              }
+              return result;
+          }
+      };
+    src/vector.zig: |
+      const std = @import("std");
+
+      pub const Vec3 = struct {
+          x: f64,
+          y: f64,
+          z: f64,
+
+          pub fn dot(a: Vec3, b: Vec3) f64 {
+              return a.x * b.x + a.y * b.y + a.z * b.z;
+          }
+
+          pub fn cross(a: Vec3, b: Vec3) Vec3 {
+              return Vec3{
+                  .x = a.y * b.z - a.z * b.y,
+                  .y = a.z * b.x - a.x * b.z,
+                  .z = a.x * b.y - a.y * b.x,
+              };
+          }
+      };
+    src/random.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_193_RANDOM_MARKER_A: []const u8 = "random_noise";
+      const TRAP_GAP_193_RANDOM_FLAG_B: u64 = 42;
+
+      pub fn nextFloat() f64 {
+          return 0.5;
+      }
+
+      pub fn nextInt(max: u32) u32 {
+          _ = max;
+          return 0;
+      }
+    src/color.zig: |
+      const TRAP_GAP_193_COLOR_MARKER_C: []const u8 = "color_noise";
+      const TRAP_GAP_193_COLOR_FLAG_D: u32 = 0xFF0000;
+
+      pub const Color = struct {
+          r: u8,
+          g: u8,
+          b: u8,
+      };
+  changed_files:
+    src/matrix.zig: |
+      const std = @import("std");
+
+      pub const Matrix = struct {
+          rows: u32,
+          cols: u32,
+          stride: u32,
+          data: []f64,
+
+          pub fn init(rows: u32, cols: u32, allocator: std.mem.Allocator) !Matrix {
+              const data = try allocator.alloc(f64, rows * cols);
+              return Matrix{ .rows = rows, .cols = cols, .stride = cols, .data = data };
+          }
+
+          pub fn get(self: Matrix, r: u32, c: u32) f64 {
+              return self.data[r * self.stride + c];
+          }
+
+          pub fn set(self: *Matrix, r: u32, c: u32, val: f64) void {
+              self.data[r * self.stride + c] = val;
+          }
+
+          pub fn transpose(self: Matrix, allocator: std.mem.Allocator) !Matrix {
+              var result = try init(self.cols, self.rows, allocator);
+              var r: u32 = 0;
+              while (r < self.rows) : (r += 1) {
+                  var c: u32 = 0;
+                  while (c < self.cols) : (c += 1) {
+                      result.set(c, r, self.get(r, c));
+                  }
+              }
+              return result;
+          }
+      };
+    src/vector.zig: |
+      const std = @import("std");
+
+      pub const Vec3 = struct {
+          x: f64,
+          y: f64,
+          z: f64,
+
+          pub fn dot(a: Vec3, b: Vec3) f64 {
+              return a.x * b.x + a.y * b.y + a.z * b.z;
+          }
+
+          pub fn cross(a: Vec3, b: Vec3) Vec3 {
+              return Vec3{
+                  .x = a.y * b.z - a.z * b.y,
+                  .y = a.z * b.x - a.x * b.z,
+                  .z = a.x * b.y - a.y * b.x,
+              };
+          }
+
+          pub fn length(self: Vec3) f64 {
+              return @sqrt(self.x * self.x + self.y * self.y + self.z * self.z);
+          }
+      };
+    src/random.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_193_RANDOM_MARKER_A: []const u8 = "random_noise";
+      const TRAP_GAP_193_RANDOM_FLAG_B: u64 = 42;
+
+      pub fn nextFloat() f64 {
+          return 0.5;
+      }
+
+      pub fn nextInt(max: u32) u32 {
+          _ = max;
+          return 0;
+      }
+    src/color.zig: |
+      const TRAP_GAP_193_COLOR_MARKER_C: []const u8 = "color_noise";
+      const TRAP_GAP_193_COLOR_FLAG_D: u32 = 0xFF0000;
+
+      pub const Color = struct {
+          r: u8,
+          g: u8,
+          b: u8,
+      };
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: matrix_stride
+  selector:
+    path: src/matrix.zig
+    anchor: "stride: u32"
+- id: matrix_get_stride
+  selector:
+    path: src/matrix.zig
+    anchor: self.data[r * self.stride + c]
+- id: vector_length
+  selector:
+    path: src/vector.zig
+    anchor: "pub fn length(self: Vec3) f64"
+- id: no_random
+  selector:
+    path: src/random.zig
+- id: no_color
+  selector:
+    path: src/color.zig
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP_193_RANDOM_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP_193_RANDOM_FLAG_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP_193_COLOR_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP_193_COLOR_FLAG_D
+oracle:
+  required:
+  - matrix_stride
+  - matrix_get_stride
+  - vector_length
+  allowed: []
+  forbidden:
+  - no_random
+  - no_color
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

@@ -1,0 +1,100 @@
+name: gap_149_shell_terraform_backup_cron_same_file
+tags:
+- change:config
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+- lang:shell
+- lang:terraform
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    scripts/backup.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      BACKUP_DIR="/var/backups/postgres"
+      RETENTION_DAYS=7
+      DB_HOST="${DB_HOST:-localhost}"
+      DB_PORT="${DB_PORT:-5432}"
+      DB_NAME="${DB_NAME:-appdb}"
+
+      TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+      BACKUP_FILE="${BACKUP_DIR}/${DB_NAME}_${TIMESTAMP}.sql.gz"
+
+      mkdir -p "${BACKUP_DIR}"
+
+      pg_dump -h "${DB_HOST}" -p "${DB_PORT}" "${DB_NAME}" | gzip > "${BACKUP_FILE}"
+
+      find "${BACKUP_DIR}" -name "*.sql.gz" -mtime +${RETENTION_DAYS} -delete
+    terraform/lambda.tf: |
+      resource "aws_lambda_function" "api" {
+        function_name = "api-handler"
+        runtime       = "python3.11"
+        handler       = "main.handler"
+        filename      = "lambda.zip"
+        role          = "arn:aws:iam::role/lambda-role"
+        timeout       = 30
+        memory_size   = 256
+      }
+    terraform/cloudwatch_events.tf: |
+      resource "aws_cloudwatch_event_rule" "nightly" {
+        name                = "nightly-report"
+        schedule_expression = "cron(0 2 * * ? *)"
+      }
+
+      resource "aws_cloudwatch_event_target" "report" {
+        rule      = aws_cloudwatch_event_rule.nightly.name
+        target_id = "report-lambda"
+        arn       = "arn:aws:lambda:us-east-1:123456:function:report"
+      }
+  changed_files:
+    scripts/backup.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      BACKUP_DIR="/var/backups/postgres"
+      RETENTION_DAYS=14
+      DB_HOST="${DB_HOST:-localhost}"
+      DB_PORT="${DB_PORT:-5432}"
+      DB_NAME="${DB_NAME:-appdb}"
+      PARALLEL_JOBS="${PARALLEL_JOBS:-4}"
+
+      TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+      BACKUP_FILE="${BACKUP_DIR}/${DB_NAME}_${TIMESTAMP}.dump"
+
+      mkdir -p "${BACKUP_DIR}"
+
+      pg_dump -h "${DB_HOST}" -p "${DB_PORT}" -Fc -j "${PARALLEL_JOBS}" "${DB_NAME}" > "${BACKUP_FILE}"
+
+      find "${BACKUP_DIR}" -name "*.dump" -mtime +${RETENTION_DAYS} -delete
+      find "${BACKUP_DIR}" -name "*.sql.gz" -mtime +${RETENTION_DAYS} -delete
+fragments:
+- id: retention
+  selector:
+    path: scripts/backup.sh
+    anchor: RETENTION_DAYS=14
+- id: parallel_jobs
+  selector:
+    path: scripts/backup.sh
+    anchor: PARALLEL_JOBS
+- id: format_change
+  selector:
+    path: scripts/backup.sh
+    anchor: "-Fc"
+- id: no_lambda
+  selector:
+    path: terraform/lambda.tf
+- id: no_cloudwatch
+  selector:
+    path: terraform/cloudwatch_events.tf
+oracle:
+  required:
+  - retention
+  - parallel_jobs
+  - format_change
+  forbidden:
+  - no_lambda
+  - no_cloudwatch

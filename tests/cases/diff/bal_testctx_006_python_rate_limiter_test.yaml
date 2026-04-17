@@ -1,0 +1,118 @@
+name: bal_testctx_006_python_rate_limiter_test
+tags:
+- lang:python
+- change:single_file
+- change:signature
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/rate_limiter.py: |
+      import time
+      from collections import defaultdict
+
+      class RateLimiter:
+          def __init__(self, max_requests: int, window_seconds: int):
+              self.max_requests = max_requests
+              self.window_seconds = window_seconds
+              self._requests: dict[str, list[float]] = defaultdict(list)
+
+          def is_allowed(self, client_id: str) -> bool:
+              now = time.time()
+              cutoff = now - self.window_seconds
+              self._requests[client_id] = [
+                  t for t in self._requests[client_id] if t > cutoff
+              ]
+              if len(self._requests[client_id]) >= self.max_requests:
+                  return False
+              self._requests[client_id].append(now)
+              return True
+    tests/test_rate_limiter.py: |
+      from src.rate_limiter import RateLimiter
+
+      def test_allows_under_limit():
+          limiter = RateLimiter(max_requests=5, window_seconds=60)
+          assert limiter.is_allowed("client_1") is True
+
+      def test_blocks_over_limit():
+          limiter = RateLimiter(max_requests=2, window_seconds=60)
+          limiter.is_allowed("client_1")
+          limiter.is_allowed("client_1")
+          assert limiter.is_allowed("client_1") is False
+    src/metrics.py: |
+      from dataclasses import dataclass, field
+
+      @dataclass
+      class RequestMetrics:
+          total_requests: int = 0
+          failed_requests: int = 0
+          latencies: list[float] = field(default_factory=list)
+
+          def record(self, latency: float, success: bool) -> None:
+              self.total_requests += 1
+              if not success:
+                  self.failed_requests += 1
+              self.latencies.append(latency)
+  changed_files:
+    src/rate_limiter.py: |
+      import time
+      from collections import defaultdict
+      from typing import Optional
+
+      class RateLimiter:
+          def __init__(self, max_requests: int, window_seconds: int):
+              self.max_requests = max_requests
+              self.window_seconds = window_seconds
+              self._requests: dict[str, list[float]] = defaultdict(list)
+
+          def is_allowed(self, client_id: str) -> bool:
+              now = time.time()
+              cutoff = now - self.window_seconds
+              self._requests[client_id] = [
+                  t for t in self._requests[client_id] if t > cutoff
+              ]
+              if len(self._requests[client_id]) >= self.max_requests:
+                  return False
+              self._requests[client_id].append(now)
+              return True
+
+          def remaining(self, client_id: str) -> int:
+              now = time.time()
+              cutoff = now - self.window_seconds
+              active = [t for t in self._requests.get(client_id, []) if t > cutoff]
+              return max(0, self.max_requests - len(active))
+
+          def reset(self, client_id: str) -> None:
+              self._requests.pop(client_id, None)
+  commit_message: "feat: add remaining count and reset to RateLimiter"
+fragments:
+- id: remaining_fn
+  selector:
+    path: src/rate_limiter.py
+    anchor: "def remaining(self, client_id: str)"
+- id: reset_fn
+  selector:
+    path: src/rate_limiter.py
+    anchor: "def reset(self, client_id: str)"
+- id: test_imports_limiter
+  selector:
+    path: tests/test_rate_limiter.py
+    anchor: "from src.rate_limiter import RateLimiter"
+- id: test_allows_under
+  selector:
+    path: tests/test_rate_limiter.py
+    anchor: "def test_allows_under_limit"
+- id: no_metrics
+  selector:
+    path: src/metrics.py
+    anchor: "class RequestMetrics"
+oracle:
+  required:
+  - remaining_fn
+  - reset_fn
+  - test_imports_limiter
+  allowed:
+  - test_allows_under
+  forbidden:
+  - no_metrics

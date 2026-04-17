@@ -1,0 +1,106 @@
+name: gap2_154_python_import_chain_tax_engine
+tags:
+- change:new_function
+- change:signature
+- change:single_file
+- context:import_chain
+- difficulty:hard
+- distance:2hop
+- lang:python
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    tax/engine.py: |
+      from tax.brackets import marginal_rate
+
+      class TaxEngine:
+          def __init__(self, filing_status: str):
+              self.filing_status = filing_status
+
+          def compute_tax(self, income: float) -> float:
+              rate = marginal_rate(income, self.filing_status)
+              return round(income * rate, 2)
+    tax/brackets.py: |
+      from tax.jurisdictions import bracket_table
+
+      def marginal_rate(income: float, status: str) -> float:
+          brackets = bracket_table(status)
+          rate = 0.0
+          for threshold, r in brackets:
+              if income >= threshold:
+                  rate = r
+          return rate
+
+      def effective_rate(income: float, tax_amount: float) -> float:
+          return round(tax_amount / income, 4) if income > 0 else 0.0
+    tax/jurisdictions.py: |
+      FEDERAL_BRACKETS_SINGLE = [
+          (0, 0.10), (11000, 0.12), (44725, 0.22),
+          (95375, 0.24), (182100, 0.32), (231250, 0.35),
+      ]
+
+      FEDERAL_BRACKETS_JOINT = [
+          (0, 0.10), (22000, 0.12), (89450, 0.22),
+          (190750, 0.24), (364200, 0.32), (462500, 0.35),
+      ]
+
+      def bracket_table(status: str) -> list[tuple[int, float]]:
+          if status == "joint":
+              return FEDERAL_BRACKETS_JOINT
+          return FEDERAL_BRACKETS_SINGLE
+    tax/deductions.py: |
+      STANDARD_DEDUCTION_SINGLE = 13850
+      STANDARD_DEDUCTION_JOINT = 27700
+
+      class DeductionCalculator:
+          def standard_deduction(self, status: str) -> int:
+              if status == "joint":
+                  return STANDARD_DEDUCTION_JOINT
+              return STANDARD_DEDUCTION_SINGLE
+
+          def itemized_total(self, items: list[float]) -> float:
+              return sum(items)
+  changed_files:
+    tax/engine.py: |
+      from tax.brackets import marginal_rate, effective_rate
+
+      class TaxEngine:
+          def __init__(self, filing_status: str):
+              self.filing_status = filing_status
+
+          def compute_tax(self, income: float) -> float:
+              rate = marginal_rate(income, self.filing_status)
+              return round(income * rate, 2)
+
+          def compute_effective_rate(self, income: float) -> float:
+              tax = self.compute_tax(income)
+              return effective_rate(income, tax)
+  commit_message: "feat: add effective tax rate computation"
+fragments:
+- id: engine_effective
+  selector:
+    path: tax/engine.py
+    anchor: "def compute_effective_rate"
+- id: brackets_effective
+  selector:
+    path: tax/brackets.py
+    anchor: "def effective_rate"
+- id: jurisdictions_brackets
+  selector:
+    path: tax/jurisdictions.py
+    anchor: FEDERAL_BRACKETS_SINGLE
+- id: no_deductions
+  selector:
+    path: tax/deductions.py
+- id: no_standard_deduction
+  selector:
+    anchor: STANDARD_DEDUCTION_SINGLE
+oracle:
+  required:
+  - engine_effective
+  - brackets_effective
+  - jurisdictions_brackets
+  forbidden:
+  - no_deductions
+  - no_standard_deduction

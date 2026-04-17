@@ -1,0 +1,108 @@
+name: bal_crossmod_026_kotlin_validator_to_handler
+tags:
+- lang:kotlin
+- change:single_file
+- change:new_function
+- context:cross_module
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/main/kotlin/validation/InputValidator.kt: |
+      package validation
+
+      object InputValidator {
+          fun isValidEmail(email: String): Boolean {
+              return email.contains("@") && email.contains(".")
+          }
+
+          fun isValidPassword(password: String): Boolean {
+              return password.length >= 8
+          }
+      }
+    src/main/kotlin/handler/RegistrationHandler.kt: |
+      package handler
+
+      import validation.InputValidator
+
+      class RegistrationHandler {
+          fun register(email: String, password: String): Result<String> {
+              if (!InputValidator.isValidEmail(email)) {
+                  return Result.failure(IllegalArgumentException("Invalid email"))
+              }
+              if (!InputValidator.isValidPassword(password)) {
+                  return Result.failure(IllegalArgumentException("Weak password"))
+              }
+              return Result.success("user_${email.hashCode()}")
+          }
+      }
+    src/main/kotlin/config/AppConfig.kt: |
+      package config
+
+      data class AppConfig(
+          val port: Int = 8080,
+          val host: String = "0.0.0.0",
+          val debug: Boolean = false
+      )
+  changed_files:
+    src/main/kotlin/validation/InputValidator.kt: |
+      package validation
+
+      object InputValidator {
+          fun isValidEmail(email: String): Boolean {
+              return email.contains("@") && email.contains(".")
+          }
+
+          fun isValidPassword(password: String): Boolean {
+              return password.length >= 8
+          }
+
+          fun isValidUsername(username: String): Boolean {
+              return username.length in 3..32 && username.all { it.isLetterOrDigit() || it == '_' }
+          }
+      }
+    src/main/kotlin/handler/RegistrationHandler.kt: |
+      package handler
+
+      import validation.InputValidator
+
+      class RegistrationHandler {
+          fun register(email: String, password: String): Result<String> {
+              if (!InputValidator.isValidEmail(email)) {
+                  return Result.failure(IllegalArgumentException("Invalid email"))
+              }
+              if (!InputValidator.isValidPassword(password)) {
+                  return Result.failure(IllegalArgumentException("Weak password"))
+              }
+              return Result.success("user_${email.hashCode()}")
+          }
+      }
+    src/main/kotlin/config/AppConfig.kt: |
+      package config
+
+      data class AppConfig(
+          val port: Int = 8080,
+          val host: String = "0.0.0.0",
+          val debug: Boolean = false
+      )
+  commit_message: "feat: add username validation"
+fragments:
+- id: is_valid_username
+  selector:
+    path: src/main/kotlin/validation/InputValidator.kt
+    anchor: "fun isValidUsername(username: String)"
+- id: handler_uses_validator
+  selector:
+    path: src/main/kotlin/handler/RegistrationHandler.kt
+    anchor: "InputValidator.isValidEmail"
+- id: no_app_config
+  selector:
+    path: src/main/kotlin/config/AppConfig.kt
+    anchor: "data class AppConfig"
+oracle:
+  required:
+  - is_valid_username
+  - handler_uses_validator
+  allowed: []
+  forbidden:
+  - no_app_config

@@ -1,0 +1,194 @@
+name: bal_rare_028_clojure_data_pipeline
+tags:
+- lang:csharp
+- change:bug_fix
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/Strings/SlugGenerator.cs: |
+      namespace Strings;
+
+      public static class SlugGenerator
+      {
+          public static string Generate(string title)
+          {
+              var slug = title.ToLowerInvariant();
+              slug = slug.Replace(" ", "-");
+              slug = new string(slug.Where(c => char.IsLetterOrDigit(c) || c == '-').ToArray());
+              return slug;
+          }
+
+          public static bool IsValidSlug(string slug)
+          {
+              return !string.IsNullOrEmpty(slug) && slug.All(c => char.IsLetterOrDigit(c) || c == '-');
+          }
+      }
+    tests/Strings/SlugGeneratorTests.cs: |
+      using Xunit;
+      using Strings;
+
+      public class SlugGeneratorTests
+      {
+          [Fact]
+          public void Generate_TitleWithSpaces_ReturnsHyphenated()
+          {
+              var slug = SlugGenerator.Generate("Hello World");
+              Assert.Equal("hello-world", slug);
+          }
+
+          [Fact]
+          public void Generate_TitleWithSpecialChars_StripsNonAlphanumeric()
+          {
+              var slug = SlugGenerator.Generate("C# is great!");
+              Assert.Equal("c-is-great", slug);
+          }
+      }
+    garbage/Encoder.cs: |
+      namespace Garbage;
+
+      public static class EncoderGarbage
+      {
+          public const string GARBAGE_RARE028_A = "base64_marker";
+          public const string GARBAGE_RARE028_B = "utf8_marker";
+      }
+    garbage/Parser.cs: |
+      namespace Garbage;
+
+      public static class ParserGarbage
+      {
+          public const string GARBAGE_RARE028_C = "regex_marker";
+      }
+    garbage/Formatter.cs: |
+      namespace Garbage;
+
+      public static class FormatterGarbage
+      {
+          public const string GARBAGE_RARE028_D = "format_marker";
+          public const string GARBAGE_RARE028_E = "template_marker";
+      }
+  changed_files:
+    src/Strings/SlugGenerator.cs: |
+      namespace Strings;
+
+      public static class SlugGenerator
+      {
+          public static string Generate(string title)
+          {
+              var slug = title.ToLowerInvariant().Trim();
+              slug = slug.Replace(" ", "-");
+              while (slug.Contains("--"))
+                  slug = slug.Replace("--", "-");
+              slug = new string(slug.Where(c => char.IsLetterOrDigit(c) || c == '-').ToArray());
+              slug = slug.Trim('-');
+              return slug;
+          }
+
+          public static bool IsValidSlug(string slug)
+          {
+              return !string.IsNullOrEmpty(slug) && slug.All(c => char.IsLetterOrDigit(c) || c == '-');
+          }
+      }
+    tests/Strings/SlugGeneratorTests.cs: |
+      using Xunit;
+      using Strings;
+
+      public class SlugGeneratorTests
+      {
+          [Fact]
+          public void Generate_TitleWithSpaces_ReturnsHyphenated()
+          {
+              var slug = SlugGenerator.Generate("Hello World");
+              Assert.Equal("hello-world", slug);
+          }
+
+          [Fact]
+          public void Generate_TitleWithSpecialChars_StripsNonAlphanumeric()
+          {
+              var slug = SlugGenerator.Generate("C# is great!");
+              Assert.Equal("c-is-great", slug);
+          }
+
+          [Fact]
+          public void Generate_MultipleSpaces_NoDuplicateHyphens()
+          {
+              var slug = SlugGenerator.Generate("Hello   World");
+              Assert.Equal("hello-world", slug);
+          }
+
+          [Fact]
+          public void Generate_LeadingTrailingSpaces_StrippedFromSlug()
+          {
+              var slug = SlugGenerator.Generate("  Hello World  ");
+              Assert.Equal("hello-world", slug);
+          }
+      }
+    garbage/Encoder.cs: |
+      namespace Garbage;
+
+      public static class EncoderGarbage
+      {
+          public const string GARBAGE_RARE028_A = "base64_marker";
+          public const string GARBAGE_RARE028_B = "utf8_marker";
+      }
+    garbage/Parser.cs: |
+      namespace Garbage;
+
+      public static class ParserGarbage
+      {
+          public const string GARBAGE_RARE028_C = "regex_marker";
+      }
+    garbage/Formatter.cs: |
+      namespace Garbage;
+
+      public static class FormatterGarbage
+      {
+          public const string GARBAGE_RARE028_D = "format_marker";
+          public const string GARBAGE_RARE028_E = "template_marker";
+      }
+  commit_message: "fix: trim whitespace, collapse double hyphens, strip leading/trailing hyphens"
+fragments:
+- id: slug_trim
+  selector:
+    path: src/Strings/SlugGenerator.cs
+    anchor: ".Trim();"
+- id: slug_double_hyphen
+  selector:
+    path: src/Strings/SlugGenerator.cs
+    anchor: "slug.Contains(\"--\")"
+- id: slug_trim_hyphens
+  selector:
+    path: src/Strings/SlugGenerator.cs
+    anchor: "slug.Trim('-')"
+- id: test_file
+  selector:
+    path: tests/Strings/SlugGeneratorTests.cs
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_RARE028_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_RARE028_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_RARE028_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_RARE028_D
+- id: no_garbage_e
+  selector:
+    anchor: GARBAGE_RARE028_E
+oracle:
+  required:
+  - slug_trim
+  - slug_double_hyphen
+  - slug_trim_hyphens
+  - test_file
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d
+  - no_garbage_e

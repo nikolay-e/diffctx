@@ -1,0 +1,110 @@
+name: gap2_166_py_multi_sig_cross_module_warehouse_dispatch
+tags:
+- change:multi_file
+- change:new_function
+- change:signature
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+- lang:python
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    dispatch/router.py: |
+      from dispatch.zone import ZoneMap
+
+      class DispatchRouter:
+          def __init__(self, zone_map: ZoneMap):
+              self.zone_map = zone_map
+
+          def assign(self, order_id: str, zip_code: str) -> str:
+              zone = self.zone_map.lookup(zip_code)
+              return f"{order_id}:{zone}"
+    dispatch/zone.py: |
+      class ZoneMap:
+          def __init__(self):
+              self._zones = {}
+
+          def register(self, prefix: str, zone: str) -> None:
+              self._zones[prefix] = zone
+
+          def lookup(self, zip_code: str) -> str:
+              for prefix, zone in self._zones.items():
+                  if zip_code.startswith(prefix):
+                      return zone
+              return "default"
+    dispatch/tracker.py: |
+      class ShipmentTracker:
+          def __init__(self):
+              self._events = []
+
+          def log_event(self, shipment_id: str, status: str) -> None:
+              self._events.append({"id": shipment_id, "status": status})
+
+          def history(self, shipment_id: str) -> list:
+              return [e for e in self._events if e["id"] == shipment_id]
+  changed_files:
+    dispatch/router.py: |
+      from dispatch.zone import ZoneMap, PriorityLevel
+
+      class DispatchRouter:
+          def __init__(self, zone_map: ZoneMap):
+              self.zone_map = zone_map
+
+          def assign(self, order_id: str, zip_code: str, priority: PriorityLevel = PriorityLevel.STANDARD) -> str:
+              zone = self.zone_map.lookup(zip_code, priority)
+              return f"{order_id}:{zone}:{priority.value}"
+
+          def bulk_assign(self, orders: list) -> list:
+              return [self.assign(o["id"], o["zip"]) for o in orders]
+    dispatch/zone.py: |
+      from enum import Enum
+
+      class PriorityLevel(Enum):
+          EXPRESS = "express"
+          STANDARD = "standard"
+          ECONOMY = "economy"
+
+      class ZoneMap:
+          def __init__(self):
+              self._zones = {}
+
+          def register(self, prefix: str, zone: str) -> None:
+              self._zones[prefix] = zone
+
+          def lookup(self, zip_code: str, priority: PriorityLevel = PriorityLevel.STANDARD) -> str:
+              for prefix, zone in self._zones.items():
+                  if zip_code.startswith(prefix):
+                      if priority == PriorityLevel.EXPRESS:
+                          return f"{zone}-fast"
+                      return zone
+              return "default"
+fragments:
+- id: priority_enum
+  selector:
+    path: dispatch/zone.py
+    anchor: "class PriorityLevel"
+- id: lookup_sig
+  selector:
+    path: dispatch/zone.py
+    anchor: "def lookup(self, zip_code: str, priority"
+- id: assign_sig
+  selector:
+    path: dispatch/router.py
+    anchor: "def assign(self, order_id: str, zip_code: str, priority"
+- id: bulk_assign
+  selector:
+    path: dispatch/router.py
+    anchor: "def bulk_assign"
+- id: no_tracker
+  selector:
+    path: dispatch/tracker.py
+oracle:
+  required:
+  - priority_enum
+  - lookup_sig
+  - assign_sig
+  - bulk_assign
+  forbidden:
+  - no_tracker

@@ -1,0 +1,184 @@
+name: bal_1hop_023_rust_scheduler_calls_job
+tags:
+- lang:rust
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/job/definition.rs: |
+      pub enum JobStatus {
+          Pending,
+          Running,
+          Completed,
+          Failed,
+      }
+
+      pub struct Job {
+          pub id: String,
+          pub name: String,
+          pub status: JobStatus,
+      }
+
+      impl Job {
+          pub fn new(id: &str, name: &str) -> Self {
+              Job {
+                  id: id.to_string(),
+                  name: name.to_string(),
+                  status: JobStatus::Pending,
+              }
+          }
+
+          pub fn run(&mut self) -> Result<(), String> {
+              self.status = JobStatus::Running;
+              self.status = JobStatus::Completed;
+              Ok(())
+          }
+      }
+    src/scheduler/queue.rs: |
+      use crate::job::definition::{Job, JobStatus};
+
+      pub struct JobQueue {
+          jobs: Vec<Job>,
+      }
+
+      impl JobQueue {
+          pub fn new() -> Self {
+              JobQueue { jobs: Vec::new() }
+          }
+
+          pub fn enqueue(&mut self, job: Job) {
+              self.jobs.push(job);
+          }
+
+          pub fn process_next(&mut self) -> Option<Result<(), String>> {
+              if let Some(job) = self.jobs.first_mut() {
+                  let result = job.run();
+                  Some(result)
+              } else {
+                  None
+              }
+          }
+      }
+    src/notification/webhook.rs: |
+      pub struct Webhook {
+          pub url: String,
+      }
+
+      impl Webhook {
+          pub fn new(url: &str) -> Self {
+              Webhook { url: url.to_string() }
+          }
+
+          pub fn fire(&self, payload: &str) -> Result<(), String> {
+              println!("POST {} body={}", self.url, payload);
+              Ok(())
+          }
+      }
+    src/metrics/counter.rs: |
+      use std::sync::atomic::{AtomicU64, Ordering};
+
+      pub struct Counter {
+          value: AtomicU64,
+      }
+
+      impl Counter {
+          pub fn new() -> Self {
+              Counter { value: AtomicU64::new(0) }
+          }
+
+          pub fn increment(&self) {
+              self.value.fetch_add(1, Ordering::Relaxed);
+          }
+
+          pub fn get(&self) -> u64 {
+              self.value.load(Ordering::Relaxed)
+          }
+      }
+  changed_files:
+    src/job/definition.rs: |
+      use std::time::Instant;
+
+      pub enum JobStatus {
+          Pending,
+          Running,
+          Completed,
+          Failed(String),
+      }
+
+      pub struct Job {
+          pub id: String,
+          pub name: String,
+          pub status: JobStatus,
+          pub attempts: u32,
+          pub max_retries: u32,
+      }
+
+      impl Job {
+          pub fn new(id: &str, name: &str) -> Self {
+              Job {
+                  id: id.to_string(),
+                  name: name.to_string(),
+                  status: JobStatus::Pending,
+                  attempts: 0,
+                  max_retries: 3,
+              }
+          }
+
+          pub fn run(&mut self) -> Result<(), String> {
+              self.attempts += 1;
+              self.status = JobStatus::Running;
+              self.status = JobStatus::Completed;
+              Ok(())
+          }
+
+          pub fn can_retry(&self) -> bool {
+              self.attempts < self.max_retries
+          }
+
+          pub fn mark_failed(&mut self, reason: &str) {
+              self.status = JobStatus::Failed(reason.to_string());
+          }
+      }
+  commit_message: "fix: add retry tracking and proper failure status to Job"
+fragments:
+- id: failed_with_reason
+  selector:
+    path: src/job/definition.rs
+    anchor: "Failed(String)"
+- id: can_retry_method
+  selector:
+    path: src/job/definition.rs
+    anchor: "pub fn can_retry"
+- id: mark_failed_method
+  selector:
+    path: src/job/definition.rs
+    anchor: "pub fn mark_failed"
+- id: queue_calls_run
+  selector:
+    path: src/scheduler/queue.rs
+    anchor: "job.run()"
+- id: queue_uses_jobstatus
+  selector:
+    path: src/scheduler/queue.rs
+    anchor: "use crate::job::definition::{Job, JobStatus}"
+- id: unrelated_webhook
+  selector:
+    path: src/notification/webhook.rs
+    anchor: "pub fn fire"
+- id: unrelated_counter
+  selector:
+    path: src/metrics/counter.rs
+    anchor: "pub struct Counter"
+oracle:
+  required:
+  - failed_with_reason
+  - can_retry_method
+  - queue_calls_run
+  allowed:
+  - mark_failed_method
+  - queue_uses_jobstatus
+  forbidden:
+  - unrelated_webhook
+  - unrelated_counter

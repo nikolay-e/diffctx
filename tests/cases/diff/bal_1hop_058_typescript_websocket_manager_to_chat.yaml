@@ -1,0 +1,220 @@
+name: bal_1hop_058_typescript_websocket_manager_to_chat
+tags:
+- lang:typescript
+- change:new_function
+- change:multi_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/ws/connectionManager.ts: |
+      export interface WsConnection {
+        id: string;
+        userId: string;
+        send: (message: string) => void;
+      }
+
+      const connections = new Map<string, WsConnection>();
+
+      export function addConnection(conn: WsConnection): void {
+        connections.set(conn.id, conn);
+      }
+
+      export function removeConnection(id: string): void {
+        connections.delete(id);
+      }
+
+      export function getConnection(id: string): WsConnection | undefined {
+        return connections.get(id);
+      }
+
+      export function broadcast(message: string): void {
+        for (const conn of connections.values()) {
+          conn.send(message);
+        }
+      }
+    src/chat/chatRoom.ts: |
+      import { broadcast, getConnection, WsConnection } from '../ws/connectionManager';
+
+      export interface ChatMessage {
+        from: string;
+        text: string;
+        timestamp: number;
+      }
+
+      const messageHistory: ChatMessage[] = [];
+
+      export function sendMessage(userId: string, text: string): void {
+        const msg: ChatMessage = {
+          from: userId,
+          text,
+          timestamp: Date.now(),
+        };
+        messageHistory.push(msg);
+        broadcast(JSON.stringify(msg));
+      }
+
+      export function getHistory(): ChatMessage[] {
+        return [...messageHistory];
+      }
+    src/auth/sessionStore.ts: |
+      const sessions = new Map<string, string>();
+
+      export function createSession(token: string, userId: string): void {
+        sessions.set(token, userId);
+      }
+
+      export function getSessionUser(token: string): string | undefined {
+        return sessions.get(token);
+      }
+    src/presence/presenceTracker.ts: |
+      const onlineUsers = new Set<string>();
+
+      export function setOnline(userId: string): void {
+        onlineUsers.add(userId);
+      }
+
+      export function setOffline(userId: string): void {
+        onlineUsers.delete(userId);
+      }
+
+      export function getOnlineUsers(): string[] {
+        return [...onlineUsers];
+      }
+    src/rate/rateLimiter.ts: |
+      const counters = new Map<string, { count: number; resetAt: number }>();
+
+      export function isRateLimited(userId: string, maxPerMinute: number): boolean {
+        const now = Date.now();
+        const entry = counters.get(userId);
+        if (!entry || now > entry.resetAt) {
+          counters.set(userId, { count: 1, resetAt: now + 60000 });
+          return false;
+        }
+        entry.count++;
+        return entry.count > maxPerMinute;
+      }
+    src/storage/attachmentStore.ts: |
+      export function storeAttachment(id: string, data: Uint8Array): void {
+        console.log(`Stored attachment ${id}: ${data.length} bytes`);
+      }
+
+      export function getAttachment(id: string): Uint8Array | null {
+        return null;
+      }
+  changed_files:
+    src/ws/connectionManager.ts: |
+      export interface WsConnection {
+        id: string;
+        userId: string;
+        send: (message: string) => void;
+      }
+
+      const connections = new Map<string, WsConnection>();
+      const rooms = new Map<string, Set<string>>();
+
+      export function addConnection(conn: WsConnection): void {
+        connections.set(conn.id, conn);
+      }
+
+      export function removeConnection(id: string): void {
+        connections.delete(id);
+        for (const members of rooms.values()) {
+          members.delete(id);
+        }
+      }
+
+      export function getConnection(id: string): WsConnection | undefined {
+        return connections.get(id);
+      }
+
+      export function joinRoom(connectionId: string, roomName: string): void {
+        if (!rooms.has(roomName)) {
+          rooms.set(roomName, new Set());
+        }
+        rooms.get(roomName)!.add(connectionId);
+      }
+
+      export function leaveRoom(connectionId: string, roomName: string): void {
+        rooms.get(roomName)?.delete(connectionId);
+      }
+
+      export function broadcastToRoom(roomName: string, message: string): void {
+        const members = rooms.get(roomName);
+        if (!members) return;
+        for (const connId of members) {
+          const conn = connections.get(connId);
+          if (conn) conn.send(message);
+        }
+      }
+
+      export function broadcast(message: string): void {
+        for (const conn of connections.values()) {
+          conn.send(message);
+        }
+      }
+
+      export function getRoomMembers(roomName: string): string[] {
+        const members = rooms.get(roomName);
+        if (!members) return [];
+        return [...members]
+          .map(id => connections.get(id)?.userId)
+          .filter((uid): uid is string => uid !== undefined);
+      }
+  commit_message: "feat: add room-based messaging to connection manager"
+fragments:
+- id: ws_join_room
+  selector:
+    path: connectionManager.ts
+    anchor: "joinRoom"
+- id: ws_leave_room
+  selector:
+    path: connectionManager.ts
+    anchor: "leaveRoom"
+- id: ws_broadcast_to_room
+  selector:
+    path: connectionManager.ts
+    anchor: "broadcastToRoom"
+- id: ws_get_room_members
+  selector:
+    path: connectionManager.ts
+    anchor: "getRoomMembers"
+- id: chat_uses_broadcast
+  selector:
+    path: chatRoom.ts
+    anchor: "broadcast(JSON.stringify"
+- id: chat_uses_get_connection
+  selector:
+    path: chatRoom.ts
+    anchor: "getConnection"
+- id: no_session_store
+  selector:
+    path: sessionStore.ts
+    anchor: "createSession"
+- id: no_presence
+  selector:
+    path: presenceTracker.ts
+    anchor: "presenceTracker"
+- id: no_rate_limiter
+  selector:
+    path: rateLimiter.ts
+    anchor: "isRateLimited"
+- id: no_attachment_store
+  selector:
+    path: attachmentStore.ts
+    anchor: "storeAttachment"
+oracle:
+  required:
+  - ws_join_room
+  - ws_broadcast_to_room
+  - chat_uses_broadcast
+  allowed:
+  - ws_leave_room
+  - ws_get_room_members
+  - chat_uses_get_connection
+  forbidden:
+  - no_session_store
+  - no_presence
+  - no_rate_limiter
+  - no_attachment_store

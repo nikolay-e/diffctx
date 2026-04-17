@@ -1,0 +1,119 @@
+name: gap2_048_jsts_config_same_file_tsconfig_strict
+tags:
+- lang:rust
+- change:bug_fix
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/parser/json_parser.rs: |
+      use serde_json::Value;
+
+      pub struct JsonParser;
+
+      impl JsonParser {
+          pub fn parse(input: &str) -> Result<Value, String> {
+              // BUG: panics on empty input instead of returning error
+              serde_json::from_str(input).map_err(|e| e.to_string())
+          }
+
+          pub fn extract_field(value: &Value, key: &str) -> Option<&Value> {
+              value.get(key)
+          }
+      }
+    src/ingestion/pipeline.rs: |
+      use crate::parser::json_parser::JsonParser;
+
+      pub struct IngestionPipeline;
+
+      impl IngestionPipeline {
+          pub fn ingest(raw: &str) -> Result<String, String> {
+              let parsed = JsonParser::parse(raw)?;
+              let name = JsonParser::extract_field(&parsed, "name")
+                  .and_then(|v| v.as_str())
+                  .unwrap_or("unknown");
+              Ok(name.to_string())
+          }
+      }
+    garbage/auth.rs: |
+      // GARBAGE_JPAR_A = "auth_marker"
+      pub fn verify_token(_tok: &str) -> bool { true }
+    garbage/db.rs: |
+      // GARBAGE_JPAR_B = "db_marker"
+      pub struct DbConn { pub dsn: String }
+    garbage/cache.rs: |
+      // GARBAGE_JPAR_C = "cache_marker"
+      pub fn get_cached(_key: &str) -> Option<String> { None }
+  changed_files:
+    src/parser/json_parser.rs: |
+      use serde_json::Value;
+
+      pub struct JsonParser;
+
+      impl JsonParser {
+          pub fn parse(input: &str) -> Result<Value, String> {
+              if input.is_empty() {
+                  return Err("input must not be empty".to_string());
+              }
+              serde_json::from_str(input).map_err(|e| e.to_string())
+          }
+
+          pub fn extract_field(value: &Value, key: &str) -> Option<&Value> {
+              value.get(key)
+          }
+      }
+    src/ingestion/pipeline.rs: |
+      use crate::parser::json_parser::JsonParser;
+
+      pub struct IngestionPipeline;
+
+      impl IngestionPipeline {
+          pub fn ingest(raw: &str) -> Result<String, String> {
+              let parsed = JsonParser::parse(raw)?;
+              let name = JsonParser::extract_field(&parsed, "name")
+                  .and_then(|v| v.as_str())
+                  .unwrap_or("unknown");
+              Ok(name.to_string())
+          }
+      }
+    garbage/auth.rs: |
+      // GARBAGE_JPAR_A = "auth_marker"
+      pub fn verify_token(_tok: &str) -> bool { true }
+    garbage/db.rs: |
+      // GARBAGE_JPAR_B = "db_marker"
+      pub struct DbConn { pub dsn: String }
+    garbage/cache.rs: |
+      // GARBAGE_JPAR_C = "cache_marker"
+      pub fn get_cached(_key: &str) -> Option<String> { None }
+  commit_message: "fix: return Err on empty input in JsonParser::parse"
+fragments:
+- id: parse_empty_guard
+  selector:
+    anchor: "if input.is_empty()"
+- id: parse_func
+  selector:
+    anchor: "pub fn parse(input: &str) -> Result<Value, String>"
+- id: pipeline_uses_parser
+  selector:
+    anchor: "use crate::parser::json_parser::JsonParser"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_JPAR_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_JPAR_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_JPAR_C
+oracle:
+  required:
+  - parse_empty_guard
+  - parse_func
+  - pipeline_uses_parser
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

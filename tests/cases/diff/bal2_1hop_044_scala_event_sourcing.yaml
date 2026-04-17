@@ -1,0 +1,173 @@
+name: bal2_1hop_044_scala_event_sourcing
+tags:
+- lang:scala
+- change:multi_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/event/DomainEvent.scala: |
+      package event
+
+      trait DomainEvent {
+        def aggregateId: String
+        def timestamp: Long
+      }
+    src/main/scala/event/AccountEvents.scala: |
+      package event
+
+      case class AccountCreated(aggregateId: String, timestamp: Long, owner: String) extends DomainEvent
+      case class MoneyDeposited(aggregateId: String, timestamp: Long, amount: Double) extends DomainEvent
+      case class MoneyWithdrawn(aggregateId: String, timestamp: Long, amount: Double) extends DomainEvent
+    src/main/scala/aggregate/Account.scala: |
+      package aggregate
+
+      import event._
+
+      case class Account(id: String, owner: String, balance: Double) {
+        def applyEvent(evt: DomainEvent): Account = evt match {
+          case MoneyDeposited(_, _, amt) => copy(balance = balance + amt)
+          case MoneyWithdrawn(_, _, amt) => copy(balance = balance - amt)
+          case _ => this
+        }
+      }
+    src/main/scala/store/EventStore.scala: |
+      package store
+
+      import event.DomainEvent
+
+      class EventStore {
+        private var events: List[DomainEvent] = Nil
+
+        def append(evt: DomainEvent): Unit = events = events :+ evt
+        def loadByAggregate(id: String): List[DomainEvent] = events.filter(_.aggregateId == id)
+      }
+    src/main/scala/projection/BalanceProjection.scala: |
+      package projection
+
+      import event._
+
+      class BalanceProjection {
+        private var balances: Map[String, Double] = Map.empty
+
+        def handle(evt: DomainEvent): Unit = evt match {
+          case MoneyDeposited(id, _, amt) => balances += (id -> (balances.getOrElse(id, 0.0) + amt))
+          case MoneyWithdrawn(id, _, amt) => balances += (id -> (balances.getOrElse(id, 0.0) - amt))
+          case _ => ()
+        }
+
+        def getBalance(id: String): Double = balances.getOrElse(id, 0.0)
+      }
+    src/main/scala/gateway/BankGateway.scala: |
+      package gateway
+
+      GARBAGE_044_BANK_GATEWAY_A = "bank"
+
+      class BankGateway(endpoint: String) {
+        def transfer(from: String, to: String, amount: Double): Boolean = true
+      }
+    src/main/scala/notification/SmsNotifier.scala: |
+      package notification
+
+      GARBAGE_044_SMS_NOTIFIER_B = "sms"
+
+      class SmsNotifier(apiKey: String) {
+        def send(phone: String, message: String): Unit = ()
+      }
+    src/main/scala/fraud/FraudDetector.scala: |
+      package fraud
+
+      GARBAGE_044_FRAUD_C = "fraud"
+
+      class FraudDetector {
+        def isSuspicious(amount: Double): Boolean = amount > 10000
+      }
+  changed_files:
+    src/main/scala/event/DomainEvent.scala: |
+      package event
+
+      trait DomainEvent {
+        def aggregateId: String
+        def timestamp: Long
+        def eventType: String
+        def version: Int = 1
+      }
+    src/main/scala/event/AccountEvents.scala: |
+      package event
+
+      case class AccountCreated(aggregateId: String, timestamp: Long, owner: String) extends DomainEvent {
+        def eventType: String = "AccountCreated"
+      }
+      case class MoneyDeposited(aggregateId: String, timestamp: Long, amount: Double) extends DomainEvent {
+        def eventType: String = "MoneyDeposited"
+      }
+      case class MoneyWithdrawn(aggregateId: String, timestamp: Long, amount: Double) extends DomainEvent {
+        def eventType: String = "MoneyWithdrawn"
+      }
+      case class AccountFrozen(aggregateId: String, timestamp: Long, reason: String) extends DomainEvent {
+        def eventType: String = "AccountFrozen"
+      }
+  commit_message: "feat: add eventType, version to DomainEvent and AccountFrozen"
+fragments:
+- id: event_type_method
+  selector:
+    path: src/main/scala/event/DomainEvent.scala
+    anchor: "def eventType: String"
+- id: event_version
+  selector:
+    path: src/main/scala/event/DomainEvent.scala
+    anchor: "def version: Int"
+- id: account_frozen_event
+  selector:
+    path: src/main/scala/event/AccountEvents.scala
+    anchor: "case class AccountFrozen"
+- id: account_apply_event
+  selector:
+    path: src/main/scala/aggregate/Account.scala
+    anchor: "def applyEvent(evt: DomainEvent)"
+- id: store_uses_domain_event
+  selector:
+    path: src/main/scala/store/EventStore.scala
+    anchor: "evt: DomainEvent"
+- id: projection_handles_event
+  selector:
+    path: src/main/scala/projection/BalanceProjection.scala
+    anchor: "def handle(evt: DomainEvent)"
+- id: unrelated_bank
+  selector:
+    path: src/main/scala/gateway/BankGateway.scala
+    anchor: "class BankGateway"
+- id: unrelated_sms
+  selector:
+    path: src/main/scala/notification/SmsNotifier.scala
+    anchor: "class SmsNotifier"
+- id: unrelated_fraud
+  selector:
+    path: src/main/scala/fraud/FraudDetector.scala
+    anchor: "class FraudDetector"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_044_BANK_GATEWAY_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_044_SMS_NOTIFIER_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_044_FRAUD_C
+oracle:
+  required:
+  - event_type_method
+  - event_version
+  - account_frozen_event
+  - account_apply_event
+  allowed:
+  - store_uses_domain_event
+  - projection_handles_event
+  forbidden:
+  - unrelated_bank
+  - unrelated_sms
+  - unrelated_fraud
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

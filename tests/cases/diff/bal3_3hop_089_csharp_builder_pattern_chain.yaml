@@ -1,0 +1,324 @@
+name: bal3_3hop_089_csharp_builder_pattern_chain
+tags:
+- lang:csharp
+- change:multi_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/Models/ReportConfig.cs: |
+      using System;
+
+      namespace App.Models
+      {
+          public class ReportConfig
+          {
+              public string Title { get; set; }
+              public string Format { get; set; }
+              public bool IncludeHeader { get; set; }
+          }
+      }
+    src/Builders/ReportConfigBuilder.cs: |
+      using System;
+      using App.Models;
+
+      namespace App.Builders
+      {
+          public class ReportConfigBuilder
+          {
+              private readonly ReportConfig _config = new();
+              public ReportConfigBuilder WithTitle(string title)
+              {
+                  _config.Title = title;
+                  return this;
+              }
+              public ReportConfigBuilder WithFormat(string format)
+              {
+                  _config.Format = format;
+                  return this;
+              }
+              public ReportConfig Build()
+              {
+                  return _config;
+              }
+          }
+      }
+    src/Generators/ReportGenerator.cs: |
+      using System;
+      using App.Builders;
+      using App.Models;
+
+      namespace App.Generators
+      {
+          public class ReportGenerator
+          {
+              public string Generate(ReportConfig config)
+              {
+                  return $"Report: {config.Title} ({config.Format})";
+              }
+          }
+      }
+    src/Services/ReportService.cs: |
+      using System;
+      using App.Generators;
+      using App.Builders;
+
+      namespace App.Services
+      {
+          public class ReportService
+          {
+              private readonly ReportGenerator _generator;
+              public ReportService(ReportGenerator generator)
+              {
+                  _generator = generator;
+              }
+              public string CreateReport(string title)
+              {
+                  var config = new ReportConfigBuilder()
+                      .WithTitle(title)
+                      .WithFormat("PDF")
+                      .Build();
+                  return _generator.Generate(config);
+              }
+          }
+      }
+    src/Controllers/ReportController.cs: |
+      using System;
+      using App.Services;
+
+      namespace App.Controllers
+      {
+          public class ReportController
+          {
+              private readonly ReportService _service;
+              public ReportController(ReportService service)
+              {
+                  _service = service;
+              }
+              public string Generate(string title)
+              {
+                  return _service.CreateReport(title);
+              }
+          }
+      }
+    src/Export/CsvExporter.cs: |
+      using System;
+      // GARBAGE_089_CSV_A = "exporter"
+      // GARBAGE_089_DELIM_B = ","
+
+      namespace App.Export
+      {
+          public class CsvExporter
+          {
+              public string Export(string data) => data;
+          }
+      }
+    src/Export/JsonExporter.cs: |
+      using System;
+      // GARBAGE_089_JSON_C = "exporter"
+      // GARBAGE_089_INDENT_D = 2
+
+      namespace App.Export
+      {
+          public class JsonExporter
+          {
+              public string Export(string data) => data;
+          }
+      }
+  changed_files:
+    src/Models/ReportConfig.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Models
+      {
+          public class ReportConfig
+          {
+              public string Title { get; set; }
+              public string Format { get; set; }
+              public bool IncludeHeader { get; set; }
+              public List<string> Columns { get; set; } = new();
+              public string Locale { get; set; } = "en-US";
+          }
+      }
+    src/Builders/ReportConfigBuilder.cs: |
+      using System;
+      using System.Collections.Generic;
+      using App.Models;
+
+      namespace App.Builders
+      {
+          public class ReportConfigBuilder
+          {
+              private readonly ReportConfig _config = new();
+              public ReportConfigBuilder WithTitle(string title)
+              {
+                  _config.Title = title;
+                  return this;
+              }
+              public ReportConfigBuilder WithFormat(string format)
+              {
+                  _config.Format = format;
+                  return this;
+              }
+              public ReportConfigBuilder WithColumns(List<string> columns)
+              {
+                  _config.Columns = columns;
+                  return this;
+              }
+              public ReportConfigBuilder WithLocale(string locale)
+              {
+                  _config.Locale = locale;
+                  return this;
+              }
+              public ReportConfig Build()
+              {
+                  return _config;
+              }
+          }
+      }
+    src/Generators/ReportGenerator.cs: |
+      using System;
+      using App.Builders;
+      using App.Models;
+
+      namespace App.Generators
+      {
+          public class ReportGenerator
+          {
+              public string Generate(ReportConfig config)
+              {
+                  return $"Report: {config.Title} ({config.Format}) [{config.Locale}] Cols:{config.Columns.Count}";
+              }
+          }
+      }
+    src/Services/ReportService.cs: |
+      using System;
+      using System.Collections.Generic;
+      using App.Generators;
+      using App.Builders;
+
+      namespace App.Services
+      {
+          public class ReportService
+          {
+              private readonly ReportGenerator _generator;
+              public ReportService(ReportGenerator generator)
+              {
+                  _generator = generator;
+              }
+              public string CreateReport(string title)
+              {
+                  var config = new ReportConfigBuilder()
+                      .WithTitle(title)
+                      .WithFormat("PDF")
+                      .Build();
+                  return _generator.Generate(config);
+              }
+              public string CreateDetailedReport(string title, List<string> columns, string locale)
+              {
+                  var config = new ReportConfigBuilder()
+                      .WithTitle(title)
+                      .WithFormat("PDF")
+                      .WithColumns(columns)
+                      .WithLocale(locale)
+                      .Build();
+                  return _generator.Generate(config);
+              }
+          }
+      }
+    src/Controllers/ReportController.cs: |
+      using System;
+      using App.Services;
+
+      namespace App.Controllers
+      {
+          public class ReportController
+          {
+              private readonly ReportService _service;
+              public ReportController(ReportService service)
+              {
+                  _service = service;
+              }
+              public string Generate(string title)
+              {
+                  return _service.CreateReport(title);
+              }
+          }
+      }
+    src/Export/CsvExporter.cs: |
+      using System;
+      // GARBAGE_089_CSV_A = "exporter"
+      // GARBAGE_089_DELIM_B = ","
+
+      namespace App.Export
+      {
+          public class CsvExporter
+          {
+              public string Export(string data) => data;
+          }
+      }
+    src/Export/JsonExporter.cs: |
+      using System;
+      // GARBAGE_089_JSON_C = "exporter"
+      // GARBAGE_089_INDENT_D = 2
+
+      namespace App.Export
+      {
+          public class JsonExporter
+          {
+              public string Export(string data) => data;
+          }
+      }
+  commit_message: "feat: add columns and locale support to report builder"
+fragments:
+- id: config_columns
+  selector:
+    path: src/Models/ReportConfig.cs
+    anchor: "List<string> Columns"
+- id: config_locale
+  selector:
+    path: src/Models/ReportConfig.cs
+    anchor: "string Locale"
+- id: builder_with_columns
+  selector:
+    path: src/Builders/ReportConfigBuilder.cs
+    anchor: "WithColumns"
+- id: builder_with_locale
+  selector:
+    path: src/Builders/ReportConfigBuilder.cs
+    anchor: "WithLocale"
+- id: generator_uses_config
+  selector:
+    path: src/Generators/ReportGenerator.cs
+    anchor: "using App.Models"
+- id: service_detailed_report
+  selector:
+    path: src/Services/ReportService.cs
+    anchor: "CreateDetailedReport"
+- id: controller_uses_service
+  selector:
+    path: src/Controllers/ReportController.cs
+    anchor: "using App.Services"
+- id: no_csv
+  selector:
+    path: src/Export/CsvExporter.cs
+    anchor: "GARBAGE_089_CSV_A"
+- id: no_json
+  selector:
+    path: src/Export/JsonExporter.cs
+    anchor: "GARBAGE_089_JSON_C"
+oracle:
+  required:
+  - config_columns
+  - builder_with_columns
+  - generator_uses_config
+  - service_detailed_report
+  - controller_uses_service
+  allowed:
+  - config_locale
+  - builder_with_locale
+  forbidden:
+  - no_csv
+  - no_json

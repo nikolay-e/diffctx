@@ -1,0 +1,127 @@
+name: bal_1hop_052_typescript_event_emitter_to_handler
+tags:
+- lang:typescript
+- change:new_function
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/events/eventBus.ts: |
+      type Listener = (data: unknown) => void;
+
+      const listeners = new Map<string, Listener[]>();
+
+      export function on(event: string, listener: Listener): void {
+        const list = listeners.get(event) ?? [];
+        list.push(listener);
+        listeners.set(event, list);
+      }
+
+      export function emit(event: string, data: unknown): void {
+        const list = listeners.get(event) ?? [];
+        for (const listener of list) {
+          listener(data);
+        }
+      }
+    src/handlers/orderHandler.ts: |
+      import { on, emit } from '../events/eventBus';
+
+      export function initOrderHandlers(): void {
+        on('order:created', (data) => {
+          const order = data as { id: string; total: number };
+          console.log(`Order ${order.id} created: $${order.total}`);
+          if (order.total > 100) {
+            emit('order:high-value', data);
+          }
+        });
+      }
+    src/handlers/notificationHandler.ts: |
+      export function sendPushNotification(userId: string, message: string): void {
+        console.log(`Push to ${userId}: ${message}`);
+      }
+    src/models/orderModel.ts: |
+      export interface Order {
+        id: string;
+        items: string[];
+        total: number;
+        status: 'pending' | 'paid' | 'shipped';
+      }
+  changed_files:
+    src/events/eventBus.ts: |
+      type Listener = (data: unknown) => void;
+
+      const listeners = new Map<string, Listener[]>();
+
+      export function on(event: string, listener: Listener): void {
+        const list = listeners.get(event) ?? [];
+        list.push(listener);
+        listeners.set(event, list);
+      }
+
+      export function once(event: string, listener: Listener): void {
+        const wrapper: Listener = (data) => {
+          off(event, wrapper);
+          listener(data);
+        };
+        on(event, wrapper);
+      }
+
+      export function off(event: string, listener: Listener): void {
+        const list = listeners.get(event) ?? [];
+        const idx = list.indexOf(listener);
+        if (idx >= 0) list.splice(idx, 1);
+      }
+
+      export function emit(event: string, data: unknown): void {
+        const list = listeners.get(event) ?? [];
+        for (const listener of list) {
+          listener(data);
+        }
+      }
+
+      export function listenerCount(event: string): number {
+        return (listeners.get(event) ?? []).length;
+      }
+  commit_message: "feat: add once, off, and listenerCount to event bus"
+fragments:
+- id: bus_once
+  selector:
+    path: eventBus.ts
+    anchor: "once"
+- id: bus_off
+  selector:
+    path: eventBus.ts
+    anchor: "off(event"
+- id: bus_listener_count
+  selector:
+    path: eventBus.ts
+    anchor: "listenerCount"
+- id: handler_uses_on
+  selector:
+    path: orderHandler.ts
+    anchor: "on('order:created'"
+- id: handler_uses_emit
+  selector:
+    path: orderHandler.ts
+    anchor: "emit('order:high-value'"
+- id: no_notification_handler
+  selector:
+    path: notificationHandler.ts
+    anchor: "sendPushNotification"
+- id: no_order_model
+  selector:
+    path: orderModel.ts
+    anchor: "Order"
+oracle:
+  required:
+  - bus_once
+  - bus_off
+  - handler_uses_on
+  allowed:
+  - bus_listener_count
+  - handler_uses_emit
+  forbidden:
+  - no_notification_handler
+  - no_order_model

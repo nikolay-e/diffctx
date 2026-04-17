@@ -186,51 +186,35 @@ class TagsEdgeBuilder(EdgeBuilder):
         edges: EdgeDict = {}
 
         for lang, lang_frags in frags_by_lang.items():
-            if _cache.get(lang) is None:
-                continue
-
-            name_to_defs: dict[str, list[FragmentId]] = defaultdict(list)
-            frag_tags: dict[FragmentId, _TagsInfo] = {}
-
-            for f in lang_frags:
-                info = _extract_tags(f.content, lang)
-                if info is None:
-                    continue
-                frag_tags[f.id] = info
-                for name in info.definitions:
-                    name_to_defs[name].append(f.id)
-
-            for f in lang_frags:
-                info = frag_tags.get(f.id)
-                if info is None:
-                    continue
-                self_defs = info.definitions
-                add_ref_edges(
-                    edges,
-                    f.id,
-                    info.calls,
-                    name_to_defs,
-                    0.40,
-                    reverse_factor=self.reverse_weight_factor,
-                    skip_self_defs=self_defs,
-                )
-                add_ref_edges(
-                    edges,
-                    f.id,
-                    info.type_refs,
-                    name_to_defs,
-                    0.30,
-                    reverse_factor=self.reverse_weight_factor,
-                    skip_self_defs=self_defs,
-                )
-                add_ref_edges(
-                    edges,
-                    f.id,
-                    info.references,
-                    name_to_defs,
-                    0.35,
-                    reverse_factor=self.reverse_weight_factor,
-                    skip_self_defs=self_defs,
-                )
+            if _cache.get(lang) is not None:
+                self._build_lang_edges(lang, lang_frags, edges)
 
         return edges
+
+    def _build_lang_edges(self, lang: str, lang_frags: list[Fragment], edges: EdgeDict) -> None:
+        name_to_defs: dict[str, list[FragmentId]] = defaultdict(list)
+        frag_tags: dict[FragmentId, _TagsInfo] = {}
+
+        for f in lang_frags:
+            info = _extract_tags(f.content, lang)
+            if info is None:
+                continue
+            frag_tags[f.id] = info
+            for name in info.definitions:
+                name_to_defs[name].append(f.id)
+
+        for f in lang_frags:
+            info = frag_tags.get(f.id)
+            if info is None:
+                continue
+            self_defs = info.definitions
+            for ref_set, weight in [(info.calls, 0.40), (info.type_refs, 0.30), (info.references, 0.35)]:
+                add_ref_edges(
+                    edges,
+                    f.id,
+                    ref_set,
+                    name_to_defs,
+                    weight,
+                    reverse_factor=self.reverse_weight_factor,
+                    skip_self_defs=self_defs,
+                )

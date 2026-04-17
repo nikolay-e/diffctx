@@ -1,0 +1,182 @@
+name: gap2_043_ts_bugfix_import_chain_division_zero_metrics
+tags:
+- lang:erlang
+- change:refactor
+- change:single_file
+- context:call_graph
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/leaderboard_server.erl: |
+      -module(leaderboard_server).
+      -behaviour(gen_server).
+      -export([start_link/0, submit_score/3, top_n/2, player_rank/2]).
+      -export([init/1, handle_call/3, handle_cast/2]).
+
+      start_link() ->
+          gen_server:start_link({local, ?MODULE}, ?MODULE, #{}, []).
+
+      submit_score(GameId, PlayerId, Score) ->
+          gen_server:cast(?MODULE, {submit, GameId, PlayerId, Score}).
+
+      top_n(GameId, N) ->
+          gen_server:call(?MODULE, {top_n, GameId, N}).
+
+      player_rank(GameId, PlayerId) ->
+          gen_server:call(?MODULE, {rank, GameId, PlayerId}).
+
+      init(_) -> {ok, #{}}.
+
+      handle_call({top_n, GameId, N}, _From, State) ->
+          Scores = maps:get(GameId, State, []),
+          Sorted = lists:sort(fun({_, S1}, {_, S2}) -> S1 > S2 end, Scores),
+          {reply, lists:sublist(Sorted, N), State};
+      handle_call({rank, GameId, PlayerId}, _From, State) ->
+          Scores = maps:get(GameId, State, []),
+          Sorted = lists:sort(fun({_, S1}, {_, S2}) -> S1 > S2 end, Scores),
+          Rank = find_rank(PlayerId, Sorted, 1),
+          {reply, Rank, State}.
+
+      handle_cast({submit, GameId, PlayerId, Score}, State) ->
+          Existing = maps:get(GameId, State, []),
+          Updated = lists:keystore(PlayerId, 1, Existing, {PlayerId, Score}),
+          {noreply, maps:put(GameId, Updated, State)}.
+
+      find_rank(_, [], _) -> not_found;
+      find_rank(PlayerId, [{PlayerId, _} | _], Rank) -> Rank;
+      find_rank(PlayerId, [_ | Rest], Rank) -> find_rank(PlayerId, Rest, Rank + 1).
+    src/game_api.erl: |
+      -module(game_api).
+      -export([record_score/3, get_leaderboard/2]).
+
+      record_score(GameId, PlayerId, Score) ->
+          leaderboard_server:submit_score(GameId, PlayerId, Score).
+
+      get_leaderboard(GameId, Limit) ->
+          leaderboard_server:top_n(GameId, Limit).
+    garbage/item_catalog.erl: |
+      -module(item_catalog).
+      %% GARBAGE_GAP043_A = "item_catalog_marker"
+      -export([find/1]).
+
+      find(ItemId) -> {ok, ItemId}.
+    garbage/match_history.erl: |
+      -module(match_history).
+      %% GARBAGE_GAP043_B = "match_history_marker"
+      -export([last_n/2]).
+
+      last_n(PlayerId, N) -> {ok, PlayerId, N}.
+    garbage/achievement_engine.erl: |
+      -module(achievement_engine).
+      %% GARBAGE_GAP043_C = "achievement_engine_marker"
+      -export([check/2]).
+
+      check(PlayerId, AchievementId) -> {ok, PlayerId, AchievementId}.
+  changed_files:
+    src/leaderboard_server.erl: |
+      -module(leaderboard_server).
+      -behaviour(gen_server).
+      -export([start_link/0, submit_score/3, top_n/2, player_rank/2, reset_game/1]).
+      -export([init/1, handle_call/3, handle_cast/2]).
+
+      start_link() ->
+          gen_server:start_link({local, ?MODULE}, ?MODULE, #{}, []).
+
+      submit_score(GameId, PlayerId, Score) ->
+          gen_server:cast(?MODULE, {submit, GameId, PlayerId, Score}).
+
+      top_n(GameId, N) ->
+          gen_server:call(?MODULE, {top_n, GameId, N}).
+
+      player_rank(GameId, PlayerId) ->
+          gen_server:call(?MODULE, {rank, GameId, PlayerId}).
+
+      reset_game(GameId) ->
+          gen_server:cast(?MODULE, {reset, GameId}).
+
+      init(_) -> {ok, #{}}.
+
+      handle_call({top_n, GameId, N}, _From, State) ->
+          Scores = maps:get(GameId, State, []),
+          Sorted = lists:sort(fun({_, S1}, {_, S2}) -> S1 > S2 end, Scores),
+          {reply, lists:sublist(Sorted, N), State};
+      handle_call({rank, GameId, PlayerId}, _From, State) ->
+          Scores = maps:get(GameId, State, []),
+          Sorted = lists:sort(fun({_, S1}, {_, S2}) -> S1 > S2 end, Scores),
+          Rank = find_rank(PlayerId, Sorted, 1),
+          {reply, Rank, State}.
+
+      handle_cast({submit, GameId, PlayerId, Score}, State) ->
+          Existing = maps:get(GameId, State, []),
+          Updated = lists:keystore(PlayerId, 1, Existing, {PlayerId, Score}),
+          {noreply, maps:put(GameId, Updated, State)};
+      handle_cast({reset, GameId}, State) ->
+          {noreply, maps:remove(GameId, State)}.
+
+      find_rank(_, [], _) -> not_found;
+      find_rank(PlayerId, [{PlayerId, _} | _], Rank) -> Rank;
+      find_rank(PlayerId, [_ | Rest], Rank) -> find_rank(PlayerId, Rest, Rank + 1).
+    src/game_api.erl: |
+      -module(game_api).
+      -export([record_score/3, get_leaderboard/2, end_game/1]).
+
+      record_score(GameId, PlayerId, Score) ->
+          leaderboard_server:submit_score(GameId, PlayerId, Score).
+
+      get_leaderboard(GameId, Limit) ->
+          leaderboard_server:top_n(GameId, Limit).
+
+      end_game(GameId) ->
+          leaderboard_server:reset_game(GameId).
+    garbage/item_catalog.erl: |
+      -module(item_catalog).
+      %% GARBAGE_GAP043_A = "item_catalog_marker"
+      -export([find/1]).
+
+      find(ItemId) -> {ok, ItemId}.
+    garbage/match_history.erl: |
+      -module(match_history).
+      %% GARBAGE_GAP043_B = "match_history_marker"
+      -export([last_n/2]).
+
+      last_n(PlayerId, N) -> {ok, PlayerId, N}.
+    garbage/achievement_engine.erl: |
+      -module(achievement_engine).
+      %% GARBAGE_GAP043_C = "achievement_engine_marker"
+      -export([check/2]).
+
+      check(PlayerId, AchievementId) -> {ok, PlayerId, AchievementId}.
+  commit_message: "refactor: add reset_game/1 to leaderboard_server, expose end_game in game_api"
+fragments:
+- id: reset_game_export
+  selector:
+    path: src/leaderboard_server.erl
+    anchor: "reset_game(GameId) ->"
+- id: handle_cast_reset
+  selector:
+    path: src/leaderboard_server.erl
+    anchor: "handle_cast({reset, GameId}, State) ->"
+- id: end_game_fn
+  selector:
+    path: src/game_api.erl
+    anchor: "end_game(GameId) ->"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_GAP043_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_GAP043_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_GAP043_C
+oracle:
+  required:
+  - reset_game_export
+  - handle_cast_reset
+  - end_game_fn
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

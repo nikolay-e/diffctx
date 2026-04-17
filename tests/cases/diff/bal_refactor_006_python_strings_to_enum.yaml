@@ -1,0 +1,214 @@
+name: bal_refactor_006_python_strings_to_enum
+tags:
+- lang:java
+- change:multi_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/inventory/product/ProductRepository.java: |
+      package com.inventory.product;
+
+      import java.util.List;
+      import java.util.ArrayList;
+      import java.util.Optional;
+
+      public class ProductRepository {
+          private final List<Product> products = new ArrayList<>();
+
+          public void save(Product p) {
+              products.add(p);
+          }
+
+          public Optional<Product> findById(String id) {
+              return products.stream().filter(p -> p.getId().equals(id)).findFirst();
+          }
+
+          public List<Product> findAll() {
+              return products;
+          }
+      }
+    src/main/java/com/inventory/product/Product.java: |
+      package com.inventory.product;
+
+      public class Product {
+          private final String id;
+          private final String name;
+          private int stock;
+
+          public Product(String id, String name, int stock) {
+              this.id = id;
+              this.name = name;
+              this.stock = stock;
+          }
+
+          public String getId() { return id; }
+          public String getName() { return name; }
+          public int getStock() { return stock; }
+          public void setStock(int stock) { this.stock = stock; }
+      }
+    src/test/java/com/inventory/product/ProductRepositoryTest.java: |
+      package com.inventory.product;
+
+      import org.junit.jupiter.api.Test;
+      import static org.junit.jupiter.api.Assertions.*;
+
+      public class ProductRepositoryTest {
+          @Test
+          void saveAndFind() {
+              ProductRepository repo = new ProductRepository();
+              repo.save(new Product("p1", "Widget", 10));
+              assertTrue(repo.findById("p1").isPresent());
+          }
+      }
+    garbage/ShippingService.java: |
+      // GARBAGE_JINV_A = "shipping_marker"
+      public class ShippingService {
+          public void ship(String orderId) {}
+      }
+    garbage/TaxCalculator.java: |
+      // GARBAGE_JINV_B = "tax_marker"
+      public class TaxCalculator {
+          public double compute(double amount) { return amount * 0.2; }
+      }
+    garbage/InvoiceGenerator.java: |
+      // GARBAGE_JINV_C = "invoice_marker"
+      public class InvoiceGenerator {
+          public String generate(String id) { return "INV-" + id; }
+      }
+  changed_files:
+    src/main/java/com/inventory/product/ProductRepository.java: |
+      package com.inventory.product;
+
+      import java.util.List;
+      import java.util.ArrayList;
+      import java.util.Optional;
+      import java.util.stream.Collectors;
+
+      public class ProductRepository {
+          private final List<Product> products = new ArrayList<>();
+
+          public void save(Product p) {
+              products.add(p);
+          }
+
+          public Optional<Product> findById(String id) {
+              return products.stream().filter(p -> p.getId().equals(id)).findFirst();
+          }
+
+          public List<Product> findAll() {
+              return products;
+          }
+
+          public List<Product> findLowStock(int threshold) {
+              return products.stream()
+                  .filter(p -> p.getStock() < threshold)
+                  .collect(Collectors.toList());
+          }
+
+          public void restock(String id, int quantity) {
+              findById(id).ifPresent(p -> p.setStock(p.getStock() + quantity));
+          }
+      }
+    src/main/java/com/inventory/product/Product.java: |
+      package com.inventory.product;
+
+      public class Product {
+          private final String id;
+          private final String name;
+          private int stock;
+
+          public Product(String id, String name, int stock) {
+              this.id = id;
+              this.name = name;
+              this.stock = stock;
+          }
+
+          public String getId() { return id; }
+          public String getName() { return name; }
+          public int getStock() { return stock; }
+          public void setStock(int stock) { this.stock = stock; }
+      }
+    src/test/java/com/inventory/product/ProductRepositoryTest.java: |
+      package com.inventory.product;
+
+      import org.junit.jupiter.api.Test;
+      import static org.junit.jupiter.api.Assertions.*;
+
+      public class ProductRepositoryTest {
+          @Test
+          void saveAndFind() {
+              ProductRepository repo = new ProductRepository();
+              repo.save(new Product("p1", "Widget", 10));
+              assertTrue(repo.findById("p1").isPresent());
+          }
+
+          @Test
+          void findLowStockReturnsUnderThreshold() {
+              ProductRepository repo = new ProductRepository();
+              repo.save(new Product("p1", "Widget", 3));
+              repo.save(new Product("p2", "Gadget", 50));
+              List<Product> low = repo.findLowStock(10);
+              assertEquals(1, low.size());
+              assertEquals("p1", low.get(0).getId());
+          }
+
+          @Test
+          void restockIncreasesStock() {
+              ProductRepository repo = new ProductRepository();
+              repo.save(new Product("p1", "Widget", 5));
+              repo.restock("p1", 20);
+              assertEquals(25, repo.findById("p1").get().getStock());
+          }
+      }
+    garbage/ShippingService.java: |
+      // GARBAGE_JINV_A = "shipping_marker"
+      public class ShippingService {
+          public void ship(String orderId) {}
+      }
+    garbage/TaxCalculator.java: |
+      // GARBAGE_JINV_B = "tax_marker"
+      public class TaxCalculator {
+          public double compute(double amount) { return amount * 0.2; }
+      }
+    garbage/InvoiceGenerator.java: |
+      // GARBAGE_JINV_C = "invoice_marker"
+      public class InvoiceGenerator {
+          public String generate(String id) { return "INV-" + id; }
+      }
+  commit_message: "feat: add findLowStock and restock to ProductRepository"
+fragments:
+- id: find_low_stock
+  selector:
+    anchor: "public List<Product> findLowStock(int threshold)"
+- id: restock_method
+  selector:
+    anchor: "public void restock(String id, int quantity)"
+- id: test_low_stock
+  selector:
+    anchor: "void findLowStockReturnsUnderThreshold()"
+- id: test_restock
+  selector:
+    anchor: "void restockIncreasesStock()"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_JINV_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_JINV_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_JINV_C
+oracle:
+  required:
+  - find_low_stock
+  - restock_method
+  - test_low_stock
+  - test_restock
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

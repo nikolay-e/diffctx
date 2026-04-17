@@ -1,0 +1,281 @@
+name: bal_3hop_053_go_cache_invalidation_chain
+tags:
+- lang:go
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    pkg/cache/entry.go: |
+      package cache
+
+      import "time"
+
+      type Entry struct {
+        Key       string
+        Value     interface{}
+        ExpiresAt time.Time
+      }
+
+      func NewEntry(key string, value interface{}, ttl time.Duration) Entry {
+        return Entry{Key: key, Value: value, ExpiresAt: time.Now().Add(ttl)}
+      }
+
+      func (e Entry) IsExpired() bool {
+        return time.Now().After(e.ExpiresAt)
+      }
+    pkg/cache/store.go: |
+      package cache
+
+      import "time"
+
+      type Store struct {
+        entries map[string]Entry
+      }
+
+      func NewStore() *Store {
+        return &Store{entries: make(map[string]Entry)}
+      }
+
+      func (s *Store) Get(key string) (interface{}, bool) {
+        e, ok := s.entries[key]
+        if !ok || e.IsExpired() {
+          delete(s.entries, key)
+          return nil, false
+        }
+        return e.Value, true
+      }
+
+      func (s *Store) Set(key string, value interface{}, ttl time.Duration) {
+        s.entries[key] = NewEntry(key, value, ttl)
+      }
+    pkg/service/product.go: |
+      package service
+
+      import (
+        "pkg/cache"
+        "time"
+      )
+
+      type ProductService struct {
+        cache *cache.Store
+      }
+
+      func NewProductService(c *cache.Store) *ProductService {
+        return &ProductService{cache: c}
+      }
+
+      func (s *ProductService) GetProduct(id string) interface{} {
+        if val, ok := s.cache.Get("product:" + id); ok {
+          return val
+        }
+        product := map[string]string{"id": id, "name": "Widget"}
+        s.cache.Set("product:"+id, product, 5*time.Minute)
+        return product
+      }
+    cmd/api/products.go: |
+      package main
+
+      import (
+        "encoding/json"
+        "net/http"
+        "pkg/cache"
+        "pkg/service"
+      )
+
+      var productSvc = service.NewProductService(cache.NewStore())
+
+      func getProduct(w http.ResponseWriter, r *http.Request) {
+        product := productSvc.GetProduct(r.URL.Query().Get("id"))
+        json.NewEncoder(w).Encode(product)
+      }
+    pkg/util/marshal.go: |
+      package util
+
+      var GARBAGE_053_MARSHAL_MARKER_A = "marshal"
+      var GARBAGE_053_JSON_MARKER_B = true
+
+      func MarshalJSON(v interface{}) ([]byte, error) { return nil, nil }
+    pkg/util/pool.go: |
+      package util
+
+      var GARBAGE_053_POOL_MARKER_C = "pool"
+      var GARBAGE_053_CONN_MARKER_D = 10
+
+      type ConnPool struct{}
+  changed_files:
+    pkg/cache/entry.go: |
+      package cache
+
+      import "time"
+
+      type Entry struct {
+        Key       string
+        Value     interface{}
+        ExpiresAt time.Time
+        Tags      []string
+      }
+
+      func NewEntry(key string, value interface{}, ttl time.Duration, tags ...string) Entry {
+        return Entry{Key: key, Value: value, ExpiresAt: time.Now().Add(ttl), Tags: tags}
+      }
+
+      func (e Entry) IsExpired() bool {
+        return time.Now().After(e.ExpiresAt)
+      }
+
+      func (e Entry) HasTag(tag string) bool {
+        for _, t := range e.Tags {
+          if t == tag {
+            return true
+          }
+        }
+        return false
+      }
+    pkg/cache/store.go: |
+      package cache
+
+      import "time"
+
+      type Store struct {
+        entries map[string]Entry
+      }
+
+      func NewStore() *Store {
+        return &Store{entries: make(map[string]Entry)}
+      }
+
+      func (s *Store) Get(key string) (interface{}, bool) {
+        e, ok := s.entries[key]
+        if !ok || e.IsExpired() {
+          delete(s.entries, key)
+          return nil, false
+        }
+        return e.Value, true
+      }
+
+      func (s *Store) Set(key string, value interface{}, ttl time.Duration, tags ...string) {
+        s.entries[key] = NewEntry(key, value, ttl, tags...)
+      }
+
+      func (s *Store) InvalidateByTag(tag string) int {
+        count := 0
+        for key, e := range s.entries {
+          if e.HasTag(tag) {
+            delete(s.entries, key)
+            count++
+          }
+        }
+        return count
+      }
+    pkg/service/product.go: |
+      package service
+
+      import (
+        "pkg/cache"
+        "time"
+      )
+
+      type ProductService struct {
+        cache *cache.Store
+      }
+
+      func NewProductService(c *cache.Store) *ProductService {
+        return &ProductService{cache: c}
+      }
+
+      func (s *ProductService) GetProduct(id string) interface{} {
+        if val, ok := s.cache.Get("product:" + id); ok {
+          return val
+        }
+        product := map[string]string{"id": id, "name": "Widget"}
+        s.cache.Set("product:"+id, product, 5*time.Minute, "products")
+        return product
+      }
+
+      func (s *ProductService) InvalidateProducts() int {
+        return s.cache.InvalidateByTag("products")
+      }
+    cmd/api/products.go: |
+      package main
+
+      import (
+        "encoding/json"
+        "fmt"
+        "net/http"
+        "pkg/cache"
+        "pkg/service"
+      )
+
+      var productSvc = service.NewProductService(cache.NewStore())
+
+      func getProduct(w http.ResponseWriter, r *http.Request) {
+        product := productSvc.GetProduct(r.URL.Query().Get("id"))
+        json.NewEncoder(w).Encode(product)
+      }
+
+      func invalidateProducts(w http.ResponseWriter, r *http.Request) {
+        count := productSvc.InvalidateProducts()
+        w.Write([]byte(fmt.Sprintf("Invalidated %d entries", count)))
+      }
+    pkg/util/marshal.go: |
+      package util
+
+      var GARBAGE_053_MARSHAL_MARKER_A = "marshal"
+      var GARBAGE_053_JSON_MARKER_B = true
+
+      func MarshalJSON(v interface{}) ([]byte, error) { return nil, nil }
+    pkg/util/pool.go: |
+      package util
+
+      var GARBAGE_053_POOL_MARKER_C = "pool"
+      var GARBAGE_053_CONN_MARKER_D = 10
+
+      type ConnPool struct{}
+  commit_message: "feat: add tag-based cache invalidation"
+fragments:
+- id: entry_tags_field
+  selector:
+    path: pkg/cache/entry.go
+    anchor: "Tags      []string"
+- id: entry_has_tag
+  selector:
+    path: pkg/cache/entry.go
+    anchor: "func (e Entry) HasTag"
+- id: store_invalidate_by_tag
+  selector:
+    path: pkg/cache/store.go
+    anchor: "func (s *Store) InvalidateByTag"
+- id: service_invalidate
+  selector:
+    path: pkg/service/product.go
+    anchor: "func (s *ProductService) InvalidateProducts"
+- id: api_imports_service
+  selector:
+    path: cmd/api/products.go
+    anchor: "pkg/service"
+- id: api_invalidate_handler
+  selector:
+    path: cmd/api/products.go
+    anchor: "func invalidateProducts"
+- id: no_marshal
+  selector:
+    path: pkg/util/marshal.go
+    anchor: "GARBAGE_053_MARSHAL_MARKER_A"
+- id: no_pool
+  selector:
+    path: pkg/util/pool.go
+    anchor: "GARBAGE_053_POOL_MARKER_C"
+oracle:
+  required:
+  - entry_tags_field
+  - entry_has_tag
+  - store_invalidate_by_tag
+  - service_invalidate
+  - api_imports_service
+  - api_invalidate_handler
+  allowed: []
+  forbidden:
+  - no_marshal
+  - no_pool

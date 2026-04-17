@@ -1,0 +1,132 @@
+name: gap_027_python_new_func_ticket_escalation
+tags:
+- change:new_function
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:1hop
+- lang:python
+repo:
+  initial_files:
+    helpdesk/models.py: |
+      from dataclasses import dataclass, field
+      from enum import Enum
+      from datetime import datetime
+
+      class Priority(Enum):
+          LOW = "low"
+          MEDIUM = "medium"
+          HIGH = "high"
+          CRITICAL = "critical"
+
+      @dataclass
+      class Ticket:
+          id: int
+          subject: str
+          priority: Priority
+          assignee: str
+          created_at: datetime = field(default_factory=datetime.now)
+          resolved: bool = False
+    helpdesk/service.py: |
+      from helpdesk.models import Ticket, Priority
+
+      def create_ticket(ticket_id: int, subject: str, assignee: str) -> Ticket:
+          return Ticket(
+              id=ticket_id,
+              subject=subject,
+              priority=Priority.MEDIUM,
+              assignee=assignee,
+          )
+
+      def resolve_ticket(ticket: Ticket) -> Ticket:
+          ticket.resolved = True
+          return ticket
+    helpdesk/reports.py: |
+      GARBAGE_GAP_027_REPORT_A = "sla_marker"
+      GARBAGE_GAP_027_METRIC_B = "response_time"
+
+      def sla_compliance(resolved_count: int, total_count: int) -> float:
+          if total_count == 0:
+              return 1.0
+          return resolved_count / total_count
+    helpdesk/email_sender.py: |
+      GARBAGE_GAP_027_SMTP_C = "email_marker"
+      GARBAGE_GAP_027_PORT_D = 587
+
+      def send_notification(to: str, subject: str, body: str) -> bool:
+          return True
+  changed_files:
+    helpdesk/service.py: |
+      from helpdesk.models import Ticket, Priority
+      from datetime import datetime, timedelta
+
+      def create_ticket(ticket_id: int, subject: str, assignee: str) -> Ticket:
+          return Ticket(
+              id=ticket_id,
+              subject=subject,
+              priority=Priority.MEDIUM,
+              assignee=assignee,
+          )
+
+      def resolve_ticket(ticket: Ticket) -> Ticket:
+          ticket.resolved = True
+          return ticket
+
+      def escalate_overdue(tickets: list[Ticket], max_age_hours: int = 24) -> list[Ticket]:
+          cutoff = datetime.now() - timedelta(hours=max_age_hours)
+          escalated = []
+          for ticket in tickets:
+              if not ticket.resolved and ticket.created_at < cutoff:
+                  if ticket.priority != Priority.CRITICAL:
+                      priorities = list(Priority)
+                      idx = priorities.index(ticket.priority)
+                      ticket.priority = priorities[min(idx + 1, len(priorities) - 1)]
+                  escalated.append(ticket)
+          return escalated
+  commit_message: "add overdue ticket escalation function"
+fixtures:
+  auto_garbage: true
+fragments:
+- id: service_escalate
+  selector:
+    path: helpdesk/service.py
+    anchor: "def escalate_overdue"
+- id: models_priority
+  selector:
+    path: helpdesk/models.py
+    anchor: "class Priority"
+- id: models_ticket
+  selector:
+    path: helpdesk/models.py
+    anchor: "class Ticket"
+- id: no_reports
+  selector:
+    path: helpdesk/reports.py
+- id: no_email
+  selector:
+    path: helpdesk/email_sender.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_027_REPORT_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GAP_027_METRIC_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GAP_027_SMTP_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GAP_027_PORT_D
+oracle:
+  required:
+  - service_escalate
+  - models_priority
+  - models_ticket
+  allowed: []
+  forbidden:
+  - no_reports
+  - no_email
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

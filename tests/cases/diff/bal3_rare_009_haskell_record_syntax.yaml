@@ -1,0 +1,149 @@
+name: bal3_rare_009_haskell_record_syntax
+tags:
+- lang:haskell
+- change:single_file
+- change:single_file
+- context:same_file
+- distance:0hop
+- difficulty:easy
+xfail:
+  category: haskell-no-tree-sitter
+repo:
+  initial_files:
+    src/Person.hs: |
+      module Person where
+
+      data Person = Person
+        { personName  :: String
+        , personAge   :: Int
+        , personEmail :: String
+        } deriving (Show, Eq)
+
+      greetPerson :: Person -> String
+      greetPerson p = "Hello, " ++ personName p ++ "!"
+
+      isAdult :: Person -> Bool
+      isAdult p = personAge p >= 18
+
+      contactInfo :: Person -> String
+      contactInfo p = personName p ++ " <" ++ personEmail p ++ ">"
+    src/Team.hs: |
+      module Team where
+
+      import Person (Person(..), greetPerson, isAdult)
+
+      data Team = Team
+        { teamName    :: String
+        , teamMembers :: [Person]
+        }
+
+      adultMembers :: Team -> [Person]
+      adultMembers team = filter isAdult (teamMembers team)
+
+      greetTeam :: Team -> [String]
+      greetTeam team = map greetPerson (teamMembers team)
+    src/Serializer.hs: |
+      module Serializer where
+
+      gARBAGE_RARE_009_SER_A = "json"
+      gARBAGE_RARE_009_FMT_B = "pretty"
+
+      serialize :: Show a => a -> String
+      serialize = show
+    src/Validator.hs: |
+      module Validator where
+
+      gARBAGE_RARE_009_VAL_C = "required"
+      gARBAGE_RARE_009_MAX_D = 255
+
+      validate :: String -> Bool
+      validate s = not (null s)
+    src/Cache.hs: |
+      module Cache where
+
+      gARBAGE_RARE_009_CACHE_E = "lru"
+      gARBAGE_RARE_009_SIZE_F = 1000
+
+      cacheGet :: String -> Maybe String
+      cacheGet _ = Nothing
+  changed_files:
+    src/Person.hs: |
+      module Person where
+
+      data Person = Person
+        { personName  :: String
+        , personAge   :: Int
+        , personEmail :: String
+        , personPhone :: Maybe String
+        } deriving (Show, Eq)
+
+      greetPerson :: Person -> String
+      greetPerson p = "Hello, " ++ personName p ++ "!"
+
+      isAdult :: Person -> Bool
+      isAdult p = personAge p >= 18
+
+      contactInfo :: Person -> String
+      contactInfo p = case personPhone p of
+        Just phone -> personName p ++ " <" ++ personEmail p ++ "> " ++ phone
+        Nothing    -> personName p ++ " <" ++ personEmail p ++ ">"
+  commit_message: "add optional phone to Person record"
+fragments:
+- id: team_imports_person
+  selector:
+    path: src/Team.hs
+    anchor: "import Person"
+- id: team_uses_isadult
+  selector:
+    path: src/Team.hs
+    anchor: "filter isAdult"
+- id: team_uses_greet
+  selector:
+    path: src/Team.hs
+    anchor: "map greetPerson"
+- id: no_serializer
+  selector:
+    path: src/Serializer.hs
+    anchor: "serialize"
+- id: no_validator
+  selector:
+    path: src/Validator.hs
+    anchor: "validate"
+- id: no_cache
+  selector:
+    path: src/Cache.hs
+    anchor: "cacheGet"
+- id: no_global_0
+  selector:
+    anchor: gARBAGE_RARE_009_SER_A
+- id: no_global_1
+  selector:
+    anchor: gARBAGE_RARE_009_FMT_B
+- id: no_global_2
+  selector:
+    anchor: gARBAGE_RARE_009_VAL_C
+- id: no_global_3
+  selector:
+    anchor: gARBAGE_RARE_009_MAX_D
+- id: no_global_4
+  selector:
+    anchor: gARBAGE_RARE_009_CACHE_E
+- id: no_global_5
+  selector:
+    anchor: gARBAGE_RARE_009_SIZE_F
+oracle:
+  required:
+  - team_imports_person
+  - team_uses_isadult
+  - team_uses_greet
+  allowed: []
+  forbidden:
+  - no_serializer
+  - no_validator
+  - no_cache
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

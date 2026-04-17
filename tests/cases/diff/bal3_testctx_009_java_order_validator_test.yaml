@@ -1,0 +1,139 @@
+name: bal3_testctx_009_java_order_validator_test
+tags:
+- lang:java
+- change:multi_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/main/java/com/shop/OrderValidator.java: |
+      package com.shop;
+
+      public class OrderValidator {
+          public boolean isValidQuantity(int qty) {
+              return qty > 0 && qty <= 1000;
+          }
+
+          public boolean isValidPrice(double price) {
+              return price > 0;
+          }
+      }
+    src/main/java/com/shop/Order.java: |
+      package com.shop;
+
+      public class Order {
+          private final String productId;
+          private final int quantity;
+          private final double price;
+
+          public Order(String productId, int quantity, double price) {
+              this.productId = productId;
+              this.quantity = quantity;
+              this.price = price;
+          }
+
+          public String getProductId() { return productId; }
+          public int getQuantity() { return quantity; }
+          public double getPrice() { return price; }
+      }
+    src/test/java/com/shop/OrderValidatorTest.java: |
+      package com.shop;
+
+      import org.junit.jupiter.api.Test;
+      import static org.junit.jupiter.api.Assertions.*;
+
+      class OrderValidatorTest {
+          private final OrderValidator validator = new OrderValidator();
+
+          @Test
+          void testValidQuantity() {
+              assertTrue(validator.isValidQuantity(5));
+          }
+
+          @Test
+          void testInvalidQuantity() {
+              assertFalse(validator.isValidQuantity(0));
+              assertFalse(validator.isValidQuantity(-1));
+          }
+
+          @Test
+          void testValidPrice() {
+              assertTrue(validator.isValidPrice(9.99));
+          }
+      }
+    src/main/java/com/shop/Inventory.java: |
+      package com.shop;
+
+      import java.util.HashMap;
+      import java.util.Map;
+
+      public class Inventory {
+          private final Map<String, Integer> stock = new HashMap<>();
+
+          public void addStock(String productId, int amount) {
+              stock.merge(productId, amount, Integer::sum);
+          }
+
+          public int getStock(String productId) {
+              return stock.getOrDefault(productId, 0);
+          }
+      }
+  changed_files:
+    src/main/java/com/shop/OrderValidator.java: |
+      package com.shop;
+
+      public class OrderValidator {
+          private static final double MAX_ORDER_TOTAL = 50000.0;
+
+          public boolean isValidQuantity(int qty) {
+              return qty > 0 && qty <= 1000;
+          }
+
+          public boolean isValidPrice(double price) {
+              return price > 0;
+          }
+
+          public boolean isValidOrder(Order order) {
+              if (!isValidQuantity(order.getQuantity())) {
+                  return false;
+              }
+              if (!isValidPrice(order.getPrice())) {
+                  return false;
+              }
+              double total = order.getQuantity() * order.getPrice();
+              return total <= MAX_ORDER_TOTAL;
+          }
+      }
+  commit_message: "feat: add isValidOrder combining quantity, price and total checks"
+fragments:
+- id: max_order_total
+  selector:
+    path: src/main/java/com/shop/OrderValidator.java
+    anchor: "MAX_ORDER_TOTAL = 50000.0"
+- id: is_valid_order
+  selector:
+    path: src/main/java/com/shop/OrderValidator.java
+    anchor: "public boolean isValidOrder(Order order)"
+- id: test_valid_quantity
+  selector:
+    path: src/test/java/com/shop/OrderValidatorTest.java
+    anchor: "void testValidQuantity()"
+- id: order_class
+  selector:
+    path: src/main/java/com/shop/Order.java
+    anchor: "public class Order"
+- id: no_inventory
+  selector:
+    path: src/main/java/com/shop/Inventory.java
+    anchor: "public class Inventory"
+oracle:
+  required:
+  - max_order_total
+  - is_valid_order
+  - test_valid_quantity
+  allowed:
+  - order_class
+  forbidden:
+  - no_inventory

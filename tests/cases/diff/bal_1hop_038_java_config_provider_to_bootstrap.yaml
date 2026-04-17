@@ -1,0 +1,96 @@
+name: bal_1hop_038_java_config_provider_to_bootstrap
+tags:
+- lang:java
+- change:signature
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/main/java/com/infra/config/ConfigProvider.java: |
+      package com.infra.config;
+      import java.util.Properties;
+      public class ConfigProvider {
+          private final Properties props;
+          public ConfigProvider(Properties props) {
+              this.props = props;
+          }
+          public String get(String key) {
+              return props.getProperty(key);
+          }
+      }
+    src/main/java/com/infra/bootstrap/AppBootstrap.java: |
+      package com.infra.bootstrap;
+      import com.infra.config.ConfigProvider;
+      public class AppBootstrap {
+          private final ConfigProvider config;
+          public AppBootstrap(ConfigProvider config) {
+              this.config = config;
+          }
+          public void start() {
+              String port = config.get("server.port");
+              System.out.println("Starting on port " + port);
+          }
+      }
+    src/main/java/com/infra/metrics/MetricsCollector.java: |
+      package com.infra.metrics;
+      public class MetricsCollector {
+          private int requestCount = 0;
+          public void recordRequest() { requestCount++; }
+          public int getRequestCount() { return requestCount; }
+      }
+    src/main/java/com/infra/security/TokenGenerator.java: |
+      package com.infra.security;
+      import java.util.UUID;
+      public class TokenGenerator {
+          public String generate() {
+              return UUID.randomUUID().toString();
+          }
+      }
+  changed_files:
+    src/main/java/com/infra/config/ConfigProvider.java: |
+      package com.infra.config;
+      import java.util.Properties;
+      public class ConfigProvider {
+          private final Properties props;
+          private final String environment;
+          public ConfigProvider(Properties props, String environment) {
+              this.props = props;
+              this.environment = environment;
+          }
+          public String get(String key) {
+              String envKey = environment + "." + key;
+              String val = props.getProperty(envKey);
+              return val != null ? val : props.getProperty(key);
+          }
+          public String getEnvironment() {
+              return environment;
+          }
+      }
+  commit_message: "feat: add environment-aware config resolution"
+fragments:
+- id: config_env_resolution
+  selector:
+    path: ConfigProvider.java
+    anchor: "environment"
+- id: bootstrap_uses_config
+  selector:
+    path: AppBootstrap.java
+    anchor: "config.get(\"server.port\")"
+- id: no_metrics
+  selector:
+    path: MetricsCollector.java
+    anchor: "MetricsCollector"
+- id: no_token_gen
+  selector:
+    path: TokenGenerator.java
+    anchor: "TokenGenerator"
+oracle:
+  required:
+  - config_env_resolution
+  - bootstrap_uses_config
+  allowed: []
+  forbidden:
+  - no_metrics
+  - no_token_gen

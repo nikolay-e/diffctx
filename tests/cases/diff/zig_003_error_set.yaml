@@ -1,247 +1,207 @@
 name: zig_003_error_set
+tags:
+- lang:rust
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:2hop
+- difficulty:hard
 repo:
   initial_files:
-    src/errors.zig: |
-      pub const FileError = error{
-          NotFound,
-          PermissionDenied,
-          IoError,
-      };
+    src/storage/store.rs: |
+      use std::collections::HashMap;
 
-      pub const ParseError = error{
-          InvalidSyntax,
-          UnexpectedToken,
-      };
-    src/reader.zig: |
-      const std = @import("std");
-      const errors = @import("errors.zig");
-
-      pub fn readConfig(path: []const u8) errors.FileError![]const u8 {
-          const file = std.fs.openFileAbsolute(path, .{}) catch |err| switch (err) {
-              error.FileNotFound => return errors.FileError.NotFound,
-              error.AccessDenied => return errors.FileError.PermissionDenied,
-              else => return errors.FileError.IoError,
-          };
-          defer file.close();
-          return file.readToEndAlloc(std.heap.page_allocator, 1024 * 1024);
+      pub struct KvStore {
+          data: HashMap<String, Vec<u8>>,
       }
-    src/handler.zig: |
-      const std = @import("std");
-      const errors = @import("errors.zig");
-      const reader = @import("reader.zig");
 
-      pub fn loadAndProcess(path: []const u8) void {
-          const content = reader.readConfig(path) catch |err| switch (err) {
-              errors.FileError.NotFound => {
-                  std.debug.print("File not found: {s}\n", .{path});
-                  return;
-              },
-              errors.FileError.PermissionDenied => {
-                  std.debug.print("Permission denied: {s}\n", .{path});
-                  return;
-              },
-              errors.FileError.IoError => {
-                  std.debug.print("IO error reading: {s}\n", .{path});
-                  return;
-              },
-          };
-          std.debug.print("Loaded {d} bytes\n", .{content.len});
-      }
-    src/writer.zig: |
-      const std = @import("std");
-      const errors = @import("errors.zig");
+      impl KvStore {
+          pub fn new() -> Self {
+              Self { data: HashMap::new() }
+          }
 
-      pub fn writeOutput(path: []const u8, data: []const u8) errors.FileError!void {
-          const file = std.fs.createFileAbsolute(path, .{}) catch |err| switch (err) {
-              error.AccessDenied => return errors.FileError.PermissionDenied,
-              else => return errors.FileError.IoError,
-          };
-          defer file.close();
-          try file.writeAll(data);
-      }
-    src/network_errors.zig: |
-      pub const NetworkError = error{
-          ConnectionRefused,
-          Timeout,
-          DnsResolutionFailed,
-      };
+          pub fn set(&mut self, key: &str, value: Vec<u8>) {
+              self.data.insert(key.to_string(), value);
+          }
 
-      pub fn isRetryable(err: NetworkError) bool {
-          return switch (err) {
-              NetworkError.Timeout => true,
-              NetworkError.ConnectionRefused => true,
-              NetworkError.DnsResolutionFailed => false,
-          };
-      }
-    src/parser.zig: |
-      const std = @import("std");
-      const errors = @import("errors.zig");
+          pub fn get(&self, key: &str) -> Option<&Vec<u8>> {
+              self.data.get(key)
+          }
 
-      pub fn parseContent(content: []const u8) errors.ParseError!void {
-          if (content.len == 0) return errors.ParseError.InvalidSyntax;
-          if (content[0] != '{') return errors.ParseError.UnexpectedToken;
+          pub fn delete(&mut self, key: &str) -> bool {
+              self.data.remove(key).is_some()
+          }
       }
-    src/utils.zig: |
-      const std = @import("std");
+    src/cache/layer.rs: |
+      use crate::storage::store::KvStore;
 
-      pub fn trimWhitespace(input: []const u8) []const u8 {
-          var start: usize = 0;
-          while (start < input.len and input[start] == ' ') : (start += 1) {}
-          return input[start..];
+      pub struct CacheLayer {
+          store: KvStore,
+          max_entries: usize,
       }
+
+      impl CacheLayer {
+          pub fn new(max_entries: usize) -> Self {
+              Self { store: KvStore::new(), max_entries }
+          }
+
+          pub fn put(&mut self, key: &str, value: Vec<u8>) {
+              self.store.set(key, value);
+          }
+
+          pub fn fetch(&self, key: &str) -> Option<&Vec<u8>> {
+              self.store.get(key)
+          }
+      }
+    src/api/session.rs: |
+      use crate::cache::layer::CacheLayer;
+
+      pub struct SessionManager {
+          cache: CacheLayer,
+      }
+
+      impl SessionManager {
+          pub fn new() -> Self {
+              Self { cache: CacheLayer::new(1000) }
+          }
+
+          pub fn store_session(&mut self, token: &str, data: Vec<u8>) {
+              self.cache.put(token, data);
+          }
+
+          pub fn load_session(&self, token: &str) -> Option<&Vec<u8>> {
+              self.cache.fetch(token)
+          }
+      }
+    garbage/telemetry.rs: |
+      // GARBAGE_ZIG003_A = "telemetry_span_marker"
+    garbage/encryption.rs: |
+      // GARBAGE_ZIG003_B = "aes_encryption_marker"
+    garbage/compression.rs: |
+      // GARBAGE_ZIG003_C = "lz4_compression_marker"
   changed_files:
-    src/errors.zig: |
-      pub const FileError = error{
-          NotFound,
-          PermissionDenied,
-          IoError,
-          FileLocked,
-      };
+    src/storage/store.rs: |
+      use std::collections::HashMap;
 
-      pub const ParseError = error{
-          InvalidSyntax,
-          UnexpectedToken,
-      };
-    src/reader.zig: |
-      const std = @import("std");
-      const errors = @import("errors.zig");
-
-      pub fn readConfig(path: []const u8) errors.FileError![]const u8 {
-          const file = std.fs.openFileAbsolute(path, .{}) catch |err| switch (err) {
-              error.FileNotFound => return errors.FileError.NotFound,
-              error.AccessDenied => return errors.FileError.PermissionDenied,
-              error.FileBusy => return errors.FileError.FileLocked,
-              else => return errors.FileError.IoError,
-          };
-          defer file.close();
-          return file.readToEndAlloc(std.heap.page_allocator, 1024 * 1024);
+      #[derive(Debug)]
+      pub enum StoreError {
+          KeyNotFound(String),
+          CapacityExceeded,
       }
-    src/handler.zig: |
-      const std = @import("std");
-      const errors = @import("errors.zig");
-      const reader = @import("reader.zig");
 
-      pub fn loadAndProcess(path: []const u8) void {
-          const content = reader.readConfig(path) catch |err| switch (err) {
-              errors.FileError.NotFound => {
-                  std.debug.print("File not found: {s}\n", .{path});
-                  return;
-              },
-              errors.FileError.PermissionDenied => {
-                  std.debug.print("Permission denied: {s}\n", .{path});
-                  return;
-              },
-              errors.FileError.IoError => {
-                  std.debug.print("IO error reading: {s}\n", .{path});
-                  return;
-              },
-              errors.FileError.FileLocked => {
-                  std.debug.print("File is locked: {s}\n", .{path});
-                  return;
-              },
-          };
-          std.debug.print("Loaded {d} bytes\n", .{content.len});
+      pub trait StorageBackend {
+          fn set(&mut self, key: &str, value: Vec<u8>) -> Result<(), StoreError>;
+          fn get(&self, key: &str) -> Result<&Vec<u8>, StoreError>;
+          fn delete(&mut self, key: &str) -> Result<(), StoreError>;
       }
-    src/writer.zig: |
-      const std = @import("std");
-      const errors = @import("errors.zig");
 
-      pub fn writeOutput(path: []const u8, data: []const u8) errors.FileError!void {
-          const file = std.fs.createFileAbsolute(path, .{}) catch |err| switch (err) {
-              error.AccessDenied => return errors.FileError.PermissionDenied,
-              else => return errors.FileError.IoError,
-          };
-          defer file.close();
-          try file.writeAll(data);
+      pub struct KvStore {
+          data: HashMap<String, Vec<u8>>,
       }
-    src/network_errors.zig: |
-      pub const NetworkError = error{
-          ConnectionRefused,
-          Timeout,
-          DnsResolutionFailed,
-      };
 
-      pub fn isRetryable(err: NetworkError) bool {
-          return switch (err) {
-              NetworkError.Timeout => true,
-              NetworkError.ConnectionRefused => true,
-              NetworkError.DnsResolutionFailed => false,
-          };
+      impl KvStore {
+          pub fn new() -> Self {
+              Self { data: HashMap::new() }
+          }
       }
-    src/parser.zig: |
-      const std = @import("std");
-      const errors = @import("errors.zig");
 
-      pub fn parseContent(content: []const u8) errors.ParseError!void {
-          if (content.len == 0) return errors.ParseError.InvalidSyntax;
-          if (content[0] != '{') return errors.ParseError.UnexpectedToken;
-      }
-    src/utils.zig: |
-      const std = @import("std");
+      impl StorageBackend for KvStore {
+          fn set(&mut self, key: &str, value: Vec<u8>) -> Result<(), StoreError> {
+              self.data.insert(key.to_string(), value);
+              Ok(())
+          }
 
-      pub fn trimWhitespace(input: []const u8) []const u8 {
-          var start: usize = 0;
-          while (start < input.len and input[start] == ' ') : (start += 1) {}
-          return input[start..];
+          fn get(&self, key: &str) -> Result<&Vec<u8>, StoreError> {
+              self.data.get(key).ok_or_else(|| StoreError::KeyNotFound(key.to_string()))
+          }
+
+          fn delete(&mut self, key: &str) -> Result<(), StoreError> {
+              self.data.remove(key).map(|_| ()).ok_or_else(|| StoreError::KeyNotFound(key.to_string()))
+          }
       }
-  commit_message: Update files
+    src/cache/layer.rs: |
+      use crate::storage::store::{StorageBackend, KvStore, StoreError};
+
+      pub struct CacheLayer<S: StorageBackend> {
+          store: S,
+          max_entries: usize,
+      }
+
+      impl CacheLayer<KvStore> {
+          pub fn new(max_entries: usize) -> Self {
+              Self { store: KvStore::new(), max_entries }
+          }
+      }
+
+      impl<S: StorageBackend> CacheLayer<S> {
+          pub fn put(&mut self, key: &str, value: Vec<u8>) -> Result<(), StoreError> {
+              self.store.set(key, value)
+          }
+
+          pub fn fetch(&self, key: &str) -> Result<&Vec<u8>, StoreError> {
+              self.store.get(key)
+          }
+      }
+    src/api/session.rs: |
+      use crate::cache::layer::CacheLayer;
+      use crate::storage::store::{KvStore, StoreError};
+
+      pub struct SessionManager {
+          cache: CacheLayer<KvStore>,
+      }
+
+      impl SessionManager {
+          pub fn new() -> Self {
+              Self { cache: CacheLayer::new(1000) }
+          }
+
+          pub fn store_session(&mut self, token: &str, data: Vec<u8>) -> Result<(), StoreError> {
+              self.cache.put(token, data)
+          }
+
+          pub fn load_session(&self, token: &str) -> Result<&Vec<u8>, StoreError> {
+              self.cache.fetch(token)
+          }
+      }
+    garbage/telemetry.rs: |
+      // GARBAGE_ZIG003_A = "telemetry_span_marker"
+    garbage/encryption.rs: |
+      // GARBAGE_ZIG003_B = "aes_encryption_marker"
+    garbage/compression.rs: |
+      // GARBAGE_ZIG003_C = "lz4_compression_marker"
+  commit_message: "refactor: introduce StorageBackend trait with Result-based API"
 fragments:
-- id: error_set_filelocked
+- id: storage_backend_trait
   selector:
-    path: src/errors.zig
-    anchor: FileLocked
-- id: handler_filelocked_switch
+    anchor: "pub trait StorageBackend"
+- id: store_error_enum
   selector:
-    path: src/handler.zig
-    anchor: errors.FileError.FileLocked
-- id: handler_locked_message
+    anchor: "pub enum StoreError"
+- id: cache_uses_trait
   selector:
-    path: src/handler.zig
-    anchor: File is locked
-- id: reader_filebusy_mapping
+    path: src/cache/layer.rs
+    anchor: "use crate::storage::store::{StorageBackend, KvStore, StoreError}"
+- id: session_propagates_error
   selector:
-    path: src/reader.zig
-    anchor: error.FileBusy
-- id: reader_filelocked_return
+    path: src/api/session.rs
+    anchor: "Result<(), StoreError>"
+- id: no_garbage_a
   selector:
-    path: src/reader.zig
-    anchor: errors.FileError.FileLocked
-- id: writer_fileoutput_fn
+    anchor: GARBAGE_ZIG003_A
+- id: no_garbage_b
   selector:
-    path: src/writer.zig
-    anchor: writeOutput
-- id: network_error_set
+    anchor: GARBAGE_ZIG003_B
+- id: no_garbage_c
   selector:
-    path: src/network_errors.zig
-    anchor: NetworkError
-- id: network_retryable_fn
-  selector:
-    path: src/network_errors.zig
-    anchor: isRetryable
-- id: parser_parse_content
-  selector:
-    path: src/parser.zig
-    anchor: parseContent
-- id: parser_invalid_syntax
-  selector:
-    path: src/parser.zig
-    anchor: InvalidSyntax
-- id: utils_trim_fn
-  selector:
-    path: src/utils.zig
-    anchor: trimWhitespace
+    anchor: GARBAGE_ZIG003_C
 oracle:
   required:
-  - error_set_filelocked
-  - handler_filelocked_switch
-  - handler_locked_message
-  - reader_filebusy_mapping
-  - reader_filelocked_return
-  allowed:
-  - writer_fileoutput_fn
+  - storage_backend_trait
+  - store_error_enum
+  - cache_uses_trait
+  - session_propagates_error
+  allowed: []
   forbidden:
-  - network_error_set
-  - network_retryable_fn
-  - parser_parse_content
-  - parser_invalid_syntax
-  - utils_trim_fn
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

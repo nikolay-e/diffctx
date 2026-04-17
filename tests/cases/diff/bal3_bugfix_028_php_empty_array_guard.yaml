@@ -1,0 +1,123 @@
+name: bal3_bugfix_028_php_empty_array_guard
+tags:
+- lang:php
+- change:single_file
+- change:bug_fix
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/Math/Statistics.php: |
+      <?php
+      namespace App\Math;
+
+      class Statistics
+      {
+          public function average(array $values): float
+          {
+              return array_sum($values) / count($values);
+          }
+
+          public function max(array $values): float
+          {
+              return max($values);
+          }
+      }
+    src/Service/ScoreService.php: |
+      <?php
+      namespace App\Service;
+
+      use App\Math\Statistics;
+
+      class ScoreService
+      {
+          private Statistics $stats;
+
+          public function __construct()
+          {
+              $this->stats = new Statistics();
+          }
+
+          public function averageScore(array $scores): float
+          {
+              return $this->stats->average($scores);
+          }
+      }
+    src/Controller/DashboardController.php: |
+      <?php
+      namespace App\Controller;
+
+      use App\Service\ScoreService;
+
+      class DashboardController
+      {
+          private ScoreService $service;
+
+          public function __construct()
+          {
+              $this->service = new ScoreService();
+          }
+
+          public function index(array $scores): array
+          {
+              return ['average' => $this->service->averageScore($scores)];
+          }
+      }
+    src/Helper/Formatter.php: |
+      <?php
+      namespace App\Helper;
+
+      class Formatter
+      {
+          public static function decimal(float $value, int $places = 2): string
+          {
+              return number_format($value, $places);
+          }
+      }
+  changed_files:
+    src/Math/Statistics.php: |
+      <?php
+      namespace App\Math;
+
+      class Statistics
+      {
+          public function average(array $values): float
+          {
+              if (empty($values)) {
+                  return 0.0;
+              }
+              return array_sum($values) / count($values);
+          }
+
+          public function max(array $values): float
+          {
+              return max($values);
+          }
+      }
+  commit_message: "fix: guard against division by zero on empty array"
+fragments:
+- id: empty_guard
+  selector:
+    path: src/Math/Statistics.php
+    anchor: "if (empty($values))"
+- id: score_calls_avg
+  selector:
+    path: src/Service/ScoreService.php
+    anchor: "$this->stats->average($scores)"
+- id: dashboard_calls_service
+  selector:
+    path: src/Controller/DashboardController.php
+    anchor: "$this->service->averageScore($scores)"
+- id: no_formatter
+  selector:
+    path: src/Helper/Formatter.php
+    anchor: "class Formatter"
+oracle:
+  required:
+  - empty_guard
+  - score_calls_avg
+  - dashboard_calls_service
+  allowed: []
+  forbidden:
+  - no_formatter

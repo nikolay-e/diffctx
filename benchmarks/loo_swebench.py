@@ -24,20 +24,21 @@ REPOS_DIR = repos_dir("LOO_REPOS_DIR")
 
 
 def strip_file_from_patch(patch_text: str, file_to_hide: str) -> str:
-    lines = patch_text.split("\n")
-    result = []
-    skip = False
+    import re
+
+    pattern = re.compile(r"^diff --git\s.*?(?=^diff --git\s|\Z)", re.MULTILINE | re.DOTALL)
     hidden_markers = {f"a/{file_to_hide}", f"b/{file_to_hide}"}
-    for line in lines:
-        if line.startswith("diff --git "):
-            parts = line.split()
-            skip = any(p.strip('"') in hidden_markers or p.lstrip('"') in hidden_markers for p in parts[2:])
-        if not skip:
-            result.append(line)
-    return "\n".join(result)
+    kept = []
+    for m in pattern.finditer(patch_text):
+        block = m.group()
+        first_line = block.split("\n", 1)[0]
+        parts = first_line.split()
+        if not any(p.strip('"') in hidden_markers for p in parts[2:]):
+            kept.append(block)
+    return "".join(kept)
 
 
-def run_diffctx(repo_dir: Path, budget: int, scoring_mode: str = "hybrid") -> set[str]:
+def run_diffctx(repo_dir: Path, budget: int, scoring_mode: str = "ego") -> set[str]:
     from treemapper.diffctx.pipeline import build_diff_context
 
     try:
@@ -85,7 +86,7 @@ def _pick_distractor(repo_dir: Path, hidden: str) -> str | None:
         return None
 
 
-def evaluate_loo(inst: dict, budget: int, scoring_mode: str = "hybrid", repos_dir: Path = REPOS_DIR) -> list[dict]:
+def evaluate_loo(inst: dict, budget: int, scoring_mode: str = "ego", repos_dir: Path = REPOS_DIR) -> list[dict]:
     iid = inst["instance_id"]
     all_patch_files = patch_files(inst["patch"])
 
@@ -170,13 +171,16 @@ def _run_one(run_args: tuple[int, dict, int, str, int]) -> list[dict]:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=50)
-    ap.add_argument("--budget", type=int, default=8000)
+    ap.add_argument("--budget", type=int, default=16000)
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--seeds", type=str, default=None)
     ap.add_argument("--dataset", default="Contextbench/ContextBench")
     ap.add_argument("--split", default="contextbench_verified")
-    ap.add_argument("--scoring", type=str, default="hybrid", choices=["hybrid", "ppr", "ego"])
+    ap.add_argument("--scoring", type=str, default="ego", choices=["hybrid", "ppr", "ego"])
     ap.add_argument("--timeout", type=int, default=300)
     args = ap.parse_args()
+
+    seeds = [int(s) for s in args.seeds.split(",")] if args.seeds else [args.seed]
 
     from datasets import load_dataset
 
@@ -192,60 +196,70 @@ def main():
     ]
     print(f"Total instances: {len(insts)}, multi-file (filtered): {len(multi_file)}")
 
-    rng = random.Random(args.seed)  # NOSONAR — deterministic PRNG for reproducible benchmarks
-    rng.shuffle(multi_file)
-    multi_file = multi_file[: args.limit]
-
-    print(f"Evaluating LOO on {len(multi_file)} instances (budget={args.budget})")
-
     warm_cache(multi_file)
-    print()
 
-    t0 = time.time()
-    run_args = [(i, inst, args.budget, args.scoring, args.timeout) for i, inst in enumerate(multi_file, 1)]
-    all_results = run_parallel(_run_one, run_args, WORKERS, collect="extend")
-    elapsed = time.time() - t0
+    for seed in seeds:
+        print(f"\n{'#'*60}")
+        print(f"SEED {seed}")
+        print(f"{'#'*60}")
 
-    print()
-    print("=" * 70)
-    print(f"LOO RESULTS ({elapsed:.0f}s)")
-    print("=" * 70)
+        instances = list(multi_file)
+        rng = random.Random(seed)  # NOSONAR — deterministic PRNG for reproducible benchmarks
+        rng.shuffle(instances)
+        instances = instances[: args.limit]
 
-    if not all_results:
-        print("No results.")
-        return
+        print(f"Evaluating LOO on {len(instances)} instances (budget={args.budget})")
+        print()
 
-    total = len(all_results)
-    found = sum(1 for r in all_results if r["found"])
-    distractor_found = sum(1 for r in all_results if r.get("found_distractor"))
-    distractor_total = sum(1 for r in all_results if r.get("distractor"))
-    print(f"Total LOO trials: {total}")
-    print(f"Found hidden file: {found}/{total} ({100 * found / total:.1f}%)")
-    if distractor_total:
-        print(f"Found distractor:  {distractor_found}/{distractor_total} ({100 * distractor_found / distractor_total:.1f}%)")
-    print()
+        t0 = time.time()
+        run_args = [(i, inst, args.budget, args.scoring, args.timeout) for i, inst in enumerate(instances, 1)]
+        all_results = run_parallel(_run_one, run_args, WORKERS, collect="extend")
+        elapsed = time.time() - t0
 
-    by_repo: dict[str, list[dict]] = defaultdict(list)
-    for r in all_results:
-        by_repo[r["repo"]].append(r)
+        print()
+        print("=" * 70)
+        print(f"LOO RESULTS ({elapsed:.0f}s)")
+        print("=" * 70)
 
-    print("Per-repo breakdown:")
-    for repo in sorted(by_repo, key=lambda r: len(by_repo[r]), reverse=True):
-        trials = by_repo[repo]
-        h = sum(1 for t in trials if t["found"])
-        print(f"  {repo:40s} {h}/{len(trials):3d} ({100 * h / len(trials):.0f}%)")
+        if not all_results:
+            print("No results.")
+            continue
 
-    by_lang: dict[str, list[dict]] = defaultdict(list)
-    for r in all_results:
-        by_lang[r["language"]].append(r)
+        total = len(all_results)
+        found = sum(1 for r in all_results if r["found"])
+        distractor_found = sum(1 for r in all_results if r.get("found_distractor"))
+        distractor_total = sum(1 for r in all_results if r.get("distractor"))
+        print(f"Total LOO trials: {total}")
+        print(f"Found hidden file: {found}/{total} ({100 * found / total:.1f}%)")
+        if distractor_total:
+            print(f"Found distractor:  {distractor_found}/{distractor_total} ({100 * distractor_found / distractor_total:.1f}%)")
+        print()
 
-    print("\nPer-language breakdown:")
-    for lang in sorted(by_lang, key=lambda la: len(by_lang[la]), reverse=True):
-        trials = by_lang[lang]
-        h = sum(1 for t in trials if t["found"])
-        print(f"  {lang:20s} {h}/{len(trials):3d} ({100 * h / len(trials):.0f}%)")
+        by_repo: dict[str, list[dict]] = defaultdict(list)
+        for r in all_results:
+            by_repo[r["repo"]].append(r)
 
-    save_results(all_results, f"loo_{args.scoring}_n{args.limit}_b{args.budget}")
+        print("Per-repo breakdown:")
+        for repo in sorted(by_repo, key=lambda r: len(by_repo[r]), reverse=True):
+            trials = by_repo[repo]
+            h = sum(1 for t in trials if t["found"])
+            print(f"  {repo:40s} {h}/{len(trials):3d} ({100 * h / len(trials):.0f}%)")
+
+        by_lang: dict[str, list[dict]] = defaultdict(list)
+        for r in all_results:
+            by_lang[r["language"]].append(r)
+
+        print("\nPer-language breakdown:")
+        for lang in sorted(by_lang, key=lambda la: len(by_lang[la]), reverse=True):
+            trials = by_lang[lang]
+            h = sum(1 for t in trials if t["found"])
+            print(f"  {lang:20s} {h}/{len(trials):3d} ({100 * h / len(trials):.0f}%)")
+
+        if len(seeds) == 1:
+            tag = f"loo_{args.scoring}_n{args.limit}_b{args.budget}"
+        else:
+            tag = f"loo_{args.scoring}_n{args.limit}_b{args.budget}_s{seed}"
+        save_results(all_results, tag, seed=seed, budget=args.budget, scoring=args.scoring)
 
 
 if __name__ == "__main__":

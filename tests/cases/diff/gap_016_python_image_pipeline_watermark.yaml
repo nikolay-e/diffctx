@@ -1,0 +1,202 @@
+name: gap_016_python_image_pipeline_watermark
+tags:
+- lang:python
+- change:multi_file
+- change:new_function
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    imaging/processor.py: |
+      class ImageProcessor:
+          def __init__(self, width: int, height: int):
+              self._width = width
+              self._height = height
+              self._pixels: list[list[tuple[int, int, int]]] = [
+                  [(0, 0, 0)] * width for _ in range(height)
+              ]
+
+          def set_pixel(self, x: int, y: int, color: tuple[int, int, int]) -> None:
+              if 0 <= x < self._width and 0 <= y < self._height:
+                  self._pixels[y][x] = color
+
+          def get_pixel(self, x: int, y: int) -> tuple[int, int, int]:
+              return self._pixels[y][x]
+
+          def crop(self, x: int, y: int, w: int, h: int) -> "ImageProcessor":
+              cropped = ImageProcessor(w, h)
+              for dy in range(h):
+                  for dx in range(w):
+                      cropped.set_pixel(dx, dy, self.get_pixel(x + dx, y + dy))
+              return cropped
+
+          def dimensions(self) -> tuple[int, int]:
+              return self._width, self._height
+    imaging/blending.py: |
+      def alpha_blend(
+          bg: tuple[int, int, int],
+          fg: tuple[int, int, int],
+          alpha: float,
+      ) -> tuple[int, int, int]:
+          r = int(bg[0] * (1 - alpha) + fg[0] * alpha)
+          g = int(bg[1] * (1 - alpha) + fg[1] * alpha)
+          b = int(bg[2] * (1 - alpha) + fg[2] * alpha)
+          return (min(255, r), min(255, g), min(255, b))
+
+      def multiply(
+          a: tuple[int, int, int],
+          b: tuple[int, int, int],
+      ) -> tuple[int, int, int]:
+          return (
+              (a[0] * b[0]) // 255,
+              (a[1] * b[1]) // 255,
+              (a[2] * b[2]) // 255,
+          )
+    pipeline/steps.py: |
+      from imaging.processor import ImageProcessor
+
+      class ResizeStep:
+          def __init__(self, target_width: int, target_height: int):
+              self._tw = target_width
+              self._th = target_height
+
+          def apply(self, img: ImageProcessor) -> ImageProcessor:
+              resized = ImageProcessor(self._tw, self._th)
+              sw, sh = img.dimensions()
+              for y in range(self._th):
+                  for x in range(self._tw):
+                      src_x = int(x * sw / self._tw)
+                      src_y = int(y * sh / self._th)
+                      resized.set_pixel(x, y, img.get_pixel(src_x, src_y))
+              return resized
+    pipeline/output.py: |
+      from imaging.processor import ImageProcessor
+
+      class PngEncoder:
+          def encode(self, img: ImageProcessor) -> bytes:
+              w, h = img.dimensions()
+              header = f"PNG:{w}x{h}".encode()
+              return header
+
+          def save(self, img: ImageProcessor, path: str) -> None:
+              data = self.encode(img)
+              with open(path, "wb") as f:
+                  f.write(data)
+    imaging/histogram.py: |
+      class Histogram:
+          def __init__(self):
+              self._bins: dict[int, int] = {}
+
+          def add(self, value: int) -> None:
+              self._bins[value] = self._bins.get(value, 0) + 1
+
+          def mode(self) -> int:
+              if not self._bins:
+                  return 0
+              return max(self._bins, key=self._bins.get)
+
+          def total(self) -> int:
+              return sum(self._bins.values())
+  changed_files:
+    imaging/processor.py: |
+      class ImageProcessor:
+          def __init__(self, width: int, height: int):
+              self._width = width
+              self._height = height
+              self._pixels: list[list[tuple[int, int, int]]] = [
+                  [(0, 0, 0)] * width for _ in range(height)
+              ]
+
+          def set_pixel(self, x: int, y: int, color: tuple[int, int, int]) -> None:
+              if 0 <= x < self._width and 0 <= y < self._height:
+                  self._pixels[y][x] = color
+
+          def get_pixel(self, x: int, y: int) -> tuple[int, int, int]:
+              return self._pixels[y][x]
+
+          def crop(self, x: int, y: int, w: int, h: int) -> "ImageProcessor":
+              cropped = ImageProcessor(w, h)
+              for dy in range(h):
+                  for dx in range(w):
+                      cropped.set_pixel(dx, dy, self.get_pixel(x + dx, y + dy))
+              return cropped
+
+          def overlay(self, other: "ImageProcessor", offset_x: int, offset_y: int, alpha: float) -> None:
+              ow, oh = other.dimensions()
+              for dy in range(oh):
+                  for dx in range(ow):
+                      tx, ty = offset_x + dx, offset_y + dy
+                      if 0 <= tx < self._width and 0 <= ty < self._height:
+                          fg = other.get_pixel(dx, dy)
+                          bg = self.get_pixel(tx, ty)
+                          blended = (
+                              int(bg[0] * (1 - alpha) + fg[0] * alpha),
+                              int(bg[1] * (1 - alpha) + fg[1] * alpha),
+                              int(bg[2] * (1 - alpha) + fg[2] * alpha),
+                          )
+                          self.set_pixel(tx, ty, blended)
+
+          def dimensions(self) -> tuple[int, int]:
+              return self._width, self._height
+    pipeline/steps.py: |
+      from imaging.processor import ImageProcessor
+
+      class ResizeStep:
+          def __init__(self, target_width: int, target_height: int):
+              self._tw = target_width
+              self._th = target_height
+
+          def apply(self, img: ImageProcessor) -> ImageProcessor:
+              resized = ImageProcessor(self._tw, self._th)
+              sw, sh = img.dimensions()
+              for y in range(self._th):
+                  for x in range(self._tw):
+                      src_x = int(x * sw / self._tw)
+                      src_y = int(y * sh / self._th)
+                      resized.set_pixel(x, y, img.get_pixel(src_x, src_y))
+              return resized
+
+      class WatermarkStep:
+          def __init__(self, watermark: ImageProcessor, alpha: float = 0.3):
+              self._watermark = watermark
+              self._alpha = alpha
+
+          def apply(self, img: ImageProcessor) -> ImageProcessor:
+              iw, ih = img.dimensions()
+              ww, wh = self._watermark.dimensions()
+              offset_x = iw - ww - 10
+              offset_y = ih - wh - 10
+              img.overlay(self._watermark, offset_x, offset_y, self._alpha)
+              return img
+fragments:
+- id: overlay_method
+  selector:
+    path: imaging/processor.py
+    anchor: "def overlay"
+- id: watermark_step
+  selector:
+    path: pipeline/steps.py
+    anchor: "class WatermarkStep"
+- id: watermark_apply
+  selector:
+    path: pipeline/steps.py
+    anchor: "def apply"
+- id: no_output
+  selector:
+    path: pipeline/output.py
+- id: no_histogram
+  selector:
+    path: imaging/histogram.py
+- id: no_blending
+  selector:
+    path: imaging/blending.py
+oracle:
+  required:
+  - overlay_method
+  - watermark_step
+  forbidden:
+  - no_output
+  - no_histogram

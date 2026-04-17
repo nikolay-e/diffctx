@@ -1,0 +1,78 @@
+name: bal3_bugfix_020_scala_wrong_comparison
+tags:
+- lang:scala
+- change:single_file
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/main/scala/priority/Sorter.scala: |
+      package priority
+
+      case class Item(name: String, priority: Int)
+
+      class Sorter {
+        def sortByPriority(items: List[Item]): List[Item] = {
+          items.sortBy(_.priority)
+        }
+
+        def highest(items: List[Item]): Option[Item] = {
+          sortByPriority(items).headOption
+        }
+      }
+    src/main/scala/queue/Dispatcher.scala: |
+      package queue
+
+      import priority.{Item, Sorter}
+
+      class Dispatcher {
+        private val sorter = new Sorter()
+
+        def next(items: List[Item]): Option[Item] = {
+          sorter.highest(items)
+        }
+      }
+    src/main/scala/logging/Audit.scala: |
+      package logging
+
+      object Audit {
+        def log(action: String): Unit = println(s"[AUDIT] $action")
+      }
+  changed_files:
+    src/main/scala/priority/Sorter.scala: |
+      package priority
+
+      case class Item(name: String, priority: Int)
+
+      class Sorter {
+        def sortByPriority(items: List[Item]): List[Item] = {
+          items.sortBy(-_.priority)
+        }
+
+        def highest(items: List[Item]): Option[Item] = {
+          sortByPriority(items).headOption
+        }
+      }
+  commit_message: "fix: sort descending so highest priority comes first"
+fragments:
+- id: sort_fix
+  selector:
+    path: priority/Sorter.scala
+    anchor: "items.sortBy(-_.priority)"
+- id: dispatcher_calls_highest
+  selector:
+    path: queue/Dispatcher.scala
+    anchor: "sorter.highest(items)"
+- id: no_audit
+  selector:
+    path: logging/Audit.scala
+    anchor: "object Audit"
+oracle:
+  required:
+  - sort_fix
+  - dispatcher_calls_highest
+  allowed: []
+  forbidden:
+  - no_audit

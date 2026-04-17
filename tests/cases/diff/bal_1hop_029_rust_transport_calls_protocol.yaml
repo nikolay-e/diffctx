@@ -1,0 +1,223 @@
+name: bal_1hop_029_rust_transport_calls_protocol
+tags:
+- lang:go
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:easy
+repo:
+  initial_files:
+    pkg/util/sanitize.go: |
+      package util
+
+      import "strings"
+
+      func SanitizeHeader(value string) string {
+          return strings.TrimSpace(value)  // BUG: doesn't remove null bytes
+      }
+
+      func NormalizeKey(key string) string {
+          return strings.ToLower(strings.TrimSpace(key))
+      }
+    pkg/http/headers.go: |
+      package http
+
+      import "pkg/util"
+
+      type Header struct {
+          Key   string
+          Value string
+      }
+
+      func NewHeader(key, value string) Header {
+          return Header{
+              Key:   util.NormalizeKey(key),
+              Value: util.SanitizeHeader(value),
+          }
+      }
+    pkg/http/request.go: |
+      package http
+
+      type Request struct {
+          Method  string
+          Path    string
+          Headers []Header
+      }
+
+      func NewRequest(method, path string, headers []Header) Request {
+          return Request{Method: method, Path: path, Headers: headers}
+      }
+    internal/gateway/proxy.go: |
+      package gateway
+
+      import (
+          "pkg/http"
+      )
+
+      type Proxy struct {
+          upstream string
+      }
+
+      func NewProxy(upstream string) *Proxy {
+          return &Proxy{upstream: upstream}
+      }
+
+      func (p *Proxy) Forward(req http.Request) error {
+          for _, h := range req.Headers {
+              _ = h.Value
+          }
+          return nil
+      }
+    garbage/CacheEviction.go: |
+      package garbage
+
+      // GARBAGE_BAL1HOP029_A = "cache_eviction_marker"
+
+      type CacheEviction struct{ Policy string }
+    garbage/MetricsBatch.go: |
+      package garbage
+
+      // GARBAGE_BAL1HOP029_B = "metrics_batch_marker"
+
+      type MetricsBatch struct{ Size int }
+    garbage/GameSession.go: |
+      package garbage
+
+      // GARBAGE_BAL1HOP029_C = "game_session_marker"
+
+      type GameSession struct{ PlayerID string }
+    garbage/IoTEvent.go: |
+      package garbage
+
+      // GARBAGE_BAL1HOP029_D = "iot_event_marker"
+
+      type IoTEvent struct{ DeviceID string }
+  changed_files:
+    pkg/util/sanitize.go: |
+      package util
+
+      import "strings"
+
+      func SanitizeHeader(value string) string {
+          value = strings.ReplaceAll(value, "\x00", "")
+          return strings.TrimSpace(value)
+      }
+
+      func NormalizeKey(key string) string {
+          return strings.ToLower(strings.TrimSpace(key))
+      }
+    pkg/http/headers.go: |
+      package http
+
+      import "pkg/util"
+
+      type Header struct {
+          Key   string
+          Value string
+      }
+
+      func NewHeader(key, value string) Header {
+          return Header{
+              Key:   util.NormalizeKey(key),
+              Value: util.SanitizeHeader(value),
+          }
+      }
+    pkg/http/request.go: |
+      package http
+
+      type Request struct {
+          Method  string
+          Path    string
+          Headers []Header
+      }
+
+      func NewRequest(method, path string, headers []Header) Request {
+          return Request{Method: method, Path: path, Headers: headers}
+      }
+    internal/gateway/proxy.go: |
+      package gateway
+
+      import (
+          "pkg/http"
+      )
+
+      type Proxy struct {
+          upstream string
+      }
+
+      func NewProxy(upstream string) *Proxy {
+          return &Proxy{upstream: upstream}
+      }
+
+      func (p *Proxy) Forward(req http.Request) error {
+          for _, h := range req.Headers {
+              _ = h.Value
+          }
+          return nil
+      }
+    garbage/CacheEviction.go: |
+      package garbage
+
+      // GARBAGE_BAL1HOP029_A = "cache_eviction_marker"
+
+      type CacheEviction struct{ Policy string }
+    garbage/MetricsBatch.go: |
+      package garbage
+
+      // GARBAGE_BAL1HOP029_B = "metrics_batch_marker"
+
+      type MetricsBatch struct{ Size int }
+    garbage/GameSession.go: |
+      package garbage
+
+      // GARBAGE_BAL1HOP029_C = "game_session_marker"
+
+      type GameSession struct{ PlayerID string }
+    garbage/IoTEvent.go: |
+      package garbage
+
+      // GARBAGE_BAL1HOP029_D = "iot_event_marker"
+
+      type IoTEvent struct{ DeviceID string }
+  commit_message: "fix: strip null bytes from HTTP header values in SanitizeHeader"
+fragments:
+- id: sanitize_null_removal
+  selector:
+    path: pkg/util/sanitize.go
+    anchor: "strings.ReplaceAll(value, \"\\x00\""
+- id: headers_sanitize_call
+  selector:
+    path: pkg/http/headers.go
+    anchor: "Value: util.SanitizeHeader(value)"
+- id: request_struct
+  selector:
+    path: pkg/http/request.go
+    anchor: "type Request struct"
+- id: proxy_forward
+  selector:
+    path: internal/gateway/proxy.go
+    anchor: "func (p *Proxy) Forward"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_BAL1HOP029_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_BAL1HOP029_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_BAL1HOP029_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_BAL1HOP029_D
+oracle:
+  required:
+  - sanitize_null_removal
+  - headers_sanitize_call
+  allowed:
+  - request_struct
+  - proxy_forward
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

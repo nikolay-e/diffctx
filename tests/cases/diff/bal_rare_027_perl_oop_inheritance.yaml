@@ -1,0 +1,208 @@
+name: bal_rare_027_perl_oop_inheritance
+tags:
+- lang:ruby
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:easy
+repo:
+  initial_files:
+    lib/payment/gateway.rb: |
+      module Payment
+        class Gateway
+          def charge(amount_cents, currency)
+            raise NotImplementedError, "subclass must implement charge"
+          end
+
+          def refund(transaction_id, amount_cents)
+            raise NotImplementedError, "subclass must implement refund"
+          end
+        end
+      end
+    lib/payment/stripe_gateway.rb: |
+      require_relative 'gateway'
+
+      module Payment
+        class StripeGateway < Gateway
+          def initialize(api_key)
+            @api_key = api_key
+          end
+
+          def charge(amount_cents, currency)
+            { id: "ch_#{SecureRandom.hex(8)}", amount: amount_cents, currency: currency }
+          end
+
+          def refund(transaction_id, amount_cents)
+            { id: "re_#{SecureRandom.hex(8)}", charge: transaction_id }
+          end
+        end
+      end
+    lib/order/processor.rb: |
+      require_relative '../payment/stripe_gateway'
+
+      module Order
+        class Processor
+          def initialize(gateway)
+            @gateway = gateway
+          end
+
+          def process(order)
+            @gateway.charge(order[:total_cents], order[:currency])
+          end
+        end
+      end
+    lib/api/checkout_controller.rb: |
+      require_relative '../order/processor'
+      require_relative '../payment/stripe_gateway'
+
+      module Api
+        class CheckoutController
+          def initialize
+            gateway = Payment::StripeGateway.new(ENV['STRIPE_KEY'])
+            @processor = Order::Processor.new(gateway)
+          end
+
+          def create(params)
+            @processor.process(params[:order])
+          end
+        end
+      end
+    lib/reporting/invoice_builder.rb: |
+      require_relative '../api/checkout_controller'
+
+      module Reporting
+        class InvoiceBuilder
+          def build_from_checkout(controller, order_params)
+            result = controller.create(order_params)
+            { transaction_id: result[:id], amount: order_params[:order][:total_cents] }
+          end
+        end
+      end
+    garbage/mailer.rb: |
+      # GARBAGE_RBYOOP_A = "mailer_service_marker"
+    garbage/logger.rb: |
+      # GARBAGE_RBYOOP_B = "audit_log_marker"
+    garbage/cache.rb: |
+      # GARBAGE_RBYOOP_C = "redis_cache_marker"
+  changed_files:
+    lib/payment/gateway.rb: |
+      module Payment
+        class Gateway
+          def charge(amount_cents, currency, metadata = {})
+            raise NotImplementedError, "subclass must implement charge"
+          end
+
+          def refund(transaction_id, amount_cents, reason: nil)
+            raise NotImplementedError, "subclass must implement refund"
+          end
+        end
+      end
+    lib/payment/stripe_gateway.rb: |
+      require_relative 'gateway'
+
+      module Payment
+        class StripeGateway < Gateway
+          def initialize(api_key)
+            @api_key = api_key
+          end
+
+          def charge(amount_cents, currency, metadata = {})
+            { id: "ch_#{SecureRandom.hex(8)}", amount: amount_cents, currency: currency, metadata: metadata }
+          end
+
+          def refund(transaction_id, amount_cents, reason: nil)
+            { id: "re_#{SecureRandom.hex(8)}", charge: transaction_id, reason: reason }
+          end
+        end
+      end
+    lib/order/processor.rb: |
+      require_relative '../payment/stripe_gateway'
+
+      module Order
+        class Processor
+          def initialize(gateway)
+            @gateway = gateway
+          end
+
+          def process(order)
+            meta = { order_id: order[:id], customer: order[:customer_id] }
+            @gateway.charge(order[:total_cents], order[:currency], meta)
+          end
+        end
+      end
+    lib/api/checkout_controller.rb: |
+      require_relative '../order/processor'
+      require_relative '../payment/stripe_gateway'
+
+      module Api
+        class CheckoutController
+          def initialize
+            gateway = Payment::StripeGateway.new(ENV['STRIPE_KEY'])
+            @processor = Order::Processor.new(gateway)
+          end
+
+          def create(params)
+            @processor.process(params[:order])
+          end
+        end
+      end
+    lib/reporting/invoice_builder.rb: |
+      require_relative '../api/checkout_controller'
+
+      module Reporting
+        class InvoiceBuilder
+          def build_from_checkout(controller, order_params)
+            result = controller.create(order_params)
+            { transaction_id: result[:id], amount: order_params[:order][:total_cents] }
+          end
+        end
+      end
+    garbage/mailer.rb: |
+      # GARBAGE_RBYOOP_A = "mailer_service_marker"
+    garbage/logger.rb: |
+      # GARBAGE_RBYOOP_B = "audit_log_marker"
+    garbage/cache.rb: |
+      # GARBAGE_RBYOOP_C = "redis_cache_marker"
+  commit_message: "feat: add metadata to charge and reason to refund signature"
+fragments:
+- id: gateway_charge_sig
+  selector:
+    path: lib/payment/gateway.rb
+    anchor: "def charge(amount_cents, currency, metadata = {})"
+- id: gateway_refund_sig
+  selector:
+    path: lib/payment/gateway.rb
+    anchor: "def refund(transaction_id, amount_cents, reason: nil)"
+- id: stripe_charge_impl
+  selector:
+    path: lib/payment/stripe_gateway.rb
+    anchor: "def charge(amount_cents, currency, metadata = {})"
+- id: processor_passes_meta
+  selector:
+    path: lib/order/processor.rb
+    anchor: "meta = { order_id:"
+- id: invoice_builder_context
+  selector:
+    path: lib/reporting/invoice_builder.rb
+    anchor: "build_from_checkout"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_RBYOOP_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_RBYOOP_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_RBYOOP_C
+oracle:
+  required:
+  - gateway_charge_sig
+  - gateway_refund_sig
+  - stripe_charge_impl
+  - processor_passes_meta
+  allowed:
+  - invoice_builder_context
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

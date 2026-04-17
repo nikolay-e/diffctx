@@ -1,0 +1,143 @@
+name: bal3_3hop_057_scala_graph_traversal
+tags:
+- lang:scala
+- change:multi_file
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/com/app/graph/Node.scala: |
+      package com.app.graph
+
+      case class Node(
+        id: String,
+        label: String
+      )
+    src/main/scala/com/app/graph/Edge.scala: |
+      package com.app.graph
+
+      case class Edge(
+        from: Node,
+        to: Node
+      )
+    src/main/scala/com/app/graph/Graph.scala: |
+      package com.app.graph
+
+      class Graph {
+        private var nodes = List.empty[Node]
+        private var edges = List.empty[Edge]
+        def addNode(node: Node): Unit = nodes = node :: nodes
+        def addEdge(edge: Edge): Unit = edges = edge :: edges
+        def neighbors(node: Node): List[Node] = {
+          edges.filter(_.from == node).map(_.to)
+        }
+      }
+    src/main/scala/com/app/service/TraversalService.scala: |
+      package com.app.service
+
+      import com.app.graph.{Graph, Node}
+
+      class TraversalService(graph: Graph) {
+        def bfs(start: Node): List[Node] = {
+          var visited = List.empty[Node]
+          var queue = List(start)
+          while (queue.nonEmpty) {
+            val current = queue.head
+            queue = queue.tail
+            if (!visited.contains(current)) {
+              visited = visited :+ current
+              queue = queue ++ graph.neighbors(current)
+            }
+          }
+          visited
+        }
+      }
+    src/main/scala/com/app/api/GraphEndpoint.scala: |
+      package com.app.api
+
+      import com.app.service.TraversalService
+      import com.app.graph.Node
+
+      class GraphEndpoint(service: TraversalService) {
+        def traverse(startId: String): List[String] = {
+          service.bfs(Node(startId, "")).map(_.id)
+        }
+      }
+    src/main/scala/com/app/util/Matrix.scala: |
+      package com.app.util
+
+      var GARBAGE_057_MATRIX_MARKER_A = "adj"
+      var GARBAGE_057_SPARSE_MARKER_B = true
+
+      object Matrix {
+        def identity(size: Int): Array[Array[Int]] = Array.fill(size, size)(0)
+      }
+    src/main/scala/com/app/util/PathFinder.scala: |
+      package com.app.util
+
+      var GARBAGE_057_PATH_MARKER_C = "dijkstra"
+      var GARBAGE_057_INF_MARKER_D = Int.MaxValue
+
+      object PathFinder {
+        def shortestPath(from: String, to: String): Int = 0
+      }
+  changed_files:
+    src/main/scala/com/app/graph/Node.scala: |
+      package com.app.graph
+
+      case class Node(
+        id: String,
+        label: String,
+        weight: Double = 1.0
+      )
+    src/main/scala/com/app/graph/Edge.scala: |
+      package com.app.graph
+
+      case class Edge(
+        from: Node,
+        to: Node,
+        cost: Double = 0.0
+      )
+  commit_message: "fix: add weight to Node and cost to Edge for weighted traversal"
+fragments:
+- id: node_weight_field
+  selector:
+    path: src/main/scala/com/app/graph/Node.scala
+    anchor: "weight: Double"
+- id: edge_cost_field
+  selector:
+    path: src/main/scala/com/app/graph/Edge.scala
+    anchor: "cost: Double"
+- id: graph_uses_node_edge
+  selector:
+    path: src/main/scala/com/app/graph/Graph.scala
+    anchor: "addEdge(edge: Edge)"
+- id: service_imports_graph
+  selector:
+    path: src/main/scala/com/app/service/TraversalService.scala
+    anchor: "import com.app.graph"
+- id: endpoint_imports_service
+  selector:
+    path: src/main/scala/com/app/api/GraphEndpoint.scala
+    anchor: "import com.app.service.TraversalService"
+- id: no_matrix
+  selector:
+    path: src/main/scala/com/app/util/Matrix.scala
+    anchor: "GARBAGE_057_MATRIX_MARKER_A"
+- id: no_path_finder
+  selector:
+    path: src/main/scala/com/app/util/PathFinder.scala
+    anchor: "GARBAGE_057_PATH_MARKER_C"
+oracle:
+  required:
+  - node_weight_field
+  - edge_cost_field
+  - graph_uses_node_edge
+  - service_imports_graph
+  allowed:
+  - endpoint_imports_service
+  forbidden:
+  - no_matrix
+  - no_path_finder

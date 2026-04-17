@@ -1,4 +1,12 @@
 name: docker_008_compose_healthcheck
+tags:
+- lang:python
+- lang:shell
+- change:single_file
+- change:config
+- context:cross_module
+- distance:2hop
+- difficulty:medium
 repo:
   initial_files:
     src/health.py: |

@@ -1,0 +1,218 @@
+name: gap_130_swift_cross_module_image_pipeline
+tags:
+- lang:swift
+- change:new_function
+- change:single_file
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    Sources/Pipeline/ImagePipeline.swift: |
+      import Foundation
+
+      struct ImageRequest {
+          let url: String
+          let width: Int
+          let height: Int
+      }
+
+      struct ProcessedImage {
+          let data: Data
+          let format: String
+          let width: Int
+          let height: Int
+      }
+
+      class ImagePipeline {
+          private let downloader: ImageDownloader
+          private let cache: ImageCache
+
+          init(downloader: ImageDownloader, cache: ImageCache) {
+              self.downloader = downloader
+              self.cache = cache
+          }
+
+          func fetch(request: ImageRequest) -> ProcessedImage? {
+              if let cached = cache.get(key: request.url) {
+                  return cached
+              }
+              guard let raw = downloader.download(url: request.url) else {
+                  return nil
+              }
+              let processed = ProcessedImage(
+                  data: raw,
+                  format: "png",
+                  width: request.width,
+                  height: request.height
+              )
+              cache.store(key: request.url, image: processed)
+              return processed
+          }
+      }
+    Sources/Network/ImageDownloader.swift: |
+      import Foundation
+
+      class ImageDownloader {
+          private let session: URLSession
+          private let maxRetries: Int
+
+          init(maxRetries: Int = 3) {
+              self.session = URLSession.shared
+              self.maxRetries = maxRetries
+          }
+
+          func download(url: String) -> Data? {
+              guard let requestUrl = URL(string: url) else { return nil }
+              var attempt = 0
+              while attempt < maxRetries {
+                  if let data = try? Data(contentsOf: requestUrl) {
+                      return data
+                  }
+                  attempt += 1
+              }
+              return nil
+          }
+
+          func prefetch(urls: [String]) {
+              for url in urls {
+                  _ = download(url: url)
+              }
+          }
+      }
+    Sources/Cache/ImageCache.swift: |
+      import Foundation
+
+      class ImageCache {
+          private var storage: [String: ProcessedImage] = [:]
+          private let maxEntries: Int
+
+          init(maxEntries: Int = 100) {
+              self.maxEntries = maxEntries
+          }
+
+          func get(key: String) -> ProcessedImage? {
+              storage[key]
+          }
+
+          func store(key: String, image: ProcessedImage) {
+              if storage.count >= maxEntries {
+                  evictOldest()
+              }
+              storage[key] = image
+          }
+
+          func evictOldest() {
+              if let firstKey = storage.keys.first {
+                  storage.removeValue(forKey: firstKey)
+              }
+          }
+
+          func clear() {
+              storage.removeAll()
+          }
+      }
+    Sources/Logging/PerformanceLogger.swift: |
+      import Foundation
+
+      class PerformanceLogger {
+          private var timings: [(String, TimeInterval)] = []
+
+          func log(operation: String, duration: TimeInterval) {
+              timings.append((operation, duration))
+          }
+
+          func averageDuration(for operation: String) -> TimeInterval {
+              let relevant = timings.filter { $0.0 == operation }
+              guard !relevant.isEmpty else { return 0 }
+              return relevant.reduce(0.0) { $0 + $1.1 } / Double(relevant.count)
+          }
+
+          func reset() {
+              timings.removeAll()
+          }
+      }
+  changed_files:
+    Sources/Pipeline/ImagePipeline.swift: |
+      import Foundation
+
+      struct ImageRequest {
+          let url: String
+          let width: Int
+          let height: Int
+      }
+
+      struct ProcessedImage {
+          let data: Data
+          let format: String
+          let width: Int
+          let height: Int
+      }
+
+      class ImagePipeline {
+          private let downloader: ImageDownloader
+          private let cache: ImageCache
+
+          init(downloader: ImageDownloader, cache: ImageCache) {
+              self.downloader = downloader
+              self.cache = cache
+          }
+
+          func fetch(request: ImageRequest) -> ProcessedImage? {
+              if let cached = cache.get(key: request.url) {
+                  return cached
+              }
+              guard let raw = downloader.download(url: request.url) else {
+                  return nil
+              }
+              let processed = ProcessedImage(
+                  data: raw,
+                  format: "png",
+                  width: request.width,
+                  height: request.height
+              )
+              cache.store(key: request.url, image: processed)
+              return processed
+          }
+
+          func prefetchBatch(requests: [ImageRequest]) -> Int {
+              var fetched = 0
+              for request in requests {
+                  if cache.get(key: request.url) != nil {
+                      continue
+                  }
+                  downloader.prefetch(urls: [request.url])
+                  fetched += 1
+              }
+              return fetched
+          }
+      }
+fragments:
+- id: prefetch_batch
+  selector:
+    path: Sources/Pipeline/ImagePipeline.swift
+    anchor: prefetchBatch
+- id: downloader_prefetch
+  selector:
+    path: Sources/Network/ImageDownloader.swift
+    anchor: "func prefetch"
+- id: cache_get
+  selector:
+    path: Sources/Cache/ImageCache.swift
+    anchor: "func get"
+- id: no_perf_logger
+  selector:
+    path: Sources/Logging/PerformanceLogger.swift
+- id: no_log_fn
+  selector:
+    anchor: "func log"
+oracle:
+  required:
+  - prefetch_batch
+  - downloader_prefetch
+  - cache_get
+  forbidden:
+  - no_perf_logger
+  - no_log_fn

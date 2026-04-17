@@ -1,0 +1,161 @@
+name: gap_128_swift_same_file_playlist_manager
+tags:
+- lang:swift
+- change:new_function
+- change:signature
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    Sources/Music/PlaylistManager.swift: |
+      import Foundation
+
+      struct Track {
+          let id: String
+          let title: String
+          let artist: String
+          let durationSeconds: Int
+      }
+
+      class PlaylistManager {
+          private var playlists: [String: [Track]] = [:]
+
+          func createPlaylist(name: String) {
+              playlists[name] = []
+          }
+
+          func addTrack(_ track: Track, to playlist: String) {
+              playlists[playlist]?.append(track)
+          }
+
+          func removeTrack(id: String, from playlist: String) {
+              playlists[playlist]?.removeAll { $0.id == id }
+          }
+
+          func totalDuration(of playlist: String) -> Int {
+              playlists[playlist]?.reduce(0) { $0 + $1.durationSeconds } ?? 0
+          }
+
+          func trackCount(in playlist: String) -> Int {
+              playlists[playlist]?.count ?? 0
+          }
+      }
+    Sources/Music/AudioPlayer.swift: |
+      import Foundation
+
+      enum PlaybackState {
+          case playing
+          case paused
+          case stopped
+      }
+
+      class AudioPlayer {
+          private var state: PlaybackState = .stopped
+          private var currentTrack: Track?
+
+          func play(_ track: Track) {
+              currentTrack = track
+              state = .playing
+          }
+
+          func pause() {
+              state = .paused
+          }
+
+          func stop() {
+              state = .stopped
+              currentTrack = nil
+          }
+
+          func currentState() -> PlaybackState {
+              return state
+          }
+      }
+    Sources/Social/ShareService.swift: |
+      import Foundation
+
+      class ShareService {
+          func shareTrack(_ trackId: String, to platform: String) -> Bool {
+              return true
+          }
+
+          func generateShareLink(trackId: String) -> String {
+              "https://music.example.com/track/\(trackId)"
+          }
+
+          func sharePlaylist(_ playlistName: String) -> String {
+              "https://music.example.com/playlist/\(playlistName)"
+          }
+      }
+  changed_files:
+    Sources/Music/PlaylistManager.swift: |
+      import Foundation
+
+      struct Track {
+          let id: String
+          let title: String
+          let artist: String
+          let durationSeconds: Int
+      }
+
+      class PlaylistManager {
+          private var playlists: [String: [Track]] = [:]
+
+          func createPlaylist(name: String) {
+              playlists[name] = []
+          }
+
+          func addTrack(_ track: Track, to playlist: String) {
+              playlists[playlist]?.append(track)
+          }
+
+          func removeTrack(id: String, from playlist: String) {
+              playlists[playlist]?.removeAll { $0.id == id }
+          }
+
+          func totalDuration(of playlist: String) -> Int {
+              playlists[playlist]?.reduce(0) { $0 + $1.durationSeconds } ?? 0
+          }
+
+          func trackCount(in playlist: String) -> Int {
+              playlists[playlist]?.count ?? 0
+          }
+
+          func shuffle(playlist: String) {
+              playlists[playlist]?.shuffle()
+          }
+      }
+fragments:
+- id: shuffle_fn
+  selector:
+    path: Sources/Music/PlaylistManager.swift
+    anchor: func shuffle
+- id: playlist_class
+  selector:
+    path: Sources/Music/PlaylistManager.swift
+    anchor: class PlaylistManager
+- id: track_struct
+  selector:
+    path: Sources/Music/PlaylistManager.swift
+    anchor: struct Track
+- id: no_player
+  selector:
+    path: Sources/Music/AudioPlayer.swift
+- id: no_share
+  selector:
+    path: Sources/Social/ShareService.swift
+- id: no_share_fn
+  selector:
+    anchor: func shareTrack
+oracle:
+  required:
+  - shuffle_fn
+  - playlist_class
+  forbidden:
+  - no_player
+  - no_share
+  - no_share_fn

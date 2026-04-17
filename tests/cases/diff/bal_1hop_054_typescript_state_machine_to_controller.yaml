@@ -1,0 +1,127 @@
+name: bal_1hop_054_typescript_state_machine_to_controller
+tags:
+- lang:typescript
+- change:bug_fix
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/state/orderStateMachine.ts: |
+      export type OrderState = 'draft' | 'submitted' | 'approved' | 'rejected' | 'shipped';
+
+      const transitions: Record<OrderState, OrderState[]> = {
+        draft: ['submitted'],
+        submitted: ['approved', 'rejected'],
+        approved: ['shipped'],
+        rejected: [],
+        shipped: [],
+      };
+
+      export function canTransition(from: OrderState, to: OrderState): boolean {
+        return transitions[from].includes(to);
+      }
+
+      export function transition(current: OrderState, next: OrderState): OrderState {
+        if (!canTransition(current, next)) {
+          throw new Error(`Invalid transition: ${current} -> ${next}`);
+        }
+        return next;
+      }
+    src/controllers/orderController.ts: |
+      import { transition, canTransition, OrderState } from '../state/orderStateMachine';
+
+      export class OrderController {
+        private state: OrderState = 'draft';
+
+        submit(): void {
+          this.state = transition(this.state, 'submitted');
+        }
+
+        approve(): void {
+          this.state = transition(this.state, 'approved');
+        }
+
+        reject(): void {
+          this.state = transition(this.state, 'rejected');
+        }
+
+        ship(): void {
+          this.state = transition(this.state, 'shipped');
+        }
+
+        canShip(): boolean {
+          return canTransition(this.state, 'shipped');
+        }
+
+        getState(): OrderState {
+          return this.state;
+        }
+      }
+    src/notifications/emailService.ts: |
+      export function sendOrderEmail(to: string, subject: string, body: string): void {
+        console.log(`Email to ${to}: ${subject}`);
+      }
+    src/analytics/trackingService.ts: |
+      export function trackEvent(event: string, data: Record<string, unknown>): void {
+        console.log(`Track: ${event}`, data);
+      }
+  changed_files:
+    src/state/orderStateMachine.ts: |
+      export type OrderState = 'draft' | 'submitted' | 'approved' | 'rejected' | 'shipped';
+
+      const transitions: Record<OrderState, OrderState[]> = {
+        draft: ['submitted'],
+        submitted: ['approved', 'rejected'],
+        approved: ['shipped'],
+        rejected: ['draft'],
+        shipped: [],
+      };
+
+      export function canTransition(from: OrderState, to: OrderState): boolean {
+        return transitions[from]?.includes(to) ?? false;
+      }
+
+      export function transition(current: OrderState, next: OrderState): OrderState {
+        if (!canTransition(current, next)) {
+          throw new Error(`Invalid transition: ${current} -> ${next}`);
+        }
+        return next;
+      }
+  commit_message: "fix: allow rejected orders to return to draft, guard null transitions"
+fragments:
+- id: state_rejected_to_draft
+  selector:
+    path: orderStateMachine.ts
+    anchor: "rejected: ['draft']"
+- id: state_null_guard
+  selector:
+    path: orderStateMachine.ts
+    anchor: "?? false"
+- id: controller_uses_transition
+  selector:
+    path: orderController.ts
+    anchor: "transition(this.state"
+- id: controller_uses_can_transition
+  selector:
+    path: orderController.ts
+    anchor: "canTransition(this.state"
+- id: no_email_service
+  selector:
+    path: emailService.ts
+    anchor: "sendOrderEmail"
+- id: no_tracking
+  selector:
+    path: trackingService.ts
+    anchor: "trackEvent"
+oracle:
+  required:
+  - state_rejected_to_draft
+  - state_null_guard
+  - controller_uses_transition
+  allowed:
+  - controller_uses_can_transition
+  forbidden:
+  - no_email_service
+  - no_tracking

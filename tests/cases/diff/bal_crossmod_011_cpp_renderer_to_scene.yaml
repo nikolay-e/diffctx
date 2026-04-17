@@ -1,0 +1,189 @@
+name: bal_crossmod_011_cpp_renderer_to_scene
+tags:
+- lang:cpp
+- change:single_file
+- change:signature
+- context:cross_module
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/renderer/mesh_renderer.hpp: |
+      #pragma once
+      #include <vector>
+      #include <string>
+
+      namespace renderer {
+
+      struct Vertex {
+          float x, y, z;
+      };
+
+      class MeshRenderer {
+      public:
+          void draw(const std::vector<Vertex>& vertices);
+      };
+
+      }
+    src/renderer/mesh_renderer.cpp: |
+      #include "mesh_renderer.hpp"
+
+      namespace renderer {
+
+      void MeshRenderer::draw(const std::vector<Vertex>& vertices) {
+          for (const auto& v : vertices) {
+              // submit vertex to GPU
+          }
+      }
+
+      }
+    src/scene/scene_graph.hpp: |
+      #pragma once
+      #include <vector>
+      #include <memory>
+
+      namespace scene {
+
+      class SceneNode {
+      public:
+          virtual void render() = 0;
+          virtual ~SceneNode() = default;
+      };
+
+      class SceneGraph {
+      public:
+          void add_node(std::shared_ptr<SceneNode> node);
+          void render_all();
+      private:
+          std::vector<std::shared_ptr<SceneNode>> nodes_;
+      };
+
+      }
+    src/scene/scene_graph.cpp: |
+      #include "scene_graph.hpp"
+      #include "../renderer/mesh_renderer.hpp"
+
+      namespace scene {
+
+      void SceneGraph::add_node(std::shared_ptr<SceneNode> node) {
+          nodes_.push_back(std::move(node));
+      }
+
+      void SceneGraph::render_all() {
+          for (auto& node : nodes_) {
+              node->render();
+          }
+      }
+
+      }
+    src/utils/math_utils.hpp: |
+      #pragma once
+
+      namespace utils {
+
+      inline float lerp(float a, float b, float t) {
+          return a + (b - a) * t;
+      }
+
+      }
+  changed_files:
+    src/renderer/mesh_renderer.hpp: |
+      #pragma once
+      #include <vector>
+      #include <string>
+
+      namespace renderer {
+
+      struct Vertex {
+          float x, y, z;
+          float u, v;
+      };
+
+      class MeshRenderer {
+      public:
+          void draw(const std::vector<Vertex>& vertices);
+      };
+
+      }
+    src/renderer/mesh_renderer.cpp: |
+      #include "mesh_renderer.hpp"
+
+      namespace renderer {
+
+      void MeshRenderer::draw(const std::vector<Vertex>& vertices) {
+          for (const auto& v : vertices) {
+              // submit vertex to GPU
+          }
+      }
+
+      }
+    src/scene/scene_graph.hpp: |
+      #pragma once
+      #include <vector>
+      #include <memory>
+
+      namespace scene {
+
+      class SceneNode {
+      public:
+          virtual void render() = 0;
+          virtual ~SceneNode() = default;
+      };
+
+      class SceneGraph {
+      public:
+          void add_node(std::shared_ptr<SceneNode> node);
+          void render_all();
+      private:
+          std::vector<std::shared_ptr<SceneNode>> nodes_;
+      };
+
+      }
+    src/scene/scene_graph.cpp: |
+      #include "scene_graph.hpp"
+      #include "../renderer/mesh_renderer.hpp"
+
+      namespace scene {
+
+      void SceneGraph::add_node(std::shared_ptr<SceneNode> node) {
+          nodes_.push_back(std::move(node));
+      }
+
+      void SceneGraph::render_all() {
+          for (auto& node : nodes_) {
+              node->render();
+          }
+      }
+
+      }
+    src/utils/math_utils.hpp: |
+      #pragma once
+
+      namespace utils {
+
+      inline float lerp(float a, float b, float t) {
+          return a + (b - a) * t;
+      }
+
+      }
+  commit_message: "feat: add UV coordinates to Vertex struct"
+fragments:
+- id: vertex_uv
+  selector:
+    path: src/renderer/mesh_renderer.hpp
+    anchor: "float u, v"
+- id: scene_includes_renderer
+  selector:
+    path: src/scene/scene_graph.cpp
+    anchor: "#include \"../renderer/mesh_renderer.hpp\""
+- id: no_math_utils
+  selector:
+    path: src/utils/math_utils.hpp
+    anchor: "inline float lerp"
+oracle:
+  required:
+  - vertex_uv
+  - scene_includes_renderer
+  allowed: []
+  forbidden:
+  - no_math_utils

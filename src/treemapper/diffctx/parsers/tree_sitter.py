@@ -336,6 +336,31 @@ class TreeSitterStrategy:
         return None
 
     @staticmethod
+    def _emit_chunk(
+        path: Path,
+        lines: list[str],
+        start: int,
+        end: int,
+        parent_symbol: str | None,
+        fragments: list[Fragment],
+        covered: set[tuple[int, int]],
+    ) -> None:
+        if end < start:
+            return
+        snippet = create_snippet(lines, start, end)
+        if snippet and end - start + 1 >= MIN_FRAGMENT_LINES:
+            fragments.append(
+                Fragment(
+                    id=FragmentId(path=path, start_line=start, end_line=end),
+                    kind="chunk",
+                    content=snippet,
+                    identifiers=extract_identifiers(snippet, profile="code"),
+                    symbol_name=f"{parent_symbol}[{start}]" if parent_symbol else None,
+                )
+            )
+            covered.add((start, end))
+
+    @staticmethod
     def _create_sub_fragments(
         node: Node,
         path: Path,
@@ -360,39 +385,14 @@ class TreeSitterStrategy:
         for child in children[1:]:
             child_start = child.start_point[0] + 1
             child_end = child.end_point[0] + 1
-            prospective_end = child_end
-            if prospective_end - chunk_start_line + 1 > _SUB_FRAGMENT_TARGET_LINES:
-                if chunk_end_line >= chunk_start_line:
-                    snippet = create_snippet(lines, chunk_start_line, chunk_end_line)
-                    if snippet and chunk_end_line - chunk_start_line + 1 >= MIN_FRAGMENT_LINES:
-                        fragments.append(
-                            Fragment(
-                                id=FragmentId(path=path, start_line=chunk_start_line, end_line=chunk_end_line),
-                                kind="chunk",
-                                content=snippet,
-                                identifiers=extract_identifiers(snippet, profile="code"),
-                                symbol_name=f"{parent_symbol}[{chunk_start_line}]" if parent_symbol else None,
-                            )
-                        )
-                        covered.add((chunk_start_line, chunk_end_line))
+            if child_end - chunk_start_line + 1 > _SUB_FRAGMENT_TARGET_LINES:
+                TreeSitterStrategy._emit_chunk(path, lines, chunk_start_line, chunk_end_line, parent_symbol, fragments, covered)
                 chunk_start_line = child_start
                 chunk_end_line = child_end
             else:
-                chunk_end_line = prospective_end
+                chunk_end_line = child_end
 
-        if chunk_end_line >= chunk_start_line:
-            snippet = create_snippet(lines, chunk_start_line, chunk_end_line)
-            if snippet and chunk_end_line - chunk_start_line + 1 >= MIN_FRAGMENT_LINES:
-                fragments.append(
-                    Fragment(
-                        id=FragmentId(path=path, start_line=chunk_start_line, end_line=chunk_end_line),
-                        kind="chunk",
-                        content=snippet,
-                        identifiers=extract_identifiers(snippet, profile="code"),
-                        symbol_name=f"{parent_symbol}[{chunk_start_line}]" if parent_symbol else None,
-                    )
-                )
-                covered.add((chunk_start_line, chunk_end_line))
+        TreeSitterStrategy._emit_chunk(path, lines, chunk_start_line, chunk_end_line, parent_symbol, fragments, covered)
 
     def _recurse_children(
         self,

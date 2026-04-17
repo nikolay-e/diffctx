@@ -1,0 +1,93 @@
+name: html_001_class_used_in_css
+tags:
+- lang:html
+- lang:css
+- change:multi_file
+- context:cross_module
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    index.html: |
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <link rel="stylesheet" href="style.css">
+      </head>
+      <body>
+        <div class="hero-banner">
+          <h1>Welcome</h1>
+          <p>Get started today</p>
+        </div>
+      </body>
+      </html>
+    style.css: |
+      .hero-banner {
+        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        color: #fff;
+        padding: 80px 24px;
+        text-align: center;
+      }
+      .hero-banner h1 { font-size: 48px; margin: 0 0 16px; }
+    HTML_NOISE_001_admin.html: |
+      <!-- HTML_NOISE_001_admin_page -->
+      <div class="HTML_NOISE_001_admin_dashboard">Admin Panel</div>
+    HTML_NOISE_001_sitemap.html: |
+      <!-- HTML_NOISE_001_sitemap_page -->
+      <ul class="HTML_NOISE_001_sitemap_list"></ul>
+  changed_files:
+    index.html: |
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <link rel="stylesheet" href="style.css">
+      </head>
+      <body>
+        <div class="hero-section">
+          <h1>Welcome</h1>
+          <p>Get started today</p>
+        </div>
+      </body>
+      </html>
+    style.css: |
+      .hero-section {
+        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        color: #fff;
+        padding: 80px 24px;
+        text-align: center;
+      }
+      .hero-section h1 { font-size: 48px; margin: 0 0 16px; }
+  commit_message: "refactor: rename .hero-banner to .hero-section in HTML and CSS"
+fragments:
+- id: html_class_renamed
+  selector:
+    path: index.html
+    anchor: hero-section
+- id: css_class_renamed
+  selector:
+    path: style.css
+    anchor: ".hero-section"
+- id: no_admin
+  selector:
+    path: HTML_NOISE_001_admin.html
+- id: no_sitemap
+  selector:
+    path: HTML_NOISE_001_sitemap.html
+- id: no_global_0
+  selector:
+    anchor: HTML_NOISE_001_admin_dashboard
+- id: no_global_1
+  selector:
+    anchor: HTML_NOISE_001_sitemap_list
+oracle:
+  required:
+  - html_class_renamed
+  - css_class_renamed
+  allowed: []
+  forbidden:
+  - no_admin
+  - no_sitemap
+  - no_global_0
+  - no_global_1

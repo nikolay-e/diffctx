@@ -1,0 +1,187 @@
+name: bal_1hop_057_typescript_repository_to_service_layer
+tags:
+- lang:typescript
+- change:signature
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/repo/bookRepository.ts: |
+      export interface Book {
+        isbn: string;
+        title: string;
+        author: string;
+        year: number;
+      }
+
+      const books: Book[] = [];
+
+      export function addBook(book: Book): void {
+        books.push(book);
+      }
+
+      export function findByIsbn(isbn: string): Book | undefined {
+        return books.find(b => b.isbn === isbn);
+      }
+
+      export function findByAuthor(author: string): Book[] {
+        return books.filter(b => b.author === author);
+      }
+
+      export function getAllBooks(): Book[] {
+        return [...books];
+      }
+    src/service/libraryService.ts: |
+      import { Book, addBook, findByIsbn, findByAuthor, getAllBooks } from '../repo/bookRepository';
+
+      export function registerBook(isbn: string, title: string, author: string, year: number): Book {
+        const existing = findByIsbn(isbn);
+        if (existing) {
+          throw new Error(`Book with ISBN ${isbn} already exists`);
+        }
+        const book: Book = { isbn, title, author, year };
+        addBook(book);
+        return book;
+      }
+
+      export function searchByAuthor(author: string): Book[] {
+        return findByAuthor(author);
+      }
+
+      export function catalogSize(): number {
+        return getAllBooks().length;
+      }
+    src/api/bookRoutes.ts: |
+      export function handleGetBooks(): string {
+        return '[]';
+      }
+
+      export function handlePostBook(body: string): string {
+        return `{"created": true, "body": "${body}"}`;
+      }
+    src/util/isbnValidator.ts: |
+      export function isValidIsbn13(isbn: string): boolean {
+        if (isbn.length !== 13) return false;
+        return /^\d{13}$/.test(isbn);
+      }
+    src/report/catalogReport.ts: |
+      export function generateCatalogCsv(rows: string[][]): string {
+        return rows.map(r => r.join(',')).join('\n');
+      }
+    src/config/libraryConfig.ts: |
+      export const LIBRARY_CONFIG = {
+        maxBooksPerUser: 10,
+        loanDurationDays: 14,
+        finePerDay: 0.5,
+      };
+  changed_files:
+    src/repo/bookRepository.ts: |
+      export interface Book {
+        isbn: string;
+        title: string;
+        author: string;
+        year: number;
+        tags: string[];
+        available: boolean;
+      }
+
+      const books: Book[] = [];
+
+      export function addBook(book: Book): void {
+        books.push(book);
+      }
+
+      export function findByIsbn(isbn: string): Book | undefined {
+        return books.find(b => b.isbn === isbn);
+      }
+
+      export function findByAuthor(author: string): Book[] {
+        return books.filter(b => b.author === author);
+      }
+
+      export function findByTag(tag: string): Book[] {
+        return books.filter(b => b.tags.includes(tag));
+      }
+
+      export function findAvailable(): Book[] {
+        return books.filter(b => b.available);
+      }
+
+      export function getAllBooks(): Book[] {
+        return [...books];
+      }
+
+      export function updateAvailability(isbn: string, available: boolean): boolean {
+        const book = findByIsbn(isbn);
+        if (!book) return false;
+        book.available = available;
+        return true;
+      }
+  commit_message: "feat: add tags, availability tracking and new query methods"
+fragments:
+- id: repo_tags_field
+  selector:
+    path: bookRepository.ts
+    anchor: "tags: string[]"
+- id: repo_available_field
+  selector:
+    path: bookRepository.ts
+    anchor: "available: boolean"
+- id: repo_find_by_tag
+  selector:
+    path: bookRepository.ts
+    anchor: "findByTag"
+- id: repo_find_available
+  selector:
+    path: bookRepository.ts
+    anchor: "findAvailable"
+- id: repo_update_availability
+  selector:
+    path: bookRepository.ts
+    anchor: "updateAvailability"
+- id: service_uses_find_isbn
+  selector:
+    path: libraryService.ts
+    anchor: "findByIsbn(isbn)"
+- id: service_uses_add_book
+  selector:
+    path: libraryService.ts
+    anchor: "addBook(book)"
+- id: service_register
+  selector:
+    path: libraryService.ts
+    anchor: "registerBook"
+- id: no_book_routes
+  selector:
+    path: bookRoutes.ts
+    anchor: "handleGetBooks"
+- id: no_isbn_validator
+  selector:
+    path: isbnValidator.ts
+    anchor: "isValidIsbn13"
+- id: no_catalog_report
+  selector:
+    path: catalogReport.ts
+    anchor: "generateCatalogCsv"
+- id: no_library_config
+  selector:
+    path: libraryConfig.ts
+    anchor: "LIBRARY_CONFIG"
+oracle:
+  required:
+  - repo_tags_field
+  - repo_available_field
+  - repo_find_by_tag
+  - service_uses_add_book
+  - service_register
+  allowed:
+  - repo_find_available
+  - repo_update_availability
+  - service_uses_find_isbn
+  forbidden:
+  - no_book_routes
+  - no_isbn_validator
+  - no_catalog_report
+  - no_library_config

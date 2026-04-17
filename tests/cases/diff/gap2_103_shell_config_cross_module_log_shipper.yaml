@@ -1,0 +1,154 @@
+name: gap2_103_shell_config_cross_module_log_shipper
+tags:
+- change:config
+- change:single_file
+- context:cross_module
+- difficulty:easy
+- distance:0hop
+- lang:shell
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    etc/shipper.conf: |
+      LOG_SOURCE="/var/log/app"
+      DEST_ENDPOINT="https://logs.example.com"
+      BATCH_SIZE=100
+      FLUSH_INTERVAL=10
+      AUTH_TOKEN_FILE="/etc/shipper/token"
+    bin/ship.sh: |
+      #!/usr/bin/env bash
+      source etc/shipper.conf
+
+      ship_logs() {
+          local batch
+          batch=$(tail -n "$BATCH_SIZE" "$LOG_SOURCE/current.log")
+          curl -s -X POST "$DEST_ENDPOINT" \
+              -H "Authorization: Bearer $(cat "$AUTH_TOKEN_FILE")" \
+              -d "$batch"
+      }
+
+      run_shipper() {
+          while true; do
+              ship_logs
+              sleep "$FLUSH_INTERVAL"
+          done
+      }
+    bin/tail_logs.sh: |
+      #!/usr/bin/env bash
+      source etc/shipper.conf
+
+      follow_log() {
+          tail -f "$LOG_SOURCE/current.log"
+      }
+
+      count_errors() {
+          grep -c "ERROR" "$LOG_SOURCE/current.log"
+      }
+    lib/compress.sh: |
+      #!/usr/bin/env bash
+      TRAP_GAP2_103_COMPRESS_A="gzip_handler"
+      TRAP_GAP2_103_RATIO_B=9
+
+      compress_archive() {
+          local src="$1"
+          gzip -"$TRAP_GAP2_103_RATIO_B" "$src"
+      }
+
+      decompress_archive() {
+          local src="$1"
+          gunzip "$src"
+      }
+  changed_files:
+    etc/shipper.conf: |
+      LOG_SOURCE="/var/log/app"
+      DEST_ENDPOINT="https://ingest.newplatform.io/v2"
+      BATCH_SIZE=500
+      FLUSH_INTERVAL=5
+      AUTH_TOKEN_FILE="/etc/shipper/token"
+      RETRY_COUNT=3
+    bin/ship.sh: |
+      #!/usr/bin/env bash
+      source etc/shipper.conf
+
+      ship_logs() {
+          local batch
+          batch=$(tail -n "$BATCH_SIZE" "$LOG_SOURCE/current.log")
+          curl -s -X POST "$DEST_ENDPOINT" \
+              -H "Authorization: Bearer $(cat "$AUTH_TOKEN_FILE")" \
+              -d "$batch"
+      }
+
+      run_shipper() {
+          while true; do
+              ship_logs
+              sleep "$FLUSH_INTERVAL"
+          done
+      }
+    bin/tail_logs.sh: |
+      #!/usr/bin/env bash
+      source etc/shipper.conf
+
+      follow_log() {
+          tail -f "$LOG_SOURCE/current.log"
+      }
+
+      count_errors() {
+          grep -c "ERROR" "$LOG_SOURCE/current.log"
+      }
+    lib/compress.sh: |
+      #!/usr/bin/env bash
+      TRAP_GAP2_103_COMPRESS_A="gzip_handler"
+      TRAP_GAP2_103_RATIO_B=9
+
+      compress_archive() {
+          local src="$1"
+          gzip -"$TRAP_GAP2_103_RATIO_B" "$src"
+      }
+
+      decompress_archive() {
+          local src="$1"
+          gunzip "$src"
+      }
+  commit_message: Update files
+fragments:
+- id: conf_endpoint
+  selector:
+    path: etc/shipper.conf
+    anchor: DEST_ENDPOINT="https://ingest.newplatform.io/v2"
+- id: conf_batch
+  selector:
+    path: etc/shipper.conf
+    anchor: BATCH_SIZE=500
+- id: conf_retry
+  selector:
+    path: etc/shipper.conf
+    anchor: RETRY_COUNT=3
+- id: ship_source
+  selector:
+    path: bin/ship.sh
+    anchor: source etc/shipper.conf
+- id: no_compress
+  selector:
+    path: lib/compress.sh
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_103_COMPRESS_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_103_RATIO_B
+- id: no_global_2
+  selector:
+    anchor: compress_archive
+oracle:
+  required:
+  - conf_endpoint
+  - conf_batch
+  - conf_retry
+  - ship_source
+  allowed: []
+  forbidden:
+  - no_compress
+  - no_global_0
+  - no_global_1
+  - no_global_2

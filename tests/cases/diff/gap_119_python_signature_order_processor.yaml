@@ -1,0 +1,112 @@
+name: gap_119_python_signature_order_processor
+tags:
+- lang:python
+- change:signature
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:1hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/orders/processor.py: |
+      from src.orders.discount import DiscountRule
+
+      class OrderProcessor:
+          def __init__(self):
+              self._rules: list[DiscountRule] = []
+
+          def add_rule(self, rule: DiscountRule) -> None:
+              self._rules.append(rule)
+
+          def calculate_total(self, items: list[dict]) -> float:
+              subtotal = sum(item["price"] * item["qty"] for item in items)
+              for rule in self._rules:
+                  subtotal = rule.apply(subtotal)
+              return subtotal
+    src/orders/discount.py: |
+      class DiscountRule:
+          def __init__(self, name: str, percentage: float, min_amount: float = 0.0):
+              self.name = name
+              self._percentage = percentage
+              self._min_amount = min_amount
+
+          def apply(self, amount: float) -> float:
+              if amount >= self._min_amount:
+                  return amount * (1.0 - self._percentage)
+              return amount
+
+          def qualifies(self, amount: float) -> bool:
+              return amount >= self._min_amount
+    src/orders/receipt.py: |
+      class ReceiptFormatter:
+          def __init__(self, currency_symbol: str):
+              self._symbol = currency_symbol
+
+          def format_line(self, description: str, amount: float) -> str:
+              return f"{description}: {self._symbol}{amount:.2f}"
+
+          def format_total(self, amount: float) -> str:
+              return f"TOTAL: {self._symbol}{amount:.2f}"
+    src/inventory/stock_tracker.py: |
+      class StockTracker:
+          def __init__(self):
+              self._stock: dict[str, int] = {}
+
+          def restock(self, sku: str, quantity: int) -> None:
+              self._stock[sku] = self._stock.get(sku, 0) + quantity
+
+          def available(self, sku: str) -> int:
+              return self._stock.get(sku, 0)
+
+          def reserve(self, sku: str, quantity: int) -> bool:
+              if self.available(sku) >= quantity:
+                  self._stock[sku] -= quantity
+                  return True
+              return False
+  changed_files:
+    src/orders/processor.py: |
+      from src.orders.discount import DiscountRule
+
+      class OrderProcessor:
+          def __init__(self):
+              self._rules: list[DiscountRule] = []
+
+          def add_rule(self, rule: DiscountRule) -> None:
+              self._rules.append(rule)
+
+          def calculate_total(self, items: list[dict], apply_discounts: bool = True) -> float:
+              subtotal = sum(item["price"] * item["qty"] for item in items)
+              if apply_discounts:
+                  for rule in self._rules:
+                      if rule.qualifies(subtotal):
+                          subtotal = rule.apply(subtotal)
+              return subtotal
+fragments:
+- id: processor_total
+  selector:
+    path: src/orders/processor.py
+    anchor: "def calculate_total(self, items: list[dict], apply_discounts"
+- id: discount_qualifies
+  selector:
+    path: src/orders/discount.py
+    anchor: "def qualifies"
+- id: discount_apply
+  selector:
+    path: src/orders/discount.py
+    anchor: "def apply(self, amount"
+- id: no_inventory
+  selector:
+    path: src/inventory/stock_tracker.py
+- id: no_stock_tracker
+  selector:
+    anchor: StockTracker
+oracle:
+  required:
+  - processor_total
+  - discount_qualifies
+  - discount_apply
+  forbidden:
+  - no_inventory
+  - no_stock_tracker

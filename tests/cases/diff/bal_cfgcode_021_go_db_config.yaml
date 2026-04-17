@@ -1,0 +1,141 @@
+name: bal_cfgcode_021_go_db_config
+tags:
+- lang:go
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    config/database.yaml: |
+      host: localhost
+      port: 5432
+      name: devdb
+      sslmode: disable
+    internal/database/db.go: |
+      package database
+
+      import (
+        "fmt"
+        "os"
+
+        "gopkg.in/yaml.v3"
+      )
+
+      type DBConfig struct {
+        Host    string `yaml:"host"`
+        Port    int    `yaml:"port"`
+        Name    string `yaml:"name"`
+        SSLMode string `yaml:"sslmode"`
+      }
+
+      func LoadConfig() (*DBConfig, error) {
+        data, err := os.ReadFile("config/database.yaml")
+        if err != nil {
+          return nil, err
+        }
+        var cfg DBConfig
+        if err := yaml.Unmarshal(data, &cfg); err != nil {
+          return nil, err
+        }
+        return &cfg, nil
+      }
+
+      func (c *DBConfig) DSN() string {
+        return fmt.Sprintf("host=%s port=%d dbname=%s sslmode=%s", c.Host, c.Port, c.Name, c.SSLMode)
+      }
+    internal/utils/helpers.go: |
+      package utils
+
+      var GARBAGE_CFGCODE_021_HELP_A = "formatter"
+      var GARBAGE_CFGCODE_021_HELP_B = 256
+
+      func Slugify(s string) string {
+        return s
+      }
+  changed_files:
+    config/database.yaml: |
+      host: db.prod.internal
+      port: 5432
+      name: proddb
+      sslmode: require
+      max_conns: 50
+    internal/database/db.go: |
+      package database
+
+      import (
+        "fmt"
+        "os"
+
+        "gopkg.in/yaml.v3"
+      )
+
+      type DBConfig struct {
+        Host    string `yaml:"host"`
+        Port    int    `yaml:"port"`
+        Name    string `yaml:"name"`
+        SSLMode string `yaml:"sslmode"`
+      }
+
+      func LoadConfig() (*DBConfig, error) {
+        data, err := os.ReadFile("config/database.yaml")
+        if err != nil {
+          return nil, err
+        }
+        var cfg DBConfig
+        if err := yaml.Unmarshal(data, &cfg); err != nil {
+          return nil, err
+        }
+        return &cfg, nil
+      }
+
+      func (c *DBConfig) DSN() string {
+        return fmt.Sprintf("host=%s port=%d dbname=%s sslmode=%s", c.Host, c.Port, c.Name, c.SSLMode)
+      }
+    internal/utils/helpers.go: |
+      package utils
+
+      var GARBAGE_CFGCODE_021_HELP_A = "formatter"
+      var GARBAGE_CFGCODE_021_HELP_B = 256
+
+      func Slugify(s string) string {
+        return s
+      }
+  commit_message: "config: production database with SSL"
+fragments:
+- id: config_host
+  selector:
+    path: config/database.yaml
+    anchor: "host: db.prod.internal"
+- id: config_ssl
+  selector:
+    path: config/database.yaml
+    anchor: "sslmode: require"
+- id: db_reads_config
+  selector:
+    path: internal/database/db.go
+    anchor: 'os.ReadFile("config/database.yaml")'
+- id: db_struct
+  selector:
+    path: internal/database/db.go
+    anchor: "yaml.Unmarshal"
+- id: no_helpers
+  selector:
+    path: internal/utils/helpers.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_021_HELP_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_021_HELP_B
+oracle:
+  required:
+  - config_host
+  - config_ssl
+  - db_reads_config
+  allowed: []
+  forbidden:
+  - no_helpers
+  - no_global_0
+  - no_global_1

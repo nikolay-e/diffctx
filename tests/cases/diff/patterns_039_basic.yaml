@@ -1,172 +1,142 @@
 name: patterns_039_basic
+tags:
+- lang:rust
+- change:bug_fix
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:medium
 repo:
   initial_files:
-    src/calculator.py: |
-      def add(a: int, b: int) -> int:
-          return a + b
+    src/iot/sensor.rs: |
+      use std::collections::VecDeque;
 
-      def subtract(a: int, b: int) -> int:
-          return a - b
+      pub struct SlidingWindow {
+          capacity: usize,
+          buffer: VecDeque<f64>,
+      }
 
-      def multiply(a: int, b: int) -> int:
-          return a * b
+      impl SlidingWindow {
+          pub fn new(capacity: usize) -> Self {
+              Self { capacity, buffer: VecDeque::new() }
+          }
 
-      def divide(a: int, b: int) -> float:
-          if b == 0:
-              raise ValueError("Cannot divide by zero")
-          return a / b
-    tests/test_calculator.py: |
-      import pytest
-      from src.calculator import add
+          pub fn push(&mut self, value: f64) {
+              if self.buffer.len() >= self.capacity {
+                  self.buffer.pop_front();
+              }
+              self.buffer.push_back(value);
+          }
 
-      def test_add_basic():
-          assert add(1, 2) == 3
-    src/math_utils.py: |
-      import math
+          pub fn average(&self) -> f64 {
+              if self.buffer.is_empty() {
+                  return 0.0;
+              }
+              self.buffer.iter().sum::<f64>() / self.buffer.len() as f64  // BUG: capacity not len
+          }
+      }
+    src/iot/alert.rs: |
+      use crate::iot::sensor::SlidingWindow;
 
-      def add_floats(a: float, b: float) -> float:
-          return round(a + b, 10)
+      pub struct TemperatureAlert {
+          window: SlidingWindow,
+          threshold: f64,
+      }
 
-      def multiply_matrix(matrix_a, matrix_b):
-          rows = len(matrix_a)
-          cols = len(matrix_b[0])
-          result = [[0] * cols for _ in range(rows)]
-          for i in range(rows):
-              for j in range(cols):
-                  for k in range(len(matrix_b)):
-                      result[i][j] += matrix_a[i][k] * matrix_b[k][j]
-          return result
+      impl TemperatureAlert {
+          pub fn new(window_size: usize, threshold: f64) -> Self {
+              Self { window: SlidingWindow::new(window_size), threshold }
+          }
 
-      def factorial(n: int) -> int:
-          return math.factorial(n)
-    tests/test_math_utils.py: |
-      import pytest
-      from src.math_utils import add_floats, factorial
-
-      @pytest.mark.parametrize("a,b,expected", [
-          (0.1, 0.2, 0.3),
-          (1.5, 2.5, 4.0),
-      ])
-      def test_add_floats(a, b, expected):
-          assert add_floats(a, b) == expected
-
-      def test_factorial():
-          assert factorial(5) == 120
+          pub fn record(&mut self, temp: f64) -> bool {
+              self.window.push(temp);
+              self.window.average() > self.threshold
+          }
+      }
+    garbage/firmware.rs: |
+      // GARBAGE_IOT_A = "firmware_marker"
+    garbage/protocol.rs: |
+      // GARBAGE_IOT_B = "protocol_marker"
+    garbage/registry.rs: |
+      // GARBAGE_IOT_C = "registry_marker"
   changed_files:
-    src/calculator.py: |
-      def add(a: int, b: int) -> int:
-          return a + b
+    src/iot/sensor.rs: |
+      use std::collections::VecDeque;
 
-      def subtract(a: int, b: int) -> int:
-          return a - b
+      pub struct SlidingWindow {
+          capacity: usize,
+          buffer: VecDeque<f64>,
+      }
 
-      def multiply(a: int, b: int) -> int:
-          return a * b
+      impl SlidingWindow {
+          pub fn new(capacity: usize) -> Self {
+              Self { capacity, buffer: VecDeque::new() }
+          }
 
-      def divide(a: int, b: int) -> float:
-          if b == 0:
-              raise ValueError("Cannot divide by zero")
-          return a / b
-    tests/test_calculator.py: |
-      import pytest
-      from src.calculator import add, subtract, multiply
+          pub fn push(&mut self, value: f64) {
+              if self.buffer.len() >= self.capacity {
+                  self.buffer.pop_front();
+              }
+              self.buffer.push_back(value);
+          }
 
-      @pytest.mark.parametrize("a,b,expected", [
-          (1, 2, 3),
-          (0, 0, 0),
-          (-1, 1, 0),
-          (100, 200, 300),
-          (-5, -3, -8),
-      ])
-      def test_add_parametrized(a, b, expected):
-          assert add(a, b) == expected
+          pub fn average(&self) -> f64 {
+              let count = self.buffer.len();
+              if count == 0 {
+                  return 0.0;
+              }
+              self.buffer.iter().sum::<f64>() / count as f64
+          }
+      }
+    src/iot/alert.rs: |
+      use crate::iot::sensor::SlidingWindow;
 
-      @pytest.mark.parametrize("a,b,expected", [
-          (5, 3, 2),
-          (0, 0, 0),
-          (-1, -1, 0),
-      ])
-      def test_subtract_parametrized(a, b, expected):
-          assert subtract(a, b) == expected
+      pub struct TemperatureAlert {
+          window: SlidingWindow,
+          threshold: f64,
+      }
 
-      def test_multiply_basic():
-          assert multiply(2, 3) == 6
-    src/math_utils.py: |
-      import math
+      impl TemperatureAlert {
+          pub fn new(window_size: usize, threshold: f64) -> Self {
+              Self { window: SlidingWindow::new(window_size), threshold }
+          }
 
-      def add_floats(a: float, b: float) -> float:
-          return round(a + b, 10)
-
-      def multiply_matrix(matrix_a, matrix_b):
-          rows = len(matrix_a)
-          cols = len(matrix_b[0])
-          result = [[0] * cols for _ in range(rows)]
-          for i in range(rows):
-              for j in range(cols):
-                  for k in range(len(matrix_b)):
-                      result[i][j] += matrix_a[i][k] * matrix_b[k][j]
-          return result
-
-      def factorial(n: int) -> int:
-          return math.factorial(n)
-    tests/test_math_utils.py: |
-      import pytest
-      from src.math_utils import add_floats, factorial
-
-      @pytest.mark.parametrize("a,b,expected", [
-          (0.1, 0.2, 0.3),
-          (1.5, 2.5, 4.0),
-      ])
-      def test_add_floats(a, b, expected):
-          assert add_floats(a, b) == expected
-
-      def test_factorial():
-          assert factorial(5) == 120
-  commit_message: Update files
+          pub fn record(&mut self, temp: f64) -> bool {
+              self.window.push(temp);
+              self.window.average() > self.threshold
+          }
+      }
+    garbage/firmware.rs: |
+      // GARBAGE_IOT_A = "firmware_marker"
+    garbage/protocol.rs: |
+      // GARBAGE_IOT_B = "protocol_marker"
+    garbage/registry.rs: |
+      // GARBAGE_IOT_C = "registry_marker"
+  commit_message: "fix: use actual buffer length not capacity in SlidingWindow::average"
 fragments:
-- id: test_calculator
+- id: average_fn
   selector:
-    path: tests/test_calculator.py
-    anchor: from src.calculator import add, subtract, multiply
-- id: test_calculator_1
+    path: src/iot/sensor.rs
+    anchor: "pub fn average"
+- id: alert_record
   selector:
-    path: tests/test_calculator.py
-    anchor: '@pytest.mark.parametrize("a,b,expected", ['
-- id: calculator_file
+    path: src/iot/alert.rs
+    anchor: "pub fn record"
+- id: no_garbage_a
   selector:
-    path: src/calculator.py
-- id: no_math_utils
+    anchor: GARBAGE_IOT_A
+- id: no_garbage_b
   selector:
-    path: src/math_utils.py
-- id: no_test_math_utils
+    anchor: GARBAGE_IOT_B
+- id: no_garbage_c
   selector:
-    path: tests/test_math_utils.py
-- id: no_global_0
-  selector:
-    anchor: add_floats
-- id: no_global_1
-  selector:
-    anchor: multiply_matrix
-- id: no_global_2
-  selector:
-    anchor: math.factorial
-- id: no_global_3
-  selector:
-    anchor: test_add_floats
-- id: no_global_4
-  selector:
-    anchor: test_factorial
+    anchor: GARBAGE_IOT_C
 oracle:
   required:
-  - test_calculator
-  - test_calculator_1
-  - calculator_file
-  allowed: []
+  - average_fn
+  allowed:
+  - alert_record
   forbidden:
-  - no_math_utils
-  - no_test_math_utils
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

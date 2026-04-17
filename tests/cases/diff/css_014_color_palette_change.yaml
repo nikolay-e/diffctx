@@ -1,0 +1,83 @@
+name: css_014_color_palette_change
+tags:
+- lang:css
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    palette.css: |
+      :root {
+        --success-color: #22c55e;
+        --warning-color: #f59e0b;
+        --danger-color: #ef4444;
+        --info-color: #3b82f6;
+      }
+    alert.css: |
+      @import "palette.css";
+      .alert-danger {
+        background: color-mix(in srgb, var(--danger-color) 15%, white);
+        border-left: 4px solid var(--danger-color);
+        padding: 12px 16px;
+      }
+    badge.css: |
+      @import "palette.css";
+      .badge-danger {
+        background: var(--danger-color);
+        color: #fff;
+        border-radius: 4px;
+        padding: 2px 8px;
+        font-size: 12px;
+      }
+    CSS_NOISE_014_pagination.css: |
+      .CSS_NOISE_014_pagination_list { display: flex; gap: 4px; }
+      .CSS_NOISE_014_pagination_item { min-width: 36px; text-align: center; }
+    CSS_NOISE_014_avatar.css: |
+      .CSS_NOISE_014_avatar_img { border-radius: 50%; object-fit: cover; }
+      .CSS_NOISE_014_avatar_fallback { background: #e5e7eb; display: flex; align-items: center; }
+  changed_files:
+    palette.css: |
+      :root {
+        --success-color: #22c55e;
+        --warning-color: #f59e0b;
+        --danger-color: #dc2626;
+        --info-color: #3b82f6;
+      }
+  commit_message: "style: deepen --danger-color from #ef4444 to #dc2626"
+fragments:
+- id: danger_color_changed
+  selector:
+    path: palette.css
+    anchor: "#dc2626"
+- id: alert_imports_palette
+  selector:
+    path: alert.css
+    anchor: palette.css
+- id: badge_imports_palette
+  selector:
+    path: badge.css
+    anchor: palette.css
+- id: no_pagination
+  selector:
+    path: CSS_NOISE_014_pagination.css
+- id: no_avatar
+  selector:
+    path: CSS_NOISE_014_avatar.css
+- id: no_global_0
+  selector:
+    anchor: CSS_NOISE_014_pagination_list
+- id: no_global_1
+  selector:
+    anchor: CSS_NOISE_014_avatar_img
+oracle:
+  required:
+  - danger_color_changed
+  - alert_imports_palette
+  - badge_imports_palette
+  allowed: []
+  forbidden:
+  - no_pagination
+  - no_avatar
+  - no_global_0
+  - no_global_1

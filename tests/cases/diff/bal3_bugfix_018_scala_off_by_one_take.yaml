@@ -1,0 +1,57 @@
+name: bal3_bugfix_018_scala_off_by_one_take
+tags:
+- lang:scala
+- change:single_file
+- change:bug_fix
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/main/scala/collection/TopK.scala: |
+      package collection
+
+      class TopK {
+        def top(items: List[Int], k: Int): List[Int] = {
+          items.sorted.reverse.take(k - 1)
+        }
+
+        def bottom(items: List[Int], k: Int): List[Int] = {
+          items.sorted.take(k)
+        }
+      }
+    src/main/scala/io/Printer.scala: |
+      package io
+
+      object Printer {
+        def printList(items: List[Int]): Unit = items.foreach(println)
+      }
+  changed_files:
+    src/main/scala/collection/TopK.scala: |
+      package collection
+
+      class TopK {
+        def top(items: List[Int], k: Int): List[Int] = {
+          items.sorted.reverse.take(k)
+        }
+
+        def bottom(items: List[Int], k: Int): List[Int] = {
+          items.sorted.take(k)
+        }
+      }
+  commit_message: "fix: take k elements not k-1 in top()"
+fragments:
+- id: take_fix
+  selector:
+    path: collection/TopK.scala
+    anchor: "items.sorted.reverse.take(k)"
+- id: no_printer
+  selector:
+    path: io/Printer.scala
+    anchor: "object Printer"
+oracle:
+  required:
+  - take_fix
+  allowed: []
+  forbidden:
+  - no_printer

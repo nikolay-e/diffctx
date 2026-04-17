@@ -1,0 +1,129 @@
+name: gap2_168_py_multi_sig_cross_module_music_playlist
+tags:
+- change:multi_file
+- change:new_function
+- change:signature
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+- lang:python
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    player/queue.py: |
+      from player.library import TrackLibrary
+
+      class PlayQueue:
+          def __init__(self, library: TrackLibrary):
+              self.library = library
+              self.queue = []
+
+          def enqueue(self, track_id: str) -> bool:
+              track = self.library.find(track_id)
+              if track:
+                  self.queue.append(track)
+                  return True
+              return False
+    player/library.py: |
+      class TrackLibrary:
+          def __init__(self):
+              self._tracks = {}
+
+          def add(self, track_id: str, title: str, duration: int) -> None:
+              self._tracks[track_id] = {"title": title, "duration": duration}
+
+          def find(self, track_id: str):
+              return self._tracks.get(track_id)
+
+          def all_tracks(self) -> list:
+              return list(self._tracks.values())
+    player/equalizer.py: |
+      class Equalizer:
+          def __init__(self):
+              self.bands = {60: 0, 230: 0, 910: 0, 3600: 0, 14000: 0}
+
+          def set_band(self, freq: int, gain: int) -> None:
+              if freq in self.bands:
+                  self.bands[freq] = gain
+
+          def flat(self) -> None:
+              for k in self.bands:
+                  self.bands[k] = 0
+  changed_files:
+    player/queue.py: |
+      from player.library import TrackLibrary, PlaybackMode
+
+      class PlayQueue:
+          def __init__(self, library: TrackLibrary, mode: PlaybackMode = PlaybackMode.SEQUENTIAL):
+              self.library = library
+              self.queue = []
+              self.mode = mode
+              self._position = 0
+
+          def enqueue(self, track_id: str) -> bool:
+              track = self.library.find(track_id)
+              if track:
+                  self.queue.append(track)
+                  return True
+              return False
+
+          def next_track(self):
+              if not self.queue:
+                  return None
+              if self.mode == PlaybackMode.SHUFFLE:
+                  import random
+                  return random.choice(self.queue)
+              track = self.queue[self._position % len(self.queue)]
+              self._position += 1
+              return track
+    player/library.py: |
+      from enum import Enum
+
+      class PlaybackMode(Enum):
+          SEQUENTIAL = "sequential"
+          SHUFFLE = "shuffle"
+          REPEAT_ONE = "repeat_one"
+
+      class TrackLibrary:
+          def __init__(self):
+              self._tracks = {}
+
+          def add(self, track_id: str, title: str, duration: int, genre: str = "unknown") -> None:
+              self._tracks[track_id] = {"title": title, "duration": duration, "genre": genre}
+
+          def find(self, track_id: str):
+              return self._tracks.get(track_id)
+
+          def all_tracks(self) -> list:
+              return list(self._tracks.values())
+
+          def by_genre(self, genre: str) -> list:
+              return [t for t in self._tracks.values() if t["genre"] == genre]
+fragments:
+- id: playback_mode
+  selector:
+    path: player/library.py
+    anchor: "class PlaybackMode"
+- id: by_genre
+  selector:
+    path: player/library.py
+    anchor: "def by_genre"
+- id: next_track
+  selector:
+    path: player/queue.py
+    anchor: "def next_track"
+- id: add_sig
+  selector:
+    path: player/library.py
+    anchor: "def add(self, track_id: str, title: str, duration: int, genre"
+- id: no_equalizer
+  selector:
+    path: player/equalizer.py
+oracle:
+  required:
+  - playback_mode
+  - by_genre
+  - next_track
+  forbidden:
+  - no_equalizer

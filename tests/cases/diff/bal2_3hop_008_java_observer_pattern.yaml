@@ -1,0 +1,201 @@
+name: bal2_3hop_008_java_observer_pattern
+tags:
+- lang:java
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/app/observer/Observable.java: |
+      package com.app.observer;
+
+      import java.util.ArrayList;
+      import java.util.List;
+
+      public class Observable {
+          private final List<String> listeners = new ArrayList<>();
+          public void addListener(String listener) {
+              listeners.add(listener);
+          }
+          public void notifyAll(String event) {
+              for (String l : listeners) {
+                  System.out.println(l + ": " + event);
+              }
+          }
+      }
+    src/main/java/com/app/model/StockPrice.java: |
+      package com.app.model;
+
+      import com.app.observer.Observable;
+
+      public class StockPrice extends Observable {
+          private double price;
+          public void setPrice(double price) {
+              this.price = price;
+              notifyAll("price:" + price);
+          }
+          public double getPrice() { return price; }
+      }
+    src/main/java/com/app/service/TradingService.java: |
+      package com.app.service;
+
+      import com.app.model.StockPrice;
+
+      public class TradingService {
+          private final StockPrice stock;
+          public TradingService(StockPrice stock) {
+              this.stock = stock;
+          }
+          public void updatePrice(double newPrice) {
+              stock.setPrice(newPrice);
+          }
+      }
+    src/main/java/com/app/web/TradingController.java: |
+      package com.app.web;
+
+      import com.app.service.TradingService;
+
+      public class TradingController {
+          private final TradingService tradingService;
+          public TradingController(TradingService tradingService) {
+              this.tradingService = tradingService;
+          }
+          public void handlePriceUpdate(double price) {
+              tradingService.updatePrice(price);
+          }
+      }
+    src/main/java/com/app/util/Formatter.java: |
+      package com.app.util;
+
+      public class Formatter {
+          public static String currency(double amount) {
+              return String.format("$%.2f", amount);
+          }
+      }
+    src/main/java/com/app/util/RandomGen.java: |
+      package com.app.util;
+
+      import java.util.Random;
+
+      public class RandomGen {
+          private static final Random RNG = new Random();
+          public static int nextInt(int bound) { return RNG.nextInt(bound); }
+      }
+  changed_files:
+    src/main/java/com/app/observer/Observable.java: |
+      package com.app.observer;
+
+      import java.util.ArrayList;
+      import java.util.List;
+      import java.util.concurrent.CopyOnWriteArrayList;
+
+      public class Observable {
+          private final List<String> listeners = new CopyOnWriteArrayList<>();
+          public void addListener(String listener) {
+              listeners.add(listener);
+          }
+          public void removeListener(String listener) {
+              listeners.remove(listener);
+          }
+          public void notifyAll(String event) {
+              for (String l : listeners) {
+                  System.out.println(l + ": " + event);
+              }
+          }
+      }
+    src/main/java/com/app/model/StockPrice.java: |
+      package com.app.model;
+
+      import com.app.observer.Observable;
+
+      public class StockPrice extends Observable {
+          private double price;
+          public void setPrice(double price) {
+              this.price = price;
+              notifyAll("price:" + price);
+          }
+          public double getPrice() { return price; }
+      }
+    src/main/java/com/app/service/TradingService.java: |
+      package com.app.service;
+
+      import com.app.model.StockPrice;
+
+      public class TradingService {
+          private final StockPrice stock;
+          public TradingService(StockPrice stock) {
+              this.stock = stock;
+          }
+          public void updatePrice(double newPrice) {
+              stock.setPrice(newPrice);
+          }
+      }
+    src/main/java/com/app/web/TradingController.java: |
+      package com.app.web;
+
+      import com.app.service.TradingService;
+
+      public class TradingController {
+          private final TradingService tradingService;
+          public TradingController(TradingService tradingService) {
+              this.tradingService = tradingService;
+          }
+          public void handlePriceUpdate(double price) {
+              tradingService.updatePrice(price);
+          }
+      }
+    src/main/java/com/app/util/Formatter.java: |
+      package com.app.util;
+
+      public class Formatter {
+          public static String currency(double amount) {
+              return String.format("$%.2f", amount);
+          }
+      }
+    src/main/java/com/app/util/RandomGen.java: |
+      package com.app.util;
+
+      import java.util.Random;
+
+      public class RandomGen {
+          private static final Random RNG = new Random();
+          public static int nextInt(int bound) { return RNG.nextInt(bound); }
+      }
+  commit_message: "feat: thread-safe listeners with removeListener"
+fragments:
+- id: concurrent_list
+  selector:
+    path: src/main/java/com/app/observer/Observable.java
+    anchor: "CopyOnWriteArrayList"
+- id: stock_imports_observable
+  selector:
+    path: src/main/java/com/app/model/StockPrice.java
+    anchor: "import com.app.observer.Observable"
+- id: trading_imports_stock
+  selector:
+    path: src/main/java/com/app/service/TradingService.java
+    anchor: "import com.app.model.StockPrice"
+- id: controller_imports_trading
+  selector:
+    path: src/main/java/com/app/web/TradingController.java
+    anchor: "import com.app.service.TradingService"
+- id: no_formatter
+  selector:
+    path: src/main/java/com/app/util/Formatter.java
+    anchor: "class Formatter"
+- id: no_random_gen
+  selector:
+    path: src/main/java/com/app/util/RandomGen.java
+    anchor: "class RandomGen"
+oracle:
+  required:
+  - concurrent_list
+  - stock_imports_observable
+  - trading_imports_stock
+  - controller_imports_trading
+  allowed: []
+  forbidden:
+  - no_formatter
+  - no_random_gen

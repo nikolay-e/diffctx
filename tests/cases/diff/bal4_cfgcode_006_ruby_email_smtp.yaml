@@ -1,0 +1,167 @@
+name: bal4_cfgcode_006_ruby_email_smtp
+tags:
+- lang:ruby
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    config/email.yml: |
+      smtp:
+        host: smtp.gmail.com
+        port: 587
+        tls: true
+        from: noreply@example.com
+        max_retries: 3
+    lib/mailer/transport.rb: |
+      require 'yaml'
+      module Mailer
+        class Transport
+          def initialize
+            @smtp = YAML.load_file('config/email.yml')['smtp']
+          end
+          def host
+            @smtp['host']
+          end
+          def port
+            @smtp['port']
+          end
+          def tls?
+            @smtp['tls']
+          end
+        end
+      end
+    lib/mailer/sender.rb: |
+      require 'yaml'
+      module Mailer
+        class Sender
+          SMTP_CFG = YAML.load_file('config/email.yml')['smtp']
+          def send_email(to, subject, body)
+            from = SMTP_CFG['from']
+            retries = SMTP_CFG['max_retries']
+            deliver(from, to, subject, body, retries)
+          end
+        end
+      end
+    lib/mailer/template_engine.rb: |
+      require 'yaml'
+      module Mailer
+        class TemplateEngine
+          SMTP_CFG = YAML.load_file('config/email.yml')['smtp']
+          def render(template_name, vars)
+            header = "From: #{SMTP_CFG['from']}"
+            body = load_template(template_name, vars)
+            "#{header}\n\n#{body}"
+          end
+        end
+      end
+    garbage_queue.rb: |
+      GARBAGE_CFGCODE_006_QUEUE_A = "sidekiq"
+      GARBAGE_CFGCODE_006_QUEUE_B = 5
+      class JobQueue
+        GARBAGE_CFGCODE_006_QUEUE_C = "default"
+        def enqueue(job)
+          GARBAGE_CFGCODE_006_QUEUE_D = job
+        end
+      end
+    garbage_storage.rb: |
+      GARBAGE_CFGCODE_006_STORE_E = "local"
+      GARBAGE_CFGCODE_006_STORE_F = "/uploads"
+      class Storage
+        GARBAGE_CFGCODE_006_STORE_G = 52428800
+        def save(file)
+          GARBAGE_CFGCODE_006_STORE_H = file
+        end
+      end
+    garbage_metrics.rb: |
+      GARBAGE_CFGCODE_006_METRIC_I = "statsd"
+      GARBAGE_CFGCODE_006_METRIC_J = 8125
+  changed_files:
+    config/email.yml: |
+      smtp:
+        host: smtp.sendgrid.net
+        port: 465
+        tls: true
+        from: notifications@myapp.com
+        max_retries: 5
+        rate_limit: 100
+  commit_message: "switch to sendgrid smtp"
+fragments:
+- id: email_config
+  selector:
+    path: config/email.yml
+    anchor: "host: smtp.sendgrid.net"
+- id: transport
+  selector:
+    path: lib/mailer/transport.rb
+    anchor: "config/email.yml"
+- id: sender
+  selector:
+    path: lib/mailer/sender.rb
+    anchor: "SMTP_CFG"
+- id: template_engine
+  selector:
+    path: lib/mailer/template_engine.rb
+    anchor: "SMTP_CFG"
+- id: no_queue
+  selector:
+    path: garbage_queue.rb
+- id: no_storage
+  selector:
+    path: garbage_storage.rb
+- id: no_metrics
+  selector:
+    path: garbage_metrics.rb
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_006_QUEUE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_006_QUEUE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_006_STORE_E
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_006_STORE_F
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CFGCODE_006_METRIC_I
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CFGCODE_006_METRIC_J
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_CFGCODE_006_QUEUE_C
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_CFGCODE_006_QUEUE_D
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_CFGCODE_006_STORE_G
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_CFGCODE_006_STORE_H
+oracle:
+  required:
+  - email_config
+  - transport
+  - sender
+  - template_engine
+  allowed: []
+  forbidden:
+  - no_queue
+  - no_storage
+  - no_metrics
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

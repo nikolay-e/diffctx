@@ -1,0 +1,180 @@
+name: bal4_bugfix_009_cpp_wrong_operator_compare
+tags:
+- lang:cpp
+- change:single_file
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    include/sensor.h: |
+      #pragma once
+
+      struct SensorReading {
+          double temperature;
+          double humidity;
+          long timestamp;
+      };
+
+      constexpr double TEMP_THRESHOLD = 100.0;
+      constexpr double HUMIDITY_MAX = 100.0;
+    src/monitor.cpp: |
+      #include "sensor.h"
+      #include <vector>
+
+      class SensorMonitor {
+      public:
+          void addReading(SensorReading r) {
+              readings_.push_back(r);
+          }
+
+          bool hasOverheat() const {
+              for (const auto& r : readings_) {
+                  if (r.temperature > TEMP_THRESHOLD) {
+                      return true;
+                  }
+              }
+              return false;
+          }
+
+          bool hasValidHumidity(const SensorReading& r) const {
+              return r.humidity >= 0 && r.humidity > HUMIDITY_MAX;
+          }
+
+      private:
+          std::vector<SensorReading> readings_;
+      };
+    src/display.cpp: |
+      #include "sensor.h"
+      #include <string>
+
+      std::string formatReading(const SensorReading& r) {
+          return std::to_string(r.temperature) + "C / " + std::to_string(r.humidity) + "%";
+      }
+    garbage_bal4_009_codec.cpp: |
+      // GARBAGE_BAL4_009_CODEC_A = "h264"
+      // GARBAGE_BAL4_009_BITRATE_B = 5000
+      class VideoCodec {
+          // GARBAGE_BAL4_009_FPS_C = 30
+          void encode() {}
+      };
+    garbage_bal4_009_socket.cpp: |
+      // GARBAGE_BAL4_009_SOCKET_D = "tcp"
+      // GARBAGE_BAL4_009_PORT_E = 8080
+      class SocketServer {
+          // GARBAGE_BAL4_009_BACKLOG_F = 128
+          void listen() {}
+      };
+  changed_files:
+    include/sensor.h: |
+      #pragma once
+
+      struct SensorReading {
+          double temperature;
+          double humidity;
+          long timestamp;
+      };
+
+      constexpr double TEMP_THRESHOLD = 100.0;
+      constexpr double HUMIDITY_MAX = 100.0;
+    src/monitor.cpp: |
+      #include "sensor.h"
+      #include <vector>
+
+      class SensorMonitor {
+      public:
+          void addReading(SensorReading r) {
+              readings_.push_back(r);
+          }
+
+          bool hasOverheat() const {
+              for (const auto& r : readings_) {
+                  if (r.temperature > TEMP_THRESHOLD) {
+                      return true;
+                  }
+              }
+              return false;
+          }
+
+          bool hasValidHumidity(const SensorReading& r) const {
+              return r.humidity >= 0 && r.humidity <= HUMIDITY_MAX;
+          }
+
+      private:
+          std::vector<SensorReading> readings_;
+      };
+    src/display.cpp: |
+      #include "sensor.h"
+      #include <string>
+
+      std::string formatReading(const SensorReading& r) {
+          return std::to_string(r.temperature) + "C / " + std::to_string(r.humidity) + "%";
+      }
+    garbage_bal4_009_codec.cpp: |
+      // GARBAGE_BAL4_009_CODEC_A = "h264"
+      // GARBAGE_BAL4_009_BITRATE_B = 5000
+      class VideoCodec {
+          // GARBAGE_BAL4_009_FPS_C = 30
+          void encode() {}
+      };
+    garbage_bal4_009_socket.cpp: |
+      // GARBAGE_BAL4_009_SOCKET_D = "tcp"
+      // GARBAGE_BAL4_009_PORT_E = 8080
+      class SocketServer {
+          // GARBAGE_BAL4_009_BACKLOG_F = 128
+          void listen() {}
+      };
+  commit_message: "fix: use <= instead of > for humidity upper bound check"
+fragments:
+- id: hasValidHumidity_func
+  selector:
+    path: src/monitor.cpp
+    anchor: "bool hasValidHumidity(const SensorReading& r) const"
+- id: operator_fix
+  selector:
+    path: src/monitor.cpp
+    anchor: "r.humidity <= HUMIDITY_MAX"
+- id: sensor_struct
+  selector:
+    path: include/sensor.h
+    anchor: "struct SensorReading"
+- id: no_garbage_codec
+  selector:
+    path: garbage_bal4_009_codec.cpp
+- id: no_garbage_socket
+  selector:
+    path: garbage_bal4_009_socket.cpp
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL4_009_CODEC_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL4_009_BITRATE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL4_009_FPS_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL4_009_SOCKET_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL4_009_PORT_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL4_009_BACKLOG_F
+oracle:
+  required:
+  - hasValidHumidity_func
+  - operator_fix
+  - sensor_struct
+  allowed: []
+  forbidden:
+  - no_garbage_codec
+  - no_garbage_socket
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

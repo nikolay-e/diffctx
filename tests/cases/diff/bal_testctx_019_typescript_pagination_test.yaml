@@ -1,0 +1,131 @@
+name: bal_testctx_019_typescript_pagination_test
+tags:
+- lang:typescript
+- change:single_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/pagination.ts: |
+      export interface Page<T> {
+        items: T[];
+        total: number;
+        page: number;
+        pageSize: number;
+      }
+
+      export function paginate<T>(items: T[], page: number, pageSize: number): Page<T> {
+        const start = (page - 1) * pageSize;
+        const end = start + pageSize;
+        return {
+          items: items.slice(start, end),
+          total: items.length,
+          page,
+          pageSize,
+        };
+      }
+    __tests__/pagination.test.ts: |
+      import { paginate } from '../src/pagination';
+
+      describe('pagination', () => {
+        const items = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+        test('returns first page', () => {
+          const result = paginate(items, 1, 3);
+          expect(result.items).toEqual([1, 2, 3]);
+          expect(result.total).toBe(10);
+        });
+
+        test('returns last page with fewer items', () => {
+          const result = paginate(items, 4, 3);
+          expect(result.items).toEqual([10]);
+        });
+
+        test('returns empty for out of range page', () => {
+          const result = paginate(items, 100, 3);
+          expect(result.items).toEqual([]);
+        });
+      });
+    src/sorting.ts: |
+      export type SortDirection = 'asc' | 'desc';
+
+      export function sortBy<T>(items: T[], key: keyof T, direction: SortDirection = 'asc'): T[] {
+        return [...items].sort((a, b) => {
+          if (a[key] < b[key]) return direction === 'asc' ? -1 : 1;
+          if (a[key] > b[key]) return direction === 'asc' ? 1 : -1;
+          return 0;
+        });
+      }
+  changed_files:
+    src/pagination.ts: |
+      export interface Page<T> {
+        items: T[];
+        total: number;
+        page: number;
+        pageSize: number;
+        totalPages: number;
+        hasNext: boolean;
+        hasPrev: boolean;
+      }
+
+      export function paginate<T>(items: T[], page: number, pageSize: number): Page<T> {
+        const start = (page - 1) * pageSize;
+        const end = start + pageSize;
+        const totalPages = Math.ceil(items.length / pageSize);
+        return {
+          items: items.slice(start, end),
+          total: items.length,
+          page,
+          pageSize,
+          totalPages,
+          hasNext: page < totalPages,
+          hasPrev: page > 1,
+        };
+      }
+
+      export function cursorPaginate<T extends { id: string }>(
+        items: T[],
+        cursor: string | null,
+        limit: number,
+      ): { items: T[]; nextCursor: string | null } {
+        let startIndex = 0;
+        if (cursor) {
+          startIndex = items.findIndex(item => item.id === cursor) + 1;
+        }
+        const slice = items.slice(startIndex, startIndex + limit);
+        const nextCursor = slice.length === limit ? slice[slice.length - 1].id : null;
+        return { items: slice, nextCursor };
+      }
+  commit_message: "feat: add pagination metadata and cursor pagination"
+fragments:
+- id: paginate_fn
+  selector:
+    path: src/pagination.ts
+    anchor: "export function paginate"
+- id: cursor_paginate_fn
+  selector:
+    path: src/pagination.ts
+    anchor: "export function cursorPaginate"
+- id: test_imports_pagination
+  selector:
+    path: __tests__/pagination.test.ts
+    anchor: "import { paginate } from"
+- id: test_first_page
+  selector:
+    path: __tests__/pagination.test.ts
+    anchor: "test('returns first page'"
+- id: no_sorting
+  selector:
+    path: src/sorting.ts
+    anchor: "export function sortBy"
+oracle:
+  required:
+  - paginate_fn
+  - cursor_paginate_fn
+  - test_imports_pagination
+  allowed:
+  - test_first_page
+  forbidden:
+  - no_sorting

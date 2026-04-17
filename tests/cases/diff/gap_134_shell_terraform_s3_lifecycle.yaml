@@ -1,0 +1,168 @@
+name: gap_134_shell_terraform_s3_lifecycle
+tags:
+- lang:shell
+- lang:terraform
+- change:multi_file
+- context:same_file
+- difficulty:medium
+- distance:0hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    terraform/storage/main.tf: |
+      resource "aws_s3_bucket" "data" {
+        bucket = "${var.project}-${var.environment}-data"
+
+        tags = {
+          Project     = var.project
+          Environment = var.environment
+        }
+      }
+
+      resource "aws_s3_bucket_versioning" "data" {
+        bucket = aws_s3_bucket.data.id
+
+        versioning_configuration {
+          status = "Enabled"
+        }
+      }
+
+      resource "aws_s3_bucket_server_side_encryption_configuration" "data" {
+        bucket = aws_s3_bucket.data.id
+
+        rule {
+          apply_server_side_encryption_by_default {
+            sse_algorithm = "aws:kms"
+          }
+        }
+      }
+    ops/sync-bucket.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      SOURCE_DIR="${1:?Usage: sync-bucket.sh <source_dir> <environment>}"
+      ENVIRONMENT="${2:?Missing environment}"
+      BUCKET="myproject-${ENVIRONMENT}-data"
+
+      aws s3 sync "$SOURCE_DIR" "s3://$BUCKET/" --delete
+      echo "Synced $SOURCE_DIR to s3://$BUCKET/"
+
+      OBJECT_COUNT=$(aws s3 ls "s3://$BUCKET/" --recursive | wc -l)
+      echo "Total objects: $OBJECT_COUNT"
+    terraform/cdn/main.tf: |
+      resource "aws_cloudfront_distribution" "static" {
+        enabled             = true
+        default_root_object = "index.html"
+
+        origin {
+          domain_name = "static.example.com"
+          origin_id   = "static-origin"
+        }
+
+        default_cache_behavior {
+          allowed_methods  = ["GET", "HEAD"]
+          cached_methods   = ["GET", "HEAD"]
+          target_origin_id = "static-origin"
+          viewer_protocol_policy = "redirect-to-https"
+
+          forwarded_values {
+            query_string = false
+            cookies {
+              forward = "none"
+            }
+          }
+        }
+
+        restrictions {
+          geo_restriction {
+            restriction_type = "none"
+          }
+        }
+
+        viewer_certificate {
+          cloudfront_default_certificate = true
+        }
+      }
+  changed_files:
+    terraform/storage/main.tf: |
+      resource "aws_s3_bucket" "data" {
+        bucket = "${var.project}-${var.environment}-data"
+
+        tags = {
+          Project     = var.project
+          Environment = var.environment
+        }
+      }
+
+      resource "aws_s3_bucket_versioning" "data" {
+        bucket = aws_s3_bucket.data.id
+
+        versioning_configuration {
+          status = "Enabled"
+        }
+      }
+
+      resource "aws_s3_bucket_server_side_encryption_configuration" "data" {
+        bucket = aws_s3_bucket.data.id
+
+        rule {
+          apply_server_side_encryption_by_default {
+            sse_algorithm = "aws:kms"
+          }
+        }
+      }
+
+      resource "aws_s3_bucket_lifecycle_configuration" "data" {
+        bucket = aws_s3_bucket.data.id
+
+        rule {
+          id     = "archive-old-data"
+          status = "Enabled"
+
+          transition {
+            days          = 90
+            storage_class = "GLACIER"
+          }
+
+          expiration {
+            days = 365
+          }
+        }
+      }
+    ops/sync-bucket.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      SOURCE_DIR="${1:?Usage: sync-bucket.sh <source_dir> <environment>}"
+      ENVIRONMENT="${2:?Missing environment}"
+      BUCKET="myproject-${ENVIRONMENT}-data"
+      STORAGE_CLASS="${3:-STANDARD}"
+
+      aws s3 sync "$SOURCE_DIR" "s3://$BUCKET/" --delete --storage-class "$STORAGE_CLASS"
+      echo "Synced $SOURCE_DIR to s3://$BUCKET/ (class=$STORAGE_CLASS)"
+
+      OBJECT_COUNT=$(aws s3 ls "s3://$BUCKET/" --recursive | wc -l)
+      echo "Total objects: $OBJECT_COUNT"
+fragments:
+- id: lifecycle_rule
+  selector:
+    path: terraform/storage/main.tf
+    anchor: aws_s3_bucket_lifecycle_configuration
+- id: sync_storage_class
+  selector:
+    path: ops/sync-bucket.sh
+    anchor: STORAGE_CLASS
+- id: no_cdn
+  selector:
+    path: terraform/cdn/main.tf
+- id: no_cloudfront
+  selector:
+    anchor: aws_cloudfront_distribution
+oracle:
+  required:
+  - lifecycle_rule
+  - sync_storage_class
+  forbidden:
+  - no_cdn
+  - no_cloudfront

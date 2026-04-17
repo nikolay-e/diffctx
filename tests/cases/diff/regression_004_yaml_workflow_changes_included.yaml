@@ -1,4 +1,11 @@
 name: regression_004_yaml_workflow_changes_included
+tags:
+- lang:python
+- change:single_file
+- change:config
+- context:same_file
+- distance:0hop
+- difficulty:trivial
 repo:
   initial_files:
     .github/workflows/ci.yml: |

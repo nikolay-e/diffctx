@@ -1,0 +1,137 @@
+name: bal_testctx_021_rust_stack_test
+tags:
+- lang:rust
+- change:single_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/stack.rs: |
+      pub struct Stack<T> {
+          items: Vec<T>,
+      }
+
+      impl<T> Stack<T> {
+          pub fn new() -> Self {
+              Stack { items: Vec::new() }
+          }
+
+          pub fn push(&mut self, item: T) {
+              self.items.push(item);
+          }
+
+          pub fn pop(&mut self) -> Option<T> {
+              self.items.pop()
+          }
+
+          pub fn is_empty(&self) -> bool {
+              self.items.is_empty()
+          }
+      }
+    tests/test_stack.rs: |
+      use crate::stack::Stack;
+
+      #[test]
+      fn test_push_and_pop() {
+          let mut stack = Stack::new();
+          stack.push(1);
+          stack.push(2);
+          assert_eq!(stack.pop(), Some(2));
+          assert_eq!(stack.pop(), Some(1));
+      }
+
+      #[test]
+      fn test_empty_pop() {
+          let mut stack: Stack<i32> = Stack::new();
+          assert_eq!(stack.pop(), None);
+      }
+
+      #[test]
+      fn test_is_empty() {
+          let stack: Stack<i32> = Stack::new();
+          assert!(stack.is_empty());
+      }
+    src/queue.rs: |
+      use std::collections::VecDeque;
+
+      pub struct Queue<T> {
+          items: VecDeque<T>,
+      }
+
+      impl<T> Queue<T> {
+          pub fn new() -> Self {
+              Queue { items: VecDeque::new() }
+          }
+
+          pub fn enqueue(&mut self, item: T) {
+              self.items.push_back(item);
+          }
+
+          pub fn dequeue(&mut self) -> Option<T> {
+              self.items.pop_front()
+          }
+      }
+  changed_files:
+    src/stack.rs: |
+      pub struct Stack<T> {
+          items: Vec<T>,
+      }
+
+      impl<T> Stack<T> {
+          pub fn new() -> Self {
+              Stack { items: Vec::new() }
+          }
+
+          pub fn push(&mut self, item: T) {
+              self.items.push(item);
+          }
+
+          pub fn pop(&mut self) -> Option<T> {
+              self.items.pop()
+          }
+
+          pub fn peek(&self) -> Option<&T> {
+              self.items.last()
+          }
+
+          pub fn len(&self) -> usize {
+              self.items.len()
+          }
+
+          pub fn is_empty(&self) -> bool {
+              self.items.is_empty()
+          }
+      }
+  commit_message: "feat: add peek and len to Stack"
+fragments:
+- id: peek_fn
+  selector:
+    path: src/stack.rs
+    anchor: "pub fn peek"
+- id: len_fn
+  selector:
+    path: src/stack.rs
+    anchor: "pub fn len"
+- id: test_imports_stack
+  selector:
+    path: tests/test_stack.rs
+    anchor: "use crate::stack::Stack"
+- id: test_push_pop
+  selector:
+    path: tests/test_stack.rs
+    anchor: "fn test_push_and_pop"
+- id: no_queue
+  selector:
+    path: src/queue.rs
+    anchor: "pub struct Queue"
+oracle:
+  required:
+  - peek_fn
+  - len_fn
+  - test_imports_stack
+  allowed:
+  - test_push_pop
+  forbidden:
+  - no_queue

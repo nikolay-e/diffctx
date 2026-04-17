@@ -1,26 +1,282 @@
 name: internals_034_nested_comments_rust_style
+tags:
+- lang:java
+- change:multi_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:hard
 repo:
   initial_files:
-    nested.rs: |
-      fn placeholder() {}
-  changed_files:
-    nested.rs: |
-      /* /* nested comment */ */
-      fn process_data() {
-          let result = calculate_value();
-          result
+    src/main/java/com/shop/pricing/DiscountService.java: |
+      package com.shop.pricing;
+
+      import java.math.BigDecimal;
+      import java.util.List;
+
+      public class DiscountService {
+          private final DiscountRepository repository;
+
+          public DiscountService(DiscountRepository repository) {
+              this.repository = repository;
+          }
+
+          public BigDecimal applyDiscount(BigDecimal price, String couponCode) {
+              Discount discount = repository.findByCoupon(couponCode);
+              if (discount == null) {
+                  return price;
+              }
+              return price.subtract(price.multiply(discount.getRate()));
+          }
       }
-  commit_message: Update files
+    src/main/java/com/shop/pricing/DiscountRepository.java: |
+      package com.shop.pricing;
+
+      public interface DiscountRepository {
+          Discount findByCoupon(String couponCode);
+          void save(Discount discount);
+      }
+    src/main/java/com/shop/pricing/Discount.java: |
+      package com.shop.pricing;
+
+      import java.math.BigDecimal;
+
+      public class Discount {
+          private final String couponCode;
+          private final BigDecimal rate;
+
+          public Discount(String couponCode, BigDecimal rate) {
+              this.couponCode = couponCode;
+              this.rate = rate;
+          }
+
+          public String getCouponCode() { return couponCode; }
+          public BigDecimal getRate() { return rate; }
+      }
+    src/test/java/com/shop/pricing/DiscountServiceTest.java: |
+      package com.shop.pricing;
+
+      import org.junit.jupiter.api.Test;
+      import java.math.BigDecimal;
+      import static org.junit.jupiter.api.Assertions.*;
+
+      class DiscountServiceTest {
+          private final InMemoryDiscountRepository repo = new InMemoryDiscountRepository();
+          private final DiscountService service = new DiscountService(repo);
+
+          @Test
+          void applyDiscount_knownCoupon_reducesPrice() {
+              repo.save(new Discount("SAVE10", new BigDecimal("0.10")));
+              BigDecimal result = service.applyDiscount(new BigDecimal("100.00"), "SAVE10");
+              assertEquals(new BigDecimal("90.000"), result);
+          }
+
+          @Test
+          void applyDiscount_unknownCoupon_returnsOriginalPrice() {
+              BigDecimal result = service.applyDiscount(new BigDecimal("50.00"), "INVALID");
+              assertEquals(new BigDecimal("50.00"), result);
+          }
+      }
+    src/main/java/com/shop/inventory/StockChecker.java: |
+      package com.shop.inventory;
+
+      // GARBAGE_I034_A = "stock_checker_unrelated"
+      public class StockChecker {
+          public boolean isInStock(String productId) {
+              return true;
+          }
+      }
+    src/main/java/com/shop/shipping/ShippingCalculator.java: |
+      package com.shop.shipping;
+
+      // GARBAGE_I034_B = "shipping_calculator_unrelated"
+      public class ShippingCalculator {
+          public double calculate(double weight, String region) {
+              return weight * 1.5;
+          }
+      }
+    src/main/java/com/shop/notification/EmailSender.java: |
+      package com.shop.notification;
+
+      // GARBAGE_I034_C = "email_sender_unrelated"
+      public class EmailSender {
+          public void send(String to, String subject, String body) {}
+      }
+  changed_files:
+    src/main/java/com/shop/pricing/DiscountService.java: |
+      package com.shop.pricing;
+
+      import java.math.BigDecimal;
+      import java.util.List;
+
+      public class DiscountService {
+          private final DiscountRepository repository;
+
+          public DiscountService(DiscountRepository repository) {
+              this.repository = repository;
+          }
+
+          public BigDecimal applyDiscount(BigDecimal price, String couponCode) {
+              Discount discount = repository.findByCoupon(couponCode);
+              if (discount == null) {
+                  return price;
+              }
+              return price.subtract(price.multiply(discount.getRate()));
+          }
+
+          public BigDecimal applyBulkDiscount(BigDecimal price, int quantity, BigDecimal threshold) {
+              if (quantity <= 0) {
+                  throw new IllegalArgumentException("quantity must be positive");
+              }
+              BigDecimal total = price.multiply(BigDecimal.valueOf(quantity));
+              if (total.compareTo(threshold) >= 0) {
+                  return total.subtract(total.multiply(new BigDecimal("0.05")));
+              }
+              return total;
+          }
+
+          public BigDecimal applyStackedDiscounts(BigDecimal price, List<String> couponCodes) {
+              BigDecimal result = price;
+              for (String code : couponCodes) {
+                  result = applyDiscount(result, code);
+              }
+              return result;
+          }
+      }
+    src/main/java/com/shop/pricing/DiscountRepository.java: |
+      package com.shop.pricing;
+
+      public interface DiscountRepository {
+          Discount findByCoupon(String couponCode);
+          void save(Discount discount);
+      }
+    src/main/java/com/shop/pricing/Discount.java: |
+      package com.shop.pricing;
+
+      import java.math.BigDecimal;
+
+      public class Discount {
+          private final String couponCode;
+          private final BigDecimal rate;
+
+          public Discount(String couponCode, BigDecimal rate) {
+              this.couponCode = couponCode;
+              this.rate = rate;
+          }
+
+          public String getCouponCode() { return couponCode; }
+          public BigDecimal getRate() { return rate; }
+      }
+    src/test/java/com/shop/pricing/DiscountServiceTest.java: |
+      package com.shop.pricing;
+
+      import org.junit.jupiter.api.Test;
+      import java.math.BigDecimal;
+      import java.util.List;
+      import static org.junit.jupiter.api.Assertions.*;
+
+      class DiscountServiceTest {
+          private final InMemoryDiscountRepository repo = new InMemoryDiscountRepository();
+          private final DiscountService service = new DiscountService(repo);
+
+          @Test
+          void applyDiscount_knownCoupon_reducesPrice() {
+              repo.save(new Discount("SAVE10", new BigDecimal("0.10")));
+              BigDecimal result = service.applyDiscount(new BigDecimal("100.00"), "SAVE10");
+              assertEquals(new BigDecimal("90.000"), result);
+          }
+
+          @Test
+          void applyDiscount_unknownCoupon_returnsOriginalPrice() {
+              BigDecimal result = service.applyDiscount(new BigDecimal("50.00"), "INVALID");
+              assertEquals(new BigDecimal("50.00"), result);
+          }
+
+          @Test
+          void applyBulkDiscount_aboveThreshold_applies5Percent() {
+              BigDecimal result = service.applyBulkDiscount(new BigDecimal("20.00"), 10, new BigDecimal("150.00"));
+              assertEquals(new BigDecimal("190.000"), result);
+          }
+
+          @Test
+          void applyBulkDiscount_zeroQuantity_throwsException() {
+              assertThrows(IllegalArgumentException.class,
+                  () -> service.applyBulkDiscount(new BigDecimal("10.00"), 0, new BigDecimal("50.00")));
+          }
+
+          @Test
+          void applyStackedDiscounts_multipleCoupons_appliedSequentially() {
+              repo.save(new Discount("A10", new BigDecimal("0.10")));
+              repo.save(new Discount("B20", new BigDecimal("0.20")));
+              BigDecimal result = service.applyStackedDiscounts(new BigDecimal("100.00"), List.of("A10", "B20"));
+              assertTrue(result.compareTo(new BigDecimal("72.00")) == 0);
+          }
+      }
+    src/main/java/com/shop/inventory/StockChecker.java: |
+      package com.shop.inventory;
+
+      // GARBAGE_I034_A = "stock_checker_unrelated"
+      public class StockChecker {
+          public boolean isInStock(String productId) {
+              return true;
+          }
+      }
+    src/main/java/com/shop/shipping/ShippingCalculator.java: |
+      package com.shop.shipping;
+
+      // GARBAGE_I034_B = "shipping_calculator_unrelated"
+      public class ShippingCalculator {
+          public double calculate(double weight, String region) {
+              return weight * 1.5;
+          }
+      }
+    src/main/java/com/shop/notification/EmailSender.java: |
+      package com.shop.notification;
+
+      // GARBAGE_I034_C = "email_sender_unrelated"
+      public class EmailSender {
+          public void send(String to, String subject, String body) {}
+      }
+  commit_message: "feat: add applyBulkDiscount and applyStackedDiscounts to DiscountService"
 fragments:
-- id: nested_file
+- id: apply_bulk_discount
   selector:
-    path: nested.rs
-- id: req_global_0
+    path: src/main/java/com/shop/pricing/DiscountService.java
+    anchor: "public BigDecimal applyBulkDiscount"
+- id: apply_stacked_discounts
   selector:
-    anchor: fn process_data() {
+    path: src/main/java/com/shop/pricing/DiscountService.java
+    anchor: "public BigDecimal applyStackedDiscounts"
+- id: test_bulk_above_threshold
+  selector:
+    path: src/test/java/com/shop/pricing/DiscountServiceTest.java
+    anchor: "applyBulkDiscount_aboveThreshold_applies5Percent"
+- id: test_bulk_zero_quantity
+  selector:
+    path: src/test/java/com/shop/pricing/DiscountServiceTest.java
+    anchor: "applyBulkDiscount_zeroQuantity_throwsException"
+- id: test_stacked_discounts
+  selector:
+    path: src/test/java/com/shop/pricing/DiscountServiceTest.java
+    anchor: "applyStackedDiscounts_multipleCoupons_appliedSequentially"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_I034_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_I034_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_I034_C
 oracle:
   required:
-  - nested_file
-  - req_global_0
-  allowed: []
-  forbidden: []
+  - apply_bulk_discount
+  - apply_stacked_discounts
+  - test_bulk_above_threshold
+  allowed:
+  - test_bulk_zero_quantity
+  - test_stacked_discounts
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

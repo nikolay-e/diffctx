@@ -1,0 +1,104 @@
+name: bal_cfgcode_010_python_auth_providers
+tags:
+- lang:python
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    config/auth.json: |
+      {
+        "providers": {
+          "google": {
+            "client_id": "google-dev-id",
+            "enabled": true
+          }
+        },
+        "session_ttl": 3600,
+        "jwt_algorithm": "HS256"
+      }
+    src/oauth.py: |
+      import json
+
+      with open("config/auth.json") as f:
+          auth_cfg = json.load(f)
+
+      PROVIDERS = auth_cfg["providers"]
+      SESSION_TTL = auth_cfg["session_ttl"]
+
+      def get_provider(name):
+          return PROVIDERS.get(name)
+    src/payment.py: |
+      GARBAGE_CFGCODE_010_PAY_A = "stripe"
+      GARBAGE_CFGCODE_010_PAY_B = "usd"
+
+      def charge(amount, currency):
+          return amount
+  changed_files:
+    config/auth.json: |
+      {
+        "providers": {
+          "google": {
+            "client_id": "google-prod-id",
+            "enabled": true
+          },
+          "github": {
+            "client_id": "github-prod-id",
+            "enabled": true
+          }
+        },
+        "session_ttl": 7200,
+        "jwt_algorithm": "RS256"
+      }
+    src/oauth.py: |
+      import json
+
+      with open("config/auth.json") as f:
+          auth_cfg = json.load(f)
+
+      PROVIDERS = auth_cfg["providers"]
+      SESSION_TTL = auth_cfg["session_ttl"]
+
+      def get_provider(name):
+          return PROVIDERS.get(name)
+    src/payment.py: |
+      GARBAGE_CFGCODE_010_PAY_A = "stripe"
+      GARBAGE_CFGCODE_010_PAY_B = "usd"
+
+      def charge(amount, currency):
+          return amount
+  commit_message: "config: add github provider and switch to RS256"
+fragments:
+- id: config_github_provider
+  selector:
+    path: config/auth.json
+    anchor: "github-prod-id"
+- id: config_jwt_algo
+  selector:
+    path: config/auth.json
+    anchor: "RS256"
+- id: oauth_reads_providers
+  selector:
+    path: src/oauth.py
+    anchor: 'auth_cfg["providers"]'
+- id: no_payment
+  selector:
+    path: src/payment.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_010_PAY_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_010_PAY_B
+oracle:
+  required:
+  - config_github_provider
+  - config_jwt_algo
+  - oauth_reads_providers
+  allowed: []
+  forbidden:
+  - no_payment
+  - no_global_0
+  - no_global_1

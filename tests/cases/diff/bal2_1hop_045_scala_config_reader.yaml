@@ -1,0 +1,183 @@
+name: bal2_1hop_045_scala_config_reader
+tags:
+- lang:scala
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/config/AppSettings.scala: |
+      package config
+
+      case class AppSettings(
+        dbHost: String,
+        dbPort: Int,
+        cacheEnabled: Boolean
+      )
+
+      object AppSettings {
+        def fromMap(m: Map[String, String]): AppSettings = {
+          AppSettings(
+            dbHost = m("db.host"),
+            dbPort = m("db.port").toInt,
+            cacheEnabled = m("cache.enabled").toBoolean
+          )
+        }
+      }
+    src/main/scala/startup/Bootstrap.scala: |
+      package startup
+
+      import config.AppSettings
+
+      class Bootstrap {
+        def loadSettings(envVars: Map[String, String]): AppSettings = {
+          AppSettings.fromMap(envVars)
+        }
+
+        def start(settings: AppSettings): Unit = {
+          println(s"Connecting to ${settings.dbHost}:${settings.dbPort}")
+        }
+      }
+    src/main/scala/db/DatabasePool.scala: |
+      package db
+
+      import config.AppSettings
+
+      class DatabasePool(settings: AppSettings) {
+        def connect(): String = s"pool@${settings.dbHost}:${settings.dbPort}"
+        def disconnect(): Unit = ()
+      }
+    src/main/scala/cache/CacheManager.scala: |
+      package cache
+
+      import config.AppSettings
+
+      class CacheManager(settings: AppSettings) {
+        def isEnabled: Boolean = settings.cacheEnabled
+        def get(key: String): Option[String] = None
+        def put(key: String, value: String): Unit = ()
+      }
+    src/main/scala/health/Probe.scala: |
+      package health
+
+      import config.AppSettings
+
+      class Probe(settings: AppSettings) {
+        def check(): Boolean = settings.dbPort > 0
+      }
+    src/main/scala/metrics/Exporter.scala: |
+      package metrics
+
+      GARBAGE_045_EXPORTER_A = "exporter"
+
+      class Exporter(port: Int) {
+        def expose(): Unit = println(s"metrics on :$port")
+      }
+    src/main/scala/tracing/Tracer.scala: |
+      package tracing
+
+      GARBAGE_045_TRACER_B = "tracer"
+
+      class Tracer(endpoint: String) {
+        def span(name: String): String = s"span-$name"
+      }
+    src/main/scala/secrets/VaultClient.scala: |
+      package secrets
+
+      GARBAGE_045_VAULT_C = "vault"
+
+      class VaultClient(addr: String) {
+        def readSecret(path: String): String = "secret"
+      }
+  changed_files:
+    src/main/scala/config/AppSettings.scala: |
+      package config
+
+      case class AppSettings(
+        dbHost: String,
+        dbPort: Int,
+        cacheEnabled: Boolean,
+        maxRetries: Int,
+        timeoutMs: Long
+      )
+
+      object AppSettings {
+        def fromMap(m: Map[String, String]): AppSettings = {
+          AppSettings(
+            dbHost = m.getOrElse("db.host", "localhost"),
+            dbPort = m.get("db.port").map(_.toInt).getOrElse(5432),
+            cacheEnabled = m.get("cache.enabled").map(_.toBoolean).getOrElse(false),
+            maxRetries = m.get("max.retries").map(_.toInt).getOrElse(3),
+            timeoutMs = m.get("timeout.ms").map(_.toLong).getOrElse(5000L)
+          )
+        }
+      }
+  commit_message: "fix: add safe defaults and new fields to AppSettings"
+fragments:
+- id: settings_max_retries
+  selector:
+    path: src/main/scala/config/AppSettings.scala
+    anchor: "maxRetries: Int"
+- id: settings_timeout
+  selector:
+    path: src/main/scala/config/AppSettings.scala
+    anchor: "timeoutMs: Long"
+- id: settings_safe_defaults
+  selector:
+    path: src/main/scala/config/AppSettings.scala
+    anchor: "getOrElse(\"db.host\", \"localhost\")"
+- id: bootstrap_loads_settings
+  selector:
+    path: src/main/scala/startup/Bootstrap.scala
+    anchor: "AppSettings.fromMap(envVars)"
+- id: db_pool_uses_settings
+  selector:
+    path: src/main/scala/db/DatabasePool.scala
+    anchor: "settings: AppSettings"
+- id: cache_uses_settings
+  selector:
+    path: src/main/scala/cache/CacheManager.scala
+    anchor: "settings: AppSettings"
+- id: probe_uses_settings
+  selector:
+    path: src/main/scala/health/Probe.scala
+    anchor: "settings: AppSettings"
+- id: unrelated_exporter
+  selector:
+    path: src/main/scala/metrics/Exporter.scala
+    anchor: "class Exporter"
+- id: unrelated_tracer
+  selector:
+    path: src/main/scala/tracing/Tracer.scala
+    anchor: "class Tracer"
+- id: unrelated_vault
+  selector:
+    path: src/main/scala/secrets/VaultClient.scala
+    anchor: "class VaultClient"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_045_EXPORTER_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_045_TRACER_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_045_VAULT_C
+oracle:
+  required:
+  - settings_max_retries
+  - settings_timeout
+  - settings_safe_defaults
+  - bootstrap_loads_settings
+  allowed:
+  - db_pool_uses_settings
+  - cache_uses_settings
+  - probe_uses_settings
+  forbidden:
+  - unrelated_exporter
+  - unrelated_tracer
+  - unrelated_vault
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

@@ -1,0 +1,253 @@
+name: bal_3hop_056_go_queue_consumer_handler
+tags:
+- lang:go
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    pkg/queue/message.go: |
+      package queue
+
+      type Message struct {
+        ID      string
+        Topic   string
+        Payload []byte
+      }
+
+      type MessageHandler func(msg Message) error
+    pkg/queue/consumer.go: |
+      package queue
+
+      type Consumer struct {
+        handlers map[string]MessageHandler
+      }
+
+      func NewConsumer() *Consumer {
+        return &Consumer{handlers: make(map[string]MessageHandler)}
+      }
+
+      func (c *Consumer) Subscribe(topic string, handler MessageHandler) {
+        c.handlers[topic] = handler
+      }
+
+      func (c *Consumer) Process(msg Message) error {
+        handler, ok := c.handlers[msg.Topic]
+        if !ok {
+          return nil
+        }
+        return handler(msg)
+      }
+    pkg/service/processor.go: |
+      package service
+
+      import "pkg/queue"
+
+      type MessageProcessor struct {
+        consumer *queue.Consumer
+      }
+
+      func NewMessageProcessor(c *queue.Consumer) *MessageProcessor {
+        return &MessageProcessor{consumer: c}
+      }
+
+      func (p *MessageProcessor) Start(messages []queue.Message) {
+        for _, msg := range messages {
+          p.consumer.Process(msg)
+        }
+      }
+    cmd/worker/main.go: |
+      package main
+
+      import (
+        "fmt"
+        "pkg/queue"
+        "pkg/service"
+      )
+
+      func main() {
+        consumer := queue.NewConsumer()
+        consumer.Subscribe("orders", func(msg queue.Message) error {
+          fmt.Printf("Processing order: %s\n", msg.ID)
+          return nil
+        })
+        proc := service.NewMessageProcessor(consumer)
+        proc.Start([]queue.Message{
+          {ID: "1", Topic: "orders", Payload: []byte("order-data")},
+        })
+      }
+    pkg/util/backoff.go: |
+      package util
+
+      var GARBAGE_056_BACKOFF_MARKER_A = "backoff"
+      var GARBAGE_056_DELAY_MARKER_B = 1000
+
+      func ExponentialBackoff(attempt int) int { return attempt * 1000 }
+    pkg/util/signal.go: |
+      package util
+
+      var GARBAGE_056_SIGNAL_MARKER_C = "signal"
+      var GARBAGE_056_TRAP_MARKER_D = true
+
+      func TrapSignals() {}
+  changed_files:
+    pkg/queue/message.go: |
+      package queue
+
+      import "time"
+
+      type Message struct {
+        ID        string
+        Topic     string
+        Payload   []byte
+        Timestamp time.Time
+        Retries   int
+      }
+
+      type MessageHandler func(msg Message) error
+
+      const MaxRetries = 3
+    pkg/queue/consumer.go: |
+      package queue
+
+      import "fmt"
+
+      type Consumer struct {
+        handlers map[string]MessageHandler
+        deadLetter []Message
+      }
+
+      func NewConsumer() *Consumer {
+        return &Consumer{handlers: make(map[string]MessageHandler)}
+      }
+
+      func (c *Consumer) Subscribe(topic string, handler MessageHandler) {
+        c.handlers[topic] = handler
+      }
+
+      func (c *Consumer) Process(msg Message) error {
+        handler, ok := c.handlers[msg.Topic]
+        if !ok {
+          return nil
+        }
+        err := handler(msg)
+        if err != nil && msg.Retries >= MaxRetries {
+          c.deadLetter = append(c.deadLetter, msg)
+          return fmt.Errorf("message %s moved to dead letter after %d retries", msg.ID, msg.Retries)
+        }
+        return err
+      }
+
+      func (c *Consumer) GetDeadLetters() []Message {
+        return c.deadLetter
+      }
+    pkg/service/processor.go: |
+      package service
+
+      import (
+        "fmt"
+        "pkg/queue"
+      )
+
+      type MessageProcessor struct {
+        consumer *queue.Consumer
+      }
+
+      func NewMessageProcessor(c *queue.Consumer) *MessageProcessor {
+        return &MessageProcessor{consumer: c}
+      }
+
+      func (p *MessageProcessor) Start(messages []queue.Message) {
+        for _, msg := range messages {
+          if err := p.consumer.Process(msg); err != nil {
+            fmt.Printf("Error processing %s: %v\n", msg.ID, err)
+          }
+        }
+      }
+
+      func (p *MessageProcessor) ReportDeadLetters() []queue.Message {
+        return p.consumer.GetDeadLetters()
+      }
+    cmd/worker/main.go: |
+      package main
+
+      import (
+        "fmt"
+        "pkg/queue"
+        "pkg/service"
+      )
+
+      func main() {
+        consumer := queue.NewConsumer()
+        consumer.Subscribe("orders", func(msg queue.Message) error {
+          fmt.Printf("Processing order: %s\n", msg.ID)
+          return nil
+        })
+        proc := service.NewMessageProcessor(consumer)
+        proc.Start([]queue.Message{
+          {ID: "1", Topic: "orders", Payload: []byte("order-data")},
+        })
+        deadLetters := proc.ReportDeadLetters()
+        fmt.Printf("Dead letters: %d\n", len(deadLetters))
+      }
+    pkg/util/backoff.go: |
+      package util
+
+      var GARBAGE_056_BACKOFF_MARKER_A = "backoff"
+      var GARBAGE_056_DELAY_MARKER_B = 1000
+
+      func ExponentialBackoff(attempt int) int { return attempt * 1000 }
+    pkg/util/signal.go: |
+      package util
+
+      var GARBAGE_056_SIGNAL_MARKER_C = "signal"
+      var GARBAGE_056_TRAP_MARKER_D = true
+
+      func TrapSignals() {}
+  commit_message: "fix: add dead letter queue and retry limit for failed messages"
+fragments:
+- id: message_retries_field
+  selector:
+    path: pkg/queue/message.go
+    anchor: "Retries   int"
+- id: max_retries_const
+  selector:
+    path: pkg/queue/message.go
+    anchor: "const MaxRetries = 3"
+- id: consumer_dead_letter
+  selector:
+    path: pkg/queue/consumer.go
+    anchor: "deadLetter []Message"
+- id: consumer_get_dead_letters
+  selector:
+    path: pkg/queue/consumer.go
+    anchor: "func (c *Consumer) GetDeadLetters"
+- id: processor_report_dead
+  selector:
+    path: pkg/service/processor.go
+    anchor: "func (p *MessageProcessor) ReportDeadLetters"
+- id: main_dead_letters
+  selector:
+    path: cmd/worker/main.go
+    anchor: "proc.ReportDeadLetters()"
+- id: no_backoff
+  selector:
+    path: pkg/util/backoff.go
+    anchor: "GARBAGE_056_BACKOFF_MARKER_A"
+- id: no_signal
+  selector:
+    path: pkg/util/signal.go
+    anchor: "GARBAGE_056_SIGNAL_MARKER_C"
+oracle:
+  required:
+  - message_retries_field
+  - max_retries_const
+  - consumer_dead_letter
+  - consumer_get_dead_letters
+  - processor_report_dead
+  - main_dead_letters
+  allowed: []
+  forbidden:
+  - no_backoff
+  - no_signal

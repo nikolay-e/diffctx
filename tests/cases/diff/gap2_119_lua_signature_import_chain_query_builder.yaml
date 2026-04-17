@@ -1,0 +1,194 @@
+name: gap2_119_lua_signature_import_chain_query_builder
+tags:
+- change:signature
+- change:single_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:lua
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    db/query.lua: |
+      local M = {}
+
+      function M.select(table_name, columns)
+          local cols = table.concat(columns, ", ")
+          return "SELECT " .. cols .. " FROM " .. table_name
+      end
+
+      function M.insert(table_name, record)
+          local keys = {}
+          local vals = {}
+          for k, v in pairs(record) do
+              keys[#keys + 1] = k
+              vals[#vals + 1] = "'" .. tostring(v) .. "'"
+          end
+          return "INSERT INTO " .. table_name .. " (" .. table.concat(keys, ", ") .. ") VALUES (" .. table.concat(vals, ", ") .. ")"
+      end
+
+      return M
+    db/repository.lua: |
+      local query = require("db.query")
+
+      local M = {}
+
+      function M.find_all(table_name)
+          return query.select(table_name, {"*"})
+      end
+
+      function M.find_by_columns(table_name, columns)
+          return query.select(table_name, columns)
+      end
+
+      function M.save(table_name, record)
+          return query.insert(table_name, record)
+      end
+
+      return M
+    app/user_store.lua: |
+      local repo = require("db.repository")
+
+      local M = {}
+
+      function M.list_users()
+          return repo.find_all("users")
+      end
+
+      function M.get_user_names()
+          return repo.find_by_columns("users", {"id", "name"})
+      end
+
+      function M.create_user(name, email)
+          return repo.save("users", { name = name, email = email })
+      end
+
+      return M
+    db/migration.lua: |
+      local TRAP_GAP2_119_MIG_A = "migration_runner"
+      local TRAP_GAP2_119_VER_B = 1
+
+      local M = {}
+
+      function M.run(version, sql)
+          return "MIGRATE v" .. version .. ": " .. sql
+      end
+
+      function M.rollback(version)
+          return "ROLLBACK v" .. version
+      end
+
+      return M
+  changed_files:
+    db/query.lua: |
+      local M = {}
+
+      function M.select(table_name, columns, where_clause)
+          local cols = table.concat(columns, ", ")
+          local sql = "SELECT " .. cols .. " FROM " .. table_name
+          if where_clause then
+              sql = sql .. " WHERE " .. where_clause
+          end
+          return sql
+      end
+
+      function M.insert(table_name, record, returning)
+          local keys = {}
+          local vals = {}
+          for k, v in pairs(record) do
+              keys[#keys + 1] = k
+              vals[#vals + 1] = "'" .. tostring(v) .. "'"
+          end
+          local sql = "INSERT INTO " .. table_name .. " (" .. table.concat(keys, ", ") .. ") VALUES (" .. table.concat(vals, ", ") .. ")"
+          if returning then
+              sql = sql .. " RETURNING " .. returning
+          end
+          return sql
+      end
+
+      return M
+    db/repository.lua: |
+      local query = require("db.query")
+
+      local M = {}
+
+      function M.find_all(table_name)
+          return query.select(table_name, {"*"})
+      end
+
+      function M.find_by_columns(table_name, columns)
+          return query.select(table_name, columns)
+      end
+
+      function M.save(table_name, record)
+          return query.insert(table_name, record)
+      end
+
+      return M
+    app/user_store.lua: |
+      local repo = require("db.repository")
+
+      local M = {}
+
+      function M.list_users()
+          return repo.find_all("users")
+      end
+
+      function M.get_user_names()
+          return repo.find_by_columns("users", {"id", "name"})
+      end
+
+      function M.create_user(name, email)
+          return repo.save("users", { name = name, email = email })
+      end
+
+      return M
+    db/migration.lua: |
+      local TRAP_GAP2_119_MIG_A = "migration_runner"
+      local TRAP_GAP2_119_VER_B = 1
+
+      local M = {}
+
+      function M.run(version, sql)
+          return "MIGRATE v" .. version .. ": " .. sql
+      end
+
+      function M.rollback(version)
+          return "ROLLBACK v" .. version
+      end
+
+      return M
+  commit_message: Update files
+fragments:
+- id: select_sig
+  selector:
+    path: db/query.lua
+    anchor: function M.select(table_name, columns, where_clause)
+- id: insert_sig
+  selector:
+    path: db/query.lua
+    anchor: function M.insert(table_name, record, returning)
+- id: repo_require
+  selector:
+    path: db/repository.lua
+    anchor: require("db.query")
+- id: no_migration
+  selector:
+    path: db/migration.lua
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_119_MIG_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_119_VER_B
+oracle:
+  required:
+  - select_sig
+  - insert_sig
+  - repo_require
+  allowed: []
+  forbidden:
+  - no_migration
+  - no_global_0
+  - no_global_1

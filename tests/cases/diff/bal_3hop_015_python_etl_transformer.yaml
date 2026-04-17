@@ -1,0 +1,159 @@
+name: bal_3hop_015_python_etl_transformer
+tags:
+- lang:python
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    etl/extractor.py: |
+      class Extractor:
+          def __init__(self, source: str):
+              self.source = source
+          def extract(self) -> list[dict]:
+              return [{"raw": f"data_from_{self.source}"}]
+    etl/transformer.py: |
+      from etl.extractor import Extractor
+      class Transformer:
+          def __init__(self, extractor: Extractor):
+              self.extractor = extractor
+          def transform(self) -> list[dict]:
+              raw = self.extractor.extract()
+              return [{"transformed": r["raw"].upper()} for r in raw]
+    etl/loader.py: |
+      from etl.transformer import Transformer
+      class Loader:
+          def __init__(self, transformer: Transformer, target: str):
+              self.transformer = transformer
+              self.target = target
+              self.loaded: list[dict] = []
+          def load(self) -> int:
+              data = self.transformer.transform()
+              self.loaded.extend(data)
+              return len(data)
+    etl/orchestrator.py: |
+      from etl.loader import Loader
+      from etl.transformer import Transformer
+      from etl.extractor import Extractor
+      class ETLOrchestrator:
+          def __init__(self, source: str, target: str):
+              extractor = Extractor(source)
+              transformer = Transformer(extractor)
+              self.loader = Loader(transformer, target)
+          def run(self) -> dict:
+              count = self.loader.load()
+              return {"loaded": count, "records": self.loader.loaded}
+    utils/csv_writer.py: |
+      import csv
+      import io
+      def to_csv(rows: list[dict]) -> str:
+          if not rows:
+              return ""
+          output = io.StringIO()
+          writer = csv.DictWriter(output, fieldnames=rows[0].keys())
+          writer.writeheader()
+          writer.writerows(rows)
+          return output.getvalue()
+    config/sources.py: |
+      SOURCES = {
+          "users": "/data/users.csv",
+          "orders": "/data/orders.csv",
+      }
+  changed_files:
+    etl/extractor.py: |
+      from typing import Optional
+      class Extractor:
+          def __init__(self, source: str, delimiter: str = ",",
+                       encoding: str = "utf-8"):
+              self.source = source
+              self.delimiter = delimiter
+              self.encoding = encoding
+          def extract(self) -> list[dict]:
+              return [{"raw": f"data_from_{self.source}"}]
+          def validate_source(self) -> bool:
+              return bool(self.source) and self.source.strip() != ""
+    etl/transformer.py: |
+      from etl.extractor import Extractor
+      class Transformer:
+          def __init__(self, extractor: Extractor):
+              self.extractor = extractor
+          def transform(self) -> list[dict]:
+              raw = self.extractor.extract()
+              return [{"transformed": r["raw"].upper()} for r in raw]
+    etl/loader.py: |
+      from etl.transformer import Transformer
+      class Loader:
+          def __init__(self, transformer: Transformer, target: str):
+              self.transformer = transformer
+              self.target = target
+              self.loaded: list[dict] = []
+          def load(self) -> int:
+              data = self.transformer.transform()
+              self.loaded.extend(data)
+              return len(data)
+    etl/orchestrator.py: |
+      from etl.loader import Loader
+      from etl.transformer import Transformer
+      from etl.extractor import Extractor
+      class ETLOrchestrator:
+          def __init__(self, source: str, target: str):
+              extractor = Extractor(source)
+              transformer = Transformer(extractor)
+              self.loader = Loader(transformer, target)
+          def run(self) -> dict:
+              count = self.loader.load()
+              return {"loaded": count, "records": self.loader.loaded}
+    utils/csv_writer.py: |
+      import csv
+      import io
+      def to_csv(rows: list[dict]) -> str:
+          if not rows:
+              return ""
+          output = io.StringIO()
+          writer = csv.DictWriter(output, fieldnames=rows[0].keys())
+          writer.writeheader()
+          writer.writerows(rows)
+          return output.getvalue()
+    config/sources.py: |
+      SOURCES = {
+          "users": "/data/users.csv",
+          "orders": "/data/orders.csv",
+      }
+  commit_message: "feat: add delimiter, encoding params and validate_source to Extractor"
+fragments:
+- id: extractor_new_params
+  selector:
+    path: etl/extractor.py
+    anchor: "delimiter: str = \",\""
+- id: transformer_uses_extractor
+  selector:
+    path: etl/transformer.py
+    anchor: "from etl.extractor import Extractor"
+- id: loader_uses_transformer
+  selector:
+    path: etl/loader.py
+    anchor: "from etl.transformer import Transformer"
+- id: orchestrator_uses_loader
+  selector:
+    path: etl/orchestrator.py
+    anchor: "from etl.loader import Loader"
+- id: no_csv_writer
+  selector:
+    path: utils/csv_writer.py
+    anchor: "def to_csv"
+- id: no_sources
+  selector:
+    path: config/sources.py
+    anchor: "SOURCES"
+oracle:
+  required:
+  - extractor_new_params
+  - transformer_uses_extractor
+  - loader_uses_transformer
+  - orchestrator_uses_loader
+  allowed: []
+  forbidden:
+  - no_csv_writer
+  - no_sources

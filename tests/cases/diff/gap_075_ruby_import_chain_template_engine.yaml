@@ -1,0 +1,280 @@
+name: gap_075_ruby_import_chain_template_engine
+tags:
+- change:new_function
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:2hop
+- lang:ruby
+repo:
+  initial_files:
+    lib/tpl/tokenizer.rb: |
+      module Tpl
+        class Tokenizer
+          def initialize(delimiters = ['{{', '}}'])
+            @open_delim = delimiters[0]
+            @close_delim = delimiters[1]
+          end
+
+          def tokenize(source)
+            tokens = []
+            remaining = source
+            while remaining.length > 0
+              idx = remaining.index(@open_delim)
+              if idx.nil?
+                tokens << { type: :text, value: remaining }
+                break
+              end
+              tokens << { type: :text, value: remaining[0...idx] } if idx > 0
+              end_idx = remaining.index(@close_delim, idx)
+              expr = remaining[(idx + @open_delim.length)...end_idx].strip
+              tokens << { type: :expr, value: expr }
+              remaining = remaining[(end_idx + @close_delim.length)..]
+            end
+            tokens
+          end
+        end
+      end
+    lib/tpl/parser.rb: |
+      require_relative 'tokenizer'
+
+      module Tpl
+        class Parser
+          def initialize(tokenizer)
+            @tokenizer = tokenizer
+          end
+
+          def parse(source)
+            tokens = @tokenizer.tokenize(source)
+            tokens.map do |tok|
+              if tok[:type] == :expr
+                { type: :variable, name: tok[:value] }
+              else
+                { type: :literal, content: tok[:value] }
+              end
+            end
+          end
+        end
+      end
+    lib/tpl/renderer.rb: |
+      require_relative 'parser'
+
+      module Tpl
+        class Renderer
+          def initialize(parser)
+            @parser = parser
+          end
+
+          def render(source, context = {})
+            nodes = @parser.parse(source)
+            nodes.map do |node|
+              case node[:type]
+              when :literal
+                node[:content]
+              when :variable
+                context.fetch(node[:name].to_sym, "")
+              end
+            end.join
+          end
+        end
+      end
+    lib/tpl/cache.rb: |
+      TRAP_GAP075_CACHE_A = "template_cache"
+      TRAP_GAP075_TTL_B = 300
+
+      module Tpl
+        class Cache
+          def initialize
+            @store = {}
+          end
+
+          def get(key)
+            @store[key]
+          end
+
+          def set(key, value)
+            @store[key] = value
+          end
+
+          def clear
+            @store.clear
+          end
+        end
+      end
+    lib/tpl/filter.rb: |
+      TRAP_GAP075_FILTER_C = "template_filter"
+      TRAP_GAP075_BUILTIN_D = "upcase"
+
+      module Tpl
+        class Filter
+          def apply(name, value)
+            case name
+            when 'upcase' then value.to_s.upcase
+            when 'downcase' then value.to_s.downcase
+            when 'strip' then value.to_s.strip
+            else value
+            end
+          end
+        end
+      end
+  changed_files:
+    lib/tpl/tokenizer.rb: |
+      module Tpl
+        class Tokenizer
+          def initialize(delimiters = ['{{', '}}'])
+            @open_delim = delimiters[0]
+            @close_delim = delimiters[1]
+          end
+
+          def tokenize(source)
+            tokens = []
+            remaining = source
+            while remaining.length > 0
+              idx = remaining.index(@open_delim)
+              if idx.nil?
+                tokens << { type: :text, value: remaining }
+                break
+              end
+              tokens << { type: :text, value: remaining[0...idx] } if idx > 0
+              end_idx = remaining.index(@close_delim, idx)
+              expr = remaining[(idx + @open_delim.length)...end_idx].strip
+              tokens << { type: :expr, value: expr }
+              remaining = remaining[(end_idx + @close_delim.length)..]
+            end
+            tokens
+          end
+        end
+      end
+    lib/tpl/parser.rb: |
+      require_relative 'tokenizer'
+
+      module Tpl
+        class Parser
+          def initialize(tokenizer)
+            @tokenizer = tokenizer
+          end
+
+          def parse(source)
+            tokens = @tokenizer.tokenize(source)
+            tokens.map do |tok|
+              if tok[:type] == :expr
+                { type: :variable, name: tok[:value] }
+              else
+                { type: :literal, content: tok[:value] }
+              end
+            end
+          end
+        end
+      end
+    lib/tpl/renderer.rb: |
+      require_relative 'parser'
+
+      module Tpl
+        class Renderer
+          def initialize(parser)
+            @parser = parser
+          end
+
+          def render(source, context = {})
+            nodes = @parser.parse(source)
+            nodes.map do |node|
+              case node[:type]
+              when :literal
+                node[:content]
+              when :variable
+                context.fetch(node[:name].to_sym, "")
+              end
+            end.join
+          end
+
+          def render_batch(templates, context = {})
+            templates.map { |tpl| { source: tpl, output: render(tpl, context) } }
+          end
+        end
+      end
+    lib/tpl/cache.rb: |
+      TRAP_GAP075_CACHE_A = "template_cache"
+      TRAP_GAP075_TTL_B = 300
+
+      module Tpl
+        class Cache
+          def initialize
+            @store = {}
+          end
+
+          def get(key)
+            @store[key]
+          end
+
+          def set(key, value)
+            @store[key] = value
+          end
+
+          def clear
+            @store.clear
+          end
+        end
+      end
+    lib/tpl/filter.rb: |
+      TRAP_GAP075_FILTER_C = "template_filter"
+      TRAP_GAP075_BUILTIN_D = "upcase"
+
+      module Tpl
+        class Filter
+          def apply(name, value)
+            case name
+            when 'upcase' then value.to_s.upcase
+            when 'downcase' then value.to_s.downcase
+            when 'strip' then value.to_s.strip
+            else value
+            end
+          end
+        end
+      end
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: renderer_batch
+  selector:
+    path: lib/tpl/renderer.rb
+    anchor: 'def render_batch(templates, context = {})'
+- id: renderer_render
+  selector:
+    path: lib/tpl/renderer.rb
+    anchor: 'def render(source, context = {})'
+- id: parser_parse
+  selector:
+    path: lib/tpl/parser.rb
+    anchor: 'def parse(source)'
+- id: no_cache
+  selector:
+    path: lib/tpl/cache.rb
+- id: no_filter
+  selector:
+    path: lib/tpl/filter.rb
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP075_CACHE_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP075_TTL_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP075_FILTER_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP075_BUILTIN_D
+oracle:
+  required:
+  - renderer_batch
+  - renderer_render
+  - parser_parse
+  allowed: []
+  forbidden:
+  - no_cache
+  - no_filter
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

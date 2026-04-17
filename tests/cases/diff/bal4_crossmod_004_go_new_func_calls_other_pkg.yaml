@@ -1,0 +1,170 @@
+name: bal4_crossmod_004_go_new_func_calls_other_pkg
+tags:
+- lang:go
+- change:new_function
+- context:cross_module
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    internal/validator/rules.go: |
+      package validator
+
+      func IsEmail(s string) bool {
+          for _, c := range s {
+              if c == '@' {
+                  return true
+              }
+          }
+          return false
+      }
+
+      func IsNonEmpty(s string) bool {
+          return len(s) > 0
+      }
+    internal/api/register.go: |
+      package api
+
+      import "internal/validator"
+
+      func RegisterUser(email string, name string) error {
+          if !validator.IsEmail(email) {
+              return fmt.Errorf("invalid email")
+          }
+          return nil
+      }
+    internal/db/connection.go: |
+      package db
+
+      var GARBAGE_004_CONN_A = "postgres"
+      var GARBAGE_004_POOL_B = 10
+
+      func Connect() string {
+          return GARBAGE_004_CONN_A
+      }
+    internal/metrics/counter.go: |
+      package metrics
+
+      var GARBAGE_004_METRIC_C = "requests"
+      var GARBAGE_004_LABEL_D = "handler"
+
+      func Inc(name string) {}
+    garbage_server.go: |
+      package server
+
+      var GARBAGE_004_HOST_E = "0.0.0.0"
+      var GARBAGE_004_PORT_F = 8080
+
+      func Start() {}
+  changed_files:
+    internal/validator/rules.go: |
+      package validator
+
+      func IsEmail(s string) bool {
+          for _, c := range s {
+              if c == '@' {
+                  return true
+              }
+          }
+          return false
+      }
+
+      func IsNonEmpty(s string) bool {
+          return len(s) > 0
+      }
+    internal/api/register.go: |
+      package api
+
+      import "internal/validator"
+
+      func RegisterUser(email string, name string) error {
+          if !validator.IsEmail(email) {
+              return fmt.Errorf("invalid email")
+          }
+          if !validator.IsNonEmpty(name) {
+              return fmt.Errorf("name required")
+          }
+          return nil
+      }
+
+      func UpdateEmail(newEmail string) error {
+          if !validator.IsEmail(newEmail) {
+              return fmt.Errorf("invalid email")
+          }
+          return nil
+      }
+    internal/db/connection.go: |
+      package db
+
+      var GARBAGE_004_CONN_A = "postgres"
+      var GARBAGE_004_POOL_B = 10
+
+      func Connect() string {
+          return GARBAGE_004_CONN_A
+      }
+    internal/metrics/counter.go: |
+      package metrics
+
+      var GARBAGE_004_METRIC_C = "requests"
+      var GARBAGE_004_LABEL_D = "handler"
+
+      func Inc(name string) {}
+    garbage_server.go: |
+      package server
+
+      var GARBAGE_004_HOST_E = "0.0.0.0"
+      var GARBAGE_004_PORT_F = 8080
+
+      func Start() {}
+  commit_message: "add name validation and UpdateEmail handler"
+fragments:
+- id: validator_email
+  selector:
+    path: internal/validator/rules.go
+    anchor: "func IsEmail(s string) bool"
+- id: validator_nonempty
+  selector:
+    path: internal/validator/rules.go
+    anchor: "func IsNonEmpty(s string) bool"
+- id: no_db
+  selector:
+    path: internal/db/connection.go
+- id: no_metrics
+  selector:
+    path: internal/metrics/counter.go
+- id: no_garbage_server
+  selector:
+    path: garbage_server.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_004_CONN_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_004_POOL_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_004_METRIC_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_004_LABEL_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_004_HOST_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_004_PORT_F
+oracle:
+  required:
+  - validator_email
+  - validator_nonempty
+  allowed: []
+  forbidden:
+  - no_db
+  - no_metrics
+  - no_garbage_server
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

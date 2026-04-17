@@ -1,0 +1,69 @@
+name: css_006_flexbox_gap
+tags:
+- lang:css
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    grid.css: |
+      .container {
+        display: flex;
+        flex-wrap: wrap;
+      }
+      .col {
+        flex: 1 1 200px;
+      }
+    main.css: |
+      @import "grid.css";
+      body { margin: 0; font-family: sans-serif; }
+      .page-wrapper { padding: 24px; }
+    CSS_NOISE_006_sidebar.css: |
+      .CSS_NOISE_006_sidebar_nav { list-style: none; padding: 0; }
+      .CSS_NOISE_006_sidebar_item { padding: 8px 12px; }
+    CSS_NOISE_006_footer.css: |
+      .CSS_NOISE_006_footer_links { display: flex; gap: 16px; }
+      .CSS_NOISE_006_footer_copy { font-size: 12px; color: #888; }
+  changed_files:
+    grid.css: |
+      .container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+      }
+      .col {
+        flex: 1 1 200px;
+      }
+  commit_message: "style: add gap: 16px to .container flex layout"
+fragments:
+- id: grid_gap
+  selector:
+    path: grid.css
+    anchor: "gap: 16px"
+- id: main_imports_grid
+  selector:
+    path: main.css
+    anchor: grid.css
+- id: no_sidebar
+  selector:
+    path: CSS_NOISE_006_sidebar.css
+- id: no_footer
+  selector:
+    path: CSS_NOISE_006_footer.css
+- id: no_global_0
+  selector:
+    anchor: CSS_NOISE_006_sidebar_nav
+- id: no_global_1
+  selector:
+    anchor: CSS_NOISE_006_footer_links
+oracle:
+  required:
+  - grid_gap
+  - main_imports_grid
+  allowed: []
+  forbidden:
+  - no_sidebar
+  - no_footer
+  - no_global_0
+  - no_global_1

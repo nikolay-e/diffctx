@@ -1,0 +1,145 @@
+name: bal2_1hop_035_scala_implicit_context
+tags:
+- lang:scala
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/context/ExecutionCtx.scala: |
+      package context
+
+      case class ExecutionCtx(traceId: String, userId: String)
+
+      object ExecutionCtx {
+        def empty: ExecutionCtx = ExecutionCtx("", "")
+      }
+    src/main/scala/service/PaymentService.scala: |
+      package service
+
+      import context.ExecutionCtx
+
+      class PaymentService {
+        def charge(amount: Double)(implicit ctx: ExecutionCtx): Boolean = {
+          println(s"[${ctx.traceId}] charging $amount for ${ctx.userId}")
+          amount > 0
+        }
+      }
+    src/main/scala/service/RefundService.scala: |
+      package service
+
+      import context.ExecutionCtx
+
+      class RefundService(paymentService: PaymentService) {
+        def refund(orderId: String, amount: Double)(implicit ctx: ExecutionCtx): Boolean = {
+          println(s"[${ctx.traceId}] refunding $amount for order $orderId")
+          true
+        }
+      }
+    src/main/scala/api/PaymentRouter.scala: |
+      package api
+
+      import service.PaymentService
+      import context.ExecutionCtx
+
+      class PaymentRouter(paymentService: PaymentService) {
+        def handleCharge(amount: Double, traceId: String, userId: String): Boolean = {
+          implicit val ctx: ExecutionCtx = ExecutionCtx(traceId, userId)
+          paymentService.charge(amount)
+        }
+      }
+    src/main/scala/gateway/StripeGateway.scala: |
+      package gateway
+
+      GARBAGE_035_STRIPE_A = "stripe"
+
+      class StripeGateway(apiKey: String) {
+        def createCharge(cents: Long): String = s"ch_$cents"
+        def refundCharge(chargeId: String): Boolean = true
+      }
+    src/main/scala/queue/EventBus.scala: |
+      package queue
+
+      GARBAGE_035_EVENT_BUS_B = "bus"
+
+      class EventBus {
+        def publish(topic: String, payload: String): Unit = ()
+        def subscribe(topic: String)(handler: String => Unit): Unit = ()
+      }
+    src/main/scala/report/SalesReport.scala: |
+      package report
+
+      GARBAGE_035_SALES_REPORT_C = "report"
+
+      class SalesReport {
+        def generate(month: Int, year: Int): String = s"report-$month-$year"
+      }
+  changed_files:
+    src/main/scala/context/ExecutionCtx.scala: |
+      package context
+
+      case class ExecutionCtx(traceId: String, userId: String, tenantId: String, locale: String)
+
+      object ExecutionCtx {
+        def empty: ExecutionCtx = ExecutionCtx("", "", "default", "en")
+        def forTenant(tenantId: String): ExecutionCtx = ExecutionCtx("", "", tenantId, "en")
+      }
+  commit_message: "feat: add tenantId and locale to ExecutionCtx"
+fragments:
+- id: ctx_new_fields
+  selector:
+    path: src/main/scala/context/ExecutionCtx.scala
+    anchor: "tenantId: String, locale: String"
+- id: ctx_for_tenant
+  selector:
+    path: src/main/scala/context/ExecutionCtx.scala
+    anchor: "def forTenant"
+- id: payment_uses_ctx
+  selector:
+    path: src/main/scala/service/PaymentService.scala
+    anchor: "implicit ctx: ExecutionCtx"
+- id: refund_uses_ctx
+  selector:
+    path: src/main/scala/service/RefundService.scala
+    anchor: "implicit ctx: ExecutionCtx"
+- id: router_creates_ctx
+  selector:
+    path: src/main/scala/api/PaymentRouter.scala
+    anchor: "ExecutionCtx(traceId, userId)"
+- id: unrelated_stripe
+  selector:
+    path: src/main/scala/gateway/StripeGateway.scala
+    anchor: "class StripeGateway"
+- id: unrelated_event_bus
+  selector:
+    path: src/main/scala/queue/EventBus.scala
+    anchor: "class EventBus"
+- id: unrelated_sales
+  selector:
+    path: src/main/scala/report/SalesReport.scala
+    anchor: "class SalesReport"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_035_STRIPE_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_035_EVENT_BUS_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_035_SALES_REPORT_C
+oracle:
+  required:
+  - ctx_new_fields
+  - ctx_for_tenant
+  - payment_uses_ctx
+  - refund_uses_ctx
+  - router_creates_ctx
+  allowed: []
+  forbidden:
+  - unrelated_stripe
+  - unrelated_event_bus
+  - unrelated_sales
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

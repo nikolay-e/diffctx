@@ -1,0 +1,174 @@
+name: bal2_3hop_031_rust_ecs_component_system
+tags:
+- lang:rust
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/components/position.rs: |
+      pub struct Position {
+          pub x: f32,
+          pub y: f32,
+      }
+
+      impl Position {
+          pub fn new(x: f32, y: f32) -> Self {
+              Self { x, y }
+          }
+
+          pub fn distance_to(&self, other: &Position) -> f32 {
+              ((self.x - other.x).powi(2) + (self.y - other.y).powi(2)).sqrt()
+          }
+      }
+    src/components/velocity.rs: |
+      use crate::components::position::Position;
+
+      pub struct Velocity {
+          pub dx: f32,
+          pub dy: f32,
+      }
+
+      impl Velocity {
+          pub fn new(dx: f32, dy: f32) -> Self {
+              Self { dx, dy }
+          }
+
+          pub fn apply(&self, pos: &mut Position, dt: f32) {
+              pos.x += self.dx * dt;
+              pos.y += self.dy * dt;
+          }
+      }
+    src/systems/movement.rs: |
+      use crate::components::velocity::Velocity;
+      use crate::components::position::Position;
+
+      pub struct MovementSystem {
+          pub dt: f32,
+      }
+
+      impl MovementSystem {
+          pub fn new(dt: f32) -> Self {
+              Self { dt }
+          }
+
+          pub fn update(&self, pos: &mut Position, vel: &Velocity) {
+              vel.apply(pos, self.dt);
+          }
+      }
+    src/engine/world.rs: |
+      use crate::systems::movement::MovementSystem;
+
+      pub struct World {
+          movement: MovementSystem,
+      }
+
+      impl World {
+          pub fn new(dt: f32) -> Self {
+              Self {
+                  movement: MovementSystem::new(dt),
+              }
+          }
+
+          pub fn tick(&self) {
+              // tick all systems
+          }
+      }
+    src/audio/mixer.rs: |
+      GARBAGE_031_AUDIO_MARKER_A = "mixer";
+      GARBAGE_031_CHANNEL_MARKER_B = 8;
+
+      pub struct AudioMixer {
+          channels: u8,
+      }
+
+      impl AudioMixer {
+          pub fn new(channels: u8) -> Self {
+              Self { channels }
+          }
+      }
+    src/ui/menu.rs: |
+      GARBAGE_031_MENU_MARKER_C = "main_menu";
+      GARBAGE_031_BUTTON_MARKER_D = true;
+
+      pub struct MainMenu {
+          visible: bool,
+      }
+
+      impl MainMenu {
+          pub fn toggle(&mut self) {
+              self.visible = !self.visible;
+          }
+      }
+    src/assets/loader.rs: |
+      GARBAGE_031_LOADER_MARKER_E = "asset_loader";
+      GARBAGE_031_CACHE_MARKER_F = 256;
+
+      pub struct AssetLoader {
+          cache_size: usize,
+      }
+
+      impl AssetLoader {
+          pub fn new(cache_size: usize) -> Self {
+              Self { cache_size }
+          }
+      }
+  changed_files:
+    src/components/position.rs: |
+      pub struct Position {
+          pub x: f32,
+          pub y: f32,
+          pub z: f32,
+      }
+
+      impl Position {
+          pub fn new(x: f32, y: f32, z: f32) -> Self {
+              Self { x, y, z }
+          }
+
+          pub fn distance_to(&self, other: &Position) -> f32 {
+              ((self.x - other.x).powi(2) + (self.y - other.y).powi(2) + (self.z - other.z).powi(2)).sqrt()
+          }
+      }
+  commit_message: "feat: add z-axis to Position component for 3D support"
+fragments:
+- id: position_z_field
+  selector:
+    path: src/components/position.rs
+    anchor: "pub z: f32"
+- id: velocity_apply
+  selector:
+    path: src/components/velocity.rs
+    anchor: "pub fn apply"
+- id: movement_update
+  selector:
+    path: src/systems/movement.rs
+    anchor: "pub fn update"
+- id: world_movement
+  selector:
+    path: src/engine/world.rs
+    anchor: "use crate::systems::movement::MovementSystem"
+- id: no_audio
+  selector:
+    path: src/audio/mixer.rs
+    anchor: "GARBAGE_031_AUDIO_MARKER_A"
+- id: no_menu
+  selector:
+    path: src/ui/menu.rs
+    anchor: "GARBAGE_031_MENU_MARKER_C"
+- id: no_loader
+  selector:
+    path: src/assets/loader.rs
+    anchor: "GARBAGE_031_LOADER_MARKER_E"
+oracle:
+  required:
+  - position_z_field
+  - velocity_apply
+  - movement_update
+  - world_movement
+  allowed: []
+  forbidden:
+  - no_audio
+  - no_menu
+  - no_loader

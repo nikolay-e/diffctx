@@ -1,0 +1,206 @@
+name: gap2_120_lua_signature_import_chain_event_bus
+tags:
+- change:signature
+- change:single_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:lua
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    core/bus.lua: |
+      local M = {}
+
+      local listeners = {}
+
+      function M.on(event, callback)
+          listeners[event] = listeners[event] or {}
+          listeners[event][#listeners[event] + 1] = callback
+      end
+
+      function M.emit(event, data)
+          local handlers = listeners[event] or {}
+          for _, cb in ipairs(handlers) do
+              cb(data)
+          end
+      end
+
+      function M.clear(event)
+          listeners[event] = nil
+      end
+
+      return M
+    core/dispatcher.lua: |
+      local bus = require("core.bus")
+
+      local M = {}
+
+      function M.dispatch_action(action_type, payload)
+          bus.emit(action_type, payload)
+      end
+
+      function M.register_handler(action_type, handler)
+          bus.on(action_type, handler)
+      end
+
+      return M
+    app/notifications.lua: |
+      local dispatcher = require("core.dispatcher")
+
+      local M = {}
+
+      function M.init()
+          dispatcher.register_handler("user.created", function(data)
+              M.send_welcome(data)
+          end)
+          dispatcher.register_handler("order.placed", function(data)
+              M.send_confirmation(data)
+          end)
+      end
+
+      function M.send_welcome(user)
+          return "Welcome " .. tostring(user)
+      end
+
+      function M.send_confirmation(order)
+          return "Order confirmed: " .. tostring(order)
+      end
+
+      return M
+    core/scheduler.lua: |
+      local TRAP_GAP2_120_SCHED_A = "task_scheduler"
+      local TRAP_GAP2_120_TICK_B = 16
+
+      local M = {}
+
+      function M.schedule(delay, fn)
+          return { delay = delay, fn = fn, elapsed = 0 }
+      end
+
+      function M.tick(task, dt)
+          task.elapsed = task.elapsed + dt
+          if task.elapsed >= task.delay then
+              task.fn()
+              return true
+          end
+          return false
+      end
+
+      return M
+  changed_files:
+    core/bus.lua: |
+      local M = {}
+
+      local listeners = {}
+
+      function M.on(event, callback, priority)
+          priority = priority or 0
+          listeners[event] = listeners[event] or {}
+          listeners[event][#listeners[event] + 1] = { cb = callback, pri = priority }
+          table.sort(listeners[event], function(a, b) return a.pri > b.pri end)
+      end
+
+      function M.emit(event, data)
+          local handlers = listeners[event] or {}
+          for _, entry in ipairs(handlers) do
+              entry.cb(data)
+          end
+      end
+
+      function M.clear(event)
+          listeners[event] = nil
+      end
+
+      return M
+    core/dispatcher.lua: |
+      local bus = require("core.bus")
+
+      local M = {}
+
+      function M.dispatch_action(action_type, payload)
+          bus.emit(action_type, payload)
+      end
+
+      function M.register_handler(action_type, handler)
+          bus.on(action_type, handler)
+      end
+
+      return M
+    app/notifications.lua: |
+      local dispatcher = require("core.dispatcher")
+
+      local M = {}
+
+      function M.init()
+          dispatcher.register_handler("user.created", function(data)
+              M.send_welcome(data)
+          end)
+          dispatcher.register_handler("order.placed", function(data)
+              M.send_confirmation(data)
+          end)
+      end
+
+      function M.send_welcome(user)
+          return "Welcome " .. tostring(user)
+      end
+
+      function M.send_confirmation(order)
+          return "Order confirmed: " .. tostring(order)
+      end
+
+      return M
+    core/scheduler.lua: |
+      local TRAP_GAP2_120_SCHED_A = "task_scheduler"
+      local TRAP_GAP2_120_TICK_B = 16
+
+      local M = {}
+
+      function M.schedule(delay, fn)
+          return { delay = delay, fn = fn, elapsed = 0 }
+      end
+
+      function M.tick(task, dt)
+          task.elapsed = task.elapsed + dt
+          if task.elapsed >= task.delay then
+              task.fn()
+              return true
+          end
+          return false
+      end
+
+      return M
+  commit_message: Update files
+fragments:
+- id: on_sig
+  selector:
+    path: core/bus.lua
+    anchor: function M.on(event, callback, priority)
+- id: on_sort
+  selector:
+    path: core/bus.lua
+    anchor: table.sort(listeners[event]
+- id: dispatcher_require
+  selector:
+    path: core/dispatcher.lua
+    anchor: require("core.bus")
+- id: no_scheduler
+  selector:
+    path: core/scheduler.lua
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_120_SCHED_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_120_TICK_B
+oracle:
+  required:
+  - on_sig
+  - on_sort
+  - dispatcher_require
+  allowed: []
+  forbidden:
+  - no_scheduler
+  - no_global_0
+  - no_global_1

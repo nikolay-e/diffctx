@@ -1,0 +1,226 @@
+name: bal2_1hop_073_csharp_abstract_class_bugfix
+tags:
+- lang:csharp
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/Pricing/PricingStrategy.cs: |
+      using System;
+
+      namespace App.Pricing
+      {
+          public abstract class PricingStrategy
+          {
+              public abstract decimal CalculatePrice(decimal basePrice, int quantity);
+
+              public decimal ApplyDiscount(decimal price, decimal discountPercent)
+              {
+                  return price * (1 - discountPercent / 100);
+              }
+          }
+      }
+    src/Pricing/BulkPricing.cs: |
+      using System;
+      using App.Pricing;
+
+      namespace App.Pricing
+      {
+          public class BulkPricing : PricingStrategy
+          {
+              public override decimal CalculatePrice(decimal basePrice, int quantity)
+              {
+                  var total = basePrice * quantity;
+                  if (quantity > 100)
+                      total = ApplyDiscount(total, 15);
+                  else if (quantity > 50)
+                      total = ApplyDiscount(total, 10);
+                  return total;
+              }
+          }
+      }
+    src/Pricing/TieredPricing.cs: |
+      using System;
+      using App.Pricing;
+
+      namespace App.Pricing
+      {
+          public class TieredPricing : PricingStrategy
+          {
+              public override decimal CalculatePrice(decimal basePrice, int quantity)
+              {
+                  decimal total = 0;
+                  for (int i = 0; i < quantity; i++)
+                  {
+                      var tier = i < 10 ? 1.0m : i < 50 ? 0.9m : 0.8m;
+                      total += basePrice * tier;
+                  }
+                  return total;
+              }
+          }
+      }
+    src/Services/QuoteService.cs: |
+      using System;
+      using App.Pricing;
+
+      namespace App.Services
+      {
+          public class QuoteService
+          {
+              private readonly PricingStrategy _strategy;
+
+              public QuoteService(PricingStrategy strategy)
+              {
+                  _strategy = strategy;
+              }
+
+              public decimal GenerateQuote(decimal unitPrice, int quantity)
+              {
+                  return _strategy.CalculatePrice(unitPrice, quantity);
+              }
+          }
+      }
+    src/Controllers/QuoteController.cs: |
+      using System;
+      using App.Services;
+      using Microsoft.AspNetCore.Mvc;
+
+      namespace App.Controllers
+      {
+          [ApiController]
+          [Route("api/quotes")]
+          public class QuoteController : ControllerBase
+          {
+              private readonly QuoteService _quoteService;
+
+              public QuoteController(QuoteService quoteService)
+              {
+                  _quoteService = quoteService;
+              }
+
+              [HttpGet]
+              public IActionResult GetQuote(decimal price, int qty)
+              {
+                  var total = _quoteService.GenerateQuote(price, qty);
+                  return Ok(new { Total = total });
+              }
+          }
+      }
+    garbage/Shipping/ShippingCalculator.cs: |
+      using System;
+      GARBAGE_073_SHIPPING_A = "flat_rate";
+      GARBAGE_073_FREE_THRESHOLD_B = 100;
+
+      namespace App.Shipping
+      {
+          public class ShippingCalculator
+          {
+              GARBAGE_073_BASE_RATE_C = 5.99;
+
+              public decimal Calculate(decimal orderTotal) { return 0; }
+          }
+      }
+    garbage/Tax/TaxCalculator.cs: |
+      using System;
+      GARBAGE_073_TAX_D = "vat";
+      GARBAGE_073_RATE_E = 0.2;
+
+      namespace App.Tax
+      {
+          public class TaxCalculator
+          {
+              GARBAGE_073_EXEMPT_F = false;
+
+              public decimal Calculate(decimal amount) { return 0; }
+          }
+      }
+    garbage/Inventory/StockManager.cs: |
+      using System;
+      GARBAGE_073_STOCK_G = "warehouse";
+      GARBAGE_073_REORDER_H = 10;
+
+      namespace App.Inventory
+      {
+          public class StockManager
+          {
+              GARBAGE_073_SAFETY_STOCK_I = 5;
+              GARBAGE_073_LEAD_TIME_J = 7;
+
+              public int GetAvailable(string sku) { return 0; }
+          }
+      }
+  changed_files:
+    src/Pricing/PricingStrategy.cs: |
+      using System;
+
+      namespace App.Pricing
+      {
+          public abstract class PricingStrategy
+          {
+              public abstract decimal CalculatePrice(decimal basePrice, int quantity);
+
+              public decimal ApplyDiscount(decimal price, decimal discountPercent)
+              {
+                  if (discountPercent < 0 || discountPercent > 100)
+                      throw new ArgumentOutOfRangeException(nameof(discountPercent));
+                  return Math.Round(price * (1 - discountPercent / 100), 2, MidpointRounding.AwayFromZero);
+              }
+
+              public decimal ApplyMinimumPrice(decimal price, decimal minimumPrice)
+              {
+                  return Math.Max(price, minimumPrice);
+              }
+          }
+      }
+  commit_message: "Fix discount validation and rounding in pricing strategy"
+fragments:
+- id: bulk_apply_discount
+  selector:
+    path: src/Pricing/BulkPricing.cs
+    anchor: "total = ApplyDiscount(total, 15)"
+- id: bulk_calculate
+  selector:
+    path: src/Pricing/BulkPricing.cs
+    anchor: "public override decimal CalculatePrice(decimal basePrice, int quantity)"
+- id: tiered_calculate
+  selector:
+    path: src/Pricing/TieredPricing.cs
+    anchor: "public override decimal CalculatePrice(decimal basePrice, int quantity)"
+- id: quote_service_calc
+  selector:
+    path: src/Services/QuoteService.cs
+    anchor: "_strategy.CalculatePrice(unitPrice, quantity)"
+- id: no_shipping
+  selector:
+    path: garbage/Shipping/ShippingCalculator.cs
+- id: no_tax
+  selector:
+    path: garbage/Tax/TaxCalculator.cs
+- id: no_stock
+  selector:
+    path: garbage/Inventory/StockManager.cs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_073_SHIPPING_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_073_TAX_D
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_073_STOCK_G
+oracle:
+  required:
+  - bulk_apply_discount
+  - bulk_calculate
+  - tiered_calculate
+  - quote_service_calc
+  allowed: []
+  forbidden:
+  - no_shipping
+  - no_tax
+  - no_stock
+  - no_global_0
+  - no_global_1
+  - no_global_2

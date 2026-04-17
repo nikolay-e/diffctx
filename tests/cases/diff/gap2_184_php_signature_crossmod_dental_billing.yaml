@@ -1,0 +1,130 @@
+name: gap2_184_php_signature_crossmod_dental_billing
+tags:
+- change:signature
+- change:single_file
+- context:cross_module
+- difficulty:easy
+- distance:0hop
+- lang:php
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/Dental/TreatmentBiller.php: |
+      <?php
+
+      namespace App\Dental;
+
+      use App\Dental\ProcedureCode;
+
+      class TreatmentBiller
+      {
+          private array $lineItems = [];
+
+          public function addProcedure(ProcedureCode $code): void
+          {
+              $this->lineItems[] = $code->fee();
+          }
+
+          public function totalDue(): float
+          {
+              return array_sum($this->lineItems);
+          }
+      }
+    src/Dental/ProcedureCode.php: |
+      <?php
+
+      namespace App\Dental;
+
+      class ProcedureCode
+      {
+          private string $code;
+          private float $baseFee;
+
+          public function __construct(string $code, float $baseFee)
+          {
+              $this->code = $code;
+              $this->baseFee = $baseFee;
+          }
+
+          public function fee(): float
+          {
+              return $this->baseFee;
+          }
+
+          public function code(): string
+          {
+              return $this->code;
+          }
+      }
+    src/Scheduling/ChairAllocator.php: |
+      <?php
+
+      namespace App\Scheduling;
+
+      class ChairAllocator
+      {
+          private int $totalChairs;
+
+          public function __construct(int $totalChairs)
+          {
+              $this->totalChairs = $totalChairs;
+          }
+
+          public function available(): int
+          {
+              return $this->totalChairs;
+          }
+      }
+  changed_files:
+    src/Dental/TreatmentBiller.php: |
+      <?php
+
+      namespace App\Dental;
+
+      use App\Dental\ProcedureCode;
+
+      class TreatmentBiller
+      {
+          private array $lineItems = [];
+
+          public function addProcedure(ProcedureCode $code, float $discountPercent = 0.0): void
+          {
+              $fee = $code->fee();
+              $discounted = $fee * (1.0 - $discountPercent / 100.0);
+              $this->lineItems[] = $discounted;
+          }
+
+          public function totalDue(): float
+          {
+              return array_sum($this->lineItems);
+          }
+      }
+  commit_message: "feat: add discount parameter to dental procedure billing"
+fragments:
+- id: add_procedure_sig
+  selector:
+    path: src/Dental/TreatmentBiller.php
+    anchor: "public function addProcedure"
+- id: discount_calc
+  selector:
+    path: src/Dental/TreatmentBiller.php
+    anchor: "$discountPercent / 100.0"
+- id: procedure_fee
+  selector:
+    path: src/Dental/ProcedureCode.php
+    anchor: "public function fee"
+- id: no_scheduling
+  selector:
+    path: src/Scheduling/ChairAllocator.php
+- id: no_chair
+  selector:
+    anchor: ChairAllocator
+oracle:
+  required:
+  - add_procedure_sig
+  - discount_calc
+  - procedure_fee
+  forbidden:
+  - no_scheduling
+  - no_chair

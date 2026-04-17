@@ -1,0 +1,187 @@
+name: bal3_1hop_006_go_middleware_chain
+tags:
+- lang:python
+- change:config
+- change:single_file
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    config/auth_settings.py: |
+      JWT_SECRET = "change-me-in-production"
+      JWT_ALGORITHM = "HS256"
+      ACCESS_TOKEN_EXPIRE_MINUTES = 30
+      REFRESH_TOKEN_EXPIRE_DAYS = 7
+      PASSWORD_HASH_ROUNDS = 10
+    auth/token_service.py: |
+      from config.auth_settings import JWT_SECRET, JWT_ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
+
+      class TokenService:
+          def __init__(self):
+              self.secret = JWT_SECRET
+              self.algorithm = JWT_ALGORITHM
+              self.expire_minutes = ACCESS_TOKEN_EXPIRE_MINUTES
+
+          def create_access_token(self, user_id: str) -> str:
+              return f"token:{user_id}:{self.expire_minutes}"
+
+          def verify_token(self, token: str) -> str:
+              parts = token.split(":")
+              return parts[1] if len(parts) == 3 else ""
+    auth/password_service.py: |
+      from config.auth_settings import PASSWORD_HASH_ROUNDS
+
+      class PasswordService:
+          def __init__(self):
+              self.rounds = PASSWORD_HASH_ROUNDS
+
+          def hash_password(self, password: str) -> str:
+              return f"hashed:{password}:{self.rounds}"
+
+          def verify_password(self, password: str, hashed: str) -> bool:
+              return hashed == self.hash_password(password)
+    api/auth_router.py: |
+      from auth.token_service import TokenService
+      from auth.password_service import PasswordService
+
+      token_svc = TokenService()
+      password_svc = PasswordService()
+
+      def login(username: str, password: str):
+          if password_svc.verify_password(password, f"hashed:{password}:10"):
+              return token_svc.create_access_token(username)
+          return None
+    garbage/GameRanking.py: |
+      # GARBAGE_BAL31HOP006_A = "game_ranking_marker"
+
+      class GameRanking:
+          tier = "gold"
+    garbage/ShipmentLabel.py: |
+      # GARBAGE_BAL31HOP006_B = "shipment_label_marker"
+
+      class ShipmentLabel:
+          carrier = "UPS"
+    garbage/IoTSensorCalibration.py: |
+      # GARBAGE_BAL31HOP006_C = "iot_sensor_calibration_marker"
+
+      class IoTSensorCalibration:
+          offset = 0.0
+  changed_files:
+    config/auth_settings.py: |
+      JWT_SECRET = "change-me-in-production"
+      JWT_ALGORITHM = "HS512"
+      ACCESS_TOKEN_EXPIRE_MINUTES = 15
+      REFRESH_TOKEN_EXPIRE_DAYS = 7
+      PASSWORD_HASH_ROUNDS = 12
+      REQUIRE_MFA = True
+    auth/token_service.py: |
+      from config.auth_settings import JWT_SECRET, JWT_ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
+
+      class TokenService:
+          def __init__(self):
+              self.secret = JWT_SECRET
+              self.algorithm = JWT_ALGORITHM
+              self.expire_minutes = ACCESS_TOKEN_EXPIRE_MINUTES
+
+          def create_access_token(self, user_id: str) -> str:
+              return f"token:{user_id}:{self.expire_minutes}"
+
+          def verify_token(self, token: str) -> str:
+              parts = token.split(":")
+              return parts[1] if len(parts) == 3 else ""
+    auth/password_service.py: |
+      from config.auth_settings import PASSWORD_HASH_ROUNDS, REQUIRE_MFA
+
+      class PasswordService:
+          def __init__(self):
+              self.rounds = PASSWORD_HASH_ROUNDS
+              self.require_mfa = REQUIRE_MFA
+
+          def hash_password(self, password: str) -> str:
+              return f"hashed:{password}:{self.rounds}"
+
+          def verify_password(self, password: str, hashed: str) -> bool:
+              return hashed == self.hash_password(password)
+    api/auth_router.py: |
+      from auth.token_service import TokenService
+      from auth.password_service import PasswordService
+
+      token_svc = TokenService()
+      password_svc = PasswordService()
+
+      def login(username: str, password: str):
+          if password_svc.verify_password(password, f"hashed:{password}:12"):
+              return token_svc.create_access_token(username)
+          return None
+    garbage/GameRanking.py: |
+      # GARBAGE_BAL31HOP006_A = "game_ranking_marker"
+
+      class GameRanking:
+          tier = "gold"
+    garbage/ShipmentLabel.py: |
+      # GARBAGE_BAL31HOP006_B = "shipment_label_marker"
+
+      class ShipmentLabel:
+          carrier = "UPS"
+    garbage/IoTSensorCalibration.py: |
+      # GARBAGE_BAL31HOP006_C = "iot_sensor_calibration_marker"
+
+      class IoTSensorCalibration:
+          offset = 0.0
+  commit_message: "config: upgrade JWT to HS512, shorten access token to 15min, bcrypt rounds to 12"
+fragments:
+- id: config_algorithm
+  selector:
+    path: config/auth_settings.py
+    anchor: "JWT_ALGORITHM = \"HS512\""
+- id: config_expire
+  selector:
+    path: config/auth_settings.py
+    anchor: "ACCESS_TOKEN_EXPIRE_MINUTES = 15"
+- id: config_rounds
+  selector:
+    path: config/auth_settings.py
+    anchor: "PASSWORD_HASH_ROUNDS = 12"
+- id: config_mfa
+  selector:
+    path: config/auth_settings.py
+    anchor: "REQUIRE_MFA = True"
+- id: password_mfa_import
+  selector:
+    path: auth/password_service.py
+    anchor: "REQUIRE_MFA"
+- id: password_mfa_field
+  selector:
+    path: auth/password_service.py
+    anchor: "self.require_mfa = REQUIRE_MFA"
+- id: no_token_service
+  selector:
+    path: auth/token_service.py
+- id: no_auth_router
+  selector:
+    path: api/auth_router.py
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_BAL31HOP006_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_BAL31HOP006_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_BAL31HOP006_C
+oracle:
+  required:
+  - config_algorithm
+  - config_mfa
+  - password_mfa_import
+  - password_mfa_field
+  allowed:
+  - config_expire
+  - config_rounds
+  forbidden:
+  - no_token_service
+  - no_auth_router
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

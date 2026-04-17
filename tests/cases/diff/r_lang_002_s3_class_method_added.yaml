@@ -1,0 +1,109 @@
+name: r_lang_002_s3_class_method_added
+tags:
+- lang:r
+- change:single_file
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    R/model.R: |
+      new_my_model <- function(coefficients, formula, call) {
+        structure(
+          list(
+            coefficients = coefficients,
+            formula = formula,
+            call = call
+          ),
+          class = "MyModel"
+        )
+      }
+
+      summary.MyModel <- function(object, ...) {
+        cat("MyModel with", length(object$coefficients), "coefficients\n")
+      }
+    R/analysis.R: |
+      source("R/model.R")
+
+      fit_model <- function(data, formula) {
+        coefs <- lm(formula, data = data)$coefficients
+        model <- new_my_model(
+          coefficients = coefs,
+          formula = formula,
+          call = match.call()
+        )
+        summary(model)
+        model
+      }
+    R/R_NOISE_002_file_io.R: |
+      R_NOISE_002_read_csv_safe <- function(path, ...) {
+        if (!file.exists(path)) stop("File not found: ", path)
+        read.csv(path, stringsAsFactors = FALSE, ...)
+      }
+      R_NOISE_002_write_result <- function(data, path) {
+        write.csv(data, path, row.names = FALSE)
+      }
+    R/R_NOISE_002_date_helpers.R: |
+      R_NOISE_002_days_between <- function(d1, d2) {
+        as.integer(difftime(d2, d1, units = "days"))
+      }
+      R_NOISE_002_format_date <- function(d, fmt = "%Y-%m-%d") {
+        format(as.Date(d), fmt)
+      }
+  changed_files:
+    R/model.R: |
+      new_my_model <- function(coefficients, formula, call) {
+        structure(
+          list(
+            coefficients = coefficients,
+            formula = formula,
+            call = call
+          ),
+          class = "MyModel"
+        )
+      }
+
+      summary.MyModel <- function(object, ...) {
+        cat("MyModel with", length(object$coefficients), "coefficients\n")
+      }
+
+      print.MyModel <- function(x, ...) {
+        cat("MyModel\n")
+        cat("Formula:", deparse(x$formula), "\n")
+        cat("Coefficients:\n")
+        print(x$coefficients)
+        invisible(x)
+      }
+  commit_message: "Update files"
+fragments:
+- id: model_print_method
+  selector:
+    path: R/model.R
+    anchor: print.MyModel
+- id: analysis_creates_model
+  selector:
+    path: R/analysis.R
+    anchor: new_my_model
+- id: no_file_io
+  selector:
+    path: R/R_NOISE_002_file_io.R
+- id: no_date_helpers
+  selector:
+    path: R/R_NOISE_002_date_helpers.R
+- id: no_global_0
+  selector:
+    anchor: R_NOISE_002_read_csv_safe
+- id: no_global_1
+  selector:
+    anchor: R_NOISE_002_days_between
+oracle:
+  required:
+  - model_print_method
+  - analysis_creates_model
+  allowed: []
+  forbidden:
+  - no_file_io
+  - no_date_helpers
+  - no_global_0
+  - no_global_1

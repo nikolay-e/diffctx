@@ -1,0 +1,93 @@
+name: bal_cfgcode_011_typescript_db_config
+tags:
+- lang:typescript
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    config/database.json: |
+      {
+        "host": "localhost",
+        "port": 5432,
+        "database": "devdb",
+        "ssl": false
+      }
+    src/db.ts: |
+      import config from '../config/database.json';
+
+      const HOST = config.host;
+      const PORT = config.port;
+      const DATABASE = config.database;
+
+      export function connectionString(): string {
+        return `postgresql://${HOST}:${PORT}/${DATABASE}`;
+      }
+    src/helpers.ts: |
+      const GARBAGE_CFGCODE_011_HELP_A = "formatter";
+      const GARBAGE_CFGCODE_011_HELP_B = 256;
+
+      export function slugify(text: string): string {
+        return text.toLowerCase().replace(/ /g, "-");
+      }
+  changed_files:
+    config/database.json: |
+      {
+        "host": "db.prod.internal",
+        "port": 5432,
+        "database": "proddb",
+        "ssl": true,
+        "pool_max": 25
+      }
+    src/db.ts: |
+      import config from '../config/database.json';
+
+      const HOST = config.host;
+      const PORT = config.port;
+      const DATABASE = config.database;
+
+      export function connectionString(): string {
+        return `postgresql://${HOST}:${PORT}/${DATABASE}`;
+      }
+    src/helpers.ts: |
+      const GARBAGE_CFGCODE_011_HELP_A = "formatter";
+      const GARBAGE_CFGCODE_011_HELP_B = 256;
+
+      export function slugify(text: string): string {
+        return text.toLowerCase().replace(/ /g, "-");
+      }
+  commit_message: "config: production database connection"
+fragments:
+- id: config_host
+  selector:
+    path: config/database.json
+    anchor: "db.prod.internal"
+- id: config_pool
+  selector:
+    path: config/database.json
+    anchor: "pool_max"
+- id: db_imports_config
+  selector:
+    path: src/db.ts
+    anchor: "import config from '../config/database.json'"
+- id: no_helpers
+  selector:
+    path: src/helpers.ts
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_011_HELP_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_011_HELP_B
+oracle:
+  required:
+  - config_host
+  - config_pool
+  - db_imports_config
+  allowed: []
+  forbidden:
+  - no_helpers
+  - no_global_0
+  - no_global_1

@@ -1,0 +1,162 @@
+name: gap_007_python_game_collision_bounds_fix
+tags:
+- lang:python
+- change:bug_fix
+- change:single_file
+- context:import_chain
+- difficulty:hard
+- distance:1hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    engine/physics.py: |
+      from engine.geometry import AABB, intersects
+
+      class PhysicsWorld:
+          def __init__(self, gravity: float = 9.81):
+              self._gravity = gravity
+              self._bodies: list[dict] = []
+
+          def add_body(self, x: float, y: float, w: float, h: float) -> int:
+              body_id = len(self._bodies)
+              self._bodies.append({
+                  "id": body_id,
+                  "bbox": AABB(x, y, w, h),
+                  "vx": 0.0,
+                  "vy": 0.0,
+              })
+              return body_id
+
+          def step(self, dt: float) -> list[tuple[int, int]]:
+              collisions = []
+              for body in self._bodies:
+                  body["vy"] += self._gravity * dt
+                  bbox = body["bbox"]
+                  body["bbox"] = AABB(
+                      bbox.x + body["vx"] * dt,
+                      bbox.y + body["vy"] * dt,
+                      bbox.w, bbox.h,
+                  )
+              for i in range(len(self._bodies)):
+                  for j in range(i + 1, len(self._bodies)):
+                      if intersects(self._bodies[i]["bbox"], self._bodies[j]["bbox"]):
+                          collisions.append((i, j))
+              return collisions
+    engine/geometry.py: |
+      from dataclasses import dataclass
+
+      @dataclass
+      class AABB:
+          x: float
+          y: float
+          w: float
+          h: float
+
+      def intersects(a: AABB, b: AABB) -> bool:
+          if a.x + a.w < b.x or b.x + b.w < a.x:
+              return False
+          if a.y + a.h < b.y or b.y + b.h < a.y:
+              return False
+          return True
+
+      def area(box: AABB) -> float:
+          return box.w * box.h
+    engine/renderer.py: |
+      class SpriteRenderer:
+          def __init__(self, screen_width: int, screen_height: int):
+              self._width = screen_width
+              self._height = screen_height
+              self._sprites: list[dict] = []
+
+          def add_sprite(self, texture_id: str, x: int, y: int) -> None:
+              self._sprites.append({"tex": texture_id, "x": x, "y": y})
+
+          def draw_all(self) -> list[dict]:
+              visible = [
+                  s for s in self._sprites
+                  if 0 <= s["x"] < self._width and 0 <= s["y"] < self._height
+              ]
+              return sorted(visible, key=lambda s: s["y"])
+    engine/audio.py: |
+      class AudioMixer:
+          def __init__(self, channels: int = 8):
+              self._channels = channels
+              self._playing: list[str] = []
+
+          def play(self, sound_id: str) -> bool:
+              if len(self._playing) >= self._channels:
+                  return False
+              self._playing.append(sound_id)
+              return True
+
+          def stop_all(self) -> None:
+              self._playing.clear()
+  changed_files:
+    engine/physics.py: |
+      from engine.geometry import AABB, intersects
+
+      class PhysicsWorld:
+          def __init__(self, gravity: float = 9.81):
+              self._gravity = gravity
+              self._bodies: list[dict] = []
+              self._bounds: AABB | None = None
+
+          def set_bounds(self, x: float, y: float, w: float, h: float) -> None:
+              self._bounds = AABB(x, y, w, h)
+
+          def add_body(self, x: float, y: float, w: float, h: float) -> int:
+              body_id = len(self._bodies)
+              self._bodies.append({
+                  "id": body_id,
+                  "bbox": AABB(x, y, w, h),
+                  "vx": 0.0,
+                  "vy": 0.0,
+              })
+              return body_id
+
+          def step(self, dt: float) -> list[tuple[int, int]]:
+              collisions = []
+              for body in self._bodies:
+                  body["vy"] += self._gravity * dt
+                  bbox = body["bbox"]
+                  new_x = bbox.x + body["vx"] * dt
+                  new_y = bbox.y + body["vy"] * dt
+                  if self._bounds is not None:
+                      new_x = max(self._bounds.x, min(new_x, self._bounds.x + self._bounds.w - bbox.w))
+                      new_y = max(self._bounds.y, min(new_y, self._bounds.y + self._bounds.h - bbox.h))
+                      if new_y >= self._bounds.y + self._bounds.h - bbox.h:
+                          body["vy"] = 0.0
+                  body["bbox"] = AABB(new_x, new_y, bbox.w, bbox.h)
+              for i in range(len(self._bodies)):
+                  for j in range(i + 1, len(self._bodies)):
+                      if intersects(self._bodies[i]["bbox"], self._bodies[j]["bbox"]):
+                          collisions.append((i, j))
+              return collisions
+fragments:
+- id: physics_step
+  selector:
+    path: engine/physics.py
+    anchor: "def step"
+- id: geometry_aabb
+  selector:
+    path: engine/geometry.py
+    anchor: "class AABB"
+- id: geometry_intersects
+  selector:
+    path: engine/geometry.py
+    anchor: "def intersects"
+- id: no_renderer
+  selector:
+    path: engine/renderer.py
+- id: no_audio
+  selector:
+    path: engine/audio.py
+oracle:
+  required:
+  - physics_step
+  - geometry_aabb
+  - geometry_intersects
+  forbidden:
+  - no_renderer
+  - no_audio

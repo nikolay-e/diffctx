@@ -1,0 +1,188 @@
+name: gap_070_ts_config_build_targets
+tags:
+- change:config
+- change:multi_file
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:typescript
+xfail:
+  category: low-relevance-threshold-tuning
+repo:
+  initial_files:
+    src/build/targets.ts: |
+      export interface BuildTarget {
+        name: string;
+        entryPoint: string;
+        outDir: string;
+      }
+
+      export const targets: BuildTarget[] = [
+        { name: "main", entryPoint: "src/index.ts", outDir: "dist" },
+        { name: "worker", entryPoint: "src/worker.ts", outDir: "dist/worker" },
+      ];
+    src/build/compiler.ts: |
+      import { BuildTarget, targets } from "./targets";
+
+      function resolveOutput(target: BuildTarget): string {
+        return `${target.outDir}/${target.name}.js`;
+      }
+
+      function compileTarget(target: BuildTarget): string {
+        const output = resolveOutput(target);
+        return `Compiled ${target.entryPoint} -> ${output}`;
+      }
+
+      function compileAll(): string[] {
+        return targets.map(compileTarget);
+      }
+    src/build/optimizer.ts: |
+      const TRAP_GAP070_OPTIM_A: string = "optimizer";
+      const TRAP_GAP070_LEVEL_B: number = 2;
+
+      function minifyCode(source: string): string {
+        return source.replace(/\s+/g, " ").trim();
+      }
+
+      function treeshake(modules: string[]): string[] {
+        return modules.filter((m) => !m.startsWith("__test"));
+      }
+
+      function calculateBundleSize(chunks: string[]): number {
+        return chunks.reduce((sum, c) => sum + c.length, 0);
+      }
+    src/build/watcher.ts: |
+      const TRAP_GAP070_WATCH_C: string = "file_watcher";
+      const TRAP_GAP070_DEBOUNCE_D: number = 200;
+
+      function debounce(fn: () => void, ms: number): () => void {
+        let timer: ReturnType<typeof setTimeout>;
+        return () => {
+          clearTimeout(timer);
+          timer = setTimeout(fn, ms);
+        };
+      }
+
+      function watchPattern(glob: string): string {
+        return `Watching: ${glob}`;
+      }
+  changed_files:
+    src/build/targets.ts: |
+      export interface BuildTarget {
+        name: string;
+        entryPoint: string;
+        outDir: string;
+        minify: boolean;
+        sourcemap: boolean;
+      }
+
+      export const targets: BuildTarget[] = [
+        { name: "main", entryPoint: "src/index.ts", outDir: "dist", minify: true, sourcemap: true },
+        { name: "worker", entryPoint: "src/worker.ts", outDir: "dist/worker", minify: true, sourcemap: false },
+        { name: "cli", entryPoint: "src/cli.ts", outDir: "dist/cli", minify: false, sourcemap: true },
+      ];
+    src/build/compiler.ts: |
+      import { BuildTarget, targets } from "./targets";
+
+      function resolveOutput(target: BuildTarget): string {
+        return `${target.outDir}/${target.name}.js`;
+      }
+
+      function resolveSourcemap(target: BuildTarget): string | null {
+        if (!target.sourcemap) return null;
+        return `${target.outDir}/${target.name}.js.map`;
+      }
+
+      function compileTarget(target: BuildTarget): string {
+        const output = resolveOutput(target);
+        const mapFile = resolveSourcemap(target);
+        const suffix = target.minify ? " [minified]" : "";
+        const mapSuffix = mapFile ? ` + ${mapFile}` : "";
+        return `Compiled ${target.entryPoint} -> ${output}${suffix}${mapSuffix}`;
+      }
+
+      function compileAll(): string[] {
+        return targets.map(compileTarget);
+      }
+    src/build/optimizer.ts: |
+      const TRAP_GAP070_OPTIM_A: string = "optimizer";
+      const TRAP_GAP070_LEVEL_B: number = 2;
+
+      function minifyCode(source: string): string {
+        return source.replace(/\s+/g, " ").trim();
+      }
+
+      function treeshake(modules: string[]): string[] {
+        return modules.filter((m) => !m.startsWith("__test"));
+      }
+
+      function calculateBundleSize(chunks: string[]): number {
+        return chunks.reduce((sum, c) => sum + c.length, 0);
+      }
+    src/build/watcher.ts: |
+      const TRAP_GAP070_WATCH_C: string = "file_watcher";
+      const TRAP_GAP070_DEBOUNCE_D: number = 200;
+
+      function debounce(fn: () => void, ms: number): () => void {
+        let timer: ReturnType<typeof setTimeout>;
+        return () => {
+          clearTimeout(timer);
+          timer = setTimeout(fn, ms);
+        };
+      }
+
+      function watchPattern(glob: string): string {
+        return `Watching: ${glob}`;
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: targets_minify
+  selector:
+    path: src/build/targets.ts
+    anchor: 'minify: boolean;'
+- id: targets_cli_entry
+  selector:
+    path: src/build/targets.ts
+    anchor: 'name: "cli"'
+- id: compiler_sourcemap
+  selector:
+    path: src/build/compiler.ts
+    anchor: 'function resolveSourcemap(target: BuildTarget): string | null'
+- id: compiler_minified_suffix
+  selector:
+    path: src/build/compiler.ts
+    anchor: 'const suffix = target.minify ?'
+- id: no_optimizer
+  selector:
+    path: src/build/optimizer.ts
+- id: no_watcher
+  selector:
+    path: src/build/watcher.ts
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP070_OPTIM_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP070_LEVEL_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP070_WATCH_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP070_DEBOUNCE_D
+oracle:
+  required:
+  - targets_minify
+  - targets_cli_entry
+  - compiler_sourcemap
+  - compiler_minified_suffix
+  allowed: []
+  forbidden:
+  - no_optimizer
+  - no_watcher
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

@@ -1,0 +1,68 @@
+name: bal_1hop_033_java_event_publisher_to_listener
+tags:
+- lang:java
+- change:signature
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/main/java/com/events/publisher/EventPublisher.java: |
+      package com.events.publisher;
+      public class EventPublisher {
+          public void publish(String event) {
+              System.out.println("Published: " + event);
+          }
+      }
+    src/main/java/com/events/listener/OrderEventListener.java: |
+      package com.events.listener;
+      import com.events.publisher.EventPublisher;
+      public class OrderEventListener {
+          private final EventPublisher publisher;
+          public OrderEventListener(EventPublisher publisher) {
+              this.publisher = publisher;
+          }
+          public void onOrderCreated(String orderId) {
+              publisher.publish("ORDER_CREATED:" + orderId);
+          }
+      }
+    src/main/java/com/events/util/JsonSerializer.java: |
+      package com.events.util;
+      public class JsonSerializer {
+          public static String toJson(Object obj) {
+              return "{\"value\":\"" + obj.toString() + "\"}";
+          }
+      }
+  changed_files:
+    src/main/java/com/events/publisher/EventPublisher.java: |
+      package com.events.publisher;
+      public class EventPublisher {
+          public void publish(String event) {
+              System.out.println("Published: " + event);
+          }
+          public void publishWithPriority(String event, int priority) {
+              System.out.println("Published [" + priority + "]: " + event);
+          }
+      }
+  commit_message: "feat: add priority publishing to EventPublisher"
+fragments:
+- id: publisher_priority
+  selector:
+    path: EventPublisher.java
+    anchor: "publishWithPriority"
+- id: listener_uses_publisher
+  selector:
+    path: OrderEventListener.java
+    anchor: "publisher.publish"
+- id: no_json_serializer
+  selector:
+    path: JsonSerializer.java
+    anchor: "toJson"
+oracle:
+  required:
+  - publisher_priority
+  - listener_uses_publisher
+  allowed: []
+  forbidden:
+  - no_json_serializer

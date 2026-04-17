@@ -1,31 +1,129 @@
 name: internals_037_file_modification_with_new_function
+tags:
+- lang:python
+- lang:shell
+- change:multi_file
+- context:same_file
+- distance:0hop
+- difficulty:easy
 repo:
   initial_files:
-    keep.py: |
-      def keep_this():
-          return "staying"
-  changed_files:
-    keep.py: |
-      def keep_this():
-          return "modified"
+    scripts/export.py: |
+      import csv
+      import json
+      import os
 
-      def added_func():
-          return "new"
-  commit_message: Update files
+      OUTPUT_DIR = "exports"
+
+
+      def export_csv(rows: list[dict], filename: str) -> str:
+          if not rows:
+              return ""
+          path = os.path.join(OUTPUT_DIR, filename)
+          with open(path, "w", newline="") as f:
+              writer = csv.DictWriter(f, fieldnames=rows[0].keys())
+              writer.writeheader()
+              writer.writerows(rows)
+          return path
+    scripts/export.sh: |
+      #!/usr/bin/env bash
+      python3 scripts/export.py
+    garbage/transform.py: |
+      GARBAGE_INT037_XFORM_A = "transform_marker"
+
+
+      def normalize(data: list) -> list:
+          return data
+    garbage/filter.py: |
+      GARBAGE_INT037_FILTER_B = "filter_marker"
+
+
+      def apply_filters(data: list, filters: dict) -> list:
+          return data
+    garbage/aggregate.py: |
+      GARBAGE_INT037_AGG_C = "aggregate_marker"
+
+
+      def sum_by_key(data: list, key: str) -> float:
+          return 0.0
+  changed_files:
+    scripts/export.py: |
+      import csv
+      import json
+      import os
+
+      OUTPUT_DIR = "exports"
+
+
+      def export_csv(rows: list[dict], filename: str) -> str:
+          if not rows:
+              return ""
+          path = os.path.join(OUTPUT_DIR, filename)
+          with open(path, "w", newline="") as f:
+              writer = csv.DictWriter(f, fieldnames=rows[0].keys())
+              writer.writeheader()
+              writer.writerows(rows)
+          return path
+
+
+      def export_json(rows: list[dict], filename: str) -> str:
+          path = os.path.join(OUTPUT_DIR, filename)
+          with open(path, "w") as f:
+              json.dump(rows, f, indent=2)
+          return path
+    scripts/export.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      FORMAT="${1:-csv}"
+      python3 scripts/export.py "$FORMAT"
+    garbage/transform.py: |
+      GARBAGE_INT037_XFORM_A = "transform_marker"
+
+
+      def normalize(data: list) -> list:
+          return data
+    garbage/filter.py: |
+      GARBAGE_INT037_FILTER_B = "filter_marker"
+
+
+      def apply_filters(data: list, filters: dict) -> list:
+          return data
+    garbage/aggregate.py: |
+      GARBAGE_INT037_AGG_C = "aggregate_marker"
+
+
+      def sum_by_key(data: list, key: str) -> float:
+          return 0.0
+  commit_message: "feat: add export_json function and format arg to export shell script"
 fragments:
-- id: keep_file
+- id: export_json_fn
   selector:
-    path: keep.py
-- id: req_global_0
+    path: scripts/export.py
+    anchor: "def export_json"
+- id: export_csv_fn
   selector:
-    anchor: return "modified"
-- id: req_global_1
+    path: scripts/export.py
+    anchor: "def export_csv"
+- id: shell_format_arg
   selector:
-    anchor: 'def added_func():'
+    path: scripts/export.sh
+    anchor: 'FORMAT='
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_INT037_XFORM_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_INT037_FILTER_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_INT037_AGG_C
 oracle:
   required:
-  - keep_file
-  - req_global_0
-  - req_global_1
+  - export_json_fn
+  - export_csv_fn
+  - shell_format_arg
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

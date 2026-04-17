@@ -1,0 +1,131 @@
+name: bal_1hop_055_typescript_schema_to_migration
+tags:
+- lang:typescript
+- change:signature
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/schema/userSchema.ts: |
+      export interface Column {
+        name: string;
+        type: 'string' | 'number' | 'boolean' | 'date';
+        nullable: boolean;
+      }
+
+      export interface TableSchema {
+        tableName: string;
+        columns: Column[];
+      }
+
+      export const userSchema: TableSchema = {
+        tableName: 'users',
+        columns: [
+          { name: 'id', type: 'string', nullable: false },
+          { name: 'email', type: 'string', nullable: false },
+          { name: 'name', type: 'string', nullable: false },
+          { name: 'created_at', type: 'date', nullable: false },
+        ],
+      };
+    src/migration/migrationRunner.ts: |
+      import { TableSchema, Column } from '../schema/userSchema';
+
+      function columnToSql(col: Column): string {
+        const typeMap: Record<string, string> = {
+          string: 'VARCHAR(255)',
+          number: 'INTEGER',
+          boolean: 'BOOLEAN',
+          date: 'TIMESTAMP',
+        };
+        const nullable = col.nullable ? '' : ' NOT NULL';
+        return `${col.name} ${typeMap[col.type]}${nullable}`;
+      }
+
+      export function generateCreateTable(schema: TableSchema): string {
+        const cols = schema.columns.map(columnToSql).join(',\n  ');
+        return `CREATE TABLE ${schema.tableName} (\n  ${cols}\n);`;
+      }
+    src/seed/seedData.ts: |
+      export const testUsers = [
+        { id: '1', email: 'alice@example.com', name: 'Alice' },
+        { id: '2', email: 'bob@example.com', name: 'Bob' },
+      ];
+    src/config/dbConfig.ts: |
+      export const DB_CONFIG = {
+        host: 'localhost',
+        port: 5432,
+        database: 'myapp',
+        pool: { min: 2, max: 10 },
+      };
+  changed_files:
+    src/schema/userSchema.ts: |
+      export interface Column {
+        name: string;
+        type: 'string' | 'number' | 'boolean' | 'date' | 'json';
+        nullable: boolean;
+        defaultValue?: string;
+        unique?: boolean;
+      }
+
+      export interface TableSchema {
+        tableName: string;
+        columns: Column[];
+        indexes?: { name: string; columns: string[]; unique: boolean }[];
+      }
+
+      export const userSchema: TableSchema = {
+        tableName: 'users',
+        columns: [
+          { name: 'id', type: 'string', nullable: false, unique: true },
+          { name: 'email', type: 'string', nullable: false, unique: true },
+          { name: 'name', type: 'string', nullable: false },
+          { name: 'preferences', type: 'json', nullable: true, defaultValue: "'{}'" },
+          { name: 'created_at', type: 'date', nullable: false },
+        ],
+        indexes: [
+          { name: 'idx_users_email', columns: ['email'], unique: true },
+        ],
+      };
+  commit_message: "feat: add json type, defaults, unique constraints and indexes to schema"
+fragments:
+- id: schema_json_type
+  selector:
+    path: userSchema.ts
+    anchor: "json"
+- id: schema_default_value
+  selector:
+    path: userSchema.ts
+    anchor: "defaultValue"
+- id: schema_indexes
+  selector:
+    path: userSchema.ts
+    anchor: "indexes"
+- id: migration_uses_column
+  selector:
+    path: migrationRunner.ts
+    anchor: "columnToSql"
+- id: migration_uses_schema
+  selector:
+    path: migrationRunner.ts
+    anchor: "generateCreateTable"
+- id: no_seed_data
+  selector:
+    path: seedData.ts
+    anchor: "testUsers"
+- id: no_db_config
+  selector:
+    path: dbConfig.ts
+    anchor: "DB_CONFIG"
+oracle:
+  required:
+  - schema_json_type
+  - schema_default_value
+  - schema_indexes
+  - migration_uses_column
+  allowed:
+  - migration_uses_schema
+  forbidden:
+  - no_seed_data
+  - no_db_config

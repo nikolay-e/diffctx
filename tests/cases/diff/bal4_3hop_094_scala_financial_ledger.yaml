@@ -1,0 +1,174 @@
+name: bal4_3hop_094_scala_financial_ledger
+tags:
+- lang:scala
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/ledger/Currency.scala: |
+      package ledger
+
+      case class Currency(code: String, decimals: Int)
+
+      object Currency {
+        val USD = Currency("USD", 2)
+        val EUR = Currency("EUR", 2)
+        val JPY = Currency("JPY", 0)
+      }
+    src/main/scala/ledger/Money.scala: |
+      package ledger
+
+      import ledger.Currency
+
+      case class Money(amount: BigDecimal, currency: Currency) {
+        def add(other: Money): Money = {
+          require(currency == other.currency, "Currency mismatch")
+          Money(amount + other.amount, currency)
+        }
+
+        def negate: Money = Money(-amount, currency)
+
+        def roundToScale: Money = Money(amount.setScale(currency.decimals), currency)
+      }
+    src/main/scala/ledger/Entry.scala: |
+      package ledger
+
+      import ledger.Money
+
+      case class Entry(account: String, amount: Money) {
+        def isDebit: Boolean = amount.amount > 0
+        def isCredit: Boolean = amount.amount < 0
+      }
+    src/main/scala/ledger/Transaction.scala: |
+      package ledger
+
+      import ledger.{Entry, Money}
+
+      case class Transaction(id: String, entries: List[Entry]) {
+        def isBalanced: Boolean = {
+          val total = entries.map(_.amount).reduce(_ add _)
+          total.amount == BigDecimal(0)
+        }
+      }
+    src/main/scala/ledger/Journal.scala: |
+      package ledger
+
+      import ledger.Transaction
+
+      class Journal {
+        private var transactions: List[Transaction] = Nil
+
+        def post(tx: Transaction): Either[String, Unit] = {
+          if (tx.isBalanced) {
+            transactions = tx :: transactions
+            Right(())
+          } else Left("Unbalanced transaction")
+        }
+
+        def allTransactions: List[Transaction] = transactions.reverse
+      }
+    src/main/scala/api/LedgerApi.scala: |
+      package api
+
+      import ledger.{Journal, Transaction, Entry, Money, Currency}
+
+      class LedgerApi(journal: Journal) {
+        def postTransaction(id: String, entries: List[Entry]): Either[String, Unit] = {
+          journal.post(Transaction(id, entries))
+        }
+
+        def balance(account: String): Money = {
+          val all = journal.allTransactions.flatMap(_.entries).filter(_.account == account)
+          all.map(_.amount).foldLeft(Money(BigDecimal(0), Currency.USD))(_ add _)
+        }
+      }
+    src/main/scala/util/Audit.scala: |
+      package util
+
+      object Audit {
+        val GARBAGE_094_AUDIT_A = "trail"
+        val GARBAGE_094_AUDIT_B = "snapshot"
+
+        def log(msg: String): Unit = ()
+      }
+    src/main/scala/util/Crypto.scala: |
+      package util
+
+      object Crypto {
+        val GARBAGE_094_CRYPTO_C = "aes256"
+        val GARBAGE_094_CRYPTO_D = "rsa4096"
+
+        def hash(data: String): String = data.hashCode.toString
+      }
+  changed_files:
+    src/main/scala/ledger/Money.scala: |
+      package ledger
+
+      import ledger.Currency
+
+      case class Money(amount: BigDecimal, currency: Currency) {
+        def add(other: Money): Money = {
+          require(currency == other.currency, "Currency mismatch")
+          Money(amount + other.amount, currency)
+        }
+
+        def negate: Money = Money(-amount, currency)
+
+        def roundToScale: Money = Money(amount.setScale(currency.decimals, BigDecimal.RoundingMode.HALF_UP), currency)
+      }
+  commit_message: "fix: use HALF_UP rounding mode in Money.roundToScale"
+fragments:
+- id: money_rounding_fix
+  selector:
+    path: src/main/scala/ledger/Money.scala
+    anchor: "HALF_UP"
+- id: currency_decimals
+  selector:
+    path: src/main/scala/ledger/Currency.scala
+    anchor: "case class Currency"
+- id: entry_uses_money
+  selector:
+    path: src/main/scala/ledger/Entry.scala
+    anchor: "import ledger.Money"
+- id: transaction_balanced
+  selector:
+    path: src/main/scala/ledger/Transaction.scala
+    anchor: "import ledger."
+- id: journal_post
+  selector:
+    path: src/main/scala/ledger/Journal.scala
+    anchor: "import ledger.Transaction"
+- id: api_balance
+  selector:
+    path: src/main/scala/api/LedgerApi.scala
+    anchor: "import ledger."
+- id: no_audit
+  selector:
+    path: src/main/scala/util/Audit.scala
+    anchor: "GARBAGE_094_AUDIT_A"
+- id: no_crypto
+  selector:
+    path: src/main/scala/util/Crypto.scala
+    anchor: "GARBAGE_094_CRYPTO_C"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_094_AUDIT_B
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_094_CRYPTO_D
+oracle:
+  required:
+  - money_rounding_fix
+  - currency_decimals
+  - entry_uses_money
+  - transaction_balanced
+  - journal_post
+  - api_balance
+  allowed: []
+  forbidden:
+  - no_audit
+  - no_crypto
+  - no_global_0
+  - no_global_1

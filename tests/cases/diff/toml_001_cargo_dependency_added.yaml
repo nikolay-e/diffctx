@@ -1,0 +1,84 @@
+name: toml_001_cargo_dependency_added
+tags:
+- lang:toml
+- lang:rust
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "myapp"
+      version = "0.1.0"
+      edition = "2021"
+
+      [dependencies]
+      serde = { version = "1.0", features = ["derive"] }
+    src/main.rs: |
+      fn main() {
+          println!("Hello");
+      }
+    src/models.rs: |
+      use serde::Serialize;
+      #[derive(Serialize)]
+      pub struct Config { pub name: String }
+    TOML_NOISE_001_settings.toml: |
+      [TOML_NOISE_001_server]
+      TOML_NOISE_001_host = "localhost"
+      TOML_NOISE_001_port = 8080
+
+      [TOML_NOISE_001_database]
+      TOML_NOISE_001_url = "postgres://localhost/db"
+    src/legacy_module.rs: |
+      // TOML_NOISE_001_legacy placeholder
+      pub fn toml_noise_001_unused() {}
+  changed_files:
+    Cargo.toml: |
+      [package]
+      name = "myapp"
+      version = "0.1.0"
+      edition = "2021"
+
+      [dependencies]
+      serde = { version = "1.0", features = ["derive"] }
+      tokio = { version = "1.0", features = ["full"] }
+    src/main.rs: |
+      #[tokio::main]
+      async fn main() {
+          println!("Hello async");
+      }
+  commit_message: "feat: add tokio async runtime and convert main to async"
+fragments:
+- id: cargo_toml
+  selector:
+    path: Cargo.toml
+    anchor: tokio
+- id: main_rs
+  selector:
+    path: src/main.rs
+    anchor: tokio::main
+- id: no_noise_toml
+  selector:
+    path: TOML_NOISE_001_settings.toml
+- id: no_legacy
+  selector:
+    path: src/legacy_module.rs
+- id: no_global_0
+  selector:
+    anchor: TOML_NOISE_001_host
+- id: no_global_1
+  selector:
+    anchor: toml_noise_001_unused
+oracle:
+  required:
+  - cargo_toml
+  - main_rs
+  allowed: []
+  forbidden:
+  - no_noise_toml
+  - no_legacy
+  - no_global_0
+  - no_global_1

@@ -1,0 +1,240 @@
+name: bal3_1hop_005_go_cache_layer
+tags:
+- lang:go
+- change:new_function
+- change:single_file
+- context:import_chain
+- distance:2hop
+- difficulty:medium
+repo:
+  initial_files:
+    pkg/auth/rbac.go: |
+      package auth
+
+      type Role string
+
+      const (
+          RoleAdmin   Role = "admin"
+          RoleViewer  Role = "viewer"
+          RoleEditor  Role = "editor"
+      )
+
+      type Permission string
+
+      const (
+          PermRead   Permission = "read"
+          PermWrite  Permission = "write"
+          PermDelete Permission = "delete"
+      )
+
+      var rolePermissions = map[Role][]Permission{
+          RoleAdmin:  {PermRead, PermWrite, PermDelete},
+          RoleEditor: {PermRead, PermWrite},
+          RoleViewer: {PermRead},
+      }
+
+      func HasPermission(role Role, perm Permission) bool {
+          perms, ok := rolePermissions[role]
+          if !ok {
+              return false
+          }
+          for _, p := range perms {
+              if p == perm {
+                  return true
+              }
+          }
+          return false
+      }
+    internal/middleware/rbac_mw.go: |
+      package middleware
+
+      import "pkg/auth"
+
+      type RBACMiddleware struct{}
+
+      func NewRBACMiddleware() *RBACMiddleware {
+          return &RBACMiddleware{}
+      }
+
+      func (m *RBACMiddleware) Check(role auth.Role, perm auth.Permission) bool {
+          return auth.HasPermission(role, perm)
+      }
+    internal/api/resource_handler.go: |
+      package api
+
+      import (
+          "internal/middleware"
+          "pkg/auth"
+      )
+
+      type ResourceHandler struct {
+          rbac *middleware.RBACMiddleware
+      }
+
+      func NewResourceHandler(rbac *middleware.RBACMiddleware) *ResourceHandler {
+          return &ResourceHandler{rbac: rbac}
+      }
+
+      func (h *ResourceHandler) Handle(role auth.Role, perm auth.Permission) bool {
+          return h.rbac.Check(role, perm)
+      }
+    garbage/StreamBuffer.go: |
+      package garbage
+
+      // GARBAGE_BAL31HOP005_A = "stream_buffer_marker"
+
+      type StreamBuffer struct{ Cap int }
+    garbage/EcommerceCart.go: |
+      package garbage
+
+      // GARBAGE_BAL31HOP005_B = "ecommerce_cart_marker"
+
+      type EcommerceCart struct{ Items []string }
+    garbage/IoTSensorArray.go: |
+      package garbage
+
+      // GARBAGE_BAL31HOP005_C = "iot_sensor_array_marker"
+
+      type IoTSensorArray struct{ Count int }
+  changed_files:
+    pkg/auth/rbac.go: |
+      package auth
+
+      type Role string
+
+      const (
+          RoleAdmin     Role = "admin"
+          RoleViewer    Role = "viewer"
+          RoleEditor    Role = "editor"
+          RoleModerator Role = "moderator"
+      )
+
+      type Permission string
+
+      const (
+          PermRead   Permission = "read"
+          PermWrite  Permission = "write"
+          PermDelete Permission = "delete"
+          PermBan    Permission = "ban"
+      )
+
+      var rolePermissions = map[Role][]Permission{
+          RoleAdmin:     {PermRead, PermWrite, PermDelete, PermBan},
+          RoleEditor:    {PermRead, PermWrite},
+          RoleModerator: {PermRead, PermWrite, PermBan},
+          RoleViewer:    {PermRead},
+      }
+
+      func HasPermission(role Role, perm Permission) bool {
+          perms, ok := rolePermissions[role]
+          if !ok {
+              return false
+          }
+          for _, p := range perms {
+              if p == perm {
+                  return true
+              }
+          }
+          return false
+      }
+
+      func Permissions(role Role) []Permission {
+          return rolePermissions[role]
+      }
+    internal/middleware/rbac_mw.go: |
+      package middleware
+
+      import "pkg/auth"
+
+      type RBACMiddleware struct{}
+
+      func NewRBACMiddleware() *RBACMiddleware {
+          return &RBACMiddleware{}
+      }
+
+      func (m *RBACMiddleware) Check(role auth.Role, perm auth.Permission) bool {
+          return auth.HasPermission(role, perm)
+      }
+
+      func (m *RBACMiddleware) ListPermissions(role auth.Role) []auth.Permission {
+          return auth.Permissions(role)
+      }
+    internal/api/resource_handler.go: |
+      package api
+
+      import (
+          "internal/middleware"
+          "pkg/auth"
+      )
+
+      type ResourceHandler struct {
+          rbac *middleware.RBACMiddleware
+      }
+
+      func NewResourceHandler(rbac *middleware.RBACMiddleware) *ResourceHandler {
+          return &ResourceHandler{rbac: rbac}
+      }
+
+      func (h *ResourceHandler) Handle(role auth.Role, perm auth.Permission) bool {
+          return h.rbac.Check(role, perm)
+      }
+    garbage/StreamBuffer.go: |
+      package garbage
+
+      // GARBAGE_BAL31HOP005_A = "stream_buffer_marker"
+
+      type StreamBuffer struct{ Cap int }
+    garbage/EcommerceCart.go: |
+      package garbage
+
+      // GARBAGE_BAL31HOP005_B = "ecommerce_cart_marker"
+
+      type EcommerceCart struct{ Items []string }
+    garbage/IoTSensorArray.go: |
+      package garbage
+
+      // GARBAGE_BAL31HOP005_C = "iot_sensor_array_marker"
+
+      type IoTSensorArray struct{ Count int }
+  commit_message: "feat: add Moderator role with ban permission, expose Permissions and ListPermissions"
+fragments:
+- id: moderator_role
+  selector:
+    path: pkg/auth/rbac.go
+    anchor: "RoleModerator Role"
+- id: perm_ban
+  selector:
+    path: pkg/auth/rbac.go
+    anchor: "PermBan Permission"
+- id: permissions_fn
+  selector:
+    path: pkg/auth/rbac.go
+    anchor: "func Permissions(role Role)"
+- id: mw_list_permissions
+  selector:
+    path: internal/middleware/rbac_mw.go
+    anchor: "func (m *RBACMiddleware) ListPermissions"
+- id: no_resource_handler
+  selector:
+    path: internal/api/resource_handler.go
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_BAL31HOP005_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_BAL31HOP005_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_BAL31HOP005_C
+oracle:
+  required:
+  - moderator_role
+  - perm_ban
+  - permissions_fn
+  - mw_list_permissions
+  allowed: []
+  forbidden:
+  - no_resource_handler
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

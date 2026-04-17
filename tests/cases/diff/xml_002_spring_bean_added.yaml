@@ -1,0 +1,100 @@
+name: xml_002_spring_bean_added
+tags:
+- lang:xml
+- lang:java
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/main/resources/applicationContext.xml: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <beans xmlns="http://www.springframework.org/schema/beans"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xsi:schemaLocation="http://www.springframework.org/schema/beans
+               http://www.springframework.org/schema/beans/spring-beans.xsd">
+        <bean id="dataSource" class="org.apache.commons.dbcp2.BasicDataSource">
+          <property name="driverClassName" value="org.postgresql.Driver"/>
+          <property name="url" value="jdbc:postgresql://localhost:5432/appdb"/>
+        </bean>
+      </beans>
+    src/main/java/com/example/OrderController.java: |
+      package com.example;
+      import org.springframework.beans.factory.annotation.Autowired;
+      import org.springframework.stereotype.Component;
+      @Component
+      public class OrderController {
+          @Autowired
+          private OrderService orderService;
+          public void processOrder(long orderId) {
+              orderService.fulfill(orderId);
+          }
+      }
+    src/main/java/com/example/OrderService.java: |
+      package com.example;
+      public class OrderService {
+          public void fulfill(long orderId) {
+              System.out.println("Fulfilling order " + orderId);
+          }
+      }
+    XML_NOISE_002_mail-config.xml: |
+      <mail-config>
+        <!-- XML_NOISE_002_SMTP_HOST -->
+        <smtp host="mail.example.com" port="587"/>
+        <from address="noreply@example.com"/>
+      </mail-config>
+    garbage/AuditLogger.java: |
+      // XML_NOISE_002_AuditLogger = "audit_log_marker"
+    garbage/MetricsExporter.java: |
+      // XML_NOISE_002_MetricsExporter = "metrics_export_marker"
+  changed_files:
+    src/main/resources/applicationContext.xml: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <beans xmlns="http://www.springframework.org/schema/beans"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xsi:schemaLocation="http://www.springframework.org/schema/beans
+               http://www.springframework.org/schema/beans/spring-beans.xsd">
+        <bean id="dataSource" class="org.apache.commons.dbcp2.BasicDataSource">
+          <property name="driverClassName" value="org.postgresql.Driver"/>
+          <property name="url" value="jdbc:postgresql://localhost:5432/appdb"/>
+        </bean>
+        <bean id="orderService" class="com.example.OrderService"/>
+      </beans>
+  commit_message: "feat: register OrderService bean in applicationContext.xml"
+fragments:
+- id: app_context_xml
+  selector:
+    path: src/main/resources/applicationContext.xml
+    anchor: orderService
+- id: order_controller
+  selector:
+    path: src/main/java/com/example/OrderController.java
+    anchor: OrderService
+- id: no_mail_config
+  selector:
+    path: XML_NOISE_002_mail-config.xml
+- id: no_audit_logger
+  selector:
+    path: garbage/AuditLogger.java
+- id: no_global_0
+  selector:
+    anchor: XML_NOISE_002_SMTP_HOST
+- id: no_global_1
+  selector:
+    anchor: XML_NOISE_002_AuditLogger
+- id: no_global_2
+  selector:
+    anchor: XML_NOISE_002_MetricsExporter
+oracle:
+  required:
+  - app_context_xml
+  - order_controller
+  allowed: []
+  forbidden:
+  - no_mail_config
+  - no_audit_logger
+  - no_global_0
+  - no_global_1
+  - no_global_2

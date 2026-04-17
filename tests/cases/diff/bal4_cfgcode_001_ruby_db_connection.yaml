@@ -1,0 +1,130 @@
+name: bal4_cfgcode_001_ruby_db_connection
+tags:
+- lang:ruby
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:trivial
+repo:
+  initial_files:
+    config/database.yml: |
+      production:
+        adapter: postgresql
+        host: localhost
+        port: 5432
+        database: myapp_production
+        pool: 5
+    lib/db/connector.rb: |
+      require 'yaml'
+      module Db
+        class Connector
+          def initialize
+            @cfg = YAML.load_file('config/database.yml')['production']
+          end
+          def pool_size
+            @cfg['pool']
+          end
+          def dsn
+            "postgres://#{@cfg['host']}:#{@cfg['port']}/#{@cfg['database']}"
+          end
+        end
+      end
+    garbage_mailer.rb: |
+      GARBAGE_CFGCODE_001_MAILER_A = "smtp"
+      GARBAGE_CFGCODE_001_MAILER_B = true
+      class Mailer
+        GARBAGE_CFGCODE_001_MAILER_C = 25
+        def deliver(to, body)
+          GARBAGE_CFGCODE_001_MAILER_D = "sent"
+        end
+      end
+    garbage_logger.rb: |
+      GARBAGE_CFGCODE_001_LOGGER_E = "info"
+      GARBAGE_CFGCODE_001_LOGGER_F = "/var/log"
+      class Logger
+        GARBAGE_CFGCODE_001_LOGGER_G = true
+        def log(msg)
+          GARBAGE_CFGCODE_001_LOGGER_H = msg
+        end
+      end
+    garbage_cache.rb: |
+      GARBAGE_CFGCODE_001_CACHE_I = 3600
+      GARBAGE_CFGCODE_001_CACHE_J = "redis"
+  changed_files:
+    config/database.yml: |
+      production:
+        adapter: postgresql
+        host: db.prod.internal
+        port: 5432
+        database: myapp_production
+        pool: 25
+        timeout: 10
+  commit_message: "update production database config"
+fragments:
+- id: db_config
+  selector:
+    path: config/database.yml
+    anchor: "host: db.prod.internal"
+- id: connector
+  selector:
+    path: lib/db/connector.rb
+    anchor: "YAML.load_file"
+- id: no_mailer
+  selector:
+    path: garbage_mailer.rb
+- id: no_logger
+  selector:
+    path: garbage_logger.rb
+- id: no_cache
+  selector:
+    path: garbage_cache.rb
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_001_MAILER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_001_MAILER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_001_LOGGER_E
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_001_LOGGER_F
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CFGCODE_001_CACHE_I
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CFGCODE_001_CACHE_J
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_CFGCODE_001_MAILER_C
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_CFGCODE_001_MAILER_D
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_CFGCODE_001_LOGGER_G
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_CFGCODE_001_LOGGER_H
+oracle:
+  required:
+  - db_config
+  - connector
+  allowed: []
+  forbidden:
+  - no_mailer
+  - no_logger
+  - no_cache
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

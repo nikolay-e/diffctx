@@ -1,0 +1,151 @@
+name: bal3_cfgcode_002_go_json_feature_flags
+tags:
+- lang:go
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    config/features.json: |
+      {
+        "features": {
+          "dark_mode": true,
+          "beta_search": false,
+          "new_dashboard": false
+        }
+      }
+    internal/features/flags.go: |
+      package features
+
+      import (
+          "encoding/json"
+          "os"
+      )
+
+      type FeatureFlags struct {
+          DarkMode     bool `json:"dark_mode"`
+          BetaSearch   bool `json:"beta_search"`
+          NewDashboard bool `json:"new_dashboard"`
+      }
+
+      func LoadFlags(path string) (*FeatureFlags, error) {
+          data, err := os.ReadFile(path)
+          if err != nil {
+              return nil, err
+          }
+          var wrapper struct {
+              Features FeatureFlags `json:"features"`
+          }
+          if err := json.Unmarshal(data, &wrapper); err != nil {
+              return nil, err
+          }
+          return &wrapper.Features, nil
+      }
+
+      func (f *FeatureFlags) IsEnabled(name string) bool {
+          switch name {
+          case "dark_mode":
+              return f.DarkMode
+          case "beta_search":
+              return f.BetaSearch
+          case "new_dashboard":
+              return f.NewDashboard
+          default:
+              return false
+          }
+      }
+    internal/api/router.go: |
+      package api
+
+      GARBAGE_CFGCODE_002_ROUTER_A = "router"
+      GARBAGE_CFGCODE_002_MUX_B = true
+
+      func SetupRoutes() {}
+    internal/auth/session.go: |
+      package auth
+
+      GARBAGE_CFGCODE_002_SESSION_C = "session"
+      GARBAGE_CFGCODE_002_TOKEN_D = "jwt"
+
+      type Session struct {
+          UserID string
+      }
+    internal/metrics/collector.go: |
+      package metrics
+
+      GARBAGE_CFGCODE_002_METRIC_E = "counter"
+      GARBAGE_CFGCODE_002_PROM_F = true
+
+      func RecordMetric(name string, value float64) {}
+  changed_files:
+    config/features.json: |
+      {
+        "features": {
+          "dark_mode": true,
+          "beta_search": true,
+          "new_dashboard": true,
+          "ai_assistant": false
+        }
+      }
+  commit_message: "enable beta_search and new_dashboard, add ai_assistant flag"
+fragments:
+- id: flags_struct
+  selector:
+    path: internal/features/flags.go
+    anchor: "type FeatureFlags struct"
+- id: load_flags
+  selector:
+    path: internal/features/flags.go
+    anchor: "func LoadFlags"
+- id: is_enabled
+  selector:
+    path: internal/features/flags.go
+    anchor: "func (f *FeatureFlags) IsEnabled"
+- id: no_router
+  selector:
+    path: internal/api/router.go
+    anchor: "SetupRoutes"
+- id: no_session
+  selector:
+    path: internal/auth/session.go
+    anchor: "type Session struct"
+- id: no_metrics
+  selector:
+    path: internal/metrics/collector.go
+    anchor: "RecordMetric"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_002_ROUTER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_002_MUX_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_002_SESSION_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_002_TOKEN_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CFGCODE_002_METRIC_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CFGCODE_002_PROM_F
+oracle:
+  required:
+  - flags_struct
+  - load_flags
+  - is_enabled
+  allowed: []
+  forbidden:
+  - no_router
+  - no_session
+  - no_metrics
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

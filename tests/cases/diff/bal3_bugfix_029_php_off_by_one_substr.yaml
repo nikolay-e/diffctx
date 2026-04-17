@@ -1,0 +1,204 @@
+name: bal3_bugfix_029_php_off_by_one_substr
+tags:
+- lang:rust
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/config/loader.rs: |
+      use std::collections::HashMap;
+
+      pub struct Config {
+          values: HashMap<String, String>,
+      }
+
+      impl Config {
+          pub fn new() -> Self {
+              Self { values: HashMap::new() }
+          }
+
+          pub fn set(&mut self, key: &str, value: &str) {
+              self.values.insert(key.to_string(), value.to_string());
+          }
+
+          pub fn get(&self, key: &str) -> Option<&str> {
+              self.values.get(key).map(|s| s.as_str())
+          }
+
+          pub fn get_or_default<'a>(&'a self, key: &str, default: &'a str) -> &'a str {
+              self.get(key).unwrap_or(default)
+          }
+      }
+    src/server/listener.rs: |
+      use crate::config::loader::Config;
+
+      pub struct Listener {
+          host: String,
+          port: u16,
+      }
+
+      impl Listener {
+          pub fn from_config(config: &Config) -> Self {
+              let host = config.get_or_default("host", "127.0.0.1").to_string();
+              let port: u16 = config.get_or_default("port", "8080")
+                  .parse()
+                  .unwrap_or(8080);
+              Self { host, port }
+          }
+
+          pub fn address(&self) -> String {
+              format!("{}:{}", self.host, self.port)
+          }
+      }
+    src/app/bootstrap.rs: |
+      use crate::server::listener::Listener;
+      use crate::config::loader::Config;
+
+      pub struct App {
+          listener: Listener,
+      }
+
+      impl App {
+          pub fn build(config: Config) -> Self {
+              let listener = Listener::from_config(&config);
+              Self { listener }
+          }
+
+          pub fn address(&self) -> String {
+              self.listener.address()
+          }
+      }
+    garbage/logging.rs: |
+      // GARBAGE_PHPSUBSTR_A = "slog_logger_marker"
+    garbage/signals.rs: |
+      // GARBAGE_PHPSUBSTR_B = "unix_signal_handler_marker"
+    garbage/tls.rs: |
+      // GARBAGE_PHPSUBSTR_C = "rustls_tls_marker"
+  changed_files:
+    src/config/loader.rs: |
+      use std::collections::HashMap;
+
+      #[derive(Debug, Clone)]
+      pub struct ConfigError {
+          pub key: String,
+          pub message: String,
+      }
+
+      pub trait ConfigSource: Send + Sync {
+          fn get(&self, key: &str) -> Option<String>;
+          fn keys(&self) -> Vec<String>;
+      }
+
+      pub struct Config {
+          sources: Vec<Box<dyn ConfigSource>>,
+      }
+
+      impl Config {
+          pub fn new() -> Self {
+              Self { sources: Vec::new() }
+          }
+
+          pub fn add_source(&mut self, source: Box<dyn ConfigSource>) {
+              self.sources.push(source);
+          }
+
+          pub fn get(&self, key: &str) -> Option<String> {
+              for source in &self.sources {
+                  if let Some(v) = source.get(key) {
+                      return Some(v);
+                  }
+              }
+              None
+          }
+
+          pub fn require(&self, key: &str) -> Result<String, ConfigError> {
+              self.get(key).ok_or_else(|| ConfigError {
+                  key: key.to_string(),
+                  message: format!("required config key '{}' not found", key),
+              })
+          }
+      }
+    src/server/listener.rs: |
+      use crate::config::loader::Config;
+
+      pub struct Listener {
+          host: String,
+          port: u16,
+      }
+
+      impl Listener {
+          pub fn from_config(config: &Config) -> Result<Self, crate::config::loader::ConfigError> {
+              let host = config.get("host").unwrap_or_else(|| "127.0.0.1".to_string());
+              let port: u16 = config.get("port")
+                  .and_then(|p| p.parse().ok())
+                  .unwrap_or(8080);
+              Ok(Self { host, port })
+          }
+
+          pub fn address(&self) -> String {
+              format!("{}:{}", self.host, self.port)
+          }
+      }
+    src/app/bootstrap.rs: |
+      use crate::server::listener::Listener;
+      use crate::config::loader::Config;
+
+      pub struct App {
+          listener: Listener,
+      }
+
+      impl App {
+          pub fn build(config: Config) -> Result<Self, crate::config::loader::ConfigError> {
+              let listener = Listener::from_config(&config)?;
+              Ok(Self { listener })
+          }
+
+          pub fn address(&self) -> String {
+              self.listener.address()
+          }
+      }
+    garbage/logging.rs: |
+      // GARBAGE_PHPSUBSTR_A = "slog_logger_marker"
+    garbage/signals.rs: |
+      // GARBAGE_PHPSUBSTR_B = "unix_signal_handler_marker"
+    garbage/tls.rs: |
+      // GARBAGE_PHPSUBSTR_C = "rustls_tls_marker"
+  commit_message: "refactor: replace Config HashMap with trait-based multi-source Config"
+fragments:
+- id: config_source_trait
+  selector:
+    anchor: "pub trait ConfigSource"
+- id: config_error_type
+  selector:
+    anchor: "pub struct ConfigError"
+- id: listener_propagates_error
+  selector:
+    path: src/server/listener.rs
+    anchor: "pub fn from_config(config: &Config) -> Result<Self, crate::config::loader::ConfigError>"
+- id: bootstrap_question_mark
+  selector:
+    path: src/app/bootstrap.rs
+    anchor: "let listener = Listener::from_config(&config)?"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_PHPSUBSTR_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_PHPSUBSTR_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_PHPSUBSTR_C
+oracle:
+  required:
+  - config_source_trait
+  - config_error_type
+  - listener_propagates_error
+  - bootstrap_question_mark
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

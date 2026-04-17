@@ -1,0 +1,109 @@
+name: gap_120_python_signature_permission_checker
+tags:
+- lang:python
+- change:signature
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:1hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/access/checker.py: |
+      from src.access.role import Role
+
+      class PermissionChecker:
+          def __init__(self):
+              self._roles: dict[str, Role] = {}
+
+          def register_role(self, role: Role) -> None:
+              self._roles[role.name] = role
+
+          def can_access(self, user_role: str, resource: str) -> bool:
+              role = self._roles.get(user_role)
+              if role is None:
+                  return False
+              return role.has_permission(resource)
+    src/access/role.py: |
+      class Role:
+          def __init__(self, name: str, permissions: set[str]):
+              self.name = name
+              self._permissions = permissions
+
+          def has_permission(self, resource: str) -> bool:
+              return resource in self._permissions or "*" in self._permissions
+
+          def grant(self, resource: str) -> None:
+              self._permissions.add(resource)
+
+          def revoke(self, resource: str) -> None:
+              self._permissions.discard(resource)
+
+          def permission_count(self) -> int:
+              return len(self._permissions)
+    src/access/audit_trail.py: |
+      class AuditTrail:
+          def __init__(self):
+              self._entries: list[dict] = []
+
+          def log_access(self, user: str, resource: str, granted: bool) -> None:
+              self._entries.append({
+                  "user": user,
+                  "resource": resource,
+                  "granted": granted,
+              })
+
+          def denied_count(self) -> int:
+              return sum(1 for e in self._entries if not e["granted"])
+    src/notifications/webhook_sender.py: |
+      class WebhookSender:
+          def __init__(self, endpoint: str):
+              self._endpoint = endpoint
+              self._retry_count = 3
+
+          def send(self, payload: dict) -> bool:
+              return len(payload) > 0
+
+          def set_retries(self, count: int) -> None:
+              self._retry_count = count
+  changed_files:
+    src/access/checker.py: |
+      from src.access.role import Role
+
+      class PermissionChecker:
+          def __init__(self):
+              self._roles: dict[str, Role] = {}
+
+          def register_role(self, role: Role) -> None:
+              self._roles[role.name] = role
+
+          def can_access(self, user_role: str, resource: str, require_explicit: bool = False) -> bool:
+              role = self._roles.get(user_role)
+              if role is None:
+                  return False
+              if require_explicit:
+                  return resource in role._permissions
+              return role.has_permission(resource)
+fragments:
+- id: checker_can_access
+  selector:
+    path: src/access/checker.py
+    anchor: "def can_access(self, user_role: str, resource: str, require_explicit"
+- id: role_has_permission
+  selector:
+    path: src/access/role.py
+    anchor: "def has_permission"
+- id: no_webhook
+  selector:
+    path: src/notifications/webhook_sender.py
+- id: no_webhook_sender
+  selector:
+    anchor: WebhookSender
+oracle:
+  required:
+  - checker_can_access
+  - role_has_permission
+  forbidden:
+  - no_webhook
+  - no_webhook_sender

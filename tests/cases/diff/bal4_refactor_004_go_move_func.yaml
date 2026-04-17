@@ -1,0 +1,144 @@
+name: bal4_refactor_004_go_move_func
+tags:
+- lang:go
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    pkg/handler/handler.go: |
+      package handler
+
+      import "fmt"
+
+      func Handle(name string) string {
+          return fmt.Sprintf("hello %s", sanitize(name))
+      }
+
+      func sanitize(s string) string {
+          if len(s) == 0 {
+              return "unknown"
+          }
+          return s
+      }
+    pkg/api/api.go: |
+      package api
+
+      import "app/pkg/handler"
+
+      func Serve(name string) string {
+          return handler.Handle(name)
+      }
+    garbage_events.go: |
+      package garbage
+
+      GARBAGE_BAL4R004_EVT_A = "events"
+      GARBAGE_BAL4R004_BUS_B = "bus"
+
+      type EventBus struct {
+          GARBAGE_BAL4R004_BUS_C bool
+      }
+    garbage_cache.go: |
+      package garbage
+
+      GARBAGE_BAL4R004_CACHE_D = "cache"
+      GARBAGE_BAL4R004_TTL_E = 60
+  changed_files:
+    pkg/handler/handler.go: |
+      package handler
+
+      import (
+          "fmt"
+          "app/pkg/strings"
+      )
+
+      func Handle(name string) string {
+          return fmt.Sprintf("hello %s", strings.Sanitize(name))
+      }
+    pkg/strings/strings.go: |
+      package strings
+
+      func Sanitize(s string) string {
+          if len(s) == 0 {
+              return "unknown"
+          }
+          return s
+      }
+    pkg/api/api.go: |
+      package api
+
+      import "app/pkg/handler"
+
+      func Serve(name string) string {
+          return handler.Handle(name)
+      }
+    garbage_events.go: |
+      package garbage
+
+      GARBAGE_BAL4R004_EVT_A = "events"
+      GARBAGE_BAL4R004_BUS_B = "bus"
+
+      type EventBus struct {
+          GARBAGE_BAL4R004_BUS_C bool
+      }
+    garbage_cache.go: |
+      package garbage
+
+      GARBAGE_BAL4R004_CACHE_D = "cache"
+      GARBAGE_BAL4R004_TTL_E = 60
+  commit_message: "refactor: move sanitize to strings package"
+fragments:
+- id: handler_imports_strings
+  selector:
+    path: pkg/handler/handler.go
+    anchor: "app/pkg/strings"
+- id: handler_calls_sanitize
+  selector:
+    path: pkg/handler/handler.go
+    anchor: "strings.Sanitize(name)"
+- id: new_sanitize_func
+  selector:
+    path: pkg/strings/strings.go
+    anchor: "func Sanitize(s string) string"
+- id: api_uses_handler
+  selector:
+    path: pkg/api/api.go
+    anchor: "handler.Handle(name)"
+- id: no_garbage_events
+  selector:
+    path: garbage_events.go
+- id: no_garbage_cache
+  selector:
+    path: garbage_cache.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL4R004_EVT_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL4R004_BUS_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL4R004_BUS_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL4R004_CACHE_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL4R004_TTL_E
+oracle:
+  required:
+  - handler_imports_strings
+  - handler_calls_sanitize
+  - new_sanitize_func
+  allowed:
+  - api_uses_handler
+  forbidden:
+  - no_garbage_events
+  - no_garbage_cache
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

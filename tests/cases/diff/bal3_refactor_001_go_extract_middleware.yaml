@@ -1,0 +1,141 @@
+name: bal3_refactor_001_go_extract_middleware
+tags:
+- lang:typescript
+- change:bug_fix
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/utils/time.ts: |
+      export function parseISODate(s: string): Date {
+        return new Date(s);
+      }
+
+      export function diffDays(a: Date, b: Date): number {
+        return Math.round((b.getTime() - a.getTime()) / 86400000);
+      }
+    src/billing/period.ts: |
+      import { parseISODate, diffDays } from '../utils/time';
+
+      export interface BillingPeriod {
+        start: string;
+        end: string;
+      }
+
+      export function periodLengthDays(period: BillingPeriod): number {
+        return diffDays(parseISODate(period.start), parseISODate(period.end));
+      }
+    src/invoices/calculator.ts: |
+      import { periodLengthDays, BillingPeriod } from '../billing/period';
+
+      export function dailyRate(totalAmount: number, period: BillingPeriod): number {
+        const days = periodLengthDays(period);
+        return totalAmount / days;
+      }
+    src/api/invoiceHandler.ts: |
+      import { dailyRate } from '../invoices/calculator';
+      import { BillingPeriod } from '../billing/period';
+
+      export function handleInvoicePreview(
+        amount: number,
+        period: BillingPeriod,
+      ): { dailyRate: number } {
+        return { dailyRate: dailyRate(amount, period) };
+      }
+    garbage/logger.ts: |
+      const GARBAGE_GO001_LOGGER_A = "logger_marker";
+      export function log(msg: string): void { console.log(msg); }
+    garbage/mailer.ts: |
+      const GARBAGE_GO001_MAILER_B = "mailer_marker";
+      export function sendMail(to: string, body: string): void {}
+    garbage/metrics.ts: |
+      const GARBAGE_GO001_METRICS_C = "metrics_marker";
+      export function increment(key: string): void {}
+  changed_files:
+    src/utils/time.ts: |
+      export function parseISODate(s: string): Date {
+        const d = new Date(s);
+        if (isNaN(d.getTime())) throw new Error(`Invalid date: ${s}`);
+        return d;
+      }
+
+      export function diffDays(a: Date, b: Date): number {
+        return Math.round((b.getTime() - a.getTime()) / 86400000);
+      }
+    src/billing/period.ts: |
+      import { parseISODate, diffDays } from '../utils/time';
+
+      export interface BillingPeriod {
+        start: string;
+        end: string;
+      }
+
+      export function periodLengthDays(period: BillingPeriod): number {
+        return diffDays(parseISODate(period.start), parseISODate(period.end));
+      }
+    src/invoices/calculator.ts: |
+      import { periodLengthDays, BillingPeriod } from '../billing/period';
+
+      export function dailyRate(totalAmount: number, period: BillingPeriod): number {
+        const days = periodLengthDays(period);
+        return totalAmount / days;
+      }
+    src/api/invoiceHandler.ts: |
+      import { dailyRate } from '../invoices/calculator';
+      import { BillingPeriod } from '../billing/period';
+
+      export function handleInvoicePreview(
+        amount: number,
+        period: BillingPeriod,
+      ): { dailyRate: number } {
+        return { dailyRate: dailyRate(amount, period) };
+      }
+    garbage/logger.ts: |
+      const GARBAGE_GO001_LOGGER_A = "logger_marker";
+      export function log(msg: string): void { console.log(msg); }
+    garbage/mailer.ts: |
+      const GARBAGE_GO001_MAILER_B = "mailer_marker";
+      export function sendMail(to: string, body: string): void {}
+    garbage/metrics.ts: |
+      const GARBAGE_GO001_METRICS_C = "metrics_marker";
+      export function increment(key: string): void {}
+  commit_message: "fix: throw on invalid date string in parseISODate"
+fragments:
+- id: parse_iso_date_fix
+  selector:
+    path: src/utils/time.ts
+    anchor: "if (isNaN(d.getTime()))"
+- id: period_calls_parse
+  selector:
+    path: src/billing/period.ts
+    anchor: "parseISODate(period.start)"
+- id: calculator_calls_period
+  selector:
+    path: src/invoices/calculator.ts
+    anchor: "periodLengthDays(period)"
+- id: handler_calls_calculator
+  selector:
+    path: src/api/invoiceHandler.ts
+    anchor: "dailyRate(amount, period)"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_GO001_LOGGER_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_GO001_MAILER_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_GO001_METRICS_C
+oracle:
+  required:
+  - parse_iso_date_fix
+  - period_calls_parse
+  - calculator_calls_period
+  - handler_calls_calculator
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

@@ -1,0 +1,249 @@
+name: gap_191_zig_cross_module_physics_collision
+tags:
+- lang:zig
+- change:multi_file
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+repo:
+  initial_files:
+    src/physics/body.zig: |
+      const std = @import("std");
+      const shape = @import("shape.zig");
+
+      pub const RigidBody = struct {
+          mass: f32,
+          restitution: f32,
+          position_x: f32,
+          position_y: f32,
+          velocity_x: f32,
+          velocity_y: f32,
+          collider: shape.AABB,
+
+          pub fn applyForce(self: *RigidBody, fx: f32, fy: f32) void {
+              self.velocity_x += fx / self.mass;
+              self.velocity_y += fy / self.mass;
+          }
+
+          pub fn integrate(self: *RigidBody, dt: f32) void {
+              self.position_x += self.velocity_x * dt;
+              self.position_y += self.velocity_y * dt;
+          }
+      };
+    src/physics/shape.zig: |
+      const narrow = @import("narrow.zig");
+
+      pub const AABB = struct {
+          min_x: f32,
+          min_y: f32,
+          max_x: f32,
+          max_y: f32,
+
+          pub fn overlaps(self: AABB, other: AABB) bool {
+              return narrow.testOverlap(self, other);
+          }
+
+          pub fn area(self: AABB) f32 {
+              return (self.max_x - self.min_x) * (self.max_y - self.min_y);
+          }
+      };
+    src/physics/narrow.zig: |
+      const shape_mod = @import("shape.zig");
+
+      pub fn testOverlap(a: shape_mod.AABB, b: shape_mod.AABB) bool {
+          if (a.max_x < b.min_x or a.min_x > b.max_x) return false;
+          if (a.max_y < b.min_y or a.min_y > b.max_y) return false;
+          return true;
+      }
+
+      pub fn penetrationDepth(a: shape_mod.AABB, b: shape_mod.AABB) f32 {
+          const overlap_x = @min(a.max_x, b.max_x) - @max(a.min_x, b.min_x);
+          const overlap_y = @min(a.max_y, b.max_y) - @max(a.min_y, b.min_y);
+          return @min(overlap_x, overlap_y);
+      }
+    src/physics/solver.zig: |
+      const body_mod = @import("body.zig");
+
+      pub fn resolveCollision(a: *body_mod.RigidBody, b: *body_mod.RigidBody) void {
+          const rel_vx = a.velocity_x - b.velocity_x;
+          const e = @min(a.restitution, b.restitution);
+          const impulse = -(1.0 + e) * rel_vx / (1.0 / a.mass + 1.0 / b.mass);
+          a.velocity_x += impulse / a.mass;
+          b.velocity_x -= impulse / b.mass;
+      }
+    src/ui/menu.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_191_MENU_MARKER_A: []const u8 = "menu_noise";
+      const TRAP_GAP_191_MENU_FLAG_B: bool = false;
+
+      pub fn showMainMenu() void {}
+
+      pub fn showPauseMenu() void {}
+
+      pub fn hideAll() void {}
+    src/audio/sfx.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_191_SFX_MARKER_C: []const u8 = "sfx_noise";
+      const TRAP_GAP_191_SFX_FLAG_D: u32 = 48000;
+
+      pub fn playSound(id: u32) void {
+          _ = id;
+      }
+
+      pub fn stopSound(id: u32) void {
+          _ = id;
+      }
+  changed_files:
+    src/physics/body.zig: |
+      const std = @import("std");
+      const shape = @import("shape.zig");
+
+      pub const RigidBody = struct {
+          mass: f32,
+          restitution: f32,
+          friction: f32,
+          position_x: f32,
+          position_y: f32,
+          velocity_x: f32,
+          velocity_y: f32,
+          collider: shape.AABB,
+
+          pub fn applyForce(self: *RigidBody, fx: f32, fy: f32) void {
+              self.velocity_x += fx / self.mass;
+              self.velocity_y += fy / self.mass;
+          }
+
+          pub fn integrate(self: *RigidBody, dt: f32) void {
+              self.position_x += self.velocity_x * dt;
+              self.position_y += self.velocity_y * dt;
+              self.velocity_x *= (1.0 - self.friction * dt);
+              self.velocity_y *= (1.0 - self.friction * dt);
+          }
+      };
+    src/physics/shape.zig: |
+      const narrow = @import("narrow.zig");
+
+      pub const AABB = struct {
+          min_x: f32,
+          min_y: f32,
+          max_x: f32,
+          max_y: f32,
+
+          pub fn overlaps(self: AABB, other: AABB) bool {
+              return narrow.testOverlap(self, other);
+          }
+
+          pub fn area(self: AABB) f32 {
+              return (self.max_x - self.min_x) * (self.max_y - self.min_y);
+          }
+
+          pub fn expand(self: AABB, margin: f32) AABB {
+              return AABB{
+                  .min_x = self.min_x - margin,
+                  .min_y = self.min_y - margin,
+                  .max_x = self.max_x + margin,
+                  .max_y = self.max_y + margin,
+              };
+          }
+      };
+    src/physics/narrow.zig: |
+      const shape_mod = @import("shape.zig");
+
+      pub fn testOverlap(a: shape_mod.AABB, b: shape_mod.AABB) bool {
+          if (a.max_x < b.min_x or a.min_x > b.max_x) return false;
+          if (a.max_y < b.min_y or a.min_y > b.max_y) return false;
+          return true;
+      }
+
+      pub fn penetrationDepth(a: shape_mod.AABB, b: shape_mod.AABB) f32 {
+          const overlap_x = @min(a.max_x, b.max_x) - @max(a.min_x, b.min_x);
+          const overlap_y = @min(a.max_y, b.max_y) - @max(a.min_y, b.min_y);
+          return @min(overlap_x, overlap_y);
+      }
+    src/physics/solver.zig: |
+      const body_mod = @import("body.zig");
+
+      pub fn resolveCollision(a: *body_mod.RigidBody, b: *body_mod.RigidBody) void {
+          const rel_vx = a.velocity_x - b.velocity_x;
+          const e = @min(a.restitution, b.restitution);
+          const impulse = -(1.0 + e) * rel_vx / (1.0 / a.mass + 1.0 / b.mass);
+          a.velocity_x += impulse / a.mass;
+          b.velocity_x -= impulse / b.mass;
+      }
+    src/ui/menu.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_191_MENU_MARKER_A: []const u8 = "menu_noise";
+      const TRAP_GAP_191_MENU_FLAG_B: bool = false;
+
+      pub fn showMainMenu() void {}
+
+      pub fn showPauseMenu() void {}
+
+      pub fn hideAll() void {}
+    src/audio/sfx.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_191_SFX_MARKER_C: []const u8 = "sfx_noise";
+      const TRAP_GAP_191_SFX_FLAG_D: u32 = 48000;
+
+      pub fn playSound(id: u32) void {
+          _ = id;
+      }
+
+      pub fn stopSound(id: u32) void {
+          _ = id;
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: body_friction_field
+  selector:
+    path: src/physics/body.zig
+    anchor: "friction: f32"
+- id: body_friction_apply
+  selector:
+    path: src/physics/body.zig
+    anchor: self.velocity_x *= (1.0 - self.friction * dt)
+- id: shape_expand
+  selector:
+    path: src/physics/shape.zig
+    anchor: "pub fn expand(self: AABB, margin: f32) AABB"
+- id: narrow_overlap
+  selector:
+    path: src/physics/narrow.zig
+    anchor: "pub fn testOverlap"
+- id: no_menu
+  selector:
+    path: src/ui/menu.zig
+- id: no_sfx
+  selector:
+    path: src/audio/sfx.zig
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP_191_MENU_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP_191_MENU_FLAG_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP_191_SFX_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP_191_SFX_FLAG_D
+oracle:
+  required:
+  - body_friction_field
+  - body_friction_apply
+  - shape_expand
+  allowed: []
+  forbidden:
+  - no_menu
+  - no_sfx
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

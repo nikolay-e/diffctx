@@ -1,0 +1,210 @@
+name: bal3_testctx_012_java_rate_limiter_test
+tags:
+- lang:java
+- change:single_file
+- change:bug_fix
+- context:test_file
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/infra/RateLimiter.java: |
+      package com.infra;
+
+      import java.util.Map;
+      import java.util.concurrent.ConcurrentHashMap;
+      import java.util.concurrent.atomic.AtomicInteger;
+
+      public class RateLimiter {
+          private final int maxRequests;
+          private final Map<String, AtomicInteger> counters = new ConcurrentHashMap<>();
+
+          public RateLimiter(int maxRequests) {
+              this.maxRequests = maxRequests;
+          }
+
+          public boolean tryAcquire(String clientId) {
+              AtomicInteger counter = counters.computeIfAbsent(clientId, k -> new AtomicInteger(0));
+              return counter.incrementAndGet() <= maxRequests;
+          }
+
+          public void reset(String clientId) {
+              counters.remove(clientId);
+          }
+      }
+    src/test/java/com/infra/RateLimiterTest.java: |
+      package com.infra;
+
+      import org.junit.jupiter.api.Test;
+      import static org.junit.jupiter.api.Assertions.*;
+
+      class RateLimiterTest {
+          @Test
+          void testAllowUnderLimit() {
+              RateLimiter limiter = new RateLimiter(3);
+              assertTrue(limiter.tryAcquire("client1"));
+              assertTrue(limiter.tryAcquire("client1"));
+              assertTrue(limiter.tryAcquire("client1"));
+          }
+
+          @Test
+          void testBlockOverLimit() {
+              RateLimiter limiter = new RateLimiter(1);
+              assertTrue(limiter.tryAcquire("client1"));
+              assertFalse(limiter.tryAcquire("client1"));
+          }
+
+          @Test
+          void testResetAllows() {
+              RateLimiter limiter = new RateLimiter(1);
+              limiter.tryAcquire("client1");
+              limiter.reset("client1");
+              assertTrue(limiter.tryAcquire("client1"));
+          }
+
+          @Test
+          void testIndependentClients() {
+              RateLimiter limiter = new RateLimiter(1);
+              assertTrue(limiter.tryAcquire("a"));
+              assertTrue(limiter.tryAcquire("b"));
+          }
+      }
+    src/main/java/com/infra/CircuitBreaker.java: |
+      package com.infra;
+
+      public class CircuitBreaker {
+          private boolean open = false;
+
+          public boolean isOpen() { return open; }
+
+          public void trip() { open = true; }
+
+          public void reset() { open = false; }
+      }
+    src/main/java/com/infra/RetryPolicy.java: |
+      package com.infra;
+
+      public class RetryPolicy {
+          private final int maxRetries;
+          private final long backoffMs;
+
+          public RetryPolicy(int maxRetries, long backoffMs) {
+              this.maxRetries = maxRetries;
+              this.backoffMs = backoffMs;
+          }
+
+          public int getMaxRetries() { return maxRetries; }
+          public long getBackoffMs() { return backoffMs; }
+      }
+    src/main/java/com/web/Router.java: |
+      package com.web;
+
+      import java.util.HashMap;
+      import java.util.Map;
+
+      public class Router {
+          private final Map<String, String> routes = new HashMap<>();
+
+          public void addRoute(String path, String handler) {
+              routes.put(path, handler);
+          }
+
+          public String resolve(String path) {
+              return routes.getOrDefault(path, "404");
+          }
+      }
+  changed_files:
+    src/main/java/com/infra/RateLimiter.java: |
+      package com.infra;
+
+      import java.util.Map;
+      import java.util.concurrent.ConcurrentHashMap;
+      import java.util.concurrent.atomic.AtomicInteger;
+      import java.util.concurrent.atomic.AtomicLong;
+
+      public class RateLimiter {
+          private final int maxRequests;
+          private final long windowMs;
+          private final Map<String, AtomicInteger> counters = new ConcurrentHashMap<>();
+          private final Map<String, AtomicLong> windowStart = new ConcurrentHashMap<>();
+
+          public RateLimiter(int maxRequests, long windowMs) {
+              this.maxRequests = maxRequests;
+              this.windowMs = windowMs;
+          }
+
+          public boolean tryAcquire(String clientId) {
+              long now = System.currentTimeMillis();
+              AtomicLong start = windowStart.computeIfAbsent(clientId, k -> new AtomicLong(now));
+              if (now - start.get() > windowMs) {
+                  start.set(now);
+                  counters.put(clientId, new AtomicInteger(0));
+              }
+              AtomicInteger counter = counters.computeIfAbsent(clientId, k -> new AtomicInteger(0));
+              return counter.incrementAndGet() <= maxRequests;
+          }
+
+          public void reset(String clientId) {
+              counters.remove(clientId);
+              windowStart.remove(clientId);
+          }
+
+          public int getRemainingQuota(String clientId) {
+              AtomicInteger counter = counters.get(clientId);
+              if (counter == null) {
+                  return maxRequests;
+              }
+              return Math.max(0, maxRequests - counter.get());
+          }
+      }
+  commit_message: "fix: add sliding window to rate limiter, add getRemainingQuota"
+fragments:
+- id: window_ms_field
+  selector:
+    path: src/main/java/com/infra/RateLimiter.java
+    anchor: "private final long windowMs"
+- id: sliding_window_logic
+  selector:
+    path: src/main/java/com/infra/RateLimiter.java
+    anchor: "now - start.get() > windowMs"
+- id: get_remaining_quota
+  selector:
+    path: src/main/java/com/infra/RateLimiter.java
+    anchor: "public int getRemainingQuota(String clientId)"
+- id: test_allow_under_limit
+  selector:
+    path: src/test/java/com/infra/RateLimiterTest.java
+    anchor: "void testAllowUnderLimit()"
+- id: test_block_over_limit
+  selector:
+    path: src/test/java/com/infra/RateLimiterTest.java
+    anchor: "void testBlockOverLimit()"
+- id: test_independent_clients
+  selector:
+    path: src/test/java/com/infra/RateLimiterTest.java
+    anchor: "void testIndependentClients()"
+- id: no_circuit_breaker
+  selector:
+    path: src/main/java/com/infra/CircuitBreaker.java
+    anchor: "public class CircuitBreaker"
+- id: no_retry_policy
+  selector:
+    path: src/main/java/com/infra/RetryPolicy.java
+    anchor: "public class RetryPolicy"
+- id: no_router
+  selector:
+    path: src/main/java/com/web/Router.java
+    anchor: "public class Router"
+oracle:
+  required:
+  - window_ms_field
+  - sliding_window_logic
+  - get_remaining_quota
+  - test_allow_under_limit
+  - test_block_over_limit
+  allowed:
+  - test_independent_clients
+  forbidden:
+  - no_circuit_breaker
+  - no_retry_policy
+  - no_router

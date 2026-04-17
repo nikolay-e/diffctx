@@ -1,0 +1,222 @@
+name: bal_hard_023_csharp_mediator_pattern
+tags:
+- lang:csharp
+- change:multi_file
+- change:new_function
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/Mediator/IRequest.cs: |
+      namespace App.Mediator
+      {
+          public interface IRequest<TResponse> { }
+      }
+    src/Mediator/IHandler.cs: |
+      namespace App.Mediator
+      {
+          public interface IHandler<TRequest, TResponse> where TRequest : IRequest<TResponse>
+          {
+              TResponse Handle(TRequest request);
+          }
+      }
+    src/Mediator/Mediator.cs: |
+      using System;
+      using System.Collections.Generic;
+      namespace App.Mediator
+      {
+          public class Mediator
+          {
+              private readonly Dictionary<Type, object> _handlers = new();
+              public void Register<TRequest, TResponse>(IHandler<TRequest, TResponse> handler)
+                  where TRequest : IRequest<TResponse>
+              {
+                  _handlers[typeof(TRequest)] = handler;
+              }
+              public TResponse Send<TResponse>(IRequest<TResponse> request)
+              {
+                  var handler = _handlers[request.GetType()];
+                  var method = handler.GetType().GetMethod("Handle");
+                  return (TResponse)method.Invoke(handler, new object[] { request });
+              }
+          }
+      }
+    src/Features/GetUserQuery.cs: |
+      namespace App.Features
+      {
+          using App.Mediator;
+          public class GetUserQuery : IRequest<UserDto>
+          {
+              public string UserId { get; set; }
+          }
+          public class UserDto
+          {
+              public string Id { get; set; }
+              public string Name { get; set; }
+          }
+      }
+    src/Features/GetUserHandler.cs: |
+      namespace App.Features
+      {
+          using App.Mediator;
+          public class GetUserHandler : IHandler<GetUserQuery, UserDto>
+          {
+              public UserDto Handle(GetUserQuery request)
+              {
+                  return new UserDto { Id = request.UserId, Name = "John" };
+              }
+          }
+      }
+    src/Controllers/UserController.cs: |
+      namespace App.Controllers
+      {
+          using App.Mediator;
+          using App.Features;
+          public class UserController
+          {
+              private readonly Mediator _mediator;
+              public UserController(Mediator mediator)
+              {
+                  _mediator = mediator;
+              }
+              public UserDto GetUser(string id)
+              {
+                  return _mediator.Send(new GetUserQuery { UserId = id });
+              }
+          }
+      }
+    src/Helpers/StringHelper.cs: |
+      namespace App.Helpers
+      {
+          public static class StringHelper
+          {
+              public static string Capitalize(string input)
+              {
+                  if (string.IsNullOrEmpty(input)) return input;
+                  return char.ToUpper(input[0]) + input.Substring(1);
+              }
+          }
+      }
+    src/Helpers/GuidHelper.cs: |
+      namespace App.Helpers
+      {
+          using System;
+          public static class GuidHelper
+          {
+              public static string NewShortId() => Guid.NewGuid().ToString("N").Substring(0, 8);
+          }
+      }
+  changed_files:
+    src/Mediator/IPipelineBehavior.cs: |
+      namespace App.Mediator
+      {
+          using System;
+          public interface IPipelineBehavior<TRequest, TResponse> where TRequest : IRequest<TResponse>
+          {
+              TResponse Handle(TRequest request, Func<TResponse> next);
+          }
+      }
+    src/Mediator/Mediator.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Linq;
+      namespace App.Mediator
+      {
+          public class Mediator
+          {
+              private readonly Dictionary<Type, object> _handlers = new();
+              private readonly List<object> _behaviors = new();
+              public void Register<TRequest, TResponse>(IHandler<TRequest, TResponse> handler)
+                  where TRequest : IRequest<TResponse>
+              {
+                  _handlers[typeof(TRequest)] = handler;
+              }
+              public void AddBehavior<TRequest, TResponse>(IPipelineBehavior<TRequest, TResponse> behavior)
+                  where TRequest : IRequest<TResponse>
+              {
+                  _behaviors.Add(behavior);
+              }
+              public TResponse Send<TResponse>(IRequest<TResponse> request)
+              {
+                  var handler = _handlers[request.GetType()];
+                  var method = handler.GetType().GetMethod("Handle");
+                  Func<TResponse> handle = () => (TResponse)method.Invoke(handler, new object[] { request });
+                  foreach (var behavior in _behaviors)
+                  {
+                      var behMethod = behavior.GetType().GetMethod("Handle");
+                      if (behMethod != null)
+                      {
+                          var prev = handle;
+                          handle = () => (TResponse)behMethod.Invoke(behavior, new object[] { request, prev });
+                      }
+                  }
+                  return handle();
+              }
+          }
+      }
+    src/Behaviors/LoggingBehavior.cs: |
+      namespace App.Behaviors
+      {
+          using System;
+          using App.Mediator;
+          public class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
+              where TRequest : IRequest<TResponse>
+          {
+              public TResponse Handle(TRequest request, Func<TResponse> next)
+              {
+                  Console.WriteLine($"Handling {typeof(TRequest).Name}");
+                  var response = next();
+                  Console.WriteLine($"Handled {typeof(TRequest).Name}");
+                  return response;
+              }
+          }
+      }
+  commit_message: "feat: add pipeline behaviors to mediator"
+fragments:
+- id: pipeline_behavior_interface
+  selector:
+    path: IPipelineBehavior.cs
+    anchor: "public interface IPipelineBehavior"
+- id: mediator_add_behavior
+  selector:
+    path: Mediator.cs
+    anchor: "public void AddBehavior"
+- id: mediator_runs_pipeline
+  selector:
+    path: Mediator.cs
+    anchor: "behMethod.Invoke(behavior"
+- id: logging_behavior
+  selector:
+    path: LoggingBehavior.cs
+    anchor: "class LoggingBehavior"
+- id: ihandler_interface
+  selector:
+    path: IHandler.cs
+    anchor: "public interface IHandler"
+- id: controller_sends
+  selector:
+    path: UserController.cs
+    anchor: "_mediator.Send"
+- id: no_string_helper
+  selector:
+    path: Helpers/StringHelper.cs
+- id: no_guid_helper
+  selector:
+    path: Helpers/GuidHelper.cs
+- id: no_capitalize
+  selector:
+    anchor: "public static string Capitalize"
+oracle:
+  required:
+  - pipeline_behavior_interface
+  - mediator_add_behavior
+  - mediator_runs_pipeline
+  - logging_behavior
+  - ihandler_interface
+  - controller_sends
+  allowed: []
+  forbidden:
+  - no_string_helper
+  - no_guid_helper
+  - no_capitalize

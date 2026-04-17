@@ -1,4 +1,13 @@
 name: regression_006_infra_noise_unrelated_scripts
+tags:
+- lang:python
+- lang:shell
+- lang:terraform
+- change:multi_file
+- change:config
+- context:same_file
+- distance:0hop
+- difficulty:easy
 repo:
   initial_files:
     argocd/apps/api-service/values.yaml: |

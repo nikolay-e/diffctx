@@ -1,0 +1,204 @@
+name: bal3_1hop_057_scala_new_function_logger
+tags:
+- lang:scala
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: scala-no-tree-sitter
+repo:
+  initial_files:
+    src/main/scala/log/Logger.scala: |
+      package log
+
+      class Logger(channel: String) {
+        def info(message: String): String = {
+          s"[$channel] INFO: $message"
+        }
+
+        def error(message: String): String = {
+          s"[$channel] ERROR: $message"
+        }
+      }
+    src/main/scala/service/UserManager.scala: |
+      package service
+
+      import log.Logger
+
+      class UserManager(logger: Logger) {
+        def createUser(name: String): Map[String, String] = {
+          logger.info(s"Creating user: $name")
+          Map("name" -> name)
+        }
+      }
+    src/main/scala/service/OrderManager.scala: |
+      package service
+
+      import log.Logger
+
+      class OrderManager(logger: Logger) {
+        def placeOrder(productId: Int): Map[String, Any] = {
+          logger.info(s"Placing order for product: $productId")
+          Map("productId" -> productId)
+        }
+
+        def cancelOrder(orderId: Int): Unit = {
+          logger.error(s"Cancelling order: $orderId")
+        }
+      }
+    src/main/scala/service/PaymentProcessor.scala: |
+      package service
+
+      import log.Logger
+
+      class PaymentProcessor(logger: Logger) {
+        def process(amount: Double): Map[String, Any] = {
+          logger.info(s"Processing: $amount")
+          Map("amount" -> amount, "status" -> "ok")
+        }
+      }
+    src/main/scala/service/InventoryService.scala: |
+      package service
+
+      import log.Logger
+
+      class InventoryService(logger: Logger) {
+        def checkStock(sku: String): Int = {
+          logger.info(s"Checking stock for: $sku")
+          100
+        }
+
+        def reserve(sku: String, qty: Int): Boolean = {
+          logger.info(s"Reserving $qty of $sku")
+          true
+        }
+      }
+    src/main/scala/crypto/AesEncryptor.scala: |
+      package crypto
+
+      object AesEncryptor {
+        val GARBAGE_BAL3_057_AES_A = "aes"
+        val GARBAGE_BAL3_057_BITS_B = 256
+
+        def encrypt(data: String): String = data
+      }
+    src/main/scala/crypto/RsaSigner.scala: |
+      package crypto
+
+      object RsaSigner {
+        val GARBAGE_BAL3_057_RSA_C = "rsa"
+        val GARBAGE_BAL3_057_KEYSIZE_D = 2048
+
+        def sign(data: String): String = data
+      }
+    src/main/scala/crypto/HmacUtil.scala: |
+      package crypto
+
+      object HmacUtil {
+        val GARBAGE_BAL3_057_HMAC_E = "hmac"
+        val GARBAGE_BAL3_057_SECRET_F = "key"
+
+        def compute(data: String): String = data
+      }
+  changed_files:
+    src/main/scala/log/Logger.scala: |
+      package log
+
+      class Logger(channel: String) {
+        private var context: Map[String, Any] = Map.empty
+
+        def withContext(ctx: Map[String, Any]): Logger = {
+          val copy = new Logger(channel)
+          copy.context = this.context ++ ctx
+          copy
+        }
+
+        def info(message: String): String = {
+          format("INFO", message)
+        }
+
+        def error(message: String): String = {
+          format("ERROR", message)
+        }
+
+        def warning(message: String): String = {
+          format("WARNING", message)
+        }
+
+        def debug(message: String): String = {
+          format("DEBUG", message)
+        }
+
+        private def format(level: String, message: String): String = {
+          val ctx = if (context.nonEmpty) s" ${context.mkString(", ")}" else ""
+          s"[$channel] $level: $message$ctx"
+        }
+      }
+  commit_message: "Add structured context, warning, and debug levels to Logger"
+fragments:
+- id: user_manager
+  selector:
+    path: src/main/scala/service/UserManager.scala
+    anchor: "import log.Logger"
+- id: user_log
+  selector:
+    path: src/main/scala/service/UserManager.scala
+    anchor: "logger.info"
+- id: order_manager
+  selector:
+    path: src/main/scala/service/OrderManager.scala
+    anchor: "import log.Logger"
+- id: payment_processor
+  selector:
+    path: src/main/scala/service/PaymentProcessor.scala
+    anchor: "import log.Logger"
+- id: inventory_service
+  selector:
+    path: src/main/scala/service/InventoryService.scala
+    anchor: "import log.Logger"
+- id: no_aes
+  selector:
+    path: src/main/scala/crypto/AesEncryptor.scala
+- id: no_rsa
+  selector:
+    path: src/main/scala/crypto/RsaSigner.scala
+- id: no_hmac
+  selector:
+    path: src/main/scala/crypto/HmacUtil.scala
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_057_AES_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_057_BITS_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_057_RSA_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_057_KEYSIZE_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL3_057_HMAC_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL3_057_SECRET_F
+oracle:
+  required:
+  - user_manager
+  - user_log
+  - order_manager
+  - payment_processor
+  - inventory_service
+  allowed: []
+  forbidden:
+  - no_aes
+  - no_rsa
+  - no_hmac
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

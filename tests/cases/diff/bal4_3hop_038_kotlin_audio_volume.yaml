@@ -1,0 +1,132 @@
+name: bal4_3hop_038_kotlin_audio_volume
+tags:
+- lang:kotlin
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:easy
+repo:
+  initial_files:
+    src/audio/Gain.kt: |
+      package audio
+
+      fun clampVolume(level: Int): Int =
+          if (level > 100) 100 else level
+    src/mixer/Channel.kt: |
+      package mixer
+
+      import audio.clampVolume
+
+      class Channel(var volume: Int) {
+          fun setVolume(level: Int) {
+              volume = clampVolume(level)
+          }
+      }
+    src/output/Speaker.kt: |
+      package output
+
+      import mixer.Channel
+
+      class Speaker(private val channel: Channel) {
+          fun currentLevel(): Int = channel.volume
+      }
+    src/player/Player.kt: |
+      package player
+
+      import output.Speaker
+
+      class Player(private val speaker: Speaker) {
+          fun display(): String = "Volume: ${speaker.currentLevel()}"
+      }
+    src/utils/Eq.kt: |
+      package utils
+      val GARBAGE_038_EQ_A = "equalizer"
+      val GARBAGE_038_BAND_B = 5
+    src/utils/Reverb.kt: |
+      package utils
+      val GARBAGE_038_REVERB_C = "reverb"
+      val GARBAGE_038_DECAY_D = 0.5
+  changed_files:
+    src/audio/Gain.kt: |
+      package audio
+
+      fun clampVolume(level: Int): Int =
+          if (level > 100) 100 else if (level < 0) 0 else level
+    src/mixer/Channel.kt: |
+      package mixer
+
+      import audio.clampVolume
+
+      class Channel(var volume: Int) {
+          fun setVolume(level: Int) {
+              volume = clampVolume(level)
+          }
+      }
+    src/output/Speaker.kt: |
+      package output
+
+      import mixer.Channel
+
+      class Speaker(private val channel: Channel) {
+          fun currentLevel(): Int = channel.volume
+      }
+    src/player/Player.kt: |
+      package player
+
+      import output.Speaker
+
+      class Player(private val speaker: Speaker) {
+          fun display(): String = "Volume: ${speaker.currentLevel()}"
+      }
+    src/utils/Eq.kt: |
+      package utils
+      val GARBAGE_038_EQ_A = "equalizer"
+      val GARBAGE_038_BAND_B = 5
+    src/utils/Reverb.kt: |
+      package utils
+      val GARBAGE_038_REVERB_C = "reverb"
+      val GARBAGE_038_DECAY_D = 0.5
+  commit_message: "fix: clamp negative volume to zero"
+fragments:
+- id: clamp_negative
+  selector:
+    path: src/audio/Gain.kt
+    anchor: "level < 0"
+- id: channel_import
+  selector:
+    path: src/mixer/Channel.kt
+    anchor: "import audio.clampVolume"
+- id: speaker_import
+  selector:
+    path: src/output/Speaker.kt
+    anchor: "import mixer.Channel"
+- id: player_import
+  selector:
+    path: src/player/Player.kt
+    anchor: "import output.Speaker"
+- id: no_eq
+  selector:
+    path: src/utils/Eq.kt
+    anchor: "GARBAGE_038_EQ_A"
+- id: no_reverb
+  selector:
+    path: src/utils/Reverb.kt
+    anchor: "GARBAGE_038_REVERB_C"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_038_BAND_B
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_038_DECAY_D
+oracle:
+  required:
+  - clamp_negative
+  - channel_import
+  - speaker_import
+  - player_import
+  allowed: []
+  forbidden:
+  - no_eq
+  - no_reverb
+  - no_global_0
+  - no_global_1

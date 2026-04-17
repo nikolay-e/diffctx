@@ -1,114 +1,122 @@
 name: internals_001_cyrillic_function_name
+tags:
+- lang:python
+- lang:protobuf
+- change:multi_file
+- context:same_file
+- distance:0hop
+- difficulty:easy
 repo:
   initial_files:
-    src/localization/greetings.py: |
-      from src.localization.formatter import format_greeting
-      def get_default_language():
-          return "ru"
-      def select_greeting(language_code: str) -> str:
-          if language_code == "ru":
-              return "Привет"
-          return "Hello"
-      def build_response(user_name: str, language_code: str) -> dict:
-          greeting = select_greeting(language_code)
-          formatted = format_greeting(greeting, user_name)
-          return {"message": formatted, "lang": language_code}
-    src/localization/formatter.py: |
-      def format_greeting(greeting: str, name: str) -> str:
-          return greeting + ", " + name + "!"
-      def truncate_text(text: str, max_length: int) -> str:
-          if len(text) > max_length:
-              return text[:max_length] + "..."
-          return text
-    garbage_intl_cache.py: |
-      GARBAGE_INT_001_CACHE_MARKER_A = "locale"
-      GARBAGE_INT_001_INTL_MARKER_B = "i18n"
+    proto/session.proto: |
+      syntax = "proto3";
 
-      class GarbageIntlCache:
-          def noop(self):
-              pass
-    garbage_encoding_utils.py: |
-      GARBAGE_INT_001_ENCODE_MARKER_C = "utf8"
-      GARBAGE_INT_001_DECODE_MARKER_D = "ascii"
+      message Session {
+        string session_id = 1;
+        string user_id = 2;
+        int64 expires_at = 3;
+      }
+    service/session_service.py: |
+      from proto import session_pb2
 
-      class GarbageEncodingUtils:
-          def noop(self):
-              pass
+      class SessionService:
+          def create_session(
+              self, session_id: str, user_id: str, expires_at: int
+          ) -> session_pb2.Session:
+              return session_pb2.Session(
+                  session_id=session_id,
+                  user_id=user_id,
+                  expires_at=expires_at,
+              )
+
+          def is_valid(self, session: session_pb2.Session, now: int) -> bool:
+              return session.expires_at > now
+    garbage/logging.py: |
+      GARBAGE_INT001_A = "log_marker"
+
+      def noop():
+          pass
+    garbage/metrics.py: |
+      GARBAGE_INT001_B = "metrics_marker"
+
+      def noop():
+          pass
+    garbage/events.py: |
+      GARBAGE_INT001_C = "event_marker"
+
+      def noop():
+          pass
   changed_files:
-    src/localization/greetings.py: |
-      from src.localization.formatter import format_greeting
-      def get_default_language():
-          return "ru"
-      def привет_мир():
-          return "здравствуй"
-      def select_greeting(language_code: str) -> str:
-          if language_code == "ru":
-              return привет_мир()
-          return "Hello"
-      def build_response(user_name: str, language_code: str) -> dict:
-          greeting = select_greeting(language_code)
-          formatted = format_greeting(greeting, user_name)
-          return {"message": formatted, "lang": language_code}
-    src/localization/formatter.py: |
-      def format_greeting(greeting: str, name: str) -> str:
-          return greeting + ", " + name + "!"
-      def truncate_text(text: str, max_length: int) -> str:
-          if len(text) > max_length:
-              return text[:max_length] + "..."
-          return text
-    garbage_intl_cache.py: |
-      GARBAGE_INT_001_CACHE_MARKER_A = "locale"
-      GARBAGE_INT_001_INTL_MARKER_B = "i18n"
+    proto/session.proto: |
+      syntax = "proto3";
 
-      class GarbageIntlCache:
-          def noop(self):
-              pass
-    garbage_encoding_utils.py: |
-      GARBAGE_INT_001_ENCODE_MARKER_C = "utf8"
-      GARBAGE_INT_001_DECODE_MARKER_D = "ascii"
+      message Session {
+        string session_id = 1;
+        string user_id = 2;
+        int64 expires_at = 3;
+        string device_fingerprint = 4;
+        bool mfa_verified = 5;
+      }
+    service/session_service.py: |
+      from proto import session_pb2
 
-      class GarbageEncodingUtils:
-          def noop(self):
-              pass
-  commit_message: Update files
+      class SessionService:
+          def create_session(
+              self,
+              session_id: str,
+              user_id: str,
+              expires_at: int,
+              device_fingerprint: str = "",
+              mfa_verified: bool = False,
+          ) -> session_pb2.Session:
+              return session_pb2.Session(
+                  session_id=session_id,
+                  user_id=user_id,
+                  expires_at=expires_at,
+                  device_fingerprint=device_fingerprint,
+                  mfa_verified=mfa_verified,
+              )
+
+          def is_valid(self, session: session_pb2.Session, now: int) -> bool:
+              return session.expires_at > now
+    garbage/logging.py: |
+      GARBAGE_INT001_A = "log_marker"
+
+      def noop():
+          pass
+    garbage/metrics.py: |
+      GARBAGE_INT001_B = "metrics_marker"
+
+      def noop():
+          pass
+    garbage/events.py: |
+      GARBAGE_INT001_C = "event_marker"
+
+      def noop():
+          pass
+  commit_message: "feat: add device_fingerprint and mfa_verified to Session proto and service"
 fragments:
-- id: greetings_file
+- id: proto_file
   selector:
-    path: src/localization/greetings.py
-- id: req_global_0
+    path: proto/session.proto
+- id: service_file
   selector:
-    anchor: 'def привет_мир():'
-- id: req_global_1
+    path: service/session_service.py
+- id: no_garbage_a
   selector:
-    anchor: return привет_мир()
-- id: no_global_0
+    anchor: GARBAGE_INT001_A
+- id: no_garbage_b
   selector:
-    anchor: GARBAGE_INT_001_CACHE_MARKER_A
-- id: no_global_1
+    anchor: GARBAGE_INT001_B
+- id: no_garbage_c
   selector:
-    anchor: GARBAGE_INT_001_DECODE_MARKER_D
-- id: no_global_2
-  selector:
-    anchor: GARBAGE_INT_001_ENCODE_MARKER_C
-- id: no_global_3
-  selector:
-    anchor: GARBAGE_INT_001_INTL_MARKER_B
-- id: no_global_4
-  selector:
-    anchor: garbage_encoding_utils.py
-- id: no_global_5
-  selector:
-    anchor: garbage_intl_cache.py
+    anchor: GARBAGE_INT001_C
 oracle:
   required:
-  - greetings_file
-  - req_global_0
-  - req_global_1
+  - proto_file
+  - service_file
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

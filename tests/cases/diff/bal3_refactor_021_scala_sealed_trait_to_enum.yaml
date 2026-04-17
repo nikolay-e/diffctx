@@ -1,0 +1,194 @@
+name: bal3_refactor_021_scala_sealed_trait_to_enum
+tags:
+- lang:scala
+- change:multi_file
+- change:refactor
+- context:cross_module
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/main/scala/models/Status.scala: |
+      package models
+
+      sealed trait Status
+      case object Pending extends Status
+      case object Active extends Status
+      case object Suspended extends Status
+      case object Deleted extends Status
+    src/main/scala/services/AccountService.scala: |
+      package services
+
+      import models._
+
+      class AccountService {
+        def activate(status: Status): Status = status match {
+          case Pending => Active
+          case other => other
+        }
+
+        def suspend(status: Status): Status = status match {
+          case Active => Suspended
+          case other => other
+        }
+
+        def statusLabel(status: Status): String = status match {
+          case Pending => "pending"
+          case Active => "active"
+          case Suspended => "suspended"
+          case Deleted => "deleted"
+        }
+      }
+    src/main/scala/api/AccountEndpoint.scala: |
+      package api
+
+      import models._
+      import services.AccountService
+
+      class AccountEndpoint {
+        val service = new AccountService
+
+        def changeStatus(current: Status, action: String): Status = action match {
+          case "activate" => service.activate(current)
+          case "suspend" => service.suspend(current)
+          case _ => current
+        }
+      }
+    src/main/scala/infra/Metrics.scala: |
+      package infra
+
+      val GARBAGE_R021_METRICS_A: String = "metrics"
+
+      class Metrics {
+        def record(name: String, value: Double): Unit = ()
+      }
+    src/main/scala/infra/Logger.scala: |
+      package infra
+
+      val GARBAGE_R021_LOGGER_B: String = "logger"
+
+      class Logger {
+        def info(msg: String): Unit = println(msg)
+      }
+    src/main/scala/infra/Config.scala: |
+      package infra
+
+      val GARBAGE_R021_CONFIG_C: String = "config"
+
+      class Config {
+        def get(key: String): Option[String] = None
+      }
+  changed_files:
+    src/main/scala/models/Status.scala: |
+      package models
+
+      enum Status {
+        case Pending, Active, Suspended, Deleted
+
+        def label: String = this match {
+          case Pending => "pending"
+          case Active => "active"
+          case Suspended => "suspended"
+          case Deleted => "deleted"
+        }
+      }
+    src/main/scala/services/AccountService.scala: |
+      package services
+
+      import models.Status
+
+      class AccountService {
+        def activate(status: Status): Status = status match {
+          case Status.Pending => Status.Active
+          case other => other
+        }
+
+        def suspend(status: Status): Status = status match {
+          case Status.Active => Status.Suspended
+          case other => other
+        }
+
+        def statusLabel(status: Status): String = status.label
+      }
+    src/main/scala/api/AccountEndpoint.scala: |
+      package api
+
+      import models.Status
+      import services.AccountService
+
+      class AccountEndpoint {
+        val service = new AccountService
+
+        def changeStatus(current: Status, action: String): Status = action match {
+          case "activate" => service.activate(current)
+          case "suspend" => service.suspend(current)
+          case _ => current
+        }
+      }
+    src/main/scala/infra/Metrics.scala: |
+      package infra
+
+      val GARBAGE_R021_METRICS_A: String = "metrics"
+
+      class Metrics {
+        def record(name: String, value: Double): Unit = ()
+      }
+    src/main/scala/infra/Logger.scala: |
+      package infra
+
+      val GARBAGE_R021_LOGGER_B: String = "logger"
+
+      class Logger {
+        def info(msg: String): Unit = println(msg)
+      }
+    src/main/scala/infra/Config.scala: |
+      package infra
+
+      val GARBAGE_R021_CONFIG_C: String = "config"
+
+      class Config {
+        def get(key: String): Option[String] = None
+      }
+  commit_message: "refactor: convert sealed trait Status to Scala 3 enum"
+fragments:
+- id: status_enum
+  selector:
+    path: src/main/scala/models/Status.scala
+    anchor: "enum Status"
+- id: label_method
+  selector:
+    path: src/main/scala/models/Status.scala
+    anchor: "def label: String"
+- id: service_uses_enum
+  selector:
+    path: src/main/scala/services/AccountService.scala
+    anchor: "Status.Pending => Status.Active"
+- id: service_uses_label
+  selector:
+    path: src/main/scala/services/AccountService.scala
+    anchor: "status.label"
+- id: endpoint_context
+  selector:
+    path: src/main/scala/api/AccountEndpoint.scala
+    anchor: "service.activate(current)"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_R021_METRICS_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_R021_LOGGER_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_R021_CONFIG_C
+oracle:
+  required:
+  - status_enum
+  - label_method
+  - service_uses_enum
+  - service_uses_label
+  allowed:
+  - endpoint_context
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

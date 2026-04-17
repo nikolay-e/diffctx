@@ -1,448 +1,234 @@
 name: php_007_magic_method
+tags:
+- lang:go
+- change:new_function
+- change:single_file
+- context:import_chain
+- distance:2hop
+- difficulty:medium
 repo:
   initial_files:
-    src/Core/DynamicObject.php: |
-      <?php
-      namespace App\Core;
+    pkg/payment/processor.go: |
+      package payment
 
-      class DynamicObject {
-          private array $data = [];
-          private array $readOnly = [];
-
-          public function __get(string $name): mixed {
-              return $this->data[$name] ?? null;
-          }
-
-          public function __set(string $name, mixed $value): void {
-              if (in_array($name, $this->readOnly)) {
-                  throw new \RuntimeException("Property $name is read-only");
-              }
-              $this->data[$name] = $value;
-          }
-
-          public function __isset(string $name): bool {
-              return isset($this->data[$name]);
-          }
-
-          public function __unset(string $name): void {
-              unset($this->data[$name]);
-          }
-
-          public function markReadOnly(string $name): void {
-              $this->readOnly[] = $name;
-          }
-
-          public function toArray(): array {
-              return $this->data;
-          }
+      type Charge struct {
+          Amount   int64
+          Currency string
+          UserID   string
       }
-    src/Controllers/ProfileController.php: |
-      <?php
-      namespace App\Controllers;
 
-      class ProfileController {
-          public function show(): array {
-              return ['page' => 'profile'];
-          }
+      type Result struct {
+          TransactionID string
+          Success       bool
       }
-    src/Core/Configuration.php: |
-      <?php
-      namespace App\Core;
 
-      class Configuration {
-          private array $settings = [];
-          private bool $frozen = false;
-
-          public function get(string $key, mixed $default = null): mixed {
-              return $this->settings[$key] ?? $default;
-          }
-
-          public function set(string $key, mixed $value): void {
-              if ($this->frozen) {
-                  throw new \RuntimeException("Configuration is frozen");
-              }
-              $this->settings[$key] = $value;
-          }
-
-          public function has(string $key): bool {
-              return array_key_exists($key, $this->settings);
-          }
-
-          public function freeze(): void {
-              $this->frozen = true;
-          }
-
-          public function all(): array {
-              return $this->settings;
-          }
+      type Processor struct {
+          gateway Gateway
       }
-    src/Controllers/SettingsController.php: |
-      <?php
-      namespace App\Controllers;
 
-      class SettingsController {
-          public function show(): array {
-              return ['page' => 'settings', 'sections' => ['profile', 'security', 'notifications']];
-          }
-
-          public function update(string $section, array $values): array {
-              return ['section' => $section, 'updated' => true, 'values' => $values];
-          }
-
-          public function listSections(): array {
-              return ['profile', 'security', 'notifications', 'privacy'];
-          }
+      func NewProcessor(g Gateway) *Processor {
+          return &Processor{gateway: g}
       }
-    src/Core/PropertyBag.php: |
-      <?php
-      namespace App\Core;
 
-      class PropertyBag {
-          private array $properties = [];
-          private array $locked = [];
-
-          public function setProperty(string $name, mixed $value): void {
-              if (in_array($name, $this->locked)) {
-                  throw new \RuntimeException("Property $name is locked");
-              }
-              $this->properties[$name] = $value;
-          }
-
-          public function getProperty(string $name, mixed $default = null): mixed {
-              return $this->properties[$name] ?? $default;
-          }
-
-          public function lockProperty(string $name): void {
-              $this->locked[] = $name;
-          }
-
-          public function hasProperty(string $name): bool {
-              return array_key_exists($name, $this->properties);
-          }
+      func (p *Processor) Charge(c Charge) (Result, error) {
+          return p.gateway.Submit(c.Amount, c.Currency, c.UserID)
       }
-    src/Controllers/AccountController.php: |
-      <?php
-      namespace App\Controllers;
+    pkg/payment/gateway.go: |
+      package payment
 
-      class AccountController {
-          public function show(int $userId): array {
-              return ['page' => 'account', 'user_id' => $userId];
-          }
-
-          public function updateAccount(int $userId, array $data): array {
-              return ['user_id' => $userId, 'updated' => true, 'data' => $data];
-          }
-
-          public function deleteAccount(int $userId): bool {
-              return true;
-          }
+      type Gateway interface {
+          Submit(amount int64, currency, userID string) (Result, error)
       }
-    src/Core/EventDispatcher.php: |
-      <?php
-      namespace App\Core;
+    internal/checkout/service.go: |
+      package checkout
 
-      class EventDispatcher {
-          private array $listeners = [];
+      import "pkg/payment"
 
-          public function __call(string $name, array $arguments): mixed {
-              if (str_starts_with($name, 'on')) {
-                  $event = lcfirst(substr($name, 2));
-                  return $this->dispatch($event, $arguments[0] ?? null);
-              }
-              throw new \BadMethodCallException("Method $name does not exist");
-          }
-
-          public function listen(string $event, callable $listener): void {
-              $this->listeners[$event][] = $listener;
-          }
-
-          public function dispatch(string $event, mixed $payload = null): void {
-              foreach ($this->listeners[$event] ?? [] as $listener) {
-                  $listener($payload);
-              }
-          }
+      type CheckoutService struct {
+          processor *payment.Processor
       }
+
+      func NewCheckoutService(p *payment.Processor) *CheckoutService {
+          return &CheckoutService{processor: p}
+      }
+
+      func (s *CheckoutService) PlaceOrder(userID string, amount int64) (payment.Result, error) {
+          return s.processor.Charge(payment.Charge{
+              Amount:   amount,
+              Currency: "USD",
+              UserID:   userID,
+          })
+      }
+    internal/api/handler.go: |
+      package api
+
+      import "internal/checkout"
+
+      type OrderHandler struct {
+          checkout *checkout.CheckoutService
+      }
+
+      func NewOrderHandler(svc *checkout.CheckoutService) *OrderHandler {
+          return &OrderHandler{checkout: svc}
+      }
+
+      func (h *OrderHandler) HandleOrder(userID string, amount int64) error {
+          _, err := h.checkout.PlaceOrder(userID, amount)
+          return err
+      }
+    garbage/StreamLogger.go: |
+      package garbage
+
+      // GARBAGE_PHP007_A = "stream_logger_marker"
+
+      type StreamLogger struct{ Level string }
+    garbage/IoTConfig.go: |
+      package garbage
+
+      // GARBAGE_PHP007_B = "iot_config_marker"
+
+      type IoTConfig struct{ DeviceID string }
+    garbage/GameScore.go: |
+      package garbage
+
+      // GARBAGE_PHP007_C = "game_score_marker"
+
+      type GameScore struct{ Points int }
   changed_files:
-    src/Core/DynamicObject.php: |
-      <?php
-      namespace App\Core;
+    pkg/payment/processor.go: |
+      package payment
 
-      class DynamicObject {
-          private array $data = [];
-          private array $readOnly = [];
-
-          public function __get(string $name): mixed {
-              return $this->data[$name] ?? null;
-          }
-
-          public function __set(string $name, mixed $value): void {
-              if (in_array($name, $this->readOnly)) {
-                  throw new \RuntimeException("Property $name is read-only");
-              }
-              $this->data[$name] = $value;
-          }
-
-          public function __isset(string $name): bool {
-              return isset($this->data[$name]);
-          }
-
-          public function __unset(string $name): void {
-              unset($this->data[$name]);
-          }
-
-          public function markReadOnly(string $name): void {
-              $this->readOnly[] = $name;
-          }
-
-          public function toArray(): array {
-              return $this->data;
-          }
+      type Charge struct {
+          Amount   int64
+          Currency string
+          UserID   string
       }
-    src/Controllers/ProfileController.php: |
-      <?php
-      namespace App\Controllers;
 
-      use App\Core\DynamicObject;
-
-      class ProfileController {
-          public function show(): array {
-              return ['page' => 'profile'];
-          }
-
-          public function updateProfile(array $data): DynamicObject {
-              $profile = new DynamicObject();
-              $profile->name = $data['name'] ?? 'Anonymous';
-              $profile->email = $data['email'] ?? '';
-              $profile->markReadOnly('email');
-
-              if (isset($profile->name)) {
-                  $profile->displayName = strtoupper($profile->name);
-              }
-              return $profile;
-          }
+      type Result struct {
+          TransactionID string
+          Success       bool
       }
-    src/Core/Configuration.php: |
-      <?php
-      namespace App\Core;
 
-      class Configuration {
-          private array $settings = [];
-          private bool $frozen = false;
-
-          public function get(string $key, mixed $default = null): mixed {
-              return $this->settings[$key] ?? $default;
-          }
-
-          public function set(string $key, mixed $value): void {
-              if ($this->frozen) {
-                  throw new \RuntimeException("Configuration is frozen");
-              }
-              $this->settings[$key] = $value;
-          }
-
-          public function has(string $key): bool {
-              return array_key_exists($key, $this->settings);
-          }
-
-          public function freeze(): void {
-              $this->frozen = true;
-          }
-
-          public function all(): array {
-              return $this->settings;
-          }
+      type Processor struct {
+          gateway Gateway
       }
-    src/Controllers/SettingsController.php: |
-      <?php
-      namespace App\Controllers;
 
-      class SettingsController {
-          public function show(): array {
-              return ['page' => 'settings', 'sections' => ['profile', 'security', 'notifications']];
-          }
-
-          public function update(string $section, array $values): array {
-              return ['section' => $section, 'updated' => true, 'values' => $values];
-          }
-
-          public function listSections(): array {
-              return ['profile', 'security', 'notifications', 'privacy'];
-          }
+      func NewProcessor(g Gateway) *Processor {
+          return &Processor{gateway: g}
       }
-    src/Core/PropertyBag.php: |
-      <?php
-      namespace App\Core;
 
-      class PropertyBag {
-          private array $properties = [];
-          private array $locked = [];
-
-          public function setProperty(string $name, mixed $value): void {
-              if (in_array($name, $this->locked)) {
-                  throw new \RuntimeException("Property $name is locked");
-              }
-              $this->properties[$name] = $value;
-          }
-
-          public function getProperty(string $name, mixed $default = null): mixed {
-              return $this->properties[$name] ?? $default;
-          }
-
-          public function lockProperty(string $name): void {
-              $this->locked[] = $name;
-          }
-
-          public function hasProperty(string $name): bool {
-              return array_key_exists($name, $this->properties);
-          }
+      func (p *Processor) Charge(c Charge) (Result, error) {
+          return p.gateway.Submit(c.Amount, c.Currency, c.UserID)
       }
-    src/Controllers/AccountController.php: |
-      <?php
-      namespace App\Controllers;
 
-      class AccountController {
-          public function show(int $userId): array {
-              return ['page' => 'account', 'user_id' => $userId];
-          }
-
-          public function updateAccount(int $userId, array $data): array {
-              return ['user_id' => $userId, 'updated' => true, 'data' => $data];
-          }
-
-          public function deleteAccount(int $userId): bool {
-              return true;
-          }
+      func (p *Processor) Refund(transactionID string) error {
+          return p.gateway.Refund(transactionID)
       }
-    src/Core/EventDispatcher.php: |
-      <?php
-      namespace App\Core;
+    pkg/payment/gateway.go: |
+      package payment
 
-      class EventDispatcher {
-          private array $listeners = [];
-
-          public function __call(string $name, array $arguments): mixed {
-              if (str_starts_with($name, 'on')) {
-                  $event = lcfirst(substr($name, 2));
-                  return $this->dispatch($event, $arguments[0] ?? null);
-              }
-              throw new \BadMethodCallException("Method $name does not exist");
-          }
-
-          public function listen(string $event, callable $listener): void {
-              $this->listeners[$event][] = $listener;
-          }
-
-          public function dispatch(string $event, mixed $payload = null): void {
-              foreach ($this->listeners[$event] ?? [] as $listener) {
-                  $listener($payload);
-              }
-          }
+      type Gateway interface {
+          Submit(amount int64, currency, userID string) (Result, error)
+          Refund(transactionID string) error
       }
-  commit_message: Update files
+    internal/checkout/service.go: |
+      package checkout
+
+      import "pkg/payment"
+
+      type CheckoutService struct {
+          processor *payment.Processor
+      }
+
+      func NewCheckoutService(p *payment.Processor) *CheckoutService {
+          return &CheckoutService{processor: p}
+      }
+
+      func (s *CheckoutService) PlaceOrder(userID string, amount int64) (payment.Result, error) {
+          return s.processor.Charge(payment.Charge{
+              Amount:   amount,
+              Currency: "USD",
+              UserID:   userID,
+          })
+      }
+
+      func (s *CheckoutService) CancelOrder(transactionID string) error {
+          return s.processor.Refund(transactionID)
+      }
+    internal/api/handler.go: |
+      package api
+
+      import "internal/checkout"
+
+      type OrderHandler struct {
+          checkout *checkout.CheckoutService
+      }
+
+      func NewOrderHandler(svc *checkout.CheckoutService) *OrderHandler {
+          return &OrderHandler{checkout: svc}
+      }
+
+      func (h *OrderHandler) HandleOrder(userID string, amount int64) error {
+          _, err := h.checkout.PlaceOrder(userID, amount)
+          return err
+      }
+
+      func (h *OrderHandler) HandleCancellation(transactionID string) error {
+          return h.checkout.CancelOrder(transactionID)
+      }
+    garbage/StreamLogger.go: |
+      package garbage
+
+      // GARBAGE_PHP007_A = "stream_logger_marker"
+
+      type StreamLogger struct{ Level string }
+    garbage/IoTConfig.go: |
+      package garbage
+
+      // GARBAGE_PHP007_B = "iot_config_marker"
+
+      type IoTConfig struct{ DeviceID string }
+    garbage/GameScore.go: |
+      package garbage
+
+      // GARBAGE_PHP007_C = "game_score_marker"
+
+      type GameScore struct{ Points int }
+  commit_message: "feat: add Refund function to payment processor with 2-hop integration"
 fragments:
-- id: profilecontroller
+- id: refund_processor
   selector:
-    path: src/Controllers/ProfileController.php
-    anchor: $profile->name = $data['name']
-- id: profilecontroller_1
+    path: pkg/payment/processor.go
+    anchor: "func (p *Processor) Refund"
+- id: gateway_refund_iface
   selector:
-    path: src/Controllers/ProfileController.php
-    anchor: $profile->markReadOnly('email')
-- id: profilecontroller_2
+    path: pkg/payment/gateway.go
+    anchor: "Refund(transactionID string) error"
+- id: checkout_cancel
   selector:
-    path: src/Controllers/ProfileController.php
-    anchor: isset($profile->name)
-- id: dynamicobject
+    path: internal/checkout/service.go
+    anchor: "func (s *CheckoutService) CancelOrder"
+- id: handler_cancellation
   selector:
-    path: src/Core/DynamicObject.php
-    anchor: 'public function __set(string $name, mixed $value): void'
-- id: dynamicobject_1
+    path: internal/api/handler.go
+    anchor: "func (h *OrderHandler) HandleCancellation"
+- id: no_garbage_a
   selector:
-    path: src/Core/DynamicObject.php
-    anchor: 'public function __get(string $name): mixed'
-- id: dynamicobject_2
+    anchor: GARBAGE_PHP007_A
+- id: no_garbage_b
   selector:
-    path: src/Core/DynamicObject.php
-    anchor: 'public function markReadOnly(string $name): void'
-- id: no_configuration
+    anchor: GARBAGE_PHP007_B
+- id: no_garbage_c
   selector:
-    path: src/Core/Configuration.php
-- id: no_settingscontroller
-  selector:
-    path: src/Controllers/SettingsController.php
-- id: no_propertybag
-  selector:
-    path: src/Core/PropertyBag.php
-- id: no_accountcontroller
-  selector:
-    path: src/Controllers/AccountController.php
-- id: no_eventdispatcher
-  selector:
-    path: src/Core/EventDispatcher.php
-- id: no_global_0
-  selector:
-    anchor: class Configuration
-- id: no_global_1
-  selector:
-    anchor: freeze
-- id: no_global_2
-  selector:
-    anchor: class SettingsController
-- id: no_global_3
-  selector:
-    anchor: listSections
-- id: no_global_4
-  selector:
-    anchor: class PropertyBag
-- id: no_global_5
-  selector:
-    anchor: lockProperty
-- id: no_global_6
-  selector:
-    anchor: setProperty
-- id: no_global_7
-  selector:
-    anchor: class AccountController
-- id: no_global_8
-  selector:
-    anchor: updateAccount
-- id: no_global_9
-  selector:
-    anchor: deleteAccount
-- id: no_global_10
-  selector:
-    anchor: class EventDispatcher
-- id: no_global_11
-  selector:
-    anchor: __call
-- id: no_global_12
-  selector:
-    anchor: dispatch
+    anchor: GARBAGE_PHP007_C
 oracle:
   required:
-  - profilecontroller
-  - profilecontroller_1
-  - profilecontroller_2
-  - dynamicobject
-  - dynamicobject_1
-  - dynamicobject_2
-  allowed: []
+  - refund_processor
+  - gateway_refund_iface
+  - checkout_cancel
+  allowed:
+  - handler_cancellation
   forbidden:
-  - no_configuration
-  - no_settingscontroller
-  - no_propertybag
-  - no_accountcontroller
-  - no_eventdispatcher
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
-  - no_global_8
-  - no_global_9
-  - no_global_10
-  - no_global_11
-  - no_global_12
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

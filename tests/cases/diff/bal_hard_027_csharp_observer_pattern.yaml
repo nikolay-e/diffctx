@@ -1,0 +1,227 @@
+name: bal_hard_027_csharp_observer_pattern
+tags:
+- lang:csharp
+- change:multi_file
+- change:signature
+- context:cross_module
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/Events/IObserver.cs: |
+      namespace App.Events
+      {
+          public interface IObserver<T>
+          {
+              void OnNext(T value);
+          }
+      }
+    src/Events/IObservable.cs: |
+      namespace App.Events
+      {
+          public interface IObservable<T>
+          {
+              void Subscribe(IObserver<T> observer);
+              void Unsubscribe(IObserver<T> observer);
+          }
+      }
+    src/Events/EventStream.cs: |
+      namespace App.Events
+      {
+          using System.Collections.Generic;
+          public class EventStream<T> : IObservable<T>
+          {
+              private readonly List<IObserver<T>> _observers = new();
+              public void Subscribe(IObserver<T> observer) => _observers.Add(observer);
+              public void Unsubscribe(IObserver<T> observer) => _observers.Remove(observer);
+              public void Emit(T value)
+              {
+                  foreach (var observer in _observers)
+                  {
+                      observer.OnNext(value);
+                  }
+              }
+          }
+      }
+    src/Models/StockPrice.cs: |
+      namespace App.Models
+      {
+          public class StockPrice
+          {
+              public string Symbol { get; set; }
+              public decimal Price { get; set; }
+              public long Timestamp { get; set; }
+          }
+      }
+    src/Observers/PriceLogger.cs: |
+      namespace App.Observers
+      {
+          using System;
+          using App.Events;
+          using App.Models;
+          public class PriceLogger : IObserver<StockPrice>
+          {
+              public void OnNext(StockPrice value)
+              {
+                  Console.WriteLine($"[LOG] {value.Symbol}: {value.Price}");
+              }
+          }
+      }
+    src/Observers/ThresholdAlert.cs: |
+      namespace App.Observers
+      {
+          using System;
+          using App.Events;
+          using App.Models;
+          public class ThresholdAlert : IObserver<StockPrice>
+          {
+              private readonly decimal _threshold;
+              public ThresholdAlert(decimal threshold) { _threshold = threshold; }
+              public void OnNext(StockPrice value)
+              {
+                  if (value.Price > _threshold)
+                      Console.WriteLine($"[ALERT] {value.Symbol} exceeded {_threshold}");
+              }
+          }
+      }
+    src/Service/StockFeed.cs: |
+      namespace App.Service
+      {
+          using App.Events;
+          using App.Models;
+          public class StockFeed
+          {
+              private readonly EventStream<StockPrice> _stream = new();
+              public EventStream<StockPrice> Stream => _stream;
+              public void Publish(string symbol, decimal price)
+              {
+                  _stream.Emit(new StockPrice { Symbol = symbol, Price = price, Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() });
+              }
+          }
+      }
+    src/Helpers/DecimalExtensions.cs: |
+      namespace App.Helpers
+      {
+          public static class DecimalExtensions
+          {
+              public static string ToPercent(this decimal value) => $"{value * 100:F2}%";
+          }
+      }
+  changed_files:
+    src/Events/IObserver.cs: |
+      namespace App.Events
+      {
+          public interface IObserver<T>
+          {
+              void OnNext(T value);
+              void OnError(string error);
+          }
+      }
+    src/Events/EventStream.cs: |
+      namespace App.Events
+      {
+          using System;
+          using System.Collections.Generic;
+          public class EventStream<T> : IObservable<T>
+          {
+              private readonly List<IObserver<T>> _observers = new();
+              public void Subscribe(IObserver<T> observer) => _observers.Add(observer);
+              public void Unsubscribe(IObserver<T> observer) => _observers.Remove(observer);
+              public void Emit(T value)
+              {
+                  foreach (var observer in _observers)
+                  {
+                      try { observer.OnNext(value); }
+                      catch (Exception ex) { observer.OnError(ex.Message); }
+                  }
+              }
+          }
+      }
+    src/Observers/PriceLogger.cs: |
+      namespace App.Observers
+      {
+          using System;
+          using App.Events;
+          using App.Models;
+          public class PriceLogger : IObserver<StockPrice>
+          {
+              public void OnNext(StockPrice value)
+              {
+                  Console.WriteLine($"[LOG] {value.Symbol}: {value.Price}");
+              }
+              public void OnError(string error)
+              {
+                  Console.WriteLine($"[LOG-ERROR] {error}");
+              }
+          }
+      }
+    src/Observers/ThresholdAlert.cs: |
+      namespace App.Observers
+      {
+          using System;
+          using App.Events;
+          using App.Models;
+          public class ThresholdAlert : IObserver<StockPrice>
+          {
+              private readonly decimal _threshold;
+              public ThresholdAlert(decimal threshold) { _threshold = threshold; }
+              public void OnNext(StockPrice value)
+              {
+                  if (value.Price > _threshold)
+                      Console.WriteLine($"[ALERT] {value.Symbol} exceeded {_threshold}");
+              }
+              public void OnError(string error)
+              {
+                  Console.WriteLine($"[ALERT-ERROR] {error}");
+              }
+          }
+      }
+  commit_message: "feat: add error handling to observer pattern"
+fragments:
+- id: observer_on_error
+  selector:
+    path: IObserver.cs
+    anchor: "void OnError(string error)"
+- id: stream_catches_exception
+  selector:
+    path: EventStream.cs
+    anchor: "observer.OnError(ex.Message)"
+- id: logger_on_error
+  selector:
+    path: PriceLogger.cs
+    anchor: "public void OnError(string error)"
+- id: alert_on_error
+  selector:
+    path: ThresholdAlert.cs
+    anchor: "public void OnError(string error)"
+- id: observable_interface
+  selector:
+    path: IObservable.cs
+    anchor: "public interface IObservable"
+- id: stock_feed_publishes
+  selector:
+    path: StockFeed.cs
+    anchor: "_stream.Emit"
+- id: stock_price_model
+  selector:
+    path: StockPrice.cs
+    anchor: "public class StockPrice"
+- id: no_decimal_extensions
+  selector:
+    path: Helpers/DecimalExtensions.cs
+- id: no_to_percent
+  selector:
+    anchor: "public static string ToPercent"
+oracle:
+  required:
+  - observer_on_error
+  - stream_catches_exception
+  - logger_on_error
+  - alert_on_error
+  - observable_interface
+  - stock_feed_publishes
+  - stock_price_model
+  allowed: []
+  forbidden:
+  - no_decimal_extensions
+  - no_to_percent

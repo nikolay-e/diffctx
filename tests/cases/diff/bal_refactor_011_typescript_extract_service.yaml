@@ -1,0 +1,230 @@
+name: bal_refactor_011_typescript_extract_service
+tags:
+- lang:scala
+- change:multi_file
+- change:new_function
+- context:cross_module
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/logistics/Shipment.scala: |
+      package logistics
+
+      case class Shipment(
+        id: String,
+        origin: String,
+        destination: String,
+        weightKg: Double,
+        status: String
+      )
+    src/main/scala/logistics/ShipmentRepository.scala: |
+      package logistics
+
+      class ShipmentRepository {
+        private var store: Map[String, Shipment] = Map.empty
+
+        def save(s: Shipment): Unit = {
+          store = store + (s.id -> s)
+        }
+
+        def find(id: String): Option[Shipment] = store.get(id)
+
+        def all(): List[Shipment] = store.values.toList
+      }
+    src/main/scala/logistics/ShipmentService.scala: |
+      package logistics
+
+      class ShipmentService(repo: ShipmentRepository) {
+        def dispatch(id: String): Either[String, Shipment] = {
+          repo.find(id) match {
+            case None    => Left(s"Shipment $id not found")
+            case Some(s) => Right(s.copy(status = "dispatched"))
+          }
+        }
+      }
+    src/main/scala/logistics/api/ShipmentController.scala: |
+      package logistics.api
+
+      import logistics.{ShipmentService, ShipmentRepository, Shipment}
+
+      class ShipmentController(service: ShipmentService) {
+        def handleDispatch(id: String): String = {
+          service.dispatch(id) match {
+            case Right(s) => s"OK: dispatched ${s.id}"
+            case Left(e)  => s"ERROR: $e"
+          }
+        }
+      }
+    src/main/scala/REFACTOR011_Audit.scala: |
+      package audit
+
+      object REFACTOR011_Audit {
+        val REFACTOR011_GARBAGE_A = "audit_marker"
+        val REFACTOR011_GARBAGE_B = "log_level"
+
+        def log(msg: String): Unit = println(s"[AUDIT] $msg")
+      }
+    src/main/scala/REFACTOR011_Metrics.scala: |
+      package metrics
+
+      object REFACTOR011_Metrics {
+        val REFACTOR011_GARBAGE_C = "metrics_marker"
+        val REFACTOR011_GARBAGE_D = "statsd_host"
+
+        def record(name: String, value: Double): Unit = {}
+      }
+    src/main/scala/REFACTOR011_Cache.scala: |
+      package cache
+
+      object REFACTOR011_Cache {
+        val REFACTOR011_GARBAGE_E = "cache_marker"
+
+        def get(key: String): Option[String] = None
+      }
+  changed_files:
+    src/main/scala/logistics/Shipment.scala: |
+      package logistics
+
+      case class Shipment(
+        id: String,
+        origin: String,
+        destination: String,
+        weightKg: Double,
+        status: String,
+        estimatedDays: Int
+      )
+    src/main/scala/logistics/ShipmentRepository.scala: |
+      package logistics
+
+      class ShipmentRepository {
+        private var store: Map[String, Shipment] = Map.empty
+
+        def save(s: Shipment): Unit = {
+          store = store + (s.id -> s)
+        }
+
+        def find(id: String): Option[Shipment] = store.get(id)
+
+        def all(): List[Shipment] = store.values.toList
+
+        def findByStatus(status: String): List[Shipment] =
+          store.values.filter(_.status == status).toList
+      }
+    src/main/scala/logistics/ShipmentService.scala: |
+      package logistics
+
+      class ShipmentService(repo: ShipmentRepository) {
+        def dispatch(id: String): Either[String, Shipment] = {
+          repo.find(id) match {
+            case None    => Left(s"Shipment $id not found")
+            case Some(s) => Right(s.copy(status = "dispatched"))
+          }
+        }
+
+        def estimateDelivery(id: String, speedFactor: Double): Either[String, Int] = {
+          repo.find(id) match {
+            case None    => Left(s"Shipment $id not found")
+            case Some(s) => Right(Math.ceil(s.estimatedDays / speedFactor).toInt)
+          }
+        }
+
+        def listPending(): List[Shipment] = repo.findByStatus("pending")
+      }
+    src/main/scala/logistics/api/ShipmentController.scala: |
+      package logistics.api
+
+      import logistics.{ShipmentService, ShipmentRepository, Shipment}
+
+      class ShipmentController(service: ShipmentService) {
+        def handleDispatch(id: String): String = {
+          service.dispatch(id) match {
+            case Right(s) => s"OK: dispatched ${s.id}"
+            case Left(e)  => s"ERROR: $e"
+          }
+        }
+
+        def handleEstimate(id: String): String = {
+          service.estimateDelivery(id, 1.5) match {
+            case Right(days) => s"ETA: $days days"
+            case Left(e)     => s"ERROR: $e"
+          }
+        }
+      }
+    src/main/scala/REFACTOR011_Audit.scala: |
+      package audit
+
+      object REFACTOR011_Audit {
+        val REFACTOR011_GARBAGE_A = "audit_marker"
+        val REFACTOR011_GARBAGE_B = "log_level"
+
+        def log(msg: String): Unit = println(s"[AUDIT] $msg")
+      }
+    src/main/scala/REFACTOR011_Metrics.scala: |
+      package metrics
+
+      object REFACTOR011_Metrics {
+        val REFACTOR011_GARBAGE_C = "metrics_marker"
+        val REFACTOR011_GARBAGE_D = "statsd_host"
+
+        def record(name: String, value: Double): Unit = {}
+      }
+    src/main/scala/REFACTOR011_Cache.scala: |
+      package cache
+
+      object REFACTOR011_Cache {
+        val REFACTOR011_GARBAGE_E = "cache_marker"
+
+        def get(key: String): Option[String] = None
+      }
+  commit_message: "feat: add estimateDelivery, listPending to ShipmentService; estimatedDays to Shipment"
+fragments:
+- id: shipment_estimated_days
+  selector:
+    path: src/main/scala/logistics/Shipment.scala
+    anchor: "estimatedDays: Int"
+- id: repo_find_by_status
+  selector:
+    path: src/main/scala/logistics/ShipmentRepository.scala
+    anchor: "def findByStatus(status: String)"
+- id: service_estimate_delivery
+  selector:
+    path: src/main/scala/logistics/ShipmentService.scala
+    anchor: "def estimateDelivery(id: String, speedFactor: Double)"
+- id: service_list_pending
+  selector:
+    path: src/main/scala/logistics/ShipmentService.scala
+    anchor: "def listPending()"
+- id: controller_handle_estimate
+  selector:
+    path: src/main/scala/logistics/api/ShipmentController.scala
+    anchor: "def handleEstimate(id: String)"
+- id: no_garbage_a
+  selector:
+    anchor: REFACTOR011_GARBAGE_A
+- id: no_garbage_b
+  selector:
+    anchor: REFACTOR011_GARBAGE_B
+- id: no_garbage_c
+  selector:
+    anchor: REFACTOR011_GARBAGE_C
+- id: no_garbage_d
+  selector:
+    anchor: REFACTOR011_GARBAGE_D
+- id: no_garbage_e
+  selector:
+    anchor: REFACTOR011_GARBAGE_E
+oracle:
+  required:
+  - shipment_estimated_days
+  - repo_find_by_status
+  - service_estimate_delivery
+  - service_list_pending
+  - controller_handle_estimate
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d
+  - no_garbage_e

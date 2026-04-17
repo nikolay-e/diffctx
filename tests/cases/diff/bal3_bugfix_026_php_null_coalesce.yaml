@@ -1,0 +1,149 @@
+name: bal3_bugfix_026_php_null_coalesce
+tags:
+- lang:erlang
+- change:new_function
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/risk_score.erl: |
+      -module(risk_score).
+      -export([credit_score/1, fraud_probability/1]).
+
+      credit_score(Factors) ->
+          BaseScore = maps:get(payment_history, Factors, 0),
+          Utilization = maps:get(utilization_ratio, Factors, 0.5),
+          round(BaseScore * (1.0 - Utilization)).
+
+      fraud_probability(Signals) ->
+          VelocityScore = maps:get(tx_velocity, Signals, 0),
+          LocationScore = maps:get(location_mismatch, Signals, 0),
+          (VelocityScore + LocationScore) / 2.
+    src/loan_decision.erl: |
+      -module(loan_decision).
+      -export([evaluate/2]).
+
+      evaluate(CreditFactors, Amount) ->
+          Score = risk_score:credit_score(CreditFactors),
+          if
+              Score >= 700 -> {approved, Amount};
+              Score >= 500 -> {approved, Amount div 2};
+              true -> {rejected, insufficient_credit_score}
+          end.
+    src/compliance.erl: |
+      -module(compliance).
+      -export([aml_check/1]).
+
+      aml_check(TransactionId) ->
+          io:format("AML check for ~p~n", [TransactionId]).
+    garbage/kyc.erl: |
+      % GARBAGE_BAL3BFX26_KYC_A = "kyc_marker"
+    garbage/sanctions.erl: |
+      % GARBAGE_BAL3BFX26_SANC_B = "sanctions_marker"
+    garbage/reporting.erl: |
+      % GARBAGE_BAL3BFX26_REP_C = "reporting_marker"
+    garbage/audit.erl: |
+      % GARBAGE_BAL3BFX26_AUDIT_D = "audit_marker"
+  changed_files:
+    src/risk_score.erl: |
+      -module(risk_score).
+      -export([credit_score/1, fraud_probability/1, composite_risk/2]).
+
+      credit_score(Factors) ->
+          BaseScore = maps:get(payment_history, Factors, 0),
+          Utilization = maps:get(utilization_ratio, Factors, 0.5),
+          round(BaseScore * (1.0 - Utilization)).
+
+      fraud_probability(Signals) ->
+          VelocityScore = maps:get(tx_velocity, Signals, 0),
+          LocationScore = maps:get(location_mismatch, Signals, 0),
+          (VelocityScore + LocationScore) / 2.
+
+      composite_risk(CreditFactors, FraudSignals) ->
+          Credit = credit_score(CreditFactors),
+          Fraud = fraud_probability(FraudSignals),
+          #{credit => Credit, fraud => Fraud, overall => Credit - round(Fraud * 100)}.
+    src/loan_decision.erl: |
+      -module(loan_decision).
+      -export([evaluate/2, evaluate_with_fraud/3]).
+
+      evaluate(CreditFactors, Amount) ->
+          Score = risk_score:credit_score(CreditFactors),
+          if
+              Score >= 700 -> {approved, Amount};
+              Score >= 500 -> {approved, Amount div 2};
+              true -> {rejected, insufficient_credit_score}
+          end.
+
+      evaluate_with_fraud(CreditFactors, FraudSignals, Amount) ->
+          #{credit := Credit, fraud := Fraud} =
+              risk_score:composite_risk(CreditFactors, FraudSignals),
+          if
+              Fraud > 0.7 -> {rejected, high_fraud_risk};
+              Credit >= 700 -> {approved, Amount};
+              Credit >= 500 -> {approved, Amount div 2};
+              true -> {rejected, insufficient_credit_score}
+          end.
+    src/compliance.erl: |
+      -module(compliance).
+      -export([aml_check/1]).
+
+      aml_check(TransactionId) ->
+          io:format("AML check for ~p~n", [TransactionId]).
+    garbage/kyc.erl: |
+      % GARBAGE_BAL3BFX26_KYC_A = "kyc_marker"
+    garbage/sanctions.erl: |
+      % GARBAGE_BAL3BFX26_SANC_B = "sanctions_marker"
+    garbage/reporting.erl: |
+      % GARBAGE_BAL3BFX26_REP_C = "reporting_marker"
+    garbage/audit.erl: |
+      % GARBAGE_BAL3BFX26_AUDIT_D = "audit_marker"
+  commit_message: "feat: add composite_risk/2 to risk_score and use it in loan_decision"
+fragments:
+- id: composite_risk_func
+  selector:
+    path: src/risk_score.erl
+    anchor: "composite_risk(CreditFactors, FraudSignals) ->"
+- id: composite_risk_export
+  selector:
+    path: src/risk_score.erl
+    anchor: "-export([credit_score/1, fraud_probability/1, composite_risk/2])."
+- id: loan_calls_composite
+  selector:
+    path: src/loan_decision.erl
+    anchor: "risk_score:composite_risk(CreditFactors, FraudSignals)"
+- id: loan_evaluate_with_fraud
+  selector:
+    path: src/loan_decision.erl
+    anchor: "evaluate_with_fraud(CreditFactors, FraudSignals, Amount) ->"
+- id: unrelated_compliance
+  selector:
+    path: src/compliance.erl
+    anchor: "aml_check(TransactionId) ->"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_BAL3BFX26_KYC_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_BAL3BFX26_SANC_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_BAL3BFX26_REP_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_BAL3BFX26_AUDIT_D
+oracle:
+  required:
+  - composite_risk_func
+  - loan_calls_composite
+  allowed:
+  - composite_risk_export
+  - loan_evaluate_with_fraud
+  forbidden:
+  - unrelated_compliance
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

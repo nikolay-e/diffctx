@@ -1,0 +1,199 @@
+name: bal3_testctx_028_rust_cache_store_test
+tags:
+- lang:rust
+- change:single_file
+- change:refactor
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/cache.rs: |
+      use std::collections::HashMap;
+
+      pub struct Cache {
+          data: HashMap<String, String>,
+      }
+
+      impl Cache {
+          pub fn new() -> Self {
+              Cache { data: HashMap::new() }
+          }
+
+          pub fn put(&mut self, key: String, value: String) {
+              self.data.insert(key, value);
+          }
+
+          pub fn get(&self, key: &str) -> Option<&String> {
+              self.data.get(key)
+          }
+
+          pub fn remove(&mut self, key: &str) -> Option<String> {
+              self.data.remove(key)
+          }
+
+          pub fn clear(&mut self) {
+              self.data.clear();
+          }
+      }
+    tests/cache_test.rs: |
+      use mylib::cache::Cache;
+
+      #[test]
+      fn test_put_and_get() {
+          let mut c = Cache::new();
+          c.put("key".into(), "value".into());
+          assert_eq!(c.get("key"), Some(&"value".to_string()));
+      }
+
+      #[test]
+      fn test_remove() {
+          let mut c = Cache::new();
+          c.put("key".into(), "value".into());
+          assert_eq!(c.remove("key"), Some("value".to_string()));
+          assert_eq!(c.get("key"), None);
+      }
+
+      #[test]
+      fn test_clear() {
+          let mut c = Cache::new();
+          c.put("a".into(), "1".into());
+          c.put("b".into(), "2".into());
+          c.clear();
+          assert_eq!(c.get("a"), None);
+      }
+    src/metrics.rs: |
+      pub struct Counter {
+          value: u64,
+      }
+
+      impl Counter {
+          pub fn new() -> Self {
+              Counter { value: 0 }
+          }
+
+          pub fn increment(&mut self) {
+              self.value += 1;
+          }
+
+          pub fn get(&self) -> u64 {
+              self.value
+          }
+      }
+  changed_files:
+    src/cache.rs: |
+      use std::collections::HashMap;
+      use std::time::{Duration, Instant};
+
+      struct CacheEntry {
+          value: String,
+          expires_at: Option<Instant>,
+      }
+
+      pub struct Cache {
+          data: HashMap<String, CacheEntry>,
+          max_size: usize,
+      }
+
+      impl Cache {
+          pub fn new() -> Self {
+              Cache { data: HashMap::new(), max_size: 1000 }
+          }
+
+          pub fn with_max_size(max_size: usize) -> Self {
+              Cache { data: HashMap::new(), max_size }
+          }
+
+          pub fn put(&mut self, key: String, value: String) {
+              if self.data.len() >= self.max_size && !self.data.contains_key(&key) {
+                  self.evict_expired();
+              }
+              self.data.insert(key, CacheEntry { value, expires_at: None });
+          }
+
+          pub fn put_with_ttl(&mut self, key: String, value: String, ttl: Duration) {
+              let expires_at = Some(Instant::now() + ttl);
+              self.data.insert(key, CacheEntry { value, expires_at });
+          }
+
+          pub fn get(&self, key: &str) -> Option<&str> {
+              self.data.get(key).and_then(|entry| {
+                  if let Some(exp) = entry.expires_at {
+                      if Instant::now() > exp {
+                          return None;
+                      }
+                  }
+                  Some(entry.value.as_str())
+              })
+          }
+
+          pub fn remove(&mut self, key: &str) -> Option<String> {
+              self.data.remove(key).map(|entry| entry.value)
+          }
+
+          pub fn clear(&mut self) {
+              self.data.clear();
+          }
+
+          pub fn len(&self) -> usize {
+              self.data.len()
+          }
+
+          fn evict_expired(&mut self) {
+              let now = Instant::now();
+              self.data.retain(|_, entry| {
+                  entry.expires_at.map_or(true, |exp| now <= exp)
+              });
+          }
+      }
+  commit_message: "refactor: add TTL support, max_size, and eviction to Cache"
+fragments:
+- id: cache_entry_struct
+  selector:
+    path: src/cache.rs
+    anchor: "struct CacheEntry"
+- id: with_max_size
+  selector:
+    path: src/cache.rs
+    anchor: "pub fn with_max_size(max_size: usize)"
+- id: put_with_ttl
+  selector:
+    path: src/cache.rs
+    anchor: "pub fn put_with_ttl"
+- id: get_expiry_check
+  selector:
+    path: src/cache.rs
+    anchor: "Instant::now() > exp"
+- id: evict_expired
+  selector:
+    path: src/cache.rs
+    anchor: "fn evict_expired"
+- id: test_put_get
+  selector:
+    path: tests/cache_test.rs
+    anchor: "fn test_put_and_get()"
+- id: test_remove
+  selector:
+    path: tests/cache_test.rs
+    anchor: "fn test_remove()"
+- id: test_clear
+  selector:
+    path: tests/cache_test.rs
+    anchor: "fn test_clear()"
+- id: no_metrics
+  selector:
+    path: src/metrics.rs
+    anchor: "pub struct Counter"
+oracle:
+  required:
+  - cache_entry_struct
+  - with_max_size
+  - put_with_ttl
+  - get_expiry_check
+  - test_put_get
+  allowed:
+  - evict_expired
+  - test_remove
+  - test_clear
+  forbidden:
+  - no_metrics

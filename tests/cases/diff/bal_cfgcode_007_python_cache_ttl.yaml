@@ -1,0 +1,179 @@
+name: bal_cfgcode_007_python_cache_ttl
+tags:
+- lang:python
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    config/cache.yaml: |
+      cache:
+        backend: redis
+        default_ttl: 300
+        key_prefix: "app:"
+        pools:
+          sessions: 1800
+          queries: 60
+    src/cache_manager.py: |
+      import yaml
+
+      class CacheManager:
+          def __init__(self):
+              with open("config/cache.yaml") as f:
+                  data = yaml.safe_load(f)
+              self.cfg = data["cache"]
+              self.backend = self.cfg["backend"]
+              self.default_ttl = self.cfg["default_ttl"]
+              self.prefix = self.cfg["key_prefix"]
+
+          def get_ttl(self, pool_name):
+              pools = self.cfg.get("pools", {})
+              return pools.get(pool_name, self.default_ttl)
+    src/session_store.py: |
+      import yaml
+
+      def get_session_ttl():
+          with open("config/cache.yaml") as f:
+              data = yaml.safe_load(f)
+          return data["cache"]["pools"]["sessions"]
+    src/metrics.py: |
+      GARBAGE_CFGCODE_007_METRIC_A = "counter"
+      GARBAGE_CFGCODE_007_METRIC_B = 0
+
+      class MetricsCollector:
+          def record(self, name, value):
+              pass
+    src/scheduler.py: |
+      GARBAGE_CFGCODE_007_SCHED_C = "cron"
+      GARBAGE_CFGCODE_007_SCHED_D = "* * * * *"
+
+      def run_periodic(func, interval):
+          pass
+    src/migrations.py: |
+      GARBAGE_CFGCODE_007_MIG_E = "v1"
+      GARBAGE_CFGCODE_007_MIG_F = []
+
+      def migrate():
+          pass
+  changed_files:
+    config/cache.yaml: |
+      cache:
+        backend: redis
+        default_ttl: 600
+        key_prefix: "prod:"
+        pools:
+          sessions: 3600
+          queries: 120
+          api_responses: 30
+        eviction_policy: allkeys-lru
+        max_memory: "256mb"
+    src/cache_manager.py: |
+      import yaml
+
+      class CacheManager:
+          def __init__(self):
+              with open("config/cache.yaml") as f:
+                  data = yaml.safe_load(f)
+              self.cfg = data["cache"]
+              self.backend = self.cfg["backend"]
+              self.default_ttl = self.cfg["default_ttl"]
+              self.prefix = self.cfg["key_prefix"]
+
+          def get_ttl(self, pool_name):
+              pools = self.cfg.get("pools", {})
+              return pools.get(pool_name, self.default_ttl)
+    src/session_store.py: |
+      import yaml
+
+      def get_session_ttl():
+          with open("config/cache.yaml") as f:
+              data = yaml.safe_load(f)
+          return data["cache"]["pools"]["sessions"]
+    src/metrics.py: |
+      GARBAGE_CFGCODE_007_METRIC_A = "counter"
+      GARBAGE_CFGCODE_007_METRIC_B = 0
+
+      class MetricsCollector:
+          def record(self, name, value):
+              pass
+    src/scheduler.py: |
+      GARBAGE_CFGCODE_007_SCHED_C = "cron"
+      GARBAGE_CFGCODE_007_SCHED_D = "* * * * *"
+
+      def run_periodic(func, interval):
+          pass
+    src/migrations.py: |
+      GARBAGE_CFGCODE_007_MIG_E = "v1"
+      GARBAGE_CFGCODE_007_MIG_F = []
+
+      def migrate():
+          pass
+  commit_message: "config: increase cache TTLs and add eviction policy"
+fragments:
+- id: config_default_ttl
+  selector:
+    path: config/cache.yaml
+    anchor: "default_ttl: 600"
+- id: config_eviction
+  selector:
+    path: config/cache.yaml
+    anchor: "eviction_policy: allkeys-lru"
+- id: config_api_pool
+  selector:
+    path: config/cache.yaml
+    anchor: "api_responses: 30"
+- id: cache_manager_reads
+  selector:
+    path: src/cache_manager.py
+    anchor: 'self.cfg["default_ttl"]'
+- id: session_store_reads
+  selector:
+    path: src/session_store.py
+    anchor: '["cache"]["pools"]["sessions"]'
+- id: no_metrics
+  selector:
+    path: src/metrics.py
+- id: no_scheduler
+  selector:
+    path: src/scheduler.py
+- id: no_migrations
+  selector:
+    path: src/migrations.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_007_METRIC_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_007_METRIC_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_007_SCHED_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_007_SCHED_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CFGCODE_007_MIG_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CFGCODE_007_MIG_F
+oracle:
+  required:
+  - config_default_ttl
+  - config_eviction
+  - config_api_pool
+  - cache_manager_reads
+  - session_store_reads
+  allowed: []
+  forbidden:
+  - no_metrics
+  - no_scheduler
+  - no_migrations
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

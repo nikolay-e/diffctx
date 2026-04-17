@@ -1,0 +1,135 @@
+name: gap2_093_yaml_config_import_chain_helm_redis
+tags:
+- change:config
+- change:multi_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:yaml
+xfail:
+  category: low-relevance-threshold-tuning
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    charts/app/values.yaml: |
+      replicaCount: 2
+      image:
+        repository: myapp
+        tag: latest
+      redis:
+        host: redis-master
+        port: 6379
+        db: 0
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+    charts/app/templates/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: myapp
+      spec:
+        replicas: "{{ .Values.replicaCount }}"
+        template:
+          spec:
+            containers:
+            - name: app
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              env:
+              - name: REDIS_HOST
+                value: "{{ .Values.redis.host }}"
+              - name: REDIS_PORT
+                value: "{{ .Values.redis.port }}"
+    charts/app/templates/configmap.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: myapp-config
+      data:
+        REDIS_URL: "redis://{{ .Values.redis.host }}:{{ .Values.redis.port }}/{{ .Values.redis.db }}"
+    charts/app/templates/hpa.yaml: |
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: myapp-hpa
+      spec:
+        minReplicas: 1
+        maxReplicas: 10
+        metrics:
+        - type: Resource
+          resource:
+            name: cpu
+            target:
+              type: Utilization
+              averageUtilization: 70
+    monitoring/grafana-dashboard.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: TRAP_GAP2_093_GRAFANA_A
+      data:
+        TRAP_GAP2_093_GRAFANA_B: "dashboard_json"
+  changed_files:
+    charts/app/values.yaml: |
+      replicaCount: 3
+      image:
+        repository: myapp
+        tag: latest
+      redis:
+        host: redis-sentinel
+        port: 26379
+        db: 0
+        sentinel:
+          enabled: true
+          masterSet: mymaster
+      resources:
+        requests:
+          cpu: 200m
+          memory: 256Mi
+    charts/app/templates/configmap.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: myapp-config
+      data:
+        REDIS_URL: "redis://{{ .Values.redis.host }}:{{ .Values.redis.port }}/{{ .Values.redis.db }}"
+        REDIS_SENTINEL_ENABLED: "{{ .Values.redis.sentinel.enabled }}"
+        REDIS_SENTINEL_MASTER: "{{ .Values.redis.sentinel.masterSet }}"
+  commit_message: Update files
+fragments:
+- id: sentinel_config
+  selector:
+    path: charts/app/values.yaml
+    anchor: "masterSet: mymaster"
+- id: redis_host
+  selector:
+    path: charts/app/values.yaml
+    anchor: "host: redis-sentinel"
+- id: configmap_sentinel
+  selector:
+    path: charts/app/templates/configmap.yaml
+    anchor: REDIS_SENTINEL_ENABLED
+- id: no_hpa
+  selector:
+    path: charts/app/templates/hpa.yaml
+- id: no_grafana
+  selector:
+    path: monitoring/grafana-dashboard.yaml
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_093_GRAFANA_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_093_GRAFANA_B
+oracle:
+  required:
+  - sentinel_config
+  - redis_host
+  - configmap_sentinel
+  forbidden:
+  - no_hpa
+  - no_grafana
+  - no_global_0
+  - no_global_1

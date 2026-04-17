@@ -1,0 +1,137 @@
+name: gap2_181_php_signature_crossmod_vet_appointment
+tags:
+- change:signature
+- change:single_file
+- context:cross_module
+- difficulty:easy
+- distance:0hop
+- lang:php
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/Vet/AppointmentService.php: |
+      <?php
+
+      namespace App\Vet;
+
+      use App\Vet\AnimalRecord;
+
+      class AppointmentService
+      {
+          private array $slots = [];
+
+          public function schedule(AnimalRecord $animal, string $date): string
+          {
+              $id = uniqid('apt_');
+              $this->slots[$id] = ['animal' => $animal->name(), 'date' => $date];
+              return $id;
+          }
+
+          public function cancel(string $appointmentId): bool
+          {
+              if (!isset($this->slots[$appointmentId])) {
+                  return false;
+              }
+              unset($this->slots[$appointmentId]);
+              return true;
+          }
+      }
+    src/Vet/AnimalRecord.php: |
+      <?php
+
+      namespace App\Vet;
+
+      class AnimalRecord
+      {
+          private string $petName;
+          private string $species;
+
+          public function __construct(string $petName, string $species)
+          {
+              $this->petName = $petName;
+              $this->species = $species;
+          }
+
+          public function name(): string
+          {
+              return $this->petName;
+          }
+
+          public function species(): string
+          {
+              return $this->species;
+          }
+      }
+    src/Billing/InvoiceGenerator.php: |
+      <?php
+
+      namespace App\Billing;
+
+      class InvoiceGenerator
+      {
+          public function generate(string $clientId, float $amount): string
+          {
+              return sprintf("INV-%s-%.2f", $clientId, $amount);
+          }
+      }
+  changed_files:
+    src/Vet/AppointmentService.php: |
+      <?php
+
+      namespace App\Vet;
+
+      use App\Vet\AnimalRecord;
+
+      class AppointmentService
+      {
+          private array $slots = [];
+
+          public function schedule(AnimalRecord $animal, string $date, int $durationMinutes = 30): string
+          {
+              $id = uniqid('apt_');
+              $this->slots[$id] = [
+                  'animal' => $animal->name(),
+                  'date' => $date,
+                  'duration' => $durationMinutes,
+              ];
+              return $id;
+          }
+
+          public function cancel(string $appointmentId): bool
+          {
+              if (!isset($this->slots[$appointmentId])) {
+                  return false;
+              }
+              unset($this->slots[$appointmentId]);
+              return true;
+          }
+      }
+  commit_message: "feat: add duration parameter to vet appointment scheduling"
+fragments:
+- id: schedule_sig
+  selector:
+    path: src/Vet/AppointmentService.php
+    anchor: "public function schedule"
+- id: duration_field
+  selector:
+    path: src/Vet/AppointmentService.php
+    anchor: "'duration' => $durationMinutes"
+- id: animal_name
+  selector:
+    path: src/Vet/AnimalRecord.php
+    anchor: "public function name"
+- id: no_billing
+  selector:
+    path: src/Billing/InvoiceGenerator.php
+- id: no_invoice
+  selector:
+    anchor: InvoiceGenerator
+oracle:
+  required:
+  - schedule_sig
+  - duration_field
+  - animal_name
+  forbidden:
+  - no_billing
+  - no_invoice

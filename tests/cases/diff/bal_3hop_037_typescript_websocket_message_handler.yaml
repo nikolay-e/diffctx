@@ -1,0 +1,227 @@
+name: bal_3hop_037_typescript_websocket_message_handler
+tags:
+- lang:typescript
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/protocol/messages.ts: |
+      export interface WsMessage {
+        type: 'chat' | 'system';
+        sender: string;
+        content: string;
+      }
+
+      export function serializeMessage(msg: WsMessage): string {
+        return JSON.stringify(msg);
+      }
+
+      export function deserializeMessage(raw: string): WsMessage {
+        return JSON.parse(raw);
+      }
+    src/protocol/validator.ts: |
+      import { WsMessage } from './messages';
+
+      export function validateMessage(msg: WsMessage): boolean {
+        if (!msg.type || !msg.sender || !msg.content) return false;
+        if (msg.content.length > 1000) return false;
+        return true;
+      }
+    src/handlers/chatRoom.ts: |
+      import { validateMessage } from '../protocol/validator';
+      import { WsMessage, deserializeMessage } from '../protocol/messages';
+
+      export class ChatRoom {
+        private clients: Set<any> = new Set();
+
+        addClient(ws: any): void {
+          this.clients.add(ws);
+        }
+
+        handleMessage(raw: string): void {
+          const msg = deserializeMessage(raw);
+          if (!validateMessage(msg)) return;
+          this.broadcast(msg);
+        }
+
+        private broadcast(msg: WsMessage): void {
+          this.clients.forEach(ws => ws.send(JSON.stringify(msg)));
+        }
+      }
+    src/server/wsServer.ts: |
+      import { ChatRoom } from '../handlers/chatRoom';
+
+      export class WsServer {
+        private room = new ChatRoom();
+
+        onConnection(ws: any): void {
+          this.room.addClient(ws);
+          ws.on('message', (data: string) => {
+            this.room.handleMessage(data);
+          });
+        }
+      }
+    src/utils/metrics.ts: |
+      GARBAGE_037_METRICS_MARKER_A = "metrics";
+      GARBAGE_037_COUNTER_MARKER_B = 0;
+
+      export class MetricsCollector {
+        private counters: Map<string, number> = new Map();
+        increment(name: string): void {
+          this.counters.set(name, (this.counters.get(name) || 0) + 1);
+        }
+      }
+    src/utils/compress.ts: |
+      GARBAGE_037_COMPRESS_MARKER_C = "compress";
+      GARBAGE_037_GZIP_MARKER_D = true;
+
+      export function compress(data: string): Buffer {
+        return Buffer.from(data);
+      }
+  changed_files:
+    src/protocol/messages.ts: |
+      export interface WsMessage {
+        type: 'chat' | 'system' | 'presence';
+        sender: string;
+        content: string;
+        room?: string;
+      }
+
+      export function serializeMessage(msg: WsMessage): string {
+        return JSON.stringify(msg);
+      }
+
+      export function deserializeMessage(raw: string): WsMessage {
+        return JSON.parse(raw);
+      }
+
+      export function createPresenceMessage(sender: string, room: string): WsMessage {
+        return { type: 'presence', sender, content: '', room };
+      }
+    src/protocol/validator.ts: |
+      import { WsMessage } from './messages';
+
+      export function validateMessage(msg: WsMessage): boolean {
+        if (!msg.type || !msg.sender) return false;
+        if (msg.type === 'chat' && !msg.content) return false;
+        if (msg.type !== 'presence' && msg.content.length > 1000) return false;
+        return true;
+      }
+    src/handlers/chatRoom.ts: |
+      import { validateMessage } from '../protocol/validator';
+      import { WsMessage, deserializeMessage, createPresenceMessage } from '../protocol/messages';
+
+      export class ChatRoom {
+        private clients: Set<any> = new Set();
+        private name: string;
+
+        constructor(name: string) {
+          this.name = name;
+        }
+
+        addClient(ws: any): void {
+          this.clients.add(ws);
+        }
+
+        handleMessage(raw: string): void {
+          const msg = deserializeMessage(raw);
+          if (!validateMessage(msg)) return;
+          this.broadcast(msg);
+        }
+
+        announcePresence(sender: string): void {
+          const msg = createPresenceMessage(sender, this.name);
+          this.broadcast(msg);
+        }
+
+        private broadcast(msg: WsMessage): void {
+          this.clients.forEach(ws => ws.send(JSON.stringify(msg)));
+        }
+      }
+    src/server/wsServer.ts: |
+      import { ChatRoom } from '../handlers/chatRoom';
+
+      export class WsServer {
+        private rooms: Map<string, ChatRoom> = new Map();
+
+        getOrCreateRoom(name: string): ChatRoom {
+          if (!this.rooms.has(name)) {
+            this.rooms.set(name, new ChatRoom(name));
+          }
+          return this.rooms.get(name)!;
+        }
+
+        onConnection(ws: any, roomName: string): void {
+          const room = this.getOrCreateRoom(roomName);
+          room.addClient(ws);
+          room.announcePresence('server');
+          ws.on('message', (data: string) => {
+            room.handleMessage(data);
+          });
+        }
+      }
+    src/utils/metrics.ts: |
+      GARBAGE_037_METRICS_MARKER_A = "metrics";
+      GARBAGE_037_COUNTER_MARKER_B = 0;
+
+      export class MetricsCollector {
+        private counters: Map<string, number> = new Map();
+        increment(name: string): void {
+          this.counters.set(name, (this.counters.get(name) || 0) + 1);
+        }
+      }
+    src/utils/compress.ts: |
+      GARBAGE_037_COMPRESS_MARKER_C = "compress";
+      GARBAGE_037_GZIP_MARKER_D = true;
+
+      export function compress(data: string): Buffer {
+        return Buffer.from(data);
+      }
+  commit_message: "feat: add presence messages and multi-room support"
+fragments:
+- id: presence_type
+  selector:
+    path: src/protocol/messages.ts
+    anchor: "'presence'"
+- id: create_presence_fn
+  selector:
+    path: src/protocol/messages.ts
+    anchor: "export function createPresenceMessage"
+- id: validator_presence_check
+  selector:
+    path: src/protocol/validator.ts
+    anchor: "msg.type === 'chat' && !msg.content"
+- id: room_announce_presence
+  selector:
+    path: src/handlers/chatRoom.ts
+    anchor: "announcePresence(sender: string)"
+- id: server_imports_room
+  selector:
+    path: src/server/wsServer.ts
+    anchor: "import { ChatRoom } from '../handlers/chatRoom'"
+- id: server_multi_room
+  selector:
+    path: src/server/wsServer.ts
+    anchor: "getOrCreateRoom(name: string)"
+- id: no_metrics
+  selector:
+    path: src/utils/metrics.ts
+    anchor: "GARBAGE_037_METRICS_MARKER_A"
+- id: no_compress
+  selector:
+    path: src/utils/compress.ts
+    anchor: "GARBAGE_037_COMPRESS_MARKER_C"
+oracle:
+  required:
+  - presence_type
+  - create_presence_fn
+  - validator_presence_check
+  - room_announce_presence
+  - server_imports_room
+  - server_multi_room
+  allowed: []
+  forbidden:
+  - no_metrics
+  - no_compress

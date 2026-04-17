@@ -1,0 +1,132 @@
+name: bal3_bugfix_022_kotlin_boundary_index
+tags:
+- lang:json
+- lang:yaml
+- change:config
+- change:single_file
+- context:import_chain
+- distance:2hop
+- difficulty:medium
+repo:
+  initial_files:
+    config/worker.json: |
+      {
+        "worker": {
+          "concurrency": 4,
+          "queueCapacity": 500,
+          "retryLimit": 3,
+          "pollIntervalMs": 1000
+        }
+      }
+    src/worker/pool.py: |
+      import json
+
+      def load_worker_config(path: str = "config/worker.json") -> dict:
+          with open(path) as f:
+              return json.load(f)
+
+      def create_worker_pool(config: dict) -> "WorkerPool":
+          wc = config["worker"]
+          return WorkerPool(
+              concurrency=wc["concurrency"],
+              queue_capacity=wc["queueCapacity"],
+              retry_limit=wc["retryLimit"],
+              poll_interval_ms=wc["pollIntervalMs"],
+          )
+    src/worker/scheduler.py: |
+      from src.worker.pool import create_worker_pool, load_worker_config
+
+      class JobScheduler:
+          def __init__(self):
+              config = load_worker_config()
+              self.pool = create_worker_pool(config)
+
+          def submit(self, job_fn, *args):
+              return self.pool.enqueue(job_fn, args)
+
+          def drain(self):
+              self.pool.wait_all()
+    garbage/DeadLetterQueue.py: |
+      # GARBAGE_WRK_A = "dead_letter_queue_marker"
+    garbage/JobPersistence.py: |
+      # GARBAGE_WRK_B = "job_persistence_marker"
+    garbage/Observability.py: |
+      # GARBAGE_WRK_C = "observability_marker"
+  changed_files:
+    config/worker.json: |
+      {
+        "worker": {
+          "concurrency": 8,
+          "queueCapacity": 2000,
+          "retryLimit": 5,
+          "pollIntervalMs": 500,
+          "backoffMultiplier": 2.0
+        }
+      }
+    src/worker/pool.py: |
+      import json
+
+      def load_worker_config(path: str = "config/worker.json") -> dict:
+          with open(path) as f:
+              return json.load(f)
+
+      def create_worker_pool(config: dict) -> "WorkerPool":
+          wc = config["worker"]
+          return WorkerPool(
+              concurrency=wc["concurrency"],
+              queue_capacity=wc["queueCapacity"],
+              retry_limit=wc["retryLimit"],
+              poll_interval_ms=wc["pollIntervalMs"],
+              backoff_multiplier=wc.get("backoffMultiplier", 1.0),
+          )
+    src/worker/scheduler.py: |
+      from src.worker.pool import create_worker_pool, load_worker_config
+
+      class JobScheduler:
+          def __init__(self):
+              config = load_worker_config()
+              self.pool = create_worker_pool(config)
+
+          def submit(self, job_fn, *args):
+              return self.pool.enqueue(job_fn, args)
+
+          def drain(self):
+              self.pool.wait_all()
+    garbage/DeadLetterQueue.py: |
+      # GARBAGE_WRK_A = "dead_letter_queue_marker"
+    garbage/JobPersistence.py: |
+      # GARBAGE_WRK_B = "job_persistence_marker"
+    garbage/Observability.py: |
+      # GARBAGE_WRK_C = "observability_marker"
+  commit_message: "config: scale up worker concurrency and add exponential backoff multiplier"
+fragments:
+- id: worker_config
+  selector:
+    path: config/worker.json
+    anchor: "concurrency"
+- id: create_pool
+  selector:
+    path: src/worker/pool.py
+    anchor: "def create_worker_pool"
+- id: no_scheduler
+  selector:
+    path: src/worker/scheduler.py
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_WRK_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_WRK_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_WRK_C
+oracle:
+  required:
+  - worker_config
+  - create_pool
+  allowed: []
+  forbidden:
+  - no_scheduler
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

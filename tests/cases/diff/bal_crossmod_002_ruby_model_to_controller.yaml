@@ -1,0 +1,103 @@
+name: bal_crossmod_002_ruby_model_to_controller
+tags:
+- lang:ruby
+- change:single_file
+- change:signature
+- context:cross_module
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    app/models/user.rb: |
+      module Models
+        class User
+          attr_reader :name, :email
+
+          def initialize(name, email)
+            @name = name
+            @email = email
+          end
+
+          def display_name
+            name
+          end
+        end
+      end
+    app/controllers/users_controller.rb: |
+      require_relative '../models/user'
+      module Controllers
+        class UsersController
+          def show(user_id)
+            user = Models::User.new('Alice', 'alice@example.com')
+            { name: user.display_name }
+          end
+        end
+      end
+    app/views/helpers/html_helper.rb: |
+      module Views
+        module Helpers
+          class HtmlHelper
+            def self.tag(name, content)
+              "<#{name}>#{content}</#{name}>"
+            end
+          end
+        end
+      end
+  changed_files:
+    app/models/user.rb: |
+      module Models
+        class User
+          attr_reader :name, :email, :avatar_url
+
+          def initialize(name, email, avatar_url: nil)
+            @name = name
+            @email = email
+            @avatar_url = avatar_url
+          end
+
+          def display_name
+            name
+          end
+        end
+      end
+    app/controllers/users_controller.rb: |
+      require_relative '../models/user'
+      module Controllers
+        class UsersController
+          def show(user_id)
+            user = Models::User.new('Alice', 'alice@example.com')
+            { name: user.display_name }
+          end
+        end
+      end
+    app/views/helpers/html_helper.rb: |
+      module Views
+        module Helpers
+          class HtmlHelper
+            def self.tag(name, content)
+              "<#{name}>#{content}</#{name}>"
+            end
+          end
+        end
+      end
+  commit_message: "feat: add avatar_url to User model"
+fragments:
+- id: user_avatar_attr
+  selector:
+    path: app/models/user.rb
+    anchor: "attr_reader :name, :email, :avatar_url"
+- id: controller_creates_user
+  selector:
+    path: app/controllers/users_controller.rb
+    anchor: "Models::User.new"
+- id: no_html_helper
+  selector:
+    path: app/views/helpers/html_helper.rb
+    anchor: "def self.tag"
+oracle:
+  required:
+  - user_avatar_attr
+  - controller_creates_user
+  allowed: []
+  forbidden:
+  - no_html_helper

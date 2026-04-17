@@ -1,0 +1,301 @@
+name: gap_077_ruby_crossmod_chess_engine
+tags:
+- change:new_function
+- change:single_file
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+- lang:ruby
+repo:
+  initial_files:
+    lib/chess/board.rb: |
+      module Chess
+        class Board
+          RANKS = (1..8).to_a
+          FILES = ('a'..'h').to_a
+
+          def initialize
+            @squares = {}
+          end
+
+          def place(piece, file, rank)
+            @squares["#{file}#{rank}"] = piece
+          end
+
+          def at(file, rank)
+            @squares["#{file}#{rank}"]
+          end
+
+          def empty?(file, rank)
+            at(file, rank).nil?
+          end
+
+          def remove(file, rank)
+            @squares.delete("#{file}#{rank}")
+          end
+
+          def all_pieces
+            @squares.dup
+          end
+        end
+      end
+    lib/chess/move_gen.rb: |
+      require_relative 'board'
+
+      module Chess
+        class MoveGenerator
+          KNIGHT_OFFSETS = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]
+
+          def initialize(board)
+            @board = board
+          end
+
+          def knight_moves(file, rank)
+            file_idx = Board::FILES.index(file)
+            KNIGHT_OFFSETS.map do |df, dr|
+              nf = file_idx + df
+              nr = rank + dr
+              next unless nf.between?(0, 7) && nr.between?(1, 8)
+              [Board::FILES[nf], nr]
+            end.compact
+          end
+
+          def rook_moves(file, rank)
+            moves = []
+            file_idx = Board::FILES.index(file)
+            (0..7).each do |i|
+              moves << [Board::FILES[i], rank] unless i == file_idx
+              moves << [file, i + 1] unless i + 1 == rank
+            end
+            moves
+          end
+        end
+      end
+    lib/chess/evaluator.rb: |
+      require_relative 'move_gen'
+
+      module Chess
+        class Evaluator
+          PIECE_VALUES = { 'P' => 1, 'N' => 3, 'B' => 3, 'R' => 5, 'Q' => 9, 'K' => 0 }
+
+          def initialize(move_gen)
+            @move_gen = move_gen
+          end
+
+          def material_score(pieces)
+            pieces.values.sum { |p| PIECE_VALUES.fetch(p.upcase, 0) }
+          end
+        end
+      end
+    lib/chess/notation.rb: |
+      TRAP_GAP077_NOTATION_A = "algebraic"
+      TRAP_GAP077_FORMAT_B = "standard"
+
+      module Chess
+        class Notation
+          def to_algebraic(piece, file, rank)
+            "#{piece}#{file}#{rank}"
+          end
+
+          def parse(text)
+            { piece: text[0], file: text[1], rank: text[2].to_i }
+          end
+        end
+      end
+    lib/chess/timer.rb: |
+      TRAP_GAP077_TIMER_C = "chess_clock"
+      TRAP_GAP077_INCREMENT_D = 5
+
+      module Chess
+        class Timer
+          def initialize(minutes)
+            @remaining = minutes * 60
+          end
+
+          def tick(seconds = 1)
+            @remaining = [@remaining - seconds, 0].max
+          end
+
+          def remaining
+            @remaining
+          end
+
+          def expired?
+            @remaining <= 0
+          end
+        end
+      end
+  changed_files:
+    lib/chess/board.rb: |
+      module Chess
+        class Board
+          RANKS = (1..8).to_a
+          FILES = ('a'..'h').to_a
+
+          def initialize
+            @squares = {}
+          end
+
+          def place(piece, file, rank)
+            @squares["#{file}#{rank}"] = piece
+          end
+
+          def at(file, rank)
+            @squares["#{file}#{rank}"]
+          end
+
+          def empty?(file, rank)
+            at(file, rank).nil?
+          end
+
+          def remove(file, rank)
+            @squares.delete("#{file}#{rank}")
+          end
+
+          def all_pieces
+            @squares.dup
+          end
+        end
+      end
+    lib/chess/move_gen.rb: |
+      require_relative 'board'
+
+      module Chess
+        class MoveGenerator
+          KNIGHT_OFFSETS = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]
+
+          def initialize(board)
+            @board = board
+          end
+
+          def knight_moves(file, rank)
+            file_idx = Board::FILES.index(file)
+            KNIGHT_OFFSETS.map do |df, dr|
+              nf = file_idx + df
+              nr = rank + dr
+              next unless nf.between?(0, 7) && nr.between?(1, 8)
+              [Board::FILES[nf], nr]
+            end.compact
+          end
+
+          def rook_moves(file, rank)
+            moves = []
+            file_idx = Board::FILES.index(file)
+            (0..7).each do |i|
+              moves << [Board::FILES[i], rank] unless i == file_idx
+              moves << [file, i + 1] unless i + 1 == rank
+            end
+            moves
+          end
+        end
+      end
+    lib/chess/evaluator.rb: |
+      require_relative 'move_gen'
+
+      module Chess
+        class Evaluator
+          PIECE_VALUES = { 'P' => 1, 'N' => 3, 'B' => 3, 'R' => 5, 'Q' => 9, 'K' => 0 }
+
+          def initialize(move_gen)
+            @move_gen = move_gen
+          end
+
+          def material_score(pieces)
+            pieces.values.sum { |p| PIECE_VALUES.fetch(p.upcase, 0) }
+          end
+
+          def mobility_score(file, rank, piece_type)
+            moves = case piece_type.upcase
+                    when 'N' then @move_gen.knight_moves(file, rank)
+                    when 'R' then @move_gen.rook_moves(file, rank)
+                    else []
+                    end
+            moves.length * 0.1
+          end
+        end
+      end
+    lib/chess/notation.rb: |
+      TRAP_GAP077_NOTATION_A = "algebraic"
+      TRAP_GAP077_FORMAT_B = "standard"
+
+      module Chess
+        class Notation
+          def to_algebraic(piece, file, rank)
+            "#{piece}#{file}#{rank}"
+          end
+
+          def parse(text)
+            { piece: text[0], file: text[1], rank: text[2].to_i }
+          end
+        end
+      end
+    lib/chess/timer.rb: |
+      TRAP_GAP077_TIMER_C = "chess_clock"
+      TRAP_GAP077_INCREMENT_D = 5
+
+      module Chess
+        class Timer
+          def initialize(minutes)
+            @remaining = minutes * 60
+          end
+
+          def tick(seconds = 1)
+            @remaining = [@remaining - seconds, 0].max
+          end
+
+          def remaining
+            @remaining
+          end
+
+          def expired?
+            @remaining <= 0
+          end
+        end
+      end
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: evaluator_mobility
+  selector:
+    path: lib/chess/evaluator.rb
+    anchor: 'def mobility_score(file, rank, piece_type)'
+- id: move_gen_knight
+  selector:
+    path: lib/chess/move_gen.rb
+    anchor: 'def knight_moves(file, rank)'
+- id: move_gen_rook
+  selector:
+    path: lib/chess/move_gen.rb
+    anchor: 'def rook_moves(file, rank)'
+- id: no_notation
+  selector:
+    path: lib/chess/notation.rb
+- id: no_timer
+  selector:
+    path: lib/chess/timer.rb
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP077_NOTATION_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP077_FORMAT_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP077_TIMER_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP077_INCREMENT_D
+oracle:
+  required:
+  - evaluator_mobility
+  - move_gen_knight
+  - move_gen_rook
+  allowed: []
+  forbidden:
+  - no_notation
+  - no_timer
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

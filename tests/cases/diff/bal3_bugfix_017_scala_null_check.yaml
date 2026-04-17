@@ -1,0 +1,68 @@
+name: bal3_bugfix_017_scala_null_check
+tags:
+- lang:scala
+- change:single_file
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/main/scala/parser/JsonParser.scala: |
+      package parser
+
+      class JsonParser {
+        def extractField(json: String, field: String): String = {
+          val pattern = s""""$field":\\s*"([^"]+)"""".r
+          pattern.findFirstMatchIn(json).get.group(1)
+        }
+      }
+    src/main/scala/service/Ingest.scala: |
+      package service
+
+      import parser.JsonParser
+
+      class Ingest {
+        private val parser = new JsonParser()
+
+        def process(raw: String): String = {
+          parser.extractField(raw, "name")
+        }
+      }
+    src/main/scala/util/Strings.scala: |
+      package util
+
+      object Strings {
+        def truncate(s: String, max: Int): String = s.take(max)
+      }
+  changed_files:
+    src/main/scala/parser/JsonParser.scala: |
+      package parser
+
+      class JsonParser {
+        def extractField(json: String, field: String): Option[String] = {
+          val pattern = s""""$field":\\s*"([^"]+)"""".r
+          pattern.findFirstMatchIn(json).map(_.group(1))
+        }
+      }
+  commit_message: "fix: return Option when regex match fails instead of throwing"
+fragments:
+- id: option_match
+  selector:
+    path: parser/JsonParser.scala
+    anchor: "def extractField(json: String, field: String): Option[String]"
+- id: ingest_calls_parser
+  selector:
+    path: service/Ingest.scala
+    anchor: "parser.extractField(raw, \"name\")"
+- id: no_strings
+  selector:
+    path: util/Strings.scala
+    anchor: "object Strings"
+oracle:
+  required:
+  - option_match
+  - ingest_calls_parser
+  allowed: []
+  forbidden:
+  - no_strings

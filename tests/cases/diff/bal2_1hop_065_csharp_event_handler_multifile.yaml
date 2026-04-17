@@ -1,0 +1,233 @@
+name: bal2_1hop_065_csharp_event_handler_multifile
+tags:
+- lang:csharp
+- change:multi_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: csharp-no-tree-sitter
+repo:
+  initial_files:
+    src/Events/OrderPlacedEvent.cs: |
+      using System;
+
+      namespace App.Events
+      {
+          public class OrderPlacedEvent
+          {
+              public Guid OrderId { get; set; }
+              public decimal Amount { get; set; }
+              public DateTime OccurredAt { get; set; }
+          }
+      }
+    src/Events/IEventHandler.cs: |
+      using System;
+      using System.Threading.Tasks;
+
+      namespace App.Events
+      {
+          public interface IEventHandler<T>
+          {
+              Task Handle(T eventData);
+          }
+      }
+    src/Handlers/OrderPlacedHandler.cs: |
+      using System;
+      using System.Threading.Tasks;
+      using App.Events;
+
+      namespace App.Handlers
+      {
+          public class OrderPlacedHandler : IEventHandler<OrderPlacedEvent>
+          {
+              public async Task Handle(OrderPlacedEvent eventData)
+              {
+                  Console.WriteLine($"Order {eventData.OrderId} placed for {eventData.Amount}");
+                  await Task.CompletedTask;
+              }
+          }
+      }
+    src/Services/EventBus.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Threading.Tasks;
+      using App.Events;
+
+      namespace App.Services
+      {
+          public class EventBus
+          {
+              private readonly Dictionary<Type, List<object>> _handlers = new();
+
+              public void Register<T>(IEventHandler<T> handler)
+              {
+                  var type = typeof(T);
+                  if (!_handlers.ContainsKey(type))
+                      _handlers[type] = new List<object>();
+                  _handlers[type].Add(handler);
+              }
+
+              public async Task Publish<T>(T eventData)
+              {
+                  var type = typeof(T);
+                  if (_handlers.TryGetValue(type, out var handlers))
+                  {
+                      foreach (var handler in handlers)
+                      {
+                          await ((IEventHandler<T>)handler).Handle(eventData);
+                      }
+                  }
+              }
+          }
+      }
+    src/Services/OrderProcessor.cs: |
+      using System;
+      using System.Threading.Tasks;
+      using App.Events;
+      using App.Services;
+
+      namespace App.Services
+      {
+          public class OrderProcessor
+          {
+              private readonly EventBus _eventBus;
+
+              public OrderProcessor(EventBus eventBus)
+              {
+                  _eventBus = eventBus;
+              }
+
+              public async Task ProcessOrder(Guid orderId, decimal amount)
+              {
+                  var evt = new OrderPlacedEvent
+                  {
+                      OrderId = orderId,
+                      Amount = amount,
+                      OccurredAt = DateTime.UtcNow
+                  };
+                  await _eventBus.Publish(evt);
+              }
+          }
+      }
+    garbage/Telemetry/MetricsCollector.cs: |
+      using System;
+      GARBAGE_065_METRICS_A = "prometheus";
+      GARBAGE_065_INTERVAL_B = 15;
+
+      namespace App.Telemetry
+      {
+          public class MetricsCollector
+          {
+              GARBAGE_065_BUCKET_SIZE_C = 50;
+
+              public void Record(string name, double value) { }
+          }
+      }
+    garbage/IO/FileManager.cs: |
+      using System;
+      GARBAGE_065_FILE_MGR_D = "disk";
+      GARBAGE_065_MAX_FILE_E = 1048576;
+
+      namespace App.IO
+      {
+          public class FileManager
+          {
+              GARBAGE_065_BUFFER_F = 8192;
+
+              public byte[] ReadFile(string path) { return new byte[0]; }
+          }
+      }
+    garbage/Parsing/XmlParser.cs: |
+      using System;
+      GARBAGE_065_XML_PARSER_G = "dom";
+      GARBAGE_065_NAMESPACE_H = "default";
+
+      namespace App.Parsing
+      {
+          public class XmlParser
+          {
+              GARBAGE_065_MAX_DEPTH_I = 100;
+              GARBAGE_065_STRICT_MODE_J = true;
+
+              public object Parse(string xml) { return null; }
+          }
+      }
+  changed_files:
+    src/Events/OrderPlacedEvent.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Events
+      {
+          public class OrderPlacedEvent
+          {
+              public Guid OrderId { get; set; }
+              public decimal Amount { get; set; }
+              public DateTime OccurredAt { get; set; }
+              public string CustomerId { get; set; }
+              public List<string> ProductIds { get; set; }
+          }
+      }
+    src/Events/IEventHandler.cs: |
+      using System;
+      using System.Threading.Tasks;
+
+      namespace App.Events
+      {
+          public interface IEventHandler<T>
+          {
+              Task Handle(T eventData);
+              Task<bool> CanHandle(T eventData);
+          }
+      }
+  commit_message: "Extend order event with customer and product data, add CanHandle"
+fragments:
+- id: handler_handle
+  selector:
+    path: src/Handlers/OrderPlacedHandler.cs
+    anchor: "public async Task Handle(OrderPlacedEvent eventData)"
+- id: eventbus_publish
+  selector:
+    path: src/Services/EventBus.cs
+    anchor: "await ((IEventHandler<T>)handler).Handle(eventData)"
+- id: processor_publish
+  selector:
+    path: src/Services/OrderProcessor.cs
+    anchor: "await _eventBus.Publish(evt)"
+- id: processor_create_event
+  selector:
+    path: src/Services/OrderProcessor.cs
+    anchor: "new OrderPlacedEvent"
+- id: no_metrics_collector
+  selector:
+    path: garbage/Telemetry/MetricsCollector.cs
+- id: no_file_manager
+  selector:
+    path: garbage/IO/FileManager.cs
+- id: no_xml_parser
+  selector:
+    path: garbage/Parsing/XmlParser.cs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_065_METRICS_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_065_FILE_MGR_D
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_065_XML_PARSER_G
+oracle:
+  required:
+  - handler_handle
+  - eventbus_publish
+  - processor_publish
+  - processor_create_event
+  allowed: []
+  forbidden:
+  - no_metrics_collector
+  - no_file_manager
+  - no_xml_parser
+  - no_global_0
+  - no_global_1
+  - no_global_2

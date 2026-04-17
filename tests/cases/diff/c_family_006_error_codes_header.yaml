@@ -1,0 +1,120 @@
+name: c_family_006_error_codes_header
+tags:
+- lang:c
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    error_codes.h: |
+      #ifndef ERROR_CODES_H
+      #define ERROR_CODES_H
+      typedef enum {
+          ERR_NONE = 0,
+          ERR_IO,
+          ERR_TIMEOUT,
+          ERR_NOMEM,
+      } ErrorCode;
+      #endif
+    handler.c: |
+      #include "error_codes.h"
+      #include <stdio.h>
+      void handle_error(ErrorCode err) {
+          switch (err) {
+              case ERR_NONE:    break;
+              case ERR_IO:      printf("I/O error\n"); break;
+              case ERR_TIMEOUT: printf("timeout\n"); break;
+              case ERR_NOMEM:   printf("out of memory\n"); break;
+          }
+      }
+    logger.c: |
+      #include "error_codes.h"
+      void log_error(ErrorCode err) {
+          if (err == ERR_TIMEOUT) { /* log timeout metric */ }
+          if (err == ERR_NOMEM)   { /* log oom metric */ }
+      }
+    C_NOISE_006_graphics.h: |
+      #ifndef C_NOISE_006_GRAPHICS_H
+      #define C_NOISE_006_GRAPHICS_H
+      void C_NOISE_006_draw_rect(int x, int y, int w, int h);
+      void C_NOISE_006_clear_screen(void);
+      #endif
+    C_NOISE_006_graphics.c: |
+      #include "C_NOISE_006_graphics.h"
+      void C_NOISE_006_draw_rect(int x, int y, int w, int h) {}
+      void C_NOISE_006_clear_screen(void) {}
+  changed_files:
+    error_codes.h: |
+      #ifndef ERROR_CODES_H
+      #define ERROR_CODES_H
+      typedef enum {
+          ERR_NONE = 0,
+          ERR_IO,
+          ERR_TIMEOUT,
+          ERR_NOMEM,
+          ERR_AUTH,
+      } ErrorCode;
+      #endif
+    handler.c: |
+      #include "error_codes.h"
+      #include <stdio.h>
+      void handle_error(ErrorCode err) {
+          switch (err) {
+              case ERR_NONE:    break;
+              case ERR_IO:      printf("I/O error\n"); break;
+              case ERR_TIMEOUT: printf("timeout\n"); break;
+              case ERR_NOMEM:   printf("out of memory\n"); break;
+              case ERR_AUTH:    printf("authentication failed\n"); break;
+          }
+      }
+    logger.c: |
+      #include "error_codes.h"
+      void log_error(ErrorCode err) {
+          if (err == ERR_TIMEOUT) { /* log timeout metric */ }
+          if (err == ERR_NOMEM)   { /* log oom metric */ }
+          if (err == ERR_AUTH)    { /* log auth failure metric */ }
+      }
+    C_NOISE_006_graphics.h: |
+      #ifndef C_NOISE_006_GRAPHICS_H
+      #define C_NOISE_006_GRAPHICS_H
+      void C_NOISE_006_draw_rect(int x, int y, int w, int h);
+      void C_NOISE_006_clear_screen(void);
+      #endif
+    C_NOISE_006_graphics.c: |
+      #include "C_NOISE_006_graphics.h"
+      void C_NOISE_006_draw_rect(int x, int y, int w, int h) {}
+      void C_NOISE_006_clear_screen(void) {}
+  commit_message: "feat: add ERR_AUTH to ErrorCode enum and handle in handler and logger"
+fragments:
+- id: error_codes_h
+  selector:
+    path: error_codes.h
+    anchor: "ERR_AUTH,"
+- id: handler_c
+  selector:
+    path: handler.c
+    anchor: "ERR_AUTH:    printf"
+- id: logger_c
+  selector:
+    path: logger.c
+    anchor: "ERR_AUTH"
+- id: no_graphics_h
+  selector:
+    anchor: C_NOISE_006_draw_rect
+- id: no_graphics_c
+  selector:
+    path: C_NOISE_006_graphics.c
+- id: no_global_clear
+  selector:
+    anchor: C_NOISE_006_clear_screen
+oracle:
+  required:
+  - error_codes_h
+  - handler_c
+  - logger_c
+  allowed: []
+  forbidden:
+  - no_graphics_h
+  - no_graphics_c
+  - no_global_clear

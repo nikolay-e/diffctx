@@ -1,0 +1,197 @@
+name: gap_179_typescript_repository_pattern_chain
+tags:
+- change:multi_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:typescript
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/repositories/base.ts: |
+      export interface Entity {
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+      }
+
+      export interface Repository<T extends Entity> {
+        findById(id: string): Promise<T | null>;
+        findAll(): Promise<T[]>;
+        save(entity: T): Promise<T>;
+        delete(id: string): Promise<void>;
+      }
+    src/repositories/productRepo.ts: |
+      import { Entity, Repository } from "./base";
+
+      export interface Product extends Entity {
+        name: string;
+        price: number;
+        sku: string;
+        category: string;
+      }
+
+      export class ProductRepository implements Repository<Product> {
+        private store: Map<string, Product> = new Map();
+
+        async findById(id: string): Promise<Product | null> {
+          return this.store.get(id) || null;
+        }
+
+        async findAll(): Promise<Product[]> {
+          return Array.from(this.store.values());
+        }
+
+        async save(product: Product): Promise<Product> {
+          this.store.set(product.id, product);
+          return product;
+        }
+
+        async delete(id: string): Promise<void> {
+          this.store.delete(id);
+        }
+      }
+    src/services/catalogService.ts: |
+      import { ProductRepository, Product } from "../repositories/productRepo";
+
+      export class CatalogService {
+        constructor(private repo: ProductRepository) {}
+
+        async getProduct(id: string): Promise<Product | null> {
+          return this.repo.findById(id);
+        }
+
+        async listProducts(): Promise<Product[]> {
+          return this.repo.findAll();
+        }
+      }
+    src/repositories/userRepo.ts: |
+      import { Entity, Repository } from "./base";
+
+      export interface User extends Entity {
+        email: string;
+        passwordHash: string;
+      }
+
+      export class UserRepository implements Repository<User> {
+        private store: Map<string, User> = new Map();
+
+        async findById(id: string): Promise<User | null> {
+          return this.store.get(id) || null;
+        }
+
+        async findAll(): Promise<User[]> {
+          return Array.from(this.store.values());
+        }
+
+        async save(user: User): Promise<User> {
+          this.store.set(user.id, user);
+          return user;
+        }
+
+        async delete(id: string): Promise<void> {
+          this.store.delete(id);
+        }
+      }
+    src/utils/dateFormatter.ts: |
+      export function formatISO(date: Date): string {
+        return date.toISOString();
+      }
+
+      export function parseISO(str: string): Date {
+        return new Date(str);
+      }
+  changed_files:
+    src/repositories/base.ts: |
+      export interface Entity {
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+      }
+
+      export interface QueryOptions {
+        limit?: number;
+        offset?: number;
+        sortBy?: string;
+        sortOrder?: "asc" | "desc";
+      }
+
+      export interface Repository<T extends Entity> {
+        findById(id: string): Promise<T | null>;
+        findAll(options?: QueryOptions): Promise<T[]>;
+        save(entity: T): Promise<T>;
+        delete(id: string): Promise<void>;
+      }
+    src/repositories/productRepo.ts: |
+      import { Entity, Repository, QueryOptions } from "./base";
+
+      export interface Product extends Entity {
+        name: string;
+        price: number;
+        sku: string;
+        category: string;
+      }
+
+      export class ProductRepository implements Repository<Product> {
+        private store: Map<string, Product> = new Map();
+
+        async findById(id: string): Promise<Product | null> {
+          return this.store.get(id) || null;
+        }
+
+        async findAll(options?: QueryOptions): Promise<Product[]> {
+          let results = Array.from(this.store.values());
+          if (options?.sortBy) {
+            results.sort((a, b) => {
+              const key = options.sortBy as keyof Product;
+              return options.sortOrder === "desc"
+                ? String(b[key]).localeCompare(String(a[key]))
+                : String(a[key]).localeCompare(String(b[key]));
+            });
+          }
+          const start = options?.offset ?? 0;
+          const end = options?.limit ? start + options.limit : undefined;
+          return results.slice(start, end);
+        }
+
+        async save(product: Product): Promise<Product> {
+          this.store.set(product.id, product);
+          return product;
+        }
+
+        async delete(id: string): Promise<void> {
+          this.store.delete(id);
+        }
+      }
+fragments:
+- id: base_query_options
+  selector:
+    path: src/repositories/base.ts
+    anchor: QueryOptions
+- id: product_findall
+  selector:
+    path: src/repositories/productRepo.ts
+    anchor: "async findAll"
+- id: product_import_query
+  selector:
+    path: src/repositories/productRepo.ts
+    anchor: QueryOptions
+- id: no_user_repo
+  selector:
+    path: src/repositories/userRepo.ts
+- id: no_date_formatter
+  selector:
+    path: src/utils/dateFormatter.ts
+- id: no_catalog
+  selector:
+    path: src/services/catalogService.ts
+oracle:
+  required:
+  - base_query_options
+  - product_findall
+  - product_import_query
+  forbidden:
+  - no_user_repo
+  - no_date_formatter
+  - no_catalog

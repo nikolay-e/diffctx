@@ -1,0 +1,165 @@
+name: bal_3hop_007_python_task_queue_priority
+tags:
+- lang:python
+- change:single_file
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    queue/task.py: |
+      from dataclasses import dataclass
+      @dataclass
+      class Task:
+          id: str
+          name: str
+          priority: int = 0
+          def __lt__(self, other: "Task") -> bool:
+              return self.priority < other.priority
+    queue/scheduler.py: |
+      import heapq
+      from queue.task import Task
+      class Scheduler:
+          def __init__(self):
+              self.heap: list[Task] = []
+          def enqueue(self, task: Task):
+              heapq.heappush(self.heap, task)
+          def dequeue(self) -> Task:
+              return heapq.heappop(self.heap)
+    queue/worker.py: |
+      from queue.scheduler import Scheduler
+      class Worker:
+          def __init__(self, scheduler: Scheduler):
+              self.scheduler = scheduler
+              self.processed: list[str] = []
+          def run_next(self) -> str:
+              task = self.scheduler.dequeue()
+              self.processed.append(task.id)
+              return task.id
+    api/task_api.py: |
+      from queue.worker import Worker
+      from queue.scheduler import Scheduler
+      from queue.task import Task
+      class TaskAPI:
+          def __init__(self):
+              self.scheduler = Scheduler()
+              self.worker = Worker(self.scheduler)
+          def submit(self, name: str, priority: int) -> str:
+              task = Task(id=f"task_{name}", name=name, priority=priority)
+              self.scheduler.enqueue(task)
+              return task.id
+          def process_next(self) -> str:
+              return self.worker.run_next()
+    utils/id_generator.py: |
+      import uuid
+      def generate_id() -> str:
+          return str(uuid.uuid4())
+    monitoring/health.py: |
+      class HealthCheck:
+          def __init__(self):
+              self.checks = {}
+          def register(self, name: str, check_fn):
+              self.checks[name] = check_fn
+          def run_all(self) -> dict:
+              return {name: fn() for name, fn in self.checks.items()}
+  changed_files:
+    queue/task.py: |
+      from dataclasses import dataclass
+      from enum import IntEnum
+      class Priority(IntEnum):
+          LOW = 0
+          MEDIUM = 5
+          HIGH = 10
+          CRITICAL = 20
+      @dataclass
+      class Task:
+          id: str
+          name: str
+          priority: int = Priority.LOW
+          def __lt__(self, other: "Task") -> bool:
+              return self.priority < other.priority
+          def is_critical(self) -> bool:
+              return self.priority >= Priority.CRITICAL
+    queue/scheduler.py: |
+      import heapq
+      from queue.task import Task
+      class Scheduler:
+          def __init__(self):
+              self.heap: list[Task] = []
+          def enqueue(self, task: Task):
+              heapq.heappush(self.heap, task)
+          def dequeue(self) -> Task:
+              return heapq.heappop(self.heap)
+    queue/worker.py: |
+      from queue.scheduler import Scheduler
+      class Worker:
+          def __init__(self, scheduler: Scheduler):
+              self.scheduler = scheduler
+              self.processed: list[str] = []
+          def run_next(self) -> str:
+              task = self.scheduler.dequeue()
+              self.processed.append(task.id)
+              return task.id
+    api/task_api.py: |
+      from queue.worker import Worker
+      from queue.scheduler import Scheduler
+      from queue.task import Task
+      class TaskAPI:
+          def __init__(self):
+              self.scheduler = Scheduler()
+              self.worker = Worker(self.scheduler)
+          def submit(self, name: str, priority: int) -> str:
+              task = Task(id=f"task_{name}", name=name, priority=priority)
+              self.scheduler.enqueue(task)
+              return task.id
+          def process_next(self) -> str:
+              return self.worker.run_next()
+    utils/id_generator.py: |
+      import uuid
+      def generate_id() -> str:
+          return str(uuid.uuid4())
+    monitoring/health.py: |
+      class HealthCheck:
+          def __init__(self):
+              self.checks = {}
+          def register(self, name: str, check_fn):
+              self.checks[name] = check_fn
+          def run_all(self) -> dict:
+              return {name: fn() for name, fn in self.checks.items()}
+  commit_message: "feat: add Priority enum and is_critical method to Task"
+fragments:
+- id: task_priority_enum
+  selector:
+    path: queue/task.py
+    anchor: "class Priority(IntEnum)"
+- id: scheduler_uses_task
+  selector:
+    path: queue/scheduler.py
+    anchor: "from queue.task import Task"
+- id: worker_uses_scheduler
+  selector:
+    path: queue/worker.py
+    anchor: "from queue.scheduler import Scheduler"
+- id: api_uses_worker
+  selector:
+    path: api/task_api.py
+    anchor: "from queue.worker import Worker"
+- id: no_id_generator
+  selector:
+    path: utils/id_generator.py
+    anchor: "def generate_id"
+- id: no_health
+  selector:
+    path: monitoring/health.py
+    anchor: "class HealthCheck"
+oracle:
+  required:
+  - task_priority_enum
+  - scheduler_uses_task
+  - worker_uses_scheduler
+  - api_uses_worker
+  allowed: []
+  forbidden:
+  - no_id_generator
+  - no_health

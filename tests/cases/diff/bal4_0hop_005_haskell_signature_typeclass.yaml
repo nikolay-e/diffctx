@@ -1,0 +1,99 @@
+name: bal4_0hop_005_haskell_signature_typeclass
+tags:
+- lang:haskell
+- change:single_file
+- change:signature
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/Printer.hs: |
+      module Printer where
+
+      showItem :: String -> String
+      showItem s = "Item: " ++ s
+
+      showAll :: [String] -> String
+      showAll xs = unlines (map showItem xs)
+    src/garbage_parse.hs: |
+      module GarbageParse where
+
+      GARBAGE_B4H005_PARSE_A = "parse"
+      GARBAGE_B4H005_PARSE_B = False
+
+      garbageParse :: String -> String
+      garbageParse s = s
+    src/garbage_emit.hs: |
+      module GarbageEmit where
+
+      GARBAGE_B4H005_EMIT_C = "emit"
+      GARBAGE_B4H005_EMIT_D = 0
+
+      garbageEmit :: String -> IO ()
+      garbageEmit _ = return ()
+  changed_files:
+    src/Printer.hs: |
+      module Printer where
+
+      showItem :: Show a => a -> String
+      showItem x = "Item: " ++ show x
+
+      showAll :: Show a => [a] -> String
+      showAll xs = unlines (map showItem xs)
+    src/garbage_parse.hs: |
+      module GarbageParse where
+
+      GARBAGE_B4H005_PARSE_A = "parse"
+      GARBAGE_B4H005_PARSE_B = False
+
+      garbageParse :: String -> String
+      garbageParse s = s
+    src/garbage_emit.hs: |
+      module GarbageEmit where
+
+      GARBAGE_B4H005_EMIT_C = "emit"
+      GARBAGE_B4H005_EMIT_D = 0
+
+      garbageEmit :: String -> IO ()
+      garbageEmit _ = return ()
+  commit_message: "feat: generalize showItem and showAll to Show typeclass"
+fragments:
+- id: show_item_sig
+  selector:
+    path: src/Printer.hs
+    anchor: "showItem :: Show a => a -> String"
+- id: show_all_sig
+  selector:
+    path: src/Printer.hs
+    anchor: "showAll :: Show a => [a] -> String"
+- id: no_garbage_parse
+  selector:
+    path: src/garbage_parse.hs
+- id: no_garbage_emit
+  selector:
+    path: src/garbage_emit.hs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_B4H005_PARSE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_B4H005_PARSE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_B4H005_EMIT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_B4H005_EMIT_D
+oracle:
+  required:
+  - show_item_sig
+  - show_all_sig
+  allowed: []
+  forbidden:
+  - no_garbage_parse
+  - no_garbage_emit
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

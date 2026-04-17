@@ -1,0 +1,201 @@
+name: gap_180_typescript_state_machine_import_chain
+tags:
+- change:multi_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:typescript
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/fsm/machine.ts: |
+      import { State, Transition } from "./definitions";
+
+      export class StateMachine {
+        private current: State;
+        private transitions: Transition[];
+
+        constructor(initial: State, transitions: Transition[]) {
+          this.current = initial;
+          this.transitions = transitions;
+        }
+
+        send(event: string): State {
+          const match = this.transitions.find(
+            (t) => t.from === this.current.name && t.event === event
+          );
+          if (!match) throw new Error(`No transition for ${event} from ${this.current.name}`);
+          this.current = { name: match.to, data: {} };
+          return this.current;
+        }
+
+        getState(): State {
+          return this.current;
+        }
+      }
+    src/fsm/definitions.ts: |
+      export interface State {
+        name: string;
+        data: Record<string, unknown>;
+      }
+
+      export interface Transition {
+        from: string;
+        to: string;
+        event: string;
+      }
+
+      export function createTransition(from: string, event: string, to: string): Transition {
+        return { from, to, event };
+      }
+    src/workflows/checkout.ts: |
+      import { StateMachine } from "../fsm/machine";
+      import { createTransition } from "../fsm/definitions";
+
+      const transitions = [
+        createTransition("cart", "begin", "shipping"),
+        createTransition("shipping", "confirm_address", "payment"),
+        createTransition("payment", "pay", "confirmation"),
+        createTransition("confirmation", "finish", "complete"),
+      ];
+
+      export function createCheckoutFlow(): StateMachine {
+        return new StateMachine({ name: "cart", data: {} }, transitions);
+      }
+    src/workflows/onboarding.ts: |
+      import { StateMachine } from "../fsm/machine";
+      import { createTransition } from "../fsm/definitions";
+
+      const transitions = [
+        createTransition("welcome", "next", "profile"),
+        createTransition("profile", "next", "preferences"),
+        createTransition("preferences", "finish", "done"),
+      ];
+
+      export function createOnboardingFlow(): StateMachine {
+        return new StateMachine({ name: "welcome", data: {} }, transitions);
+      }
+    src/utils/deepClone.ts: |
+      export function deepClone<T>(obj: T): T {
+        return JSON.parse(JSON.stringify(obj));
+      }
+
+      export function mergeDeep(
+        target: Record<string, unknown>,
+        source: Record<string, unknown>
+      ): Record<string, unknown> {
+        const result = { ...target };
+        for (const key of Object.keys(source)) {
+          if (typeof source[key] === "object" && source[key] !== null) {
+            result[key] = mergeDeep(
+              (result[key] as Record<string, unknown>) || {},
+              source[key] as Record<string, unknown>
+            );
+          } else {
+            result[key] = source[key];
+          }
+        }
+        return result;
+      }
+  changed_files:
+    src/fsm/machine.ts: |
+      import { State, Transition, Guard } from "./definitions";
+
+      export class StateMachine {
+        private current: State;
+        private transitions: Transition[];
+
+        constructor(initial: State, transitions: Transition[]) {
+          this.current = initial;
+          this.transitions = transitions;
+        }
+
+        send(event: string, context?: Record<string, unknown>): State {
+          const candidates = this.transitions.filter(
+            (t) => t.from === this.current.name && t.event === event
+          );
+          const match = candidates.find((t) => {
+            if (!t.guard) return true;
+            return t.guard(this.current, context || {});
+          });
+          if (!match) throw new Error(`No transition for ${event} from ${this.current.name}`);
+          this.current = { name: match.to, data: context || {} };
+          return this.current;
+        }
+
+        getState(): State {
+          return this.current;
+        }
+      }
+    src/fsm/definitions.ts: |
+      export interface State {
+        name: string;
+        data: Record<string, unknown>;
+      }
+
+      export type Guard = (state: State, context: Record<string, unknown>) => boolean;
+
+      export interface Transition {
+        from: string;
+        to: string;
+        event: string;
+        guard?: Guard;
+      }
+
+      export function createTransition(
+        from: string,
+        event: string,
+        to: string,
+        guard?: Guard
+      ): Transition {
+        return { from, to, event, guard };
+      }
+    src/workflows/checkout.ts: |
+      import { StateMachine } from "../fsm/machine";
+      import { createTransition, Guard } from "../fsm/definitions";
+
+      const hasShippingAddress: Guard = (_state, ctx) =>
+        typeof ctx["address"] === "string" && ctx["address"].length > 0;
+
+      const transitions = [
+        createTransition("cart", "begin", "shipping"),
+        createTransition("shipping", "confirm_address", "payment", hasShippingAddress),
+        createTransition("payment", "pay", "confirmation"),
+        createTransition("confirmation", "finish", "complete"),
+      ];
+
+      export function createCheckoutFlow(): StateMachine {
+        return new StateMachine({ name: "cart", data: {} }, transitions);
+      }
+fragments:
+- id: machine_guard
+  selector:
+    path: src/fsm/machine.ts
+    anchor: "t.guard"
+- id: defs_guard_type
+  selector:
+    path: src/fsm/definitions.ts
+    anchor: "type Guard"
+- id: checkout_guard
+  selector:
+    path: src/workflows/checkout.ts
+    anchor: hasShippingAddress
+- id: defs_create_transition
+  selector:
+    path: src/fsm/definitions.ts
+    anchor: "function createTransition"
+- id: no_onboarding
+  selector:
+    path: src/workflows/onboarding.ts
+- id: no_deep_clone
+  selector:
+    path: src/utils/deepClone.ts
+oracle:
+  required:
+  - machine_guard
+  - defs_guard_type
+  - checkout_guard
+  forbidden:
+  - no_onboarding
+  - no_deep_clone

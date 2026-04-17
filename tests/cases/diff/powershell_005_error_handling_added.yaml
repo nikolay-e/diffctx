@@ -1,0 +1,112 @@
+name: powershell_005_error_handling_added
+tags:
+- lang:powershell
+- change:single_file
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    DatabaseModule.psm1: |
+      function Invoke-DatabaseQuery {
+          param(
+              [string]$ConnectionString,
+              [string]$Query
+          )
+          $conn = New-Object System.Data.SqlClient.SqlConnection($ConnectionString)
+          $conn.Open()
+          $cmd = $conn.CreateCommand()
+          $cmd.CommandText = $Query
+          $result = $cmd.ExecuteScalar()
+          $conn.Close()
+          return $result
+      }
+      Export-ModuleMember -Function Invoke-DatabaseQuery
+    Get-ProductCount.ps1: |
+      Import-Module ./DatabaseModule.psm1
+      $connStr = "Server=localhost;Database=shop;Integrated Security=true"
+      $count = Invoke-DatabaseQuery -ConnectionString $connStr -Query "SELECT COUNT(*) FROM Products"
+      Write-Output "Products: $count"
+    PS_NOISE_005_FtpUtils.psm1: |
+      function PS_NOISE_005_Send-FtpFile {
+          param([string]$FtpUri, [string]$LocalPath)
+          $wc = New-Object System.Net.WebClient
+          $wc.UploadFile($FtpUri, $LocalPath)
+      }
+      Export-ModuleMember -Function PS_NOISE_005_Send-FtpFile
+    PS_NOISE_005_XmlUtils.psm1: |
+      function PS_NOISE_005_ConvertTo-FlatXml {
+          param([hashtable]$Data, [string]$RootElement)
+          $xml = New-Object System.Xml.XmlDocument
+          $root = $xml.CreateElement($RootElement)
+          $xml.AppendChild($root) | Out-Null
+          foreach ($key in $Data.Keys) {
+              $node = $xml.CreateElement($key)
+              $node.InnerText = $Data[$key]
+              $root.AppendChild($node) | Out-Null
+          }
+          return $xml.OuterXml
+      }
+      Export-ModuleMember -Function PS_NOISE_005_ConvertTo-FlatXml
+  changed_files:
+    DatabaseModule.psm1: |
+      function Invoke-DatabaseQuery {
+          param(
+              [string]$ConnectionString,
+              [string]$Query
+          )
+          $conn = New-Object System.Data.SqlClient.SqlConnection($ConnectionString)
+          try {
+              $conn.Open()
+              $cmd = $conn.CreateCommand()
+              $cmd.CommandText = $Query
+              $result = $cmd.ExecuteScalar()
+              return $result
+          }
+          catch {
+              Write-Error "Database query failed: $_"
+              throw
+          }
+          finally {
+              if ($conn.State -eq 'Open') { $conn.Close() }
+          }
+      }
+      Export-ModuleMember -Function Invoke-DatabaseQuery
+  commit_message: "fix: wrap database query in try/catch/finally to ensure connection cleanup"
+fragments:
+- id: database_module_try_catch
+  selector:
+    path: DatabaseModule.psm1
+    anchor: try
+- id: database_module_finally
+  selector:
+    path: DatabaseModule.psm1
+    anchor: finally
+- id: get_product_count
+  selector:
+    path: Get-ProductCount.ps1
+    anchor: Invoke-DatabaseQuery
+- id: no_ftp_utils
+  selector:
+    path: PS_NOISE_005_FtpUtils.psm1
+- id: no_xml_utils
+  selector:
+    path: PS_NOISE_005_XmlUtils.psm1
+- id: no_global_0
+  selector:
+    anchor: PS_NOISE_005_Send-FtpFile
+- id: no_global_1
+  selector:
+    anchor: PS_NOISE_005_ConvertTo-FlatXml
+oracle:
+  required:
+  - database_module_try_catch
+  - database_module_finally
+  - get_product_count
+  allowed: []
+  forbidden:
+  - no_ftp_utils
+  - no_xml_utils
+  - no_global_0
+  - no_global_1

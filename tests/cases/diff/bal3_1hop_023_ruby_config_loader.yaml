@@ -1,0 +1,207 @@
+name: bal3_1hop_023_ruby_config_loader
+tags:
+- lang:ruby
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    lib/config/settings.rb: |
+      module Config
+        class Settings
+          attr_reader :data
+
+          def initialize(data = {})
+            @data = data
+          end
+
+          def get(key)
+            @data[key]
+          end
+
+          def set(key, value)
+            @data[key] = value
+          end
+        end
+      end
+    lib/app/server.rb: |
+      require_relative '../config/settings'
+
+      module App
+        class Server
+          def initialize(settings)
+            @settings = settings
+          end
+
+          def start
+            port = @settings.get(:port) || 3000
+            host = @settings.get(:host) || 'localhost'
+            "Starting on #{host}:#{port}"
+          end
+        end
+      end
+    lib/app/database.rb: |
+      require_relative '../config/settings'
+
+      module App
+        class Database
+          def initialize(settings)
+            @settings = settings
+          end
+
+          def connect
+            dsn = @settings.get(:database_url)
+            "Connecting to #{dsn}"
+          end
+        end
+      end
+    lib/app/mailer.rb: |
+      require_relative '../config/settings'
+
+      module App
+        class Mailer
+          def initialize(settings)
+            @settings = settings
+          end
+
+          def configure
+            host = @settings.get(:smtp_host)
+            port = @settings.get(:smtp_port)
+            "SMTP #{host}:#{port}"
+          end
+        end
+      end
+    lib/utils/encryptor.rb: |
+      GARBAGE_023_ENCRYPTOR_A = "encryptor"
+
+      module Utils
+        class Encryptor
+          def encrypt(data)
+            data.reverse
+          end
+        end
+      end
+    lib/utils/compressor.rb: |
+      GARBAGE_023_COMPRESSOR_B = "compressor"
+
+      module Utils
+        class Compressor
+          def compress(data)
+            data
+          end
+        end
+      end
+    lib/utils/hasher.rb: |
+      GARBAGE_023_HASHER_C = "hasher"
+
+      module Utils
+        class Hasher
+          def hash(data)
+            data.hash.to_s
+          end
+        end
+      end
+  changed_files:
+    lib/config/settings.rb: |
+      module Config
+        class Settings
+          attr_reader :data
+
+          def initialize(data = {})
+            @data = data
+            @frozen = false
+          end
+
+          def get(key, default: nil)
+            value = @data[key]
+            value.nil? ? default : value
+          end
+
+          def set(key, value)
+            raise "Settings are frozen" if @frozen
+            @data[key] = value
+          end
+
+          def freeze!
+            @frozen = true
+            self
+          end
+
+          def frozen?
+            @frozen
+          end
+
+          def merge(other_settings)
+            Settings.new(@data.merge(other_settings.data))
+          end
+        end
+      end
+  commit_message: "fix: add default param to get, freeze!, and merge to Settings"
+fragments:
+- id: get_default_param
+  selector:
+    path: lib/config/settings.rb
+    anchor: "def get(key, default: nil)"
+- id: freeze_method
+  selector:
+    path: lib/config/settings.rb
+    anchor: "def freeze!"
+- id: frozen_check
+  selector:
+    path: lib/config/settings.rb
+    anchor: "raise \"Settings are frozen\" if @frozen"
+- id: merge_method
+  selector:
+    path: lib/config/settings.rb
+    anchor: "def merge(other_settings)"
+- id: server_reads_settings
+  selector:
+    path: lib/app/server.rb
+    anchor: "@settings.get(:port)"
+- id: database_reads_settings
+  selector:
+    path: lib/app/database.rb
+    anchor: "@settings.get(:database_url)"
+- id: mailer_reads_settings
+  selector:
+    path: lib/app/mailer.rb
+    anchor: "@settings.get(:smtp_host)"
+- id: unrelated_encryptor
+  selector:
+    path: lib/utils/encryptor.rb
+    anchor: "class Encryptor"
+- id: unrelated_compressor
+  selector:
+    path: lib/utils/compressor.rb
+    anchor: "class Compressor"
+- id: unrelated_hasher
+  selector:
+    path: lib/utils/hasher.rb
+    anchor: "class Hasher"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_023_ENCRYPTOR_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_023_COMPRESSOR_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_023_HASHER_C
+oracle:
+  required:
+  - get_default_param
+  - freeze_method
+  - frozen_check
+  - server_reads_settings
+  allowed:
+  - merge_method
+  - database_reads_settings
+  - mailer_reads_settings
+  forbidden:
+  - unrelated_encryptor
+  - unrelated_compressor
+  - unrelated_hasher
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

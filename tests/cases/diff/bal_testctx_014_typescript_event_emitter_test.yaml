@@ -1,0 +1,130 @@
+name: bal_testctx_014_typescript_event_emitter_test
+tags:
+- lang:typescript
+- change:single_file
+- change:signature
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/eventEmitter.ts: |
+      type Listener = (...args: unknown[]) => void;
+
+      export class EventEmitter {
+        private listeners: Map<string, Listener[]> = new Map();
+
+        on(event: string, listener: Listener): void {
+          if (!this.listeners.has(event)) {
+            this.listeners.set(event, []);
+          }
+          this.listeners.get(event)!.push(listener);
+        }
+
+        emit(event: string, ...args: unknown[]): void {
+          const handlers = this.listeners.get(event) || [];
+          handlers.forEach(h => h(...args));
+        }
+      }
+    __tests__/eventEmitter.test.ts: |
+      import { EventEmitter } from '../src/eventEmitter';
+
+      describe('EventEmitter', () => {
+        test('emits events to listeners', () => {
+          const emitter = new EventEmitter();
+          let received = '';
+          emitter.on('greet', (msg) => { received = msg as string; });
+          emitter.emit('greet', 'hello');
+          expect(received).toBe('hello');
+        });
+
+        test('supports multiple listeners', () => {
+          const emitter = new EventEmitter();
+          const calls: number[] = [];
+          emitter.on('tick', () => calls.push(1));
+          emitter.on('tick', () => calls.push(2));
+          emitter.emit('tick');
+          expect(calls).toEqual([1, 2]);
+        });
+      });
+    src/store.ts: |
+      export class Store<T> {
+        private state: T;
+
+        constructor(initialState: T) {
+          this.state = initialState;
+        }
+
+        getState(): T {
+          return this.state;
+        }
+
+        setState(newState: T): void {
+          this.state = newState;
+        }
+      }
+  changed_files:
+    src/eventEmitter.ts: |
+      type Listener = (...args: unknown[]) => void;
+
+      export class EventEmitter {
+        private listeners: Map<string, Listener[]> = new Map();
+
+        on(event: string, listener: Listener): void {
+          if (!this.listeners.has(event)) {
+            this.listeners.set(event, []);
+          }
+          this.listeners.get(event)!.push(listener);
+        }
+
+        off(event: string, listener: Listener): void {
+          const handlers = this.listeners.get(event);
+          if (handlers) {
+            this.listeners.set(event, handlers.filter(h => h !== listener));
+          }
+        }
+
+        once(event: string, listener: Listener): void {
+          const wrapper: Listener = (...args) => {
+            listener(...args);
+            this.off(event, wrapper);
+          };
+          this.on(event, wrapper);
+        }
+
+        emit(event: string, ...args: unknown[]): void {
+          const handlers = this.listeners.get(event) || [];
+          handlers.forEach(h => h(...args));
+        }
+      }
+  commit_message: "feat: add off and once methods to EventEmitter"
+fragments:
+- id: off_method
+  selector:
+    path: src/eventEmitter.ts
+    anchor: "off(event: string, listener"
+- id: once_method
+  selector:
+    path: src/eventEmitter.ts
+    anchor: "once(event: string, listener"
+- id: test_imports_emitter
+  selector:
+    path: __tests__/eventEmitter.test.ts
+    anchor: "import { EventEmitter } from"
+- id: test_emits_events
+  selector:
+    path: __tests__/eventEmitter.test.ts
+    anchor: "test('emits events to listeners'"
+- id: no_store
+  selector:
+    path: src/store.ts
+    anchor: "export class Store"
+oracle:
+  required:
+  - off_method
+  - once_method
+  - test_imports_emitter
+  allowed:
+  - test_emits_events
+  forbidden:
+  - no_store

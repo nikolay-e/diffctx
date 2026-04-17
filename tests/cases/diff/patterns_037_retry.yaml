@@ -1,223 +1,144 @@
 name: patterns_037_retry
+tags:
+- lang:elixir
+- change:new_function
+- change:single_file
+- context:import_chain
+- distance:2hop
+- difficulty:medium
 repo:
   initial_files:
-    src/api_client.py: |
-      import requests
+    lib/payments/ledger.ex: |
+      defmodule Payments.Ledger do
+        defstruct [:account_id, :balance, :entries]
 
-      class ApiClient:
-          def __init__(self, base_url: str):
-              self.base_url = base_url
+        def debit(%__MODULE__{balance: bal} = ledger, amount) when amount > 0 and bal >= amount do
+          entry = %{type: :debit, amount: amount, ts: DateTime.utc_now()}
+          {:ok, %{ledger | balance: bal - amount, entries: [entry | ledger.entries]}}
+        end
+        def debit(_, _), do: {:error, :invalid_debit}
 
-          def fetch_data(self, endpoint: str) -> dict:
-              response = requests.get(f"{self.base_url}/{endpoint}")
-              response.raise_for_status()
-              return response.json()
+        def credit(%__MODULE__{balance: bal} = ledger, amount) when amount > 0 do
+          entry = %{type: :credit, amount: amount, ts: DateTime.utc_now()}
+          {:ok, %{ledger | balance: bal + amount, entries: [entry | ledger.entries]}}
+        end
+        def credit(_, _), do: {:error, :invalid_credit}
+      end
+    lib/payments/transaction_service.ex: |
+      defmodule Payments.TransactionService do
+        alias Payments.Ledger
 
-          def post_data(self, endpoint: str, data: dict) -> dict:
-              response = requests.post(f"{self.base_url}/{endpoint}", json=data)
-              response.raise_for_status()
-              return response.json()
-    src/data_processor.py: |
-      from src.api_client import ApiClient
+        def transfer(from_ledger, to_ledger, amount) do
+          with {:ok, debited} <- Ledger.debit(from_ledger, amount),
+               {:ok, credited} <- Ledger.credit(to_ledger, amount) do
+            {:ok, {debited, credited}}
+          end
+        end
+      end
+    lib/payments/reconciliation.ex: |
+      defmodule Payments.Reconciliation do
+        alias Payments.TransactionService
 
-      class DataProcessor:
-          def __init__(self, client: ApiClient):
-              self.client = client
-
-          def process_user_data(self, user_id: int) -> dict:
-              data = self.client.fetch_data(f"users/{user_id}")
-              return {"processed": True, "user": data}
-
-          def process_with_retry(self, endpoint: str, retries: int = 3) -> dict:
-              for attempt in range(retries):
-                  try:
-                      return self.client.fetch_data(endpoint)
-                  except Exception as e:
-                      if attempt == retries - 1:
-                          raise
-              return {}
-    tests/test_data_processor.py: |
-      from unittest.mock import Mock
-      from src.data_processor import DataProcessor
-
-      def test_process_user_data():
-          mock_client = Mock()
-          mock_client.fetch_data.return_value = {"id": 1, "name": "Test"}
-          processor = DataProcessor(mock_client)
-          result = processor.process_user_data(1)
-          assert result["processed"] is True
-    src/retry_utils.py: |
-      import time
-      from functools import wraps
-
-      def retry(max_attempts=3, backoff=1.0):
-          def decorator(func):
-              @wraps(func)
-              def wrapper(*args, **kwargs):
-                  for attempt in range(max_attempts):
-                      try:
-                          return func(*args, **kwargs)
-                      except Exception:
-                          if attempt == max_attempts - 1:
-                              raise
-                          time.sleep(backoff * (attempt + 1))
-              return wrapper
-          return decorator
-    tests/test_api_client.py: |
-      from unittest.mock import patch, Mock
-      from src.api_client import ApiClient
-
-      def test_fetch_data_success():
-          client = ApiClient("http://localhost")
-          with patch('requests.get') as mock_get:
-              mock_get.return_value.json.return_value = {"id": 1}
-              mock_get.return_value.raise_for_status = Mock()
-              result = client.fetch_data("users/1")
-              assert result["id"] == 1
+        def reconcile_batch(transfers) do
+          Enum.map(transfers, fn {from, to, amount} ->
+            TransactionService.transfer(from, to, amount)
+          end)
+        end
+      end
+    garbage/Compliance.ex: |
+      # GARBAGE_PAY_A = "compliance_marker"
+    garbage/FraudDetection.ex: |
+      # GARBAGE_PAY_B = "fraud_detection_marker"
+    garbage/FeeCalculator.ex: |
+      # GARBAGE_PAY_C = "fee_calculator_marker"
+    garbage/Settlement.ex: |
+      # GARBAGE_PAY_D = "settlement_marker"
   changed_files:
-    src/api_client.py: |
-      import requests
+    lib/payments/ledger.ex: |
+      defmodule Payments.Ledger do
+        defstruct [:account_id, :balance, :entries]
 
-      class ApiClient:
-          def __init__(self, base_url: str):
-              self.base_url = base_url
+        def debit(%__MODULE__{balance: bal} = ledger, amount) when amount > 0 and bal >= amount do
+          entry = %{type: :debit, amount: amount, ts: DateTime.utc_now()}
+          {:ok, %{ledger | balance: bal - amount, entries: [entry | ledger.entries]}}
+        end
+        def debit(_, _), do: {:error, :invalid_debit}
 
-          def fetch_data(self, endpoint: str) -> dict:
-              response = requests.get(f"{self.base_url}/{endpoint}")
-              response.raise_for_status()
-              return response.json()
+        def credit(%__MODULE__{balance: bal} = ledger, amount) when amount > 0 do
+          entry = %{type: :credit, amount: amount, ts: DateTime.utc_now()}
+          {:ok, %{ledger | balance: bal + amount, entries: [entry | ledger.entries]}}
+        end
+        def credit(_, _), do: {:error, :invalid_credit}
 
-          def post_data(self, endpoint: str, data: dict) -> dict:
-              response = requests.post(f"{self.base_url}/{endpoint}", json=data)
-              response.raise_for_status()
-              return response.json()
-    src/data_processor.py: |
-      from src.api_client import ApiClient
+        def entry_count(%__MODULE__{entries: entries}), do: length(entries)
 
-      class DataProcessor:
-          def __init__(self, client: ApiClient):
-              self.client = client
+        def total_debited(%__MODULE__{entries: entries}) do
+          entries
+          |> Enum.filter(&(&1.type == :debit))
+          |> Enum.reduce(0, &(&1.amount + &2))
+        end
+      end
+    lib/payments/transaction_service.ex: |
+      defmodule Payments.TransactionService do
+        alias Payments.Ledger
 
-          def process_user_data(self, user_id: int) -> dict:
-              data = self.client.fetch_data(f"users/{user_id}")
-              return {"processed": True, "user": data}
+        def transfer(from_ledger, to_ledger, amount) do
+          with {:ok, debited} <- Ledger.debit(from_ledger, amount),
+               {:ok, credited} <- Ledger.credit(to_ledger, amount) do
+            {:ok, {debited, credited}}
+          end
+        end
+      end
+    lib/payments/reconciliation.ex: |
+      defmodule Payments.Reconciliation do
+        alias Payments.TransactionService
 
-          def process_with_retry(self, endpoint: str, retries: int = 3) -> dict:
-              for attempt in range(retries):
-                  try:
-                      return self.client.fetch_data(endpoint)
-                  except Exception as e:
-                      if attempt == retries - 1:
-                          raise
-              return {}
-    tests/test_data_processor.py: |
-      from unittest.mock import Mock
-      import pytest
-      from src.data_processor import DataProcessor
-
-      def test_process_user_data():
-          mock_client = Mock()
-          mock_client.fetch_data.return_value = {"id": 1, "name": "Test"}
-          processor = DataProcessor(mock_client)
-          result = processor.process_user_data(1)
-          assert result["processed"] is True
-
-      def test_retry_on_failure():
-          mock_client = Mock()
-          mock_client.fetch_data.side_effect = [
-              ConnectionError("First failure"),
-              ConnectionError("Second failure"),
-              {"id": 1, "data": "success"},
-          ]
-          processor = DataProcessor(mock_client)
-          result = processor.process_with_retry("users/1", retries=3)
-          assert result["data"] == "success"
-          assert mock_client.fetch_data.call_count == 3
-
-      def test_retry_exhausted_raises():
-          mock_client = Mock()
-          mock_client.fetch_data.side_effect = [
-              ConnectionError("Failure 1"),
-              ConnectionError("Failure 2"),
-              ConnectionError("Failure 3"),
-          ]
-          processor = DataProcessor(mock_client)
-          with pytest.raises(ConnectionError):
-              processor.process_with_retry("users/1", retries=3)
-    src/retry_utils.py: |
-      import time
-      from functools import wraps
-
-      def retry(max_attempts=3, backoff=1.0):
-          def decorator(func):
-              @wraps(func)
-              def wrapper(*args, **kwargs):
-                  for attempt in range(max_attempts):
-                      try:
-                          return func(*args, **kwargs)
-                      except Exception:
-                          if attempt == max_attempts - 1:
-                              raise
-                          time.sleep(backoff * (attempt + 1))
-              return wrapper
-          return decorator
-    tests/test_api_client.py: |
-      from unittest.mock import patch, Mock
-      from src.api_client import ApiClient
-
-      def test_fetch_data_success():
-          client = ApiClient("http://localhost")
-          with patch('requests.get') as mock_get:
-              mock_get.return_value.json.return_value = {"id": 1}
-              mock_get.return_value.raise_for_status = Mock()
-              result = client.fetch_data("users/1")
-              assert result["id"] == 1
-  commit_message: Update files
+        def reconcile_batch(transfers) do
+          Enum.map(transfers, fn {from, to, amount} ->
+            TransactionService.transfer(from, to, amount)
+          end)
+        end
+      end
+    garbage/Compliance.ex: |
+      # GARBAGE_PAY_A = "compliance_marker"
+    garbage/FraudDetection.ex: |
+      # GARBAGE_PAY_B = "fraud_detection_marker"
+    garbage/FeeCalculator.ex: |
+      # GARBAGE_PAY_C = "fee_calculator_marker"
+    garbage/Settlement.ex: |
+      # GARBAGE_PAY_D = "settlement_marker"
+  commit_message: "feat: add entry_count and total_debited to Payments.Ledger"
 fragments:
-- id: test_data_processor
+- id: entry_count
   selector:
-    path: tests/test_data_processor.py
-    anchor: import pytest
-- id: test_data_processor_1
+    anchor: "def entry_count"
+- id: total_debited
   selector:
-    path: tests/test_data_processor.py
-    anchor: 'def test_retry_on_failure():'
-- id: data_processor
+    anchor: "def total_debited"
+- id: transaction_service_transfer
   selector:
-    path: src/data_processor.py
-    anchor: 'def process_with_retry(self, endpoint: str, retries: int = 3) -> dict:'
-- id: no_retry_utils
+    path: lib/payments/transaction_service.ex
+    anchor: "def transfer"
+- id: no_garbage_a
   selector:
-    path: src/retry_utils.py
-- id: no_test_api_client
+    anchor: GARBAGE_PAY_A
+- id: no_garbage_b
   selector:
-    path: tests/test_api_client.py
-- id: no_global_0
+    anchor: GARBAGE_PAY_B
+- id: no_garbage_c
   selector:
-    anchor: def retry(max_attempts
-- id: no_global_1
+    anchor: GARBAGE_PAY_C
+- id: no_garbage_d
   selector:
-    anchor: time.sleep(backoff
-- id: no_global_2
-  selector:
-    anchor: '@wraps'
-- id: no_global_3
-  selector:
-    anchor: test_fetch_data_success
-- id: no_global_4
-  selector:
-    anchor: patch('requests.get')
+    anchor: GARBAGE_PAY_D
 oracle:
   required:
-  - test_data_processor
-  - test_data_processor_1
-  - data_processor
-  allowed: []
+  - entry_count
+  - total_debited
+  allowed:
+  - transaction_service_transfer
   forbidden:
-  - no_retry_utils
-  - no_test_api_client
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

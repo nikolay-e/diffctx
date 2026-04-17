@@ -18,6 +18,14 @@ def _match_path(candidate: str, target: str) -> bool:
     return candidate == target or candidate.endswith(f"/{target}")
 
 
+def _symbol_matches(frag_symbol: str, expected: str, mode: str) -> bool:
+    if mode == "prefix":
+        return frag_symbol.startswith(expected)
+    if mode == "substring":
+        return expected in frag_symbol
+    return frag_symbol == expected
+
+
 def _matches_selector(fragment: dict, selector: Selector, accept: Accept) -> bool:
     if selector.any_of:
         return any(_matches_selector(fragment, s, accept) for s in selector.any_of)
@@ -29,12 +37,7 @@ def _matches_selector(fragment: dict, selector: Selector, accept: Accept) -> boo
 
     if selector.symbol is not None:
         frag_symbol = fragment.get("symbol") or ""
-        match = accept.symbol_match
-        if match == "exact" and frag_symbol != selector.symbol:
-            return False
-        elif match == "prefix" and not frag_symbol.startswith(selector.symbol):
-            return False
-        elif match == "substring" and selector.symbol not in frag_symbol:
+        if not _symbol_matches(frag_symbol, selector.symbol, accept.symbol_match):
             return False
 
     if selector.kind is not None and accept.kind_must_match:

@@ -1,119 +1,156 @@
 name: csharp_007_explicit_interface
+tags:
+- lang:rust
+- change:bug_fix
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
 repo:
   initial_files:
-    Interfaces/ILogger.cs: |
-      namespace MyApp.Interfaces;
+    src/event/dispatcher.rs: |
+      use std::collections::HashMap;
 
-      public interface ILogger
-      {
-          void Log(string message);
+      pub struct EventDispatcher {
+          listeners: HashMap<String, Vec<String>>,
       }
 
-      public interface IDetailedLogger
-      {
-          void Log(string message, string level);
+      impl EventDispatcher {
+          pub fn new() -> Self {
+              EventDispatcher { listeners: HashMap::new() }
+          }
+
+          pub fn register(&mut self, event: &str, handler: &str) {
+              // BUG: duplicates allowed; same handler can be registered twice
+              self.listeners
+                  .entry(event.to_string())
+                  .or_default()
+                  .push(handler.to_string());
+          }
+
+          pub fn dispatch(&self, event: &str) -> Vec<String> {
+              self.listeners.get(event).cloned().unwrap_or_default()
+          }
       }
-    Services/ConsoleLogger.cs: |
-      namespace MyApp.Services;
+    src/app/router.rs: |
+      use crate::event::dispatcher::EventDispatcher;
 
-      public class ConsoleLogger { }
-    Unrelated/EmailSender.cs: |
-      namespace MyApp.Unrelated;
-
-      public class EmailSender
-      {
-          private const string GARBAGE_CS_007_EMAIL_SENDER_A = "email_sender_marker";
-
-          public void Send(string to, string body) => _ = GARBAGE_CS_007_EMAIL_SENDER_A + to;
+      pub struct AppRouter {
+          dispatcher: EventDispatcher,
       }
-    Unrelated/QueueManager.cs: |
-      namespace MyApp.Unrelated;
 
-      public class QueueManager
-      {
-          public const string GARBAGE_CS_007_QUEUE_MANAGER_B = "queue_manager_marker";
+      impl AppRouter {
+          pub fn new() -> Self {
+              AppRouter { dispatcher: EventDispatcher::new() }
+          }
 
-          public void Enqueue(string item) => _ = GARBAGE_CS_007_QUEUE_MANAGER_B + item;
+          pub fn on(&mut self, event: &str, handler: &str) {
+              self.dispatcher.register(event, handler);
+          }
+
+          pub fn emit(&self, event: &str) -> Vec<String> {
+              self.dispatcher.dispatch(event)
+          }
       }
+    garbage/tracing.rs: |
+      // GARBAGE_EVTD_A = "tracing_marker"
+      pub fn start_trace(_name: &str) -> u64 { 0 }
+    garbage/health.rs: |
+      // GARBAGE_EVTD_B = "health_marker"
+      pub fn check_health() -> bool { true }
+    garbage/profiler.rs: |
+      // GARBAGE_EVTD_C = "profiler_marker"
+      pub fn profile(_label: &str) {}
   changed_files:
-    Interfaces/ILogger.cs: |
-      namespace MyApp.Interfaces;
+    src/event/dispatcher.rs: |
+      use std::collections::HashMap;
+      use std::collections::HashSet;
 
-      public interface ILogger
-      {
-          void Log(string message);
+      pub struct EventDispatcher {
+          listeners: HashMap<String, Vec<String>>,
+          registered: HashMap<String, HashSet<String>>,
       }
 
-      public interface IDetailedLogger
-      {
-          void Log(string message, string level);
-      }
-    Services/ConsoleLogger.cs: |
-      using MyApp.Interfaces;
-
-      namespace MyApp.Services;
-
-      public class ConsoleLogger : ILogger, IDetailedLogger
-      {
-          void ILogger.Log(string message)
-          {
-              Console.WriteLine(message);
+      impl EventDispatcher {
+          pub fn new() -> Self {
+              EventDispatcher {
+                  listeners: HashMap::new(),
+                  registered: HashMap::new(),
+              }
           }
 
-          void IDetailedLogger.Log(string message, string level)
-          {
-              Console.WriteLine($"[{level}] {message}");
+          pub fn register(&mut self, event: &str, handler: &str) {
+              let seen = self.registered.entry(event.to_string()).or_default();
+              if seen.contains(handler) {
+                  return;
+              }
+              seen.insert(handler.to_string());
+              self.listeners
+                  .entry(event.to_string())
+                  .or_default()
+                  .push(handler.to_string());
+          }
+
+          pub fn dispatch(&self, event: &str) -> Vec<String> {
+              self.listeners.get(event).cloned().unwrap_or_default()
           }
       }
-    Unrelated/EmailSender.cs: |
-      namespace MyApp.Unrelated;
+    src/app/router.rs: |
+      use crate::event::dispatcher::EventDispatcher;
 
-      public class EmailSender
-      {
-          private const string GARBAGE_CS_007_EMAIL_SENDER_A = "email_sender_marker";
-
-          public void Send(string to, string body) => _ = GARBAGE_CS_007_EMAIL_SENDER_A + to;
+      pub struct AppRouter {
+          dispatcher: EventDispatcher,
       }
-    Unrelated/QueueManager.cs: |
-      namespace MyApp.Unrelated;
 
-      public class QueueManager
-      {
-          public const string GARBAGE_CS_007_QUEUE_MANAGER_B = "queue_manager_marker";
+      impl AppRouter {
+          pub fn new() -> Self {
+              AppRouter { dispatcher: EventDispatcher::new() }
+          }
 
-          public void Enqueue(string item) => _ = GARBAGE_CS_007_QUEUE_MANAGER_B + item;
+          pub fn on(&mut self, event: &str, handler: &str) {
+              self.dispatcher.register(event, handler);
+          }
+
+          pub fn emit(&self, event: &str) -> Vec<String> {
+              self.dispatcher.dispatch(event)
+          }
       }
-  commit_message: Update files
+    garbage/tracing.rs: |
+      // GARBAGE_EVTD_A = "tracing_marker"
+      pub fn start_trace(_name: &str) -> u64 { 0 }
+    garbage/health.rs: |
+      // GARBAGE_EVTD_B = "health_marker"
+      pub fn check_health() -> bool { true }
+    garbage/profiler.rs: |
+      // GARBAGE_EVTD_C = "profiler_marker"
+      pub fn profile(_label: &str) {}
+  commit_message: "fix: prevent duplicate handler registration in EventDispatcher"
 fragments:
-- id: consolelogger_file
+- id: duplicate_check
   selector:
-    path: Services/ConsoleLogger.cs
-- id: req_global_0
+    anchor: "if seen.contains(handler)"
+- id: register_func
   selector:
-    anchor: using MyApp.Interfaces;
-- id: req_global_1
+    anchor: "pub fn register(&mut self, event: &str, handler: &str)"
+- id: router_uses_dispatcher
   selector:
-    anchor: void ILogger.Log(string message)
-- id: no_global_0
+    anchor: "use crate::event::dispatcher::EventDispatcher"
+- id: no_garbage_a
   selector:
-    anchor: GARBAGE_CS_007_EMAIL_SENDER_A
-- id: no_global_1
+    anchor: GARBAGE_EVTD_A
+- id: no_garbage_b
   selector:
-    anchor: GARBAGE_CS_007_QUEUE_MANAGER_B
-- id: no_global_2
+    anchor: GARBAGE_EVTD_B
+- id: no_garbage_c
   selector:
-    anchor: EmailSender.cs
-- id: no_global_3
-  selector:
-    anchor: QueueManager.cs
+    anchor: GARBAGE_EVTD_C
 oracle:
   required:
-  - consolelogger_file
-  - req_global_0
-  - req_global_1
+  - duplicate_check
+  - register_func
+  - router_uses_dispatcher
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

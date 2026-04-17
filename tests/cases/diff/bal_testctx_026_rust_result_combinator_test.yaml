@@ -1,0 +1,140 @@
+name: bal_testctx_026_rust_result_combinator_test
+tags:
+- lang:rust
+- change:single_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/combinators.rs: |
+      pub fn try_parse_int(input: &str) -> Result<i64, String> {
+          input.parse::<i64>().map_err(|e| format!("Parse error: {}", e))
+      }
+
+      pub fn try_parse_float(input: &str) -> Result<f64, String> {
+          input.parse::<f64>().map_err(|e| format!("Parse error: {}", e))
+      }
+    tests/test_combinators.rs: |
+      use crate::combinators::{try_parse_int, try_parse_float};
+
+      #[test]
+      fn test_parse_valid_int() {
+          assert_eq!(try_parse_int("42"), Ok(42));
+      }
+
+      #[test]
+      fn test_parse_invalid_int() {
+          assert!(try_parse_int("abc").is_err());
+      }
+
+      #[test]
+      fn test_parse_valid_float() {
+          assert_eq!(try_parse_float("3.14"), Ok(3.14));
+      }
+    src/error_types.rs: |
+      use std::fmt;
+
+      #[derive(Debug)]
+      pub enum AppError {
+          NotFound(String),
+          Unauthorized,
+          Internal(String),
+      }
+
+      impl fmt::Display for AppError {
+          fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+              match self {
+                  AppError::NotFound(msg) => write!(f, "Not Found: {}", msg),
+                  AppError::Unauthorized => write!(f, "Unauthorized"),
+                  AppError::Internal(msg) => write!(f, "Internal: {}", msg),
+              }
+          }
+      }
+    src/io_utils.rs: |
+      use std::io;
+
+      pub fn read_line_trimmed() -> io::Result<String> {
+          let mut buf = String::new();
+          io::stdin().read_line(&mut buf)?;
+          Ok(buf.trim().to_string())
+      }
+  changed_files:
+    src/combinators.rs: |
+      pub fn try_parse_int(input: &str) -> Result<i64, String> {
+          input.parse::<i64>().map_err(|e| format!("Parse error: {}", e))
+      }
+
+      pub fn try_parse_float(input: &str) -> Result<f64, String> {
+          input.parse::<f64>().map_err(|e| format!("Parse error: {}", e))
+      }
+
+      pub fn try_parse_bool(input: &str) -> Result<bool, String> {
+          match input.to_lowercase().as_str() {
+              "true" | "1" | "yes" => Ok(true),
+              "false" | "0" | "no" => Ok(false),
+              _ => Err(format!("Cannot parse '{}' as bool", input)),
+          }
+      }
+
+      pub fn parse_or_default<T: std::str::FromStr + Default>(input: &str) -> T {
+          input.parse().unwrap_or_default()
+      }
+
+      pub fn collect_results<T>(results: Vec<Result<T, String>>) -> Result<Vec<T>, Vec<String>> {
+          let mut values = Vec::new();
+          let mut errors = Vec::new();
+          for r in results {
+              match r {
+                  Ok(v) => values.push(v),
+                  Err(e) => errors.push(e),
+              }
+          }
+          if errors.is_empty() {
+              Ok(values)
+          } else {
+              Err(errors)
+          }
+      }
+  commit_message: "feat: add try_parse_bool, parse_or_default, collect_results"
+fragments:
+- id: try_parse_bool_fn
+  selector:
+    path: src/combinators.rs
+    anchor: "pub fn try_parse_bool"
+- id: parse_or_default_fn
+  selector:
+    path: src/combinators.rs
+    anchor: "pub fn parse_or_default"
+- id: collect_results_fn
+  selector:
+    path: src/combinators.rs
+    anchor: "pub fn collect_results"
+- id: test_imports_combinators
+  selector:
+    path: tests/test_combinators.rs
+    anchor: "use crate::combinators"
+- id: test_parse_valid_int
+  selector:
+    path: tests/test_combinators.rs
+    anchor: "fn test_parse_valid_int"
+- id: no_error_types
+  selector:
+    path: src/error_types.rs
+    anchor: "pub enum AppError"
+- id: no_io_utils
+  selector:
+    path: src/io_utils.rs
+    anchor: "pub fn read_line_trimmed"
+oracle:
+  required:
+  - try_parse_bool_fn
+  - collect_results_fn
+  - test_imports_combinators
+  allowed:
+  - parse_or_default_fn
+  - test_parse_valid_int
+  forbidden:
+  - no_error_types
+  - no_io_utils

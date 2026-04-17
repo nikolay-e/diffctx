@@ -1,172 +1,137 @@
 name: csharp_005_cancellation_token
+tags:
+- lang:erlang
+- change:refactor
+- change:single_file
+- context:call_graph
+- distance:1hop
+- difficulty:hard
 repo:
   initial_files:
-    Services/DownloadService.cs: |
-      using System;
-      using System.Net.Http;
-      using System.Threading;
-      using System.Threading.Tasks;
+    src/order_fsm.erl: |
+      -module(order_fsm).
+      -export([start/1, transition/2, state/1]).
 
-      namespace MyApp.Services;
+      start(OrderId) ->
+          {ok, #{id => OrderId, status => pending, history => []}}.
 
-      public class DownloadService
-      {
-          private readonly HttpClient _httpClient;
+      transition(State = #{status := pending}, pay) ->
+          {ok, State#{status => paid, history => [pay | maps:get(history, State)]}};
+      transition(State = #{status := paid}, ship) ->
+          {ok, State#{status => shipped, history => [ship | maps:get(history, State)]}};
+      transition(State, _Event) ->
+          {error, invalid_transition, State}.
 
-          public DownloadService(HttpClient httpClient)
-          {
-              _httpClient = httpClient;
-          }
+      state(#{status := S}) -> S.
+    src/order_api.erl: |
+      -module(order_api).
+      -export([create_order/1, pay_order/1, ship_order/1]).
 
-          public async Task<byte[]> DownloadAsync(string url, CancellationToken cancellationToken)
-          {
-              var response = await _httpClient.GetAsync(url, cancellationToken);
-              response.EnsureSuccessStatusCode();
-              return await response.Content.ReadAsByteArrayAsync(cancellationToken);
-          }
+      create_order(OrderId) ->
+          order_fsm:start(OrderId).
 
-          public async Task<string> DownloadTextAsync(string url, CancellationToken cancellationToken)
-          {
-              return await _httpClient.GetStringAsync(url, cancellationToken);
-          }
-      }
-    Program.cs: |
-      using System;
+      pay_order(State) ->
+          order_fsm:transition(State, pay).
 
-      class Program
-      {
-          static void Main()
-          {
-              Console.WriteLine("Download client ready");
-          }
-      }
-    Unrelated/SessionStore.cs: |
-      namespace MyApp.Unrelated;
+      ship_order(State) ->
+          order_fsm:transition(State, ship).
+    garbage/product_catalog.erl: |
+      -module(product_catalog).
+      %% GARBAGE_CSHAR005_A = "product_catalog_marker"
+      -export([find/1]).
 
-      public class SessionStore
-      {
-          private const string GARBAGE_CS_005_SESSION_STORE_A = "session_store_marker";
+      find(ProductId) -> {ok, ProductId}.
+    garbage/review_aggregator.erl: |
+      -module(review_aggregator).
+      %% GARBAGE_CSHAR005_B = "review_aggregator_marker"
+      -export([average/1]).
 
-          public string GetSession(string id) => GARBAGE_CS_005_SESSION_STORE_A + id;
-      }
-    Unrelated/TokenBucket.cs: |
-      namespace MyApp.Unrelated;
+      average(Reviews) -> lists:sum(Reviews) / length(Reviews).
+    garbage/promo_engine.erl: |
+      -module(promo_engine).
+      %% GARBAGE_CSHAR005_C = "promo_engine_marker"
+      -export([apply/2]).
 
-      public class TokenBucket
-      {
-          public const string GARBAGE_CS_005_TOKEN_BUCKET_B = "token_bucket_marker";
-
-          public bool TryConsume() => GARBAGE_CS_005_TOKEN_BUCKET_B.Length > 0;
-      }
+      apply(Price, Discount) -> Price * (1 - Discount).
   changed_files:
-    Services/DownloadService.cs: |
-      using System;
-      using System.Net.Http;
-      using System.Threading;
-      using System.Threading.Tasks;
+    src/order_fsm.erl: |
+      -module(order_fsm).
+      -export([start/1, transition/2, state/1, cancel/1]).
 
-      namespace MyApp.Services;
+      start(OrderId) ->
+          {ok, #{id => OrderId, status => pending, history => []}}.
 
-      public class DownloadService
-      {
-          private readonly HttpClient _httpClient;
+      transition(State = #{status := pending}, pay) ->
+          {ok, State#{status => paid, history => [pay | maps:get(history, State)]}};
+      transition(State = #{status := paid}, ship) ->
+          {ok, State#{status => shipped, history => [ship | maps:get(history, State)]}};
+      transition(State, _Event) ->
+          {error, invalid_transition, State}.
 
-          public DownloadService(HttpClient httpClient)
-          {
-              _httpClient = httpClient;
-          }
+      cancel(State = #{status := Status}) when Status =:= pending; Status =:= paid ->
+          {ok, State#{status => cancelled, history => [cancel | maps:get(history, State)]}};
+      cancel(State) ->
+          {error, cannot_cancel, State}.
 
-          public async Task<byte[]> DownloadAsync(string url, CancellationToken cancellationToken)
-          {
-              var response = await _httpClient.GetAsync(url, cancellationToken);
-              response.EnsureSuccessStatusCode();
-              return await response.Content.ReadAsByteArrayAsync(cancellationToken);
-          }
+      state(#{status := S}) -> S.
+    src/order_api.erl: |
+      -module(order_api).
+      -export([create_order/1, pay_order/1, ship_order/1, cancel_order/1]).
 
-          public async Task<string> DownloadTextAsync(string url, CancellationToken cancellationToken)
-          {
-              return await _httpClient.GetStringAsync(url, cancellationToken);
-          }
-      }
-    Program.cs: |
-      using System;
-      using System.Net.Http;
-      using System.Threading;
-      using System.Threading.Tasks;
-      using MyApp.Services;
+      create_order(OrderId) ->
+          order_fsm:start(OrderId).
 
-      class Program
-      {
-          static async Task Main()
-          {
-              using var httpClient = new HttpClient();
-              var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-              var service = new DownloadService(httpClient);
+      pay_order(State) ->
+          order_fsm:transition(State, pay).
 
-              try
-              {
-                  var data = await service.DownloadAsync("https://example.com/file", cts.Token);
-                  Console.WriteLine($"Downloaded {data.Length} bytes");
-              }
-              catch (OperationCanceledException)
-              {
-                  Console.WriteLine("Download cancelled due to timeout");
-              }
-          }
-      }
-    Unrelated/SessionStore.cs: |
-      namespace MyApp.Unrelated;
+      ship_order(State) ->
+          order_fsm:transition(State, ship).
 
-      public class SessionStore
-      {
-          private const string GARBAGE_CS_005_SESSION_STORE_A = "session_store_marker";
+      cancel_order(State) ->
+          order_fsm:cancel(State).
+    garbage/product_catalog.erl: |
+      -module(product_catalog).
+      %% GARBAGE_CSHAR005_A = "product_catalog_marker"
+      -export([find/1]).
 
-          public string GetSession(string id) => GARBAGE_CS_005_SESSION_STORE_A + id;
-      }
-    Unrelated/TokenBucket.cs: |
-      namespace MyApp.Unrelated;
+      find(ProductId) -> {ok, ProductId}.
+    garbage/review_aggregator.erl: |
+      -module(review_aggregator).
+      %% GARBAGE_CSHAR005_B = "review_aggregator_marker"
+      -export([average/1]).
 
-      public class TokenBucket
-      {
-          public const string GARBAGE_CS_005_TOKEN_BUCKET_B = "token_bucket_marker";
+      average(Reviews) -> lists:sum(Reviews) / length(Reviews).
+    garbage/promo_engine.erl: |
+      -module(promo_engine).
+      %% GARBAGE_CSHAR005_C = "promo_engine_marker"
+      -export([apply/2]).
 
-          public bool TryConsume() => GARBAGE_CS_005_TOKEN_BUCKET_B.Length > 0;
-      }
-  commit_message: Update files
+      apply(Price, Discount) -> Price * (1 - Discount).
+  commit_message: "refactor: add cancel/1 to order_fsm, expose cancel_order in order_api"
 fragments:
-- id: program_file
+- id: cancel_fsm
   selector:
-    path: Program.cs
-- id: req_global_0
+    path: src/order_fsm.erl
+    anchor: "cancel(State = #{status := Status})"
+- id: cancel_api
   selector:
-    anchor: using System.Net.Http;
-- id: req_global_1
+    path: src/order_api.erl
+    anchor: "cancel_order(State) ->"
+- id: no_garbage_a
   selector:
-    anchor: static async Task Main()
-- id: no_global_0
+    anchor: GARBAGE_CSHAR005_A
+- id: no_garbage_b
   selector:
-    anchor: GARBAGE_CS_005_SESSION_STORE_A
-- id: no_global_1
+    anchor: GARBAGE_CSHAR005_B
+- id: no_garbage_c
   selector:
-    anchor: GARBAGE_CS_005_TOKEN_BUCKET_B
-- id: no_global_2
-  selector:
-    anchor: GARBAGE_CS_005_TOKEN_BUCKET_B.Length
-- id: no_global_3
-  selector:
-    anchor: SessionStore.cs
-- id: no_global_4
-  selector:
-    anchor: TokenBucket.cs
+    anchor: GARBAGE_CSHAR005_C
 oracle:
   required:
-  - program_file
-  - req_global_0
-  - req_global_1
+  - cancel_fsm
+  - cancel_api
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

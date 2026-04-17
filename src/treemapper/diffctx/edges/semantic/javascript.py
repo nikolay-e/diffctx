@@ -12,6 +12,7 @@ from .javascript_semantics import JsFragmentInfo, analyze_javascript_fragment, e
 
 _JS_EXTS = {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".mts", ".cts"}
 _TS_EXTS = {".ts", ".tsx", ".mts", ".cts"}
+_JSON_EXT = ".json"
 
 _EXPORT_DECL_RE = re.compile(
     r"export\s+(?:const|let|var|function\*?|class|async\s+function|interface|type|enum|abstract\s+class)\s+(\w+)",
@@ -210,14 +211,25 @@ class _TsconfigResolver:
         if not isinstance(paths, dict) or not paths:
             return None
 
+        base = self._resolve_base_dir(config)
+        return self._match_path_patterns(paths, import_source, base, candidate_set)
+
+    def _resolve_base_dir(self, config: dict[str, object]) -> Path:
         base_url = config.get("baseUrl", ".")
         config_dir = config.get("_config_dir", self._repo_root)
         if not isinstance(config_dir, Path):
             config_dir = Path(str(config_dir))
         if not isinstance(base_url, str):
             base_url = "."
-        base = config_dir / base_url
+        return config_dir / base_url
 
+    @staticmethod
+    def _match_path_patterns(
+        paths: dict[str, object],
+        import_source: str,
+        base: Path,
+        candidate_set: set[Path],
+    ) -> Path | None:
         for pattern, targets in paths.items():
             if not isinstance(targets, list):
                 continue
@@ -228,8 +240,7 @@ class _TsconfigResolver:
             for target in targets:
                 if not isinstance(target, str):
                     continue
-                resolved_str = target.replace("*", suffix)
-                resolved_path = (base / resolved_str).resolve()
+                resolved_path = (base / target.replace("*", suffix)).resolve()
                 result = _resolve_absolute_import(resolved_path, candidate_set)
                 if result is not None:
                     return result
@@ -267,19 +278,7 @@ class _TsconfigResolver:
         extends = data.get("extends")
         parent_opts: dict[str, object] = {}
         if isinstance(extends, str):
-            if extends.startswith("."):
-                parent_path = (config_path.parent / extends).resolve()
-                if not parent_path.suffix:
-                    parent_path = parent_path.with_suffix(".json")
-            else:
-                node_modules = config_path.parent / "node_modules" / extends
-                if node_modules.is_file():
-                    parent_path = node_modules
-                elif node_modules.with_suffix(".json").is_file():
-                    parent_path = node_modules.with_suffix(".json")
-                else:
-                    parent_path = None
-
+            parent_path = self._resolve_extends_path(extends, config_path)
             if parent_path and parent_path.is_file():
                 parent_config = self._load_config(parent_path, depth + 1)
                 if parent_config:
@@ -303,6 +302,20 @@ class _TsconfigResolver:
         result["_config_dir"] = config_path.parent
 
         return result
+
+    @staticmethod
+    def _resolve_extends_path(extends: str, config_path: Path) -> Path | None:
+        if extends.startswith("."):
+            parent_path = (config_path.parent / extends).resolve()
+            if not parent_path.suffix:
+                parent_path = parent_path.with_suffix(_JSON_EXT)
+            return parent_path
+        node_modules = config_path.parent / "node_modules" / extends
+        if node_modules.is_file():
+            return node_modules
+        if node_modules.with_suffix(_JSON_EXT).is_file():
+            return node_modules.with_suffix(_JSON_EXT)
+        return None
 
 
 class JavaScriptEdgeBuilder(EdgeBuilder):
@@ -422,46 +435,38 @@ class JavaScriptEdgeBuilder(EdgeBuilder):
             pass
         return False
 
-    def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:
-        js_frags = [f for f in fragments if f.path.suffix.lower() in _JS_EXTS]
-        if not js_frags:
-            return {}
-
-        info_cache: dict[FragmentId, JsFragmentInfo] = {}
-        for f in js_frags:
-            info_cache[f.id] = analyze_javascript_fragment(f.content)
-
+    @staticmethod
+    def _build_def_index(
+        js_frags: list[Fragment], info_cache: dict[FragmentId, JsFragmentInfo]
+    ) -> tuple[dict[str, list[FragmentId]], dict[FragmentId, frozenset[str]]]:
         name_to_defs: dict[str, list[FragmentId]] = defaultdict(list)
         frag_defines: dict[FragmentId, frozenset[str]] = {}
-
         for f in js_frags:
             info = info_cache[f.id]
             frag_defines[f.id] = info.defines
             for name in info.defines:
                 name_to_defs[name].append(f.id)
+        return name_to_defs, frag_defines
+
+    def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:
+        js_frags = [f for f in fragments if f.path.suffix.lower() in _JS_EXTS]
+        if not js_frags:
+            return {}
+
+        info_cache = {f.id: analyze_javascript_fragment(f.content) for f in js_frags}
+        name_to_defs, frag_defines = self._build_def_index(js_frags, info_cache)
 
         edges: EdgeDict = {}
-
         for f in js_frags:
             info = info_cache[f.id]
             self_defs = set(frag_defines.get(f.id, frozenset()))
             w = _TS_WEIGHTS if f.path.suffix.lower() in _TS_EXTS else _JS_WEIGHTS
-
             add_semantic_edges(
-                edges,
-                f.id,
-                info,
-                name_to_defs,
-                w.call,
-                w.symbol_ref,
-                w.type_ref,
-                self.reverse_weight_factor,
-                self_defs,
+                edges, f.id, info, name_to_defs, w.call, w.symbol_ref, w.type_ref, self.reverse_weight_factor, self_defs
             )
 
         tsconfig_resolver = _TsconfigResolver(repo_root) if repo_root else None
         self._add_import_edges(js_frags, info_cache, edges, tsconfig_resolver)
-
         return edges
 
     _IMPORT_WEIGHT = 0.55

@@ -1,0 +1,243 @@
+name: gap2_085_kotlin_refactor_import_chain_payment
+tags:
+- lang:scala
+- change:multi_file
+- change:refactor
+- context:cross_module
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/main/scala/payments/ChargeService.scala: |
+      package payments
+
+      import payments.model.{Charge, ChargeStatus}
+      import payments.gateway.StripeGateway
+
+      class ChargeService(gateway: StripeGateway) {
+        def createCharge(customerId: String, amountCents: Long, currency: String): Charge = {
+          val charge = Charge(java.util.UUID.randomUUID().toString, customerId, amountCents, currency, ChargeStatus.Pending)
+          gateway.submit(charge)
+        }
+
+        def refund(chargeId: String): Either[String, Charge] = {
+          gateway.refund(chargeId)
+        }
+      }
+    src/main/scala/payments/model/Charge.scala: |
+      package payments.model
+
+      sealed trait ChargeStatus
+      object ChargeStatus {
+        case object Pending extends ChargeStatus
+        case object Succeeded extends ChargeStatus
+        case object Failed extends ChargeStatus
+        case object Refunded extends ChargeStatus
+      }
+
+      case class Charge(
+        id: String,
+        customerId: String,
+        amountCents: Long,
+        currency: String,
+        status: ChargeStatus
+      )
+    src/main/scala/payments/gateway/StripeGateway.scala: |
+      package payments.gateway
+
+      import payments.model.{Charge, ChargeStatus}
+
+      class StripeGateway(apiKey: String) {
+        def submit(charge: Charge): Charge = {
+          charge.copy(status = ChargeStatus.Succeeded)
+        }
+
+        def refund(chargeId: String): Either[String, Charge] = {
+          Left("Charge not found")
+        }
+      }
+    src/main/scala/subscriptions/BillingScheduler.scala: |
+      package subscriptions
+
+      import payments.ChargeService
+
+      class BillingScheduler(chargeService: ChargeService) {
+        def runMonthlyBilling(customerId: String): Unit = {
+          chargeService.createCharge(customerId, 999L, "USD")
+        }
+      }
+    src/main/scala/catalog/PriceList.scala: |
+      package catalog
+
+      val GARBAGE_GAP085_A: String = "price_list_version_2"
+
+      class PriceList {
+        def lookup(productId: String): Long = 0L
+      }
+    src/main/scala/fraud/FraudDetector.scala: |
+      package fraud
+
+      val GARBAGE_GAP085_B: String = "fraud_model_v3"
+      val GARBAGE_GAP085_C: Double = 0.85
+
+      class FraudDetector {
+        def score(customerId: String, amount: Long): Double = 0.1
+      }
+    src/main/scala/reporting/RevenueReport.scala: |
+      package reporting
+
+      val GARBAGE_GAP085_D: String = "revenue_report_daily"
+
+      class RevenueReport {
+        def total: Long = 0L
+      }
+  changed_files:
+    src/main/scala/payments/ChargeService.scala: |
+      package payments
+
+      import payments.model.{Charge, ChargeStatus, RefundReason}
+      import payments.gateway.StripeGateway
+
+      class ChargeService(gateway: StripeGateway) {
+        def createCharge(customerId: String, amountCents: Long, currency: String): Charge = {
+          val charge = Charge(java.util.UUID.randomUUID().toString, customerId, amountCents, currency, ChargeStatus.Pending)
+          gateway.submit(charge)
+        }
+
+        def refund(chargeId: String, reason: RefundReason = RefundReason.RequestedByCustomer): Either[String, Charge] = {
+          gateway.refund(chargeId, reason)
+        }
+      }
+    src/main/scala/payments/model/Charge.scala: |
+      package payments.model
+
+      sealed trait ChargeStatus
+      object ChargeStatus {
+        case object Pending extends ChargeStatus
+        case object Succeeded extends ChargeStatus
+        case object Failed extends ChargeStatus
+        case object Refunded extends ChargeStatus
+      }
+
+      sealed trait RefundReason
+      object RefundReason {
+        case object RequestedByCustomer extends RefundReason
+        case object Duplicate extends RefundReason
+        case object Fraudulent extends RefundReason
+      }
+
+      case class Charge(
+        id: String,
+        customerId: String,
+        amountCents: Long,
+        currency: String,
+        status: ChargeStatus
+      )
+    src/main/scala/payments/gateway/StripeGateway.scala: |
+      package payments.gateway
+
+      import payments.model.{Charge, ChargeStatus, RefundReason}
+
+      class StripeGateway(apiKey: String) {
+        def submit(charge: Charge): Charge = {
+          charge.copy(status = ChargeStatus.Succeeded)
+        }
+
+        def refund(chargeId: String, reason: RefundReason): Either[String, Charge] = {
+          Left("Charge not found")
+        }
+      }
+    src/main/scala/subscriptions/BillingScheduler.scala: |
+      package subscriptions
+
+      import payments.ChargeService
+      import payments.model.RefundReason
+
+      class BillingScheduler(chargeService: ChargeService) {
+        def runMonthlyBilling(customerId: String): Unit = {
+          chargeService.createCharge(customerId, 999L, "USD")
+        }
+
+        def issueRefund(chargeId: String): Either[String, _] = {
+          chargeService.refund(chargeId, RefundReason.RequestedByCustomer)
+        }
+      }
+    src/main/scala/catalog/PriceList.scala: |
+      package catalog
+
+      val GARBAGE_GAP085_A: String = "price_list_version_2"
+
+      class PriceList {
+        def lookup(productId: String): Long = 0L
+      }
+    src/main/scala/fraud/FraudDetector.scala: |
+      package fraud
+
+      val GARBAGE_GAP085_B: String = "fraud_model_v3"
+      val GARBAGE_GAP085_C: Double = 0.85
+
+      class FraudDetector {
+        def score(customerId: String, amount: Long): Double = 0.1
+      }
+    src/main/scala/reporting/RevenueReport.scala: |
+      package reporting
+
+      val GARBAGE_GAP085_D: String = "revenue_report_daily"
+
+      class RevenueReport {
+        def total: Long = 0L
+      }
+  commit_message: "refactor: add RefundReason parameter to refund operations"
+fragments:
+- id: refund_reason_trait
+  selector:
+    path: src/main/scala/payments/model/Charge.scala
+    anchor: "sealed trait RefundReason"
+- id: charge_service_refund
+  selector:
+    path: src/main/scala/payments/ChargeService.scala
+    anchor: "def refund(chargeId: String, reason: RefundReason"
+- id: stripe_gateway_refund
+  selector:
+    path: src/main/scala/payments/gateway/StripeGateway.scala
+    anchor: "def refund(chargeId: String, reason: RefundReason)"
+- id: billing_scheduler_refund
+  selector:
+    path: src/main/scala/subscriptions/BillingScheduler.scala
+    anchor: "def issueRefund"
+- id: no_price_list
+  selector:
+    path: src/main/scala/catalog/PriceList.scala
+- id: no_fraud_detector
+  selector:
+    path: src/main/scala/fraud/FraudDetector.scala
+- id: no_revenue_report
+  selector:
+    path: src/main/scala/reporting/RevenueReport.scala
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP085_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GAP085_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GAP085_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GAP085_D
+oracle:
+  required:
+  - refund_reason_trait
+  - charge_service_refund
+  - stripe_gateway_refund
+  - billing_scheduler_refund
+  allowed: []
+  forbidden:
+  - no_price_list
+  - no_fraud_detector
+  - no_revenue_report
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

@@ -1,0 +1,129 @@
+name: bal3_3hop_047_scala_stream_processing
+tags:
+- lang:scala
+- change:single_file
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/com/app/stream/Event.scala: |
+      package com.app.stream
+
+      case class Event(
+        source: String,
+        payload: String,
+        timestamp: Long
+      )
+    src/main/scala/com/app/stream/Filter.scala: |
+      package com.app.stream
+
+      class Filter {
+        def accept(event: Event): Boolean = {
+          event.payload.nonEmpty
+        }
+      }
+    src/main/scala/com/app/stream/Processor.scala: |
+      package com.app.stream
+
+      class Processor(filter: Filter) {
+        def process(events: List[Event]): List[Event] = {
+          events.filter(filter.accept)
+        }
+      }
+    src/main/scala/com/app/service/StreamService.scala: |
+      package com.app.service
+
+      import com.app.stream.{Processor, Event}
+
+      class StreamService(processor: Processor) {
+        def ingest(events: List[Event]): List[Event] = {
+          processor.process(events)
+        }
+      }
+    src/main/scala/com/app/api/StreamEndpoint.scala: |
+      package com.app.api
+
+      import com.app.service.StreamService
+
+      class StreamEndpoint(service: StreamService) {
+        def receive(events: List[com.app.stream.Event]): Int = {
+          service.ingest(events).size
+        }
+      }
+    src/main/scala/com/app/util/Codec.scala: |
+      package com.app.util
+
+      var GARBAGE_047_CODEC_MARKER_A = "avro"
+      var GARBAGE_047_SCHEMA_MARKER_B = "v1"
+
+      object Codec {
+        def encode(data: String): Array[Byte] = data.getBytes
+      }
+    src/main/scala/com/app/util/Partitioner.scala: |
+      package com.app.util
+
+      var GARBAGE_047_PART_MARKER_C = "hash"
+      var GARBAGE_047_BUCKET_MARKER_D = 16
+
+      object Partitioner {
+        def partition(key: String, numPartitions: Int): Int = key.hashCode % numPartitions
+      }
+  changed_files:
+    src/main/scala/com/app/stream/Event.scala: |
+      package com.app.stream
+
+      case class Event(
+        source: String,
+        payload: String,
+        timestamp: Long,
+        eventType: String = "default",
+        correlationId: Option[String] = None
+      )
+  commit_message: "feat: add eventType and correlationId to stream Event"
+fragments:
+- id: event_type_field
+  selector:
+    path: src/main/scala/com/app/stream/Event.scala
+    anchor: "eventType: String"
+- id: event_correlation_id
+  selector:
+    path: src/main/scala/com/app/stream/Event.scala
+    anchor: "correlationId: Option[String]"
+- id: filter_uses_event
+  selector:
+    path: src/main/scala/com/app/stream/Filter.scala
+    anchor: "accept(event: Event)"
+- id: processor_uses_filter
+  selector:
+    path: src/main/scala/com/app/stream/Processor.scala
+    anchor: "filter.accept"
+- id: service_imports_processor
+  selector:
+    path: src/main/scala/com/app/service/StreamService.scala
+    anchor: "import com.app.stream"
+- id: endpoint_imports_service
+  selector:
+    path: src/main/scala/com/app/api/StreamEndpoint.scala
+    anchor: "import com.app.service.StreamService"
+- id: no_codec
+  selector:
+    path: src/main/scala/com/app/util/Codec.scala
+    anchor: "GARBAGE_047_CODEC_MARKER_A"
+- id: no_partitioner
+  selector:
+    path: src/main/scala/com/app/util/Partitioner.scala
+    anchor: "GARBAGE_047_PART_MARKER_C"
+oracle:
+  required:
+  - event_type_field
+  - event_correlation_id
+  - filter_uses_event
+  - processor_uses_filter
+  - service_imports_processor
+  allowed:
+  - endpoint_imports_service
+  forbidden:
+  - no_codec
+  - no_partitioner

@@ -1,0 +1,177 @@
+name: bal2_3hop_039_rust_plugin_registry_loader
+tags:
+- lang:rust
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/plugin/manifest.rs: |
+      #[derive(Debug, Clone)]
+      pub struct PluginManifest {
+          pub name: String,
+          pub version: String,
+          pub entry_point: String,
+      }
+
+      impl PluginManifest {
+          pub fn new(name: &str, version: &str, entry_point: &str) -> Self {
+              Self {
+                  name: name.to_string(),
+                  version: version.to_string(),
+                  entry_point: entry_point.to_string(),
+              }
+          }
+      }
+    src/plugin/registry.rs: |
+      use crate::plugin::manifest::PluginManifest;
+
+      pub struct PluginRegistry {
+          plugins: Vec<PluginManifest>,
+      }
+
+      impl PluginRegistry {
+          pub fn new() -> Self {
+              Self { plugins: Vec::new() }
+          }
+
+          pub fn register(&mut self, manifest: PluginManifest) {
+              self.plugins.push(manifest);
+          }
+
+          pub fn find(&self, name: &str) -> Option<&PluginManifest> {
+              self.plugins.iter().find(|p| p.name == name)
+          }
+      }
+    src/plugin/loader.rs: |
+      use crate::plugin::registry::PluginRegistry;
+
+      pub struct PluginLoader {
+          registry: PluginRegistry,
+      }
+
+      impl PluginLoader {
+          pub fn new(registry: PluginRegistry) -> Self {
+              Self { registry }
+          }
+
+          pub fn load(&self, name: &str) -> Result<String, String> {
+              match self.registry.find(name) {
+                  Some(manifest) => Ok(format!("Loaded: {}", manifest.entry_point)),
+                  None => Err(format!("Plugin not found: {}", name)),
+              }
+          }
+      }
+    src/app/extension_manager.rs: |
+      use crate::plugin::loader::PluginLoader;
+
+      pub struct ExtensionManager {
+          loader: PluginLoader,
+          loaded: Vec<String>,
+      }
+
+      impl ExtensionManager {
+          pub fn new(loader: PluginLoader) -> Self {
+              Self { loader, loaded: Vec::new() }
+          }
+
+          pub fn activate(&mut self, name: &str) -> Result<(), String> {
+              let result = self.loader.load(name)?;
+              self.loaded.push(result);
+              Ok(())
+          }
+      }
+    src/plugin/sandbox.rs: |
+      GARBAGE_039_SANDBOX_MARKER_A = "wasm_runtime";
+      GARBAGE_039_MEMORY_MARKER_B = 65536;
+
+      pub struct Sandbox {
+          memory_limit: usize,
+      }
+
+      impl Sandbox {
+          pub fn new(limit: usize) -> Self {
+              Self { memory_limit: limit }
+          }
+      }
+    src/config/toml_parser.rs: |
+      GARBAGE_039_TOML_MARKER_C = "config_parser";
+      GARBAGE_039_KEY_MARKER_D = "section.key";
+
+      pub fn parse_toml(input: &str) -> Vec<(String, String)> {
+          Vec::new()
+      }
+    src/telemetry/events.rs: |
+      GARBAGE_039_EVENT_MARKER_E = "telemetry";
+      GARBAGE_039_TRACK_MARKER_F = "plugin_load";
+
+      pub fn track_event(name: &str) {
+          println!("Event: {}", name);
+      }
+  changed_files:
+    src/plugin/manifest.rs: |
+      #[derive(Debug, Clone)]
+      pub struct PluginManifest {
+          pub name: String,
+          pub version: String,
+          pub entry_point: String,
+          pub permissions: Vec<String>,
+      }
+
+      impl PluginManifest {
+          pub fn new(name: &str, version: &str, entry_point: &str) -> Self {
+              Self {
+                  name: name.to_string(),
+                  version: version.to_string(),
+                  entry_point: entry_point.to_string(),
+                  permissions: Vec::new(),
+              }
+          }
+
+          pub fn with_permissions(mut self, perms: Vec<String>) -> Self {
+              self.permissions = perms;
+              self
+          }
+      }
+  commit_message: "feat: add permissions field to PluginManifest"
+fragments:
+- id: manifest_permissions
+  selector:
+    path: src/plugin/manifest.rs
+    anchor: "pub permissions: Vec<String>"
+- id: registry_register
+  selector:
+    path: src/plugin/registry.rs
+    anchor: "pub fn register"
+- id: loader_load
+  selector:
+    path: src/plugin/loader.rs
+    anchor: "pub fn load"
+- id: ext_manager_activate
+  selector:
+    path: src/app/extension_manager.rs
+    anchor: "pub fn activate"
+- id: no_sandbox
+  selector:
+    path: src/plugin/sandbox.rs
+    anchor: "GARBAGE_039_SANDBOX_MARKER_A"
+- id: no_toml
+  selector:
+    path: src/config/toml_parser.rs
+    anchor: "GARBAGE_039_TOML_MARKER_C"
+- id: no_telemetry
+  selector:
+    path: src/telemetry/events.rs
+    anchor: "GARBAGE_039_EVENT_MARKER_E"
+oracle:
+  required:
+  - manifest_permissions
+  - registry_register
+  - loader_load
+  - ext_manager_activate
+  allowed: []
+  forbidden:
+  - no_sandbox
+  - no_toml
+  - no_telemetry

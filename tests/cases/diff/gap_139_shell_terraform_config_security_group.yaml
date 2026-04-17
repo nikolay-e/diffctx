@@ -1,0 +1,125 @@
+name: gap_139_shell_terraform_config_security_group
+tags:
+- lang:shell
+- lang:terraform
+- change:config
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:1hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    config/security-rules.json: |
+      {
+        "ingress_rules": [
+          {"port": 443, "protocol": "tcp", "cidr": "0.0.0.0/0"},
+          {"port": 80, "protocol": "tcp", "cidr": "0.0.0.0/0"}
+        ],
+        "egress_rules": [
+          {"port": 0, "protocol": "-1", "cidr": "0.0.0.0/0"}
+        ]
+      }
+    terraform/network/security.tf: |
+      locals {
+        ingress_rules = jsondecode(file("${path.root}/config/security-rules.json")).ingress_rules
+        egress_rules  = jsondecode(file("${path.root}/config/security-rules.json")).egress_rules
+      }
+
+      resource "aws_security_group" "app" {
+        name        = "${var.project}-app-sg"
+        description = "Application security group"
+        vpc_id      = var.vpc_id
+
+        dynamic "ingress" {
+          for_each = local.ingress_rules
+          content {
+            from_port   = ingress.value.port
+            to_port     = ingress.value.port
+            protocol    = ingress.value.protocol
+            cidr_blocks = [ingress.value.cidr]
+          }
+        }
+
+        dynamic "egress" {
+          for_each = local.egress_rules
+          content {
+            from_port   = egress.value.port
+            to_port     = egress.value.port
+            protocol    = egress.value.protocol
+            cidr_blocks = [egress.value.cidr]
+          }
+        }
+      }
+    scripts/validate-rules.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      RULES_FILE="${1:-config/security-rules.json}"
+
+      if ! jq empty "$RULES_FILE" 2>/dev/null; then
+          echo "Error: Invalid JSON in $RULES_FILE"
+          exit 1
+      fi
+
+      INGRESS_COUNT=$(jq '.ingress_rules | length' "$RULES_FILE")
+      echo "Ingress rules: $INGRESS_COUNT"
+
+      jq -r '.ingress_rules[] | "  port \(.port)/\(.protocol) from \(.cidr)"' "$RULES_FILE"
+    terraform/network/nacl.tf: |
+      resource "aws_network_acl" "main" {
+        vpc_id = var.vpc_id
+
+        egress {
+          protocol   = "-1"
+          rule_no    = 100
+          action     = "allow"
+          cidr_block = "0.0.0.0/0"
+          from_port  = 0
+          to_port    = 0
+        }
+
+        ingress {
+          protocol   = "-1"
+          rule_no    = 100
+          action     = "allow"
+          cidr_block = "0.0.0.0/0"
+          from_port  = 0
+          to_port    = 0
+        }
+      }
+  changed_files:
+    config/security-rules.json: |
+      {
+        "ingress_rules": [
+          {"port": 443, "protocol": "tcp", "cidr": "0.0.0.0/0"},
+          {"port": 80, "protocol": "tcp", "cidr": "0.0.0.0/0"},
+          {"port": 8443, "protocol": "tcp", "cidr": "10.0.0.0/8"}
+        ],
+        "egress_rules": [
+          {"port": 0, "protocol": "-1", "cidr": "0.0.0.0/0"}
+        ]
+      }
+fragments:
+- id: new_ingress_rule
+  selector:
+    path: config/security-rules.json
+    anchor: "8443"
+- id: sg_dynamic_ingress
+  selector:
+    path: terraform/network/security.tf
+    anchor: "dynamic \"ingress\""
+- id: no_nacl
+  selector:
+    path: terraform/network/nacl.tf
+- id: no_network_acl
+  selector:
+    anchor: aws_network_acl
+oracle:
+  required:
+  - new_ingress_rule
+  - sg_dynamic_ingress
+  forbidden:
+  - no_nacl
+  - no_network_acl

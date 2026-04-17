@@ -1,4 +1,11 @@
 name: ansible_001_role_task_handler
+tags:
+- lang:yaml
+- change:single_file
+- change:config
+- context:same_file
+- distance:0hop
+- difficulty:trivial
 repo:
   initial_files:
     roles/nginx/tasks/main.yml: |

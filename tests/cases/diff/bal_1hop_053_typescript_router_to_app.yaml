@@ -1,0 +1,122 @@
+name: bal_1hop_053_typescript_router_to_app
+tags:
+- lang:typescript
+- change:new_function
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/router/router.ts: |
+      export type RouteHandler = (params: Record<string, string>) => string;
+
+      interface Route {
+        pattern: string;
+        handler: RouteHandler;
+      }
+
+      const routes: Route[] = [];
+
+      export function addRoute(pattern: string, handler: RouteHandler): void {
+        routes.push({ pattern, handler });
+      }
+
+      export function matchRoute(path: string): string | null {
+        for (const route of routes) {
+          if (route.pattern === path) {
+            return route.handler({});
+          }
+        }
+        return null;
+      }
+    src/app/server.ts: |
+      import { addRoute, matchRoute } from '../router/router';
+
+      export function setupRoutes(): void {
+        addRoute('/health', () => '{"status":"ok"}');
+        addRoute('/version', () => '{"version":"1.0.0"}');
+      }
+
+      export function handleRequest(path: string): string {
+        const result = matchRoute(path);
+        return result ?? '{"error":"Not Found"}';
+      }
+    src/middleware/cors.ts: |
+      export function getCorsHeaders(): Record<string, string> {
+        return {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE',
+        };
+      }
+    src/static/assetLoader.ts: |
+      export function loadAsset(path: string): string {
+        return `<binary content of ${path}>`;
+      }
+  changed_files:
+    src/router/router.ts: |
+      export type RouteHandler = (params: Record<string, string>) => string;
+      export type MiddlewareFn = (path: string) => boolean;
+
+      interface Route {
+        pattern: string;
+        handler: RouteHandler;
+        middleware: MiddlewareFn[];
+      }
+
+      const routes: Route[] = [];
+
+      export function addRoute(pattern: string, handler: RouteHandler, middleware: MiddlewareFn[] = []): void {
+        routes.push({ pattern, handler, middleware });
+      }
+
+      export function matchRoute(path: string): string | null {
+        for (const route of routes) {
+          if (route.pattern === path) {
+            const allPassed = route.middleware.every(mw => mw(path));
+            if (!allPassed) return '{"error":"Forbidden"}';
+            return route.handler({});
+          }
+        }
+        return null;
+      }
+
+      export function listRoutes(): string[] {
+        return routes.map(r => r.pattern);
+      }
+  commit_message: "feat: add middleware support and route listing to router"
+fragments:
+- id: router_middleware
+  selector:
+    path: router.ts
+    anchor: "MiddlewareFn"
+- id: router_list_routes
+  selector:
+    path: router.ts
+    anchor: "listRoutes"
+- id: app_uses_add_route
+  selector:
+    path: server.ts
+    anchor: "addRoute('/health'"
+- id: app_uses_match_route
+  selector:
+    path: server.ts
+    anchor: "matchRoute(path)"
+- id: no_cors
+  selector:
+    path: cors.ts
+    anchor: "getCorsHeaders"
+- id: no_asset_loader
+  selector:
+    path: assetLoader.ts
+    anchor: "loadAsset"
+oracle:
+  required:
+  - router_middleware
+  - app_uses_add_route
+  - app_uses_match_route
+  allowed:
+  - router_list_routes
+  forbidden:
+  - no_cors
+  - no_asset_loader

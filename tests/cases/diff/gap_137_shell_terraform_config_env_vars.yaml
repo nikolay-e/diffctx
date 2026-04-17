@@ -1,0 +1,108 @@
+name: gap_137_shell_terraform_config_env_vars
+tags:
+- lang:shell
+- lang:terraform
+- change:config
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:1hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    environments/production.tfvars: |
+      region           = "eu-west-1"
+      instance_type    = "t3.large"
+      min_capacity     = 2
+      max_capacity     = 8
+      enable_monitoring = true
+      log_level        = "warn"
+    terraform/compute/main.tf: |
+      resource "aws_autoscaling_group" "app" {
+        name                = "${var.project}-asg"
+        min_size            = var.min_capacity
+        max_size            = var.max_capacity
+        desired_capacity    = var.min_capacity
+        vpc_zone_identifier = var.subnet_ids
+
+        launch_template {
+          id      = aws_launch_template.app.id
+          version = "$Latest"
+        }
+
+        tag {
+          key                 = "Environment"
+          value               = var.environment
+          propagate_at_launch = true
+        }
+      }
+
+      resource "aws_launch_template" "app" {
+        name_prefix   = "${var.project}-"
+        image_id      = var.ami_id
+        instance_type = var.instance_type
+
+        user_data = base64encode(templatefile("${path.module}/userdata.sh.tpl", {
+          log_level = var.log_level
+        }))
+      }
+    scripts/apply-env.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      ENV="${1:?Usage: apply-env.sh <environment>}"
+      TFVARS="environments/${ENV}.tfvars"
+
+      if [[ ! -f "$TFVARS" ]]; then
+          echo "Error: $TFVARS not found"
+          exit 1
+      fi
+
+      terraform plan -var-file="$TFVARS" -out=plan.tfplan
+      terraform apply plan.tfplan
+    terraform/database/main.tf: |
+      resource "aws_rds_cluster" "aurora" {
+        cluster_identifier = "${var.project}-aurora"
+        engine             = "aurora-postgresql"
+        engine_version     = "15.4"
+        master_username    = var.db_username
+        master_password    = var.db_password
+        database_name      = var.db_name
+
+        serverlessv2_scaling_configuration {
+          min_capacity = 0.5
+          max_capacity = 4
+        }
+      }
+  changed_files:
+    environments/production.tfvars: |
+      region           = "eu-west-1"
+      instance_type    = "t3.large"
+      min_capacity     = 3
+      max_capacity     = 12
+      enable_monitoring = true
+      log_level        = "info"
+      health_check_path = "/ready"
+fragments:
+- id: tfvars_capacity
+  selector:
+    path: environments/production.tfvars
+    anchor: min_capacity
+- id: asg_resource
+  selector:
+    path: terraform/compute/main.tf
+    anchor: aws_autoscaling_group
+- id: no_database
+  selector:
+    path: terraform/database/main.tf
+- id: no_aurora
+  selector:
+    anchor: aws_rds_cluster
+oracle:
+  required:
+  - tfvars_capacity
+  - asg_resource
+  forbidden:
+  - no_database
+  - no_aurora

@@ -1,0 +1,170 @@
+name: bal3_rare_014_julia_matrix_solver
+tags:
+- lang:sql
+- change:single_file
+- context:cross_module
+- distance:0hop
+- difficulty:medium
+repo:
+  initial_files:
+    db/schema.sql: |
+      CREATE TABLE employees (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(255) NOT NULL,
+          department_id INTEGER REFERENCES departments(id),
+          salary NUMERIC(12, 2) NOT NULL,
+          hired_at DATE NOT NULL
+      );
+
+      CREATE TABLE departments (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(100) NOT NULL,
+          manager_id INTEGER REFERENCES employees(id)
+      );
+    src/hr/employee_repo.py: |
+      def list_employees(conn, department_id: int | None = None) -> list:
+          cur = conn.cursor()
+          if department_id is not None:
+              cur.execute(
+                  "SELECT id, name, salary FROM employees WHERE department_id = %s",
+                  (department_id,)
+              )
+          else:
+              cur.execute("SELECT id, name, salary FROM employees")
+          return cur.fetchall()
+    src/hr/payroll.py: |
+      def total_payroll(conn, department_id: int | None = None) -> float:
+          cur = conn.cursor()
+          if department_id is not None:
+              cur.execute(
+                  "SELECT SUM(salary) FROM employees WHERE department_id = %s",
+                  (department_id,)
+              )
+          else:
+              cur.execute("SELECT SUM(salary) FROM employees")
+          row = cur.fetchone()
+          return float(row[0] or 0)
+    garbage/audit.py: |
+      GARBAGE_JUL014_AUDIT_A = "audit_marker"
+
+
+      def log_action(user_id: int, action: str) -> None:
+          pass
+    garbage/approvals.py: |
+      GARBAGE_JUL014_APPROV_B = "approvals_marker"
+
+
+      def require_approval(level: int) -> bool:
+          return False
+    garbage/org_chart.py: |
+      GARBAGE_JUL014_ORG_C = "orgchart_marker"
+
+
+      def build_tree(root_id: int) -> dict:
+          return {}
+  changed_files:
+    db/schema.sql: |
+      CREATE TABLE employees (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(255) NOT NULL,
+          department_id INTEGER REFERENCES departments(id),
+          salary NUMERIC(12, 2) NOT NULL,
+          job_title VARCHAR(255),
+          employment_type VARCHAR(20) NOT NULL DEFAULT 'full_time',
+          hired_at DATE NOT NULL,
+          terminated_at DATE
+      );
+
+      CREATE TABLE departments (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(100) NOT NULL,
+          manager_id INTEGER REFERENCES employees(id),
+          cost_center VARCHAR(20)
+      );
+
+      CREATE INDEX idx_employees_department ON employees(department_id);
+      CREATE INDEX idx_employees_employment_type ON employees(employment_type);
+    src/hr/employee_repo.py: |
+      def list_employees(conn, department_id: int | None = None) -> list:
+          cur = conn.cursor()
+          if department_id is not None:
+              cur.execute(
+                  "SELECT id, name, salary FROM employees WHERE department_id = %s",
+                  (department_id,)
+              )
+          else:
+              cur.execute("SELECT id, name, salary FROM employees")
+          return cur.fetchall()
+    src/hr/payroll.py: |
+      def total_payroll(conn, department_id: int | None = None) -> float:
+          cur = conn.cursor()
+          if department_id is not None:
+              cur.execute(
+                  "SELECT SUM(salary) FROM employees WHERE department_id = %s",
+                  (department_id,)
+              )
+          else:
+              cur.execute("SELECT SUM(salary) FROM employees")
+          row = cur.fetchone()
+          return float(row[0] or 0)
+    garbage/audit.py: |
+      GARBAGE_JUL014_AUDIT_A = "audit_marker"
+
+
+      def log_action(user_id: int, action: str) -> None:
+          pass
+    garbage/approvals.py: |
+      GARBAGE_JUL014_APPROV_B = "approvals_marker"
+
+
+      def require_approval(level: int) -> bool:
+          return False
+    garbage/org_chart.py: |
+      GARBAGE_JUL014_ORG_C = "orgchart_marker"
+
+
+      def build_tree(root_id: int) -> dict:
+          return {}
+  commit_message: "feat: add job_title, employment_type, terminated_at and cost_center"
+fragments:
+- id: employees_job_title
+  selector:
+    path: db/schema.sql
+    anchor: "job_title VARCHAR"
+- id: employees_terminated_at
+  selector:
+    path: db/schema.sql
+    anchor: "terminated_at DATE"
+- id: departments_cost_center
+  selector:
+    path: db/schema.sql
+    anchor: "cost_center VARCHAR"
+- id: employee_repo_query
+  selector:
+    path: src/hr/employee_repo.py
+    anchor: "SELECT id, name, salary FROM employees"
+- id: payroll_query
+  selector:
+    path: src/hr/payroll.py
+    anchor: "SELECT SUM(salary) FROM employees"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_JUL014_AUDIT_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_JUL014_APPROV_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_JUL014_ORG_C
+oracle:
+  required:
+  - employees_job_title
+  - employees_terminated_at
+  - departments_cost_center
+  - employee_repo_query
+  - payroll_query
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

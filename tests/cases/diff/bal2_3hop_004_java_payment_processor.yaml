@@ -1,0 +1,195 @@
+name: bal2_3hop_004_java_payment_processor
+tags:
+- lang:java
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/app/payment/Currency.java: |
+      package com.app.payment;
+
+      public enum Currency {
+          USD, EUR, GBP;
+          public String getSymbol() {
+              switch (this) {
+                  case USD: return "$";
+                  case EUR: return "E";
+                  case GBP: return "P";
+                  default: return "?";
+              }
+          }
+      }
+    src/main/java/com/app/payment/Money.java: |
+      package com.app.payment;
+
+      import com.app.payment.Currency;
+
+      public class Money {
+          private final long cents;
+          private final Currency currency;
+          public Money(long cents, Currency currency) {
+              this.cents = cents;
+              this.currency = currency;
+          }
+          public long getCents() { return cents; }
+          public Currency getCurrency() { return currency; }
+      }
+    src/main/java/com/app/payment/PaymentGateway.java: |
+      package com.app.payment;
+
+      import com.app.payment.Money;
+
+      public class PaymentGateway {
+          public boolean charge(String accountId, Money amount) {
+              return amount.getCents() > 0;
+          }
+      }
+    src/main/java/com/app/order/CheckoutService.java: |
+      package com.app.order;
+
+      import com.app.payment.PaymentGateway;
+      import com.app.payment.Money;
+      import com.app.payment.Currency;
+
+      public class CheckoutService {
+          private final PaymentGateway gateway;
+          public CheckoutService(PaymentGateway gateway) {
+              this.gateway = gateway;
+          }
+          public boolean processOrder(String accountId, long totalCents) {
+              Money money = new Money(totalCents, Currency.USD);
+              return gateway.charge(accountId, money);
+          }
+      }
+    src/main/java/com/app/shipping/ShippingCalculator.java: |
+      package com.app.shipping;
+
+      public class ShippingCalculator {
+          public double calculate(double weight, String zone) {
+              return weight * 2.5;
+          }
+      }
+    src/main/java/com/app/inventory/StockManager.java: |
+      package com.app.inventory;
+
+      public class StockManager {
+          public boolean isAvailable(String sku, int qty) {
+              return qty > 0;
+          }
+      }
+  changed_files:
+    src/main/java/com/app/payment/Currency.java: |
+      package com.app.payment;
+
+      public enum Currency {
+          USD, EUR, GBP, JPY;
+          public String getSymbol() {
+              switch (this) {
+                  case USD: return "$";
+                  case EUR: return "E";
+                  case GBP: return "P";
+                  case JPY: return "Y";
+                  default: return "?";
+              }
+          }
+          public int getDecimalPlaces() {
+              return this == JPY ? 0 : 2;
+          }
+      }
+    src/main/java/com/app/payment/Money.java: |
+      package com.app.payment;
+
+      import com.app.payment.Currency;
+
+      public class Money {
+          private final long cents;
+          private final Currency currency;
+          public Money(long cents, Currency currency) {
+              this.cents = cents;
+              this.currency = currency;
+          }
+          public long getCents() { return cents; }
+          public Currency getCurrency() { return currency; }
+      }
+    src/main/java/com/app/payment/PaymentGateway.java: |
+      package com.app.payment;
+
+      import com.app.payment.Money;
+
+      public class PaymentGateway {
+          public boolean charge(String accountId, Money amount) {
+              return amount.getCents() > 0;
+          }
+      }
+    src/main/java/com/app/order/CheckoutService.java: |
+      package com.app.order;
+
+      import com.app.payment.PaymentGateway;
+      import com.app.payment.Money;
+      import com.app.payment.Currency;
+
+      public class CheckoutService {
+          private final PaymentGateway gateway;
+          public CheckoutService(PaymentGateway gateway) {
+              this.gateway = gateway;
+          }
+          public boolean processOrder(String accountId, long totalCents) {
+              Money money = new Money(totalCents, Currency.USD);
+              return gateway.charge(accountId, money);
+          }
+      }
+    src/main/java/com/app/shipping/ShippingCalculator.java: |
+      package com.app.shipping;
+
+      public class ShippingCalculator {
+          public double calculate(double weight, String zone) {
+              return weight * 2.5;
+          }
+      }
+    src/main/java/com/app/inventory/StockManager.java: |
+      package com.app.inventory;
+
+      public class StockManager {
+          public boolean isAvailable(String sku, int qty) {
+              return qty > 0;
+          }
+      }
+  commit_message: "feat: add JPY currency with zero decimal places"
+fragments:
+- id: jpy_added
+  selector:
+    path: src/main/java/com/app/payment/Currency.java
+    anchor: "USD, EUR, GBP, JPY"
+- id: money_imports_currency
+  selector:
+    path: src/main/java/com/app/payment/Money.java
+    anchor: "import com.app.payment.Currency"
+- id: gateway_imports_money
+  selector:
+    path: src/main/java/com/app/payment/PaymentGateway.java
+    anchor: "import com.app.payment.Money"
+- id: checkout_imports_gateway
+  selector:
+    path: src/main/java/com/app/order/CheckoutService.java
+    anchor: "import com.app.payment.PaymentGateway"
+- id: no_shipping
+  selector:
+    path: src/main/java/com/app/shipping/ShippingCalculator.java
+    anchor: "class ShippingCalculator"
+- id: no_stock
+  selector:
+    path: src/main/java/com/app/inventory/StockManager.java
+    anchor: "class StockManager"
+oracle:
+  required:
+  - jpy_added
+  - money_imports_currency
+  - gateway_imports_money
+  - checkout_imports_gateway
+  allowed: []
+  forbidden:
+  - no_shipping
+  - no_stock

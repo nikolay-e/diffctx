@@ -1,0 +1,91 @@
+name: bal4_testctx_009_ruby_shopping_cart_spec
+tags:
+- lang:ruby
+- change:single_file
+- change:signature
+- context:test_file
+- distance:1hop
+- difficulty:trivial
+repo:
+  initial_files:
+    lib/cart.rb: |
+      class Cart
+        attr_reader :items
+
+        def initialize
+          @items = []
+        end
+
+        def add(product)
+          @items << product
+        end
+
+        def total
+          @items.sum { |i| i[:price] }
+        end
+      end
+    spec/cart_spec.rb: |
+      require_relative '../lib/cart'
+
+      RSpec.describe Cart do
+        subject { described_class.new }
+
+        describe '#add' do
+          it 'adds an item' do
+            subject.add(name: 'pen', price: 1.5)
+            expect(subject.items.size).to eq(1)
+          end
+        end
+
+        describe '#total' do
+          it 'sums prices' do
+            subject.add(name: 'pen', price: 1.5)
+            subject.add(name: 'book', price: 10.0)
+            expect(subject.total).to eq(11.5)
+          end
+        end
+      end
+    lib/inventory.rb: |
+      class Inventory
+        def stock(product_id)
+          100
+        end
+      end
+  changed_files:
+    lib/cart.rb: |
+      class Cart
+        attr_reader :items
+
+        def initialize
+          @items = []
+        end
+
+        def add(product, qty: 1)
+          qty.times { @items << product }
+        end
+
+        def total
+          @items.sum { |i| i[:price] }
+        end
+      end
+  commit_message: "refactor: add qty parameter to Cart#add"
+fragments:
+- id: add_method
+  selector:
+    path: lib/cart.rb
+    anchor: "def add(product, qty: 1)"
+- id: spec_add
+  selector:
+    path: spec/cart_spec.rb
+    anchor: "describe '#add'"
+- id: no_inventory
+  selector:
+    path: lib/inventory.rb
+    anchor: "class Inventory"
+oracle:
+  required:
+  - add_method
+  - spec_add
+  allowed: []
+  forbidden:
+  - no_inventory

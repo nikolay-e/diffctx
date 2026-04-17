@@ -1,0 +1,112 @@
+name: gap2_165_py_multi_sig_cross_module_flight_booking
+tags:
+- change:multi_file
+- change:new_function
+- change:signature
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+- lang:python
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    booking/reservation.py: |
+      from booking.pricing import FareCalculator
+
+      class Reservation:
+          def __init__(self, calculator: FareCalculator):
+              self.calculator = calculator
+              self.bookings = []
+
+          def book(self, passenger: str, route: str) -> float:
+              fare = self.calculator.compute(route)
+              self.bookings.append({"passenger": passenger, "route": route, "fare": fare})
+              return fare
+    booking/pricing.py: |
+      class FareCalculator:
+          def __init__(self, base_rate: float):
+              self.base_rate = base_rate
+
+          def compute(self, route: str) -> float:
+              distance = len(route) * 10
+              return self.base_rate * distance
+    booking/inventory.py: |
+      class SeatInventory:
+          def __init__(self):
+              self._seats = {}
+
+          def add_flight(self, flight_id: str, capacity: int) -> None:
+              self._seats[flight_id] = capacity
+
+          def available(self, flight_id: str) -> int:
+              return self._seats.get(flight_id, 0)
+  changed_files:
+    booking/reservation.py: |
+      from booking.pricing import FareCalculator, SurchargePolicy
+
+      class Reservation:
+          def __init__(self, calculator: FareCalculator, surcharge: SurchargePolicy):
+              self.calculator = calculator
+              self.surcharge = surcharge
+              self.bookings = []
+
+          def book(self, passenger: str, route: str, cabin_class: str = "economy") -> float:
+              fare = self.calculator.compute(route, cabin_class)
+              total = self.surcharge.apply(fare, cabin_class)
+              self.bookings.append({"passenger": passenger, "route": route, "fare": total})
+              return total
+
+          def cancel(self, passenger: str) -> bool:
+              for i, b in enumerate(self.bookings):
+                  if b["passenger"] == passenger:
+                      self.bookings.pop(i)
+                      return True
+              return False
+    booking/pricing.py: |
+      from dataclasses import dataclass
+
+      @dataclass
+      class SurchargePolicy:
+          fuel_pct: float = 0.12
+          tax_pct: float = 0.08
+
+          def apply(self, base_fare: float, cabin_class: str) -> float:
+              multiplier = 1.5 if cabin_class == "business" else 1.0
+              return base_fare * multiplier * (1 + self.fuel_pct + self.tax_pct)
+
+      class FareCalculator:
+          def __init__(self, base_rate: float):
+              self.base_rate = base_rate
+
+          def compute(self, route: str, cabin_class: str = "economy") -> float:
+              distance = len(route) * 10
+              return self.base_rate * distance
+fragments:
+- id: surcharge_policy
+  selector:
+    path: booking/pricing.py
+    anchor: "class SurchargePolicy"
+- id: surcharge_apply
+  selector:
+    path: booking/pricing.py
+    anchor: "def apply(self, base_fare"
+- id: compute_sig
+  selector:
+    path: booking/pricing.py
+    anchor: "def compute(self, route: str, cabin_class"
+- id: cancel_method
+  selector:
+    path: booking/reservation.py
+    anchor: "def cancel"
+- id: no_inventory
+  selector:
+    path: booking/inventory.py
+oracle:
+  required:
+  - surcharge_policy
+  - surcharge_apply
+  - compute_sig
+  - cancel_method
+  forbidden:
+  - no_inventory

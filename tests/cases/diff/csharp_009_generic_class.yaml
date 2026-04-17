@@ -1,130 +1,167 @@
 name: csharp_009_generic_class
+tags:
+- lang:rust
+- change:bug_fix
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
 repo:
   initial_files:
-    Collections/Cache.cs: |
-      namespace MyApp.Collections;
-
-      public class Cache<TKey, TValue> where TKey : notnull
-      {
-          private readonly Dictionary<TKey, TValue> _cache = new();
-
-          public void Set(TKey key, TValue value) => _cache[key] = value;
-
-          public TValue? Get(TKey key) =>
-              _cache.TryGetValue(key, out var value) ? value : default;
-
-          public bool Contains(TKey key) => _cache.ContainsKey(key);
+    src/queue/ring_buffer.rs: |
+      pub struct RingBuffer<T> {
+          data: Vec<Option<T>>,
+          head: usize,
+          tail: usize,
+          capacity: usize,
       }
-    Services/CacheService.cs: |
-      namespace MyApp.Services;
 
-      public class CacheService { }
-    Unrelated/RetryPolicy.cs: |
-      namespace MyApp.Unrelated;
+      impl<T> RingBuffer<T> {
+          pub fn new(capacity: usize) -> Self {
+              let mut data = Vec::with_capacity(capacity);
+              for _ in 0..capacity {
+                  data.push(None);
+              }
+              RingBuffer { data, head: 0, tail: 0, capacity }
+          }
 
-      public class RetryPolicy
-      {
-          private const string GARBAGE_CS_009_RETRY_POLICY_A = "retry_policy_marker";
+          pub fn push(&mut self, item: T) {
+              // BUG: overwrites head when full instead of returning error
+              self.data[self.tail] = Some(item);
+              self.tail = (self.tail + 1) % self.capacity;
+          }
 
-          public int MaxRetries => GARBAGE_CS_009_RETRY_POLICY_A.Length;
+          pub fn pop(&mut self) -> Option<T> {
+              let item = self.data[self.head].take();
+              if item.is_some() {
+                  self.head = (self.head + 1) % self.capacity;
+              }
+              item
+          }
       }
-    Unrelated/CorrelationIdProvider.cs: |
-      namespace MyApp.Unrelated;
+    src/worker/task_runner.rs: |
+      use crate::queue::ring_buffer::RingBuffer;
 
-      public class CorrelationIdProvider
-      {
-          public const string GARBAGE_CS_009_CORRELATION_ID_B = "correlation_id_marker";
-
-          public string Generate() => GARBAGE_CS_009_CORRELATION_ID_B + Guid.NewGuid();
+      pub struct TaskRunner {
+          queue: RingBuffer<String>,
       }
+
+      impl TaskRunner {
+          pub fn new() -> Self {
+              TaskRunner { queue: RingBuffer::new(64) }
+          }
+
+          pub fn enqueue(&mut self, task: String) {
+              self.queue.push(task);
+          }
+
+          pub fn run_next(&mut self) -> Option<String> {
+              self.queue.pop()
+          }
+      }
+    garbage/metrics.rs: |
+      // GARBAGE_RQBUF_A = "metrics_marker"
+      pub fn record(_name: &str) {}
+    garbage/health.rs: |
+      // GARBAGE_RQBUF_B = "health_marker"
+      pub fn check() -> bool { true }
+    garbage/tracer.rs: |
+      // GARBAGE_RQBUF_C = "tracer_marker"
+      pub fn trace(_span: &str) {}
   changed_files:
-    Collections/Cache.cs: |
-      namespace MyApp.Collections;
-
-      public class Cache<TKey, TValue> where TKey : notnull
-      {
-          private readonly Dictionary<TKey, TValue> _cache = new();
-
-          public void Set(TKey key, TValue value) => _cache[key] = value;
-
-          public TValue? Get(TKey key) =>
-              _cache.TryGetValue(key, out var value) ? value : default;
-
-          public bool Contains(TKey key) => _cache.ContainsKey(key);
+    src/queue/ring_buffer.rs: |
+      pub struct RingBuffer<T> {
+          data: Vec<Option<T>>,
+          head: usize,
+          tail: usize,
+          capacity: usize,
+          len: usize,
       }
-    Services/CacheService.cs: |
-      using MyApp.Collections;
-      using MyApp.Models;
 
-      namespace MyApp.Services;
-
-      public class CacheService
-      {
-          private readonly Cache<string, User> _userCache = new();
-
-          public void CacheUser(string key, User user)
-          {
-              _userCache.Set(key, user);
+      impl<T> RingBuffer<T> {
+          pub fn new(capacity: usize) -> Self {
+              let mut data = Vec::with_capacity(capacity);
+              for _ in 0..capacity {
+                  data.push(None);
+              }
+              RingBuffer { data, head: 0, tail: 0, capacity, len: 0 }
           }
 
-          public User? GetCachedUser(string key)
-          {
-              return _userCache.Get(key);
+          pub fn push(&mut self, item: T) -> bool {
+              if self.len == self.capacity {
+                  return false;
+              }
+              self.data[self.tail] = Some(item);
+              self.tail = (self.tail + 1) % self.capacity;
+              self.len += 1;
+              true
+          }
+
+          pub fn pop(&mut self) -> Option<T> {
+              let item = self.data[self.head].take();
+              if item.is_some() {
+                  self.head = (self.head + 1) % self.capacity;
+                  self.len -= 1;
+              }
+              item
           }
       }
-    Unrelated/RetryPolicy.cs: |
-      namespace MyApp.Unrelated;
+    src/worker/task_runner.rs: |
+      use crate::queue::ring_buffer::RingBuffer;
 
-      public class RetryPolicy
-      {
-          private const string GARBAGE_CS_009_RETRY_POLICY_A = "retry_policy_marker";
-
-          public int MaxRetries => GARBAGE_CS_009_RETRY_POLICY_A.Length;
+      pub struct TaskRunner {
+          queue: RingBuffer<String>,
       }
-    Unrelated/CorrelationIdProvider.cs: |
-      namespace MyApp.Unrelated;
 
-      public class CorrelationIdProvider
-      {
-          public const string GARBAGE_CS_009_CORRELATION_ID_B = "correlation_id_marker";
+      impl TaskRunner {
+          pub fn new() -> Self {
+              TaskRunner { queue: RingBuffer::new(64) }
+          }
 
-          public string Generate() => GARBAGE_CS_009_CORRELATION_ID_B + Guid.NewGuid();
+          pub fn enqueue(&mut self, task: String) {
+              self.queue.push(task);
+          }
+
+          pub fn run_next(&mut self) -> Option<String> {
+              self.queue.pop()
+          }
       }
-  commit_message: Update files
+    garbage/metrics.rs: |
+      // GARBAGE_RQBUF_A = "metrics_marker"
+      pub fn record(_name: &str) {}
+    garbage/health.rs: |
+      // GARBAGE_RQBUF_B = "health_marker"
+      pub fn check() -> bool { true }
+    garbage/tracer.rs: |
+      // GARBAGE_RQBUF_C = "tracer_marker"
+      pub fn trace(_span: &str) {}
+  commit_message: "fix: return false instead of overwriting on full RingBuffer::push"
 fragments:
-- id: cacheservice_file
+- id: push_returns_bool
   selector:
-    path: Services/CacheService.cs
-- id: req_global_0
+    anchor: "pub fn push(&mut self, item: T) -> bool"
+- id: full_check
   selector:
-    anchor: using MyApp.Collections;
-- id: req_global_1
+    anchor: "if self.len == self.capacity"
+- id: runner_uses_ring_buffer
   selector:
-    anchor: public void CacheUser(string key, User user)
-- id: no_global_0
+    anchor: "use crate::queue::ring_buffer::RingBuffer"
+- id: no_garbage_a
   selector:
-    anchor: GARBAGE_CS_009_CORRELATION_ID_B
-- id: no_global_1
+    anchor: GARBAGE_RQBUF_A
+- id: no_garbage_b
   selector:
-    anchor: GARBAGE_CS_009_RETRY_POLICY_A
-- id: no_global_2
+    anchor: GARBAGE_RQBUF_B
+- id: no_garbage_c
   selector:
-    anchor: GARBAGE_CS_009_RETRY_POLICY_A.Length
-- id: no_global_3
-  selector:
-    anchor: CorrelationIdProvider.cs
-- id: no_global_4
-  selector:
-    anchor: RetryPolicy.cs
+    anchor: GARBAGE_RQBUF_C
 oracle:
   required:
-  - cacheservice_file
-  - req_global_0
-  - req_global_1
+  - push_returns_bool
+  - full_check
+  - runner_uses_ring_buffer
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

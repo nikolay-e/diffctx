@@ -1,0 +1,175 @@
+name: gap_159_shell_terraform_dns_update_single_import
+tags:
+- change:config
+- change:single_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:shell
+- lang:terraform
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    scripts/update_dns.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      HOSTED_ZONE_ID="${HOSTED_ZONE_ID:-Z0123456789ABCDEF}"
+      RECORD_NAME="${RECORD_NAME:-api.megastore.dev}"
+      RECORD_TYPE="${RECORD_TYPE:-A}"
+      TTL="${TTL:-300}"
+
+      CURRENT_IP=$(curl -s http://checkip.amazonaws.com)
+
+      CHANGE_BATCH=$(cat <<ENDJSON
+      {
+        "Changes": [{
+          "Action": "UPSERT",
+          "ResourceRecordSet": {
+            "Name": "${RECORD_NAME}",
+            "Type": "${RECORD_TYPE}",
+            "TTL": ${TTL},
+            "ResourceRecords": [{"Value": "${CURRENT_IP}"}]
+          }
+        }]
+      }
+      ENDJSON
+      )
+
+      aws route53 change-resource-record-sets \
+        --hosted-zone-id "${HOSTED_ZONE_ID}" \
+        --change-batch "${CHANGE_BATCH}"
+    terraform/route53.tf: |
+      resource "aws_route53_zone" "megastore" {
+        name = "megastore.dev"
+      }
+
+      resource "aws_route53_record" "api" {
+        zone_id = aws_route53_zone.megastore.zone_id
+        name    = "api.megastore.dev"
+        type    = "A"
+        ttl     = 300
+        records = ["1.2.3.4"]
+      }
+
+      resource "aws_route53_record" "www" {
+        zone_id = aws_route53_zone.megastore.zone_id
+        name    = "www.megastore.dev"
+        type    = "CNAME"
+        ttl     = 300
+        records = ["megastore.dev"]
+      }
+
+      output "zone_id" {
+        value = aws_route53_zone.megastore.zone_id
+      }
+    terraform/cloudfront.tf: |
+      resource "aws_cloudfront_distribution" "cdn" {
+        origin {
+          domain_name = "api.megastore.dev"
+          origin_id   = "api-origin"
+
+          custom_origin_config {
+            http_port              = 80
+            https_port             = 443
+            origin_protocol_policy = "https-only"
+            origin_ssl_protocols   = ["TLSv1.2"]
+          }
+        }
+
+        enabled = true
+
+        default_cache_behavior {
+          allowed_methods  = ["GET", "HEAD"]
+          cached_methods   = ["GET", "HEAD"]
+          target_origin_id = "api-origin"
+          viewer_protocol_policy = "redirect-to-https"
+
+          forwarded_values {
+            query_string = false
+            cookies { forward = "none" }
+          }
+        }
+
+        restrictions {
+          geo_restriction { restriction_type = "none" }
+        }
+
+        viewer_certificate {
+          cloudfront_default_certificate = true
+        }
+      }
+  changed_files:
+    scripts/update_dns.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      HOSTED_ZONE_ID="${HOSTED_ZONE_ID:-Z0123456789ABCDEF}"
+      RECORD_NAME="${RECORD_NAME:-api.megastore.dev}"
+      RECORD_TYPE="${RECORD_TYPE:-A}"
+      TTL="${TTL:-60}"
+      HEALTH_CHECK_PATH="${HEALTH_CHECK_PATH:-/healthz}"
+      WAIT_FOR_SYNC="${WAIT_FOR_SYNC:-true}"
+
+      CURRENT_IP=$(curl -s http://checkip.amazonaws.com)
+
+      health_status=$(curl -s -o /dev/null -w "%{http_code}" "http://${CURRENT_IP}${HEALTH_CHECK_PATH}" || true)
+      if [[ "${health_status}" != "200" ]]; then
+        exit 1
+      fi
+
+      CHANGE_BATCH=$(cat <<ENDJSON
+      {
+        "Changes": [{
+          "Action": "UPSERT",
+          "ResourceRecordSet": {
+            "Name": "${RECORD_NAME}",
+            "Type": "${RECORD_TYPE}",
+            "TTL": ${TTL},
+            "ResourceRecords": [{"Value": "${CURRENT_IP}"}]
+          }
+        }]
+      }
+      ENDJSON
+      )
+
+      change_id=$(aws route53 change-resource-record-sets \
+        --hosted-zone-id "${HOSTED_ZONE_ID}" \
+        --change-batch "${CHANGE_BATCH}" \
+        --query 'ChangeInfo.Id' --output text)
+
+      if [[ "${WAIT_FOR_SYNC}" == "true" ]]; then
+        aws route53 wait resource-record-sets-changed --id "${change_id}"
+      fi
+fragments:
+- id: health_check
+  selector:
+    path: scripts/update_dns.sh
+    anchor: HEALTH_CHECK_PATH
+- id: wait_sync
+  selector:
+    path: scripts/update_dns.sh
+    anchor: WAIT_FOR_SYNC
+- id: route53_zone
+  selector:
+    path: terraform/route53.tf
+    anchor: aws_route53_zone.megastore
+- id: route53_api
+  selector:
+    path: terraform/route53.tf
+    anchor: api.megastore.dev
+- id: no_cloudfront
+  selector:
+    path: terraform/cloudfront.tf
+- id: no_cdn
+  selector:
+    anchor: aws_cloudfront_distribution
+oracle:
+  required:
+  - health_check
+  - wait_sync
+  - route53_zone
+  forbidden:
+  - no_cloudfront
+  - no_cdn

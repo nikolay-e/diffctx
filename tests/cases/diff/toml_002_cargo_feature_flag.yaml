@@ -1,0 +1,99 @@
+name: toml_002_cargo_feature_flag
+tags:
+- lang:toml
+- lang:rust
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "webservice"
+      version = "0.3.0"
+      edition = "2021"
+
+      [dependencies]
+      prometheus = { version = "0.13", optional = true }
+      tracing = "0.1"
+
+      [features]
+      default = []
+    src/main.rs: |
+      use tracing::info;
+
+      fn main() {
+          info!("Service started");
+      }
+    src/features.rs: |
+      pub fn app_info() -> &'static str {
+          "webservice v0.3"
+      }
+    TOML_NOISE_002_logging.toml: |
+      [TOML_NOISE_002_log]
+      TOML_NOISE_002_level = "info"
+      TOML_NOISE_002_format = "json"
+
+      [TOML_NOISE_002_output]
+      TOML_NOISE_002_file = "/var/log/app.log"
+    src/toml_noise_002_unused.rs: |
+      // TOML_NOISE_002_placeholder module
+      pub fn toml_noise_002_stub() {}
+  changed_files:
+    Cargo.toml: |
+      [package]
+      name = "webservice"
+      version = "0.3.0"
+      edition = "2021"
+
+      [dependencies]
+      prometheus = { version = "0.13", optional = true }
+      tracing = "0.1"
+
+      [features]
+      default = []
+      metrics = ["prometheus"]
+    src/features.rs: |
+      pub fn app_info() -> &'static str {
+          "webservice v0.3"
+      }
+
+      #[cfg(feature = "metrics")]
+      pub fn register_metrics() {
+          let counter = prometheus::Counter::new("requests_total", "Total requests").unwrap();
+          prometheus::default_registry().register(Box::new(counter)).unwrap();
+      }
+  commit_message: "feat: add optional metrics feature flag with prometheus support"
+fragments:
+- id: cargo_features_metrics
+  selector:
+    path: Cargo.toml
+    anchor: "metrics = [\"prometheus\"]"
+- id: features_rs_cfg
+  selector:
+    path: src/features.rs
+    anchor: "cfg(feature = \"metrics\")"
+- id: no_noise_toml
+  selector:
+    path: TOML_NOISE_002_logging.toml
+- id: no_noise_rs
+  selector:
+    path: src/toml_noise_002_unused.rs
+- id: no_global_0
+  selector:
+    anchor: TOML_NOISE_002_level
+- id: no_global_1
+  selector:
+    anchor: toml_noise_002_stub
+oracle:
+  required:
+  - cargo_features_metrics
+  - features_rs_cfg
+  allowed: []
+  forbidden:
+  - no_noise_toml
+  - no_noise_rs
+  - no_global_0
+  - no_global_1

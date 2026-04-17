@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import subprocess
 import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+
+from common import load_results
 
 BUDGETS = [1000, 2000, 4000, 6000, 8000, 16000, 32000]
 LIMITS = [10, 20, 50, 100, 200, 500]
@@ -29,12 +30,18 @@ def _clean_env() -> dict[str, str]:
     return {k: v for k, v in os.environ.items() if k != "DIFFCTX_SCORING"}
 
 
+def _load_results_list(output_file: Path) -> list[dict] | None:
+    try:
+        return load_results(output_file)
+    except (ValueError, OSError):
+        return None
+
+
 def _summarize(output_file: Path, name: str, elapsed: float, log_file: Path) -> None:
     if not output_file.exists():
         return
-    try:
-        results = json.loads(output_file.read_text())
-    except (json.JSONDecodeError, OSError):
+    results = _load_results_list(output_file)
+    if results is None:
         return
 
     ok = [r for r in results if r.get("status") == "ok"]
@@ -52,12 +59,19 @@ def _summarize(output_file: Path, name: str, elapsed: float, log_file: Path) -> 
         f"file R={avg('file_recall'):.3f} P={avg('file_precision'):.3f} | "
         f"nontrivial R={avg('nontrivial_file_recall'):.3f} | "
         f"line R={avg('line_recall'):.3f} nt={avg('line_recall_nontrivial'):.3f} | "
-        f"def_cov={avg('def_coverage'):.3f} | "
         f"{elapsed:.0f}s",
     )
 
 
 def run_bench(name: str, cmd: list[str], output_file: Path, log_file: Path) -> None:
+    if output_file.exists():
+        results = _load_results_list(output_file)
+        if results and any(r.get("status") == "ok" for r in results):
+            _log(log_file, f"{_ts()} | {name:45s} | SKIP (exists)")
+            _summarize(output_file, name, 0, log_file)
+            return
+        output_file.unlink(missing_ok=True)
+
     print(f"\n{'='*70}\n  {name}\n{'='*70}\n", flush=True)
     t0 = time.time()
     subprocess.run(cmd, env=_clean_env(), check=False)
@@ -74,6 +88,8 @@ def _bench_cmd(py: str, limit: int, budget: int, scoring: str, baseline: str | N
         str(limit),
         "--budget",
         str(budget),
+        "--seeds",
+        "42",
     ]
     if baseline:
         cmd += ["--baseline", baseline]

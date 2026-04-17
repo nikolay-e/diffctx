@@ -1,0 +1,268 @@
+name: bal_3hop_045_typescript_test_runner_assertion
+tags:
+- lang:typescript
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/testing/matchers.ts: |
+      export interface Matcher {
+        name: string;
+        check(actual: unknown, expected: unknown): boolean;
+        message(actual: unknown, expected: unknown): string;
+      }
+
+      export const equalsMatcher: Matcher = {
+        name: 'equals',
+        check: (a, e) => a === e,
+        message: (a, e) => `Expected ${e} but got ${a}`,
+      };
+
+      export const containsMatcher: Matcher = {
+        name: 'contains',
+        check: (a, e) => String(a).includes(String(e)),
+        message: (a, e) => `Expected "${a}" to contain "${e}"`,
+      };
+    src/testing/assertion.ts: |
+      import { Matcher, equalsMatcher, containsMatcher } from './matchers';
+
+      export class Assertion {
+        private matchers: Map<string, Matcher> = new Map();
+
+        constructor() {
+          this.matchers.set('equals', equalsMatcher);
+          this.matchers.set('contains', containsMatcher);
+        }
+
+        assert(matcherName: string, actual: unknown, expected: unknown): void {
+          const matcher = this.matchers.get(matcherName);
+          if (!matcher) throw new Error(`Unknown matcher: ${matcherName}`);
+          if (!matcher.check(actual, expected)) {
+            throw new Error(matcher.message(actual, expected));
+          }
+        }
+      }
+    src/testing/suite.ts: |
+      import { Assertion } from './assertion';
+
+      export interface TestCase {
+        name: string;
+        fn: (assert: Assertion) => void;
+      }
+
+      export class TestSuite {
+        private cases: TestCase[] = [];
+        private assertion = new Assertion();
+
+        add(name: string, fn: (assert: Assertion) => void): void {
+          this.cases.push({ name, fn });
+        }
+
+        run(): { passed: number; failed: number; errors: string[] } {
+          let passed = 0;
+          let failed = 0;
+          const errors: string[] = [];
+          for (const tc of this.cases) {
+            try {
+              tc.fn(this.assertion);
+              passed++;
+            } catch (e: any) {
+              failed++;
+              errors.push(`${tc.name}: ${e.message}`);
+            }
+          }
+          return { passed, failed, errors };
+        }
+      }
+    src/testing/runner.ts: |
+      import { TestSuite } from './suite';
+
+      export class TestRunner {
+        private suites: Map<string, TestSuite> = new Map();
+
+        register(name: string, suite: TestSuite): void {
+          this.suites.set(name, suite);
+        }
+
+        runAll(): void {
+          for (const [name, suite] of this.suites) {
+            const result = suite.run();
+            console.log(`${name}: ${result.passed} passed, ${result.failed} failed`);
+          }
+        }
+      }
+    src/utils/diff.ts: |
+      GARBAGE_045_DIFF_MARKER_A = "diff";
+      GARBAGE_045_PATCH_MARKER_B = true;
+
+      export function computeDiff(a: string, b: string): string[] {
+        return [];
+      }
+    src/utils/snapshot.ts: |
+      GARBAGE_045_SNAPSHOT_MARKER_C = "snapshot";
+      GARBAGE_045_UPDATE_MARKER_D = false;
+
+      export function saveSnapshot(name: string, data: string): void {}
+      export function loadSnapshot(name: string): string { return ''; }
+  changed_files:
+    src/testing/matchers.ts: |
+      export interface Matcher {
+        name: string;
+        check(actual: unknown, expected: unknown): boolean;
+        message(actual: unknown, expected: unknown): string;
+      }
+
+      export const equalsMatcher: Matcher = {
+        name: 'equals',
+        check: (a, e) => a === e,
+        message: (a, e) => `Expected ${e} but got ${a}`,
+      };
+
+      export const containsMatcher: Matcher = {
+        name: 'contains',
+        check: (a, e) => String(a).includes(String(e)),
+        message: (a, e) => `Expected "${a}" to contain "${e}"`,
+      };
+
+      export const deepEqualsMatcher: Matcher = {
+        name: 'deepEquals',
+        check: (a, e) => JSON.stringify(a) === JSON.stringify(e),
+        message: (a, e) => `Expected deep equality:\n  actual: ${JSON.stringify(a)}\n  expected: ${JSON.stringify(e)}`,
+      };
+
+      export const throwsMatcher: Matcher = {
+        name: 'throws',
+        check: (a) => { try { (a as Function)(); return false; } catch { return true; } },
+        message: () => 'Expected function to throw',
+      };
+    src/testing/assertion.ts: |
+      import { Matcher, equalsMatcher, containsMatcher, deepEqualsMatcher, throwsMatcher } from './matchers';
+
+      export class Assertion {
+        private matchers: Map<string, Matcher> = new Map();
+
+        constructor() {
+          this.matchers.set('equals', equalsMatcher);
+          this.matchers.set('contains', containsMatcher);
+          this.matchers.set('deepEquals', deepEqualsMatcher);
+          this.matchers.set('throws', throwsMatcher);
+        }
+
+        assert(matcherName: string, actual: unknown, expected: unknown): void {
+          const matcher = this.matchers.get(matcherName);
+          if (!matcher) throw new Error(`Unknown matcher: ${matcherName}`);
+          if (!matcher.check(actual, expected)) {
+            throw new Error(matcher.message(actual, expected));
+          }
+        }
+      }
+    src/testing/suite.ts: |
+      import { Assertion } from './assertion';
+
+      export interface TestCase {
+        name: string;
+        fn: (assert: Assertion) => void;
+      }
+
+      export class TestSuite {
+        private cases: TestCase[] = [];
+        private assertion = new Assertion();
+
+        add(name: string, fn: (assert: Assertion) => void): void {
+          this.cases.push({ name, fn });
+        }
+
+        run(): { passed: number; failed: number; errors: string[] } {
+          let passed = 0;
+          let failed = 0;
+          const errors: string[] = [];
+          for (const tc of this.cases) {
+            try {
+              tc.fn(this.assertion);
+              passed++;
+            } catch (e: any) {
+              failed++;
+              errors.push(`${tc.name}: ${e.message}`);
+            }
+          }
+          return { passed, failed, errors };
+        }
+      }
+    src/testing/runner.ts: |
+      import { TestSuite } from './suite';
+
+      export class TestRunner {
+        private suites: Map<string, TestSuite> = new Map();
+
+        register(name: string, suite: TestSuite): void {
+          this.suites.set(name, suite);
+        }
+
+        runAll(): void {
+          for (const [name, suite] of this.suites) {
+            const result = suite.run();
+            console.log(`${name}: ${result.passed} passed, ${result.failed} failed`);
+          }
+        }
+      }
+    src/utils/diff.ts: |
+      GARBAGE_045_DIFF_MARKER_A = "diff";
+      GARBAGE_045_PATCH_MARKER_B = true;
+
+      export function computeDiff(a: string, b: string): string[] {
+        return [];
+      }
+    src/utils/snapshot.ts: |
+      GARBAGE_045_SNAPSHOT_MARKER_C = "snapshot";
+      GARBAGE_045_UPDATE_MARKER_D = false;
+
+      export function saveSnapshot(name: string, data: string): void {}
+      export function loadSnapshot(name: string): string { return ''; }
+  commit_message: "feat: add deepEquals and throws matchers"
+fragments:
+- id: deep_equals_matcher
+  selector:
+    path: src/testing/matchers.ts
+    anchor: "export const deepEqualsMatcher"
+- id: throws_matcher
+  selector:
+    path: src/testing/matchers.ts
+    anchor: "export const throwsMatcher"
+- id: assertion_registers_deep
+  selector:
+    path: src/testing/assertion.ts
+    anchor: "this.matchers.set('deepEquals', deepEqualsMatcher)"
+- id: assertion_registers_throws
+  selector:
+    path: src/testing/assertion.ts
+    anchor: "this.matchers.set('throws', throwsMatcher)"
+- id: suite_imports_assertion
+  selector:
+    path: src/testing/suite.ts
+    anchor: "import { Assertion } from './assertion'"
+- id: runner_imports_suite
+  selector:
+    path: src/testing/runner.ts
+    anchor: "import { TestSuite } from './suite'"
+- id: no_diff
+  selector:
+    path: src/utils/diff.ts
+    anchor: "GARBAGE_045_DIFF_MARKER_A"
+- id: no_snapshot
+  selector:
+    path: src/utils/snapshot.ts
+    anchor: "GARBAGE_045_SNAPSHOT_MARKER_C"
+oracle:
+  required:
+  - deep_equals_matcher
+  - throws_matcher
+  - assertion_registers_deep
+  - assertion_registers_throws
+  - suite_imports_assertion
+  - runner_imports_suite
+  allowed: []
+  forbidden:
+  - no_diff
+  - no_snapshot

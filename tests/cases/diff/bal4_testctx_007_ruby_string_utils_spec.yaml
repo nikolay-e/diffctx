@@ -1,0 +1,78 @@
+name: bal4_testctx_007_ruby_string_utils_spec
+tags:
+- lang:ruby
+- change:single_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:trivial
+repo:
+  initial_files:
+    lib/string_utils.rb: |
+      class StringUtils
+        def self.reverse(str)
+          str.reverse
+        end
+
+        def self.upcase(str)
+          str.upcase
+        end
+      end
+    spec/string_utils_spec.rb: |
+      require_relative '../lib/string_utils'
+
+      RSpec.describe StringUtils do
+        describe '.reverse' do
+          it 'reverses a string' do
+            expect(StringUtils.reverse('abc')).to eq('cba')
+          end
+        end
+
+        describe '.upcase' do
+          it 'upcases a string' do
+            expect(StringUtils.upcase('hello')).to eq('HELLO')
+          end
+        end
+      end
+    lib/number_utils.rb: |
+      class NumberUtils
+        def self.square(n)
+          n * n
+        end
+      end
+  changed_files:
+    lib/string_utils.rb: |
+      class StringUtils
+        def self.reverse(str)
+          str.reverse
+        end
+
+        def self.upcase(str)
+          str.upcase
+        end
+
+        def self.truncate(str, max_len)
+          str.length > max_len ? str[0...max_len] + '...' : str
+        end
+      end
+  commit_message: "feat: add truncate method"
+fragments:
+- id: truncate_method
+  selector:
+    path: lib/string_utils.rb
+    anchor: "def self.truncate(str, max_len)"
+- id: spec_require
+  selector:
+    path: spec/string_utils_spec.rb
+    anchor: "require_relative '../lib/string_utils'"
+- id: no_number_utils
+  selector:
+    path: lib/number_utils.rb
+    anchor: "class NumberUtils"
+oracle:
+  required:
+  - truncate_method
+  - spec_require
+  allowed: []
+  forbidden:
+  - no_number_utils

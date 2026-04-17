@@ -1,0 +1,151 @@
+name: bal_3hop_011_python_http_client_retry
+tags:
+- lang:python
+- change:single_file
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    http/response.py: |
+      class Response:
+          def __init__(self, status: int, body: str, headers: dict):
+              self.status = status
+              self.body = body
+              self.headers = headers
+          def is_success(self) -> bool:
+              return 200 <= self.status < 300
+          def is_retryable(self) -> bool:
+              return self.status in (429, 502, 503, 504)
+    http/client.py: |
+      from http.response import Response
+      class HTTPClient:
+          def __init__(self, base_url: str, timeout: int = 30):
+              self.base_url = base_url
+              self.timeout = timeout
+          def get(self, path: str) -> Response:
+              return Response(status=200, body="{}", headers={})
+          def post(self, path: str, data: dict) -> Response:
+              return Response(status=201, body="{}", headers={})
+    http/retry_client.py: |
+      import time
+      from http.client import HTTPClient
+      from http.response import Response
+      class RetryClient:
+          def __init__(self, client: HTTPClient, max_retries: int = 3):
+              self.client = client
+              self.max_retries = max_retries
+          def get_with_retry(self, path: str) -> Response:
+              for attempt in range(self.max_retries):
+                  resp = self.client.get(path)
+                  if not resp.is_retryable():
+                      return resp
+                  time.sleep(2 ** attempt)
+              return resp
+    services/api_gateway.py: |
+      from http.retry_client import RetryClient
+      from http.client import HTTPClient
+      class APIGateway:
+          def __init__(self, base_url: str):
+              client = HTTPClient(base_url)
+              self.retry_client = RetryClient(client)
+          def fetch_users(self) -> dict:
+              resp = self.retry_client.get_with_retry("/users")
+              return {"status": resp.status, "data": resp.body}
+    utils/url_builder.py: |
+      from urllib.parse import urlencode
+      def build_url(base: str, params: dict) -> str:
+          return f"{base}?{urlencode(params)}"
+    config/endpoints.py: |
+      USER_SERVICE = "https://api.example.com/v1"
+      AUTH_SERVICE = "https://auth.example.com/v2"
+  changed_files:
+    http/response.py: |
+      class Response:
+          def __init__(self, status: int, body: str, headers: dict):
+              self.status = status
+              self.body = body
+              self.headers = headers
+          def is_success(self) -> bool:
+              return 200 <= self.status < 300
+          def is_retryable(self) -> bool:
+              return self.status in (408, 429, 500, 502, 503, 504)
+    http/client.py: |
+      from http.response import Response
+      class HTTPClient:
+          def __init__(self, base_url: str, timeout: int = 30):
+              self.base_url = base_url
+              self.timeout = timeout
+          def get(self, path: str) -> Response:
+              return Response(status=200, body="{}", headers={})
+          def post(self, path: str, data: dict) -> Response:
+              return Response(status=201, body="{}", headers={})
+    http/retry_client.py: |
+      import time
+      from http.client import HTTPClient
+      from http.response import Response
+      class RetryClient:
+          def __init__(self, client: HTTPClient, max_retries: int = 3):
+              self.client = client
+              self.max_retries = max_retries
+          def get_with_retry(self, path: str) -> Response:
+              for attempt in range(self.max_retries):
+                  resp = self.client.get(path)
+                  if not resp.is_retryable():
+                      return resp
+                  time.sleep(2 ** attempt)
+              return resp
+    services/api_gateway.py: |
+      from http.retry_client import RetryClient
+      from http.client import HTTPClient
+      class APIGateway:
+          def __init__(self, base_url: str):
+              client = HTTPClient(base_url)
+              self.retry_client = RetryClient(client)
+          def fetch_users(self) -> dict:
+              resp = self.retry_client.get_with_retry("/users")
+              return {"status": resp.status, "data": resp.body}
+    utils/url_builder.py: |
+      from urllib.parse import urlencode
+      def build_url(base: str, params: dict) -> str:
+          return f"{base}?{urlencode(params)}"
+    config/endpoints.py: |
+      USER_SERVICE = "https://api.example.com/v1"
+      AUTH_SERVICE = "https://auth.example.com/v2"
+  commit_message: "fix: add 408 and 500 to retryable status codes"
+fragments:
+- id: response_retryable_fix
+  selector:
+    path: http/response.py
+    anchor: "return self.status in (408, 429, 500, 502, 503, 504)"
+- id: client_uses_response
+  selector:
+    path: http/client.py
+    anchor: "from http.response import Response"
+- id: retry_uses_client
+  selector:
+    path: http/retry_client.py
+    anchor: "from http.client import HTTPClient"
+- id: gateway_uses_retry
+  selector:
+    path: services/api_gateway.py
+    anchor: "from http.retry_client import RetryClient"
+- id: no_url_builder
+  selector:
+    path: utils/url_builder.py
+    anchor: "def build_url"
+- id: no_endpoints
+  selector:
+    path: config/endpoints.py
+    anchor: "USER_SERVICE"
+oracle:
+  required:
+  - response_retryable_fix
+  - client_uses_response
+  - retry_uses_client
+  - gateway_uses_retry
+  allowed: []
+  forbidden:
+  - no_url_builder
+  - no_endpoints

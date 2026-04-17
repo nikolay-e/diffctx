@@ -1,0 +1,111 @@
+name: bal4_testctx_017_kotlin_date_formatter_test
+tags:
+- lang:kotlin
+- change:single_file
+- change:bug_fix
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/main/kotlin/util/DateFormatter.kt: |
+      package util
+
+      import java.time.LocalDate
+      import java.time.format.DateTimeFormatter
+
+      class DateFormatter {
+          fun formatIso(date: LocalDate): String {
+              return date.format(DateTimeFormatter.ISO_LOCAL_DATE)
+          }
+
+          fun formatSlash(date: LocalDate): String {
+              return date.format(DateTimeFormatter.ofPattern("MM/dd/yyyy"))
+          }
+      }
+    src/test/kotlin/util/DateFormatterTest.kt: |
+      package util
+
+      import org.junit.jupiter.api.Test
+      import org.junit.jupiter.api.Assertions.assertEquals
+      import java.time.LocalDate
+
+      class DateFormatterTest {
+          private val formatter = DateFormatter()
+
+          @Test
+          fun testFormatIso() {
+              val date = LocalDate.of(2024, 1, 15)
+              assertEquals("2024-01-15", formatter.formatIso(date))
+          }
+
+          @Test
+          fun testFormatSlash() {
+              val date = LocalDate.of(2024, 1, 15)
+              assertEquals("01/15/2024", formatter.formatSlash(date))
+          }
+      }
+    src/main/kotlin/util/TimeUtils.kt: |
+      package util
+
+      class TimeUtils {
+          fun millisToSeconds(ms: Long): Double = ms / 1000.0
+      }
+    src/main/kotlin/util/Calendar.kt: |
+      package util
+
+      import java.time.LocalDate
+
+      class Calendar {
+          fun isWeekend(date: LocalDate): Boolean {
+              val day = date.dayOfWeek.value
+              return day == 6 || day == 7
+          }
+      }
+  changed_files:
+    src/main/kotlin/util/DateFormatter.kt: |
+      package util
+
+      import java.time.LocalDate
+      import java.time.format.DateTimeFormatter
+
+      class DateFormatter {
+          fun formatIso(date: LocalDate): String {
+              return date.format(DateTimeFormatter.ISO_LOCAL_DATE)
+          }
+
+          fun formatSlash(date: LocalDate): String {
+              return date.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+          }
+      }
+  commit_message: "fix: use dd/MM/yyyy format instead of MM/dd/yyyy"
+fragments:
+- id: format_slash_fn
+  selector:
+    path: src/main/kotlin/util/DateFormatter.kt
+    anchor: "fun formatSlash(date: LocalDate): String"
+- id: test_format_slash
+  selector:
+    path: src/test/kotlin/util/DateFormatterTest.kt
+    anchor: "fun testFormatSlash()"
+- id: test_class
+  selector:
+    path: src/test/kotlin/util/DateFormatterTest.kt
+    anchor: "class DateFormatterTest"
+- id: no_time_utils
+  selector:
+    path: src/main/kotlin/util/TimeUtils.kt
+    anchor: "class TimeUtils"
+- id: no_calendar
+  selector:
+    path: src/main/kotlin/util/Calendar.kt
+    anchor: "class Calendar"
+oracle:
+  required:
+  - format_slash_fn
+  - test_format_slash
+  - test_class
+  allowed: []
+  forbidden:
+  - no_time_utils
+  - no_calendar

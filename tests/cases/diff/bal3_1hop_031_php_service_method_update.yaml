@@ -1,0 +1,270 @@
+name: bal3_1hop_031_php_service_method_update
+tags:
+- lang:php
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/Services/PaymentGateway.php: |
+      <?php
+      namespace App\Services;
+
+      class PaymentGateway
+      {
+          private string $apiKey;
+
+          public function __construct(string $apiKey)
+          {
+              $this->apiKey = $apiKey;
+          }
+
+          public function charge(float $amount, string $currency): array
+          {
+              return [
+                  'status' => 'success',
+                  'amount' => $amount,
+                  'currency' => $currency,
+              ];
+          }
+
+          public function refund(string $transactionId): array
+          {
+              return [
+                  'status' => 'refunded',
+                  'transaction_id' => $transactionId,
+              ];
+          }
+      }
+    src/Controllers/CheckoutController.php: |
+      <?php
+      namespace App\Controllers;
+
+      use App\Services\PaymentGateway;
+
+      class CheckoutController
+      {
+          private PaymentGateway $gateway;
+
+          public function __construct(PaymentGateway $gateway)
+          {
+              $this->gateway = $gateway;
+          }
+
+          public function processPayment(float $amount): array
+          {
+              return $this->gateway->charge($amount, 'USD');
+          }
+
+          public function issueRefund(string $txId): array
+          {
+              return $this->gateway->refund($txId);
+          }
+      }
+    src/Controllers/SubscriptionController.php: |
+      <?php
+      namespace App\Controllers;
+
+      use App\Services\PaymentGateway;
+
+      class SubscriptionController
+      {
+          private PaymentGateway $gateway;
+
+          public function __construct(PaymentGateway $gateway)
+          {
+              $this->gateway = $gateway;
+          }
+
+          public function renewSubscription(float $price): array
+          {
+              return $this->gateway->charge($price, 'USD');
+          }
+      }
+    src/Controllers/RefundController.php: |
+      <?php
+      namespace App\Controllers;
+
+      use App\Services\PaymentGateway;
+
+      class RefundController
+      {
+          private PaymentGateway $gateway;
+
+          public function __construct(PaymentGateway $gateway)
+          {
+              $this->gateway = $gateway;
+          }
+
+          public function bulkRefund(array $transactionIds): array
+          {
+              $results = [];
+              foreach ($transactionIds as $txId) {
+                  $results[] = $this->gateway->refund($txId);
+              }
+              return $results;
+          }
+      }
+    src/Controllers/InvoiceController.php: |
+      <?php
+      namespace App\Controllers;
+
+      use App\Services\PaymentGateway;
+
+      class InvoiceController
+      {
+          private PaymentGateway $gateway;
+
+          public function __construct(PaymentGateway $gateway)
+          {
+              $this->gateway = $gateway;
+          }
+
+          public function payInvoice(float $total): array
+          {
+              return $this->gateway->charge($total, 'EUR');
+          }
+      }
+    src/Services/NotificationService.php: |
+      <?php
+      namespace App\Services;
+
+      GARBAGE_BAL3_031_NOTIFY_A = 'notify';
+      GARBAGE_BAL3_031_ALERT_B = true;
+
+      class NotificationService
+      {
+          public function send(string $message): void
+          {
+          }
+      }
+    src/Services/LoggingService.php: |
+      <?php
+      namespace App\Services;
+
+      GARBAGE_BAL3_031_LOG_C = 'log';
+      GARBAGE_BAL3_031_TRACE_D = false;
+
+      class LoggingService
+      {
+          public function info(string $msg): void
+          {
+          }
+      }
+    src/Helpers/StringHelper.php: |
+      <?php
+      namespace App\Helpers;
+
+      GARBAGE_BAL3_031_STR_E = 'helper';
+      GARBAGE_BAL3_031_TRIM_F = true;
+
+      class StringHelper
+      {
+          public static function slugify(string $text): string
+          {
+              return strtolower(str_replace(' ', '-', $text));
+          }
+      }
+  changed_files:
+    src/Services/PaymentGateway.php: |
+      <?php
+      namespace App\Services;
+
+      class PaymentGateway
+      {
+          private string $apiKey;
+          private string $merchantId;
+
+          public function __construct(string $apiKey, string $merchantId = 'default')
+          {
+              $this->apiKey = $apiKey;
+              $this->merchantId = $merchantId;
+          }
+
+          public function charge(float $amount, string $currency, array $metadata = []): array
+          {
+              return [
+                  'status' => 'success',
+                  'amount' => $amount,
+                  'currency' => $currency,
+                  'merchant' => $this->merchantId,
+                  'metadata' => $metadata,
+              ];
+          }
+
+          public function refund(string $transactionId): array
+          {
+              return [
+                  'status' => 'refunded',
+                  'transaction_id' => $transactionId,
+              ];
+          }
+      }
+  commit_message: "Add merchant ID and metadata to PaymentGateway"
+fragments:
+- id: checkout_controller
+  selector:
+    path: src/Controllers/CheckoutController.php
+    anchor: "use App\\Services\\PaymentGateway"
+- id: checkout_process
+  selector:
+    path: src/Controllers/CheckoutController.php
+    anchor: "gateway->charge"
+- id: subscription_controller
+  selector:
+    path: src/Controllers/SubscriptionController.php
+    anchor: "use App\\Services\\PaymentGateway"
+- id: refund_controller
+  selector:
+    path: src/Controllers/RefundController.php
+    anchor: "use App\\Services\\PaymentGateway"
+- id: invoice_controller
+  selector:
+    path: src/Controllers/InvoiceController.php
+    anchor: "use App\\Services\\PaymentGateway"
+- id: no_notification
+  selector:
+    path: src/Services/NotificationService.php
+- id: no_logging
+  selector:
+    path: src/Services/LoggingService.php
+- id: no_string_helper
+  selector:
+    path: src/Helpers/StringHelper.php
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_031_NOTIFY_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_031_ALERT_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_031_LOG_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_031_TRACE_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL3_031_STR_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL3_031_TRIM_F
+oracle:
+  required:
+  - checkout_controller
+  - checkout_process
+  - subscription_controller
+  - refund_controller
+  - invoice_controller
+  allowed: []
+  forbidden:
+  - no_notification
+  - no_logging
+  - no_string_helper
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

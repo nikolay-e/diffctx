@@ -1,0 +1,183 @@
+name: bal_3hop_019_python_search_engine
+tags:
+- lang:python
+- change:single_file
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    search/tokenizer.py: |
+      import re
+      class Tokenizer:
+          def __init__(self, stop_words: set[str] = None):
+              self.stop_words = stop_words or set()
+          def tokenize(self, text: str) -> list[str]:
+              words = re.findall(r'\w+', text.lower())
+              return [w for w in words if w not in self.stop_words]
+    search/index.py: |
+      from search.tokenizer import Tokenizer
+      class InvertedIndex:
+          def __init__(self, tokenizer: Tokenizer):
+              self.tokenizer = tokenizer
+              self.index: dict[str, set[str]] = {}
+          def add_document(self, doc_id: str, content: str):
+              tokens = self.tokenizer.tokenize(content)
+              for token in tokens:
+                  if token not in self.index:
+                      self.index[token] = set()
+                  self.index[token].add(doc_id)
+          def search(self, query: str) -> set[str]:
+              tokens = self.tokenizer.tokenize(query)
+              if not tokens:
+                  return set()
+              results = self.index.get(tokens[0], set())
+              for token in tokens[1:]:
+                  results = results & self.index.get(token, set())
+              return results
+    search/ranker.py: |
+      from search.index import InvertedIndex
+      class Ranker:
+          def __init__(self, index: InvertedIndex):
+              self.index = index
+          def rank(self, query: str, doc_ids: set[str]) -> list[str]:
+              tokens = self.index.tokenizer.tokenize(query)
+              scores = {}
+              for doc_id in doc_ids:
+                  score = sum(1 for t in tokens if doc_id in self.index.index.get(t, set()))
+                  scores[doc_id] = score
+              return sorted(scores, key=scores.get, reverse=True)
+    api/search_api.py: |
+      from search.ranker import Ranker
+      from search.index import InvertedIndex
+      from search.tokenizer import Tokenizer
+      class SearchAPI:
+          def __init__(self):
+              tokenizer = Tokenizer(stop_words={"the", "a", "an", "is", "in"})
+              self.index = InvertedIndex(tokenizer)
+              self.ranker = Ranker(self.index)
+          def index_document(self, doc_id: str, content: str):
+              self.index.add_document(doc_id, content)
+          def search(self, query: str) -> list[str]:
+              doc_ids = self.index.search(query)
+              return self.ranker.rank(query, doc_ids)
+    utils/stemmer.py: |
+      def simple_stem(word: str) -> str:
+          suffixes = ["ing", "ed", "ly", "er", "est"]
+          for suffix in suffixes:
+              if word.endswith(suffix) and len(word) > len(suffix) + 2:
+                  return word[:-len(suffix)]
+          return word
+    config/search_config.py: |
+      MAX_RESULTS = 50
+      MIN_SCORE = 0.1
+      INDEX_PATH = "/var/data/search_index"
+  changed_files:
+    search/tokenizer.py: |
+      import re
+      from typing import Optional
+      class Tokenizer:
+          def __init__(self, stop_words: set[str] = None, min_length: int = 1):
+              self.stop_words = stop_words or set()
+              self.min_length = min_length
+          def tokenize(self, text: str) -> list[str]:
+              words = re.findall(r'\w+', text.lower())
+              return [w for w in words
+                      if w not in self.stop_words and len(w) >= self.min_length]
+          def ngrams(self, text: str, n: int = 2) -> list[str]:
+              tokens = self.tokenize(text)
+              return [" ".join(tokens[i:i+n]) for i in range(len(tokens) - n + 1)]
+    search/index.py: |
+      from search.tokenizer import Tokenizer
+      class InvertedIndex:
+          def __init__(self, tokenizer: Tokenizer):
+              self.tokenizer = tokenizer
+              self.index: dict[str, set[str]] = {}
+          def add_document(self, doc_id: str, content: str):
+              tokens = self.tokenizer.tokenize(content)
+              for token in tokens:
+                  if token not in self.index:
+                      self.index[token] = set()
+                  self.index[token].add(doc_id)
+          def search(self, query: str) -> set[str]:
+              tokens = self.tokenizer.tokenize(query)
+              if not tokens:
+                  return set()
+              results = self.index.get(tokens[0], set())
+              for token in tokens[1:]:
+                  results = results & self.index.get(token, set())
+              return results
+    search/ranker.py: |
+      from search.index import InvertedIndex
+      class Ranker:
+          def __init__(self, index: InvertedIndex):
+              self.index = index
+          def rank(self, query: str, doc_ids: set[str]) -> list[str]:
+              tokens = self.index.tokenizer.tokenize(query)
+              scores = {}
+              for doc_id in doc_ids:
+                  score = sum(1 for t in tokens if doc_id in self.index.index.get(t, set()))
+                  scores[doc_id] = score
+              return sorted(scores, key=scores.get, reverse=True)
+    api/search_api.py: |
+      from search.ranker import Ranker
+      from search.index import InvertedIndex
+      from search.tokenizer import Tokenizer
+      class SearchAPI:
+          def __init__(self):
+              tokenizer = Tokenizer(stop_words={"the", "a", "an", "is", "in"})
+              self.index = InvertedIndex(tokenizer)
+              self.ranker = Ranker(self.index)
+          def index_document(self, doc_id: str, content: str):
+              self.index.add_document(doc_id, content)
+          def search(self, query: str) -> list[str]:
+              doc_ids = self.index.search(query)
+              return self.ranker.rank(query, doc_ids)
+    utils/stemmer.py: |
+      def simple_stem(word: str) -> str:
+          suffixes = ["ing", "ed", "ly", "er", "est"]
+          for suffix in suffixes:
+              if word.endswith(suffix) and len(word) > len(suffix) + 2:
+                  return word[:-len(suffix)]
+          return word
+    config/search_config.py: |
+      MAX_RESULTS = 50
+      MIN_SCORE = 0.1
+      INDEX_PATH = "/var/data/search_index"
+  commit_message: "feat: add min_length filter and ngram support to Tokenizer"
+fragments:
+- id: tokenizer_ngrams
+  selector:
+    path: search/tokenizer.py
+    anchor: "def ngrams(self, text: str, n: int = 2)"
+- id: index_uses_tokenizer
+  selector:
+    path: search/index.py
+    anchor: "from search.tokenizer import Tokenizer"
+- id: ranker_uses_index
+  selector:
+    path: search/ranker.py
+    anchor: "from search.index import InvertedIndex"
+- id: api_uses_ranker
+  selector:
+    path: api/search_api.py
+    anchor: "from search.ranker import Ranker"
+- id: no_stemmer
+  selector:
+    path: utils/stemmer.py
+    anchor: "def simple_stem"
+- id: no_search_config
+  selector:
+    path: config/search_config.py
+    anchor: "MAX_RESULTS"
+oracle:
+  required:
+  - tokenizer_ngrams
+  - index_uses_tokenizer
+  - ranker_uses_index
+  - api_uses_ranker
+  allowed: []
+  forbidden:
+  - no_stemmer
+  - no_search_config

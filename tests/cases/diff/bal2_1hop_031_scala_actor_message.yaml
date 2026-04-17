@@ -1,0 +1,181 @@
+name: bal2_1hop_031_scala_actor_message
+tags:
+- lang:scala
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/actors/OrderActor.scala: |
+      package actors
+
+      import akka.actor.Actor
+
+      case class PlaceOrder(itemId: String, quantity: Int)
+      case class OrderResult(success: Boolean)
+
+      class OrderActor extends Actor {
+        def receive: Receive = {
+          case PlaceOrder(itemId, qty) =>
+            sender() ! OrderResult(qty > 0)
+        }
+      }
+    src/main/scala/services/OrderService.scala: |
+      package services
+
+      import actors.{PlaceOrder, OrderResult, OrderActor}
+      import akka.actor.{ActorSystem, Props}
+      import akka.pattern.ask
+      import akka.util.Timeout
+      import scala.concurrent.duration._
+      import scala.concurrent.Future
+
+      class OrderService(system: ActorSystem) {
+        implicit val timeout: Timeout = Timeout(5.seconds)
+        private val orderActor = system.actorOf(Props[OrderActor])
+
+        def placeOrder(itemId: String, quantity: Int): Future[OrderResult] = {
+          (orderActor ? PlaceOrder(itemId, quantity)).mapTo[OrderResult]
+        }
+      }
+    src/main/scala/api/OrderController.scala: |
+      package api
+
+      import services.OrderService
+      import akka.http.scaladsl.server.Directives._
+
+      class OrderController(orderService: OrderService) {
+        val route = path("order") {
+          post {
+            complete("order placed")
+          }
+        }
+      }
+    src/main/scala/db/InventoryRepo.scala: |
+      package db
+
+      GARBAGE_031_INVENTORY_REPO_A = "repo"
+
+      class InventoryRepo {
+        def findItem(id: String): Option[String] = Some(id)
+        def updateStock(id: String, delta: Int): Unit = ()
+      }
+    src/main/scala/util/JsonCodec.scala: |
+      package util
+
+      GARBAGE_031_JSON_CODEC_B = "codec"
+
+      object JsonCodec {
+        def encode(value: Any): String = value.toString
+        def decode(raw: String): Map[String, Any] = Map.empty
+      }
+    src/main/scala/util/Logging.scala: |
+      package util
+
+      GARBAGE_031_LOGGING_C = "log"
+
+      trait Logging {
+        def log(msg: String): Unit = println(msg)
+      }
+    src/main/scala/metrics/Counter.scala: |
+      package metrics
+
+      GARBAGE_031_COUNTER_D = "counter"
+
+      class Counter(name: String) {
+        private var count: Long = 0
+        def increment(): Unit = count += 1
+        def value: Long = count
+      }
+  changed_files:
+    src/main/scala/actors/OrderActor.scala: |
+      package actors
+
+      import akka.actor.Actor
+
+      case class PlaceOrder(itemId: String, quantity: Int, priority: Boolean)
+      case class OrderResult(success: Boolean, orderId: String)
+
+      class OrderActor extends Actor {
+        private var nextId: Int = 0
+
+        def receive: Receive = {
+          case PlaceOrder(itemId, qty, priority) =>
+            nextId += 1
+            val id = s"ORD-$nextId"
+            sender() ! OrderResult(qty > 0, id)
+        }
+      }
+  commit_message: "feat: add priority flag and orderId to order messages"
+fragments:
+- id: place_order_new_sig
+  selector:
+    path: src/main/scala/actors/OrderActor.scala
+    anchor: "case class PlaceOrder(itemId: String, quantity: Int, priority: Boolean)"
+- id: order_result_new_sig
+  selector:
+    path: src/main/scala/actors/OrderActor.scala
+    anchor: "case class OrderResult(success: Boolean, orderId: String)"
+- id: order_actor_receive
+  selector:
+    path: src/main/scala/actors/OrderActor.scala
+    anchor: "def receive: Receive"
+- id: service_calls_place_order
+  selector:
+    path: src/main/scala/services/OrderService.scala
+    anchor: "PlaceOrder(itemId, quantity)"
+- id: service_maps_result
+  selector:
+    path: src/main/scala/services/OrderService.scala
+    anchor: "mapTo[OrderResult]"
+- id: controller_uses_service
+  selector:
+    path: src/main/scala/api/OrderController.scala
+    anchor: "OrderService"
+- id: unrelated_inventory
+  selector:
+    path: src/main/scala/db/InventoryRepo.scala
+    anchor: "class InventoryRepo"
+- id: unrelated_json
+  selector:
+    path: src/main/scala/util/JsonCodec.scala
+    anchor: "object JsonCodec"
+- id: unrelated_logging
+  selector:
+    path: src/main/scala/util/Logging.scala
+    anchor: "trait Logging"
+- id: unrelated_counter
+  selector:
+    path: src/main/scala/metrics/Counter.scala
+    anchor: "class Counter"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_031_INVENTORY_REPO_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_031_JSON_CODEC_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_031_LOGGING_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_031_COUNTER_D
+oracle:
+  required:
+  - place_order_new_sig
+  - order_result_new_sig
+  - order_actor_receive
+  - service_calls_place_order
+  allowed:
+  - service_maps_result
+  - controller_uses_service
+  forbidden:
+  - unrelated_inventory
+  - unrelated_json
+  - unrelated_logging
+  - unrelated_counter
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

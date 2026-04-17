@@ -1,0 +1,66 @@
+name: bal3_bugfix_010_rust_missing_validation
+tags:
+- lang:rust
+- change:single_file
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/email.rs: |
+      pub fn parse_email(input: &str) -> (&str, &str) {
+          let parts: Vec<&str> = input.split('@').collect();
+          (parts[0], parts[1])
+      }
+    src/user.rs: |
+      use crate::email;
+
+      pub struct User {
+          pub name: String,
+          pub domain: String,
+      }
+
+      impl User {
+          pub fn from_email(raw: &str) -> Self {
+              let (name, domain) = email::parse_email(raw);
+              User {
+                  name: name.to_string(),
+                  domain: domain.to_string(),
+              }
+          }
+      }
+    src/logger.rs: |
+      pub fn warn(msg: &str) {
+          eprintln!("[WARN] {}", msg);
+      }
+  changed_files:
+    src/email.rs: |
+      pub fn parse_email(input: &str) -> Result<(&str, &str), String> {
+          let parts: Vec<&str> = input.split('@').collect();
+          if parts.len() != 2 {
+              return Err(format!("invalid email: {}", input));
+          }
+          Ok((parts[0], parts[1]))
+      }
+  commit_message: "fix: validate email contains exactly one @ before splitting"
+fragments:
+- id: validation_fix
+  selector:
+    path: src/email.rs
+    anchor: "if parts.len() != 2"
+- id: user_calls_parse
+  selector:
+    path: src/user.rs
+    anchor: "email::parse_email(raw)"
+- id: no_logger
+  selector:
+    path: src/logger.rs
+    anchor: "fn warn"
+oracle:
+  required:
+  - validation_fix
+  - user_calls_parse
+  allowed: []
+  forbidden:
+  - no_logger

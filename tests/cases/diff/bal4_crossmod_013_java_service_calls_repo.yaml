@@ -1,0 +1,147 @@
+name: bal4_crossmod_013_java_service_calls_repo
+tags:
+- lang:java
+- change:single_file
+- context:cross_module
+- distance:1hop
+- difficulty:trivial
+xfail:
+  category: java-cross-module-discovery
+repo:
+  initial_files:
+    src/main/java/com/app/repo/UserRepo.java: |
+      package com.app.repo;
+
+      public class UserRepo {
+          public String findById(int id) {
+              return "user_" + id;
+          }
+
+          public boolean exists(int id) {
+              return id > 0;
+          }
+      }
+    src/main/java/com/app/service/UserService.java: |
+      package com.app.service;
+
+      import com.app.repo.UserRepo;
+
+      public class UserService {
+          private final UserRepo repo;
+
+          public UserService(UserRepo repo) {
+              this.repo = repo;
+          }
+
+          public String getUser(int id) {
+              return repo.findById(id);
+          }
+      }
+    src/main/java/com/app/util/StringHelper.java: |
+      package com.app.util;
+
+      public class StringHelper {
+          public static final String GARBAGE_013_PAD_A = "pad";
+          public static final String GARBAGE_013_TRIM_B = "trim";
+
+          public static String capitalize(String s) {
+              return s.substring(0, 1).toUpperCase() + s.substring(1);
+          }
+      }
+    garbage_Loader.java: |
+      public class Loader {
+          public static final String GARBAGE_013_PATH_C = "/data";
+          public static final int GARBAGE_013_CHUNK_D = 1024;
+
+          public void load() {}
+      }
+  changed_files:
+    src/main/java/com/app/repo/UserRepo.java: |
+      package com.app.repo;
+
+      public class UserRepo {
+          public String findById(int id) {
+              return "user_" + id;
+          }
+
+          public boolean exists(int id) {
+              return id > 0;
+          }
+
+          public void deleteById(int id) {
+          }
+      }
+    src/main/java/com/app/service/UserService.java: |
+      package com.app.service;
+
+      import com.app.repo.UserRepo;
+
+      public class UserService {
+          private final UserRepo repo;
+
+          public UserService(UserRepo repo) {
+              this.repo = repo;
+          }
+
+          public String getUser(int id) {
+              return repo.findById(id);
+          }
+      }
+    src/main/java/com/app/util/StringHelper.java: |
+      package com.app.util;
+
+      public class StringHelper {
+          public static final String GARBAGE_013_PAD_A = "pad";
+          public static final String GARBAGE_013_TRIM_B = "trim";
+
+          public static String capitalize(String s) {
+              return s.substring(0, 1).toUpperCase() + s.substring(1);
+          }
+      }
+    garbage_Loader.java: |
+      public class Loader {
+          public static final String GARBAGE_013_PATH_C = "/data";
+          public static final int GARBAGE_013_CHUNK_D = 1024;
+
+          public void load() {}
+      }
+  commit_message: "add deleteById to UserRepo"
+fragments:
+- id: service_uses_repo
+  selector:
+    path: src/main/java/com/app/service/UserService.java
+    anchor: "private final UserRepo repo"
+- id: service_constructor
+  selector:
+    path: src/main/java/com/app/service/UserService.java
+    anchor: "public UserService(UserRepo repo)"
+- id: no_string_helper
+  selector:
+    path: src/main/java/com/app/util/StringHelper.java
+- id: no_garbage_loader
+  selector:
+    path: garbage_Loader.java
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_013_PAD_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_013_TRIM_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_013_PATH_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_013_CHUNK_D
+oracle:
+  required:
+  - service_uses_repo
+  - service_constructor
+  allowed: []
+  forbidden:
+  - no_string_helper
+  - no_garbage_loader
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

@@ -1,0 +1,190 @@
+name: bal_3hop_026_python_rate_limiter_bucket
+tags:
+- lang:python
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    ratelimit/bucket.py: |
+      import time
+      class TokenBucket:
+          def __init__(self, capacity: int, refill_rate: float):
+              self.capacity = capacity
+              self.refill_rate = refill_rate
+              self.tokens = float(capacity)
+              self.last_refill = time.time()
+          def _refill(self):
+              now = time.time()
+              elapsed = now - self.last_refill
+              self.tokens = min(self.capacity, self.tokens + elapsed * self.refill_rate)
+              self.last_refill = now
+          def consume(self, count: int = 1) -> bool:
+              self._refill()
+              if self.tokens >= count:
+                  self.tokens -= count
+                  return True
+              return False
+    ratelimit/limiter.py: |
+      from ratelimit.bucket import TokenBucket
+      class RateLimiter:
+          def __init__(self, capacity: int, refill_rate: float):
+              self.buckets: dict[str, TokenBucket] = {}
+              self.capacity = capacity
+              self.refill_rate = refill_rate
+          def allow(self, client_id: str) -> bool:
+              if client_id not in self.buckets:
+                  self.buckets[client_id] = TokenBucket(self.capacity, self.refill_rate)
+              return self.buckets[client_id].consume()
+    ratelimit/policy.py: |
+      from ratelimit.limiter import RateLimiter
+      class RateLimitPolicy:
+          def __init__(self):
+              self.limiters: dict[str, RateLimiter] = {}
+          def add_policy(self, endpoint: str, capacity: int, refill_rate: float):
+              self.limiters[endpoint] = RateLimiter(capacity, refill_rate)
+          def check(self, endpoint: str, client_id: str) -> bool:
+              limiter = self.limiters.get(endpoint)
+              if limiter is None:
+                  return True
+              return limiter.allow(client_id)
+    api/gateway.py: |
+      from ratelimit.policy import RateLimitPolicy
+      class APIGateway:
+          def __init__(self):
+              self.policy = RateLimitPolicy()
+              self.policy.add_policy("/api/search", 10, 1.0)
+              self.policy.add_policy("/api/upload", 3, 0.5)
+          def handle(self, endpoint: str, client_id: str, data: dict) -> dict:
+              if not self.policy.check(endpoint, client_id):
+                  return {"error": "rate_limited", "status": 429}
+              return {"data": data, "status": 200}
+    utils/ip_parser.py: |
+      def parse_ip(ip_string: str) -> tuple:
+          parts = ip_string.split(".")
+          return tuple(int(p) for p in parts)
+      def is_private(ip_string: str) -> bool:
+          parts = parse_ip(ip_string)
+          return parts[0] in (10, 172, 192)
+    monitoring/alerts.py: |
+      class AlertManager:
+          def __init__(self, threshold: int):
+              self.threshold = threshold
+              self.counts: dict[str, int] = {}
+          def record(self, key: str):
+              self.counts[key] = self.counts.get(key, 0) + 1
+          def is_alerting(self, key: str) -> bool:
+              return self.counts.get(key, 0) >= self.threshold
+  changed_files:
+    ratelimit/bucket.py: |
+      import time
+      class TokenBucket:
+          def __init__(self, capacity: int, refill_rate: float,
+                       burst_multiplier: float = 1.0):
+              self.capacity = capacity
+              self.refill_rate = refill_rate
+              self.burst_multiplier = burst_multiplier
+              self.tokens = float(capacity)
+              self.last_refill = time.time()
+          def _refill(self):
+              now = time.time()
+              elapsed = now - self.last_refill
+              self.tokens = min(self.capacity, self.tokens + elapsed * self.refill_rate)
+              self.last_refill = now
+          def consume(self, count: int = 1) -> bool:
+              self._refill()
+              if self.tokens >= count:
+                  self.tokens -= count
+                  return True
+              return False
+          def burst_available(self) -> int:
+              self._refill()
+              return int(self.tokens * self.burst_multiplier)
+    ratelimit/limiter.py: |
+      from ratelimit.bucket import TokenBucket
+      class RateLimiter:
+          def __init__(self, capacity: int, refill_rate: float):
+              self.buckets: dict[str, TokenBucket] = {}
+              self.capacity = capacity
+              self.refill_rate = refill_rate
+          def allow(self, client_id: str) -> bool:
+              if client_id not in self.buckets:
+                  self.buckets[client_id] = TokenBucket(self.capacity, self.refill_rate)
+              return self.buckets[client_id].consume()
+    ratelimit/policy.py: |
+      from ratelimit.limiter import RateLimiter
+      class RateLimitPolicy:
+          def __init__(self):
+              self.limiters: dict[str, RateLimiter] = {}
+          def add_policy(self, endpoint: str, capacity: int, refill_rate: float):
+              self.limiters[endpoint] = RateLimiter(capacity, refill_rate)
+          def check(self, endpoint: str, client_id: str) -> bool:
+              limiter = self.limiters.get(endpoint)
+              if limiter is None:
+                  return True
+              return limiter.allow(client_id)
+    api/gateway.py: |
+      from ratelimit.policy import RateLimitPolicy
+      class APIGateway:
+          def __init__(self):
+              self.policy = RateLimitPolicy()
+              self.policy.add_policy("/api/search", 10, 1.0)
+              self.policy.add_policy("/api/upload", 3, 0.5)
+          def handle(self, endpoint: str, client_id: str, data: dict) -> dict:
+              if not self.policy.check(endpoint, client_id):
+                  return {"error": "rate_limited", "status": 429}
+              return {"data": data, "status": 200}
+    utils/ip_parser.py: |
+      def parse_ip(ip_string: str) -> tuple:
+          parts = ip_string.split(".")
+          return tuple(int(p) for p in parts)
+      def is_private(ip_string: str) -> bool:
+          parts = parse_ip(ip_string)
+          return parts[0] in (10, 172, 192)
+    monitoring/alerts.py: |
+      class AlertManager:
+          def __init__(self, threshold: int):
+              self.threshold = threshold
+              self.counts: dict[str, int] = {}
+          def record(self, key: str):
+              self.counts[key] = self.counts.get(key, 0) + 1
+          def is_alerting(self, key: str) -> bool:
+              return self.counts.get(key, 0) >= self.threshold
+  commit_message: "feat: add burst_multiplier and burst_available to TokenBucket"
+fragments:
+- id: bucket_burst
+  selector:
+    path: ratelimit/bucket.py
+    anchor: "burst_multiplier: float = 1.0"
+- id: limiter_uses_bucket
+  selector:
+    path: ratelimit/limiter.py
+    anchor: "from ratelimit.bucket import TokenBucket"
+- id: policy_uses_limiter
+  selector:
+    path: ratelimit/policy.py
+    anchor: "from ratelimit.limiter import RateLimiter"
+- id: gateway_uses_policy
+  selector:
+    path: api/gateway.py
+    anchor: "from ratelimit.policy import RateLimitPolicy"
+- id: no_ip_parser
+  selector:
+    path: utils/ip_parser.py
+    anchor: "def parse_ip"
+- id: no_alerts
+  selector:
+    path: monitoring/alerts.py
+    anchor: "class AlertManager"
+oracle:
+  required:
+  - bucket_burst
+  - limiter_uses_bucket
+  - policy_uses_limiter
+  - gateway_uses_policy
+  allowed: []
+  forbidden:
+  - no_ip_parser
+  - no_alerts

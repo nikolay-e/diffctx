@@ -1,0 +1,145 @@
+name: gap2_175_perl_multi_file_easy_config_ini
+tags:
+- change:multi_file
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:perl
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    lib/IniReader.pm: |
+      package IniReader;
+      use strict;
+      use warnings;
+
+      sub new {
+          my ($class) = @_;
+          return bless { sections => {} }, $class;
+      }
+
+      sub parse {
+          my ($self, $text) = @_;
+          my $current = 'default';
+          for my $line (split /\n/, $text) {
+              if ($line =~ /^\[(.+)\]$/) {
+                  $current = $1;
+              } elsif ($line =~ /^(\w+)\s*=\s*(.+)$/) {
+                  $self->{sections}{$current}{$1} = $2;
+              }
+          }
+      }
+
+      sub get {
+          my ($self, $section, $key) = @_;
+          return $self->{sections}{$section}{$key};
+      }
+
+      1;
+    lib/IniWriter.pm: |
+      package IniWriter;
+      use strict;
+      use warnings;
+
+      sub serialize {
+          my ($sections) = @_;
+          my $out = '';
+          for my $sec (sort keys %$sections) {
+              $out .= "[$sec]\n";
+              for my $k (sort keys %{$sections->{$sec}}) {
+                  $out .= "$k = $sections->{$sec}{$k}\n";
+              }
+          }
+          return $out;
+      }
+
+      1;
+    lib/EnvLoader.pm: |
+      package EnvLoader;
+      use strict;
+      use warnings;
+
+      sub load {
+          my ($file) = @_;
+          return {};
+      }
+
+      1;
+  changed_files:
+    lib/IniReader.pm: |
+      package IniReader;
+      use strict;
+      use warnings;
+
+      sub new {
+          my ($class) = @_;
+          return bless { sections => {} }, $class;
+      }
+
+      sub parse {
+          my ($self, $text) = @_;
+          my $current = 'default';
+          for my $line (split /\n/, $text) {
+              next if $line =~ /^\s*[#;]/;
+              if ($line =~ /^\[(.+)\]$/) {
+                  $current = $1;
+              } elsif ($line =~ /^(\w+)\s*=\s*(.+)$/) {
+                  $self->{sections}{$current}{$1} = $2;
+              }
+          }
+      }
+
+      sub get {
+          my ($self, $section, $key) = @_;
+          return $self->{sections}{$section}{$key};
+      }
+
+      sub sections {
+          my ($self) = @_;
+          return sort keys %{$self->{sections}};
+      }
+
+      1;
+    lib/IniWriter.pm: |
+      package IniWriter;
+      use strict;
+      use warnings;
+
+      sub serialize {
+          my ($sections) = @_;
+          my $out = '';
+          for my $sec (sort keys %$sections) {
+              $out .= "[$sec]\n";
+              for my $k (sort keys %{$sections->{$sec}}) {
+                  $out .= "$k = $sections->{$sec}{$k}\n";
+              }
+              $out .= "\n";
+          }
+          return $out;
+      }
+
+      1;
+fragments:
+- id: comment_skip
+  selector:
+    path: lib/IniReader.pm
+    anchor: "next if"
+- id: sections_method
+  selector:
+    path: lib/IniReader.pm
+    anchor: sub sections
+- id: writer_newline
+  selector:
+    path: lib/IniWriter.pm
+    anchor: 'out .= "\n"'
+- id: no_env_loader
+  selector:
+    path: lib/EnvLoader.pm
+oracle:
+  required:
+  - comment_skip
+  - sections_method
+  - writer_newline
+  forbidden:
+  - no_env_loader

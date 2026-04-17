@@ -1,0 +1,172 @@
+name: gap_055_pyts_bugfix_pagination_off_by_one
+tags:
+- lang:rust
+- change:bug_fix
+- change:single_file
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/parser/token.rs: |
+      #[derive(Debug, Clone, PartialEq)]
+      pub enum Token {
+          Number(f64),
+          Plus,
+          Minus,
+          Star,
+          Slash,
+          LParen,
+          RParen,
+      }
+
+      pub struct Lexer {
+          input: Vec<char>,
+          pos: usize,
+      }
+
+      impl Lexer {
+          pub fn new(input: &str) -> Self {
+              Lexer { input: input.chars().collect(), pos: 0 }
+          }
+
+          pub fn tokenize(&mut self) -> Vec<Token> {
+              let mut tokens = Vec::new();
+              while self.pos < self.input.len() {
+                  let ch = self.input[self.pos];
+                  match ch {
+                      ' ' | '\t' => self.pos += 1,
+                      '+' => { tokens.push(Token::Plus); self.pos += 1; }
+                      '-' => { tokens.push(Token::Minus); self.pos += 1; }
+                      '*' => { tokens.push(Token::Star); self.pos += 1; }
+                      '/' => { tokens.push(Token::Slash); self.pos += 1; }
+                      '(' => { tokens.push(Token::LParen); self.pos += 1; }
+                      ')' => { tokens.push(Token::RParen); self.pos += 1; }
+                      '0'..='9' | '.' => {
+                          let start = self.pos;
+                          while self.pos < self.input.len()
+                              && (self.input[self.pos].is_numeric() || self.input[self.pos] == '.')
+                          {
+                              self.pos += 1;
+                          }
+                          let s: String = self.input[start..self.pos].iter().collect();
+                          tokens.push(Token::Number(s.parse().unwrap_or(0.0)));
+                      }
+                      _ => self.pos += 1,
+                  }
+              }
+              tokens
+          }
+
+          pub fn peek(&self) -> Option<char> {
+              if self.pos < self.input.len() {
+                  Some(self.input[self.pos])  // BUG: should peek next, not current
+              } else {
+                  None
+              }
+          }
+      }
+    garbage/optimizer.rs: |
+      // GARBAGE_GAP55_OPTIM_A = "optimizer_marker"
+    garbage/bytecode.rs: |
+      // GARBAGE_GAP55_BYTE_B = "bytecode_marker"
+    garbage/runtime.rs: |
+      // GARBAGE_GAP55_RUN_C = "runtime_marker"
+  changed_files:
+    src/parser/token.rs: |
+      #[derive(Debug, Clone, PartialEq)]
+      pub enum Token {
+          Number(f64),
+          Plus,
+          Minus,
+          Star,
+          Slash,
+          LParen,
+          RParen,
+      }
+
+      pub struct Lexer {
+          input: Vec<char>,
+          pos: usize,
+      }
+
+      impl Lexer {
+          pub fn new(input: &str) -> Self {
+              Lexer { input: input.chars().collect(), pos: 0 }
+          }
+
+          pub fn tokenize(&mut self) -> Vec<Token> {
+              let mut tokens = Vec::new();
+              while self.pos < self.input.len() {
+                  let ch = self.input[self.pos];
+                  match ch {
+                      ' ' | '\t' => self.pos += 1,
+                      '+' => { tokens.push(Token::Plus); self.pos += 1; }
+                      '-' => { tokens.push(Token::Minus); self.pos += 1; }
+                      '*' => { tokens.push(Token::Star); self.pos += 1; }
+                      '/' => { tokens.push(Token::Slash); self.pos += 1; }
+                      '(' => { tokens.push(Token::LParen); self.pos += 1; }
+                      ')' => { tokens.push(Token::RParen); self.pos += 1; }
+                      '0'..='9' | '.' => {
+                          let start = self.pos;
+                          while self.pos < self.input.len()
+                              && (self.input[self.pos].is_numeric() || self.input[self.pos] == '.')
+                          {
+                              self.pos += 1;
+                          }
+                          let s: String = self.input[start..self.pos].iter().collect();
+                          tokens.push(Token::Number(s.parse().unwrap_or(0.0)));
+                      }
+                      _ => self.pos += 1,
+                  }
+              }
+              tokens
+          }
+
+          pub fn peek(&self) -> Option<char> {
+              if self.pos + 1 < self.input.len() {
+                  Some(self.input[self.pos + 1])
+              } else {
+                  None
+              }
+          }
+      }
+    garbage/optimizer.rs: |
+      // GARBAGE_GAP55_OPTIM_A = "optimizer_marker"
+    garbage/bytecode.rs: |
+      // GARBAGE_GAP55_BYTE_B = "bytecode_marker"
+    garbage/runtime.rs: |
+      // GARBAGE_GAP55_RUN_C = "runtime_marker"
+  commit_message: "fix: peek returns next char, not current position"
+fragments:
+- id: peek_fix
+  selector:
+    path: src/parser/token.rs
+    anchor: "if self.pos + 1 < self.input.len() {"
+- id: peek_return
+  selector:
+    path: src/parser/token.rs
+    anchor: "Some(self.input[self.pos + 1])"
+- id: tokenize_method
+  selector:
+    path: src/parser/token.rs
+    anchor: "pub fn tokenize(&mut self) -> Vec<Token> {"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_GAP55_OPTIM_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_GAP55_BYTE_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_GAP55_RUN_C
+oracle:
+  required:
+  - peek_fix
+  - peek_return
+  allowed:
+  - tokenize_method
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

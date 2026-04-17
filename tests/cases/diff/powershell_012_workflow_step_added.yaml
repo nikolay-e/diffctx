@@ -1,0 +1,126 @@
+name: powershell_012_workflow_step_added
+tags:
+- lang:powershell
+- change:single_file
+- change:new_function
+- context:same_file
+- distance:0hop
+- difficulty:easy
+repo:
+  initial_files:
+    deploy.ps1: |
+      param(
+          [string]$AppName,
+          [string]$Version,
+          [string]$TargetServer
+      )
+
+      function Invoke-BuildStep {
+          param([string]$AppName, [string]$Version)
+          Write-Output "Building $AppName v$Version..."
+          dotnet publish -c Release -o ./publish
+      }
+
+      function Invoke-UploadStep {
+          param([string]$AppName, [string]$Version, [string]$TargetServer)
+          Write-Output "Uploading $AppName v$Version to $TargetServer..."
+          Copy-Item ./publish -Destination "\\$TargetServer\deploy\$AppName" -Recurse -Force
+      }
+
+      function Invoke-RestartStep {
+          param([string]$AppName, [string]$TargetServer)
+          Write-Output "Restarting $AppName on $TargetServer..."
+          Invoke-Command -ComputerName $TargetServer -ScriptBlock {
+              param($name) Restart-Service -Name $name -Force
+          } -ArgumentList $AppName
+      }
+
+      Invoke-BuildStep  -AppName $AppName -Version $Version
+      Invoke-UploadStep -AppName $AppName -Version $Version -TargetServer $TargetServer
+      Invoke-RestartStep -AppName $AppName -TargetServer $TargetServer
+      Write-Output "Deployment complete."
+    PS_NOISE_012_MonitorUtils.psm1: |
+      function PS_NOISE_012_Get-ServerUptime {
+          param([string]$ComputerName)
+          $os = Get-WmiObject Win32_OperatingSystem -ComputerName $ComputerName
+          return (Get-Date) - $os.ConvertToDateTime($os.LastBootUpTime)
+      }
+      Export-ModuleMember -Function PS_NOISE_012_Get-ServerUptime
+    PS_NOISE_012_BackupUtils.psm1: |
+      function PS_NOISE_012_Invoke-SqlBackup {
+          param([string]$Server, [string]$Database, [string]$BackupPath)
+          Invoke-Sqlcmd -ServerInstance $Server -Query "BACKUP DATABASE [$Database] TO DISK='$BackupPath' WITH COMPRESSION"
+      }
+      Export-ModuleMember -Function PS_NOISE_012_Invoke-SqlBackup
+  changed_files:
+    deploy.ps1: |
+      param(
+          [string]$AppName,
+          [string]$Version,
+          [string]$TargetServer
+      )
+
+      function Invoke-BuildStep {
+          param([string]$AppName, [string]$Version)
+          Write-Output "Building $AppName v$Version..."
+          dotnet publish -c Release -o ./publish
+      }
+
+      function Invoke-SmokeTestStep {
+          param([string]$AppName, [string]$Version)
+          Write-Output "Running smoke tests for $AppName v$Version..."
+          $result = dotnet test ./tests/smoke --no-build
+          if ($LASTEXITCODE -ne 0) { throw "Smoke tests failed for $AppName v$Version" }
+      }
+
+      function Invoke-UploadStep {
+          param([string]$AppName, [string]$Version, [string]$TargetServer)
+          Write-Output "Uploading $AppName v$Version to $TargetServer..."
+          Copy-Item ./publish -Destination "\\$TargetServer\deploy\$AppName" -Recurse -Force
+      }
+
+      function Invoke-RestartStep {
+          param([string]$AppName, [string]$TargetServer)
+          Write-Output "Restarting $AppName on $TargetServer..."
+          Invoke-Command -ComputerName $TargetServer -ScriptBlock {
+              param($name) Restart-Service -Name $name -Force
+          } -ArgumentList $AppName
+      }
+
+      Invoke-BuildStep     -AppName $AppName -Version $Version
+      Invoke-SmokeTestStep -AppName $AppName -Version $Version
+      Invoke-UploadStep    -AppName $AppName -Version $Version -TargetServer $TargetServer
+      Invoke-RestartStep   -AppName $AppName -TargetServer $TargetServer
+      Write-Output "Deployment complete."
+  commit_message: "feat: add smoke test step between build and upload in deploy pipeline"
+fragments:
+- id: smoke_test_function
+  selector:
+    path: deploy.ps1
+    anchor: Invoke-SmokeTestStep
+- id: smoke_test_call
+  selector:
+    path: deploy.ps1
+    anchor: "Invoke-SmokeTestStep -AppName"
+- id: no_monitor_utils
+  selector:
+    path: PS_NOISE_012_MonitorUtils.psm1
+- id: no_backup_utils
+  selector:
+    path: PS_NOISE_012_BackupUtils.psm1
+- id: no_global_0
+  selector:
+    anchor: PS_NOISE_012_Get-ServerUptime
+- id: no_global_1
+  selector:
+    anchor: PS_NOISE_012_Invoke-SqlBackup
+oracle:
+  required:
+  - smoke_test_function
+  - smoke_test_call
+  allowed: []
+  forbidden:
+  - no_monitor_utils
+  - no_backup_utils
+  - no_global_0
+  - no_global_1

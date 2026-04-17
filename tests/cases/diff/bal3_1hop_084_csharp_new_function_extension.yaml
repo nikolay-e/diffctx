@@ -1,0 +1,335 @@
+name: bal3_1hop_084_csharp_new_function_extension
+tags:
+- lang:csharp
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: csharp-no-tree-sitter
+repo:
+  initial_files:
+    src/Extensions/StringExtensions.cs: |
+      using System;
+
+      namespace App.Extensions
+      {
+          public static class StringExtensions
+          {
+              public static string Capitalize(this string input)
+              {
+                  if (string.IsNullOrEmpty(input)) return input;
+                  return char.ToUpper(input[0]) + input.Substring(1);
+              }
+
+              public static string ToSlug(this string input)
+              {
+                  return input.ToLower().Replace(" ", "-");
+              }
+          }
+      }
+    src/Services/TitleService.cs: |
+      using System;
+      using App.Extensions;
+
+      namespace App.Services
+      {
+          public class TitleService
+          {
+              public string FormatTitle(string raw)
+              {
+                  return raw.Capitalize();
+              }
+
+              public string GenerateSlug(string title)
+              {
+                  return title.ToSlug();
+              }
+          }
+      }
+    src/Services/DisplayService.cs: |
+      using System;
+      using App.Extensions;
+
+      namespace App.Services
+      {
+          public class DisplayService
+          {
+              public string FormatUserName(string name)
+              {
+                  return name.Capitalize();
+              }
+          }
+      }
+    src/Services/SEOService.cs: |
+      using System;
+      using App.Extensions;
+
+      namespace App.Services
+      {
+          public class SEOService
+          {
+              public string GenerateMetaSlug(string title)
+              {
+                  return title.ToSlug();
+              }
+          }
+      }
+    src/Services/ExportService.cs: |
+      using System;
+      using App.Extensions;
+
+      namespace App.Services
+      {
+          public class ExportService
+          {
+              public string FormatExportName(string name)
+              {
+                  return name.Capitalize().ToSlug();
+              }
+          }
+      }
+    src/Imaging/ThumbnailGenerator.cs: |
+      using System;
+      GARBAGE_084_THUMB_WIDTH_A = 150;
+      GARBAGE_084_THUMB_HEIGHT_B = 150;
+
+      namespace App.Imaging
+      {
+          public class ThumbnailGenerator
+          {
+              public byte[] Generate(byte[] image) { return image; }
+          }
+      }
+    src/Imaging/WatermarkApplier.cs: |
+      using System;
+      GARBAGE_084_WATERMARK_TEXT_C = "SAMPLE";
+      GARBAGE_084_OPACITY_D = 0.5;
+
+      namespace App.Imaging
+      {
+          public class WatermarkApplier
+          {
+              public byte[] Apply(byte[] image) { return image; }
+          }
+      }
+    src/PDF/PdfGenerator.cs: |
+      using System;
+      GARBAGE_084_PAGE_SIZE_E = "A4";
+      GARBAGE_084_MARGIN_F = 72;
+
+      namespace App.PDF
+      {
+          public class PdfGenerator
+          {
+              public byte[] Generate(string html) { return new byte[0]; }
+          }
+      }
+  changed_files:
+    src/Extensions/StringExtensions.cs: |
+      using System;
+      using System.Text.RegularExpressions;
+
+      namespace App.Extensions
+      {
+          public static class StringExtensions
+          {
+              public static string Capitalize(this string input)
+              {
+                  if (string.IsNullOrEmpty(input)) return input;
+                  return char.ToUpper(input[0]) + input.Substring(1);
+              }
+
+              public static string ToSlug(this string input)
+              {
+                  return input.ToLower().Replace(" ", "-");
+              }
+
+              public static string Truncate(this string input, int maxLength)
+              {
+                  if (string.IsNullOrEmpty(input) || input.Length <= maxLength)
+                      return input;
+                  return input.Substring(0, maxLength) + "...";
+              }
+
+              public static string StripHtml(this string input)
+              {
+                  return Regex.Replace(input, "<.*?>", string.Empty);
+              }
+
+              public static string Mask(this string input, int visibleChars = 4)
+              {
+                  if (input.Length <= visibleChars) return input;
+                  return new string('*', input.Length - visibleChars) + input.Substring(input.Length - visibleChars);
+              }
+          }
+      }
+    src/Services/TitleService.cs: |
+      using System;
+      using App.Extensions;
+
+      namespace App.Services
+      {
+          public class TitleService
+          {
+              public string FormatTitle(string raw)
+              {
+                  return raw.Capitalize();
+              }
+
+              public string GenerateSlug(string title)
+              {
+                  return title.ToSlug();
+              }
+          }
+      }
+    src/Services/DisplayService.cs: |
+      using System;
+      using App.Extensions;
+
+      namespace App.Services
+      {
+          public class DisplayService
+          {
+              public string FormatUserName(string name)
+              {
+                  return name.Capitalize();
+              }
+          }
+      }
+    src/Services/SEOService.cs: |
+      using System;
+      using App.Extensions;
+
+      namespace App.Services
+      {
+          public class SEOService
+          {
+              public string GenerateMetaSlug(string title)
+              {
+                  return title.ToSlug();
+              }
+          }
+      }
+    src/Services/ExportService.cs: |
+      using System;
+      using App.Extensions;
+
+      namespace App.Services
+      {
+          public class ExportService
+          {
+              public string FormatExportName(string name)
+              {
+                  return name.Capitalize().ToSlug();
+              }
+          }
+      }
+    src/Imaging/ThumbnailGenerator.cs: |
+      using System;
+      GARBAGE_084_THUMB_WIDTH_A = 150;
+      GARBAGE_084_THUMB_HEIGHT_B = 150;
+
+      namespace App.Imaging
+      {
+          public class ThumbnailGenerator
+          {
+              public byte[] Generate(byte[] image) { return image; }
+          }
+      }
+    src/Imaging/WatermarkApplier.cs: |
+      using System;
+      GARBAGE_084_WATERMARK_TEXT_C = "SAMPLE";
+      GARBAGE_084_OPACITY_D = 0.5;
+
+      namespace App.Imaging
+      {
+          public class WatermarkApplier
+          {
+              public byte[] Apply(byte[] image) { return image; }
+          }
+      }
+    src/PDF/PdfGenerator.cs: |
+      using System;
+      GARBAGE_084_PAGE_SIZE_E = "A4";
+      GARBAGE_084_MARGIN_F = 72;
+
+      namespace App.PDF
+      {
+          public class PdfGenerator
+          {
+              public byte[] Generate(string html) { return new byte[0]; }
+          }
+      }
+  commit_message: "feat: add Truncate, StripHtml and Mask string extensions"
+fragments:
+- id: title_svc_using
+  selector:
+    path: src/Services/TitleService.cs
+    anchor: "using App.Extensions"
+- id: title_svc_capitalize
+  selector:
+    path: src/Services/TitleService.cs
+    anchor: "raw.Capitalize()"
+- id: display_svc_using
+  selector:
+    path: src/Services/DisplayService.cs
+    anchor: "using App.Extensions"
+- id: seo_svc_using
+  selector:
+    path: src/Services/SEOService.cs
+    anchor: "using App.Extensions"
+- id: export_svc_using
+  selector:
+    path: src/Services/ExportService.cs
+    anchor: "using App.Extensions"
+- id: export_svc_chain
+  selector:
+    path: src/Services/ExportService.cs
+    anchor: "name.Capitalize().ToSlug()"
+- id: no_thumbnail
+  selector:
+    path: src/Imaging/ThumbnailGenerator.cs
+- id: no_watermark
+  selector:
+    path: src/Imaging/WatermarkApplier.cs
+- id: no_pdf
+  selector:
+    path: src/PDF/PdfGenerator.cs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_084_THUMB_WIDTH_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_084_THUMB_HEIGHT_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_084_WATERMARK_TEXT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_084_OPACITY_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_084_PAGE_SIZE_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_084_MARGIN_F
+oracle:
+  required:
+  - title_svc_using
+  - title_svc_capitalize
+  - display_svc_using
+  - seo_svc_using
+  - export_svc_using
+  - export_svc_chain
+  allowed: []
+  forbidden:
+  - no_thumbnail
+  - no_watermark
+  - no_pdf
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

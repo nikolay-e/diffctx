@@ -1,0 +1,325 @@
+name: bal3_1hop_064_swift_signature_change
+tags:
+- lang:swift
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    Sources/Database/Repository.swift: |
+      import Foundation
+
+      class Repository {
+          func save(entity: String) -> Bool {
+              return true
+          }
+
+          func delete(id: Int) -> Bool {
+              return true
+          }
+
+          func findById(id: Int) -> String? {
+              return nil
+          }
+      }
+    Sources/Services/ProductService.swift: |
+      import Foundation
+      import Database
+
+      class ProductService {
+          private let repo: Repository
+
+          init(repo: Repository) {
+              self.repo = repo
+          }
+
+          func createProduct(name: String) -> Bool {
+              return repo.save(entity: name)
+          }
+
+          func removeProduct(id: Int) -> Bool {
+              return repo.delete(id: id)
+          }
+
+          func getProduct(id: Int) -> String? {
+              return repo.findById(id: id)
+          }
+      }
+    Sources/Services/CategoryService.swift: |
+      import Foundation
+      import Database
+
+      class CategoryService {
+          private let repo: Repository
+
+          init(repo: Repository) {
+              self.repo = repo
+          }
+
+          func createCategory(name: String) -> Bool {
+              return repo.save(entity: name)
+          }
+
+          func findCategory(id: Int) -> String? {
+              return repo.findById(id: id)
+          }
+      }
+    Sources/Services/TagService.swift: |
+      import Foundation
+      import Database
+
+      class TagService {
+          private let repo: Repository
+
+          init(repo: Repository) {
+              self.repo = repo
+          }
+
+          func createTag(label: String) -> Bool {
+              return repo.save(entity: label)
+          }
+
+          func deleteTag(id: Int) -> Bool {
+              return repo.delete(id: id)
+          }
+      }
+    Sources/Services/InventoryService.swift: |
+      import Foundation
+      import Database
+
+      class InventoryService {
+          private let repo: Repository
+
+          init(repo: Repository) {
+              self.repo = repo
+          }
+
+          func updateStock(productId: Int, quantity: Int) -> Bool {
+              return repo.save(entity: "\(productId):\(quantity)")
+          }
+      }
+    Sources/Middleware/RateLimiter.swift: |
+      import Foundation
+      GARBAGE_064_RATE_LIMIT_A = 100
+      GARBAGE_064_WINDOW_SECS_B = 60
+
+      class RateLimiter {
+          func shouldAllow(clientId: String) -> Bool { return true }
+      }
+    Sources/Middleware/CORSHandler.swift: |
+      import Foundation
+      GARBAGE_064_CORS_ORIGIN_C = "*"
+      GARBAGE_064_MAX_AGE_D = 86400
+
+      class CORSHandler {
+          func addHeaders() {}
+      }
+    Sources/Config/FeatureFlags.swift: |
+      import Foundation
+      GARBAGE_064_FLAG_PREFIX_E = "ff_"
+      GARBAGE_064_DEFAULT_STATE_F = false
+
+      class FeatureFlags {
+          func isEnabled(flag: String) -> Bool { return false }
+      }
+  changed_files:
+    Sources/Database/Repository.swift: |
+      import Foundation
+
+      enum RepositoryError: Error {
+          case notFound
+          case saveFailed
+          case deleteFailed
+      }
+
+      class Repository {
+          func save(entity: String, namespace: String = "default") throws -> Bool {
+              return true
+          }
+
+          func delete(id: Int, soft: Bool = false) throws -> Bool {
+              return true
+          }
+
+          func findById(id: Int, namespace: String = "default") throws -> String {
+              throw RepositoryError.notFound
+          }
+      }
+    Sources/Services/ProductService.swift: |
+      import Foundation
+      import Database
+
+      class ProductService {
+          private let repo: Repository
+
+          init(repo: Repository) {
+              self.repo = repo
+          }
+
+          func createProduct(name: String) -> Bool {
+              return repo.save(entity: name)
+          }
+
+          func removeProduct(id: Int) -> Bool {
+              return repo.delete(id: id)
+          }
+
+          func getProduct(id: Int) -> String? {
+              return repo.findById(id: id)
+          }
+      }
+    Sources/Services/CategoryService.swift: |
+      import Foundation
+      import Database
+
+      class CategoryService {
+          private let repo: Repository
+
+          init(repo: Repository) {
+              self.repo = repo
+          }
+
+          func createCategory(name: String) -> Bool {
+              return repo.save(entity: name)
+          }
+
+          func findCategory(id: Int) -> String? {
+              return repo.findById(id: id)
+          }
+      }
+    Sources/Services/TagService.swift: |
+      import Foundation
+      import Database
+
+      class TagService {
+          private let repo: Repository
+
+          init(repo: Repository) {
+              self.repo = repo
+          }
+
+          func createTag(label: String) -> Bool {
+              return repo.save(entity: label)
+          }
+
+          func deleteTag(id: Int) -> Bool {
+              return repo.delete(id: id)
+          }
+      }
+    Sources/Services/InventoryService.swift: |
+      import Foundation
+      import Database
+
+      class InventoryService {
+          private let repo: Repository
+
+          init(repo: Repository) {
+              self.repo = repo
+          }
+
+          func updateStock(productId: Int, quantity: Int) -> Bool {
+              return repo.save(entity: "\(productId):\(quantity)")
+          }
+      }
+    Sources/Middleware/RateLimiter.swift: |
+      import Foundation
+      GARBAGE_064_RATE_LIMIT_A = 100
+      GARBAGE_064_WINDOW_SECS_B = 60
+
+      class RateLimiter {
+          func shouldAllow(clientId: String) -> Bool { return true }
+      }
+    Sources/Middleware/CORSHandler.swift: |
+      import Foundation
+      GARBAGE_064_CORS_ORIGIN_C = "*"
+      GARBAGE_064_MAX_AGE_D = 86400
+
+      class CORSHandler {
+          func addHeaders() {}
+      }
+    Sources/Config/FeatureFlags.swift: |
+      import Foundation
+      GARBAGE_064_FLAG_PREFIX_E = "ff_"
+      GARBAGE_064_DEFAULT_STATE_F = false
+
+      class FeatureFlags {
+          func isEnabled(flag: String) -> Bool { return false }
+      }
+  commit_message: "feat: add throwing signatures and namespace to Repository"
+fragments:
+- id: product_svc_imports
+  selector:
+    path: Sources/Services/ProductService.swift
+    anchor: "import Database"
+- id: product_svc_save
+  selector:
+    path: Sources/Services/ProductService.swift
+    anchor: "repo.save(entity:"
+- id: category_svc_imports
+  selector:
+    path: Sources/Services/CategoryService.swift
+    anchor: "import Database"
+- id: category_svc_find
+  selector:
+    path: Sources/Services/CategoryService.swift
+    anchor: "repo.findById(id:"
+- id: tag_svc_imports
+  selector:
+    path: Sources/Services/TagService.swift
+    anchor: "import Database"
+- id: tag_svc_delete
+  selector:
+    path: Sources/Services/TagService.swift
+    anchor: "repo.delete(id:"
+- id: inventory_svc_imports
+  selector:
+    path: Sources/Services/InventoryService.swift
+    anchor: "import Database"
+- id: no_rate_limiter
+  selector:
+    path: Sources/Middleware/RateLimiter.swift
+- id: no_cors
+  selector:
+    path: Sources/Middleware/CORSHandler.swift
+- id: no_feature_flags
+  selector:
+    path: Sources/Config/FeatureFlags.swift
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_064_RATE_LIMIT_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_064_WINDOW_SECS_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_064_CORS_ORIGIN_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_064_MAX_AGE_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_064_FLAG_PREFIX_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_064_DEFAULT_STATE_F
+oracle:
+  required:
+  - product_svc_imports
+  - product_svc_save
+  - category_svc_imports
+  - category_svc_find
+  - tag_svc_imports
+  - tag_svc_delete
+  - inventory_svc_imports
+  allowed: []
+  forbidden:
+  - no_rate_limiter
+  - no_cors
+  - no_feature_flags
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

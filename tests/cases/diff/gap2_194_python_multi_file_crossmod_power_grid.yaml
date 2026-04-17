@@ -1,0 +1,148 @@
+name: gap2_194_python_multi_file_crossmod_power_grid
+tags:
+- change:multi_file
+- change:new_function
+- change:new_function
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+- lang:python
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    grid/dispatcher.py: |
+      from grid.topology import Substation, TransmissionLine
+      from grid.load_model import LoadForecast
+
+      class GridDispatcher:
+          def __init__(self):
+              self._substations: list[Substation] = []
+
+          def register(self, sub: Substation) -> None:
+              self._substations.append(sub)
+
+          def total_capacity_mw(self) -> float:
+              return sum(s.capacity_mw for s in self._substations)
+    grid/topology.py: |
+      class Substation:
+          def __init__(self, name: str, capacity_mw: float):
+              self.name = name
+              self.capacity_mw = capacity_mw
+
+      class TransmissionLine:
+          def __init__(self, source: str, dest: str, max_mw: float):
+              self.source = source
+              self.dest = dest
+              self.max_mw = max_mw
+
+          def utilization(self, current_mw: float) -> float:
+              return current_mw / self.max_mw if self.max_mw > 0 else 0.0
+    grid/load_model.py: |
+      class LoadForecast:
+          def __init__(self, hour: int, demand_mw: float):
+              self.hour = hour
+              self.demand_mw = demand_mw
+
+          def is_peak(self) -> bool:
+              return 8 <= self.hour <= 20
+    grid/renewable.py: |
+      TRAP_GAP2_194_SOLAR_A = "solar_noise"
+      TRAP_GAP2_194_WIND_B = 0
+
+      class SolarPanel:
+          def __init__(self, efficiency: float):
+              self.efficiency = efficiency
+
+          def output_kw(self, irradiance: float) -> float:
+              return irradiance * self.efficiency
+    grid/billing.py: |
+      TRAP_GAP2_194_BILL_C = "billing_noise"
+      TRAP_GAP2_194_RATE_D = 0.12
+
+      class EnergyBilling:
+          def __init__(self, rate_per_kwh: float):
+              self.rate = rate_per_kwh
+
+          def compute(self, kwh: float) -> float:
+              return kwh * self.rate
+  changed_files:
+    grid/dispatcher.py: |
+      from grid.topology import Substation, TransmissionLine
+      from grid.load_model import LoadForecast
+
+      class GridDispatcher:
+          def __init__(self):
+              self._substations: list[Substation] = []
+
+          def register(self, sub: Substation) -> None:
+              self._substations.append(sub)
+
+          def total_capacity_mw(self) -> float:
+              return sum(s.capacity_mw for s in self._substations)
+
+          def find_overloaded(self, forecasts: list[LoadForecast]) -> list[str]:
+              peak_demand = sum(f.demand_mw for f in forecasts if f.is_peak())
+              overloaded = []
+              for sub in self._substations:
+                  if sub.capacity_mw < peak_demand / max(len(self._substations), 1):
+                      overloaded.append(sub.name)
+              return overloaded
+    grid/topology.py: |
+      class Substation:
+          def __init__(self, name: str, capacity_mw: float):
+              self.name = name
+              self.capacity_mw = capacity_mw
+
+      class TransmissionLine:
+          def __init__(self, source: str, dest: str, max_mw: float):
+              self.source = source
+              self.dest = dest
+              self.max_mw = max_mw
+
+          def utilization(self, current_mw: float) -> float:
+              return current_mw / self.max_mw if self.max_mw > 0 else 0.0
+
+          def is_congested(self, current_mw: float, threshold: float = 0.85) -> bool:
+              return self.utilization(current_mw) >= threshold
+  commit_message: "feat: add overload detection and congestion check"
+fragments:
+- id: find_overloaded
+  selector:
+    path: grid/dispatcher.py
+    anchor: "def find_overloaded"
+- id: is_congested
+  selector:
+    path: grid/topology.py
+    anchor: "def is_congested"
+- id: load_forecast_peak
+  selector:
+    path: grid/load_model.py
+    anchor: "def is_peak"
+- id: substation_class
+  selector:
+    path: grid/topology.py
+    anchor: class Substation
+- id: no_renewable
+  selector:
+    path: grid/renewable.py
+- id: no_billing
+  selector:
+    path: grid/billing.py
+- id: no_trap_0
+  selector:
+    anchor: TRAP_GAP2_194_SOLAR_A
+- id: no_trap_1
+  selector:
+    anchor: TRAP_GAP2_194_BILL_C
+oracle:
+  required:
+  - find_overloaded
+  - is_congested
+  - load_forecast_peak
+  - substation_class
+  forbidden:
+  - no_renewable
+  - no_billing
+  - no_trap_0
+  - no_trap_1

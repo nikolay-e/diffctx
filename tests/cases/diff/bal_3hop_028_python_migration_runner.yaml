@@ -1,0 +1,192 @@
+name: bal_3hop_028_python_migration_runner
+tags:
+- lang:python
+- change:single_file
+- change:multi_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    migrations/migration.py: |
+      class Migration:
+          def __init__(self, version: str, description: str):
+              self.version = version
+              self.description = description
+              self.applied = False
+          def up(self) -> str:
+              return f"-- Migration {self.version}: {self.description}"
+          def down(self) -> str:
+              return f"-- Rollback {self.version}"
+    migrations/registry.py: |
+      from migrations.migration import Migration
+      class MigrationRegistry:
+          def __init__(self):
+              self.migrations: list[Migration] = []
+          def register(self, version: str, description: str):
+              self.migrations.append(Migration(version, description))
+          def pending(self) -> list[Migration]:
+              return [m for m in self.migrations if not m.applied]
+          def applied(self) -> list[Migration]:
+              return [m for m in self.migrations if m.applied]
+    migrations/executor.py: |
+      from migrations.registry import MigrationRegistry
+      class MigrationExecutor:
+          def __init__(self, registry: MigrationRegistry):
+              self.registry = registry
+              self.log: list[str] = []
+          def migrate(self) -> int:
+              pending = self.registry.pending()
+              for m in pending:
+                  sql = m.up()
+                  self.log.append(sql)
+                  m.applied = True
+              return len(pending)
+          def rollback(self, count: int = 1) -> int:
+              applied = list(reversed(self.registry.applied()))
+              rolled = 0
+              for m in applied[:count]:
+                  sql = m.down()
+                  self.log.append(sql)
+                  m.applied = False
+                  rolled += 1
+              return rolled
+    app/db_manager.py: |
+      from migrations.executor import MigrationExecutor
+      from migrations.registry import MigrationRegistry
+      class DatabaseManager:
+          def __init__(self):
+              self.registry = MigrationRegistry()
+              self.executor = MigrationExecutor(self.registry)
+          def setup(self):
+              self.registry.register("001", "create users table")
+              self.registry.register("002", "add email column")
+              self.registry.register("003", "create orders table")
+          def run_migrations(self) -> dict:
+              count = self.executor.migrate()
+              return {"applied": count, "log": self.executor.log}
+    utils/sql_formatter.py: |
+      def format_sql(sql: str) -> str:
+          keywords = ["SELECT", "FROM", "WHERE", "INSERT", "UPDATE", "DELETE"]
+          result = sql
+          for kw in keywords:
+              result = result.replace(kw.lower(), kw)
+          return result
+    config/db_config.py: |
+      DB_HOST = "localhost"
+      DB_PORT = 5432
+      DB_NAME = "app_db"
+      DB_USER = "admin"
+  changed_files:
+    migrations/migration.py: |
+      from datetime import datetime
+      class Migration:
+          def __init__(self, version: str, description: str,
+                       reversible: bool = True):
+              self.version = version
+              self.description = description
+              self.applied = False
+              self.reversible = reversible
+              self.applied_at = None
+          def up(self) -> str:
+              self.applied_at = datetime.utcnow()
+              return f"-- Migration {self.version}: {self.description}"
+          def down(self) -> str:
+              if not self.reversible:
+                  raise RuntimeError(f"Migration {self.version} is not reversible")
+              return f"-- Rollback {self.version}"
+    migrations/registry.py: |
+      from migrations.migration import Migration
+      class MigrationRegistry:
+          def __init__(self):
+              self.migrations: list[Migration] = []
+          def register(self, version: str, description: str):
+              self.migrations.append(Migration(version, description))
+          def pending(self) -> list[Migration]:
+              return [m for m in self.migrations if not m.applied]
+          def applied(self) -> list[Migration]:
+              return [m for m in self.migrations if m.applied]
+    migrations/executor.py: |
+      from migrations.registry import MigrationRegistry
+      class MigrationExecutor:
+          def __init__(self, registry: MigrationRegistry):
+              self.registry = registry
+              self.log: list[str] = []
+          def migrate(self) -> int:
+              pending = self.registry.pending()
+              for m in pending:
+                  sql = m.up()
+                  self.log.append(sql)
+                  m.applied = True
+              return len(pending)
+          def rollback(self, count: int = 1) -> int:
+              applied = list(reversed(self.registry.applied()))
+              rolled = 0
+              for m in applied[:count]:
+                  sql = m.down()
+                  self.log.append(sql)
+                  m.applied = False
+                  rolled += 1
+              return rolled
+    app/db_manager.py: |
+      from migrations.executor import MigrationExecutor
+      from migrations.registry import MigrationRegistry
+      class DatabaseManager:
+          def __init__(self):
+              self.registry = MigrationRegistry()
+              self.executor = MigrationExecutor(self.registry)
+          def setup(self):
+              self.registry.register("001", "create users table")
+              self.registry.register("002", "add email column")
+              self.registry.register("003", "create orders table")
+          def run_migrations(self) -> dict:
+              count = self.executor.migrate()
+              return {"applied": count, "log": self.executor.log}
+    utils/sql_formatter.py: |
+      def format_sql(sql: str) -> str:
+          keywords = ["SELECT", "FROM", "WHERE", "INSERT", "UPDATE", "DELETE"]
+          result = sql
+          for kw in keywords:
+              result = result.replace(kw.lower(), kw)
+          return result
+    config/db_config.py: |
+      DB_HOST = "localhost"
+      DB_PORT = 5432
+      DB_NAME = "app_db"
+      DB_USER = "admin"
+  commit_message: "feat: add reversible flag and applied_at timestamp to Migration"
+fragments:
+- id: migration_reversible
+  selector:
+    path: migrations/migration.py
+    anchor: "reversible: bool = True"
+- id: registry_uses_migration
+  selector:
+    path: migrations/registry.py
+    anchor: "from migrations.migration import Migration"
+- id: executor_uses_registry
+  selector:
+    path: migrations/executor.py
+    anchor: "from migrations.registry import MigrationRegistry"
+- id: db_manager_uses_executor
+  selector:
+    path: app/db_manager.py
+    anchor: "from migrations.executor import MigrationExecutor"
+- id: no_sql_formatter
+  selector:
+    path: utils/sql_formatter.py
+    anchor: "def format_sql"
+- id: no_db_config
+  selector:
+    path: config/db_config.py
+    anchor: "DB_HOST"
+oracle:
+  required:
+  - migration_reversible
+  - registry_uses_migration
+  - executor_uses_registry
+  - db_manager_uses_executor
+  allowed: []
+  forbidden:
+  - no_sql_formatter
+  - no_db_config

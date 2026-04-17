@@ -1,0 +1,153 @@
+name: gap2_011_java_config_retry_policy_messaging
+tags:
+- lang:java
+- change:config
+- change:single_file
+- context:cross_module
+- distance:2hop
+- difficulty:medium
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/main/resources/messaging.properties: |
+      messaging.retry.maxAttempts=3
+      messaging.retry.backoffMs=1000
+      messaging.retry.multiplier=2.0
+      messaging.broker.host=localhost
+      messaging.broker.port=5672
+    src/main/java/com/healthcare/config/MessagingConfig.java: |
+      package com.healthcare.config;
+
+      import java.io.InputStream;
+      import java.util.Properties;
+
+      public class MessagingConfig {
+          private final Properties props;
+
+          public MessagingConfig() {
+              this.props = new Properties();
+              try (InputStream is = getClass().getClassLoader()
+                      .getResourceAsStream("messaging.properties")) {
+                  props.load(is);
+              } catch (Exception e) {
+                  throw new RuntimeException(e);
+              }
+          }
+
+          public int getMaxRetryAttempts() {
+              return Integer.parseInt(props.getProperty("messaging.retry.maxAttempts", "3"));
+          }
+
+          public long getBackoffMs() {
+              return Long.parseLong(props.getProperty("messaging.retry.backoffMs", "1000"));
+          }
+
+          public double getMultiplier() {
+              return Double.parseDouble(props.getProperty("messaging.retry.multiplier", "2.0"));
+          }
+      }
+    src/main/java/com/healthcare/messaging/RetryHandler.java: |
+      package com.healthcare.messaging;
+
+      import com.healthcare.config.MessagingConfig;
+
+      public class RetryHandler {
+          private final int maxAttempts;
+          private final long initialBackoff;
+          private final double multiplier;
+
+          public RetryHandler(MessagingConfig config) {
+              this.maxAttempts = config.getMaxRetryAttempts();
+              this.initialBackoff = config.getBackoffMs();
+              this.multiplier = config.getMultiplier();
+          }
+
+          public boolean shouldRetry(int attempt) {
+              return attempt < maxAttempts;
+          }
+
+          public long delayForAttempt(int attempt) {
+              return (long) (initialBackoff * Math.pow(multiplier, attempt));
+          }
+      }
+    src/main/java/com/healthcare/messaging/PatientAlertPublisher.java: |
+      package com.healthcare.messaging;
+
+      public class PatientAlertPublisher {
+          private final RetryHandler retryHandler;
+
+          public PatientAlertPublisher(RetryHandler retryHandler) {
+              this.retryHandler = retryHandler;
+          }
+
+          public boolean publish(String alertJson) {
+              int attempt = 0;
+              while (retryHandler.shouldRetry(attempt)) {
+                  attempt++;
+              }
+              return false;
+          }
+      }
+    src/main/java/com/healthcare/model/PatientRecord.java: |
+      package com.healthcare.model;
+
+      public class PatientRecord {
+          private final String patientId;
+          private final String name;
+          private final int age;
+
+          public PatientRecord(String patientId, String name, int age) {
+              this.patientId = patientId;
+              this.name = name;
+              this.age = age;
+          }
+
+          public String getPatientId() {
+              return patientId;
+          }
+
+          public String getName() {
+              return name;
+          }
+
+          public int getAge() {
+              return age;
+          }
+      }
+  changed_files:
+    src/main/resources/messaging.properties: |
+      messaging.retry.maxAttempts=5
+      messaging.retry.backoffMs=500
+      messaging.retry.multiplier=1.5
+      messaging.broker.host=localhost
+      messaging.broker.port=5672
+  commit_message: "config: increase retry attempts with shorter backoff for alerts"
+fragments:
+- id: config_props
+  selector:
+    path: src/main/resources/messaging.properties
+    anchor: "messaging.retry.maxAttempts=5"
+- id: config_reader
+  selector:
+    path: src/main/java/com/healthcare/config/MessagingConfig.java
+    anchor: "getMaxRetryAttempts"
+- id: retry_uses_config
+  selector:
+    path: src/main/java/com/healthcare/messaging/RetryHandler.java
+    anchor: "config.getMaxRetryAttempts()"
+- id: no_patient_record
+  selector:
+    path: src/main/java/com/healthcare/model/PatientRecord.java
+- id: no_patient_class
+  selector:
+    anchor: PatientRecord
+oracle:
+  required:
+  - config_props
+  - config_reader
+  - retry_uses_config
+  allowed: []
+  forbidden:
+  - no_patient_record
+  - no_patient_class

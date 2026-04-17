@@ -1,0 +1,93 @@
+name: html_008_aria_role_added
+tags:
+- lang:html
+- lang:javascript
+- change:multi_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    nav.html: |
+      <!DOCTYPE html>
+      <html lang="en">
+      <body>
+        <nav id="main-nav">
+          <ul>
+            <li><a href="/">Home</a></li>
+            <li><a href="/about">About</a></li>
+          </ul>
+        </nav>
+        <script src="accessibility.js"></script>
+      </body>
+      </html>
+    accessibility.js: |
+      const nav = document.getElementById('main-nav');
+      if (nav) {
+        const isExpanded = nav.getAttribute('aria-expanded');
+        console.log('nav expanded:', isExpanded);
+      }
+    HTML_NOISE_008_404.html: |
+      <!-- HTML_NOISE_008_not_found_page -->
+      <div class="HTML_NOISE_008_not_found_hero">Page not found</div>
+    HTML_NOISE_008_profile.html: |
+      <!-- HTML_NOISE_008_user_profile_page -->
+      <section class="HTML_NOISE_008_profile_card">User Profile</section>
+  changed_files:
+    nav.html: |
+      <!DOCTYPE html>
+      <html lang="en">
+      <body>
+        <nav id="main-nav" role="navigation" aria-label="Main navigation">
+          <ul>
+            <li><a href="/">Home</a></li>
+            <li><a href="/about">About</a></li>
+          </ul>
+        </nav>
+        <script src="accessibility.js"></script>
+      </body>
+      </html>
+    accessibility.js: |
+      const nav = document.getElementById('main-nav');
+      if (nav) {
+        const label = nav.getAttribute('aria-label');
+        const isExpanded = nav.getAttribute('aria-expanded');
+        console.log('nav label:', label, 'expanded:', isExpanded);
+      }
+  commit_message: "feat: add role and aria-label to main nav, read aria-label in JS"
+fragments:
+- id: nav_role_added
+  selector:
+    path: nav.html
+    anchor: "role=\"navigation\""
+- id: nav_aria_label
+  selector:
+    path: nav.html
+    anchor: "aria-label=\"Main navigation\""
+- id: js_reads_aria_label
+  selector:
+    path: accessibility.js
+    anchor: "getAttribute('aria-label')"
+- id: no_404
+  selector:
+    path: HTML_NOISE_008_404.html
+- id: no_profile
+  selector:
+    path: HTML_NOISE_008_profile.html
+- id: no_global_0
+  selector:
+    anchor: HTML_NOISE_008_not_found_hero
+- id: no_global_1
+  selector:
+    anchor: HTML_NOISE_008_profile_card
+oracle:
+  required:
+  - nav_role_added
+  - nav_aria_label
+  - js_reads_aria_label
+  allowed: []
+  forbidden:
+  - no_404
+  - no_profile
+  - no_global_0
+  - no_global_1

@@ -1,0 +1,158 @@
+name: gap2_029_ts_bugfix_temperature_conversion
+tags:
+- lang:rust
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/scheduling/retry_policy.rs: |
+      #[derive(Debug, Clone)]
+      pub struct RetryPolicy {
+          pub max_attempts: u32,
+          pub backoff_ms: u64,
+          pub jitter: bool,
+      }
+
+      impl RetryPolicy {
+          pub fn new(max_attempts: u32, backoff_ms: u64) -> Self {
+              Self { max_attempts, backoff_ms, jitter: false }
+          }
+
+          pub fn with_jitter(mut self) -> Self {
+              self.jitter = true;
+              self
+          }
+
+          pub fn delay_for_attempt(&self, attempt: u32) -> u64 {
+              self.backoff_ms * attempt as u64
+          }
+      }
+    src/scheduling/job_runner.rs: |
+      use crate::scheduling::retry_policy::RetryPolicy;
+
+      pub struct JobRunner {
+          policy: RetryPolicy,
+      }
+
+      impl JobRunner {
+          pub fn new(policy: RetryPolicy) -> Self {
+              Self { policy }
+          }
+
+          pub fn run<F: Fn() -> bool>(&self, job: F) -> bool {
+              for attempt in 0..self.policy.max_attempts {
+                  if job() {
+                      return true;
+                  }
+                  let delay = self.policy.delay_for_attempt(attempt);
+                  std::thread::sleep(std::time::Duration::from_millis(delay));
+              }
+              false
+          }
+      }
+    garbage/metrics.rs: |
+      // GARBAGE_TEMPCNV_A = "statsd_metrics_marker"
+    garbage/circuit_breaker.rs: |
+      // GARBAGE_TEMPCNV_B = "circuit_breaker_marker"
+    garbage/health.rs: |
+      // GARBAGE_TEMPCNV_C = "health_endpoint_marker"
+  changed_files:
+    src/scheduling/retry_policy.rs: |
+      #[derive(Debug, Clone)]
+      pub struct RetryPolicy {
+          pub max_attempts: u32,
+          pub backoff_ms: u64,
+          pub jitter: bool,
+      }
+
+      impl RetryPolicy {
+          pub fn new(max_attempts: u32, backoff_ms: u64) -> Self {
+              Self { max_attempts, backoff_ms, jitter: false }
+          }
+
+          pub fn with_jitter(mut self) -> Self {
+              self.jitter = true;
+              self
+          }
+
+          pub fn delay_for_attempt(&self, attempt: u32) -> u64 {
+              let base = self.backoff_ms * (1u64 << attempt.min(20));
+              if self.jitter {
+                  let jitter = (base as f64 * 0.1 * rand::random::<f64>()) as u64;
+                  base + jitter
+              } else {
+                  base
+              }
+          }
+      }
+    src/scheduling/job_runner.rs: |
+      use crate::scheduling::retry_policy::RetryPolicy;
+
+      pub struct JobRunner {
+          policy: RetryPolicy,
+      }
+
+      impl JobRunner {
+          pub fn new(policy: RetryPolicy) -> Self {
+              Self { policy }
+          }
+
+          pub fn run<F: Fn() -> bool>(&self, job: F) -> bool {
+              for attempt in 1..=self.policy.max_attempts {
+                  if job() {
+                      return true;
+                  }
+                  if attempt < self.policy.max_attempts {
+                      let delay = self.policy.delay_for_attempt(attempt);
+                      std::thread::sleep(std::time::Duration::from_millis(delay));
+                  }
+              }
+              false
+          }
+      }
+    garbage/metrics.rs: |
+      // GARBAGE_TEMPCNV_A = "statsd_metrics_marker"
+    garbage/circuit_breaker.rs: |
+      // GARBAGE_TEMPCNV_B = "circuit_breaker_marker"
+    garbage/health.rs: |
+      // GARBAGE_TEMPCNV_C = "health_endpoint_marker"
+  commit_message: "fix: use exponential backoff and skip final sleep in job retry loop"
+fragments:
+- id: exponential_backoff
+  selector:
+    path: src/scheduling/retry_policy.rs
+    anchor: "let base = self.backoff_ms * (1u64 << attempt.min(20))"
+- id: runner_1_indexed
+  selector:
+    path: src/scheduling/job_runner.rs
+    anchor: "for attempt in 1..=self.policy.max_attempts"
+- id: runner_skips_final_sleep
+  selector:
+    path: src/scheduling/job_runner.rs
+    anchor: "if attempt < self.policy.max_attempts"
+- id: runner_imports_policy
+  selector:
+    path: src/scheduling/job_runner.rs
+    anchor: "use crate::scheduling::retry_policy::RetryPolicy"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_TEMPCNV_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_TEMPCNV_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_TEMPCNV_C
+oracle:
+  required:
+  - exponential_backoff
+  - runner_1_indexed
+  - runner_skips_final_sleep
+  - runner_imports_policy
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

@@ -1,0 +1,230 @@
+name: bal_crossmod_020_cpp_transform_to_animation
+tags:
+- lang:cpp
+- change:single_file
+- change:new_function
+- context:cross_module
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/math/transform.hpp: |
+      #pragma once
+
+      namespace math {
+
+      struct Vec3 {
+          float x, y, z;
+      };
+
+      struct Quaternion {
+          float w, x, y, z;
+      };
+
+      class Transform {
+      public:
+          Transform();
+          void set_position(Vec3 pos);
+          void set_rotation(Quaternion rot);
+          Vec3 position() const;
+          Quaternion rotation() const;
+      private:
+          Vec3 position_;
+          Quaternion rotation_;
+      };
+
+      }
+    src/math/transform.cpp: |
+      #include "transform.hpp"
+
+      namespace math {
+
+      Transform::Transform()
+          : position_{0, 0, 0}, rotation_{1, 0, 0, 0} {}
+
+      void Transform::set_position(Vec3 pos) { position_ = pos; }
+      void Transform::set_rotation(Quaternion rot) { rotation_ = rot; }
+      Vec3 Transform::position() const { return position_; }
+      Quaternion Transform::rotation() const { return rotation_; }
+
+      }
+    src/animation/animator.hpp: |
+      #pragma once
+      #include <vector>
+      #include "../math/transform.hpp"
+
+      namespace animation {
+
+      struct Keyframe {
+          float time;
+          math::Vec3 position;
+          math::Quaternion rotation;
+      };
+
+      class Animator {
+      public:
+          void add_keyframe(Keyframe kf);
+          void apply(float time, math::Transform& target);
+      private:
+          std::vector<Keyframe> keyframes_;
+      };
+
+      }
+    src/animation/animator.cpp: |
+      #include "animator.hpp"
+
+      namespace animation {
+
+      void Animator::add_keyframe(Keyframe kf) {
+          keyframes_.push_back(kf);
+      }
+
+      void Animator::apply(float time, math::Transform& target) {
+          if (keyframes_.empty()) return;
+          auto& kf = keyframes_.front();
+          target.set_position(kf.position);
+          target.set_rotation(kf.rotation);
+      }
+
+      }
+    src/particles/emitter.hpp: |
+      #pragma once
+      #include "../math/transform.hpp"
+
+      namespace particles {
+
+      class Emitter {
+      public:
+          explicit Emitter(math::Vec3 origin);
+          void emit(int count);
+      private:
+          math::Vec3 origin_;
+      };
+
+      }
+  changed_files:
+    src/math/transform.hpp: |
+      #pragma once
+
+      namespace math {
+
+      struct Vec3 {
+          float x, y, z;
+      };
+
+      struct Quaternion {
+          float w, x, y, z;
+      };
+
+      class Transform {
+      public:
+          Transform();
+          void set_position(Vec3 pos);
+          void set_rotation(Quaternion rot);
+          void set_scale(Vec3 scale);
+          Vec3 position() const;
+          Quaternion rotation() const;
+          Vec3 scale() const;
+      private:
+          Vec3 position_;
+          Quaternion rotation_;
+          Vec3 scale_;
+      };
+
+      }
+    src/math/transform.cpp: |
+      #include "transform.hpp"
+
+      namespace math {
+
+      Transform::Transform()
+          : position_{0, 0, 0}, rotation_{1, 0, 0, 0}, scale_{1, 1, 1} {}
+
+      void Transform::set_position(Vec3 pos) { position_ = pos; }
+      void Transform::set_rotation(Quaternion rot) { rotation_ = rot; }
+      void Transform::set_scale(Vec3 scale) { scale_ = scale; }
+      Vec3 Transform::position() const { return position_; }
+      Quaternion Transform::rotation() const { return rotation_; }
+      Vec3 Transform::scale() const { return scale_; }
+
+      }
+    src/animation/animator.hpp: |
+      #pragma once
+      #include <vector>
+      #include "../math/transform.hpp"
+
+      namespace animation {
+
+      struct Keyframe {
+          float time;
+          math::Vec3 position;
+          math::Quaternion rotation;
+      };
+
+      class Animator {
+      public:
+          void add_keyframe(Keyframe kf);
+          void apply(float time, math::Transform& target);
+      private:
+          std::vector<Keyframe> keyframes_;
+      };
+
+      }
+    src/animation/animator.cpp: |
+      #include "animator.hpp"
+
+      namespace animation {
+
+      void Animator::add_keyframe(Keyframe kf) {
+          keyframes_.push_back(kf);
+      }
+
+      void Animator::apply(float time, math::Transform& target) {
+          if (keyframes_.empty()) return;
+          auto& kf = keyframes_.front();
+          target.set_position(kf.position);
+          target.set_rotation(kf.rotation);
+      }
+
+      }
+    src/particles/emitter.hpp: |
+      #pragma once
+      #include "../math/transform.hpp"
+
+      namespace particles {
+
+      class Emitter {
+      public:
+          explicit Emitter(math::Vec3 origin);
+          void emit(int count);
+      private:
+          math::Vec3 origin_;
+      };
+
+      }
+  commit_message: "feat: add scale to Transform"
+fragments:
+- id: set_scale_decl
+  selector:
+    path: src/math/transform.hpp
+    anchor: "void set_scale(Vec3 scale)"
+- id: animator_uses_transform
+  selector:
+    path: src/animation/animator.cpp
+    anchor: "target.set_position"
+- id: animator_keyframe_type
+  selector:
+    path: src/animation/animator.hpp
+    anchor: "math::Vec3 position"
+- id: no_emitter
+  selector:
+    path: src/particles/emitter.hpp
+    anchor: "class Emitter"
+oracle:
+  required:
+  - set_scale_decl
+  - animator_uses_transform
+  allowed:
+  - animator_keyframe_type
+  forbidden:
+  - no_emitter

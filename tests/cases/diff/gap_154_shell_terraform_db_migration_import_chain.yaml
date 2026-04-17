@@ -1,0 +1,161 @@
+name: gap_154_shell_terraform_db_migration_import_chain
+tags:
+- change:config
+- change:multi_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:shell
+- lang:terraform
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    scripts/migrate.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      source scripts/db_config.sh
+
+      MIGRATION_DIR="${MIGRATION_DIR:-./migrations}"
+
+      export PGPASSWORD="${DB_PASSWORD}"
+
+      for migration in "${MIGRATION_DIR}"/*.sql; do
+        [[ -f "${migration}" ]] || continue
+        psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" -f "${migration}"
+      done
+    scripts/db_config.sh: |
+      #!/usr/bin/env bash
+
+      export DB_HOST="${DB_HOST:-localhost}"
+      export DB_PORT="${DB_PORT:-5432}"
+      export DB_NAME="${DB_NAME:-warehouse}"
+      export DB_USER="${DB_USER:-migrator}"
+      export DB_PASSWORD="${DB_PASSWORD:-changeme}"
+      export DB_SSL_MODE="${DB_SSL_MODE:-prefer}"
+    terraform/rds.tf: |
+      resource "aws_db_instance" "warehouse" {
+        identifier     = "warehouse-db"
+        engine         = "postgres"
+        engine_version = "15.4"
+        instance_class = "db.r6g.large"
+        db_name        = "warehouse"
+        username       = "migrator"
+        password       = var.db_master_password
+
+        allocated_storage     = 100
+        max_allocated_storage = 500
+        storage_encrypted     = true
+      }
+
+      variable "db_master_password" {
+        type      = string
+        sensitive = true
+      }
+
+      output "db_endpoint" {
+        value = aws_db_instance.warehouse.endpoint
+      }
+    terraform/elasticache.tf: |
+      resource "aws_elasticache_replication_group" "cache" {
+        replication_group_id = "warehouse-cache"
+        description          = "Session cache"
+        node_type            = "cache.r6g.large"
+        num_cache_clusters   = 2
+        engine               = "redis"
+        engine_version       = "7.0"
+        port                 = 6379
+      }
+  changed_files:
+    scripts/migrate.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      source scripts/db_config.sh
+
+      MIGRATION_DIR="${MIGRATION_DIR:-./migrations}"
+      LOCK_TIMEOUT="${LOCK_TIMEOUT:-5000}"
+
+      export PGPASSWORD="${DB_PASSWORD}"
+
+      psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" \
+        -c "CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at TIMESTAMPTZ DEFAULT NOW());"
+
+      for migration in "${MIGRATION_DIR}"/*.sql; do
+        [[ -f "${migration}" ]] || continue
+        version=$(basename "${migration}" .sql)
+        applied=$(psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" \
+          -tAc "SELECT 1 FROM schema_migrations WHERE version='${version}';")
+        if [[ -z "${applied}" ]]; then
+          psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" \
+            -c "SET lock_timeout='${LOCK_TIMEOUT}ms';" -f "${migration}"
+          psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" \
+            -c "INSERT INTO schema_migrations (version) VALUES ('${version}');"
+        fi
+      done
+    scripts/db_config.sh: |
+      #!/usr/bin/env bash
+
+      export DB_HOST="${DB_HOST:-localhost}"
+      export DB_PORT="${DB_PORT:-5432}"
+      export DB_NAME="${DB_NAME:-warehouse}"
+      export DB_USER="${DB_USER:-migrator}"
+      export DB_PASSWORD="${DB_PASSWORD:-changeme}"
+      export DB_SSL_MODE="${DB_SSL_MODE:-require}"
+    terraform/rds.tf: |
+      resource "aws_db_instance" "warehouse" {
+        identifier     = "warehouse-db"
+        engine         = "postgres"
+        engine_version = "16.1"
+        instance_class = "db.r6g.large"
+        db_name        = "warehouse"
+        username       = "migrator"
+        password       = var.db_master_password
+
+        allocated_storage     = 100
+        max_allocated_storage = 500
+        storage_encrypted     = true
+        performance_insights_enabled = true
+      }
+
+      variable "db_master_password" {
+        type      = string
+        sensitive = true
+      }
+
+      output "db_endpoint" {
+        value = aws_db_instance.warehouse.endpoint
+      }
+fragments:
+- id: migrate_lock
+  selector:
+    path: scripts/migrate.sh
+    anchor: LOCK_TIMEOUT
+- id: migrate_tracking
+  selector:
+    path: scripts/migrate.sh
+    anchor: schema_migrations
+- id: db_config_ssl
+  selector:
+    path: scripts/db_config.sh
+    anchor: DB_SSL_MODE
+- id: rds_version
+  selector:
+    path: terraform/rds.tf
+    anchor: engine_version
+- id: no_elasticache
+  selector:
+    path: terraform/elasticache.tf
+- id: no_redis
+  selector:
+    anchor: warehouse-cache
+oracle:
+  required:
+  - migrate_lock
+  - migrate_tracking
+  - db_config_ssl
+  - rds_version
+  forbidden:
+  - no_elasticache
+  - no_redis

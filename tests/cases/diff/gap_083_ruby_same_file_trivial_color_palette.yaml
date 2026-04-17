@@ -1,0 +1,126 @@
+name: gap_083_ruby_same_file_trivial_color_palette
+tags:
+- lang:ruby
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+repo:
+  initial_files:
+    lib/palette.rb: |
+      class Palette
+        COLORS = {
+          red: '#FF0000',
+          green: '#00FF00',
+          blue: '#0000FF',
+          white: '#FFFFFF',
+          black: '#000000'
+        }.freeze
+
+        def self.hex(name)
+          COLORS.fetch(name)
+        end
+
+        def self.rgb(name)
+          hex = COLORS.fetch(name).delete('#')
+          [hex[0..1], hex[2..3], hex[4..5]].map { |c| c.to_i(16) }
+        end
+
+        def self.names
+          COLORS.keys
+        end
+      end
+    lib/gradient.rb: |
+      class Gradient
+        def initialize(start_color, end_color, steps)
+          @start = start_color
+          @end_color = end_color
+          @steps = steps
+        end
+
+        def generate
+          (0...@steps).map do |i|
+            ratio = i.to_f / (@steps - 1)
+            interpolate(ratio)
+          end
+        end
+
+        def interpolate(ratio)
+          ratio.clamp(0.0, 1.0)
+        end
+      end
+    lib/theme.rb: |
+      class Theme
+        attr_reader :name, :primary, :secondary
+
+        def initialize(name:, primary:, secondary:)
+          @name = name
+          @primary = primary
+          @secondary = secondary
+        end
+
+        def to_css
+          ":root { --primary: #{@primary}; --secondary: #{@secondary}; }"
+        end
+
+        def dark?
+          @name.include?('dark')
+        end
+      end
+  changed_files:
+    lib/palette.rb: |
+      class Palette
+        COLORS = {
+          red: '#FF0000',
+          green: '#00FF00',
+          blue: '#0000FF',
+          yellow: '#FFFF00',
+          white: '#FFFFFF',
+          black: '#000000'
+        }.freeze
+
+        def self.hex(name)
+          COLORS.fetch(name)
+        end
+
+        def self.rgb(name)
+          hex = COLORS.fetch(name).delete('#')
+          [hex[0..1], hex[2..3], hex[4..5]].map { |c| c.to_i(16) }
+        end
+
+        def self.names
+          COLORS.keys
+        end
+      end
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: palette_file
+  selector:
+    path: palette.rb
+- id: req_yellow
+  selector:
+    anchor: "yellow: '#FFFF00'"
+- id: req_colors
+  selector:
+    anchor: COLORS =
+- id: no_gradient
+  selector:
+    path: gradient.rb
+- id: no_theme
+  selector:
+    path: theme.rb
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_083_A
+oracle:
+  required:
+  - palette_file
+  - req_yellow
+  - req_colors
+  allowed: []
+  forbidden:
+  - no_gradient
+  - no_theme
+  - no_global_0

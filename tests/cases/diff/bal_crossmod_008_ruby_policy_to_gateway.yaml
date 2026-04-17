@@ -1,0 +1,183 @@
+name: bal_crossmod_008_ruby_policy_to_gateway
+tags:
+- lang:ruby
+- change:multi_file
+- change:new_function
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    lib/policies/rate_limit_policy.rb: |
+      module Policies
+        class RateLimitPolicy
+          def initialize(max_requests, window_seconds)
+            @max_requests = max_requests
+            @window_seconds = window_seconds
+            @counters = Hash.new { |h, k| h[k] = [] }
+          end
+
+          def allowed?(client_id)
+            now = Time.now.to_i
+            @counters[client_id].reject! { |t| t < now - @window_seconds }
+            @counters[client_id].size < @max_requests
+          end
+
+          def record(client_id)
+            @counters[client_id] << Time.now.to_i
+          end
+        end
+      end
+    lib/gateway/api_gateway.rb: |
+      require_relative '../policies/rate_limit_policy'
+      module Gateway
+        class ApiGateway
+          def initialize
+            @policy = Policies::RateLimitPolicy.new(100, 60)
+          end
+
+          def handle_request(client_id, request)
+            unless @policy.allowed?(client_id)
+              return { status: 429, body: 'Too Many Requests' }
+            end
+            @policy.record(client_id)
+            forward(request)
+          end
+
+          private
+
+          def forward(request)
+            { status: 200, body: 'OK' }
+          end
+        end
+      end
+    lib/monitoring/metrics.rb: |
+      module Monitoring
+        class Metrics
+          def initialize
+            @counters = {}
+          end
+
+          def increment(name)
+            @counters[name] = (@counters[name] || 0) + 1
+          end
+
+          def get(name)
+            @counters[name] || 0
+          end
+        end
+      end
+    lib/gateway/health_check.rb: |
+      module Gateway
+        class HealthCheck
+          def status
+            { status: 'healthy', uptime: Process.clock_gettime(Process::CLOCK_MONOTONIC) }
+          end
+        end
+      end
+  changed_files:
+    lib/policies/rate_limit_policy.rb: |
+      module Policies
+        class RateLimitPolicy
+          def initialize(max_requests, window_seconds)
+            @max_requests = max_requests
+            @window_seconds = window_seconds
+            @counters = Hash.new { |h, k| h[k] = [] }
+          end
+
+          def allowed?(client_id)
+            now = Time.now.to_i
+            @counters[client_id].reject! { |t| t < now - @window_seconds }
+            @counters[client_id].size < @max_requests
+          end
+
+          def record(client_id)
+            @counters[client_id] << Time.now.to_i
+          end
+
+          def remaining(client_id)
+            now = Time.now.to_i
+            @counters[client_id].reject! { |t| t < now - @window_seconds }
+            @max_requests - @counters[client_id].size
+          end
+        end
+      end
+    lib/gateway/api_gateway.rb: |
+      require_relative '../policies/rate_limit_policy'
+      module Gateway
+        class ApiGateway
+          def initialize
+            @policy = Policies::RateLimitPolicy.new(100, 60)
+          end
+
+          def handle_request(client_id, request)
+            unless @policy.allowed?(client_id)
+              remaining = @policy.remaining(client_id)
+              return { status: 429, body: 'Too Many Requests', remaining: remaining }
+            end
+            @policy.record(client_id)
+            forward(request)
+          end
+
+          private
+
+          def forward(request)
+            { status: 200, body: 'OK' }
+          end
+        end
+      end
+    lib/monitoring/metrics.rb: |
+      module Monitoring
+        class Metrics
+          def initialize
+            @counters = {}
+          end
+
+          def increment(name)
+            @counters[name] = (@counters[name] || 0) + 1
+          end
+
+          def get(name)
+            @counters[name] || 0
+          end
+        end
+      end
+    lib/gateway/health_check.rb: |
+      module Gateway
+        class HealthCheck
+          def status
+            { status: 'healthy', uptime: Process.clock_gettime(Process::CLOCK_MONOTONIC) }
+          end
+        end
+      end
+  commit_message: "feat: add remaining quota to rate limit responses"
+fragments:
+- id: remaining_method
+  selector:
+    path: lib/policies/rate_limit_policy.rb
+    anchor: "def remaining(client_id)"
+- id: gateway_calls_remaining
+  selector:
+    path: lib/gateway/api_gateway.rb
+    anchor: "@policy.remaining(client_id)"
+- id: gateway_uses_policy
+  selector:
+    path: lib/gateway/api_gateway.rb
+    anchor: "Policies::RateLimitPolicy.new"
+- id: no_metrics
+  selector:
+    path: lib/monitoring/metrics.rb
+    anchor: "def increment"
+- id: no_health_check
+  selector:
+    path: lib/gateway/health_check.rb
+    anchor: "def status"
+oracle:
+  required:
+  - remaining_method
+  - gateway_calls_remaining
+  allowed:
+  - gateway_uses_policy
+  forbidden:
+  - no_metrics
+  - no_health_check

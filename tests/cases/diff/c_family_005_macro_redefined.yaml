@@ -1,0 +1,101 @@
+name: c_family_005_macro_redefined
+tags:
+- lang:c
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    limits.h: |
+      #ifndef LIMITS_H
+      #define LIMITS_H
+      #define MAX_CONNECTIONS 64
+      #define TIMEOUT_MS 1000
+      #endif
+    server.c: |
+      #include "limits.h"
+      #include <stdio.h>
+      void server_init(void) {
+          printf("max connections: %d\n", MAX_CONNECTIONS);
+          printf("timeout ms: %d\n", TIMEOUT_MS);
+      }
+    pool.c: |
+      #include "limits.h"
+      static int slots[MAX_CONNECTIONS];
+      void pool_init(void) {
+          for (int i = 0; i < MAX_CONNECTIONS; i++) slots[i] = 0;
+      }
+    C_NOISE_005_serial.h: |
+      #ifndef C_NOISE_005_SERIAL_H
+      #define C_NOISE_005_SERIAL_H
+      int C_NOISE_005_open_port(const char *device, int baud);
+      void C_NOISE_005_close_port(int fd);
+      #endif
+    C_NOISE_005_serial.c: |
+      #include "C_NOISE_005_serial.h"
+      int C_NOISE_005_open_port(const char *device, int baud) { return -1; }
+      void C_NOISE_005_close_port(int fd) {}
+  changed_files:
+    limits.h: |
+      #ifndef LIMITS_H
+      #define LIMITS_H
+      #define MAX_CONNECTIONS 256
+      #define TIMEOUT_MS 5000
+      #endif
+    server.c: |
+      #include "limits.h"
+      #include <stdio.h>
+      void server_init(void) {
+          printf("max connections: %d\n", MAX_CONNECTIONS);
+          printf("timeout ms: %d\n", TIMEOUT_MS);
+      }
+    pool.c: |
+      #include "limits.h"
+      static int slots[MAX_CONNECTIONS];
+      void pool_init(void) {
+          for (int i = 0; i < MAX_CONNECTIONS; i++) slots[i] = 0;
+      }
+    C_NOISE_005_serial.h: |
+      #ifndef C_NOISE_005_SERIAL_H
+      #define C_NOISE_005_SERIAL_H
+      int C_NOISE_005_open_port(const char *device, int baud);
+      void C_NOISE_005_close_port(int fd);
+      #endif
+    C_NOISE_005_serial.c: |
+      #include "C_NOISE_005_serial.h"
+      int C_NOISE_005_open_port(const char *device, int baud) { return -1; }
+      void C_NOISE_005_close_port(int fd) {}
+  commit_message: "config: increase MAX_CONNECTIONS to 256 and TIMEOUT_MS to 5000"
+fragments:
+- id: limits_h
+  selector:
+    path: limits.h
+    anchor: "MAX_CONNECTIONS 256"
+- id: server_c
+  selector:
+    path: server.c
+    anchor: MAX_CONNECTIONS
+- id: pool_c
+  selector:
+    path: pool.c
+    anchor: "slots[MAX_CONNECTIONS]"
+- id: no_serial_h
+  selector:
+    anchor: C_NOISE_005_open_port
+- id: no_serial_c
+  selector:
+    path: C_NOISE_005_serial.c
+- id: no_global_close
+  selector:
+    anchor: C_NOISE_005_close_port
+oracle:
+  required:
+  - limits_h
+  - server_c
+  - pool_c
+  allowed: []
+  forbidden:
+  - no_serial_h
+  - no_serial_c
+  - no_global_close

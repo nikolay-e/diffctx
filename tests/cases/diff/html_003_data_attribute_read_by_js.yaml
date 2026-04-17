@@ -1,0 +1,87 @@
+name: html_003_data_attribute_read_by_js
+tags:
+- lang:html
+- lang:javascript
+- change:multi_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    component.html: |
+      <!DOCTYPE html>
+      <html lang="en">
+      <body>
+        <div id="app"
+          data-api-url="https://api.example.com"
+          data-timeout="5000">
+        </div>
+        <script src="init.js"></script>
+      </body>
+      </html>
+    init.js: |
+      const app = document.getElementById('app');
+      const config = {
+        apiUrl: app.dataset.apiUrl,
+        timeout: parseInt(app.dataset.timeout, 10),
+      };
+      console.log('Initializing with', config);
+    HTML_NOISE_003_maintenance.html: |
+      <!-- HTML_NOISE_003_maintenance_page -->
+      <div class="HTML_NOISE_003_maintenance_banner">Site under maintenance</div>
+    HTML_NOISE_003_cookie_policy.html: |
+      <!-- HTML_NOISE_003_cookie_policy_page -->
+      <main class="HTML_NOISE_003_cookie_content">Cookie Policy</main>
+  changed_files:
+    component.html: |
+      <!DOCTYPE html>
+      <html lang="en">
+      <body>
+        <div id="app"
+          data-api-url="https://api.example.com"
+          data-timeout="5000"
+          data-config='{"retries":3,"debug":false}'>
+        </div>
+        <script src="init.js"></script>
+      </body>
+      </html>
+    init.js: |
+      const app = document.getElementById('app');
+      const config = {
+        apiUrl: app.dataset.apiUrl,
+        timeout: parseInt(app.dataset.timeout, 10),
+        ...JSON.parse(app.dataset.config || '{}'),
+      };
+      console.log('Initializing with', config);
+  commit_message: "feat: add data-config attribute and parse it in init.js"
+fragments:
+- id: data_config_attr
+  selector:
+    path: component.html
+    anchor: data-config
+- id: js_reads_config
+  selector:
+    path: init.js
+    anchor: "dataset.config"
+- id: no_maintenance
+  selector:
+    path: HTML_NOISE_003_maintenance.html
+- id: no_cookie_policy
+  selector:
+    path: HTML_NOISE_003_cookie_policy.html
+- id: no_global_0
+  selector:
+    anchor: HTML_NOISE_003_maintenance_banner
+- id: no_global_1
+  selector:
+    anchor: HTML_NOISE_003_cookie_content
+oracle:
+  required:
+  - data_config_attr
+  - js_reads_config
+  allowed: []
+  forbidden:
+  - no_maintenance
+  - no_cookie_policy
+  - no_global_0
+  - no_global_1

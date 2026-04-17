@@ -1,0 +1,236 @@
+name: bal3_refactor_024_scala_replace_inheritance_with_composition
+tags:
+- lang:scala
+- change:multi_file
+- change:refactor
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/core/BaseRepository.scala: |
+      package core
+
+      trait BaseRepository[T] {
+        protected var store: Map[String, T] = Map.empty
+
+        def findById(id: String): Option[T] = store.get(id)
+
+        def save(id: String, entity: T): Unit =
+          store = store + (id -> entity)
+
+        def delete(id: String): Unit =
+          store = store - id
+
+        def findAll(): List[T] = store.values.toList
+      }
+    src/main/scala/repositories/UserRepository.scala: |
+      package repositories
+
+      import core.BaseRepository
+      import models.User
+
+      class UserRepository extends BaseRepository[User] {
+        def findByEmail(email: String): Option[User] =
+          store.values.find(_.email == email)
+      }
+    src/main/scala/repositories/ProductRepository.scala: |
+      package repositories
+
+      import core.BaseRepository
+      import models.Product
+
+      class ProductRepository extends BaseRepository[Product] {
+        def findByCategory(cat: String): List[Product] =
+          store.values.filter(_.category == cat).toList
+      }
+    src/main/scala/models/User.scala: |
+      package models
+
+      case class User(id: String, name: String, email: String)
+    src/main/scala/models/Product.scala: |
+      package models
+
+      case class Product(id: String, name: String, category: String, price: Double)
+    src/main/scala/services/UserService.scala: |
+      package services
+
+      import repositories.UserRepository
+      import models.User
+
+      class UserService {
+        val repo = new UserRepository
+
+        def register(user: User): Unit = repo.save(user.id, user)
+
+        def lookup(email: String): Option[User] = repo.findByEmail(email)
+      }
+    src/main/scala/telemetry/Spans.scala: |
+      package telemetry
+
+      val GARBAGE_R024_SPANS_A: String = "spans"
+
+      class SpanRecorder {
+        def record(name: String): Unit = ()
+      }
+    src/main/scala/telemetry/Health.scala: |
+      package telemetry
+
+      val GARBAGE_R024_HEALTH_B: String = "health"
+
+      class HealthCheck {
+        def check(): Boolean = true
+      }
+    src/main/scala/telemetry/Alerts.scala: |
+      package telemetry
+
+      val GARBAGE_R024_ALERTS_C: String = "alerts"
+
+      class AlertManager {
+        def fire(msg: String): Unit = ()
+      }
+  changed_files:
+    src/main/scala/core/InMemoryStore.scala: |
+      package core
+
+      class InMemoryStore[T] {
+        private var data: Map[String, T] = Map.empty
+
+        def findById(id: String): Option[T] = data.get(id)
+
+        def save(id: String, entity: T): Unit =
+          data = data + (id -> entity)
+
+        def delete(id: String): Unit =
+          data = data - id
+
+        def findAll(): List[T] = data.values.toList
+
+        def filter(predicate: T => Boolean): List[T] =
+          data.values.filter(predicate).toList
+
+        def findFirst(predicate: T => Boolean): Option[T] =
+          data.values.find(predicate)
+      }
+    src/main/scala/repositories/UserRepository.scala: |
+      package repositories
+
+      import core.InMemoryStore
+      import models.User
+
+      class UserRepository {
+        private val store = new InMemoryStore[User]
+
+        def findById(id: String): Option[User] = store.findById(id)
+        def save(id: String, user: User): Unit = store.save(id, user)
+        def delete(id: String): Unit = store.delete(id)
+        def findAll(): List[User] = store.findAll()
+
+        def findByEmail(email: String): Option[User] =
+          store.findFirst(_.email == email)
+      }
+    src/main/scala/repositories/ProductRepository.scala: |
+      package repositories
+
+      import core.InMemoryStore
+      import models.Product
+
+      class ProductRepository {
+        private val store = new InMemoryStore[Product]
+
+        def findById(id: String): Option[Product] = store.findById(id)
+        def save(id: String, product: Product): Unit = store.save(id, product)
+        def delete(id: String): Unit = store.delete(id)
+        def findAll(): List[Product] = store.findAll()
+
+        def findByCategory(cat: String): List[Product] =
+          store.filter(_.category == cat)
+      }
+    src/main/scala/models/User.scala: |
+      package models
+
+      case class User(id: String, name: String, email: String)
+    src/main/scala/models/Product.scala: |
+      package models
+
+      case class Product(id: String, name: String, category: String, price: Double)
+    src/main/scala/services/UserService.scala: |
+      package services
+
+      import repositories.UserRepository
+      import models.User
+
+      class UserService {
+        val repo = new UserRepository
+
+        def register(user: User): Unit = repo.save(user.id, user)
+
+        def lookup(email: String): Option[User] = repo.findByEmail(email)
+      }
+    src/main/scala/telemetry/Spans.scala: |
+      package telemetry
+
+      val GARBAGE_R024_SPANS_A: String = "spans"
+
+      class SpanRecorder {
+        def record(name: String): Unit = ()
+      }
+    src/main/scala/telemetry/Health.scala: |
+      package telemetry
+
+      val GARBAGE_R024_HEALTH_B: String = "health"
+
+      class HealthCheck {
+        def check(): Boolean = true
+      }
+    src/main/scala/telemetry/Alerts.scala: |
+      package telemetry
+
+      val GARBAGE_R024_ALERTS_C: String = "alerts"
+
+      class AlertManager {
+        def fire(msg: String): Unit = ()
+      }
+  commit_message: "refactor: replace BaseRepository inheritance with InMemoryStore composition"
+fragments:
+- id: in_memory_store
+  selector:
+    path: src/main/scala/core/InMemoryStore.scala
+    anchor: "class InMemoryStore[T]"
+- id: store_filter
+  selector:
+    path: src/main/scala/core/InMemoryStore.scala
+    anchor: "def filter(predicate: T => Boolean)"
+- id: user_repo_composition
+  selector:
+    path: src/main/scala/repositories/UserRepository.scala
+    anchor: "private val store = new InMemoryStore[User]"
+- id: product_repo_composition
+  selector:
+    path: src/main/scala/repositories/ProductRepository.scala
+    anchor: "private val store = new InMemoryStore[Product]"
+- id: user_service_context
+  selector:
+    path: src/main/scala/services/UserService.scala
+    anchor: "val repo = new UserRepository"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_R024_SPANS_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_R024_HEALTH_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_R024_ALERTS_C
+oracle:
+  required:
+  - in_memory_store
+  - store_filter
+  - user_repo_composition
+  - product_repo_composition
+  allowed:
+  - user_service_context
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

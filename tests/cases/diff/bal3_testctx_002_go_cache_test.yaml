@@ -1,0 +1,122 @@
+name: bal3_testctx_002_go_cache_test
+tags:
+- lang:go
+- change:single_file
+- change:signature
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    cache/cache.go: |
+      package cache
+
+      import "sync"
+
+      type Store struct {
+          mu   sync.RWMutex
+          data map[string]string
+      }
+
+      func NewStore() *Store {
+          return &Store{data: make(map[string]string)}
+      }
+
+      func (s *Store) Get(key string) (string, bool) {
+          s.mu.RLock()
+          defer s.mu.RUnlock()
+          val, ok := s.data[key]
+          return val, ok
+      }
+
+      func (s *Store) Set(key, value string) {
+          s.mu.Lock()
+          defer s.mu.Unlock()
+          s.data[key] = value
+      }
+    cache/cache_test.go: |
+      package cache
+
+      import "testing"
+
+      func TestNewStore(t *testing.T) {
+          s := NewStore()
+          if s == nil {
+              t.Fatal("expected non-nil store")
+          }
+      }
+
+      func TestSetAndGet(t *testing.T) {
+          s := NewStore()
+          s.Set("hello", "world")
+          val, ok := s.Get("hello")
+          if !ok || val != "world" {
+              t.Errorf("expected world, got %s", val)
+          }
+      }
+    logger/logger.go: |
+      package logger
+
+      import "fmt"
+
+      func Info(msg string) {
+          fmt.Println("[INFO]", msg)
+      }
+  changed_files:
+    cache/cache.go: |
+      package cache
+
+      import "sync"
+
+      type Store struct {
+          mu   sync.RWMutex
+          data map[string]string
+      }
+
+      func NewStore() *Store {
+          return &Store{data: make(map[string]string)}
+      }
+
+      func (s *Store) Get(key string) (string, bool) {
+          s.mu.RLock()
+          defer s.mu.RUnlock()
+          val, ok := s.data[key]
+          return val, ok
+      }
+
+      func (s *Store) Set(key, value string) {
+          s.mu.Lock()
+          defer s.mu.Unlock()
+          s.data[key] = value
+      }
+
+      func (s *Store) Delete(key string) bool {
+          s.mu.Lock()
+          defer s.mu.Unlock()
+          if _, ok := s.data[key]; ok {
+              delete(s.data, key)
+              return true
+          }
+          return false
+      }
+  commit_message: "feat: add Delete method to cache store"
+fragments:
+- id: delete_fn
+  selector:
+    path: cache/cache.go
+    anchor: "func (s *Store) Delete(key string)"
+- id: test_set_get
+  selector:
+    path: cache/cache_test.go
+    anchor: "func TestSetAndGet(t *testing.T)"
+- id: no_logger
+  selector:
+    path: logger/logger.go
+    anchor: "func Info"
+oracle:
+  required:
+  - delete_fn
+  - test_set_get
+  allowed: []
+  forbidden:
+  - no_logger

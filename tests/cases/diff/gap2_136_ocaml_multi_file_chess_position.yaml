@@ -1,0 +1,157 @@
+name: gap2_136_ocaml_multi_file_chess_position
+tags:
+- change:multi_file
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:ocaml
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    lib/piece.ml: |
+      type color = White | Black
+
+      type kind = Pawn | Knight | Bishop | Rook | Queen | King
+
+      type t = { color : color; kind : kind }
+
+      let value = function
+        | Pawn -> 1
+        | Knight -> 3
+        | Bishop -> 3
+        | Rook -> 5
+        | Queen -> 9
+        | King -> 0
+    lib/board.ml: |
+      open Piece
+
+      type square = Empty | Occupied of Piece.t
+
+      type t = square array array
+
+      let create () =
+        Array.init 8 (fun _ -> Array.make 8 Empty)
+
+      let place board row col piece =
+        board.(row).(col) <- Occupied piece
+
+      let get board row col =
+        board.(row).(col)
+
+      let is_empty board row col =
+        match board.(row).(col) with
+        | Empty -> true
+        | Occupied _ -> false
+    lib/fen_parser.ml: |
+      let _GARBAGE_GAP2_136_FEN_A = "fen_noise"
+      let _GARBAGE_GAP2_136_FEN_B = "parser_noise"
+
+      let parse_rank _s = []
+
+      let parse_fen _s = None
+    lib/pgn_reader.ml: |
+      let _GARBAGE_GAP2_136_PGN_C = "pgn_noise"
+      let _GARBAGE_GAP2_136_PGN_D = "reader_noise"
+
+      let read_moves _s = []
+
+      let game_result _s = "unknown"
+  changed_files:
+    lib/piece.ml: |
+      type color = White | Black
+
+      type kind = Pawn | Knight | Bishop | Rook | Queen | King
+
+      type t = { color : color; kind : kind }
+
+      let value = function
+        | Pawn -> 1
+        | Knight -> 3
+        | Bishop -> 3
+        | Rook -> 5
+        | Queen -> 9
+        | King -> 0
+
+      let to_char piece =
+        let c = match piece.kind with
+          | Pawn -> 'P' | Knight -> 'N' | Bishop -> 'B'
+          | Rook -> 'R' | Queen -> 'Q' | King -> 'K'
+        in
+        if piece.color = Black then Char.lowercase_ascii c else c
+    lib/board.ml: |
+      open Piece
+
+      type square = Empty | Occupied of Piece.t
+
+      type t = square array array
+
+      let create () =
+        Array.init 8 (fun _ -> Array.make 8 Empty)
+
+      let place board row col piece =
+        board.(row).(col) <- Occupied piece
+
+      let get board row col =
+        board.(row).(col)
+
+      let is_empty board row col =
+        match board.(row).(col) with
+        | Empty -> true
+        | Occupied _ -> false
+
+      let material_balance board =
+        let score = ref 0 in
+        Array.iter (fun row ->
+          Array.iter (fun sq ->
+            match sq with
+            | Occupied p ->
+              let v = Piece.value p.kind in
+              score := !score + (if p.color = White then v else -v)
+            | Empty -> ()
+          ) row
+        ) board;
+        !score
+fragments:
+- id: to_char
+  selector:
+    path: lib/piece.ml
+    anchor: let to_char piece
+- id: material_balance
+  selector:
+    path: lib/board.ml
+    anchor: let material_balance board
+- id: board_uses_value
+  selector:
+    path: lib/board.ml
+    anchor: Piece.value p.kind
+- id: no_fen
+  selector:
+    path: lib/fen_parser.ml
+- id: no_pgn
+  selector:
+    path: lib/pgn_reader.ml
+- id: no_global_0
+  selector:
+    anchor: _GARBAGE_GAP2_136_FEN_A
+- id: no_global_1
+  selector:
+    anchor: _GARBAGE_GAP2_136_FEN_B
+- id: no_global_2
+  selector:
+    anchor: _GARBAGE_GAP2_136_PGN_C
+- id: no_global_3
+  selector:
+    anchor: _GARBAGE_GAP2_136_PGN_D
+oracle:
+  required:
+  - to_char
+  - material_balance
+  - board_uses_value
+  forbidden:
+  - no_fen
+  - no_pgn
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

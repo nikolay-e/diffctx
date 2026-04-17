@@ -1,0 +1,155 @@
+name: bal4_cfgcode_005_ruby_feature_flags
+tags:
+- lang:ruby
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    config/features.yml: |
+      features:
+        dark_mode: false
+        beta_search: false
+        new_checkout: true
+        analytics_v2: false
+    app/helpers/feature_helper.rb: |
+      require 'yaml'
+      module FeatureHelper
+        FEATURES = YAML.load_file('config/features.yml')['features']
+        def feature_enabled?(name)
+          FEATURES.fetch(name.to_s, false)
+        end
+      end
+    app/views/layout_renderer.rb: |
+      require_relative '../helpers/feature_helper'
+      class LayoutRenderer
+        include FeatureHelper
+        def render_theme
+          if feature_enabled?(:dark_mode)
+            dark_stylesheet
+          else
+            light_stylesheet
+          end
+        end
+      end
+    app/controllers/search_controller.rb: |
+      require_relative '../helpers/feature_helper'
+      class SearchController
+        include FeatureHelper
+        def index
+          if feature_enabled?(:beta_search)
+            beta_search_results
+          else
+            legacy_search_results
+          end
+        end
+      end
+    garbage_export.rb: |
+      GARBAGE_CFGCODE_005_EXPORT_A = "csv"
+      GARBAGE_CFGCODE_005_EXPORT_B = 1000
+      class Exporter
+        GARBAGE_CFGCODE_005_EXPORT_C = ","
+        def export(data)
+          GARBAGE_CFGCODE_005_EXPORT_D = data
+        end
+      end
+    garbage_audit.rb: |
+      GARBAGE_CFGCODE_005_AUDIT_E = "events"
+      GARBAGE_CFGCODE_005_AUDIT_F = 90
+      class AuditLog
+        GARBAGE_CFGCODE_005_AUDIT_G = true
+        def record(event)
+          GARBAGE_CFGCODE_005_AUDIT_H = event
+        end
+      end
+    garbage_webhook.rb: |
+      GARBAGE_CFGCODE_005_HOOK_I = "https://hook.example"
+      GARBAGE_CFGCODE_005_HOOK_J = "post"
+  changed_files:
+    config/features.yml: |
+      features:
+        dark_mode: true
+        beta_search: true
+        new_checkout: true
+        analytics_v2: false
+        ai_recommendations: true
+  commit_message: "enable dark mode and beta search"
+fragments:
+- id: features_config
+  selector:
+    path: config/features.yml
+    anchor: "dark_mode: true"
+- id: feature_helper
+  selector:
+    path: app/helpers/feature_helper.rb
+    anchor: "FEATURES"
+- id: layout_renderer
+  selector:
+    path: app/views/layout_renderer.rb
+    anchor: "dark_mode"
+- id: search_controller
+  selector:
+    path: app/controllers/search_controller.rb
+    anchor: "beta_search"
+- id: no_export
+  selector:
+    path: garbage_export.rb
+- id: no_audit
+  selector:
+    path: garbage_audit.rb
+- id: no_webhook
+  selector:
+    path: garbage_webhook.rb
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_005_EXPORT_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_005_EXPORT_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_005_AUDIT_E
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_005_AUDIT_F
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CFGCODE_005_HOOK_I
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CFGCODE_005_HOOK_J
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_CFGCODE_005_EXPORT_C
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_CFGCODE_005_EXPORT_D
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_CFGCODE_005_AUDIT_G
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_CFGCODE_005_AUDIT_H
+oracle:
+  required:
+  - features_config
+  - feature_helper
+  - layout_renderer
+  - search_controller
+  allowed: []
+  forbidden:
+  - no_export
+  - no_audit
+  - no_webhook
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

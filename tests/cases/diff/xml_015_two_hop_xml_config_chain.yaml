@@ -1,0 +1,137 @@
+name: xml_015_two_hop_xml_config_chain
+tags:
+- lang:xml
+- lang:java
+- change:single_file
+- change:config
+- context:import_chain
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/resources/parent-context.xml: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <beans xmlns="http://www.springframework.org/schema/beans"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xsi:schemaLocation="http://www.springframework.org/schema/beans
+               http://www.springframework.org/schema/beans/spring-beans.xsd">
+        <import resource="child-context.xml"/>
+        <bean id="applicationEventPublisher"
+              class="org.springframework.context.support.SimpleApplicationEventMulticaster"/>
+      </beans>
+    src/main/resources/child-context.xml: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <beans xmlns="http://www.springframework.org/schema/beans"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xsi:schemaLocation="http://www.springframework.org/schema/beans
+               http://www.springframework.org/schema/beans/spring-beans.xsd">
+        <bean id="paymentGateway" class="com.example.payment.StripeGateway">
+          <property name="apiKey" value="${stripe.api.key}"/>
+        </bean>
+      </beans>
+    src/main/java/com/example/payment/StripeGateway.java: |
+      package com.example.payment;
+      public class StripeGateway implements PaymentGateway {
+          private String apiKey;
+          public void setApiKey(String apiKey) { this.apiKey = apiKey; }
+          @Override
+          public PaymentResult charge(String customerId, long amountCents) {
+              System.out.println("Charging via Stripe: " + amountCents + " cents");
+              return PaymentResult.success("stripe_" + System.currentTimeMillis());
+          }
+      }
+    src/main/java/com/example/payment/PaymentGateway.java: |
+      package com.example.payment;
+      public interface PaymentGateway {
+          PaymentResult charge(String customerId, long amountCents);
+      }
+    src/main/java/com/example/order/CheckoutService.java: |
+      package com.example.order;
+      import com.example.payment.PaymentGateway;
+      import org.springframework.beans.factory.annotation.Autowired;
+      import org.springframework.stereotype.Service;
+      @Service
+      public class CheckoutService {
+          @Autowired
+          private PaymentGateway paymentGateway;
+          public void checkout(String customerId, long totalCents) {
+              paymentGateway.charge(customerId, totalCents);
+          }
+      }
+    XML_NOISE_015_quartz-jobs.xml: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <job-scheduling-data>
+        <!-- XML_NOISE_015_QUARTZ_JOBS -->
+        <schedule>
+          <job>
+            <name>XML_NOISE_015_DailyReportJob</name>
+            <group>reporting</group>
+            <job-class>com.example.jobs.DailyReportJob</job-class>
+          </job>
+          <trigger>
+            <cron>
+              <name>XML_NOISE_015_DailyReportTrigger</name>
+              <cron-expression>0 0 6 * * ?</cron-expression>
+            </cron>
+          </trigger>
+        </schedule>
+      </job-scheduling-data>
+    garbage/CacheEvictionJob.java: |
+      // XML_NOISE_015_CacheEvictionJob = "cache_eviction_job_marker"
+    garbage/NotificationDispatcher.java: |
+      // XML_NOISE_015_NotificationDispatcher = "async_notification_marker"
+  changed_files:
+    src/main/resources/child-context.xml: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <beans xmlns="http://www.springframework.org/schema/beans"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xsi:schemaLocation="http://www.springframework.org/schema/beans
+               http://www.springframework.org/schema/beans/spring-beans.xsd">
+        <bean id="paymentGateway" class="com.example.payment.StripeGateway">
+          <property name="apiKey" value="${stripe.api.key}"/>
+        </bean>
+        <bean id="refundService" class="com.example.payment.RefundService">
+          <property name="gateway" ref="paymentGateway"/>
+        </bean>
+      </beans>
+  commit_message: "feat: register RefundService bean in child-context.xml"
+fragments:
+- id: child_context_refund_bean
+  selector:
+    path: src/main/resources/child-context.xml
+    anchor: refundService
+- id: parent_context_import
+  selector:
+    path: src/main/resources/parent-context.xml
+    anchor: child-context.xml
+- id: checkout_service
+  selector:
+    path: src/main/java/com/example/order/CheckoutService.java
+    anchor: PaymentGateway
+- id: no_quartz_jobs
+  selector:
+    path: XML_NOISE_015_quartz-jobs.xml
+- id: no_cache_eviction
+  selector:
+    path: garbage/CacheEvictionJob.java
+- id: no_global_0
+  selector:
+    anchor: XML_NOISE_015_QUARTZ_JOBS
+- id: no_global_1
+  selector:
+    anchor: XML_NOISE_015_DailyReportJob
+- id: no_global_2
+  selector:
+    anchor: XML_NOISE_015_CacheEvictionJob
+oracle:
+  required:
+  - child_context_refund_bean
+  - parent_context_import
+  - checkout_service
+  allowed: []
+  forbidden:
+  - no_quartz_jobs
+  - no_cache_eviction
+  - no_global_0
+  - no_global_1
+  - no_global_2

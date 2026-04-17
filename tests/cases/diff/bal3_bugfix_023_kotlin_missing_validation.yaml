@@ -1,0 +1,95 @@
+name: bal3_bugfix_023_kotlin_missing_validation
+tags:
+- lang:kotlin
+- change:single_file
+- change:bug_fix
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/kotlin/domain/Money.kt: |
+      package domain
+
+      data class Money(val amount: Double, val currency: String) {
+          fun add(other: Money): Money {
+              return Money(amount + other.amount, currency)
+          }
+
+          fun subtract(other: Money): Money {
+              return Money(amount - other.amount, currency)
+          }
+      }
+    src/main/kotlin/service/Wallet.kt: |
+      package service
+
+      import domain.Money
+
+      class Wallet {
+          private var balance = Money(0.0, "USD")
+
+          fun deposit(money: Money) {
+              balance = balance.add(money)
+          }
+
+          fun withdraw(money: Money): Money {
+              balance = balance.subtract(money)
+              return balance
+          }
+      }
+    src/main/kotlin/api/PaymentHandler.kt: |
+      package api
+
+      import service.Wallet
+      import domain.Money
+
+      class PaymentHandler(private val wallet: Wallet) {
+          fun pay(amount: Double): Money {
+              return wallet.withdraw(Money(amount, "USD"))
+          }
+      }
+    src/main/kotlin/util/Formatter.kt: |
+      package util
+
+      fun formatCurrency(amount: Double): String = "$${"%.2f".format(amount)}"
+  changed_files:
+    src/main/kotlin/domain/Money.kt: |
+      package domain
+
+      data class Money(val amount: Double, val currency: String) {
+          fun add(other: Money): Money {
+              require(currency == other.currency) { "Currency mismatch: $currency vs ${other.currency}" }
+              return Money(amount + other.amount, currency)
+          }
+
+          fun subtract(other: Money): Money {
+              require(currency == other.currency) { "Currency mismatch: $currency vs ${other.currency}" }
+              return Money(amount - other.amount, currency)
+          }
+      }
+  commit_message: "fix: validate matching currencies before arithmetic"
+fragments:
+- id: currency_check
+  selector:
+    path: domain/Money.kt
+    anchor: "require(currency == other.currency)"
+- id: wallet_calls_add
+  selector:
+    path: service/Wallet.kt
+    anchor: "balance.add(money)"
+- id: handler_calls_withdraw
+  selector:
+    path: api/PaymentHandler.kt
+    anchor: "wallet.withdraw(Money(amount"
+- id: no_formatter
+  selector:
+    path: util/Formatter.kt
+    anchor: "fun formatCurrency"
+oracle:
+  required:
+  - currency_check
+  - wallet_calls_add
+  - handler_calls_withdraw
+  allowed: []
+  forbidden:
+  - no_formatter

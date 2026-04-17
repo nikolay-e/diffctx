@@ -1,0 +1,110 @@
+name: gap_166_terraform_ts_api_gateway_cors
+tags:
+- change:config
+- change:single_file
+- context:cross_module
+- difficulty:medium
+- distance:2hop
+- lang:terraform
+- lang:typescript
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    terraform/api-gateway.tf: |
+      resource "aws_apigatewayv2_api" "http" {
+        name          = "payment-api"
+        protocol_type = "HTTP"
+      }
+
+      resource "aws_apigatewayv2_stage" "default" {
+        api_id      = aws_apigatewayv2_api.http.id
+        name        = "$default"
+        auto_deploy = true
+      }
+    terraform/outputs.tf: |
+      output "api_endpoint" {
+        value = aws_apigatewayv2_stage.default.invoke_url
+      }
+
+      output "api_id" {
+        value = aws_apigatewayv2_api.http.id
+      }
+    app/src/api/client.ts: |
+      export interface ApiConfig {
+        baseUrl: string;
+        timeout: number;
+        corsEnabled: boolean;
+      }
+
+      export class ApiClient {
+        private config: ApiConfig;
+
+        constructor(config: ApiConfig) {
+          this.config = config;
+        }
+
+        async get<T>(path: string): Promise<T> {
+          const headers: Record<string, string> = {};
+          if (this.config.corsEnabled) {
+            headers["X-Requested-With"] = "XMLHttpRequest";
+          }
+          const res = await fetch(`${this.config.baseUrl}${path}`, {
+            headers,
+            signal: AbortSignal.timeout(this.config.timeout),
+          });
+          return res.json();
+        }
+      }
+    app/src/models/payment.ts: |
+      export interface Payment {
+        id: string;
+        amount: number;
+        currency: string;
+        status: "pending" | "completed" | "failed";
+      }
+
+      export function formatAmount(payment: Payment): string {
+        return `${payment.amount} ${payment.currency}`;
+      }
+  changed_files:
+    terraform/api-gateway.tf: |
+      resource "aws_apigatewayv2_api" "http" {
+        name          = "payment-api"
+        protocol_type = "HTTP"
+
+        cors_configuration {
+          allow_origins = ["https://payments.example.com"]
+          allow_methods = ["GET", "POST", "OPTIONS"]
+          allow_headers = ["Content-Type", "Authorization"]
+          max_age       = 3600
+        }
+      }
+
+      resource "aws_apigatewayv2_stage" "default" {
+        api_id      = aws_apigatewayv2_api.http.id
+        name        = "$default"
+        auto_deploy = true
+      }
+fragments:
+- id: tf_cors
+  selector:
+    path: terraform/api-gateway.tf
+    anchor: cors_configuration
+- id: ts_cors_flag
+  selector:
+    path: app/src/api/client.ts
+    anchor: corsEnabled
+- id: no_payment
+  selector:
+    path: app/src/models/payment.ts
+- id: no_outputs
+  selector:
+    path: terraform/outputs.tf
+oracle:
+  required:
+  - tf_cors
+  - ts_cors_flag
+  forbidden:
+  - no_payment
+  - no_outputs

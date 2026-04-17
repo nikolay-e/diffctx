@@ -1,0 +1,144 @@
+name: gap_111_scala_config_rate_throttle
+tags:
+- lang:scala
+- change:single_file
+- context:config_to_code
+- difficulty:medium
+- distance:2hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/main/scala/throttle/RateLimiter.scala: |
+      package throttle
+
+      import config.ThrottleConfig
+
+      class RateLimiter(config: ThrottleConfig) {
+        private var tokens: Double = config.burstSize.toDouble
+        private var lastRefill: Long = System.nanoTime()
+
+        def tryAcquire(): Boolean = {
+          refill()
+          if (tokens >= 1.0) {
+            tokens -= 1.0
+            true
+          } else {
+            false
+          }
+        }
+
+        private def refill(): Unit = {
+          val now = System.nanoTime()
+          val elapsed = (now - lastRefill) / 1e9
+          tokens = Math.min(config.burstSize.toDouble, tokens + elapsed * config.ratePerSecond)
+          lastRefill = now
+        }
+      }
+    src/main/scala/config/ThrottleConfig.scala: |
+      package config
+
+      case class ThrottleConfig(
+        ratePerSecond: Double,
+        burstSize: Int
+      )
+    src/main/resources/throttle.conf: |
+      throttle {
+        rate-per-second = 100.0
+        burst-size = 50
+      }
+    src/main/scala/metrics/LatencyTracker.scala: |
+      package metrics
+
+      class LatencyTracker {
+        private var samples: List[Long] = List.empty
+
+        def record(latencyNs: Long): Unit = {
+          samples = latencyNs :: samples
+        }
+
+        def p99(): Long = {
+          val sorted = samples.sorted
+          if (sorted.isEmpty) 0L
+          else sorted((sorted.size * 0.99).toInt)
+        }
+
+        def reset(): Unit = {
+          samples = List.empty
+        }
+      }
+  changed_files:
+    src/main/resources/throttle.conf: |
+      throttle {
+        rate-per-second = 100.0
+        burst-size = 50
+        penalty-cooldown-ms = 10000
+      }
+    src/main/scala/config/ThrottleConfig.scala: |
+      package config
+
+      case class ThrottleConfig(
+        ratePerSecond: Double,
+        burstSize: Int,
+        penaltyCooldownMs: Long
+      )
+    src/main/scala/throttle/RateLimiter.scala: |
+      package throttle
+
+      import config.ThrottleConfig
+
+      class RateLimiter(config: ThrottleConfig) {
+        private var tokens: Double = config.burstSize.toDouble
+        private var lastRefill: Long = System.nanoTime()
+        private var penaltyUntil: Long = 0L
+
+        def tryAcquire(): Boolean = {
+          if (System.currentTimeMillis() < penaltyUntil) return false
+          refill()
+          if (tokens >= 1.0) {
+            tokens -= 1.0
+            true
+          } else {
+            false
+          }
+        }
+
+        def applyPenalty(): Unit = {
+          penaltyUntil = System.currentTimeMillis() + config.penaltyCooldownMs
+          tokens = 0.0
+        }
+
+        private def refill(): Unit = {
+          val now = System.nanoTime()
+          val elapsed = (now - lastRefill) / 1e9
+          tokens = Math.min(config.burstSize.toDouble, tokens + elapsed * config.ratePerSecond)
+          lastRefill = now
+        }
+      }
+fragments:
+- id: limiter_penalty
+  selector:
+    path: src/main/scala/throttle/RateLimiter.scala
+    anchor: "def applyPenalty"
+- id: config_cooldown
+  selector:
+    path: src/main/scala/config/ThrottleConfig.scala
+    anchor: "penaltyCooldownMs: Long"
+- id: conf_penalty
+  selector:
+    path: src/main/resources/throttle.conf
+    anchor: "penalty-cooldown-ms"
+- id: no_latency
+  selector:
+    path: src/main/scala/metrics/LatencyTracker.scala
+- id: no_latency_tracker
+  selector:
+    anchor: LatencyTracker
+oracle:
+  required:
+  - limiter_penalty
+  - config_cooldown
+  - conf_penalty
+  forbidden:
+  - no_latency
+  - no_latency_tracker

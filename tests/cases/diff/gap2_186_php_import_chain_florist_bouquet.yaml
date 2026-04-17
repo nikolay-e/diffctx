@@ -1,0 +1,175 @@
+name: gap2_186_php_import_chain_florist_bouquet
+tags:
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:2hop
+- lang:php
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/Florist/BouquetBuilder.php: |
+      <?php
+
+      namespace App\Florist;
+
+      use App\Florist\Inventory\FlowerStock;
+
+      class BouquetBuilder
+      {
+          private FlowerStock $stock;
+          private array $stems = [];
+
+          public function __construct(FlowerStock $stock)
+          {
+              $this->stock = $stock;
+          }
+
+          public function addStem(string $flowerName, int $count): void
+          {
+              if ($this->stock->available($flowerName) >= $count) {
+                  $this->stems[] = ['name' => $flowerName, 'count' => $count];
+              }
+          }
+
+          public function totalStems(): int
+          {
+              $total = 0;
+              foreach ($this->stems as $s) {
+                  $total += $s['count'];
+              }
+              return $total;
+          }
+      }
+    src/Florist/Inventory/FlowerStock.php: |
+      <?php
+
+      namespace App\Florist\Inventory;
+
+      use App\Florist\Inventory\Supplier;
+
+      class FlowerStock
+      {
+          private Supplier $supplier;
+          private array $quantities = [];
+
+          public function __construct(Supplier $supplier)
+          {
+              $this->supplier = $supplier;
+          }
+
+          public function restock(string $flower, int $qty): void
+          {
+              $this->quantities[$flower] = ($this->quantities[$flower] ?? 0) + $qty;
+          }
+
+          public function available(string $flower): int
+          {
+              return $this->quantities[$flower] ?? 0;
+          }
+      }
+    src/Florist/Inventory/Supplier.php: |
+      <?php
+
+      namespace App\Florist\Inventory;
+
+      class Supplier
+      {
+          private string $name;
+          private string $region;
+
+          public function __construct(string $name, string $region)
+          {
+              $this->name = $name;
+              $this->region = $region;
+          }
+
+          public function name(): string
+          {
+              return $this->name;
+          }
+
+          public function region(): string
+          {
+              return $this->region;
+          }
+      }
+    src/Delivery/CourierDispatch.php: |
+      <?php
+
+      namespace App\Delivery;
+
+      class CourierDispatch
+      {
+          public function assign(string $orderId): string
+          {
+              return sprintf("COURIER-%s", $orderId);
+          }
+      }
+  changed_files:
+    src/Florist/BouquetBuilder.php: |
+      <?php
+
+      namespace App\Florist;
+
+      use App\Florist\Inventory\FlowerStock;
+
+      class BouquetBuilder
+      {
+          private FlowerStock $stock;
+          private array $stems = [];
+
+          public function __construct(FlowerStock $stock)
+          {
+              $this->stock = $stock;
+          }
+
+          public function addStem(string $flowerName, int $count): void
+          {
+              if ($this->stock->available($flowerName) >= $count) {
+                  $this->stems[] = ['name' => $flowerName, 'count' => $count];
+              }
+          }
+
+          public function totalStems(): int
+          {
+              $total = 0;
+              foreach ($this->stems as $s) {
+                  $total += $s['count'];
+              }
+              return $total;
+          }
+
+          public function estimatePrice(float $pricePerStem): float
+          {
+              return $this->totalStems() * $pricePerStem;
+          }
+      }
+  commit_message: "feat: add price estimation to bouquet builder"
+fragments:
+- id: estimate_price
+  selector:
+    path: src/Florist/BouquetBuilder.php
+    anchor: "public function estimatePrice"
+- id: flower_stock_available
+  selector:
+    path: src/Florist/Inventory/FlowerStock.php
+    anchor: "public function available"
+- id: supplier_class
+  selector:
+    path: src/Florist/Inventory/Supplier.php
+    anchor: class Supplier
+- id: no_delivery
+  selector:
+    path: src/Delivery/CourierDispatch.php
+- id: no_courier
+  selector:
+    anchor: CourierDispatch
+oracle:
+  required:
+  - estimate_price
+  - flower_stock_available
+  forbidden:
+  - no_delivery
+  - no_courier

@@ -1,0 +1,144 @@
+name: bal4_cfgcode_009_rust_logging_level
+tags:
+- lang:rust
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    app.toml: |
+      [logging]
+      level = "debug"
+      format = "pretty"
+      output = "stdout"
+    src/logging.rs: |
+      use std::fs;
+      use toml::Value;
+
+      pub struct LogConfig {
+          pub level: String,
+          pub format: String,
+          pub output: String,
+      }
+
+      impl LogConfig {
+          pub fn load() -> Self {
+              let raw = fs::read_to_string("app.toml").unwrap();
+              let cfg: Value = raw.parse().unwrap();
+              let log = &cfg["logging"];
+              LogConfig {
+                  level: log["level"].as_str().unwrap().to_string(),
+                  format: log["format"].as_str().unwrap().to_string(),
+                  output: log["output"].as_str().unwrap().to_string(),
+              }
+          }
+      }
+    src/main.rs: |
+      mod logging;
+
+      fn main() {
+          let log_cfg = logging::LogConfig::load();
+          println!("Log level: {}", log_cfg.level);
+          println!("Format: {}", log_cfg.format);
+      }
+    garbage_routes.rs: |
+      const GARBAGE_CFGCODE_009_ROUTE_A: &str = "/api/v1";
+      const GARBAGE_CFGCODE_009_ROUTE_B: u32 = 200;
+      pub fn register_routes() {
+          let _prefix = GARBAGE_CFGCODE_009_ROUTE_A;
+      }
+      const GARBAGE_CFGCODE_009_ROUTE_C: &str = "GET";
+      const GARBAGE_CFGCODE_009_ROUTE_D: bool = true;
+    garbage_middleware.rs: |
+      const GARBAGE_CFGCODE_009_MW_E: &str = "cors";
+      const GARBAGE_CFGCODE_009_MW_F: u64 = 86400;
+      pub struct Middleware {
+          pub name: String,
+      }
+      const GARBAGE_CFGCODE_009_MW_G: bool = false;
+      const GARBAGE_CFGCODE_009_MW_H: &str = "gzip";
+    garbage_serializer.rs: |
+      const GARBAGE_CFGCODE_009_SER_I: &str = "serde";
+      const GARBAGE_CFGCODE_009_SER_J: bool = true;
+  changed_files:
+    app.toml: |
+      [logging]
+      level = "warn"
+      format = "json"
+      output = "file"
+      file_path = "/var/log/app.log"
+  commit_message: "switch logging to json format and warn level"
+fragments:
+- id: log_config
+  selector:
+    path: app.toml
+    anchor: "level = \"warn\""
+- id: log_loader
+  selector:
+    path: src/logging.rs
+    anchor: "app.toml"
+- id: main_usage
+  selector:
+    path: src/main.rs
+    anchor: "LogConfig::load"
+- id: no_routes
+  selector:
+    path: garbage_routes.rs
+- id: no_middleware
+  selector:
+    path: garbage_middleware.rs
+- id: no_serializer
+  selector:
+    path: garbage_serializer.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_009_ROUTE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_009_ROUTE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_009_MW_E
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_009_MW_F
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CFGCODE_009_SER_I
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CFGCODE_009_SER_J
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_CFGCODE_009_ROUTE_C
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_CFGCODE_009_ROUTE_D
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_CFGCODE_009_MW_G
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_CFGCODE_009_MW_H
+oracle:
+  required:
+  - log_config
+  - log_loader
+  - main_usage
+  allowed: []
+  forbidden:
+  - no_routes
+  - no_middleware
+  - no_serializer
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

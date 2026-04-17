@@ -280,15 +280,20 @@ class SqlEdgeBuilder(EdgeBuilder):
         target_lower = {t.lower() for t in target_tables}
         discovered: list[Path] = []
         for candidate in all_candidate_files:
-            if candidate in changed_set or not _is_sql_file(candidate):
+            if candidate in changed_set:
                 continue
             try:
                 content = candidate.read_text(encoding="utf-8")
-                all_refs = _extract_table_references(content)
-                all_refs.update(_extract_fk_references(content))
-                all_refs.update(_extract_table_definitions(content))
-                if any(r.lower() in target_lower for r in all_refs):
-                    discovered.append(candidate)
+                if _is_sql_file(candidate):
+                    all_refs = _extract_table_references(content)
+                    all_refs.update(_extract_fk_references(content))
+                    all_refs.update(_extract_table_definitions(content))
+                    if any(r.lower() in target_lower for r in all_refs):
+                        discovered.append(candidate)
+                else:
+                    content_lower = content.lower()
+                    if any(t in content_lower for t in target_lower if len(t) >= 3):
+                        discovered.append(candidate)
             except (OSError, UnicodeDecodeError):
                 continue
         return discovered

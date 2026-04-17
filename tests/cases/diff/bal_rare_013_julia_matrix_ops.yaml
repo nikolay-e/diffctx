@@ -1,0 +1,197 @@
+name: bal_rare_013_julia_matrix_ops
+tags:
+- lang:julia
+- change:single_file
+- change:new_function
+- context:same_file
+- distance:0hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/LinAlg.jl: |
+      module LinAlg
+
+      struct Matrix
+          rows::Int
+          cols::Int
+          data::Vector{Float64}
+      end
+
+      function zeros(rows::Int, cols::Int)
+          Matrix(rows, cols, fill(0.0, rows * cols))
+      end
+
+      function getindex(m::Matrix, i::Int, j::Int)
+          m.data[(i - 1) * m.cols + j]
+      end
+
+      function setindex!(m::Matrix, val::Float64, i::Int, j::Int)
+          m.data[(i - 1) * m.cols + j] = val
+      end
+
+      function add(a::Matrix, b::Matrix)
+          @assert a.rows == b.rows && a.cols == b.cols
+          Matrix(a.rows, a.cols, a.data .+ b.data)
+      end
+
+      end
+    src/Stats.jl: |
+      module Stats
+      using ..LinAlg
+
+      function mean_col(m::LinAlg.Matrix, col::Int)
+          total = 0.0
+          for i in 1:m.rows
+              total += LinAlg.getindex(m, i, col)
+          end
+          total / m.rows
+      end
+
+      end
+    garbage_plot.jl: |
+      GARBAGE_RARE_013_BACKEND_A = "gr"
+      GARBAGE_RARE_013_DPI_B = 150
+
+      function garbage_plot()
+          return GARBAGE_RARE_013_BACKEND_A
+      end
+
+      GARBAGE_RARE_013_FORMAT_C = "png"
+    garbage_io.jl: |
+      GARBAGE_RARE_013_BUFFER_D = 4096
+      GARBAGE_RARE_013_ENCODING_E = "utf-8"
+
+      function garbage_read()
+          return GARBAGE_RARE_013_BUFFER_D
+      end
+
+      GARBAGE_RARE_013_MODE_F = "text"
+  changed_files:
+    src/LinAlg.jl: |
+      module LinAlg
+
+      struct Matrix
+          rows::Int
+          cols::Int
+          data::Vector{Float64}
+      end
+
+      function zeros(rows::Int, cols::Int)
+          Matrix(rows, cols, fill(0.0, rows * cols))
+      end
+
+      function identity(n::Int)
+          m = zeros(n, n)
+          for i in 1:n
+              setindex!(m, 1.0, i, i)
+          end
+          m
+      end
+
+      function getindex(m::Matrix, i::Int, j::Int)
+          m.data[(i - 1) * m.cols + j]
+      end
+
+      function setindex!(m::Matrix, val::Float64, i::Int, j::Int)
+          m.data[(i - 1) * m.cols + j] = val
+      end
+
+      function add(a::Matrix, b::Matrix)
+          @assert a.rows == b.rows && a.cols == b.cols
+          Matrix(a.rows, a.cols, a.data .+ b.data)
+      end
+
+      function transpose(m::Matrix)
+          result = zeros(m.cols, m.rows)
+          for i in 1:m.rows
+              for j in 1:m.cols
+                  setindex!(result, getindex(m, i, j), j, i)
+              end
+          end
+          result
+      end
+
+      end
+    src/Stats.jl: |
+      module Stats
+      using ..LinAlg
+
+      function mean_col(m::LinAlg.Matrix, col::Int)
+          total = 0.0
+          for i in 1:m.rows
+              total += LinAlg.getindex(m, i, col)
+          end
+          total / m.rows
+      end
+
+      end
+    garbage_plot.jl: |
+      GARBAGE_RARE_013_BACKEND_A = "gr"
+      GARBAGE_RARE_013_DPI_B = 150
+
+      function garbage_plot()
+          return GARBAGE_RARE_013_BACKEND_A
+      end
+
+      GARBAGE_RARE_013_FORMAT_C = "png"
+    garbage_io.jl: |
+      GARBAGE_RARE_013_BUFFER_D = 4096
+      GARBAGE_RARE_013_ENCODING_E = "utf-8"
+
+      function garbage_read()
+          return GARBAGE_RARE_013_BUFFER_D
+      end
+
+      GARBAGE_RARE_013_MODE_F = "text"
+  commit_message: "feat: add identity matrix and transpose operations"
+fragments:
+- id: identity_fn
+  selector:
+    path: src/LinAlg.jl
+    anchor: "function identity(n::Int)"
+- id: transpose_fn
+  selector:
+    path: src/LinAlg.jl
+    anchor: "function transpose(m::Matrix)"
+- id: no_stats
+  selector:
+    path: src/Stats.jl
+- id: no_garbage_plot
+  selector:
+    path: garbage_plot.jl
+- id: no_garbage_io
+  selector:
+    path: garbage_io.jl
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_RARE_013_BACKEND_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_RARE_013_DPI_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_RARE_013_FORMAT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_RARE_013_BUFFER_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_RARE_013_ENCODING_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_RARE_013_MODE_F
+oracle:
+  required:
+  - identity_fn
+  - transpose_fn
+  allowed: []
+  forbidden:
+  - no_stats
+  - no_garbage_plot
+  - no_garbage_io
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

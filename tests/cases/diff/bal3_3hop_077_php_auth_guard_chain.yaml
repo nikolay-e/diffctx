@@ -1,0 +1,271 @@
+name: bal3_3hop_077_php_auth_guard_chain
+tags:
+- lang:php
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/Auth/TokenStore.php: |
+      <?php
+      namespace App\Auth;
+
+      class TokenStore {
+          private array $tokens = [];
+          public function store(string $userId, string $token): void {
+              $this->tokens[$userId] = $token;
+          }
+          public function verify(string $token): ?string {
+              return array_search($token, $this->tokens) ?: null;
+          }
+      }
+    src/Auth/SessionManager.php: |
+      <?php
+      namespace App\Auth;
+
+      use App\Auth\TokenStore;
+
+      class SessionManager {
+          private TokenStore $tokenStore;
+          public function __construct(TokenStore $tokenStore) {
+              $this->tokenStore = $tokenStore;
+          }
+          public function createSession(string $userId): string {
+              $token = bin2hex(random_bytes(16));
+              $this->tokenStore->store($userId, $token);
+              return $token;
+          }
+          public function validateSession(string $token): ?string {
+              return $this->tokenStore->verify($token);
+          }
+      }
+    src/Guards/AuthGuard.php: |
+      <?php
+      namespace App\Guards;
+
+      use App\Auth\SessionManager;
+
+      class AuthGuard {
+          private SessionManager $sessions;
+          public function __construct(SessionManager $sessions) {
+              $this->sessions = $sessions;
+          }
+          public function check(string $token): bool {
+              return $this->sessions->validateSession($token) !== null;
+          }
+      }
+    src/Middleware/AuthenticateMiddleware.php: |
+      <?php
+      namespace App\Middleware;
+
+      use App\Guards\AuthGuard;
+
+      class AuthenticateMiddleware {
+          private AuthGuard $guard;
+          public function __construct(AuthGuard $guard) {
+              $this->guard = $guard;
+          }
+          public function handle(array $request): array {
+              $token = $request['token'] ?? '';
+              if (!$this->guard->check($token)) {
+                  return ['status' => 401, 'error' => 'Unauthorized'];
+              }
+              return ['status' => 200];
+          }
+      }
+    src/Controllers/DashboardController.php: |
+      <?php
+      namespace App\Controllers;
+
+      use App\Middleware\AuthenticateMiddleware;
+
+      class DashboardController {
+          private AuthenticateMiddleware $auth;
+          public function __construct(AuthenticateMiddleware $auth) {
+              $this->auth = $auth;
+          }
+          public function index(array $request): array {
+              $result = $this->auth->handle($request);
+              if ($result['status'] !== 200) {
+                  return $result;
+              }
+              return ['dashboard' => 'data'];
+          }
+      }
+    src/Providers/AppServiceProvider.php: |
+      <?php
+      namespace App\Providers;
+      define('GARBAGE_077_PROVIDER_A', 'service');
+      define('GARBAGE_077_BIND_B', 'singleton');
+
+      class AppServiceProvider {
+          public function register(): void {}
+      }
+    src/Providers/EventServiceProvider.php: |
+      <?php
+      namespace App\Providers;
+      define('GARBAGE_077_EVENT_C', 'provider');
+      define('GARBAGE_077_LISTEN_D', 'auto');
+
+      class EventServiceProvider {
+          public function register(): void {}
+      }
+  changed_files:
+    src/Auth/TokenStore.php: |
+      <?php
+      namespace App\Auth;
+
+      class TokenStore {
+          private array $tokens = [];
+          private array $expiry = [];
+          public function store(string $userId, string $token, int $ttl = 3600): void {
+              $this->tokens[$userId] = $token;
+              $this->expiry[$userId] = time() + $ttl;
+          }
+          public function verify(string $token): ?string {
+              $userId = array_search($token, $this->tokens) ?: null;
+              if ($userId && isset($this->expiry[$userId]) && $this->expiry[$userId] < time()) {
+                  unset($this->tokens[$userId], $this->expiry[$userId]);
+                  return null;
+              }
+              return $userId;
+          }
+      }
+    src/Auth/SessionManager.php: |
+      <?php
+      namespace App\Auth;
+
+      use App\Auth\TokenStore;
+
+      class SessionManager {
+          private TokenStore $tokenStore;
+          public function __construct(TokenStore $tokenStore) {
+              $this->tokenStore = $tokenStore;
+          }
+          public function createSession(string $userId): string {
+              $token = bin2hex(random_bytes(16));
+              $this->tokenStore->store($userId, $token);
+              return $token;
+          }
+          public function validateSession(string $token): ?string {
+              return $this->tokenStore->verify($token);
+          }
+      }
+    src/Guards/AuthGuard.php: |
+      <?php
+      namespace App\Guards;
+
+      use App\Auth\SessionManager;
+
+      class AuthGuard {
+          private SessionManager $sessions;
+          public function __construct(SessionManager $sessions) {
+              $this->sessions = $sessions;
+          }
+          public function check(string $token): bool {
+              return $this->sessions->validateSession($token) !== null;
+          }
+      }
+    src/Middleware/AuthenticateMiddleware.php: |
+      <?php
+      namespace App\Middleware;
+
+      use App\Guards\AuthGuard;
+
+      class AuthenticateMiddleware {
+          private AuthGuard $guard;
+          public function __construct(AuthGuard $guard) {
+              $this->guard = $guard;
+          }
+          public function handle(array $request): array {
+              $token = $request['token'] ?? '';
+              if (!$this->guard->check($token)) {
+                  return ['status' => 401, 'error' => 'Unauthorized'];
+              }
+              return ['status' => 200];
+          }
+      }
+    src/Controllers/DashboardController.php: |
+      <?php
+      namespace App\Controllers;
+
+      use App\Middleware\AuthenticateMiddleware;
+
+      class DashboardController {
+          private AuthenticateMiddleware $auth;
+          public function __construct(AuthenticateMiddleware $auth) {
+              $this->auth = $auth;
+          }
+          public function index(array $request): array {
+              $result = $this->auth->handle($request);
+              if ($result['status'] !== 200) {
+                  return $result;
+              }
+              return ['dashboard' => 'data'];
+          }
+      }
+    src/Providers/AppServiceProvider.php: |
+      <?php
+      namespace App\Providers;
+      define('GARBAGE_077_PROVIDER_A', 'service');
+      define('GARBAGE_077_BIND_B', 'singleton');
+
+      class AppServiceProvider {
+          public function register(): void {}
+      }
+    src/Providers/EventServiceProvider.php: |
+      <?php
+      namespace App\Providers;
+      define('GARBAGE_077_EVENT_C', 'provider');
+      define('GARBAGE_077_LISTEN_D', 'auto');
+
+      class EventServiceProvider {
+          public function register(): void {}
+      }
+  commit_message: "feat: add token expiration to auth token store"
+fragments:
+- id: token_expiry
+  selector:
+    path: src/Auth/TokenStore.php
+    anchor: "private array $expiry"
+- id: token_ttl_param
+  selector:
+    path: src/Auth/TokenStore.php
+    anchor: "int $ttl = 3600"
+- id: session_uses_token
+  selector:
+    path: src/Auth/SessionManager.php
+    anchor: "use App\\Auth\\TokenStore"
+- id: guard_uses_session
+  selector:
+    path: src/Guards/AuthGuard.php
+    anchor: "use App\\Auth\\SessionManager"
+- id: middleware_uses_guard
+  selector:
+    path: src/Middleware/AuthenticateMiddleware.php
+    anchor: "use App\\Guards\\AuthGuard"
+- id: dashboard_uses_middleware
+  selector:
+    path: src/Controllers/DashboardController.php
+    anchor: "use App\\Middleware\\AuthenticateMiddleware"
+- id: no_app_provider
+  selector:
+    path: src/Providers/AppServiceProvider.php
+    anchor: "GARBAGE_077_PROVIDER_A"
+- id: no_event_provider
+  selector:
+    path: src/Providers/EventServiceProvider.php
+    anchor: "GARBAGE_077_EVENT_C"
+oracle:
+  required:
+  - token_expiry
+  - session_uses_token
+  - guard_uses_session
+  - middleware_uses_guard
+  - dashboard_uses_middleware
+  allowed:
+  - token_ttl_param
+  forbidden:
+  - no_app_provider
+  - no_event_provider

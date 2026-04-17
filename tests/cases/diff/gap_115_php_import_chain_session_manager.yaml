@@ -1,0 +1,196 @@
+name: gap_115_php_import_chain_session_manager
+tags:
+- lang:java
+- change:multi_file
+- change:refactor
+- context:cross_module
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/main/java/com/ecommerce/CartService.java: |
+      package com.ecommerce;
+
+      import java.util.ArrayList;
+      import java.util.List;
+
+      public class CartService {
+          private final ProductRepository products;
+
+          public CartService(ProductRepository products) {
+              this.products = products;
+          }
+
+          public Cart addItem(Cart cart, String productId, int quantity) {
+              if (productId == null || productId.isBlank()) {
+                  throw new IllegalArgumentException("Product ID required");
+              }
+              if (quantity <= 0) {
+                  throw new IllegalArgumentException("Quantity must be positive");
+              }
+              Product product = products.findById(productId);
+              if (product == null) {
+                  throw new IllegalStateException("Product not found: " + productId);
+              }
+              cart.addItem(new CartItem(product, quantity));
+              return cart;
+          }
+      }
+    src/main/java/com/ecommerce/WishlistService.java: |
+      package com.ecommerce;
+
+      public class WishlistService {
+          private final ProductRepository products;
+
+          public WishlistService(ProductRepository products) {
+              this.products = products;
+          }
+
+          public Wishlist addToWishlist(Wishlist wishlist, String productId) {
+              if (productId == null || productId.isBlank()) {
+                  throw new IllegalArgumentException("Product ID required");
+              }
+              Product product = products.findById(productId);
+              if (product == null) {
+                  throw new IllegalStateException("Product not found: " + productId);
+              }
+              wishlist.add(product);
+              return wishlist;
+          }
+      }
+    src/main/java/com/ecommerce/ProductRepository.java: |
+      package com.ecommerce;
+
+      public interface ProductRepository {
+          Product findById(String productId);
+      }
+    garbage/RecommendationEngine.java: |
+      // GARBAGE_GAP115_RECOM_A = "recommendation_engine_marker"
+    garbage/LoyaltyProgram.java: |
+      // GARBAGE_GAP115_LOYAL_B = "loyalty_program_marker"
+    garbage/ReviewService.java: |
+      // GARBAGE_GAP115_REVIEW_C = "review_service_marker"
+  changed_files:
+    src/main/java/com/ecommerce/CartService.java: |
+      package com.ecommerce;
+
+      import com.ecommerce.validation.ProductLookup;
+
+      public class CartService {
+          private final ProductLookup productLookup;
+
+          public CartService(ProductLookup productLookup) {
+              this.productLookup = productLookup;
+          }
+
+          public Cart addItem(Cart cart, String productId, int quantity) {
+              if (quantity <= 0) {
+                  throw new IllegalArgumentException("Quantity must be positive");
+              }
+              Product product = productLookup.requireProduct(productId);
+              cart.addItem(new CartItem(product, quantity));
+              return cart;
+          }
+      }
+    src/main/java/com/ecommerce/WishlistService.java: |
+      package com.ecommerce;
+
+      import com.ecommerce.validation.ProductLookup;
+
+      public class WishlistService {
+          private final ProductLookup productLookup;
+
+          public WishlistService(ProductLookup productLookup) {
+              this.productLookup = productLookup;
+          }
+
+          public Wishlist addToWishlist(Wishlist wishlist, String productId) {
+              Product product = productLookup.requireProduct(productId);
+              wishlist.add(product);
+              return wishlist;
+          }
+      }
+    src/main/java/com/ecommerce/validation/ProductLookup.java: |
+      package com.ecommerce.validation;
+
+      import com.ecommerce.Product;
+      import com.ecommerce.ProductRepository;
+
+      public class ProductLookup {
+          private final ProductRepository repository;
+
+          public ProductLookup(ProductRepository repository) {
+              this.repository = repository;
+          }
+
+          public Product requireProduct(String productId) {
+              if (productId == null || productId.isBlank()) {
+                  throw new IllegalArgumentException("Product ID required");
+              }
+              Product product = repository.findById(productId);
+              if (product == null) {
+                  throw new IllegalStateException("Product not found: " + productId);
+              }
+              return product;
+          }
+      }
+    src/main/java/com/ecommerce/ProductRepository.java: |
+      package com.ecommerce;
+
+      public interface ProductRepository {
+          Product findById(String productId);
+      }
+    garbage/RecommendationEngine.java: |
+      // GARBAGE_GAP115_RECOM_A = "recommendation_engine_marker"
+    garbage/LoyaltyProgram.java: |
+      // GARBAGE_GAP115_LOYAL_B = "loyalty_program_marker"
+    garbage/ReviewService.java: |
+      // GARBAGE_GAP115_REVIEW_C = "review_service_marker"
+  commit_message: "refactor: extract ProductLookup shared by CartService and WishlistService"
+fragments:
+- id: cart_uses_product_lookup
+  selector:
+    path: src/main/java/com/ecommerce/CartService.java
+    anchor: "private final ProductLookup productLookup;"
+- id: cart_calls_require_product
+  selector:
+    path: src/main/java/com/ecommerce/CartService.java
+    anchor: "productLookup.requireProduct(productId);"
+- id: wishlist_uses_product_lookup
+  selector:
+    path: src/main/java/com/ecommerce/WishlistService.java
+    anchor: "import com.ecommerce.validation.ProductLookup;"
+- id: product_lookup_class
+  selector:
+    path: src/main/java/com/ecommerce/validation/ProductLookup.java
+    anchor: "public class ProductLookup {"
+- id: product_lookup_require
+  selector:
+    path: src/main/java/com/ecommerce/validation/ProductLookup.java
+    anchor: "public Product requireProduct(String productId) {"
+- id: unrelated_repo_interface
+  selector:
+    path: src/main/java/com/ecommerce/ProductRepository.java
+    anchor: "Product findById(String productId);"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_GAP115_RECOM_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_GAP115_LOYAL_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_GAP115_REVIEW_C
+oracle:
+  required:
+  - cart_uses_product_lookup
+  - cart_calls_require_product
+  - product_lookup_class
+  - product_lookup_require
+  allowed:
+  - wishlist_uses_product_lookup
+  forbidden:
+  - unrelated_repo_interface
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

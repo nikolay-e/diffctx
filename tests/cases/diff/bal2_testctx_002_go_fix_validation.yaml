@@ -1,0 +1,165 @@
+name: bal2_testctx_002_go_fix_validation
+tags:
+- lang:go
+- change:bug_fix
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    pkg/validator/email.go: |
+      package validator
+
+      import "strings"
+
+      func IsValidEmail(email string) bool {
+          return strings.Contains(email, "@")
+      }
+    pkg/validator/email_test.go: |
+      package validator
+
+      import "testing"
+
+      func TestIsValidEmail(t *testing.T) {
+          tests := []struct {
+              input string
+              want  bool
+          }{
+              {"user@example.com", true},
+              {"invalid", false},
+              {"@missing-local", false},
+              {"missing-domain@", false},
+          }
+          for _, tt := range tests {
+              got := IsValidEmail(tt.input)
+              if got != tt.want {
+                  t.Errorf("IsValidEmail(%q) = %v, want %v", tt.input, got, tt.want)
+              }
+          }
+      }
+    pkg/validator/phone.go: |
+      package validator
+
+      GARBAGE_BAL2_002_PHONE_A = "phone"
+      GARBAGE_BAL2_002_PHONE_MARKER_B = true
+
+      import "regexp"
+
+      var phoneRegex = regexp.MustCompile(`^\+?[0-9]{7,15}$`)
+
+      func IsValidPhone(phone string) bool {
+          return phoneRegex.MatchString(phone)
+      }
+    utils/strings.go: |
+      package utils
+
+      GARBAGE_BAL2_002_STRINGS_C = "strings"
+
+      func Reverse(s string) string {
+          runes := []rune(s)
+          for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
+              runes[i], runes[j] = runes[j], runes[i]
+          }
+          return string(runes)
+      }
+  changed_files:
+    pkg/validator/email.go: |
+      package validator
+
+      import (
+          "strings"
+      )
+
+      func IsValidEmail(email string) bool {
+          at := strings.Index(email, "@")
+          if at <= 0 || at >= len(email)-1 {
+              return false
+          }
+          domain := email[at+1:]
+          return strings.Contains(domain, ".")
+      }
+    pkg/validator/email_test.go: |
+      package validator
+
+      import "testing"
+
+      func TestIsValidEmail(t *testing.T) {
+          tests := []struct {
+              input string
+              want  bool
+          }{
+              {"user@example.com", true},
+              {"invalid", false},
+              {"@missing-local", false},
+              {"missing-domain@", false},
+              {"no-dot@domain", false},
+              {"user@sub.domain.com", true},
+          }
+          for _, tt := range tests {
+              got := IsValidEmail(tt.input)
+              if got != tt.want {
+                  t.Errorf("IsValidEmail(%q) = %v, want %v", tt.input, got, tt.want)
+              }
+          }
+      }
+    pkg/validator/phone.go: |
+      package validator
+
+      GARBAGE_BAL2_002_PHONE_A = "phone"
+      GARBAGE_BAL2_002_PHONE_MARKER_B = true
+
+      import "regexp"
+
+      var phoneRegex = regexp.MustCompile(`^\+?[0-9]{7,15}$`)
+
+      func IsValidPhone(phone string) bool {
+          return phoneRegex.MatchString(phone)
+      }
+    utils/strings.go: |
+      package utils
+
+      GARBAGE_BAL2_002_STRINGS_C = "strings"
+
+      func Reverse(s string) string {
+          runes := []rune(s)
+          for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
+              runes[i], runes[j] = runes[j], runes[i]
+          }
+          return string(runes)
+      }
+  commit_message: "Fix email validation to require domain with dot"
+fragments:
+- id: email_validator
+  selector:
+    path: pkg/validator/email.go
+    anchor: "func IsValidEmail(email string) bool"
+- id: email_test
+  selector:
+    path: pkg/validator/email_test.go
+    anchor: "func TestIsValidEmail"
+- id: no_phone
+  selector:
+    path: pkg/validator/phone.go
+- id: no_strings
+  selector:
+    path: utils/strings.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL2_002_PHONE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL2_002_PHONE_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL2_002_STRINGS_C
+oracle:
+  required:
+  - email_validator
+  - email_test
+  allowed: []
+  forbidden:
+  - no_phone
+  - no_strings
+  - no_global_0
+  - no_global_1
+  - no_global_2

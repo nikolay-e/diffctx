@@ -1,0 +1,138 @@
+name: bal_crossmod_022_kotlin_repository_to_usecase
+tags:
+- lang:kotlin
+- change:single_file
+- change:new_function
+- context:cross_module
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/main/kotlin/data/repository/TaskRepository.kt: |
+      package data.repository
+
+      import domain.model.Task
+
+      class TaskRepository {
+          private val tasks = mutableListOf<Task>()
+
+          fun findAll(): List<Task> = tasks.toList()
+
+          fun findById(id: Long): Task? = tasks.find { it.id == id }
+
+          fun save(task: Task) {
+              tasks.removeAll { it.id == task.id }
+              tasks.add(task)
+          }
+      }
+    src/main/kotlin/domain/model/Task.kt: |
+      package domain.model
+
+      data class Task(
+          val id: Long,
+          val title: String,
+          val completed: Boolean = false,
+          val priority: Int = 0
+      )
+    src/main/kotlin/domain/usecase/CompleteTaskUseCase.kt: |
+      package domain.usecase
+
+      import data.repository.TaskRepository
+
+      class CompleteTaskUseCase(private val repo: TaskRepository) {
+          fun execute(taskId: Long): Boolean {
+              val task = repo.findById(taskId) ?: return false
+              repo.save(task.copy(completed = true))
+              return true
+          }
+      }
+    src/main/kotlin/ui/viewmodel/TaskListViewModel.kt: |
+      package ui.viewmodel
+
+      class TaskListViewModel {
+          var items: List<String> = emptyList()
+              private set
+
+          fun refresh(titles: List<String>) {
+              items = titles
+          }
+      }
+  changed_files:
+    src/main/kotlin/data/repository/TaskRepository.kt: |
+      package data.repository
+
+      import domain.model.Task
+
+      class TaskRepository {
+          private val tasks = mutableListOf<Task>()
+
+          fun findAll(): List<Task> = tasks.toList()
+
+          fun findById(id: Long): Task? = tasks.find { it.id == id }
+
+          fun findByPriority(minPriority: Int): List<Task> =
+              tasks.filter { it.priority >= minPriority }
+
+          fun save(task: Task) {
+              tasks.removeAll { it.id == task.id }
+              tasks.add(task)
+          }
+      }
+    src/main/kotlin/domain/model/Task.kt: |
+      package domain.model
+
+      data class Task(
+          val id: Long,
+          val title: String,
+          val completed: Boolean = false,
+          val priority: Int = 0
+      )
+    src/main/kotlin/domain/usecase/CompleteTaskUseCase.kt: |
+      package domain.usecase
+
+      import data.repository.TaskRepository
+
+      class CompleteTaskUseCase(private val repo: TaskRepository) {
+          fun execute(taskId: Long): Boolean {
+              val task = repo.findById(taskId) ?: return false
+              repo.save(task.copy(completed = true))
+              return true
+          }
+      }
+    src/main/kotlin/ui/viewmodel/TaskListViewModel.kt: |
+      package ui.viewmodel
+
+      class TaskListViewModel {
+          var items: List<String> = emptyList()
+              private set
+
+          fun refresh(titles: List<String>) {
+              items = titles
+          }
+      }
+  commit_message: "feat: add priority-based task filtering"
+fragments:
+- id: find_by_priority
+  selector:
+    path: src/main/kotlin/data/repository/TaskRepository.kt
+    anchor: "fun findByPriority(minPriority: Int)"
+- id: usecase_uses_repo
+  selector:
+    path: src/main/kotlin/domain/usecase/CompleteTaskUseCase.kt
+    anchor: "repo.findById(taskId)"
+- id: task_priority_field
+  selector:
+    path: src/main/kotlin/domain/model/Task.kt
+    anchor: "val priority: Int"
+- id: no_viewmodel
+  selector:
+    path: src/main/kotlin/ui/viewmodel/TaskListViewModel.kt
+    anchor: "class TaskListViewModel"
+oracle:
+  required:
+  - find_by_priority
+  - usecase_uses_repo
+  allowed:
+  - task_priority_field
+  forbidden:
+  - no_viewmodel

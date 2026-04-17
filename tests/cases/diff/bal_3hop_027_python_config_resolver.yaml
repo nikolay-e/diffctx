@@ -1,0 +1,205 @@
+name: bal_3hop_027_python_config_resolver
+tags:
+- lang:python
+- change:single_file
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    config/source.py: |
+      class ConfigSource:
+          def __init__(self, name: str, priority: int):
+              self.name = name
+              self.priority = priority
+              self.values: dict[str, str] = {}
+          def set(self, key: str, value: str):
+              self.values[key] = value
+          def get(self, key: str) -> str:
+              return self.values.get(key, "")
+    config/resolver.py: |
+      from config.source import ConfigSource
+      class ConfigResolver:
+          def __init__(self):
+              self.sources: list[ConfigSource] = []
+          def add_source(self, source: ConfigSource):
+              self.sources.append(source)
+              self.sources.sort(key=lambda s: s.priority, reverse=True)
+          def resolve(self, key: str) -> str:
+              for source in self.sources:
+                  value = source.get(key)
+                  if value:
+                      return value
+              return ""
+    config/manager.py: |
+      from config.resolver import ConfigResolver
+      from config.source import ConfigSource
+      class ConfigManager:
+          def __init__(self):
+              self.resolver = ConfigResolver()
+          def load_defaults(self, defaults: dict[str, str]):
+              source = ConfigSource("defaults", priority=0)
+              for k, v in defaults.items():
+                  source.set(k, v)
+              self.resolver.add_source(source)
+          def load_env(self, env_vars: dict[str, str]):
+              source = ConfigSource("env", priority=10)
+              for k, v in env_vars.items():
+                  source.set(k, v)
+              self.resolver.add_source(source)
+          def get(self, key: str) -> str:
+              return self.resolver.resolve(key)
+    app/bootstrap.py: |
+      from config.manager import ConfigManager
+      class Application:
+          def __init__(self):
+              self.config = ConfigManager()
+              self.config.load_defaults({
+                  "host": "localhost",
+                  "port": "8080",
+                  "debug": "false",
+              })
+          def start(self) -> dict:
+              return {
+                  "host": self.config.get("host"),
+                  "port": self.config.get("port"),
+                  "debug": self.config.get("debug"),
+              }
+    utils/env_reader.py: |
+      import os
+      def read_env_file(path: str) -> dict[str, str]:
+          result = {}
+          if os.path.exists(path):
+              with open(path) as f:
+                  for line in f:
+                      line = line.strip()
+                      if "=" in line and not line.startswith("#"):
+                          key, value = line.split("=", 1)
+                          result[key.strip()] = value.strip()
+          return result
+    utils/path_utils.py: |
+      import os
+      def project_root() -> str:
+          return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+      def config_path(filename: str) -> str:
+          return os.path.join(project_root(), "config", filename)
+  changed_files:
+    config/source.py: |
+      from typing import Optional
+      class ConfigSource:
+          def __init__(self, name: str, priority: int, read_only: bool = False):
+              self.name = name
+              self.priority = priority
+              self.read_only = read_only
+              self.values: dict[str, str] = {}
+          def set(self, key: str, value: str):
+              if self.read_only:
+                  raise RuntimeError(f"Cannot write to read-only source: {self.name}")
+              self.values[key] = value
+          def get(self, key: str) -> str:
+              return self.values.get(key, "")
+          def keys(self) -> list[str]:
+              return list(self.values.keys())
+    config/resolver.py: |
+      from config.source import ConfigSource
+      class ConfigResolver:
+          def __init__(self):
+              self.sources: list[ConfigSource] = []
+          def add_source(self, source: ConfigSource):
+              self.sources.append(source)
+              self.sources.sort(key=lambda s: s.priority, reverse=True)
+          def resolve(self, key: str) -> str:
+              for source in self.sources:
+                  value = source.get(key)
+                  if value:
+                      return value
+              return ""
+    config/manager.py: |
+      from config.resolver import ConfigResolver
+      from config.source import ConfigSource
+      class ConfigManager:
+          def __init__(self):
+              self.resolver = ConfigResolver()
+          def load_defaults(self, defaults: dict[str, str]):
+              source = ConfigSource("defaults", priority=0)
+              for k, v in defaults.items():
+                  source.set(k, v)
+              self.resolver.add_source(source)
+          def load_env(self, env_vars: dict[str, str]):
+              source = ConfigSource("env", priority=10)
+              for k, v in env_vars.items():
+                  source.set(k, v)
+              self.resolver.add_source(source)
+          def get(self, key: str) -> str:
+              return self.resolver.resolve(key)
+    app/bootstrap.py: |
+      from config.manager import ConfigManager
+      class Application:
+          def __init__(self):
+              self.config = ConfigManager()
+              self.config.load_defaults({
+                  "host": "localhost",
+                  "port": "8080",
+                  "debug": "false",
+              })
+          def start(self) -> dict:
+              return {
+                  "host": self.config.get("host"),
+                  "port": self.config.get("port"),
+                  "debug": self.config.get("debug"),
+              }
+    utils/env_reader.py: |
+      import os
+      def read_env_file(path: str) -> dict[str, str]:
+          result = {}
+          if os.path.exists(path):
+              with open(path) as f:
+                  for line in f:
+                      line = line.strip()
+                      if "=" in line and not line.startswith("#"):
+                          key, value = line.split("=", 1)
+                          result[key.strip()] = value.strip()
+          return result
+    utils/path_utils.py: |
+      import os
+      def project_root() -> str:
+          return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+      def config_path(filename: str) -> str:
+          return os.path.join(project_root(), "config", filename)
+  commit_message: "feat: add read_only mode and keys listing to ConfigSource"
+fragments:
+- id: source_read_only
+  selector:
+    path: config/source.py
+    anchor: "read_only: bool = False"
+- id: resolver_uses_source
+  selector:
+    path: config/resolver.py
+    anchor: "from config.source import ConfigSource"
+- id: manager_uses_resolver
+  selector:
+    path: config/manager.py
+    anchor: "from config.resolver import ConfigResolver"
+- id: bootstrap_uses_manager
+  selector:
+    path: app/bootstrap.py
+    anchor: "from config.manager import ConfigManager"
+- id: no_env_reader
+  selector:
+    path: utils/env_reader.py
+    anchor: "def read_env_file"
+- id: no_path_utils
+  selector:
+    path: utils/path_utils.py
+    anchor: "def project_root"
+oracle:
+  required:
+  - source_read_only
+  - resolver_uses_source
+  - manager_uses_resolver
+  - bootstrap_uses_manager
+  allowed: []
+  forbidden:
+  - no_env_reader
+  - no_path_utils

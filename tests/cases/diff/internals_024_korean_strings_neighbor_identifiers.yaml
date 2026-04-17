@@ -1,23 +1,185 @@
 name: internals_024_korean_strings_neighbor_identifiers
+tags:
+- lang:cpp
+- change:single_file
+- context:cross_module
+- distance:2hop
+- difficulty:medium
 repo:
   initial_files:
-    korean_str.py: |
-      x = 0
+    include/net/socket.h: |
+      #pragma once
+      #include <string>
+
+      namespace net {
+
+      struct SocketOptions {
+          int timeout_ms;
+          bool keep_alive;
+          int recv_buffer_size;
+      };
+
+      class Socket {
+      public:
+          explicit Socket(const SocketOptions& opts);
+          ~Socket();
+          bool connect(const std::string& host, int port);
+          int send(const char* data, int len);
+          int recv(char* buf, int len);
+      private:
+          int fd_;
+          SocketOptions opts_;
+      };
+
+      }
+    src/http/client.cpp: |
+      #include "net/socket.h"
+      #include <string>
+
+      namespace http {
+
+      class HttpClient {
+          net::Socket socket_;
+      public:
+          explicit HttpClient(const net::SocketOptions& opts) : socket_(opts) {}
+
+          std::string get(const std::string& url) {
+              return "";
+          }
+      };
+
+      }
+    src/rpc/channel.cpp: |
+      #include "net/socket.h"
+
+      namespace rpc {
+
+      class Channel {
+          net::Socket socket_;
+      public:
+          explicit Channel(const net::SocketOptions& opts) : socket_(opts) {}
+
+          bool call(const std::string& method, const std::string& payload) {
+              return socket_.send(payload.data(), payload.size()) > 0;
+          }
+      };
+
+      }
+    garbage/audio.cpp: |
+      // GARBAGE_KOR024_AUDIO_A = "audio_marker"
+      namespace audio { void init() {} }
+    garbage/display.cpp: |
+      // GARBAGE_KOR024_DISPLAY_B = "display_marker"
+      namespace display { void refresh() {} }
+    garbage/input.cpp: |
+      // GARBAGE_KOR024_INPUT_C = "input_marker"
+      namespace input { void poll() {} }
   changed_files:
-    korean_str.py: |
-      message = "안녕하세요"
-      result = process_data(input_value)
-  commit_message: Update files
+    include/net/socket.h: |
+      #pragma once
+      #include <string>
+
+      namespace net {
+
+      struct SocketOptions {
+          int timeout_ms;
+          bool keep_alive;
+          int recv_buffer_size;
+          int send_buffer_size;
+          bool tcp_no_delay;
+      };
+
+      class Socket {
+      public:
+          explicit Socket(const SocketOptions& opts);
+          ~Socket();
+          bool connect(const std::string& host, int port);
+          int send(const char* data, int len);
+          int recv(char* buf, int len);
+          void set_timeout(int ms);
+      private:
+          int fd_;
+          SocketOptions opts_;
+      };
+
+      }
+    src/http/client.cpp: |
+      #include "net/socket.h"
+      #include <string>
+
+      namespace http {
+
+      class HttpClient {
+          net::Socket socket_;
+      public:
+          explicit HttpClient(const net::SocketOptions& opts) : socket_(opts) {}
+
+          std::string get(const std::string& url) {
+              return "";
+          }
+      };
+
+      }
+    src/rpc/channel.cpp: |
+      #include "net/socket.h"
+
+      namespace rpc {
+
+      class Channel {
+          net::Socket socket_;
+      public:
+          explicit Channel(const net::SocketOptions& opts) : socket_(opts) {}
+
+          bool call(const std::string& method, const std::string& payload) {
+              return socket_.send(payload.data(), payload.size()) > 0;
+          }
+      };
+
+      }
+    garbage/audio.cpp: |
+      // GARBAGE_KOR024_AUDIO_A = "audio_marker"
+      namespace audio { void init() {} }
+    garbage/display.cpp: |
+      // GARBAGE_KOR024_DISPLAY_B = "display_marker"
+      namespace display { void refresh() {} }
+    garbage/input.cpp: |
+      // GARBAGE_KOR024_INPUT_C = "input_marker"
+      namespace input { void poll() {} }
+  commit_message: "feat: add send_buffer_size, tcp_no_delay and set_timeout to Socket"
 fragments:
-- id: korean_str_file
+- id: socket_options_new_fields
   selector:
-    path: korean_str.py
-- id: req_global_0
+    path: include/net/socket.h
+    anchor: "send_buffer_size"
+- id: set_timeout_declaration
   selector:
-    anchor: message = "안녕하세요"
+    path: include/net/socket.h
+    anchor: "void set_timeout"
+- id: http_client_uses_socket_options
+  selector:
+    path: src/http/client.cpp
+    anchor: "net::SocketOptions"
+- id: rpc_channel_uses_socket
+  selector:
+    path: src/rpc/channel.cpp
+    anchor: "net::SocketOptions"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_KOR024_AUDIO_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_KOR024_DISPLAY_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_KOR024_INPUT_C
 oracle:
   required:
-  - korean_str_file
-  - req_global_0
+  - socket_options_new_fields
+  - set_timeout_declaration
+  - http_client_uses_socket_options
+  - rpc_channel_uses_socket
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

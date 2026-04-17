@@ -1,0 +1,167 @@
+name: gap2_129_nix_cross_module_monitoring_stack
+tags:
+- change:single_file
+- context:cross_module
+- difficulty:medium
+- distance:2hop
+- lang:nix
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    modules/prometheus.nix: |
+      { config, lib, pkgs, ... }:
+
+      {
+        options.monitoring.prometheus.port = lib.mkOption {
+          type = lib.types.port;
+          default = 9090;
+        };
+
+        config = {
+          services.prometheus = {
+            enable = true;
+            port = config.monitoring.prometheus.port;
+            scrapeConfigs = [
+              { job_name = "node"; static_configs = [{ targets = ["localhost:9100"]; }]; }
+            ];
+          };
+        };
+      }
+    modules/grafana.nix: |
+      { config, lib, pkgs, ... }:
+
+      {
+        config = {
+          services.grafana = {
+            enable = true;
+            settings.server.http_port = 3000;
+            provision.datasources.settings.datasources = [
+              {
+                name = "Prometheus";
+                type = "prometheus";
+                url = "http://localhost:${toString config.monitoring.prometheus.port}";
+              }
+            ];
+          };
+        };
+      }
+    flake.nix: |
+      {
+        inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.05";
+
+        outputs = { self, nixpkgs }: {
+          nixosConfigurations.monitor = nixpkgs.lib.nixosSystem {
+            system = "x86_64-linux";
+            modules = [
+              ./modules/prometheus.nix
+              ./modules/grafana.nix
+            ];
+          };
+        };
+      }
+    modules/alertmanager.nix: |
+      { config, lib, pkgs, ... }:
+
+      {
+        TRAP_GAP2_129_ALERT_A = "alert_noise";
+        TRAP_GAP2_129_ALERT_B = 9093;
+
+        config = {
+          services.prometheus.alertmanager = {
+            enable = true;
+            port = 9093;
+          };
+        };
+      }
+    modules/loki.nix: |
+      { config, lib, pkgs, ... }:
+
+      {
+        TRAP_GAP2_129_LOKI_C = "loki_noise";
+        TRAP_GAP2_129_LOKI_D = 3100;
+
+        config = {
+          services.loki = {
+            enable = true;
+            configuration.server.http_listen_port = 3100;
+          };
+        };
+      }
+  changed_files:
+    modules/prometheus.nix: |
+      { config, lib, pkgs, ... }:
+
+      {
+        options.monitoring.prometheus.port = lib.mkOption {
+          type = lib.types.port;
+          default = 9090;
+        };
+
+        options.monitoring.prometheus.retentionDays = lib.mkOption {
+          type = lib.types.int;
+          default = 30;
+        };
+
+        config = {
+          services.prometheus = {
+            enable = true;
+            port = config.monitoring.prometheus.port;
+            extraFlags = [
+              "--storage.tsdb.retention.time=${toString config.monitoring.prometheus.retentionDays}d"
+            ];
+            scrapeConfigs = [
+              { job_name = "node"; static_configs = [{ targets = ["localhost:9100"]; }]; }
+            ];
+          };
+        };
+      }
+fragments:
+- id: retention_option
+  selector:
+    path: modules/prometheus.nix
+    anchor: options.monitoring.prometheus.retentionDays
+- id: retention_flag
+  selector:
+    path: modules/prometheus.nix
+    anchor: storage.tsdb.retention.time
+- id: grafana_datasource
+  selector:
+    path: modules/grafana.nix
+    anchor: config.monitoring.prometheus.port
+- id: flake_modules
+  selector:
+    path: flake.nix
+    anchor: ./modules/prometheus.nix
+- id: no_alertmanager
+  selector:
+    path: modules/alertmanager.nix
+- id: no_loki
+  selector:
+    path: modules/loki.nix
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_129_ALERT_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_129_ALERT_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP2_129_LOKI_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP2_129_LOKI_D
+oracle:
+  required:
+  - retention_option
+  - retention_flag
+  - grafana_datasource
+  - flake_modules
+  allowed: []
+  forbidden:
+  - no_alertmanager
+  - no_loki
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

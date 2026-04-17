@@ -1,0 +1,233 @@
+name: bal_cfgcode_030_go_email_config
+tags:
+- lang:go
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    config/email.yaml: |
+      smtp:
+        host: localhost
+        port: 1025
+        from: dev@localhost
+      templates:
+        welcome: "Hello {name}"
+        reset: "Reset link: {link}"
+    internal/email/mailer.go: |
+      package email
+
+      import (
+        "os"
+
+        "gopkg.in/yaml.v3"
+      )
+
+      type EmailConfig struct {
+        SMTP struct {
+          Host string `yaml:"host"`
+          Port int    `yaml:"port"`
+          From string `yaml:"from"`
+        } `yaml:"smtp"`
+        Templates map[string]string `yaml:"templates"`
+      }
+
+      func LoadEmailConfig() (*EmailConfig, error) {
+        data, err := os.ReadFile("config/email.yaml")
+        if err != nil {
+          return nil, err
+        }
+        var cfg EmailConfig
+        yaml.Unmarshal(data, &cfg)
+        return &cfg, nil
+      }
+
+      func (c *EmailConfig) Send(to string, templateName string) string {
+        tpl := c.Templates[templateName]
+        return c.SMTP.From + " -> " + to + ": " + tpl
+      }
+    internal/notification/notify.go: |
+      package notification
+
+      import (
+        "os"
+
+        "gopkg.in/yaml.v3"
+      )
+
+      type mailCfg struct {
+        SMTP struct {
+          From string `yaml:"from"`
+        } `yaml:"smtp"`
+      }
+
+      func DefaultSender() string {
+        data, _ := os.ReadFile("config/email.yaml")
+        var cfg mailCfg
+        yaml.Unmarshal(data, &cfg)
+        return cfg.SMTP.From
+      }
+    internal/billing/invoice.go: |
+      package billing
+
+      var GARBAGE_CFGCODE_030_BILL_A = "stripe"
+      var GARBAGE_CFGCODE_030_BILL_B = "usd"
+
+      func CreateInvoice(amount int) string {
+        return "invoice"
+      }
+    internal/analytics/tracker.go: |
+      package analytics
+
+      var GARBAGE_CFGCODE_030_TRACK_C = "mixpanel"
+      var GARBAGE_CFGCODE_030_TRACK_D = false
+
+      func Track(event string) {}
+  changed_files:
+    config/email.yaml: |
+      smtp:
+        host: smtp.sendgrid.net
+        port: 465
+        from: hello@example.com
+        use_tls: true
+      templates:
+        welcome: "Welcome aboard, {name}! Get started: {link}"
+        reset: "Reset link: {link}"
+        invoice: "Invoice #{id} for ${amount}"
+      rate_limit_per_minute: 100
+    internal/email/mailer.go: |
+      package email
+
+      import (
+        "os"
+
+        "gopkg.in/yaml.v3"
+      )
+
+      type EmailConfig struct {
+        SMTP struct {
+          Host string `yaml:"host"`
+          Port int    `yaml:"port"`
+          From string `yaml:"from"`
+        } `yaml:"smtp"`
+        Templates map[string]string `yaml:"templates"`
+      }
+
+      func LoadEmailConfig() (*EmailConfig, error) {
+        data, err := os.ReadFile("config/email.yaml")
+        if err != nil {
+          return nil, err
+        }
+        var cfg EmailConfig
+        yaml.Unmarshal(data, &cfg)
+        return &cfg, nil
+      }
+
+      func (c *EmailConfig) Send(to string, templateName string) string {
+        tpl := c.Templates[templateName]
+        return c.SMTP.From + " -> " + to + ": " + tpl
+      }
+    internal/notification/notify.go: |
+      package notification
+
+      import (
+        "os"
+
+        "gopkg.in/yaml.v3"
+      )
+
+      type mailCfg struct {
+        SMTP struct {
+          From string `yaml:"from"`
+        } `yaml:"smtp"`
+      }
+
+      func DefaultSender() string {
+        data, _ := os.ReadFile("config/email.yaml")
+        var cfg mailCfg
+        yaml.Unmarshal(data, &cfg)
+        return cfg.SMTP.From
+      }
+    internal/billing/invoice.go: |
+      package billing
+
+      var GARBAGE_CFGCODE_030_BILL_A = "stripe"
+      var GARBAGE_CFGCODE_030_BILL_B = "usd"
+
+      func CreateInvoice(amount int) string {
+        return "invoice"
+      }
+    internal/analytics/tracker.go: |
+      package analytics
+
+      var GARBAGE_CFGCODE_030_TRACK_C = "mixpanel"
+      var GARBAGE_CFGCODE_030_TRACK_D = false
+
+      func Track(event string) {}
+  commit_message: "config: production email with sendgrid and new templates"
+fragments:
+- id: config_smtp_host
+  selector:
+    path: config/email.yaml
+    anchor: "host: smtp.sendgrid.net"
+- id: config_tls
+  selector:
+    path: config/email.yaml
+    anchor: "use_tls: true"
+- id: config_invoice_tpl
+  selector:
+    path: config/email.yaml
+    anchor: "Invoice #{id}"
+- id: config_rate_limit
+  selector:
+    path: config/email.yaml
+    anchor: "rate_limit_per_minute: 100"
+- id: mailer_reads_config
+  selector:
+    path: internal/email/mailer.go
+    anchor: 'os.ReadFile("config/email.yaml")'
+- id: mailer_uses_templates
+  selector:
+    path: internal/email/mailer.go
+    anchor: "c.Templates[templateName]"
+- id: notify_reads_from
+  selector:
+    path: internal/notification/notify.go
+    anchor: "cfg.SMTP.From"
+- id: no_billing
+  selector:
+    path: internal/billing/invoice.go
+- id: no_analytics
+  selector:
+    path: internal/analytics/tracker.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_030_BILL_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_030_BILL_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_030_TRACK_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_030_TRACK_D
+oracle:
+  required:
+  - config_smtp_host
+  - config_tls
+  - config_invoice_tpl
+  - config_rate_limit
+  - mailer_reads_config
+  - mailer_uses_templates
+  - notify_reads_from
+  allowed: []
+  forbidden:
+  - no_billing
+  - no_analytics
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

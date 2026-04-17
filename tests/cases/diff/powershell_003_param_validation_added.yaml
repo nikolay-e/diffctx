@@ -1,0 +1,78 @@
+name: powershell_003_param_validation_added
+tags:
+- lang:powershell
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    EnvironmentModule.psm1: |
+      function Set-DeploymentEnvironment {
+          param([string]$Environment)
+          $env:DEPLOY_ENV = $Environment
+          Write-Output "Environment set to: $Environment"
+      }
+      Export-ModuleMember -Function Set-DeploymentEnvironment
+    Start-Deployment.ps1: |
+      Import-Module ./EnvironmentModule.psm1
+      Set-DeploymentEnvironment -Environment "production"
+      Write-Output "Deployment started in $env:DEPLOY_ENV"
+    PS_NOISE_003_PrinterUtils.psm1: |
+      function PS_NOISE_003_Get-PrinterStatus {
+          param([string]$PrinterName)
+          $printer = Get-Printer -Name $PrinterName
+          return $printer.PrinterStatus
+      }
+      Export-ModuleMember -Function PS_NOISE_003_Get-PrinterStatus
+    PS_NOISE_003_AudioUtils.psm1: |
+      function PS_NOISE_003_Set-SystemVolume {
+          param([int]$VolumePercent)
+          $obj = New-Object -ComObject WScript.Shell
+          $obj.SendKeys([char]173)
+      }
+      Export-ModuleMember -Function PS_NOISE_003_Set-SystemVolume
+  changed_files:
+    EnvironmentModule.psm1: |
+      function Set-DeploymentEnvironment {
+          param(
+              [ValidateSet("development", "staging", "production")]
+              [string]$Environment
+          )
+          $env:DEPLOY_ENV = $Environment
+          Write-Output "Environment set to: $Environment"
+      }
+      Export-ModuleMember -Function Set-DeploymentEnvironment
+  commit_message: "feat: add ValidateSet constraint to Set-DeploymentEnvironment parameter"
+fragments:
+- id: environment_module
+  selector:
+    path: EnvironmentModule.psm1
+    anchor: ValidateSet
+- id: start_deployment
+  selector:
+    path: Start-Deployment.ps1
+    anchor: Set-DeploymentEnvironment
+- id: no_printer_utils
+  selector:
+    path: PS_NOISE_003_PrinterUtils.psm1
+- id: no_audio_utils
+  selector:
+    path: PS_NOISE_003_AudioUtils.psm1
+- id: no_global_0
+  selector:
+    anchor: PS_NOISE_003_Get-PrinterStatus
+- id: no_global_1
+  selector:
+    anchor: PS_NOISE_003_Set-SystemVolume
+oracle:
+  required:
+  - environment_module
+  - start_deployment
+  allowed: []
+  forbidden:
+  - no_printer_utils
+  - no_audio_utils
+  - no_global_0
+  - no_global_1

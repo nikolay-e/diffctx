@@ -1,0 +1,159 @@
+name: gap_163_terraform_hard_dns_record_chain
+tags:
+- change:config
+- change:multi_file
+- context:import_chain
+- difficulty:hard
+- distance:2hop
+- lang:terraform
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    cloud/live/web/main.tf: |
+      module "cdn" {
+        source      = "../../modules/cloudfront"
+        domain_name = var.domain
+        cert_arn    = module.dns.certificate_arn
+      }
+
+      module "dns" {
+        source = "../../modules/route53"
+        domain = var.domain
+      }
+    cloud/live/web/variables.tf: |
+      variable "domain" {
+        type    = string
+        default = "example.com"
+      }
+
+      variable "environment" {
+        type    = string
+        default = "production"
+      }
+    cloud/modules/route53/main.tf: |
+      resource "aws_route53_zone" "primary" {
+        name = var.domain
+      }
+
+      resource "aws_acm_certificate" "this" {
+        domain_name       = var.domain
+        validation_method = "DNS"
+      }
+    cloud/modules/route53/variables.tf: |
+      variable "domain" {
+        type = string
+      }
+    cloud/modules/route53/outputs.tf: |
+      output "certificate_arn" {
+        value = aws_acm_certificate.this.arn
+      }
+
+      output "zone_id" {
+        value = aws_route53_zone.primary.zone_id
+      }
+    cloud/modules/cloudfront/main.tf: |
+      resource "aws_cloudfront_distribution" "this" {
+        enabled = true
+
+        origin {
+          domain_name = var.origin_domain
+          origin_id   = "primary"
+        }
+
+        default_cache_behavior {
+          allowed_methods  = ["GET", "HEAD"]
+          cached_methods   = ["GET", "HEAD"]
+          target_origin_id = "primary"
+
+          viewer_protocol_policy = "redirect-to-https"
+        }
+
+        viewer_certificate {
+          acm_certificate_arn = var.cert_arn
+        }
+      }
+    cloud/modules/cloudfront/variables.tf: |
+      variable "domain_name" {
+        type = string
+      }
+
+      variable "cert_arn" {
+        type = string
+      }
+
+      variable "origin_domain" {
+        type    = string
+        default = ""
+      }
+    cloud/modules/s3-static/main.tf: |
+      resource "aws_s3_bucket" "static" {
+        bucket = "static-assets-bucket"
+      }
+  changed_files:
+    cloud/live/web/main.tf: |
+      module "cdn" {
+        source      = "../../modules/cloudfront"
+        domain_name = var.domain
+        cert_arn    = module.dns.certificate_arn
+      }
+
+      module "dns" {
+        source    = "../../modules/route53"
+        domain    = var.domain
+        subdomain = "api"
+      }
+    cloud/modules/route53/main.tf: |
+      resource "aws_route53_zone" "primary" {
+        name = var.domain
+      }
+
+      resource "aws_acm_certificate" "this" {
+        domain_name       = var.domain
+        validation_method = "DNS"
+      }
+
+      resource "aws_route53_record" "subdomain" {
+        count   = var.subdomain != "" ? 1 : 0
+        zone_id = aws_route53_zone.primary.zone_id
+        name    = "${var.subdomain}.${var.domain}"
+        type    = "A"
+        ttl     = 300
+        records = ["10.0.0.1"]
+      }
+    cloud/modules/route53/variables.tf: |
+      variable "domain" {
+        type = string
+      }
+
+      variable "subdomain" {
+        type    = string
+        default = ""
+      }
+fragments:
+- id: web_main_subdomain
+  selector:
+    path: cloud/live/web/main.tf
+    anchor: subdomain
+- id: route53_record
+  selector:
+    path: cloud/modules/route53/main.tf
+    anchor: aws_route53_record
+- id: route53_subdomain_var
+  selector:
+    path: cloud/modules/route53/variables.tf
+    anchor: subdomain
+- id: no_cloudfront
+  selector:
+    path: cloud/modules/cloudfront/main.tf
+- id: no_s3
+  selector:
+    path: cloud/modules/s3-static/main.tf
+oracle:
+  required:
+  - web_main_subdomain
+  - route53_record
+  - route53_subdomain_var
+  forbidden:
+  - no_cloudfront
+  - no_s3

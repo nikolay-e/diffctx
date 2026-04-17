@@ -1,0 +1,184 @@
+name: bal3_3hop_025_rust_migrator_planner_differ_schema
+tags:
+- lang:rust
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/schema/table.rs: |
+      #[derive(Clone)]
+      pub struct Column {
+          pub name: String,
+          pub col_type: String,
+      }
+
+      pub struct TableSchema {
+          pub name: String,
+          pub columns: Vec<Column>,
+      }
+
+      impl TableSchema {
+          pub fn new(name: &str, columns: Vec<Column>) -> Self {
+              Self { name: name.to_string(), columns }
+          }
+
+          pub fn has_column(&self, name: &str) -> bool {
+              self.columns.iter().any(|c| c.name == name)
+          }
+      }
+    src/schema/mod.rs: |
+      pub mod table;
+    src/differ/differ.rs: |
+      use crate::schema::table::{TableSchema, Column};
+
+      pub struct Differ {
+          current: TableSchema,
+          target: TableSchema,
+      }
+
+      impl Differ {
+          pub fn new(current: TableSchema, target: TableSchema) -> Self {
+              Self { current, target }
+          }
+
+          pub fn added_columns(&self) -> Vec<Column> {
+              self.target.columns.iter()
+                  .filter(|c| !self.current.has_column(&c.name))
+                  .cloned()
+                  .collect()
+          }
+      }
+    src/differ/mod.rs: |
+      pub mod differ;
+    src/planner/planner.rs: |
+      use crate::differ::differ::Differ;
+
+      pub struct MigrationStep {
+          pub sql: String,
+      }
+
+      pub struct Planner {
+          differ: Differ,
+      }
+
+      impl Planner {
+          pub fn new(differ: Differ) -> Self {
+              Self { differ }
+          }
+
+          pub fn plan(&self) -> Vec<MigrationStep> {
+              self.differ.added_columns().iter().map(|col| {
+                  MigrationStep {
+                      sql: format!("ALTER TABLE ADD COLUMN {} {}", col.name, col.col_type),
+                  }
+              }).collect()
+          }
+      }
+    src/planner/mod.rs: |
+      pub mod planner;
+    src/migrator/migrator.rs: |
+      use crate::planner::planner::Planner;
+
+      pub struct Migrator {
+          planner: Planner,
+      }
+
+      impl Migrator {
+          pub fn new(planner: Planner) -> Self {
+              Self { planner }
+          }
+
+          pub fn execute(&self) -> Vec<String> {
+              self.planner.plan().into_iter().map(|s| s.sql).collect()
+          }
+      }
+    src/migrator/mod.rs: |
+      pub mod migrator;
+    src/seed/fixture.rs: |
+      pub static GARBAGE_BAL3_025_FIXTURE_MARKER_A: &str = "fixture";
+      pub static GARBAGE_BAL3_025_DATA_MARKER_B: &str = "seed_data";
+
+      pub struct Fixture;
+      impl Fixture {
+          pub fn load(&self) {}
+      }
+    src/seed/mod.rs: |
+      pub mod fixture;
+    src/lib.rs: |
+      pub mod schema;
+      pub mod differ;
+      pub mod planner;
+      pub mod migrator;
+      pub mod seed;
+  changed_files:
+    src/schema/table.rs: |
+      #[derive(Clone)]
+      pub struct Column {
+          pub name: String,
+          pub col_type: String,
+          pub nullable: bool,
+      }
+
+      pub struct TableSchema {
+          pub name: String,
+          pub columns: Vec<Column>,
+      }
+
+      impl TableSchema {
+          pub fn new(name: &str, columns: Vec<Column>) -> Self {
+              Self { name: name.to_string(), columns }
+          }
+
+          pub fn has_column(&self, name: &str) -> bool {
+              self.columns.iter().any(|c| c.name == name)
+          }
+
+          pub fn find_column(&self, name: &str) -> Option<&Column> {
+              self.columns.iter().find(|c| c.name == name)
+          }
+      }
+  commit_message: "Add nullable to column and find_column to schema"
+fragments:
+- id: column_nullable
+  selector:
+    path: src/schema/table.rs
+    anchor: "pub nullable: bool"
+- id: schema_find_column
+  selector:
+    path: src/schema/table.rs
+    anchor: "pub fn find_column"
+- id: differ_added
+  selector:
+    path: src/differ/differ.rs
+    anchor: "pub fn added_columns"
+- id: planner_plan
+  selector:
+    path: src/planner/planner.rs
+    anchor: "pub fn plan"
+- id: migrator_execute
+  selector:
+    path: src/migrator/migrator.rs
+    anchor: "pub fn execute"
+- id: no_fixture
+  selector:
+    path: src/seed/fixture.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_025_FIXTURE_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_025_DATA_MARKER_B
+oracle:
+  required:
+  - column_nullable
+  - schema_find_column
+  - differ_added
+  - planner_plan
+  - migrator_execute
+  allowed: []
+  forbidden:
+  - no_fixture
+  - no_global_0
+  - no_global_1

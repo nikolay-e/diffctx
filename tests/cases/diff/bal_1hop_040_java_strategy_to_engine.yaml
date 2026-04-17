@@ -1,0 +1,96 @@
+name: bal_1hop_040_java_strategy_to_engine
+tags:
+- lang:java
+- change:signature
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/main/java/com/pricing/strategy/DiscountStrategy.java: |
+      package com.pricing.strategy;
+      public interface DiscountStrategy {
+          double apply(double price);
+      }
+    src/main/java/com/pricing/strategy/PercentageDiscount.java: |
+      package com.pricing.strategy;
+      public class PercentageDiscount implements DiscountStrategy {
+          private final double percentage;
+          public PercentageDiscount(double percentage) {
+              this.percentage = percentage;
+          }
+          @Override
+          public double apply(double price) {
+              return price * (1 - percentage / 100.0);
+          }
+      }
+    src/main/java/com/pricing/engine/PricingEngine.java: |
+      package com.pricing.engine;
+      import com.pricing.strategy.DiscountStrategy;
+      public class PricingEngine {
+          private final DiscountStrategy strategy;
+          public PricingEngine(DiscountStrategy strategy) {
+              this.strategy = strategy;
+          }
+          public double calculate(double basePrice) {
+              return strategy.apply(basePrice);
+          }
+      }
+    src/main/java/com/pricing/audit/PriceAuditLog.java: |
+      package com.pricing.audit;
+      import java.time.Instant;
+      public class PriceAuditLog {
+          public void record(double before, double after) {
+              System.out.println(Instant.now() + ": " + before + " -> " + after);
+          }
+      }
+    src/main/java/com/pricing/currency/CurrencyConverter.java: |
+      package com.pricing.currency;
+      public class CurrencyConverter {
+          public double toUsd(double amount, String fromCurrency) {
+              if ("EUR".equals(fromCurrency)) return amount * 1.08;
+              if ("GBP".equals(fromCurrency)) return amount * 1.27;
+              return amount;
+          }
+      }
+  changed_files:
+    src/main/java/com/pricing/strategy/DiscountStrategy.java: |
+      package com.pricing.strategy;
+      public interface DiscountStrategy {
+          double apply(double price);
+          default String describe() {
+              return getClass().getSimpleName();
+          }
+      }
+  commit_message: "feat: add describe default method to DiscountStrategy"
+fragments:
+- id: strategy_describe
+  selector:
+    path: DiscountStrategy.java
+    anchor: "describe()"
+- id: percentage_implements_strategy
+  selector:
+    path: PercentageDiscount.java
+    anchor: "implements DiscountStrategy"
+- id: engine_uses_strategy
+  selector:
+    path: PricingEngine.java
+    anchor: "strategy.apply"
+- id: no_audit_log
+  selector:
+    path: PriceAuditLog.java
+    anchor: "PriceAuditLog"
+- id: no_currency
+  selector:
+    path: CurrencyConverter.java
+    anchor: "CurrencyConverter"
+oracle:
+  required:
+  - strategy_describe
+  - percentage_implements_strategy
+  - engine_uses_strategy
+  allowed: []
+  forbidden:
+  - no_audit_log
+  - no_currency

@@ -1,0 +1,207 @@
+name: gap2_075_java_signature_cross_module_event_emitter
+tags:
+- change:signature
+- change:single_file
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+- lang:java
+repo:
+  initial_files:
+    src/main/java/events/EventEmitter.java: |
+      package events;
+
+      import java.util.List;
+      import java.util.ArrayList;
+
+      public class EventEmitter {
+          private final List<EventListener> listeners = new ArrayList<>();
+
+          public void on(EventListener listener) {
+              listeners.add(listener);
+          }
+
+          public void emit(String eventName) {
+              for (EventListener l : listeners) {
+                  l.onEvent(eventName);
+              }
+          }
+      }
+    src/main/java/events/EventListener.java: |
+      package events;
+
+      public interface EventListener {
+          void onEvent(String eventName);
+      }
+    src/main/java/workflow/TaskRunner.java: |
+      package workflow;
+
+      import events.EventEmitter;
+
+      public class TaskRunner {
+          private final EventEmitter emitter;
+
+          public TaskRunner(EventEmitter emitter) {
+              this.emitter = emitter;
+          }
+
+          public void runTask(String name) {
+              emitter.emit("task.started");
+              System.out.println("Running: " + name);
+              emitter.emit("task.completed");
+          }
+      }
+    src/main/java/template/TemplateEngine.java: |
+      package template;
+      static final String TRAP_GAP2_075_TPL_A = "template_noise";
+      static final int TRAP_GAP2_075_TPL_B = 4096;
+
+      public class TemplateEngine {
+          public String render(String template, Object model) { return template; }
+      }
+    src/main/java/schedule/CronParser.java: |
+      package schedule;
+      static final String TRAP_GAP2_075_CRON_C = "cron_noise";
+      static final boolean TRAP_GAP2_075_CRON_D = true;
+
+      public class CronParser {
+          public long nextRun(String expression) { return 0L; }
+      }
+    src/main/java/storage/BlobStore.java: |
+      package storage;
+      static final String TRAP_GAP2_075_BLOB_E = "blob_noise";
+      static final int TRAP_GAP2_075_BLOB_F = 1048576;
+
+      public class BlobStore {
+          public void upload(String key, byte[] data) { }
+      }
+  changed_files:
+    src/main/java/events/EventEmitter.java: |
+      package events;
+
+      import java.util.List;
+      import java.util.Map;
+      import java.util.ArrayList;
+
+      public class EventEmitter {
+          private final List<EventListener> listeners = new ArrayList<>();
+
+          public void on(EventListener listener) {
+              listeners.add(listener);
+          }
+
+          public void emit(String eventName, Map<String, Object> payload) {
+              for (EventListener l : listeners) {
+                  l.onEvent(eventName, payload);
+              }
+          }
+      }
+    src/main/java/events/EventListener.java: |
+      package events;
+
+      import java.util.Map;
+
+      public interface EventListener {
+          void onEvent(String eventName, Map<String, Object> payload);
+      }
+    src/main/java/workflow/TaskRunner.java: |
+      package workflow;
+
+      import events.EventEmitter;
+
+      public class TaskRunner {
+          private final EventEmitter emitter;
+
+          public TaskRunner(EventEmitter emitter) {
+              this.emitter = emitter;
+          }
+
+          public void runTask(String name) {
+              emitter.emit("task.started");
+              System.out.println("Running: " + name);
+              emitter.emit("task.completed");
+          }
+      }
+    src/main/java/template/TemplateEngine.java: |
+      package template;
+      static final String TRAP_GAP2_075_TPL_A = "template_noise";
+      static final int TRAP_GAP2_075_TPL_B = 4096;
+
+      public class TemplateEngine {
+          public String render(String template, Object model) { return template; }
+      }
+    src/main/java/schedule/CronParser.java: |
+      package schedule;
+      static final String TRAP_GAP2_075_CRON_C = "cron_noise";
+      static final boolean TRAP_GAP2_075_CRON_D = true;
+
+      public class CronParser {
+          public long nextRun(String expression) { return 0L; }
+      }
+    src/main/java/storage/BlobStore.java: |
+      package storage;
+      static final String TRAP_GAP2_075_BLOB_E = "blob_noise";
+      static final int TRAP_GAP2_075_BLOB_F = 1048576;
+
+      public class BlobStore {
+          public void upload(String key, byte[] data) { }
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: emit_with_payload
+  selector:
+    path: src/main/java/events/EventEmitter.java
+    anchor: "public void emit(String eventName, Map<String, Object> payload)"
+- id: listener_with_payload
+  selector:
+    path: src/main/java/events/EventListener.java
+    anchor: "void onEvent(String eventName, Map<String, Object> payload)"
+- id: runner_uses_emit
+  selector:
+    path: src/main/java/workflow/TaskRunner.java
+    anchor: 'emitter.emit("task.started")'
+- id: no_template
+  selector:
+    path: src/main/java/template/TemplateEngine.java
+- id: no_cron
+  selector:
+    path: src/main/java/schedule/CronParser.java
+- id: no_blob
+  selector:
+    path: src/main/java/storage/BlobStore.java
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_075_TPL_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_075_TPL_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP2_075_CRON_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP2_075_CRON_D
+- id: no_global_4
+  selector:
+    anchor: TRAP_GAP2_075_BLOB_E
+- id: no_global_5
+  selector:
+    anchor: TRAP_GAP2_075_BLOB_F
+oracle:
+  required:
+  - emit_with_payload
+  - listener_with_payload
+  - runner_uses_emit
+  allowed: []
+  forbidden:
+  - no_template
+  - no_cron
+  - no_blob
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

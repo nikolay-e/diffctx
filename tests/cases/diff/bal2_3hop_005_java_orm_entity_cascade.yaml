@@ -1,0 +1,194 @@
+name: bal2_3hop_005_java_orm_entity_cascade
+tags:
+- lang:java
+- change:multi_file
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/app/entity/Address.java: |
+      package com.app.entity;
+
+      public class Address {
+          private String street;
+          private String city;
+          public Address(String street, String city) {
+              this.street = street;
+              this.city = city;
+          }
+          public String getStreet() { return street; }
+          public String getCity() { return city; }
+      }
+    src/main/java/com/app/entity/Customer.java: |
+      package com.app.entity;
+
+      import com.app.entity.Address;
+
+      public class Customer {
+          private String name;
+          private Address address;
+          public Customer(String name, Address address) {
+              this.name = name;
+              this.address = address;
+          }
+          public String getName() { return name; }
+          public Address getAddress() { return address; }
+      }
+    src/main/java/com/app/repository/CustomerRepository.java: |
+      package com.app.repository;
+
+      import com.app.entity.Customer;
+      import java.util.Optional;
+
+      public class CustomerRepository {
+          public Optional<Customer> findByName(String name) {
+              return Optional.empty();
+          }
+          public void save(Customer customer) {}
+      }
+    src/main/java/com/app/service/CustomerRegistration.java: |
+      package com.app.service;
+
+      import com.app.repository.CustomerRepository;
+      import com.app.entity.Customer;
+      import com.app.entity.Address;
+
+      public class CustomerRegistration {
+          private final CustomerRepository repo;
+          public CustomerRegistration(CustomerRepository repo) {
+              this.repo = repo;
+          }
+          public void register(String name, String street, String city) {
+              Address addr = new Address(street, city);
+              Customer cust = new Customer(name, addr);
+              repo.save(cust);
+          }
+      }
+    src/main/java/com/app/util/EmailSender.java: |
+      package com.app.util;
+
+      public class EmailSender {
+          public void send(String to, String body) {}
+      }
+    src/main/java/com/app/util/IdGenerator.java: |
+      package com.app.util;
+
+      import java.util.UUID;
+
+      public class IdGenerator {
+          public static String next() { return UUID.randomUUID().toString(); }
+      }
+  changed_files:
+    src/main/java/com/app/entity/Address.java: |
+      package com.app.entity;
+
+      public class Address {
+          private String street;
+          private String city;
+          private String zipCode;
+          public Address(String street, String city, String zipCode) {
+              this.street = street;
+              this.city = city;
+              this.zipCode = zipCode;
+          }
+          public String getStreet() { return street; }
+          public String getCity() { return city; }
+          public String getZipCode() { return zipCode; }
+      }
+    src/main/java/com/app/entity/Customer.java: |
+      package com.app.entity;
+
+      import com.app.entity.Address;
+
+      public class Customer {
+          private String name;
+          private Address address;
+          public Customer(String name, Address address) {
+              this.name = name;
+              this.address = address;
+          }
+          public String getName() { return name; }
+          public Address getAddress() { return address; }
+      }
+    src/main/java/com/app/repository/CustomerRepository.java: |
+      package com.app.repository;
+
+      import com.app.entity.Customer;
+      import java.util.Optional;
+
+      public class CustomerRepository {
+          public Optional<Customer> findByName(String name) {
+              return Optional.empty();
+          }
+          public void save(Customer customer) {}
+      }
+    src/main/java/com/app/service/CustomerRegistration.java: |
+      package com.app.service;
+
+      import com.app.repository.CustomerRepository;
+      import com.app.entity.Customer;
+      import com.app.entity.Address;
+
+      public class CustomerRegistration {
+          private final CustomerRepository repo;
+          public CustomerRegistration(CustomerRepository repo) {
+              this.repo = repo;
+          }
+          public void register(String name, String street, String city, String zipCode) {
+              Address addr = new Address(street, city, zipCode);
+              Customer cust = new Customer(name, addr);
+              repo.save(cust);
+          }
+      }
+    src/main/java/com/app/util/EmailSender.java: |
+      package com.app.util;
+
+      public class EmailSender {
+          public void send(String to, String body) {}
+      }
+    src/main/java/com/app/util/IdGenerator.java: |
+      package com.app.util;
+
+      import java.util.UUID;
+
+      public class IdGenerator {
+          public static String next() { return UUID.randomUUID().toString(); }
+      }
+  commit_message: "feat: add zipCode to Address entity"
+fragments:
+- id: address_zipcode
+  selector:
+    path: src/main/java/com/app/entity/Address.java
+    anchor: "private String zipCode"
+- id: customer_imports_address
+  selector:
+    path: src/main/java/com/app/entity/Customer.java
+    anchor: "import com.app.entity.Address"
+- id: repo_imports_customer
+  selector:
+    path: src/main/java/com/app/repository/CustomerRepository.java
+    anchor: "import com.app.entity.Customer"
+- id: registration_imports_repo
+  selector:
+    path: src/main/java/com/app/service/CustomerRegistration.java
+    anchor: "import com.app.repository.CustomerRepository"
+- id: no_email_sender
+  selector:
+    path: src/main/java/com/app/util/EmailSender.java
+    anchor: "class EmailSender"
+- id: no_id_generator
+  selector:
+    path: src/main/java/com/app/util/IdGenerator.java
+    anchor: "class IdGenerator"
+oracle:
+  required:
+  - address_zipcode
+  - customer_imports_address
+  - repo_imports_customer
+  - registration_imports_repo
+  allowed: []
+  forbidden:
+  - no_email_sender
+  - no_id_generator

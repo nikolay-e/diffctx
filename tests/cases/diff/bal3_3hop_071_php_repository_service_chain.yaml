@@ -1,0 +1,223 @@
+name: bal3_3hop_071_php_repository_service_chain
+tags:
+- lang:php
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/Database/Connection.php: |
+      <?php
+      namespace App\Database;
+
+      class Connection {
+          private string $dsn;
+          public function __construct(string $dsn) {
+              $this->dsn = $dsn;
+          }
+          public function query(string $sql): array {
+              return [];
+          }
+      }
+    src/Repositories/UserRepository.php: |
+      <?php
+      namespace App\Repositories;
+
+      use App\Database\Connection;
+
+      class UserRepository {
+          private Connection $db;
+          public function __construct(Connection $db) {
+              $this->db = $db;
+          }
+          public function findById(int $id): ?array {
+              return $this->db->query("SELECT * FROM users WHERE id = $id")[0] ?? null;
+          }
+      }
+    src/Services/UserService.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Repositories\UserRepository;
+
+      class UserService {
+          private UserRepository $repo;
+          public function __construct(UserRepository $repo) {
+              $this->repo = $repo;
+          }
+          public function getUser(int $id): ?array {
+              return $this->repo->findById($id);
+          }
+      }
+    src/Controllers/UserController.php: |
+      <?php
+      namespace App\Controllers;
+
+      use App\Services\UserService;
+
+      class UserController {
+          private UserService $service;
+          public function __construct(UserService $service) {
+              $this->service = $service;
+          }
+          public function show(int $id): array {
+              $user = $this->service->getUser($id);
+              return ['user' => $user];
+          }
+      }
+    src/Helpers/StringHelper.php: |
+      <?php
+      namespace App\Helpers;
+      define('GARBAGE_071_STR_A', 'helper');
+      define('GARBAGE_071_FMT_B', 'format');
+
+      class StringHelper {
+          public static function slug(string $text): string {
+              return strtolower(str_replace(' ', '-', $text));
+          }
+      }
+    src/Helpers/ArrayHelper.php: |
+      <?php
+      namespace App\Helpers;
+      define('GARBAGE_071_ARR_C', 'helper');
+      define('GARBAGE_071_FLAT_D', 'flatten');
+
+      class ArrayHelper {
+          public static function flatten(array $arr): array {
+              return array_merge(...$arr);
+          }
+      }
+  changed_files:
+    src/Database/Connection.php: |
+      <?php
+      namespace App\Database;
+
+      class Connection {
+          private string $dsn;
+          private int $timeout;
+          public function __construct(string $dsn, int $timeout = 30) {
+              $this->dsn = $dsn;
+              $this->timeout = $timeout;
+          }
+          public function query(string $sql): array {
+              return [];
+          }
+          public function queryPaginated(string $sql, int $limit, int $offset): array {
+              return [];
+          }
+      }
+    src/Repositories/UserRepository.php: |
+      <?php
+      namespace App\Repositories;
+
+      use App\Database\Connection;
+
+      class UserRepository {
+          private Connection $db;
+          public function __construct(Connection $db) {
+              $this->db = $db;
+          }
+          public function findById(int $id): ?array {
+              return $this->db->query("SELECT * FROM users WHERE id = $id")[0] ?? null;
+          }
+          public function findPaginated(int $limit, int $offset): array {
+              return $this->db->queryPaginated("SELECT * FROM users", $limit, $offset);
+          }
+      }
+    src/Services/UserService.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Repositories\UserRepository;
+
+      class UserService {
+          private UserRepository $repo;
+          public function __construct(UserRepository $repo) {
+              $this->repo = $repo;
+          }
+          public function getUser(int $id): ?array {
+              return $this->repo->findById($id);
+          }
+          public function listUsers(int $page, int $perPage): array {
+              return $this->repo->findPaginated($perPage, ($page - 1) * $perPage);
+          }
+      }
+    src/Controllers/UserController.php: |
+      <?php
+      namespace App\Controllers;
+
+      use App\Services\UserService;
+
+      class UserController {
+          private UserService $service;
+          public function __construct(UserService $service) {
+              $this->service = $service;
+          }
+          public function show(int $id): array {
+              $user = $this->service->getUser($id);
+              return ['user' => $user];
+          }
+          public function index(int $page = 1): array {
+              $users = $this->service->listUsers($page, 20);
+              return ['users' => $users];
+          }
+      }
+    src/Helpers/StringHelper.php: |
+      <?php
+      namespace App\Helpers;
+      define('GARBAGE_071_STR_A', 'helper');
+      define('GARBAGE_071_FMT_B', 'format');
+
+      class StringHelper {
+          public static function slug(string $text): string {
+              return strtolower(str_replace(' ', '-', $text));
+          }
+      }
+    src/Helpers/ArrayHelper.php: |
+      <?php
+      namespace App\Helpers;
+      define('GARBAGE_071_ARR_C', 'helper');
+      define('GARBAGE_071_FLAT_D', 'flatten');
+
+      class ArrayHelper {
+          public static function flatten(array $arr): array {
+              return array_merge(...$arr);
+          }
+      }
+  commit_message: "feat: add pagination to user repository chain"
+fragments:
+- id: db_paginated
+  selector:
+    path: src/Database/Connection.php
+    anchor: "function queryPaginated"
+- id: repo_find_paginated
+  selector:
+    path: src/Repositories/UserRepository.php
+    anchor: "function findPaginated"
+- id: service_list_users
+  selector:
+    path: src/Services/UserService.php
+    anchor: "function listUsers"
+- id: controller_index
+  selector:
+    path: src/Controllers/UserController.php
+    anchor: "function index"
+- id: no_string_helper
+  selector:
+    path: src/Helpers/StringHelper.php
+    anchor: "GARBAGE_071_STR_A"
+- id: no_array_helper
+  selector:
+    path: src/Helpers/ArrayHelper.php
+    anchor: "GARBAGE_071_ARR_C"
+oracle:
+  required:
+  - db_paginated
+  - repo_find_paginated
+  - service_list_users
+  - controller_index
+  allowed: []
+  forbidden:
+  - no_string_helper
+  - no_array_helper

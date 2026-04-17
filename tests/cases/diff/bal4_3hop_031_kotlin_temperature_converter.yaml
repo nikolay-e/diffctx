@@ -1,0 +1,128 @@
+name: bal4_3hop_031_kotlin_temperature_converter
+tags:
+- lang:kotlin
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:trivial
+repo:
+  initial_files:
+    src/core/Unit.kt: |
+      package core
+
+      enum class Unit { CELSIUS, FAHRENHEIT }
+    src/convert/Converter.kt: |
+      package convert
+
+      import core.Unit
+
+      fun convert(value: Double, from: Unit): Double =
+          if (from == Unit.CELSIUS) value * 9 / 5 + 32 else (value - 32) * 5 / 9
+    src/format/Formatter.kt: |
+      package format
+
+      import convert.convert
+      import core.Unit
+
+      fun formatTemp(value: Double, from: Unit): String =
+          "%.1f".format(convert(value, from))
+    src/api/Endpoint.kt: |
+      package api
+
+      import format.formatTemp
+      import core.Unit
+
+      fun handleRequest(value: Double): String =
+          formatTemp(value, Unit.CELSIUS)
+    src/utils/Logger.kt: |
+      package utils
+      val GARBAGE_031_LOGGER_A = "log"
+      val GARBAGE_031_LEVEL_B = "info"
+      fun log(msg: String) = println(msg)
+    src/utils/Timer.kt: |
+      package utils
+      val GARBAGE_031_TIMER_C = "timer"
+      val GARBAGE_031_TICK_D = 0
+      fun tick() = System.currentTimeMillis()
+  changed_files:
+    src/core/Unit.kt: |
+      package core
+
+      enum class Unit { CELSIUS, FAHRENHEIT, KELVIN }
+    src/convert/Converter.kt: |
+      package convert
+
+      import core.Unit
+
+      fun convert(value: Double, from: Unit): Double =
+          if (from == Unit.CELSIUS) value * 9 / 5 + 32 else (value - 32) * 5 / 9
+    src/format/Formatter.kt: |
+      package format
+
+      import convert.convert
+      import core.Unit
+
+      fun formatTemp(value: Double, from: Unit): String =
+          "%.1f".format(convert(value, from))
+    src/api/Endpoint.kt: |
+      package api
+
+      import format.formatTemp
+      import core.Unit
+
+      fun handleRequest(value: Double): String =
+          formatTemp(value, Unit.CELSIUS)
+    src/utils/Logger.kt: |
+      package utils
+      val GARBAGE_031_LOGGER_A = "log"
+      val GARBAGE_031_LEVEL_B = "info"
+      fun log(msg: String) = println(msg)
+    src/utils/Timer.kt: |
+      package utils
+      val GARBAGE_031_TIMER_C = "timer"
+      val GARBAGE_031_TICK_D = 0
+      fun tick() = System.currentTimeMillis()
+  commit_message: "feat: add KELVIN to temperature units"
+fragments:
+- id: unit_kelvin
+  selector:
+    path: src/core/Unit.kt
+    anchor: "KELVIN"
+- id: converter_import
+  selector:
+    path: src/convert/Converter.kt
+    anchor: "import core.Unit"
+- id: formatter_import
+  selector:
+    path: src/format/Formatter.kt
+    anchor: "import convert.convert"
+- id: endpoint_import
+  selector:
+    path: src/api/Endpoint.kt
+    anchor: "import format.formatTemp"
+- id: no_logger
+  selector:
+    path: src/utils/Logger.kt
+    anchor: "GARBAGE_031_LOGGER_A"
+- id: no_timer
+  selector:
+    path: src/utils/Timer.kt
+    anchor: "GARBAGE_031_TIMER_C"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_031_LEVEL_B
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_031_TICK_D
+oracle:
+  required:
+  - unit_kelvin
+  - converter_import
+  - formatter_import
+  - endpoint_import
+  allowed: []
+  forbidden:
+  - no_logger
+  - no_timer
+  - no_global_0
+  - no_global_1

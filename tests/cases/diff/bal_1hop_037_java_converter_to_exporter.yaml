@@ -1,0 +1,105 @@
+name: bal_1hop_037_java_converter_to_exporter
+tags:
+- lang:java
+- change:bug_fix
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/main/java/com/report/converter/CsvConverter.java: |
+      package com.report.converter;
+      import java.util.List;
+      public class CsvConverter {
+          public String convert(List<String[]> rows) {
+              StringBuilder sb = new StringBuilder();
+              for (String[] row : rows) {
+                  sb.append(String.join(",", row)).append("\n");
+              }
+              return sb.toString();
+          }
+      }
+    src/main/java/com/report/exporter/ReportExporter.java: |
+      package com.report.exporter;
+      import com.report.converter.CsvConverter;
+      import java.util.List;
+      public class ReportExporter {
+          private final CsvConverter converter;
+          public ReportExporter(CsvConverter converter) {
+              this.converter = converter;
+          }
+          public String exportReport(List<String[]> data) {
+              String csv = converter.convert(data);
+              return "REPORT\n" + csv;
+          }
+      }
+    src/main/java/com/report/model/ReportMetadata.java: |
+      package com.report.model;
+      import java.time.Instant;
+      public class ReportMetadata {
+          private final String title;
+          private final Instant createdAt;
+          public ReportMetadata(String title) {
+              this.title = title;
+              this.createdAt = Instant.now();
+          }
+          public String getTitle() { return title; }
+          public Instant getCreatedAt() { return createdAt; }
+      }
+    src/main/java/com/report/scheduler/ReportScheduler.java: |
+      package com.report.scheduler;
+      public class ReportScheduler {
+          private int intervalMinutes = 60;
+          public void setInterval(int minutes) {
+              this.intervalMinutes = minutes;
+          }
+          public int getInterval() { return intervalMinutes; }
+      }
+  changed_files:
+    src/main/java/com/report/converter/CsvConverter.java: |
+      package com.report.converter;
+      import java.util.List;
+      public class CsvConverter {
+          public String convert(List<String[]> rows) {
+              StringBuilder sb = new StringBuilder();
+              for (String[] row : rows) {
+                  for (int i = 0; i < row.length; i++) {
+                      String cell = row[i];
+                      if (cell.contains(",") || cell.contains("\"")) {
+                          cell = "\"" + cell.replace("\"", "\"\"") + "\"";
+                      }
+                      sb.append(cell);
+                      if (i < row.length - 1) sb.append(",");
+                  }
+                  sb.append("\n");
+              }
+              return sb.toString();
+          }
+      }
+  commit_message: "fix: properly escape commas and quotes in CSV output"
+fragments:
+- id: csv_escape_fix
+  selector:
+    path: CsvConverter.java
+    anchor: "cell.contains"
+- id: exporter_uses_converter
+  selector:
+    path: ReportExporter.java
+    anchor: "converter.convert(data)"
+- id: no_report_metadata
+  selector:
+    path: ReportMetadata.java
+    anchor: "ReportMetadata"
+- id: no_scheduler
+  selector:
+    path: ReportScheduler.java
+    anchor: "ReportScheduler"
+oracle:
+  required:
+  - csv_escape_fix
+  - exporter_uses_converter
+  allowed: []
+  forbidden:
+  - no_report_metadata
+  - no_scheduler

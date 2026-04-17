@@ -1,113 +1,318 @@
 name: csharp_017_custom_attribute
+tags:
+- lang:rust
+- change:bug_fix
+- change:multi_file
+- context:test_file
+- distance:2hop
+- difficulty:hard
 repo:
   initial_files:
-    Attributes/ValidateAttribute.cs: |
-      namespace MyApp.Attributes;
-
-      [AttributeUsage(AttributeTargets.Property)]
-      public class ValidateAttribute : Attribute
-      {
-          public bool Required { get; set; }
-          public int MaxLength { get; set; } = int.MaxValue;
-          public int MinLength { get; set; } = 0;
+    src/codec/encoder.rs: |
+      pub trait Encoder {
+          fn encode(&self, data: &[u8]) -> Vec<u8>;
+          fn name(&self) -> &'static str;
       }
-    Models/Customer.cs: |
-      namespace MyApp.Models;
 
-      public class Customer { }
-    Unrelated/DataSeeder.cs: |
-      namespace MyApp.Unrelated;
+      pub struct Base64Encoder;
 
-      public class DataSeeder
-      {
-          private const string GARBAGE_CS_017_DATA_SEEDER_A = "data_seeder_marker";
+      impl Encoder for Base64Encoder {
+          fn encode(&self, data: &[u8]) -> Vec<u8> {
+              const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+              let mut out = Vec::new();
+              let mut i = 0;
+              while i < data.len() {
+                  let b0 = data[i];
+                  let b1 = if i + 1 < data.len() { data[i + 1] } else { 0 };
+                  let b2 = if i + 2 < data.len() { data[i + 2] } else { 0 };
+                  out.push(ALPHABET[(b0 >> 2) as usize]);
+                  out.push(ALPHABET[((b0 & 3) << 4 | b1 >> 4) as usize]);
+                  out.push(if i + 1 < data.len() { ALPHABET[((b1 & 0xf) << 2 | b2 >> 6) as usize] } else { b'=' });
+                  out.push(if i + 2 < data.len() { ALPHABET[(b2 & 0x3f) as usize] } else { b'=' });
+                  i += 3;
+              }
+              out
+          }
 
-          public void Seed() => _ = GARBAGE_CS_017_DATA_SEEDER_A;
+          fn name(&self) -> &'static str { "base64" }
       }
-    Unrelated/SchemaMigrator.cs: |
-      namespace MyApp.Unrelated;
+    src/codec/decoder.rs: |
+      pub trait Decoder {
+          fn decode(&self, data: &[u8]) -> Result<Vec<u8>, String>;
+          fn name(&self) -> &'static str;
+      }
 
-      public class SchemaMigrator
-      {
-          public const string GARBAGE_CS_017_SCHEMA_MIGRATOR_B = "schema_migrator_marker";
+      pub struct Base64Decoder;
 
-          public void Migrate() => _ = GARBAGE_CS_017_SCHEMA_MIGRATOR_B;
+      impl Decoder for Base64Decoder {
+          fn decode(&self, data: &[u8]) -> Result<Vec<u8>, String> {
+              let data: Vec<u8> = data.iter().filter(|&&b| b != b'=').cloned().collect();
+              let mut out = Vec::new();
+              for chunk in data.chunks(4) {
+                  let v: Vec<u8> = chunk.iter().map(|&b| base64_val(b)).collect();
+                  if v.iter().any(|&x| x == 255) {
+                      return Err("invalid base64 character".to_string());
+                  }
+                  out.push(v[0] << 2 | v[1] >> 4);
+                  if chunk.len() > 2 { out.push((v[1] & 0xf) << 4 | v[2] >> 2); }
+                  if chunk.len() > 3 { out.push((v[2] & 3) << 6 | v[3]); }
+              }
+              Ok(out)
+          }
+
+          fn name(&self) -> &'static str { "base64" }
+      }
+
+      fn base64_val(b: u8) -> u8 {
+          match b {
+              b'A'..=b'Z' => b - b'A',
+              b'a'..=b'z' => b - b'a' + 26,
+              b'0'..=b'9' => b - b'0' + 52,
+              b'+' => 62,
+              b'/' => 63,
+              _ => 255,
+          }
+      }
+    src/codec/pipeline.rs: |
+      use crate::codec::encoder::Encoder;
+      use crate::codec::decoder::Decoder;
+
+      pub struct CodecPipeline {
+          encoder: Box<dyn Encoder>,
+          decoder: Box<dyn Decoder>,
+      }
+
+      impl CodecPipeline {
+          pub fn new(encoder: Box<dyn Encoder>, decoder: Box<dyn Decoder>) -> Self {
+              CodecPipeline { encoder, decoder }
+          }
+
+          pub fn roundtrip(&self, data: &[u8]) -> Result<Vec<u8>, String> {
+              let encoded = self.encoder.encode(data);
+              self.decoder.decode(&encoded)
+          }
+      }
+    tests/codec_integration.rs: |
+      use crate::codec::encoder::{Base64Encoder, Encoder};
+      use crate::codec::decoder::{Base64Decoder, Decoder};
+      use crate::codec::pipeline::CodecPipeline;
+
+      #[test]
+      fn base64_encode_hello() {
+          let enc = Base64Encoder;
+          let result = enc.encode(b"hello");
+          assert_eq!(result, b"aGVsbG8=");
+      }
+
+      #[test]
+      fn base64_roundtrip() {
+          let pipeline = CodecPipeline::new(Box::new(Base64Encoder), Box::new(Base64Decoder));
+          let result = pipeline.roundtrip(b"test data").unwrap();
+          assert_eq!(result, b"test data");
+      }
+    src/compress/lz.rs: |
+      // GARBAGE_CS17_A = "lz_compress_unrelated"
+      pub fn lz_compress(data: &[u8]) -> Vec<u8> {
+          data.to_vec()
+      }
+    src/checksum/crc.rs: |
+      // GARBAGE_CS17_B = "crc_checksum_unrelated"
+      pub fn crc32(data: &[u8]) -> u32 {
+          0u32
+      }
+    src/cipher/xor.rs: |
+      // GARBAGE_CS17_C = "xor_cipher_unrelated"
+      pub fn xor_cipher(data: &[u8], key: u8) -> Vec<u8> {
+          data.iter().map(|&b| b ^ key).collect()
       }
   changed_files:
-    Attributes/ValidateAttribute.cs: |
-      namespace MyApp.Attributes;
-
-      [AttributeUsage(AttributeTargets.Property)]
-      public class ValidateAttribute : Attribute
-      {
-          public bool Required { get; set; }
-          public int MaxLength { get; set; } = int.MaxValue;
-          public int MinLength { get; set; } = 0;
+    src/codec/encoder.rs: |
+      pub trait Encoder {
+          fn encode(&self, data: &[u8]) -> Vec<u8>;
+          fn name(&self) -> &'static str;
       }
-    Models/Customer.cs: |
-      using MyApp.Attributes;
 
-      namespace MyApp.Models;
+      pub struct Base64Encoder;
 
-      public class Customer
-      {
-          public int Id { get; set; }
+      impl Encoder for Base64Encoder {
+          fn encode(&self, data: &[u8]) -> Vec<u8> {
+              const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+              let mut out = Vec::new();
+              let mut i = 0;
+              while i < data.len() {
+                  let b0 = data[i];
+                  let b1 = if i + 1 < data.len() { data[i + 1] } else { 0 };
+                  let b2 = if i + 2 < data.len() { data[i + 2] } else { 0 };
+                  out.push(ALPHABET[(b0 >> 2) as usize]);
+                  out.push(ALPHABET[((b0 & 3) << 4 | b1 >> 4) as usize]);
+                  out.push(if i + 1 < data.len() { ALPHABET[((b1 & 0xf) << 2 | b2 >> 6) as usize] } else { b'=' });
+                  out.push(if i + 2 < data.len() { ALPHABET[(b2 & 0x3f) as usize] } else { b'=' });
+                  i += 3;
+              }
+              out
+          }
 
-          [Validate(Required = true, MaxLength = 100)]
-          public string Name { get; set; }
-
-          [Validate(Required = true, MinLength = 5)]
-          public string Email { get; set; }
+          fn name(&self) -> &'static str { "base64" }
       }
-    Unrelated/DataSeeder.cs: |
-      namespace MyApp.Unrelated;
 
-      public class DataSeeder
-      {
-          private const string GARBAGE_CS_017_DATA_SEEDER_A = "data_seeder_marker";
+      pub struct UrlSafeBase64Encoder;
 
-          public void Seed() => _ = GARBAGE_CS_017_DATA_SEEDER_A;
+      impl Encoder for UrlSafeBase64Encoder {
+          fn encode(&self, data: &[u8]) -> Vec<u8> {
+              let standard = Base64Encoder.encode(data);
+              standard.into_iter().map(|b| match b {
+                  b'+' => b'-',
+                  b'/' => b'_',
+                  other => other,
+              }).collect()
+          }
+
+          fn name(&self) -> &'static str { "base64url" }
       }
-    Unrelated/SchemaMigrator.cs: |
-      namespace MyApp.Unrelated;
-
-      public class SchemaMigrator
-      {
-          public const string GARBAGE_CS_017_SCHEMA_MIGRATOR_B = "schema_migrator_marker";
-
-          public void Migrate() => _ = GARBAGE_CS_017_SCHEMA_MIGRATOR_B;
+    src/codec/decoder.rs: |
+      pub trait Decoder {
+          fn decode(&self, data: &[u8]) -> Result<Vec<u8>, String>;
+          fn name(&self) -> &'static str;
       }
-  commit_message: Update files
+
+      pub struct Base64Decoder;
+
+      impl Decoder for Base64Decoder {
+          fn decode(&self, data: &[u8]) -> Result<Vec<u8>, String> {
+              let data: Vec<u8> = data.iter()
+                  .filter(|&&b| b != b'=')
+                  .map(|&b| if b == b'-' { b'+' } else if b == b'_' { b'/' } else { b })
+                  .collect();
+              let mut out = Vec::new();
+              for chunk in data.chunks(4) {
+                  let v: Vec<u8> = chunk.iter().map(|&b| base64_val(b)).collect();
+                  if v.iter().any(|&x| x == 255) {
+                      return Err("invalid base64 character".to_string());
+                  }
+                  out.push(v[0] << 2 | v[1] >> 4);
+                  if chunk.len() > 2 { out.push((v[1] & 0xf) << 4 | v[2] >> 2); }
+                  if chunk.len() > 3 { out.push((v[2] & 3) << 6 | v[3]); }
+              }
+              Ok(out)
+          }
+
+          fn name(&self) -> &'static str { "base64" }
+      }
+
+      fn base64_val(b: u8) -> u8 {
+          match b {
+              b'A'..=b'Z' => b - b'A',
+              b'a'..=b'z' => b - b'a' + 26,
+              b'0'..=b'9' => b - b'0' + 52,
+              b'+' => 62,
+              b'/' => 63,
+              _ => 255,
+          }
+      }
+    src/codec/pipeline.rs: |
+      use crate::codec::encoder::Encoder;
+      use crate::codec::decoder::Decoder;
+
+      pub struct CodecPipeline {
+          encoder: Box<dyn Encoder>,
+          decoder: Box<dyn Decoder>,
+      }
+
+      impl CodecPipeline {
+          pub fn new(encoder: Box<dyn Encoder>, decoder: Box<dyn Decoder>) -> Self {
+              CodecPipeline { encoder, decoder }
+          }
+
+          pub fn roundtrip(&self, data: &[u8]) -> Result<Vec<u8>, String> {
+              let encoded = self.encoder.encode(data);
+              self.decoder.decode(&encoded)
+          }
+      }
+    tests/codec_integration.rs: |
+      use crate::codec::encoder::{Base64Encoder, UrlSafeBase64Encoder, Encoder};
+      use crate::codec::decoder::{Base64Decoder, Decoder};
+      use crate::codec::pipeline::CodecPipeline;
+
+      #[test]
+      fn base64_encode_hello() {
+          let enc = Base64Encoder;
+          let result = enc.encode(b"hello");
+          assert_eq!(result, b"aGVsbG8=");
+      }
+
+      #[test]
+      fn base64_roundtrip() {
+          let pipeline = CodecPipeline::new(Box::new(Base64Encoder), Box::new(Base64Decoder));
+          let result = pipeline.roundtrip(b"test data").unwrap();
+          assert_eq!(result, b"test data");
+      }
+
+      #[test]
+      fn url_safe_encoder_replaces_plus_and_slash() {
+          let enc = UrlSafeBase64Encoder;
+          let result = enc.encode(b"\xfb\xff");
+          assert!(!result.contains(&b'+'));
+          assert!(!result.contains(&b'/'));
+      }
+
+      #[test]
+      fn decoder_handles_url_safe_chars() {
+          let enc = UrlSafeBase64Encoder;
+          let encoded = enc.encode(b"url safe data");
+          let dec = Base64Decoder;
+          let decoded = dec.decode(&encoded).unwrap();
+          assert_eq!(decoded, b"url safe data");
+      }
+    src/compress/lz.rs: |
+      // GARBAGE_CS17_A = "lz_compress_unrelated"
+      pub fn lz_compress(data: &[u8]) -> Vec<u8> {
+          data.to_vec()
+      }
+    src/checksum/crc.rs: |
+      // GARBAGE_CS17_B = "crc_checksum_unrelated"
+      pub fn crc32(data: &[u8]) -> u32 {
+          0u32
+      }
+    src/cipher/xor.rs: |
+      // GARBAGE_CS17_C = "xor_cipher_unrelated"
+      pub fn xor_cipher(data: &[u8], key: u8) -> Vec<u8> {
+          data.iter().map(|&b| b ^ key).collect()
+      }
+  commit_message: "fix: add UrlSafeBase64Encoder and normalize url-safe chars in decoder"
 fragments:
-- id: customer_file
+- id: url_safe_encoder
   selector:
-    path: Models/Customer.cs
-- id: req_global_0
+    path: src/codec/encoder.rs
+    anchor: "pub struct UrlSafeBase64Encoder"
+- id: decoder_normalizes_url_safe
   selector:
-    anchor: using MyApp.Attributes;
-- id: req_global_1
+    path: src/codec/decoder.rs
+    anchor: "if b == b'-'"
+- id: test_url_safe_no_special
   selector:
-    anchor: public class Customer
-- id: no_global_0
+    path: tests/codec_integration.rs
+    anchor: "url_safe_encoder_replaces_plus_and_slash"
+- id: test_decoder_handles_url_safe
   selector:
-    anchor: GARBAGE_CS_017_DATA_SEEDER_A
-- id: no_global_1
+    path: tests/codec_integration.rs
+    anchor: "decoder_handles_url_safe_chars"
+- id: no_garbage_a
   selector:
-    anchor: GARBAGE_CS_017_SCHEMA_MIGRATOR_B
-- id: no_global_2
+    anchor: GARBAGE_CS17_A
+- id: no_garbage_b
   selector:
-    anchor: DataSeeder.cs
-- id: no_global_3
+    anchor: GARBAGE_CS17_B
+- id: no_garbage_c
   selector:
-    anchor: SchemaMigrator.cs
+    anchor: GARBAGE_CS17_C
 oracle:
   required:
-  - customer_file
-  - req_global_0
-  - req_global_1
-  allowed: []
+  - url_safe_encoder
+  - decoder_normalizes_url_safe
+  - test_url_safe_no_special
+  allowed:
+  - test_decoder_handles_url_safe
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

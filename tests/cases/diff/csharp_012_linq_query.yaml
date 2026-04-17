@@ -1,117 +1,166 @@
 name: csharp_012_linq_query
+tags:
+- lang:rust
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
 repo:
   initial_files:
-    Models/Product.cs: |
-      namespace MyApp.Models;
-
-      public class Product
-      {
-          public int Id { get; set; }
-          public string Name { get; set; }
-          public decimal Price { get; set; }
-          public string Category { get; set; }
+    src/packet.rs: |
+      #[derive(Debug, Clone)]
+      pub struct Packet {
+          pub id: u64,
+          pub source_ip: String,
+          pub dest_ip: String,
+          pub payload_bytes: usize,
+          pub protocol: String,
       }
-    Services/ProductService.cs: |
-      namespace MyApp.Services;
 
-      public class ProductService { }
-    Unrelated/ImageResizer.cs: |
-      namespace MyApp.Unrelated;
+      impl Packet {
+          pub fn new(id: u64, src: &str, dst: &str, size: usize, proto: &str) -> Self {
+              Self {
+                  id,
+                  source_ip: src.to_string(),
+                  dest_ip: dst.to_string(),
+                  payload_bytes: size,
+                  protocol: proto.to_string(),
+              }
+          }
 
-      public class ImageResizer
-      {
-          private const string GARBAGE_CS_012_IMAGE_RESIZER_A = "image_resizer_marker";
-
-          public void Resize(int width, int height) => _ = GARBAGE_CS_012_IMAGE_RESIZER_A;
+          pub fn is_tcp(&self) -> bool {
+              self.protocol == "TCP"
+          }
       }
-    Unrelated/PdfGenerator.cs: |
-      namespace MyApp.Unrelated;
+    src/firewall.rs: |
+      use crate::packet::Packet;
 
-      public class PdfGenerator
-      {
-          public const string GARBAGE_CS_012_PDF_GENERATOR_B = "pdf_generator_marker";
-
-          public byte[] Generate(string html) => System.Text.Encoding.UTF8.GetBytes(GARBAGE_CS_012_PDF_GENERATOR_B);
+      pub struct Firewall {
+          blocked_ips: Vec<String>,
       }
+
+      impl Firewall {
+          pub fn new() -> Self {
+              Self { blocked_ips: Vec::new() }
+          }
+
+          pub fn block(&mut self, ip: &str) {
+              self.blocked_ips.push(ip.to_string());
+          }
+
+          pub fn is_allowed(&self, packet: &Packet) -> bool {
+              !self.blocked_ips.contains(&packet.source_ip)
+          }
+      }
+    src/CS012_logger.rs: |
+      // CS012_GARBAGE_A = "logger_marker"
+      pub fn log_packet(_id: u64) {}
+    src/CS012_metrics.rs: |
+      // CS012_GARBAGE_B = "metrics_marker"
+      pub fn record_throughput(_bytes: usize) {}
+    src/CS012_config.rs: |
+      // CS012_GARBAGE_C = "config_marker"
+      pub const DEFAULT_MTU: usize = 1500;
   changed_files:
-    Models/Product.cs: |
-      namespace MyApp.Models;
-
-      public class Product
-      {
-          public int Id { get; set; }
-          public string Name { get; set; }
-          public decimal Price { get; set; }
-          public string Category { get; set; }
+    src/packet.rs: |
+      #[derive(Debug, Clone)]
+      pub struct Packet {
+          pub id: u64,
+          pub source_ip: String,
+          pub dest_ip: String,
+          pub payload_bytes: usize,
+          pub protocol: String,
+          pub ttl: u8,
       }
-    Services/ProductService.cs: |
-      using MyApp.Models;
 
-      namespace MyApp.Services;
-
-      public class ProductService
-      {
-          private readonly List<Product> _products = new();
-
-          public IEnumerable<Product> GetExpensiveProducts(decimal minPrice)
-          {
-              return from p in _products
-                     where p.Price >= minPrice
-                     orderby p.Price descending
-                     select p;
+      impl Packet {
+          pub fn new(id: u64, src: &str, dst: &str, size: usize, proto: &str) -> Self {
+              Self {
+                  id,
+                  source_ip: src.to_string(),
+                  dest_ip: dst.to_string(),
+                  payload_bytes: size,
+                  protocol: proto.to_string(),
+                  ttl: 64,
+              }
           }
 
-          public IEnumerable<IGrouping<string, Product>> GroupByCategory()
-          {
-              return from p in _products
-                     group p by p.Category;
+          pub fn is_tcp(&self) -> bool {
+              self.protocol == "TCP"
+          }
+
+          pub fn has_expired(&self) -> bool {
+              self.ttl == 0
           }
       }
-    Unrelated/ImageResizer.cs: |
-      namespace MyApp.Unrelated;
+    src/firewall.rs: |
+      use crate::packet::Packet;
 
-      public class ImageResizer
-      {
-          private const string GARBAGE_CS_012_IMAGE_RESIZER_A = "image_resizer_marker";
-
-          public void Resize(int width, int height) => _ = GARBAGE_CS_012_IMAGE_RESIZER_A;
+      pub struct Firewall {
+          blocked_ips: Vec<String>,
       }
-    Unrelated/PdfGenerator.cs: |
-      namespace MyApp.Unrelated;
 
-      public class PdfGenerator
-      {
-          public const string GARBAGE_CS_012_PDF_GENERATOR_B = "pdf_generator_marker";
+      impl Firewall {
+          pub fn new() -> Self {
+              Self { blocked_ips: Vec::new() }
+          }
 
-          public byte[] Generate(string html) => System.Text.Encoding.UTF8.GetBytes(GARBAGE_CS_012_PDF_GENERATOR_B);
+          pub fn block(&mut self, ip: &str) {
+              self.blocked_ips.push(ip.to_string());
+          }
+
+          pub fn is_allowed(&self, packet: &Packet) -> bool {
+              !self.blocked_ips.contains(&packet.source_ip) && !packet.has_expired()
+          }
+
+          pub fn filter<'a>(&self, packets: &'a [Packet]) -> Vec<&'a Packet> {
+              packets.iter().filter(|p| self.is_allowed(p)).collect()
+          }
       }
-  commit_message: Update files
+    src/CS012_logger.rs: |
+      // CS012_GARBAGE_A = "logger_marker"
+      pub fn log_packet(_id: u64) {}
+    src/CS012_metrics.rs: |
+      // CS012_GARBAGE_B = "metrics_marker"
+      pub fn record_throughput(_bytes: usize) {}
+    src/CS012_config.rs: |
+      // CS012_GARBAGE_C = "config_marker"
+      pub const DEFAULT_MTU: usize = 1500;
+  commit_message: "feat: add ttl field to Packet, has_expired method, filter to Firewall"
 fragments:
-- id: productservice_file
+- id: packet_ttl_field
   selector:
-    path: Services/ProductService.cs
-- id: req_global_0
+    path: src/packet.rs
+    anchor: "pub ttl: u8"
+- id: packet_has_expired
   selector:
-    anchor: public class ProductService
-- id: no_global_0
+    path: src/packet.rs
+    anchor: "pub fn has_expired(&self)"
+- id: firewall_filter
   selector:
-    anchor: GARBAGE_CS_012_IMAGE_RESIZER_A
-- id: no_global_1
+    path: src/firewall.rs
+    anchor: "pub fn filter<'a>(&self, packets: &'a [Packet])"
+- id: firewall_uses_has_expired
   selector:
-    anchor: GARBAGE_CS_012_PDF_GENERATOR_B
-- id: no_global_2
+    path: src/firewall.rs
+    anchor: "packet.has_expired()"
+- id: no_garbage_a
   selector:
-    anchor: ImageResizer.cs
-- id: no_global_3
+    anchor: CS012_GARBAGE_A
+- id: no_garbage_b
   selector:
-    anchor: PdfGenerator.cs
+    anchor: CS012_GARBAGE_B
+- id: no_garbage_c
+  selector:
+    anchor: CS012_GARBAGE_C
 oracle:
   required:
-  - productservice_file
-  - req_global_0
+  - packet_ttl_field
+  - packet_has_expired
+  - firewall_filter
+  - firewall_uses_has_expired
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

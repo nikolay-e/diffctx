@@ -1,0 +1,162 @@
+name: bal4_3hop_036_kotlin_notification_dispatch
+tags:
+- lang:kotlin
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:easy
+repo:
+  initial_files:
+    src/model/Priority.kt: |
+      package model
+
+      enum class Priority { LOW, HIGH }
+
+      data class Message(val text: String, val priority: Priority)
+    src/channel/Sender.kt: |
+      package channel
+
+      import model.Message
+      import model.Priority
+
+      class Sender {
+          fun send(msg: Message): Boolean {
+              return msg.text.isNotEmpty()
+          }
+      }
+    src/dispatch/Dispatcher.kt: |
+      package dispatch
+
+      import channel.Sender
+      import model.Message
+
+      class Dispatcher(private val sender: Sender) {
+          fun dispatch(msg: Message): Boolean {
+              return sender.send(msg)
+          }
+      }
+    src/api/NotifyApi.kt: |
+      package api
+
+      import dispatch.Dispatcher
+      import model.Message
+      import model.Priority
+
+      class NotifyApi(private val dispatcher: Dispatcher) {
+          fun notify(text: String): Boolean {
+              val msg = Message(text, Priority.LOW)
+              return dispatcher.dispatch(msg)
+          }
+      }
+    src/utils/Metrics.kt: |
+      package utils
+      val GARBAGE_036_METRICS_A = "metrics"
+      val GARBAGE_036_COUNT_B = 0
+      fun inc() {}
+    src/utils/Retry.kt: |
+      package utils
+      val GARBAGE_036_RETRY_C = "retry"
+      val GARBAGE_036_MAX_D = 3
+      fun retry(block: () -> Unit) = block()
+  changed_files:
+    src/model/Priority.kt: |
+      package model
+
+      enum class Priority { LOW, MEDIUM, HIGH }
+
+      data class Message(val text: String, val priority: Priority)
+    src/channel/Sender.kt: |
+      package channel
+
+      import model.Message
+      import model.Priority
+
+      class Sender {
+          fun send(msg: Message): Boolean {
+              return msg.text.isNotEmpty()
+          }
+
+          fun sendUrgent(msg: Message): Boolean {
+              return msg.priority == Priority.HIGH && msg.text.isNotEmpty()
+          }
+      }
+    src/dispatch/Dispatcher.kt: |
+      package dispatch
+
+      import channel.Sender
+      import model.Message
+      import model.Priority
+
+      class Dispatcher(private val sender: Sender) {
+          fun dispatch(msg: Message): Boolean {
+              return if (msg.priority == Priority.HIGH) sender.sendUrgent(msg)
+              else sender.send(msg)
+          }
+      }
+    src/api/NotifyApi.kt: |
+      package api
+
+      import dispatch.Dispatcher
+      import model.Message
+      import model.Priority
+
+      class NotifyApi(private val dispatcher: Dispatcher) {
+          fun notify(text: String): Boolean {
+              val msg = Message(text, Priority.LOW)
+              return dispatcher.dispatch(msg)
+          }
+      }
+    src/utils/Metrics.kt: |
+      package utils
+      val GARBAGE_036_METRICS_A = "metrics"
+      val GARBAGE_036_COUNT_B = 0
+      fun inc() {}
+    src/utils/Retry.kt: |
+      package utils
+      val GARBAGE_036_RETRY_C = "retry"
+      val GARBAGE_036_MAX_D = 3
+      fun retry(block: () -> Unit) = block()
+  commit_message: "feat: add MEDIUM priority and urgent dispatch"
+fragments:
+- id: priority_medium
+  selector:
+    path: src/model/Priority.kt
+    anchor: "MEDIUM"
+- id: sender_urgent
+  selector:
+    path: src/channel/Sender.kt
+    anchor: "fun sendUrgent"
+- id: dispatcher_route
+  selector:
+    path: src/dispatch/Dispatcher.kt
+    anchor: "sender.sendUrgent"
+- id: api_uses_dispatcher
+  selector:
+    path: src/api/NotifyApi.kt
+    anchor: "import dispatch.Dispatcher"
+- id: no_metrics
+  selector:
+    path: src/utils/Metrics.kt
+    anchor: "GARBAGE_036_METRICS_A"
+- id: no_retry
+  selector:
+    path: src/utils/Retry.kt
+    anchor: "GARBAGE_036_RETRY_C"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_036_COUNT_B
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_036_MAX_D
+oracle:
+  required:
+  - priority_medium
+  - sender_urgent
+  - dispatcher_route
+  - api_uses_dispatcher
+  allowed: []
+  forbidden:
+  - no_metrics
+  - no_retry
+  - no_global_0
+  - no_global_1

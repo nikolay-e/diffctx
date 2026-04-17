@@ -1,0 +1,83 @@
+name: bal_1hop_049_typescript_logger_to_middleware
+tags:
+- lang:typescript
+- change:new_function
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/logging/logger.ts: |
+      export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+      export function log(level: LogLevel, message: string): void {
+        const timestamp = new Date().toISOString();
+        console.log(`[${timestamp}] [${level.toUpperCase()}] ${message}`);
+      }
+    src/middleware/requestLogger.ts: |
+      import { log } from '../logging/logger';
+
+      export interface Request {
+        method: string;
+        path: string;
+        headers: Record<string, string>;
+      }
+
+      export function logRequest(req: Request): void {
+        log('info', `${req.method} ${req.path}`);
+      }
+    src/routes/healthRoute.ts: |
+      export function healthCheck(): { status: string } {
+        return { status: 'ok' };
+      }
+    src/db/connection.ts: |
+      export interface DbConfig {
+        host: string;
+        port: number;
+        database: string;
+      }
+
+      export function createConnectionString(config: DbConfig): string {
+        return `postgresql://${config.host}:${config.port}/${config.database}`;
+      }
+  changed_files:
+    src/logging/logger.ts: |
+      export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+      export function log(level: LogLevel, message: string): void {
+        const timestamp = new Date().toISOString();
+        console.log(`[${timestamp}] [${level.toUpperCase()}] ${message}`);
+      }
+
+      export function logWithContext(level: LogLevel, message: string, context: Record<string, unknown>): void {
+        const timestamp = new Date().toISOString();
+        const ctxStr = JSON.stringify(context);
+        console.log(`[${timestamp}] [${level.toUpperCase()}] ${message} ${ctxStr}`);
+      }
+  commit_message: "feat: add structured logging with context"
+fragments:
+- id: logger_with_context
+  selector:
+    path: logger.ts
+    anchor: "logWithContext"
+- id: middleware_uses_logger
+  selector:
+    path: requestLogger.ts
+    anchor: "log('info'"
+- id: no_health_route
+  selector:
+    path: healthRoute.ts
+    anchor: "healthCheck"
+- id: no_db_connection
+  selector:
+    path: connection.ts
+    anchor: "createConnectionString"
+oracle:
+  required:
+  - logger_with_context
+  - middleware_uses_logger
+  allowed: []
+  forbidden:
+  - no_health_route
+  - no_db_connection

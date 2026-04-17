@@ -1,0 +1,169 @@
+name: gap_060_py_multifunction_task_scheduler
+tags:
+- lang:java
+- change:signature
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/healthcare/records/PatientRepository.java: |
+      package com.healthcare.records;
+
+      import java.util.List;
+      import java.util.Optional;
+
+      public interface PatientRepository {
+          Optional<Patient> findById(String patientId);
+          List<Patient> findByDoctor(String doctorId);
+          void save(Patient patient);
+      }
+    src/main/java/com/healthcare/records/RecordService.java: |
+      package com.healthcare.records;
+
+      import java.util.List;
+      import java.util.Optional;
+
+      public class RecordService {
+          private final PatientRepository repository;
+
+          public RecordService(PatientRepository repository) {
+              this.repository = repository;
+          }
+
+          public Optional<Patient> getPatient(String patientId) {
+              return repository.findById(patientId);
+          }
+
+          public List<Patient> getPatientsForDoctor(String doctorId) {
+              return repository.findByDoctor(doctorId);
+          }
+      }
+    src/main/java/com/healthcare/records/Patient.java: |
+      package com.healthcare.records;
+
+      public class Patient {
+          private final String id;
+          private final String name;
+          private final String doctorId;
+
+          public Patient(String id, String name, String doctorId) {
+              this.id = id;
+              this.name = name;
+              this.doctorId = doctorId;
+          }
+
+          public String getId() { return id; }
+          public String getName() { return name; }
+          public String getDoctorId() { return doctorId; }
+      }
+    garbage/BillingService.java: |
+      // GARBAGE_TSKSCH_A = "billing_service_marker"
+    garbage/AppointmentNotifier.java: |
+      // GARBAGE_TSKSCH_B = "appointment_notifier_marker"
+    garbage/InsuranceChecker.java: |
+      // GARBAGE_TSKSCH_C = "insurance_checker_marker"
+  changed_files:
+    src/main/java/com/healthcare/records/PatientRepository.java: |
+      package com.healthcare.records;
+
+      import java.util.List;
+      import java.util.Optional;
+
+      public interface PatientRepository {
+          Optional<Patient> findById(String patientId);
+          List<Patient> findByDoctor(String doctorId);
+          List<Patient> search(String query, PatientFilter filter);
+          void save(Patient patient);
+          void archive(String patientId);
+      }
+    src/main/java/com/healthcare/records/RecordService.java: |
+      package com.healthcare.records;
+
+      import java.util.List;
+      import java.util.Optional;
+
+      public class RecordService {
+          private final PatientRepository repository;
+
+          public RecordService(PatientRepository repository) {
+              this.repository = repository;
+          }
+
+          public Optional<Patient> getPatient(String patientId) {
+              return repository.findById(patientId);
+          }
+
+          public List<Patient> getPatientsForDoctor(String doctorId) {
+              return repository.findByDoctor(doctorId);
+          }
+
+          public List<Patient> searchPatients(String query, PatientFilter filter) {
+              return repository.search(query, filter);
+          }
+
+          public void archivePatient(String patientId) {
+              repository.archive(patientId);
+          }
+      }
+    src/main/java/com/healthcare/records/Patient.java: |
+      package com.healthcare.records;
+
+      public class Patient {
+          private final String id;
+          private final String name;
+          private final String doctorId;
+
+          public Patient(String id, String name, String doctorId) {
+              this.id = id;
+              this.name = name;
+              this.doctorId = doctorId;
+          }
+
+          public String getId() { return id; }
+          public String getName() { return name; }
+          public String getDoctorId() { return doctorId; }
+      }
+    garbage/BillingService.java: |
+      // GARBAGE_TSKSCH_A = "billing_service_marker"
+    garbage/AppointmentNotifier.java: |
+      // GARBAGE_TSKSCH_B = "appointment_notifier_marker"
+    garbage/InsuranceChecker.java: |
+      // GARBAGE_TSKSCH_C = "insurance_checker_marker"
+  commit_message: "feat: add search with filter and archive to PatientRepository"
+fragments:
+- id: search_signature
+  selector:
+    anchor: "List<Patient> search(String query, PatientFilter filter)"
+- id: archive_signature
+  selector:
+    anchor: "void archive(String patientId)"
+- id: service_calls_search
+  selector:
+    path: src/main/java/com/healthcare/records/RecordService.java
+    anchor: "searchPatients"
+- id: service_calls_archive
+  selector:
+    path: src/main/java/com/healthcare/records/RecordService.java
+    anchor: "archivePatient"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_TSKSCH_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_TSKSCH_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_TSKSCH_C
+oracle:
+  required:
+  - search_signature
+  - archive_signature
+  - service_calls_search
+  - service_calls_archive
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

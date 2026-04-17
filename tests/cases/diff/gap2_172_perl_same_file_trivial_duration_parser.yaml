@@ -1,0 +1,110 @@
+name: gap2_172_perl_same_file_trivial_duration_parser
+tags:
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+- lang:perl
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    lib/Duration.pm: |
+      package Duration;
+      use strict;
+      use warnings;
+
+      sub new {
+          my ($class, $seconds) = @_;
+          return bless { seconds => $seconds }, $class;
+      }
+
+      sub to_hms {
+          my ($self) = @_;
+          my $s = $self->{seconds};
+          my $h = int($s / 3600);
+          my $m = int(($s % 3600) / 60);
+          my $sec = $s % 60;
+          return sprintf("%02d:%02d:%02d", $h, $m, $sec);
+      }
+
+      1;
+    lib/Stopwatch.pm: |
+      package Stopwatch;
+      use strict;
+      use warnings;
+      use Time::HiRes qw(time);
+
+      sub new {
+          my ($class) = @_;
+          return bless { start => 0, elapsed => 0 }, $class;
+      }
+
+      sub start { $_[0]->{start} = time(); }
+      sub stop  { $_[0]->{elapsed} = time() - $_[0]->{start}; }
+      sub read  { return $_[0]->{elapsed}; }
+
+      1;
+    lib/Timer.pm: |
+      package Timer;
+      use strict;
+      use warnings;
+
+      sub new {
+          my ($class, $interval) = @_;
+          return bless { interval => $interval, running => 0 }, $class;
+      }
+
+      sub start { $_[0]->{running} = 1; }
+      sub cancel { $_[0]->{running} = 0; }
+
+      1;
+  changed_files:
+    lib/Duration.pm: |
+      package Duration;
+      use strict;
+      use warnings;
+
+      sub new {
+          my ($class, $seconds) = @_;
+          return bless { seconds => $seconds }, $class;
+      }
+
+      sub to_hms {
+          my ($self) = @_;
+          my $s = $self->{seconds};
+          my $h = int($s / 3600);
+          my $m = int(($s % 3600) / 60);
+          my $sec = $s % 60;
+          return sprintf("%02d:%02d:%02d", $h, $m, $sec);
+      }
+
+      sub from_hms {
+          my ($class, $str) = @_;
+          my ($h, $m, $s) = split(/:/, $str);
+          return $class->new($h * 3600 + $m * 60 + $s);
+      }
+
+      1;
+fragments:
+- id: from_hms
+  selector:
+    path: lib/Duration.pm
+    anchor: sub from_hms
+- id: duration_pkg
+  selector:
+    path: lib/Duration.pm
+    anchor: package Duration
+- id: no_stopwatch
+  selector:
+    path: lib/Stopwatch.pm
+- id: no_timer
+  selector:
+    path: lib/Timer.pm
+oracle:
+  required:
+  - from_hms
+  - duration_pkg
+  forbidden:
+  - no_stopwatch
+  - no_timer

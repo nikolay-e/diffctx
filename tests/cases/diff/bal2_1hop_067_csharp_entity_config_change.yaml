@@ -1,0 +1,251 @@
+name: bal2_1hop_067_csharp_entity_config_change
+tags:
+- lang:csharp
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: csharp-no-tree-sitter
+repo:
+  initial_files:
+    src/Entities/Invoice.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Entities
+      {
+          public class Invoice
+          {
+              public int Id { get; set; }
+              public string Number { get; set; }
+              public decimal Total { get; set; }
+              public DateTime IssuedAt { get; set; }
+              public List<InvoiceLine> Lines { get; set; }
+          }
+
+          public class InvoiceLine
+          {
+              public int Id { get; set; }
+              public string Description { get; set; }
+              public decimal Amount { get; set; }
+              public int InvoiceId { get; set; }
+              public Invoice Invoice { get; set; }
+          }
+      }
+    src/Data/InvoiceConfiguration.cs: |
+      using System;
+      using App.Entities;
+      using Microsoft.EntityFrameworkCore;
+      using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
+      namespace App.Data
+      {
+          public class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
+          {
+              public void Configure(EntityTypeBuilder<Invoice> builder)
+              {
+                  builder.HasKey(i => i.Id);
+                  builder.Property(i => i.Number).HasMaxLength(50).IsRequired();
+                  builder.Property(i => i.Total).HasPrecision(18, 2);
+                  builder.HasMany(i => i.Lines).WithOne(l => l.Invoice).HasForeignKey(l => l.InvoiceId);
+              }
+          }
+      }
+    src/Data/AppDbContext.cs: |
+      using System;
+      using App.Entities;
+      using Microsoft.EntityFrameworkCore;
+
+      namespace App.Data
+      {
+          public class AppDbContext : DbContext
+          {
+              public DbSet<Invoice> Invoices { get; set; }
+              public DbSet<InvoiceLine> InvoiceLines { get; set; }
+
+              protected override void OnModelCreating(ModelBuilder modelBuilder)
+              {
+                  modelBuilder.ApplyConfiguration(new InvoiceConfiguration());
+              }
+          }
+      }
+    src/Services/InvoiceService.cs: |
+      using System;
+      using System.Linq;
+      using System.Threading.Tasks;
+      using App.Data;
+      using App.Entities;
+      using Microsoft.EntityFrameworkCore;
+
+      namespace App.Services
+      {
+          public class InvoiceService
+          {
+              private readonly AppDbContext _db;
+
+              public InvoiceService(AppDbContext db)
+              {
+                  _db = db;
+              }
+
+              public async Task<Invoice> GetInvoice(int id)
+              {
+                  return await _db.Invoices.Include(i => i.Lines).FirstOrDefaultAsync(i => i.Id == id);
+              }
+
+              public async Task<decimal> CalculateTotal(int id)
+              {
+                  var invoice = await GetInvoice(id);
+                  return invoice?.Lines.Sum(l => l.Amount) ?? 0;
+              }
+          }
+      }
+    src/Repositories/InvoiceRepository.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Threading.Tasks;
+      using App.Data;
+      using App.Entities;
+      using Microsoft.EntityFrameworkCore;
+
+      namespace App.Repositories
+      {
+          public class InvoiceRepository
+          {
+              private readonly AppDbContext _db;
+
+              public InvoiceRepository(AppDbContext db)
+              {
+                  _db = db;
+              }
+
+              public async Task<List<Invoice>> GetAll()
+              {
+                  return await _db.Invoices.Include(i => i.Lines).ToListAsync();
+              }
+          }
+      }
+    garbage/Reports/PdfGenerator.cs: |
+      using System;
+      GARBAGE_067_PDF_GEN_A = "wkhtmltopdf";
+      GARBAGE_067_PAGE_SIZE_B = "A4";
+
+      namespace App.Reports
+      {
+          public class PdfGenerator
+          {
+              GARBAGE_067_MARGIN_C = 20;
+
+              public byte[] Generate(string html) { return new byte[0]; }
+          }
+      }
+    garbage/Integration/WebhookClient.cs: |
+      using System;
+      GARBAGE_067_WEBHOOK_D = "https://hook.example.com";
+      GARBAGE_067_TIMEOUT_E = 30;
+
+      namespace App.Integration
+      {
+          public class WebhookClient
+          {
+              GARBAGE_067_RETRY_F = 3;
+
+              public void Send(string payload) { }
+          }
+      }
+    garbage/Search/FullTextIndex.cs: |
+      using System;
+      GARBAGE_067_FTS_ENGINE_G = "lucene";
+      GARBAGE_067_ANALYZER_H = "standard";
+
+      namespace App.Search
+      {
+          public class FullTextIndex
+          {
+              GARBAGE_067_SHARD_COUNT_I = 5;
+              GARBAGE_067_REPLICA_J = 1;
+
+              public void Index(string doc) { }
+          }
+      }
+  changed_files:
+    src/Entities/Invoice.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Entities
+      {
+          public class Invoice
+          {
+              public int Id { get; set; }
+              public string Number { get; set; }
+              public decimal SubTotal { get; set; }
+              public decimal TaxRate { get; set; }
+              public decimal Total { get; set; }
+              public DateTime IssuedAt { get; set; }
+              public DateTime? DueDate { get; set; }
+              public string Status { get; set; }
+              public List<InvoiceLine> Lines { get; set; }
+          }
+
+          public class InvoiceLine
+          {
+              public int Id { get; set; }
+              public string Description { get; set; }
+              public decimal Amount { get; set; }
+              public decimal TaxAmount { get; set; }
+              public int InvoiceId { get; set; }
+              public Invoice Invoice { get; set; }
+          }
+      }
+  commit_message: "Add tax fields and status to invoice entity"
+fragments:
+- id: config_configure
+  selector:
+    path: src/Data/InvoiceConfiguration.cs
+    anchor: "public void Configure(EntityTypeBuilder<Invoice> builder)"
+- id: config_total_precision
+  selector:
+    path: src/Data/InvoiceConfiguration.cs
+    anchor: "builder.Property(i => i.Total).HasPrecision(18, 2)"
+- id: dbcontext_invoices
+  selector:
+    path: src/Data/AppDbContext.cs
+    anchor: "public DbSet<Invoice> Invoices"
+- id: service_calculate
+  selector:
+    path: src/Services/InvoiceService.cs
+    anchor: "invoice?.Lines.Sum(l => l.Amount)"
+- id: no_pdf_generator
+  selector:
+    path: garbage/Reports/PdfGenerator.cs
+- id: no_webhook_client
+  selector:
+    path: garbage/Integration/WebhookClient.cs
+- id: no_fulltext_index
+  selector:
+    path: garbage/Search/FullTextIndex.cs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_067_PDF_GEN_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_067_WEBHOOK_D
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_067_FTS_ENGINE_G
+oracle:
+  required:
+  - config_configure
+  - config_total_precision
+  - dbcontext_invoices
+  - service_calculate
+  allowed: []
+  forbidden:
+  - no_pdf_generator
+  - no_webhook_client
+  - no_fulltext_index
+  - no_global_0
+  - no_global_1
+  - no_global_2

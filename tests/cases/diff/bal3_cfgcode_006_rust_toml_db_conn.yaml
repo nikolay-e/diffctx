@@ -1,0 +1,129 @@
+name: bal3_cfgcode_006_rust_toml_db_conn
+tags:
+- lang:rust
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    config/database.toml: |
+      [database]
+      host = "localhost"
+      port = 5432
+      name = "myapp"
+      max_connections = 10
+    src/config/database.rs: |
+      use serde::Deserialize;
+      use std::fs;
+
+      #[derive(Deserialize)]
+      pub struct DatabaseConfig {
+          pub host: String,
+          pub port: u16,
+          pub name: String,
+          pub max_connections: u32,
+      }
+
+      #[derive(Deserialize)]
+      struct ConfigFile {
+          database: DatabaseConfig,
+      }
+
+      pub fn load_database_config(path: &str) -> Result<DatabaseConfig, Box<dyn std::error::Error>> {
+          let content = fs::read_to_string(path)?;
+          let config: ConfigFile = toml::from_str(&content)?;
+          Ok(config.database)
+      }
+
+      impl DatabaseConfig {
+          pub fn connection_string(&self) -> String {
+              format!("postgres://{}:{}/{}", self.host, self.port, self.name)
+          }
+      }
+    src/handlers/user.rs: |
+      GARBAGE_CFGCODE_006_USER_A: &str = "user";
+      GARBAGE_CFGCODE_006_ROLE_B: &str = "admin";
+
+      pub fn get_user() {}
+    src/middleware/auth.rs: |
+      GARBAGE_CFGCODE_006_AUTH_C: &str = "bearer";
+      GARBAGE_CFGCODE_006_EXPIRE_D: u64 = 3600;
+
+      pub fn verify_token() {}
+    src/utils/hash.rs: |
+      GARBAGE_CFGCODE_006_HASH_E: &str = "sha256";
+      GARBAGE_CFGCODE_006_SALT_F: &str = "random";
+
+      pub fn hash_password(password: &str) -> String {
+          password.to_string()
+      }
+  changed_files:
+    config/database.toml: |
+      [database]
+      host = "db.prod.internal"
+      port = 5432
+      name = "myapp_prod"
+      max_connections = 50
+      ssl_mode = "require"
+  commit_message: "switch to production database with SSL"
+fragments:
+- id: db_struct
+  selector:
+    path: src/config/database.rs
+    anchor: "pub struct DatabaseConfig"
+- id: load_config
+  selector:
+    path: src/config/database.rs
+    anchor: "pub fn load_database_config"
+- id: connection_string
+  selector:
+    path: src/config/database.rs
+    anchor: "fn connection_string"
+- id: no_user
+  selector:
+    path: src/handlers/user.rs
+    anchor: "get_user"
+- id: no_auth
+  selector:
+    path: src/middleware/auth.rs
+    anchor: "verify_token"
+- id: no_hash
+  selector:
+    path: src/utils/hash.rs
+    anchor: "hash_password"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_006_USER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_006_ROLE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_006_AUTH_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_006_EXPIRE_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CFGCODE_006_HASH_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CFGCODE_006_SALT_F
+oracle:
+  required:
+  - db_struct
+  - load_config
+  - connection_string
+  allowed: []
+  forbidden:
+  - no_user
+  - no_auth
+  - no_hash
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

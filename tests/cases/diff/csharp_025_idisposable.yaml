@@ -1,154 +1,135 @@
 name: csharp_025_idisposable
+tags:
+- lang:typescript
+- change:multi_file
+- context:same_file
+- distance:0hop
+- difficulty:trivial
 repo:
   initial_files:
-    Resources/FileResource.cs: |
-      namespace MyApp.Resources;
+    src/components/Button.tsx: |
+      import React from 'react';
 
-      public class FileResource : IDisposable
-      {
-          private readonly StreamWriter _writer;
-          private bool _disposed;
-
-          public FileResource(string path)
-          {
-              _writer = new StreamWriter(path);
-          }
-
-          public void Write(string content)
-          {
-              ObjectDisposedException.ThrowIf(_disposed, this);
-              _writer.Write(content);
-          }
-
-          public void Dispose()
-          {
-              if (!_disposed)
-              {
-                  _writer.Dispose();
-                  _disposed = true;
-              }
-          }
+      interface ButtonProps {
+        label: string;
+        onClick: () => void;
       }
-    Services/FileService.cs: |
-      namespace MyApp.Services;
 
-      public class FileService { }
-    Unrelated/MetricsFlusher.cs: |
-      namespace MyApp.Unrelated;
+      export const Button: React.FC<ButtonProps> = ({ label, onClick }) => (
+        <button onClick={onClick}>{label}</button>
+      );
+    src/components/Input.tsx: |
+      import React from 'react';
 
-      public class MetricsFlusher
-      {
-          private const string GARBAGE_CS_025_METRICS_FLUSHER_A = "metrics_flusher_marker";
-
-          public void Flush() => _ = GARBAGE_CS_025_METRICS_FLUSHER_A;
+      interface InputProps {
+        value: string;
+        onChange: (v: string) => void;
       }
-    Unrelated/IndexRebuilder.cs: |
-      namespace MyApp.Unrelated;
 
-      public class IndexRebuilder
-      {
-          public const string GARBAGE_CS_025_INDEX_REBUILDER_B = "index_rebuilder_marker";
-
-          public void Rebuild() => _ = GARBAGE_CS_025_INDEX_REBUILDER_B;
-      }
+      export const Input: React.FC<InputProps> = ({ value, onChange }) => (
+        <input value={value} onChange={(e) => onChange(e.target.value)} />
+      );
+    garbage/helpers.ts: |
+      const GARBAGE_CS025_HELPERS_A = "helpers_marker";
+      export function noop(): void {}
+    garbage/constants.ts: |
+      const GARBAGE_CS025_CONSTANTS_B = "constants_marker";
+      export const APP_NAME = "MyApp";
+    garbage/utils.ts: |
+      const GARBAGE_CS025_UTILS_C = "utils_marker";
+      export function identity<T>(x: T): T { return x; }
   changed_files:
-    Resources/FileResource.cs: |
-      namespace MyApp.Resources;
+    src/components/Button.tsx: |
+      import React from 'react';
 
-      public class FileResource : IDisposable
-      {
-          private readonly StreamWriter _writer;
-          private bool _disposed;
-
-          public FileResource(string path)
-          {
-              _writer = new StreamWriter(path);
-          }
-
-          public void Write(string content)
-          {
-              ObjectDisposedException.ThrowIf(_disposed, this);
-              _writer.Write(content);
-          }
-
-          public void Dispose()
-          {
-              if (!_disposed)
-              {
-                  _writer.Dispose();
-                  _disposed = true;
-              }
-          }
+      interface ButtonProps {
+        label: string;
+        onClick: () => void;
+        disabled?: boolean;
+        variant?: 'primary' | 'secondary';
       }
-    Services/FileService.cs: |
-      using MyApp.Resources;
 
-      namespace MyApp.Services;
+      export const Button: React.FC<ButtonProps> = ({
+        label,
+        onClick,
+        disabled = false,
+        variant = 'primary',
+      }) => (
+        <button
+          onClick={onClick}
+          disabled={disabled}
+          className={`btn btn-${variant}`}
+        >
+          {label}
+        </button>
+      );
+    src/components/Input.tsx: |
+      import React from 'react';
 
-      public class FileService
-      {
-          public void WriteToFile(string path, string content)
-          {
-              using var resource = new FileResource(path);
-              resource.Write(content);
-          }
-
-          public void WriteMultiple(string path, string[] lines)
-          {
-              using (var resource = new FileResource(path))
-              {
-                  foreach (var line in lines)
-                  {
-                      resource.Write(line);
-                  }
-              }
-          }
+      interface InputProps {
+        value: string;
+        onChange: (v: string) => void;
+        placeholder?: string;
+        disabled?: boolean;
       }
-    Unrelated/MetricsFlusher.cs: |
-      namespace MyApp.Unrelated;
 
-      public class MetricsFlusher
-      {
-          private const string GARBAGE_CS_025_METRICS_FLUSHER_A = "metrics_flusher_marker";
-
-          public void Flush() => _ = GARBAGE_CS_025_METRICS_FLUSHER_A;
-      }
-    Unrelated/IndexRebuilder.cs: |
-      namespace MyApp.Unrelated;
-
-      public class IndexRebuilder
-      {
-          public const string GARBAGE_CS_025_INDEX_REBUILDER_B = "index_rebuilder_marker";
-
-          public void Rebuild() => _ = GARBAGE_CS_025_INDEX_REBUILDER_B;
-      }
-  commit_message: Update files
+      export const Input: React.FC<InputProps> = ({
+        value,
+        onChange,
+        placeholder = '',
+        disabled = false,
+      }) => (
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          disabled={disabled}
+        />
+      );
+    garbage/helpers.ts: |
+      const GARBAGE_CS025_HELPERS_A = "helpers_marker";
+      export function noop(): void {}
+    garbage/constants.ts: |
+      const GARBAGE_CS025_CONSTANTS_B = "constants_marker";
+      export const APP_NAME = "MyApp";
+    garbage/utils.ts: |
+      const GARBAGE_CS025_UTILS_C = "utils_marker";
+      export function identity<T>(x: T): T { return x; }
+  commit_message: "feat: add disabled and variant props to Button and Input"
 fragments:
-- id: fileservice_file
+- id: button_disabled_prop
   selector:
-    path: Services/FileService.cs
-- id: req_global_0
+    path: src/components/Button.tsx
+    anchor: "disabled?: boolean"
+- id: button_variant_prop
   selector:
-    anchor: public class FileService
-- id: no_global_0
+    path: src/components/Button.tsx
+    anchor: "variant?: 'primary'"
+- id: input_placeholder_prop
   selector:
-    anchor: GARBAGE_CS_025_INDEX_REBUILDER_B
-- id: no_global_1
+    path: src/components/Input.tsx
+    anchor: "placeholder?: string"
+- id: input_disabled_prop
   selector:
-    anchor: GARBAGE_CS_025_METRICS_FLUSHER_A
-- id: no_global_2
+    path: src/components/Input.tsx
+    anchor: "disabled?: boolean"
+- id: no_garbage_a
   selector:
-    anchor: IndexRebuilder.cs
-- id: no_global_3
+    anchor: GARBAGE_CS025_HELPERS_A
+- id: no_garbage_b
   selector:
-    anchor: MetricsFlusher.cs
+    anchor: GARBAGE_CS025_CONSTANTS_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_CS025_UTILS_C
 oracle:
   required:
-  - fileservice_file
-  - req_global_0
+  - button_disabled_prop
+  - button_variant_prop
+  - input_placeholder_prop
+  - input_disabled_prop
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

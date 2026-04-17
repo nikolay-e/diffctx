@@ -1,0 +1,117 @@
+name: bal4_3hop_070_go_transport_proto_codec_wire
+tags:
+- lang:go
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:trivial
+repo:
+  initial_files:
+    pkg/wire/frame.go: |
+      package wire
+
+      func Encode(data string) []byte {
+          return []byte(data)
+      }
+    pkg/codec/marshal.go: |
+      package codec
+
+      import "myapp/pkg/wire"
+
+      func Marshal(val string) []byte {
+          return wire.Encode(val)
+      }
+    pkg/proto/message.go: |
+      package proto
+
+      import "myapp/pkg/codec"
+
+      func Pack(val string) []byte {
+          return codec.Marshal(val)
+      }
+    pkg/transport/sender.go: |
+      package transport
+
+      import "myapp/pkg/proto"
+
+      func Send(val string) []byte {
+          return proto.Pack(val)
+      }
+    pkg/garbage/dummy.go: |
+      package garbage
+
+      var GARBAGE_070_DUMMY_A = "dummy"
+      var GARBAGE_070_DUMMY_B = 0
+
+      func GarbageDummy() {}
+  changed_files:
+    pkg/wire/frame.go: |
+      package wire
+
+      func Encode(data string, compress bool) []byte {
+          return []byte(data)
+      }
+    pkg/codec/marshal.go: |
+      package codec
+
+      import "myapp/pkg/wire"
+
+      func Marshal(val string) []byte {
+          return wire.Encode(val, false)
+      }
+    pkg/proto/message.go: |
+      package proto
+
+      import "myapp/pkg/codec"
+
+      func Pack(val string) []byte {
+          return codec.Marshal(val)
+      }
+    pkg/transport/sender.go: |
+      package transport
+
+      import "myapp/pkg/proto"
+
+      func Send(val string) []byte {
+          return proto.Pack(val)
+      }
+    pkg/garbage/dummy.go: |
+      package garbage
+
+      var GARBAGE_070_DUMMY_A = "dummy"
+      var GARBAGE_070_DUMMY_B = 0
+
+      func GarbageDummy() {}
+  commit_message: "add compress flag to Encode"
+fragments:
+- id: encode
+  selector:
+    path: pkg/wire/frame.go
+    anchor: "func Encode"
+- id: marshal
+  selector:
+    path: pkg/codec/marshal.go
+    anchor: "func Marshal"
+- id: pack
+  selector:
+    path: pkg/proto/message.go
+    anchor: "func Pack"
+- id: no_garbage_dummy
+  selector:
+    path: pkg/garbage/dummy.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_070_DUMMY_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_070_DUMMY_B
+oracle:
+  required:
+  - encode
+  - marshal
+  - pack
+  allowed: []
+  forbidden:
+  - no_garbage_dummy
+  - no_global_0
+  - no_global_1

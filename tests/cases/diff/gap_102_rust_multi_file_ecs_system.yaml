@@ -1,0 +1,178 @@
+name: gap_102_rust_multi_file_ecs_system
+tags:
+- lang:rust
+- change:multi_file
+- change:new_function
+- change:signature
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/ecs/world.rs: |
+      use crate::ecs::component::ComponentStore;
+      use crate::ecs::entity::EntityId;
+
+      pub struct World {
+          next_id: u64,
+          components: ComponentStore,
+      }
+
+      impl World {
+          pub fn new() -> Self {
+              Self {
+                  next_id: 0,
+                  components: ComponentStore::new(),
+              }
+          }
+
+          pub fn spawn(&mut self) -> EntityId {
+              let id = EntityId(self.next_id);
+              self.next_id += 1;
+              id
+          }
+      }
+    src/ecs/entity.rs: |
+      #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+      pub struct EntityId(pub u64);
+
+      impl EntityId {
+          pub fn raw(&self) -> u64 {
+              self.0
+          }
+      }
+    src/ecs/component.rs: |
+      use std::collections::HashMap;
+      use std::any::{Any, TypeId};
+      use crate::ecs::entity::EntityId;
+
+      pub struct ComponentStore {
+          storage: HashMap<TypeId, HashMap<EntityId, Box<dyn Any>>>,
+      }
+
+      impl ComponentStore {
+          pub fn new() -> Self {
+              Self {
+                  storage: HashMap::new(),
+              }
+          }
+
+          pub fn insert<T: 'static>(&mut self, entity: EntityId, component: T) {
+              self.storage
+                  .entry(TypeId::of::<T>())
+                  .or_default()
+                  .insert(entity, Box::new(component));
+          }
+      }
+    src/renderer/sprite.rs: |
+      pub struct SpriteSheet {
+          texture_id: u32,
+          tile_width: u32,
+          tile_height: u32,
+      }
+
+      impl SpriteSheet {
+          pub fn new(texture_id: u32, tile_width: u32, tile_height: u32) -> Self {
+              Self { texture_id, tile_width, tile_height }
+          }
+
+          pub fn tile_count(&self) -> u32 {
+              (self.tile_width * self.tile_height) / 16
+          }
+      }
+  changed_files:
+    src/ecs/world.rs: |
+      use crate::ecs::component::ComponentStore;
+      use crate::ecs::entity::EntityId;
+
+      pub struct World {
+          next_id: u64,
+          components: ComponentStore,
+      }
+
+      impl World {
+          pub fn new() -> Self {
+              Self {
+                  next_id: 0,
+                  components: ComponentStore::new(),
+              }
+          }
+
+          pub fn spawn(&mut self) -> EntityId {
+              let id = EntityId(self.next_id);
+              self.next_id += 1;
+              id
+          }
+
+          pub fn attach<T: 'static>(&mut self, entity: EntityId, component: T) {
+              self.components.insert(entity, component);
+          }
+
+          pub fn query<T: 'static>(&self, entity: EntityId) -> Option<&T> {
+              self.components.get::<T>(entity)
+          }
+      }
+    src/ecs/component.rs: |
+      use std::collections::HashMap;
+      use std::any::{Any, TypeId};
+      use crate::ecs::entity::EntityId;
+
+      pub struct ComponentStore {
+          storage: HashMap<TypeId, HashMap<EntityId, Box<dyn Any>>>,
+      }
+
+      impl ComponentStore {
+          pub fn new() -> Self {
+              Self {
+                  storage: HashMap::new(),
+              }
+          }
+
+          pub fn insert<T: 'static>(&mut self, entity: EntityId, component: T) {
+              self.storage
+                  .entry(TypeId::of::<T>())
+                  .or_default()
+                  .insert(entity, Box::new(component));
+          }
+
+          pub fn get<T: 'static>(&self, entity: EntityId) -> Option<&T> {
+              self.storage
+                  .get(&TypeId::of::<T>())
+                  .and_then(|map| map.get(&entity))
+                  .and_then(|boxed| boxed.downcast_ref::<T>())
+          }
+      }
+fragments:
+- id: world_attach
+  selector:
+    path: src/ecs/world.rs
+    anchor: "pub fn attach"
+- id: world_query
+  selector:
+    path: src/ecs/world.rs
+    anchor: "pub fn query"
+- id: component_get
+  selector:
+    path: src/ecs/component.rs
+    anchor: "pub fn get<T:"
+- id: entity_id
+  selector:
+    path: src/ecs/entity.rs
+    anchor: "pub struct EntityId"
+- id: no_sprite
+  selector:
+    path: src/renderer/sprite.rs
+- id: no_sprite_sheet
+  selector:
+    anchor: SpriteSheet
+oracle:
+  required:
+  - world_attach
+  - world_query
+  - component_get
+  - entity_id
+  forbidden:
+  - no_sprite
+  - no_sprite_sheet

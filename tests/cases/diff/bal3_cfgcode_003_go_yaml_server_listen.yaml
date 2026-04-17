@@ -1,0 +1,144 @@
+name: bal3_cfgcode_003_go_yaml_server_listen
+tags:
+- lang:go
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    config/server.yaml: |
+      server:
+        host: 0.0.0.0
+        port: 8080
+        read_timeout: 5s
+        write_timeout: 10s
+    cmd/server/main.go: |
+      package main
+
+      import (
+          "fmt"
+          "net/http"
+          "os"
+          "gopkg.in/yaml.v3"
+      )
+
+      type ServerConfig struct {
+          Host         string `yaml:"host"`
+          Port         int    `yaml:"port"`
+          ReadTimeout  string `yaml:"read_timeout"`
+          WriteTimeout string `yaml:"write_timeout"`
+      }
+
+      func loadServerConfig(path string) (*ServerConfig, error) {
+          data, err := os.ReadFile(path)
+          if err != nil {
+              return nil, err
+          }
+          var wrapper struct {
+              Server ServerConfig `yaml:"server"`
+          }
+          if err := yaml.Unmarshal(data, &wrapper); err != nil {
+              return nil, err
+          }
+          return &wrapper.Server, nil
+      }
+
+      func main() {
+          cfg, err := loadServerConfig("config/server.yaml")
+          if err != nil {
+              panic(err)
+          }
+          addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
+          http.ListenAndServe(addr, nil)
+      }
+    internal/middleware/cors.go: |
+      package middleware
+
+      GARBAGE_CFGCODE_003_CORS_A = "cors"
+      GARBAGE_CFGCODE_003_ORIGIN_B = "*"
+
+      func CORSMiddleware() {}
+    internal/handlers/health.go: |
+      package handlers
+
+      GARBAGE_CFGCODE_003_HEALTH_C = "ok"
+      GARBAGE_CFGCODE_003_READY_D = true
+
+      func HealthCheck() string { return "ok" }
+    pkg/utils/strings.go: |
+      package utils
+
+      GARBAGE_CFGCODE_003_TRIM_E = "trim"
+      GARBAGE_CFGCODE_003_PAD_F = "pad"
+
+      func TrimWhitespace(s string) string { return s }
+  changed_files:
+    config/server.yaml: |
+      server:
+        host: 0.0.0.0
+        port: 9090
+        read_timeout: 10s
+        write_timeout: 30s
+        shutdown_timeout: 15s
+  commit_message: "change port to 9090 and add shutdown_timeout"
+fragments:
+- id: server_struct
+  selector:
+    path: cmd/server/main.go
+    anchor: "type ServerConfig struct"
+- id: load_config
+  selector:
+    path: cmd/server/main.go
+    anchor: "func loadServerConfig"
+- id: listen_and_serve
+  selector:
+    path: cmd/server/main.go
+    anchor: "http.ListenAndServe"
+- id: no_cors
+  selector:
+    path: internal/middleware/cors.go
+    anchor: "CORSMiddleware"
+- id: no_health
+  selector:
+    path: internal/handlers/health.go
+    anchor: "HealthCheck"
+- id: no_strings
+  selector:
+    path: pkg/utils/strings.go
+    anchor: "TrimWhitespace"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_003_CORS_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_003_ORIGIN_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_003_HEALTH_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_003_READY_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CFGCODE_003_TRIM_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CFGCODE_003_PAD_F
+oracle:
+  required:
+  - server_struct
+  - load_config
+  - listen_and_serve
+  allowed: []
+  forbidden:
+  - no_cors
+  - no_health
+  - no_strings
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

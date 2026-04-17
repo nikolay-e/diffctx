@@ -1,0 +1,116 @@
+name: gap2_137_ocaml_same_file_currency_converter
+tags:
+- change:single_file
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:ocaml
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    lib/currency.ml: |
+      type t = USD | EUR | GBP | JPY
+
+      let to_string = function
+        | USD -> "USD"
+        | EUR -> "EUR"
+        | GBP -> "GBP"
+        | JPY -> "JPY"
+
+      let rate_to_usd = function
+        | USD -> 1.0
+        | EUR -> 1.09
+        | GBP -> 1.27
+        | JPY -> 0.0067
+
+      let convert amount src dst =
+        let usd = amount *. rate_to_usd src in
+        usd /. rate_to_usd dst
+    lib/interest.ml: |
+      let _GARBAGE_GAP2_137_INT_A = "interest_noise"
+      let _GARBAGE_GAP2_137_INT_B = "compound_noise"
+
+      let simple_interest principal rate years =
+        principal *. rate *. years
+
+      let compound_interest principal rate periods =
+        principal *. (1.0 +. rate) ** periods -. principal
+    lib/tax_calc.ml: |
+      let _GARBAGE_GAP2_137_TAX_C = "tax_noise"
+      let _GARBAGE_GAP2_137_TAX_D = "bracket_noise"
+
+      let flat_tax amount rate = amount *. rate
+
+      let progressive_tax amount brackets =
+        List.fold_left (fun acc (threshold, rate) ->
+          if amount > threshold then acc +. (amount -. threshold) *. rate
+          else acc
+        ) 0.0 brackets
+  changed_files:
+    lib/currency.ml: |
+      type t = USD | EUR | GBP | JPY | CHF
+
+      let to_string = function
+        | USD -> "USD"
+        | EUR -> "EUR"
+        | GBP -> "GBP"
+        | JPY -> "JPY"
+        | CHF -> "CHF"
+
+      let rate_to_usd = function
+        | USD -> 1.0
+        | EUR -> 1.09
+        | GBP -> 1.27
+        | JPY -> 0.0067
+        | CHF -> 1.13
+
+      let convert amount src dst =
+        let usd = amount *. rate_to_usd src in
+        usd /. rate_to_usd dst
+
+      let format amount currency =
+        Printf.sprintf "%s %.2f" (to_string currency) amount
+fragments:
+- id: chf_variant
+  selector:
+    path: lib/currency.ml
+    anchor: "| CHF"
+- id: chf_rate
+  selector:
+    path: lib/currency.ml
+    anchor: "| CHF -> 1.13"
+- id: format_fn
+  selector:
+    path: lib/currency.ml
+    anchor: let format amount currency
+- id: no_interest
+  selector:
+    path: lib/interest.ml
+- id: no_tax
+  selector:
+    path: lib/tax_calc.ml
+- id: no_global_0
+  selector:
+    anchor: _GARBAGE_GAP2_137_INT_A
+- id: no_global_1
+  selector:
+    anchor: _GARBAGE_GAP2_137_INT_B
+- id: no_global_2
+  selector:
+    anchor: _GARBAGE_GAP2_137_TAX_C
+- id: no_global_3
+  selector:
+    anchor: _GARBAGE_GAP2_137_TAX_D
+oracle:
+  required:
+  - chf_variant
+  - chf_rate
+  - format_fn
+  forbidden:
+  - no_interest
+  - no_tax
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

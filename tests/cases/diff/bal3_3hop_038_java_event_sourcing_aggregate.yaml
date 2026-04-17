@@ -1,0 +1,188 @@
+name: bal3_3hop_038_java_event_sourcing_aggregate
+tags:
+- lang:java
+- change:multi_file
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/app/event/DomainEvent.java: |
+      package com.app.event;
+
+      public class DomainEvent {
+          private String eventType;
+          private String payload;
+          public DomainEvent(String eventType, String payload) {
+              this.eventType = eventType;
+              this.payload = payload;
+          }
+          public String getEventType() { return eventType; }
+          public String getPayload() { return payload; }
+      }
+    src/main/java/com/app/event/EventStore.java: |
+      package com.app.event;
+
+      import java.util.ArrayList;
+      import java.util.List;
+
+      public class EventStore {
+          private final List<DomainEvent> events = new ArrayList<>();
+          public void append(DomainEvent event) {
+              events.add(event);
+          }
+          public List<DomainEvent> getEvents() {
+              return new ArrayList<>(events);
+          }
+      }
+    src/main/java/com/app/aggregate/OrderAggregate.java: |
+      package com.app.aggregate;
+
+      import com.app.event.EventStore;
+      import com.app.event.DomainEvent;
+
+      public class OrderAggregate {
+          private final EventStore store;
+          private String status = "new";
+          public OrderAggregate(EventStore store) {
+              this.store = store;
+          }
+          public void place() {
+              this.status = "placed";
+              store.append(new DomainEvent("OrderPlaced", status));
+          }
+          public String getStatus() { return status; }
+      }
+    src/main/java/com/app/service/OrderCommandService.java: |
+      package com.app.service;
+
+      import com.app.aggregate.OrderAggregate;
+      import com.app.event.EventStore;
+
+      public class OrderCommandService {
+          private final EventStore store;
+          public OrderCommandService(EventStore store) {
+              this.store = store;
+          }
+          public OrderAggregate createOrder() {
+              OrderAggregate agg = new OrderAggregate(store);
+              agg.place();
+              return agg;
+          }
+      }
+    src/main/java/com/app/web/OrderCommandController.java: |
+      package com.app.web;
+
+      import com.app.service.OrderCommandService;
+
+      public class OrderCommandController {
+          private final OrderCommandService service;
+          public OrderCommandController(OrderCommandService service) {
+              this.service = service;
+          }
+          public String placeOrder() {
+              service.createOrder();
+              return "order_placed";
+          }
+      }
+    src/main/java/com/app/util/Serializer.java: |
+      package com.app.util;
+
+      public class Serializer {
+          public static String GARBAGE_038_SER_MARKER_A = "ser";
+          public static String GARBAGE_038_DESER_MARKER_B = "deser";
+          public static String serialize(Object obj) { return "{}"; }
+      }
+    src/main/java/com/app/util/Clock.java: |
+      package com.app.util;
+
+      public class Clock {
+          public static String GARBAGE_038_CLOCK_MARKER_C = "utc";
+          public static long GARBAGE_038_OFFSET_MARKER_D = 0;
+          public static long now() { return System.currentTimeMillis(); }
+      }
+  changed_files:
+    src/main/java/com/app/event/DomainEvent.java: |
+      package com.app.event;
+
+      public class DomainEvent {
+          private String eventType;
+          private String payload;
+          private long version;
+          public DomainEvent(String eventType, String payload, long version) {
+              this.eventType = eventType;
+              this.payload = payload;
+              this.version = version;
+          }
+          public String getEventType() { return eventType; }
+          public String getPayload() { return payload; }
+          public long getVersion() { return version; }
+      }
+    src/main/java/com/app/aggregate/OrderAggregate.java: |
+      package com.app.aggregate;
+
+      import com.app.event.EventStore;
+      import com.app.event.DomainEvent;
+
+      public class OrderAggregate {
+          private final EventStore store;
+          private String status = "new";
+          private long version = 0;
+          public OrderAggregate(EventStore store) {
+              this.store = store;
+          }
+          public void place() {
+              this.status = "placed";
+              this.version++;
+              store.append(new DomainEvent("OrderPlaced", status, version));
+          }
+          public String getStatus() { return status; }
+          public long getVersion() { return version; }
+      }
+  commit_message: "feat: add event versioning to aggregate and DomainEvent"
+fragments:
+- id: event_version_field
+  selector:
+    path: src/main/java/com/app/event/DomainEvent.java
+    anchor: "private long version"
+- id: event_get_version
+  selector:
+    path: src/main/java/com/app/event/DomainEvent.java
+    anchor: "getVersion"
+- id: aggregate_version
+  selector:
+    path: src/main/java/com/app/aggregate/OrderAggregate.java
+    anchor: "private long version = 0"
+- id: store_imports_event
+  selector:
+    path: src/main/java/com/app/event/EventStore.java
+    anchor: "append(DomainEvent event)"
+- id: command_service_imports_agg
+  selector:
+    path: src/main/java/com/app/service/OrderCommandService.java
+    anchor: "import com.app.aggregate.OrderAggregate"
+- id: controller_imports_command
+  selector:
+    path: src/main/java/com/app/web/OrderCommandController.java
+    anchor: "import com.app.service.OrderCommandService"
+- id: no_serializer
+  selector:
+    path: src/main/java/com/app/util/Serializer.java
+    anchor: "GARBAGE_038_SER_MARKER_A"
+- id: no_clock
+  selector:
+    path: src/main/java/com/app/util/Clock.java
+    anchor: "GARBAGE_038_CLOCK_MARKER_C"
+oracle:
+  required:
+  - event_version_field
+  - event_get_version
+  - aggregate_version
+  - store_imports_event
+  - command_service_imports_agg
+  allowed:
+  - controller_imports_command
+  forbidden:
+  - no_serializer
+  - no_clock

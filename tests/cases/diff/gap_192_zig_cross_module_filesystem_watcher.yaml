@@ -1,0 +1,256 @@
+name: gap_192_zig_cross_module_filesystem_watcher
+tags:
+- lang:zig
+- change:multi_file
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+repo:
+  initial_files:
+    src/fs/watcher.zig: |
+      const std = @import("std");
+      const ev = @import("event.zig");
+
+      pub const Watcher = struct {
+          root_path: []const u8,
+          recursive: bool,
+          running: bool,
+
+          pub fn init(path: []const u8) Watcher {
+              return Watcher{
+                  .root_path = path,
+                  .recursive = true,
+                  .running = false,
+              };
+          }
+
+          pub fn start(self: *Watcher) void {
+              self.running = true;
+          }
+
+          pub fn stop(self: *Watcher) void {
+              self.running = false;
+          }
+
+          pub fn poll(self: *Watcher) ?ev.FsEvent {
+              if (!self.running) return null;
+              return ev.FsEvent{
+                  .kind = .created,
+                  .path = self.root_path,
+              };
+          }
+      };
+    src/fs/event.zig: |
+      const filter = @import("filter.zig");
+
+      pub const EventKind = enum { created, modified, deleted, renamed };
+
+      pub const FsEvent = struct {
+          kind: EventKind,
+          path: []const u8,
+
+          pub fn shouldProcess(self: FsEvent) bool {
+              return filter.matchesPattern(self.path);
+          }
+      };
+    src/fs/filter.zig: |
+      const ignored_extensions = [_][]const u8{ ".tmp", ".swp", ".bak" };
+
+      pub fn matchesPattern(path: []const u8) bool {
+          for (ignored_extensions) |ext| {
+              if (endsWith(path, ext)) return false;
+          }
+          return true;
+      }
+
+      fn endsWith(haystack: []const u8, needle: []const u8) bool {
+          if (needle.len > haystack.len) return false;
+          return std.mem.eql(u8, haystack[haystack.len - needle.len ..], needle);
+      }
+
+      const std = @import("std");
+    src/fs/debounce.zig: |
+      const ev = @import("event.zig");
+
+      pub fn shouldEmit(event: ev.FsEvent, last_time: u64, threshold: u64) bool {
+          _ = event;
+          _ = last_time;
+          _ = threshold;
+          return true;
+      }
+    src/net/socket.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_192_SOCKET_MARKER_A: []const u8 = "socket_noise";
+      const TRAP_GAP_192_SOCKET_FLAG_B: u16 = 8080;
+
+      pub fn connect(host: []const u8, port: u16) void {
+          _ = host;
+          _ = port;
+      }
+
+      pub fn disconnect() void {}
+    src/log/rotating.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_192_ROTATE_MARKER_C: []const u8 = "rotate_noise";
+      const TRAP_GAP_192_ROTATE_FLAG_D: u32 = 5;
+
+      pub fn rotate(path: []const u8) void {
+          _ = path;
+      }
+
+      pub fn compress(path: []const u8) void {
+          _ = path;
+      }
+  changed_files:
+    src/fs/watcher.zig: |
+      const std = @import("std");
+      const ev = @import("event.zig");
+
+      pub const Watcher = struct {
+          root_path: []const u8,
+          recursive: bool,
+          running: bool,
+          debounce_ms: u64,
+
+          pub fn init(path: []const u8) Watcher {
+              return Watcher{
+                  .root_path = path,
+                  .recursive = true,
+                  .running = false,
+                  .debounce_ms = 100,
+              };
+          }
+
+          pub fn start(self: *Watcher) void {
+              self.running = true;
+          }
+
+          pub fn stop(self: *Watcher) void {
+              self.running = false;
+          }
+
+          pub fn poll(self: *Watcher) ?ev.FsEvent {
+              if (!self.running) return null;
+              return ev.FsEvent{
+                  .kind = .created,
+                  .path = self.root_path,
+                  .timestamp = 0,
+              };
+          }
+      };
+    src/fs/event.zig: |
+      const filter = @import("filter.zig");
+
+      pub const EventKind = enum { created, modified, deleted, renamed };
+
+      pub const FsEvent = struct {
+          kind: EventKind,
+          path: []const u8,
+          timestamp: u64,
+
+          pub fn shouldProcess(self: FsEvent) bool {
+              return filter.matchesPattern(self.path);
+          }
+      };
+    src/fs/filter.zig: |
+      const ignored_extensions = [_][]const u8{ ".tmp", ".swp", ".bak" };
+
+      pub fn matchesPattern(path: []const u8) bool {
+          for (ignored_extensions) |ext| {
+              if (endsWith(path, ext)) return false;
+          }
+          return true;
+      }
+
+      fn endsWith(haystack: []const u8, needle: []const u8) bool {
+          if (needle.len > haystack.len) return false;
+          return std.mem.eql(u8, haystack[haystack.len - needle.len ..], needle);
+      }
+
+      const std = @import("std");
+    src/fs/debounce.zig: |
+      const ev = @import("event.zig");
+
+      pub fn shouldEmit(event: ev.FsEvent, last_time: u64, threshold: u64) bool {
+          _ = event;
+          _ = last_time;
+          _ = threshold;
+          return true;
+      }
+    src/net/socket.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_192_SOCKET_MARKER_A: []const u8 = "socket_noise";
+      const TRAP_GAP_192_SOCKET_FLAG_B: u16 = 8080;
+
+      pub fn connect(host: []const u8, port: u16) void {
+          _ = host;
+          _ = port;
+      }
+
+      pub fn disconnect() void {}
+    src/log/rotating.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_192_ROTATE_MARKER_C: []const u8 = "rotate_noise";
+      const TRAP_GAP_192_ROTATE_FLAG_D: u32 = 5;
+
+      pub fn rotate(path: []const u8) void {
+          _ = path;
+      }
+
+      pub fn compress(path: []const u8) void {
+          _ = path;
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: watcher_debounce
+  selector:
+    path: src/fs/watcher.zig
+    anchor: "debounce_ms: u64"
+- id: event_timestamp
+  selector:
+    path: src/fs/event.zig
+    anchor: "timestamp: u64"
+- id: filter_matches
+  selector:
+    path: src/fs/filter.zig
+    anchor: "pub fn matchesPattern(path: []const u8) bool"
+- id: debounce_emit
+  selector:
+    path: src/fs/debounce.zig
+    anchor: "pub fn shouldEmit"
+- id: no_socket
+  selector:
+    path: src/net/socket.zig
+- id: no_rotating
+  selector:
+    path: src/log/rotating.zig
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP_192_SOCKET_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP_192_SOCKET_FLAG_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP_192_ROTATE_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP_192_ROTATE_FLAG_D
+oracle:
+  required:
+  - watcher_debounce
+  - event_timestamp
+  allowed: []
+  forbidden:
+  - no_socket
+  - no_rotating
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

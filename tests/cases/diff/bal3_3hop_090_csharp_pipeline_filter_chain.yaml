@@ -1,0 +1,307 @@
+name: bal3_3hop_090_csharp_pipeline_filter_chain
+tags:
+- lang:csharp
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/Filters/IFilter.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Filters
+      {
+          public interface IFilter<T>
+          {
+              IEnumerable<T> Apply(IEnumerable<T> items);
+          }
+      }
+    src/Filters/PriceRangeFilter.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Linq;
+      using App.Filters;
+
+      namespace App.Filters
+      {
+          public class PriceRangeFilter : IFilter<Product>
+          {
+              private readonly decimal _min;
+              private readonly decimal _max;
+              public PriceRangeFilter(decimal min, decimal max)
+              {
+                  _min = min;
+                  _max = max;
+              }
+              public IEnumerable<Product> Apply(IEnumerable<Product> items)
+              {
+                  return items.Where(p => p.Price >= _min && p.Price <= _max);
+              }
+          }
+      }
+    src/Pipeline/FilterPipeline.cs: |
+      using System;
+      using System.Collections.Generic;
+      using App.Filters;
+
+      namespace App.Pipeline
+      {
+          public class FilterPipeline<T>
+          {
+              private readonly List<IFilter<T>> _filters = new();
+              public FilterPipeline<T> AddFilter(IFilter<T> filter)
+              {
+                  _filters.Add(filter);
+                  return this;
+              }
+              public IEnumerable<T> Execute(IEnumerable<T> items)
+              {
+                  var result = items;
+                  foreach (var filter in _filters)
+                  {
+                      result = filter.Apply(result);
+                  }
+                  return result;
+              }
+          }
+      }
+    src/Services/SearchService.cs: |
+      using System;
+      using System.Collections.Generic;
+      using App.Pipeline;
+
+      namespace App.Services
+      {
+          public class SearchService
+          {
+              private readonly FilterPipeline<Product> _pipeline;
+              public SearchService(FilterPipeline<Product> pipeline)
+              {
+                  _pipeline = pipeline;
+              }
+              public IEnumerable<Product> Search(IEnumerable<Product> products)
+              {
+                  return _pipeline.Execute(products);
+              }
+          }
+      }
+    src/Controllers/SearchController.cs: |
+      using System;
+      using System.Collections.Generic;
+      using App.Services;
+
+      namespace App.Controllers
+      {
+          public class SearchController
+          {
+              private readonly SearchService _service;
+              public SearchController(SearchService service)
+              {
+                  _service = service;
+              }
+              public IEnumerable<Product> Search(IEnumerable<Product> products)
+              {
+                  return _service.Search(products);
+              }
+          }
+      }
+    src/Analytics/SearchAnalytics.cs: |
+      using System;
+      // GARBAGE_090_ANALYTICS_A = "search"
+      // GARBAGE_090_METRIC_B = "count"
+
+      namespace App.Analytics
+      {
+          public class SearchAnalytics
+          {
+              public void Track(string query) { }
+          }
+      }
+    src/Analytics/ClickAnalytics.cs: |
+      using System;
+      // GARBAGE_090_CLICK_C = "analytics"
+      // GARBAGE_090_EVENT_D = "click"
+
+      namespace App.Analytics
+      {
+          public class ClickAnalytics
+          {
+              public void Track(string elementId) { }
+          }
+      }
+  changed_files:
+    src/Filters/IFilter.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Filters
+      {
+          public interface IFilter<T>
+          {
+              IEnumerable<T> Apply(IEnumerable<T> items);
+              bool IsApplicable(IEnumerable<T> items);
+          }
+      }
+    src/Filters/PriceRangeFilter.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Linq;
+      using App.Filters;
+
+      namespace App.Filters
+      {
+          public class PriceRangeFilter : IFilter<Product>
+          {
+              private readonly decimal _min;
+              private readonly decimal _max;
+              public PriceRangeFilter(decimal min, decimal max)
+              {
+                  _min = min;
+                  _max = max;
+              }
+              public IEnumerable<Product> Apply(IEnumerable<Product> items)
+              {
+                  return items.Where(p => p.Price >= _min && p.Price <= _max);
+              }
+              public bool IsApplicable(IEnumerable<Product> items)
+              {
+                  return _min >= 0 && _max > _min;
+              }
+          }
+      }
+    src/Pipeline/FilterPipeline.cs: |
+      using System;
+      using System.Collections.Generic;
+      using App.Filters;
+
+      namespace App.Pipeline
+      {
+          public class FilterPipeline<T>
+          {
+              private readonly List<IFilter<T>> _filters = new();
+              public FilterPipeline<T> AddFilter(IFilter<T> filter)
+              {
+                  _filters.Add(filter);
+                  return this;
+              }
+              public IEnumerable<T> Execute(IEnumerable<T> items)
+              {
+                  var result = items;
+                  foreach (var filter in _filters)
+                  {
+                      if (filter.IsApplicable(result))
+                      {
+                          result = filter.Apply(result);
+                      }
+                  }
+                  return result;
+              }
+          }
+      }
+    src/Services/SearchService.cs: |
+      using System;
+      using System.Collections.Generic;
+      using App.Pipeline;
+
+      namespace App.Services
+      {
+          public class SearchService
+          {
+              private readonly FilterPipeline<Product> _pipeline;
+              public SearchService(FilterPipeline<Product> pipeline)
+              {
+                  _pipeline = pipeline;
+              }
+              public IEnumerable<Product> Search(IEnumerable<Product> products)
+              {
+                  return _pipeline.Execute(products);
+              }
+          }
+      }
+    src/Controllers/SearchController.cs: |
+      using System;
+      using System.Collections.Generic;
+      using App.Services;
+
+      namespace App.Controllers
+      {
+          public class SearchController
+          {
+              private readonly SearchService _service;
+              public SearchController(SearchService service)
+              {
+                  _service = service;
+              }
+              public IEnumerable<Product> Search(IEnumerable<Product> products)
+              {
+                  return _service.Search(products);
+              }
+          }
+      }
+    src/Analytics/SearchAnalytics.cs: |
+      using System;
+      // GARBAGE_090_ANALYTICS_A = "search"
+      // GARBAGE_090_METRIC_B = "count"
+
+      namespace App.Analytics
+      {
+          public class SearchAnalytics
+          {
+              public void Track(string query) { }
+          }
+      }
+    src/Analytics/ClickAnalytics.cs: |
+      using System;
+      // GARBAGE_090_CLICK_C = "analytics"
+      // GARBAGE_090_EVENT_D = "click"
+
+      namespace App.Analytics
+      {
+          public class ClickAnalytics
+          {
+              public void Track(string elementId) { }
+          }
+      }
+  commit_message: "fix: skip inapplicable filters in pipeline to prevent invalid results"
+fragments:
+- id: filter_is_applicable
+  selector:
+    path: src/Filters/IFilter.cs
+    anchor: "IsApplicable"
+- id: price_filter_applicable
+  selector:
+    path: src/Filters/PriceRangeFilter.cs
+    anchor: "IsApplicable"
+- id: pipeline_checks_applicable
+  selector:
+    path: src/Pipeline/FilterPipeline.cs
+    anchor: "filter.IsApplicable"
+- id: service_uses_pipeline
+  selector:
+    path: src/Services/SearchService.cs
+    anchor: "using App.Pipeline"
+- id: controller_uses_service
+  selector:
+    path: src/Controllers/SearchController.cs
+    anchor: "using App.Services"
+- id: no_search_analytics
+  selector:
+    path: src/Analytics/SearchAnalytics.cs
+    anchor: "GARBAGE_090_ANALYTICS_A"
+- id: no_click_analytics
+  selector:
+    path: src/Analytics/ClickAnalytics.cs
+    anchor: "GARBAGE_090_CLICK_C"
+oracle:
+  required:
+  - filter_is_applicable
+  - price_filter_applicable
+  - pipeline_checks_applicable
+  - service_uses_pipeline
+  - controller_uses_service
+  allowed: []
+  forbidden:
+  - no_search_analytics
+  - no_click_analytics

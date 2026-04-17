@@ -1,0 +1,196 @@
+name: bal_3hop_031_typescript_rest_api_user_crud
+tags:
+- lang:typescript
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/types/user.ts: |
+      export interface User {
+        id: string;
+        name: string;
+        email: string;
+      }
+
+      export type CreateUserInput = Pick<User, 'name' | 'email'>;
+    src/validators/user.ts: |
+      import { CreateUserInput } from '../types/user';
+
+      export function validateCreateUser(input: CreateUserInput): string[] {
+        const errors: string[] = [];
+        if (!input.name) errors.push('Name is required');
+        if (!input.email) errors.push('Email is required');
+        return errors;
+      }
+    src/services/user.ts: |
+      import { validateCreateUser } from '../validators/user';
+      import { CreateUserInput, User } from '../types/user';
+
+      export class UserService {
+        private users: User[] = [];
+
+        create(input: CreateUserInput): User {
+          const errors = validateCreateUser(input);
+          if (errors.length > 0) throw new Error(errors.join(', '));
+          const user: User = { id: String(this.users.length + 1), ...input };
+          this.users.push(user);
+          return user;
+        }
+      }
+    src/routes/user.ts: |
+      import { UserService } from '../services/user';
+      import { Request, Response } from 'express';
+
+      const service = new UserService();
+
+      export function createUserHandler(req: Request, res: Response): void {
+        const user = service.create(req.body);
+        res.status(201).json(user);
+      }
+
+      export function listUsersHandler(req: Request, res: Response): void {
+        res.json([]);
+      }
+    src/utils/crypto.ts: |
+      import crypto from 'crypto';
+      GARBAGE_031_CRYPTO_MARKER_A = "crypto_util";
+      GARBAGE_031_HASH_MARKER_B = true;
+
+      export function hashPassword(password: string): string {
+        return crypto.createHash('sha256').update(password).digest('hex');
+      }
+    src/utils/date.ts: |
+      GARBAGE_031_DATE_MARKER_C = "date_util";
+      GARBAGE_031_FORMAT_MARKER_D = true;
+
+      export function formatDate(d: Date): string {
+        return d.toISOString().split('T')[0];
+      }
+    src/middleware/cors.ts: |
+      GARBAGE_031_CORS_MARKER_E = "cors";
+      GARBAGE_031_ORIGIN_MARKER_F = "*";
+
+      export function corsMiddleware(req: any, res: any, next: any): void {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        next();
+      }
+  changed_files:
+    src/types/user.ts: |
+      export interface User {
+        id: string;
+        name: string;
+        email: string;
+        role: 'admin' | 'member';
+      }
+
+      export type CreateUserInput = Pick<User, 'name' | 'email' | 'role'>;
+    src/validators/user.ts: |
+      import { CreateUserInput } from '../types/user';
+
+      export function validateCreateUser(input: CreateUserInput): string[] {
+        const errors: string[] = [];
+        if (!input.name) errors.push('Name is required');
+        if (!input.email) errors.push('Email is required');
+        if (!input.role) errors.push('Role is required');
+        return errors;
+      }
+    src/services/user.ts: |
+      import { validateCreateUser } from '../validators/user';
+      import { CreateUserInput, User } from '../types/user';
+
+      export class UserService {
+        private users: User[] = [];
+
+        create(input: CreateUserInput): User {
+          const errors = validateCreateUser(input);
+          if (errors.length > 0) throw new Error(errors.join(', '));
+          const user: User = { id: String(this.users.length + 1), ...input };
+          this.users.push(user);
+          return user;
+        }
+      }
+    src/routes/user.ts: |
+      import { UserService } from '../services/user';
+      import { Request, Response } from 'express';
+
+      const service = new UserService();
+
+      export function createUserHandler(req: Request, res: Response): void {
+        const user = service.create(req.body);
+        res.status(201).json(user);
+      }
+
+      export function listUsersHandler(req: Request, res: Response): void {
+        res.json([]);
+      }
+    src/utils/crypto.ts: |
+      import crypto from 'crypto';
+      GARBAGE_031_CRYPTO_MARKER_A = "crypto_util";
+      GARBAGE_031_HASH_MARKER_B = true;
+
+      export function hashPassword(password: string): string {
+        return crypto.createHash('sha256').update(password).digest('hex');
+      }
+    src/utils/date.ts: |
+      GARBAGE_031_DATE_MARKER_C = "date_util";
+      GARBAGE_031_FORMAT_MARKER_D = true;
+
+      export function formatDate(d: Date): string {
+        return d.toISOString().split('T')[0];
+      }
+    src/middleware/cors.ts: |
+      GARBAGE_031_CORS_MARKER_E = "cors";
+      GARBAGE_031_ORIGIN_MARKER_F = "*";
+
+      export function corsMiddleware(req: any, res: any, next: any): void {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        next();
+      }
+  commit_message: "feat: add role field to User type"
+fragments:
+- id: user_type_role
+  selector:
+    path: src/types/user.ts
+    anchor: "role: 'admin' | 'member'"
+- id: validator_role_check
+  selector:
+    path: src/validators/user.ts
+    anchor: "if (!input.role)"
+- id: service_imports_validator
+  selector:
+    path: src/services/user.ts
+    anchor: "import { validateCreateUser } from '../validators/user'"
+- id: route_imports_service
+  selector:
+    path: src/routes/user.ts
+    anchor: "import { UserService } from '../services/user'"
+- id: route_create_handler
+  selector:
+    path: src/routes/user.ts
+    anchor: "export function createUserHandler"
+- id: no_crypto
+  selector:
+    path: src/utils/crypto.ts
+    anchor: "GARBAGE_031_CRYPTO_MARKER_A"
+- id: no_date
+  selector:
+    path: src/utils/date.ts
+    anchor: "GARBAGE_031_DATE_MARKER_C"
+- id: no_cors
+  selector:
+    path: src/middleware/cors.ts
+    anchor: "GARBAGE_031_CORS_MARKER_E"
+oracle:
+  required:
+  - user_type_role
+  - validator_role_check
+  - service_imports_validator
+  - route_imports_service
+  - route_create_handler
+  allowed: []
+  forbidden:
+  - no_crypto
+  - no_date
+  - no_cors

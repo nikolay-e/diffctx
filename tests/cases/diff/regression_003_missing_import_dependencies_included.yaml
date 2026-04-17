@@ -1,4 +1,12 @@
 name: regression_003_missing_import_dependencies_included
+tags:
+- lang:python
+- change:single_file
+- change:new_function
+- change:signature
+- context:import_chain
+- distance:2hop
+- difficulty:medium
 repo:
   initial_files:
     src/analytics/service.py: |

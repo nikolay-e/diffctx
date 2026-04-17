@@ -1,0 +1,135 @@
+name: bal3_bugfix_021_kotlin_null_safety
+tags:
+- lang:elixir
+- change:new_function
+- change:single_file
+- context:import_chain
+- distance:2hop
+- difficulty:medium
+repo:
+  initial_files:
+    lib/crm/contact.ex: |
+      defmodule CRM.Contact do
+        defstruct [:id, :email, :phone, :tags, :created_at]
+
+        def tagged_with?(%__MODULE__{tags: tags}, tag) do
+          tag in (tags || [])
+        end
+
+        def add_tag(%__MODULE__{tags: tags} = contact, tag) do
+          existing = tags || []
+          if tag in existing do
+            contact
+          else
+            %{contact | tags: [tag | existing]}
+          end
+        end
+      end
+    lib/crm/segment_service.ex: |
+      defmodule CRM.SegmentService do
+        alias CRM.Contact
+
+        def contacts_in_segment(contacts, segment_tag) do
+          Enum.filter(contacts, &Contact.tagged_with?(&1, segment_tag))
+        end
+      end
+    lib/crm/campaign_engine.ex: |
+      defmodule CRM.CampaignEngine do
+        alias CRM.SegmentService
+
+        def target_contacts(all_contacts, segment_tag) do
+          SegmentService.contacts_in_segment(all_contacts, segment_tag)
+        end
+      end
+    garbage/EmailSender.ex: |
+      # GARBAGE_CRM_A = "email_sender_marker"
+    garbage/SmsGateway.ex: |
+      # GARBAGE_CRM_B = "sms_gateway_marker"
+    garbage/LeadScorer.ex: |
+      # GARBAGE_CRM_C = "lead_scorer_marker"
+    garbage/ActivityLog.ex: |
+      # GARBAGE_CRM_D = "activity_log_marker"
+  changed_files:
+    lib/crm/contact.ex: |
+      defmodule CRM.Contact do
+        defstruct [:id, :email, :phone, :tags, :created_at]
+
+        def tagged_with?(%__MODULE__{tags: tags}, tag) do
+          tag in (tags || [])
+        end
+
+        def add_tag(%__MODULE__{tags: tags} = contact, tag) do
+          existing = tags || []
+          if tag in existing do
+            contact
+          else
+            %{contact | tags: [tag | existing]}
+          end
+        end
+
+        def remove_tag(%__MODULE__{tags: tags} = contact, tag) do
+          updated = (tags || []) |> Enum.reject(&(&1 == tag))
+          %{contact | tags: updated}
+        end
+
+        def tag_count(%__MODULE__{tags: tags}), do: length(tags || [])
+      end
+    lib/crm/segment_service.ex: |
+      defmodule CRM.SegmentService do
+        alias CRM.Contact
+
+        def contacts_in_segment(contacts, segment_tag) do
+          Enum.filter(contacts, &Contact.tagged_with?(&1, segment_tag))
+        end
+      end
+    lib/crm/campaign_engine.ex: |
+      defmodule CRM.CampaignEngine do
+        alias CRM.SegmentService
+
+        def target_contacts(all_contacts, segment_tag) do
+          SegmentService.contacts_in_segment(all_contacts, segment_tag)
+        end
+      end
+    garbage/EmailSender.ex: |
+      # GARBAGE_CRM_A = "email_sender_marker"
+    garbage/SmsGateway.ex: |
+      # GARBAGE_CRM_B = "sms_gateway_marker"
+    garbage/LeadScorer.ex: |
+      # GARBAGE_CRM_C = "lead_scorer_marker"
+    garbage/ActivityLog.ex: |
+      # GARBAGE_CRM_D = "activity_log_marker"
+  commit_message: "feat: add remove_tag and tag_count to CRM.Contact"
+fragments:
+- id: remove_tag
+  selector:
+    anchor: "def remove_tag"
+- id: tag_count
+  selector:
+    anchor: "def tag_count"
+- id: segment_service
+  selector:
+    path: lib/crm/segment_service.ex
+    anchor: "def contacts_in_segment"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_CRM_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_CRM_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_CRM_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_CRM_D
+oracle:
+  required:
+  - remove_tag
+  - tag_count
+  allowed:
+  - segment_service
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

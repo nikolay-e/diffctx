@@ -1,0 +1,215 @@
+name: gap_199_zig_same_file_color_space_convert
+tags:
+- lang:zig
+- change:single_file
+- context:same_file
+- difficulty:easy
+- distance:0hop
+repo:
+  initial_files:
+    src/color.zig: |
+      pub const RGB = struct {
+          r: u8,
+          g: u8,
+          b: u8,
+
+          pub fn toGrayscale(self: RGB) u8 {
+              const rf = @as(f32, @floatFromInt(self.r)) * 0.299;
+              const gf = @as(f32, @floatFromInt(self.g)) * 0.587;
+              const bf = @as(f32, @floatFromInt(self.b)) * 0.114;
+              return @intFromFloat(rf + gf + bf);
+          }
+
+          pub fn invert(self: RGB) RGB {
+              return RGB{
+                  .r = 255 - self.r,
+                  .g = 255 - self.g,
+                  .b = 255 - self.b,
+              };
+          }
+
+          pub fn blend(a: RGB, b: RGB, t: f32) RGB {
+              const mix = struct {
+                  fn m(x: u8, y: u8, factor: f32) u8 {
+                      const xf = @as(f32, @floatFromInt(x));
+                      const yf = @as(f32, @floatFromInt(y));
+                      return @intFromFloat(xf + (yf - xf) * factor);
+                  }
+              };
+              return RGB{
+                  .r = mix.m(a.r, b.r, t),
+                  .g = mix.m(a.g, b.g, t),
+                  .b = mix.m(a.b, b.b, t),
+              };
+          }
+      };
+    src/palette.zig: |
+      const TRAP_GAP_199_PALETTE_MARKER_A: []const u8 = "palette_noise";
+      const TRAP_GAP_199_PALETTE_FLAG_B: u32 = 16;
+
+      pub const default_palette = [4]u32{ 0x000000, 0xFF0000, 0x00FF00, 0x0000FF };
+
+      pub fn lookupColor(idx: u8) u32 {
+          return default_palette[idx % 4];
+      }
+    src/gradient.zig: |
+      const TRAP_GAP_199_GRADIENT_MARKER_C: []const u8 = "gradient_noise";
+      const TRAP_GAP_199_GRADIENT_FLAG_D: bool = true;
+
+      pub fn linearGradient(steps: u32) void {
+          _ = steps;
+      }
+
+      pub fn radialGradient(cx: f32, cy: f32, radius: f32) void {
+          _ = cx;
+          _ = cy;
+          _ = radius;
+      }
+    src/texture.zig: |
+      const TRAP_GAP_199_TEXTURE_MARKER_E: []const u8 = "texture_noise";
+      const TRAP_GAP_199_TEXTURE_FLAG_F: u32 = 512;
+
+      pub fn loadTexture(path: []const u8) void {
+          _ = path;
+      }
+
+      pub fn unloadTexture(id: u32) void {
+          _ = id;
+      }
+  changed_files:
+    src/color.zig: |
+      pub const RGB = struct {
+          r: u8,
+          g: u8,
+          b: u8,
+
+          pub fn toGrayscale(self: RGB) u8 {
+              const rf = @as(f32, @floatFromInt(self.r)) * 0.299;
+              const gf = @as(f32, @floatFromInt(self.g)) * 0.587;
+              const bf = @as(f32, @floatFromInt(self.b)) * 0.114;
+              return @intFromFloat(rf + gf + bf);
+          }
+
+          pub fn invert(self: RGB) RGB {
+              return RGB{
+                  .r = 255 - self.r,
+                  .g = 255 - self.g,
+                  .b = 255 - self.b,
+              };
+          }
+
+          pub fn blend(a: RGB, b: RGB, t: f32) RGB {
+              const mix = struct {
+                  fn m(x: u8, y: u8, factor: f32) u8 {
+                      const xf = @as(f32, @floatFromInt(x));
+                      const yf = @as(f32, @floatFromInt(y));
+                      return @intFromFloat(xf + (yf - xf) * factor);
+                  }
+              };
+              return RGB{
+                  .r = mix.m(a.r, b.r, t),
+                  .g = mix.m(a.g, b.g, t),
+                  .b = mix.m(a.b, b.b, t),
+              };
+          }
+
+          pub fn toHex(self: RGB) u32 {
+              return (@as(u32, self.r) << 16) | (@as(u32, self.g) << 8) | @as(u32, self.b);
+          }
+
+          pub fn brightness(self: RGB) f32 {
+              return @as(f32, @floatFromInt(self.r + self.g + self.b)) / 765.0;
+          }
+      };
+    src/palette.zig: |
+      const TRAP_GAP_199_PALETTE_MARKER_A: []const u8 = "palette_noise";
+      const TRAP_GAP_199_PALETTE_FLAG_B: u32 = 16;
+
+      pub const default_palette = [4]u32{ 0x000000, 0xFF0000, 0x00FF00, 0x0000FF };
+
+      pub fn lookupColor(idx: u8) u32 {
+          return default_palette[idx % 4];
+      }
+    src/gradient.zig: |
+      const TRAP_GAP_199_GRADIENT_MARKER_C: []const u8 = "gradient_noise";
+      const TRAP_GAP_199_GRADIENT_FLAG_D: bool = true;
+
+      pub fn linearGradient(steps: u32) void {
+          _ = steps;
+      }
+
+      pub fn radialGradient(cx: f32, cy: f32, radius: f32) void {
+          _ = cx;
+          _ = cy;
+          _ = radius;
+      }
+    src/texture.zig: |
+      const TRAP_GAP_199_TEXTURE_MARKER_E: []const u8 = "texture_noise";
+      const TRAP_GAP_199_TEXTURE_FLAG_F: u32 = 512;
+
+      pub fn loadTexture(path: []const u8) void {
+          _ = path;
+      }
+
+      pub fn unloadTexture(id: u32) void {
+          _ = id;
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: to_hex
+  selector:
+    path: src/color.zig
+    anchor: "pub fn toHex(self: RGB) u32"
+- id: brightness
+  selector:
+    path: src/color.zig
+    anchor: "pub fn brightness(self: RGB) f32"
+- id: rgb_struct
+  selector:
+    path: src/color.zig
+    anchor: "pub const RGB = struct"
+- id: no_palette
+  selector:
+    path: src/palette.zig
+- id: no_gradient
+  selector:
+    path: src/gradient.zig
+- id: no_texture
+  selector:
+    path: src/texture.zig
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP_199_PALETTE_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP_199_PALETTE_FLAG_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP_199_GRADIENT_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP_199_GRADIENT_FLAG_D
+- id: no_global_4
+  selector:
+    anchor: TRAP_GAP_199_TEXTURE_MARKER_E
+- id: no_global_5
+  selector:
+    anchor: TRAP_GAP_199_TEXTURE_FLAG_F
+oracle:
+  required:
+  - to_hex
+  - brightness
+  - rgb_struct
+  allowed: []
+  forbidden:
+  - no_palette
+  - no_gradient
+  - no_texture
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

@@ -1,0 +1,107 @@
+name: c_family_004_function_pointer_callback
+tags:
+- lang:c
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    event.h: |
+      #ifndef EVENT_H
+      #define EVENT_H
+      typedef void (*EventCallback)(int event_id);
+      void event_register(EventCallback cb);
+      void event_fire(int event_id);
+      #endif
+    event.c: |
+      #include "event.h"
+      static EventCallback g_cb = 0;
+      void event_register(EventCallback cb) { g_cb = cb; }
+      void event_fire(int event_id) { if (g_cb) g_cb(event_id); }
+    input.c: |
+      #include "event.h"
+      static void on_input(int event_id) { /* handle input event */ }
+      void input_init(void) { event_register(on_input); }
+    ui.c: |
+      #include "event.h"
+      static void on_ui(int event_id) { /* handle ui event */ }
+      void ui_init(void) { event_register(on_ui); }
+    C_NOISE_004_crypto.h: |
+      #ifndef C_NOISE_004_CRYPTO_H
+      #define C_NOISE_004_CRYPTO_H
+      void C_NOISE_004_hash(const unsigned char *data, int len, unsigned char *out);
+      #endif
+    C_NOISE_004_crypto.c: |
+      #include "C_NOISE_004_crypto.h"
+      void C_NOISE_004_hash(const unsigned char *data, int len, unsigned char *out) {}
+  changed_files:
+    event.h: |
+      #ifndef EVENT_H
+      #define EVENT_H
+      typedef void (*EventCallback)(int event_id, void *user_data);
+      void event_register(EventCallback cb, void *user_data);
+      void event_fire(int event_id);
+      #endif
+    event.c: |
+      #include "event.h"
+      static EventCallback g_cb = 0;
+      static void *g_user_data = 0;
+      void event_register(EventCallback cb, void *user_data) { g_cb = cb; g_user_data = user_data; }
+      void event_fire(int event_id) { if (g_cb) g_cb(event_id, g_user_data); }
+    input.c: |
+      #include "event.h"
+      static void on_input(int event_id, void *user_data) { /* handle input event */ }
+      void input_init(void) { event_register(on_input, 0); }
+    ui.c: |
+      #include "event.h"
+      static void on_ui(int event_id, void *user_data) { /* handle ui event */ }
+      void ui_init(void) { event_register(on_ui, 0); }
+    C_NOISE_004_crypto.h: |
+      #ifndef C_NOISE_004_CRYPTO_H
+      #define C_NOISE_004_CRYPTO_H
+      void C_NOISE_004_hash(const unsigned char *data, int len, unsigned char *out);
+      #endif
+    C_NOISE_004_crypto.c: |
+      #include "C_NOISE_004_crypto.h"
+      void C_NOISE_004_hash(const unsigned char *data, int len, unsigned char *out) {}
+  commit_message: "feat: add user_data context pointer to EventCallback typedef and event_register"
+fragments:
+- id: event_h_typedef
+  selector:
+    path: event.h
+    anchor: "EventCallback)(int event_id, void *user_data)"
+- id: event_h_register
+  selector:
+    path: event.h
+    anchor: "event_register(EventCallback cb, void *user_data)"
+- id: event_c
+  selector:
+    path: event.c
+    anchor: g_user_data
+- id: input_c
+  selector:
+    path: input.c
+    anchor: on_input
+- id: ui_c
+  selector:
+    path: ui.c
+    anchor: on_ui
+- id: no_crypto_h
+  selector:
+    anchor: C_NOISE_004_hash
+- id: no_crypto_c
+  selector:
+    path: C_NOISE_004_crypto.c
+oracle:
+  required:
+  - event_h_typedef
+  - event_h_register
+  - event_c
+  - input_c
+  - ui_c
+  allowed: []
+  forbidden:
+  - no_crypto_h
+  - no_crypto_c

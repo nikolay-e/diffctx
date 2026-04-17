@@ -1,0 +1,89 @@
+name: bal4_0hop_019_ocaml_new_variant
+tags:
+- lang:ocaml
+- change:single_file
+- change:new_function
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/shape.ml: |
+      type shape =
+        | Circle of float
+        | Rect of float * float
+
+      let area = function
+        | Circle r -> Float.pi *. r *. r
+        | Rect (w, h) -> w *. h
+    src/garbage_color.ml: |
+      let garbage_b4o019_clr_a = "color"
+      let garbage_b4o019_clr_b = 0xFF
+
+      let garbage_red = 255
+    src/garbage_point.ml: |
+      let garbage_b4o019_pt_c = "point"
+      let garbage_b4o019_pt_d = 0.0
+
+      let garbage_origin = (0.0, 0.0)
+  changed_files:
+    src/shape.ml: |
+      type shape =
+        | Circle of float
+        | Rect of float * float
+        | Triangle of float * float
+
+      let area = function
+        | Circle r -> Float.pi *. r *. r
+        | Rect (w, h) -> w *. h
+        | Triangle (b, h) -> 0.5 *. b *. h
+    src/garbage_color.ml: |
+      let garbage_b4o019_clr_a = "color"
+      let garbage_b4o019_clr_b = 0xFF
+
+      let garbage_red = 255
+    src/garbage_point.ml: |
+      let garbage_b4o019_pt_c = "point"
+      let garbage_b4o019_pt_d = 0.0
+
+      let garbage_origin = (0.0, 0.0)
+  commit_message: "feat: add Triangle variant to shape type"
+fragments:
+- id: new_variant
+  selector:
+    path: src/shape.ml
+    anchor: "| Triangle of float * float"
+- id: new_case
+  selector:
+    path: src/shape.ml
+    anchor: "| Triangle (b, h) -> 0.5 *. b *. h"
+- id: no_garbage_color
+  selector:
+    path: src/garbage_color.ml
+- id: no_garbage_point
+  selector:
+    path: src/garbage_point.ml
+- id: no_global_0
+  selector:
+    anchor: garbage_b4o019_clr_a
+- id: no_global_1
+  selector:
+    anchor: garbage_b4o019_clr_b
+- id: no_global_2
+  selector:
+    anchor: garbage_b4o019_pt_c
+- id: no_global_3
+  selector:
+    anchor: garbage_b4o019_pt_d
+oracle:
+  required:
+  - new_variant
+  - new_case
+  allowed: []
+  forbidden:
+  - no_garbage_color
+  - no_garbage_point
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

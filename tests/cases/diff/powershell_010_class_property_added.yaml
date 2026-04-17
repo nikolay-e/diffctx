@@ -1,0 +1,110 @@
+name: powershell_010_class_property_added
+tags:
+- lang:powershell
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    types.ps1: |
+      class ServerNode {
+          [string]$Hostname
+          [int]$Port
+          [bool]$IsActive
+
+          ServerNode([string]$hostname, [int]$port) {
+              $this.Hostname = $hostname
+              $this.Port     = $port
+              $this.IsActive = $true
+          }
+
+          [string] ToString() {
+              return "$($this.Hostname):$($this.Port)"
+          }
+      }
+    Manage-Cluster.ps1: |
+      . ./types.ps1
+
+      $nodes = @(
+          [ServerNode]::new("web01", 8080),
+          [ServerNode]::new("web02", 8080)
+      )
+
+      foreach ($node in $nodes) {
+          Write-Output "Node: $($node.ToString()) Active=$($node.IsActive)"
+      }
+    PS_NOISE_010_HashingUtils.psm1: |
+      function PS_NOISE_010_Get-Sha256Hash {
+          param([string]$InputString)
+          $bytes = [System.Text.Encoding]::UTF8.GetBytes($InputString)
+          $hash  = [System.Security.Cryptography.SHA256]::Create().ComputeHash($bytes)
+          return [BitConverter]::ToString($hash) -replace "-", ""
+      }
+      Export-ModuleMember -Function PS_NOISE_010_Get-Sha256Hash
+    PS_NOISE_010_TokenUtils.psm1: |
+      function PS_NOISE_010_New-RandomToken {
+          param([int]$Length = 32)
+          $chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+          return -join ((1..$Length) | ForEach-Object { $chars[(Get-Random -Maximum $chars.Length)] })
+      }
+      Export-ModuleMember -Function PS_NOISE_010_New-RandomToken
+  changed_files:
+    types.ps1: |
+      class ServerNode {
+          [string]$Hostname
+          [int]$Port
+          [bool]$IsActive
+          [string]$Region
+          [datetime]$LastHealthCheck
+
+          ServerNode([string]$hostname, [int]$port, [string]$region) {
+              $this.Hostname         = $hostname
+              $this.Port             = $port
+              $this.IsActive         = $true
+              $this.Region           = $region
+              $this.LastHealthCheck  = [datetime]::MinValue
+          }
+
+          [string] ToString() {
+              return "$($this.Hostname):$($this.Port) [$($this.Region)]"
+          }
+      }
+  commit_message: "feat: add Region and LastHealthCheck properties to ServerNode class"
+fragments:
+- id: types_region_property
+  selector:
+    path: types.ps1
+    anchor: Region
+- id: types_last_health_check
+  selector:
+    path: types.ps1
+    anchor: LastHealthCheck
+- id: manage_cluster
+  selector:
+    path: Manage-Cluster.ps1
+    anchor: ServerNode
+- id: no_hashing_utils
+  selector:
+    path: PS_NOISE_010_HashingUtils.psm1
+- id: no_token_utils
+  selector:
+    path: PS_NOISE_010_TokenUtils.psm1
+- id: no_global_0
+  selector:
+    anchor: PS_NOISE_010_Get-Sha256Hash
+- id: no_global_1
+  selector:
+    anchor: PS_NOISE_010_New-RandomToken
+oracle:
+  required:
+  - types_region_property
+  - types_last_health_check
+  - manage_cluster
+  allowed: []
+  forbidden:
+  - no_hashing_utils
+  - no_token_utils
+  - no_global_0
+  - no_global_1

@@ -1,0 +1,105 @@
+name: c_family_007_malloc_size_changed
+tags:
+- lang:c
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    config.h: |
+      #ifndef CONFIG_H
+      #define CONFIG_H
+      #define BUFFER_SIZE 1024
+      #define MAX_CHUNKS  16
+      #endif
+    alloc.c: |
+      #include "config.h"
+      #include <stdlib.h>
+      void *alloc_buffer(void) {
+          return malloc(BUFFER_SIZE);
+      }
+      void **alloc_chunk_table(void) {
+          return malloc(MAX_CHUNKS * sizeof(void *));
+      }
+    buffer.c: |
+      #include "config.h"
+      #include <string.h>
+      static char buf[BUFFER_SIZE];
+      void buffer_clear(void) { memset(buf, 0, BUFFER_SIZE); }
+      int buffer_capacity(void) { return BUFFER_SIZE; }
+    C_NOISE_007_usb.h: |
+      #ifndef C_NOISE_007_USB_H
+      #define C_NOISE_007_USB_H
+      int C_NOISE_007_usb_init(void);
+      void C_NOISE_007_usb_shutdown(void);
+      #endif
+    C_NOISE_007_usb.c: |
+      #include "C_NOISE_007_usb.h"
+      int C_NOISE_007_usb_init(void) { return 0; }
+      void C_NOISE_007_usb_shutdown(void) {}
+  changed_files:
+    config.h: |
+      #ifndef CONFIG_H
+      #define CONFIG_H
+      #define BUFFER_SIZE 4096
+      #define MAX_CHUNKS  64
+      #endif
+    alloc.c: |
+      #include "config.h"
+      #include <stdlib.h>
+      void *alloc_buffer(void) {
+          return malloc(BUFFER_SIZE);
+      }
+      void **alloc_chunk_table(void) {
+          return malloc(MAX_CHUNKS * sizeof(void *));
+      }
+    buffer.c: |
+      #include "config.h"
+      #include <string.h>
+      static char buf[BUFFER_SIZE];
+      void buffer_clear(void) { memset(buf, 0, BUFFER_SIZE); }
+      int buffer_capacity(void) { return BUFFER_SIZE; }
+    C_NOISE_007_usb.h: |
+      #ifndef C_NOISE_007_USB_H
+      #define C_NOISE_007_USB_H
+      int C_NOISE_007_usb_init(void);
+      void C_NOISE_007_usb_shutdown(void);
+      #endif
+    C_NOISE_007_usb.c: |
+      #include "C_NOISE_007_usb.h"
+      int C_NOISE_007_usb_init(void) { return 0; }
+      void C_NOISE_007_usb_shutdown(void) {}
+  commit_message: "config: increase BUFFER_SIZE to 4096 and MAX_CHUNKS to 64"
+fragments:
+- id: config_h
+  selector:
+    path: config.h
+    anchor: "BUFFER_SIZE 4096"
+- id: alloc_c
+  selector:
+    path: alloc.c
+    anchor: "malloc(BUFFER_SIZE)"
+- id: buffer_c
+  selector:
+    path: buffer.c
+    anchor: "buf[BUFFER_SIZE]"
+- id: no_usb_h
+  selector:
+    anchor: C_NOISE_007_usb_init
+- id: no_usb_c
+  selector:
+    path: C_NOISE_007_usb.c
+- id: no_global_shutdown
+  selector:
+    anchor: C_NOISE_007_usb_shutdown
+oracle:
+  required:
+  - config_h
+  - alloc_c
+  - buffer_c
+  allowed: []
+  forbidden:
+  - no_usb_h
+  - no_usb_c
+  - no_global_shutdown

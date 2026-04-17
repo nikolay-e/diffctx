@@ -1,0 +1,164 @@
+name: bal_1hop_030_rust_pipeline_calls_stage
+tags:
+- lang:kotlin
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:easy
+repo:
+  initial_files:
+    util/PathUtil.kt: |
+      package util
+
+      import java.io.File
+
+      object PathUtil {
+          // BUG: does not normalize slashes; mixing / and \ causes issues on Windows
+          fun joinPaths(vararg parts: String): String {
+              return parts.joinToString("/")
+          }
+
+          fun extension(filename: String): String {
+              return filename.substringAfterLast(".", "")
+          }
+      }
+    domain/FileAsset.kt: |
+      package domain
+
+      import util.PathUtil
+
+      data class FileAsset(val dir: String, val name: String) {
+          val fullPath: String get() = PathUtil.joinPaths(dir, name)
+          val ext: String get() = PathUtil.extension(name)
+      }
+    service/AssetService.kt: |
+      package service
+
+      import domain.FileAsset
+
+      class AssetService {
+          fun buildAsset(dir: String, name: String): FileAsset {
+              return FileAsset(dir, name)
+          }
+
+          fun getExtension(dir: String, name: String): String {
+              return buildAsset(dir, name).ext
+          }
+      }
+    api/AssetController.kt: |
+      package api
+
+      import service.AssetService
+
+      class AssetController(private val svc: AssetService) {
+          fun assetPath(dir: String, name: String): String {
+              return svc.buildAsset(dir, name).fullPath
+          }
+      }
+    garbage/Compressor.kt: |
+      // GARBAGE_KPATH_A = "compressor_marker"
+      object Compressor { fun compress(data: ByteArray): ByteArray = data }
+    garbage/Watcher.kt: |
+      // GARBAGE_KPATH_B = "watcher_marker"
+      class Watcher { fun watch(path: String) {} }
+    garbage/Scanner.kt: |
+      // GARBAGE_KPATH_C = "scanner_marker"
+      class Scanner { fun scan(dir: String): List<String> = emptyList() }
+  changed_files:
+    util/PathUtil.kt: |
+      package util
+
+      import java.io.File
+
+      object PathUtil {
+          fun joinPaths(vararg parts: String): String {
+              return parts
+                  .map { it.replace('\\', '/').trim('/') }
+                  .filter { it.isNotEmpty() }
+                  .joinToString("/")
+          }
+
+          fun extension(filename: String): String {
+              return filename.substringAfterLast(".", "")
+          }
+      }
+    domain/FileAsset.kt: |
+      package domain
+
+      import util.PathUtil
+
+      data class FileAsset(val dir: String, val name: String) {
+          val fullPath: String get() = PathUtil.joinPaths(dir, name)
+          val ext: String get() = PathUtil.extension(name)
+      }
+    service/AssetService.kt: |
+      package service
+
+      import domain.FileAsset
+
+      class AssetService {
+          fun buildAsset(dir: String, name: String): FileAsset {
+              return FileAsset(dir, name)
+          }
+
+          fun getExtension(dir: String, name: String): String {
+              return buildAsset(dir, name).ext
+          }
+      }
+    api/AssetController.kt: |
+      package api
+
+      import service.AssetService
+
+      class AssetController(private val svc: AssetService) {
+          fun assetPath(dir: String, name: String): String {
+              return svc.buildAsset(dir, name).fullPath
+          }
+      }
+    garbage/Compressor.kt: |
+      // GARBAGE_KPATH_A = "compressor_marker"
+      object Compressor { fun compress(data: ByteArray): ByteArray = data }
+    garbage/Watcher.kt: |
+      // GARBAGE_KPATH_B = "watcher_marker"
+      class Watcher { fun watch(path: String) {} }
+    garbage/Scanner.kt: |
+      // GARBAGE_KPATH_C = "scanner_marker"
+      class Scanner { fun scan(dir: String): List<String> = emptyList() }
+  commit_message: "fix: normalize slashes in PathUtil.joinPaths"
+fragments:
+- id: normalize_slashes
+  selector:
+    anchor: ".map { it.replace('\\\\', '/').trim('/') }"
+- id: join_paths_func
+  selector:
+    anchor: "fun joinPaths(vararg parts: String): String"
+- id: asset_imports_util
+  selector:
+    anchor: "import util.PathUtil"
+- id: service_imports_domain
+  selector:
+    anchor: "import domain.FileAsset"
+- id: controller_imports_service
+  selector:
+    anchor: "import service.AssetService"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_KPATH_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_KPATH_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_KPATH_C
+oracle:
+  required:
+  - normalize_slashes
+  - join_paths_func
+  - asset_imports_util
+  allowed:
+  - service_imports_domain
+  - controller_imports_service
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

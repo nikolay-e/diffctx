@@ -1,0 +1,143 @@
+name: bal_testctx_013_typescript_router_test
+tags:
+- lang:typescript
+- change:single_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/router.ts: |
+      type Handler = (params: Record<string, string>) => string;
+
+      interface Route {
+        pattern: string;
+        handler: Handler;
+      }
+
+      export class Router {
+        private routes: Route[] = [];
+
+        addRoute(pattern: string, handler: Handler): void {
+          this.routes.push({ pattern, handler });
+        }
+
+        match(path: string): string | null {
+          for (const route of this.routes) {
+            if (route.pattern === path) {
+              return route.handler({});
+            }
+          }
+          return null;
+        }
+      }
+    __tests__/router.test.ts: |
+      import { Router } from '../src/router';
+
+      describe('Router', () => {
+        test('matches exact path', () => {
+          const router = new Router();
+          router.addRoute('/home', () => 'home page');
+          expect(router.match('/home')).toBe('home page');
+        });
+
+        test('returns null for unmatched path', () => {
+          const router = new Router();
+          expect(router.match('/missing')).toBeNull();
+        });
+      });
+    src/middleware.ts: |
+      export type Middleware = (req: unknown, next: () => void) => void;
+
+      export function compose(...middlewares: Middleware[]): Middleware {
+        return (req, next) => {
+          let index = 0;
+          const run = () => {
+            if (index < middlewares.length) {
+              middlewares[index++](req, run);
+            } else {
+              next();
+            }
+          };
+          run();
+        };
+      }
+    src/logger.ts: |
+      export enum LogLevel {
+        DEBUG = 0,
+        INFO = 1,
+        WARN = 2,
+        ERROR = 3,
+      }
+
+      export function log(level: LogLevel, message: string): void {
+        const prefix = LogLevel[level];
+        console.log(`[${prefix}] ${message}`);
+      }
+  changed_files:
+    src/router.ts: |
+      type Handler = (params: Record<string, string>) => string;
+
+      interface Route {
+        pattern: string;
+        handler: Handler;
+        method: string;
+      }
+
+      export class Router {
+        private routes: Route[] = [];
+
+        addRoute(pattern: string, handler: Handler, method: string = 'GET'): void {
+          this.routes.push({ pattern, handler, method });
+        }
+
+        match(path: string, method: string = 'GET'): string | null {
+          for (const route of this.routes) {
+            if (route.pattern === path && route.method === method) {
+              return route.handler({});
+            }
+          }
+          return null;
+        }
+
+        listRoutes(): Array<{ pattern: string; method: string }> {
+          return this.routes.map(r => ({ pattern: r.pattern, method: r.method }));
+        }
+      }
+  commit_message: "feat: add HTTP method matching and route listing"
+fragments:
+- id: add_route_method
+  selector:
+    path: src/router.ts
+    anchor: "addRoute(pattern: string, handler: Handler, method"
+- id: list_routes_fn
+  selector:
+    path: src/router.ts
+    anchor: "listRoutes()"
+- id: test_imports_router
+  selector:
+    path: __tests__/router.test.ts
+    anchor: "import { Router } from"
+- id: test_matches_exact
+  selector:
+    path: __tests__/router.test.ts
+    anchor: "test('matches exact path'"
+- id: no_middleware
+  selector:
+    path: src/middleware.ts
+    anchor: "export function compose"
+- id: no_logger
+  selector:
+    path: src/logger.ts
+    anchor: "export function log"
+oracle:
+  required:
+  - add_route_method
+  - list_routes_fn
+  - test_imports_router
+  allowed:
+  - test_matches_exact
+  forbidden:
+  - no_middleware
+  - no_logger

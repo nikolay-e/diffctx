@@ -1,0 +1,204 @@
+name: bal_3hop_038_typescript_cli_command_registry
+tags:
+- lang:typescript
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/cli/options.ts: |
+      export interface CliOption {
+        name: string;
+        alias?: string;
+        description: string;
+        required: boolean;
+      }
+
+      export function parseOptions(args: string[], options: CliOption[]): Record<string, string> {
+        const result: Record<string, string> = {};
+        for (let i = 0; i < args.length; i += 2) {
+          const key = args[i].replace(/^--?/, '');
+          result[key] = args[i + 1] || '';
+        }
+        return result;
+      }
+    src/cli/command.ts: |
+      import { CliOption, parseOptions } from './options';
+
+      export interface Command {
+        name: string;
+        options: CliOption[];
+        execute(args: Record<string, string>): void;
+      }
+
+      export function runCommand(cmd: Command, rawArgs: string[]): void {
+        const args = parseOptions(rawArgs, cmd.options);
+        cmd.execute(args);
+      }
+    src/cli/registry.ts: |
+      import { Command, runCommand } from './command';
+
+      export class CommandRegistry {
+        private commands: Map<string, Command> = new Map();
+
+        register(cmd: Command): void {
+          this.commands.set(cmd.name, cmd);
+        }
+
+        run(name: string, args: string[]): void {
+          const cmd = this.commands.get(name);
+          if (!cmd) throw new Error(`Unknown command: ${name}`);
+          runCommand(cmd, args);
+        }
+      }
+    src/main.ts: |
+      import { CommandRegistry } from './cli/registry';
+
+      const registry = new CommandRegistry();
+
+      export function main(argv: string[]): void {
+        const [commandName, ...args] = argv.slice(2);
+        registry.run(commandName, args);
+      }
+    src/utils/color.ts: |
+      GARBAGE_038_COLOR_MARKER_A = "color";
+      GARBAGE_038_ANSI_MARKER_B = true;
+
+      export function red(text: string): string { return `\x1b[31m${text}\x1b[0m`; }
+      export function green(text: string): string { return `\x1b[32m${text}\x1b[0m`; }
+    src/utils/spinner.ts: |
+      GARBAGE_038_SPINNER_MARKER_C = "spinner";
+      GARBAGE_038_FRAMES_MARKER_D = true;
+
+      export class Spinner {
+        start(): void {}
+        stop(): void {}
+      }
+  changed_files:
+    src/cli/options.ts: |
+      export interface CliOption {
+        name: string;
+        alias?: string;
+        description: string;
+        required: boolean;
+        defaultValue?: string;
+      }
+
+      export function parseOptions(args: string[], options: CliOption[]): Record<string, string> {
+        const result: Record<string, string> = {};
+        for (const opt of options) {
+          if (opt.defaultValue) result[opt.name] = opt.defaultValue;
+        }
+        for (let i = 0; i < args.length; i += 2) {
+          const key = args[i].replace(/^--?/, '');
+          result[key] = args[i + 1] || '';
+        }
+        return result;
+      }
+
+      export function validateRequired(parsed: Record<string, string>, options: CliOption[]): string[] {
+        return options
+          .filter(o => o.required && !parsed[o.name])
+          .map(o => `Missing required option: --${o.name}`);
+      }
+    src/cli/command.ts: |
+      import { CliOption, parseOptions, validateRequired } from './options';
+
+      export interface Command {
+        name: string;
+        options: CliOption[];
+        execute(args: Record<string, string>): void;
+      }
+
+      export function runCommand(cmd: Command, rawArgs: string[]): void {
+        const args = parseOptions(rawArgs, cmd.options);
+        const errors = validateRequired(args, cmd.options);
+        if (errors.length > 0) throw new Error(errors.join('\n'));
+        cmd.execute(args);
+      }
+    src/cli/registry.ts: |
+      import { Command, runCommand } from './command';
+
+      export class CommandRegistry {
+        private commands: Map<string, Command> = new Map();
+
+        register(cmd: Command): void {
+          this.commands.set(cmd.name, cmd);
+        }
+
+        run(name: string, args: string[]): void {
+          const cmd = this.commands.get(name);
+          if (!cmd) throw new Error(`Unknown command: ${name}`);
+          runCommand(cmd, args);
+        }
+      }
+    src/main.ts: |
+      import { CommandRegistry } from './cli/registry';
+
+      const registry = new CommandRegistry();
+
+      export function main(argv: string[]): void {
+        const [commandName, ...args] = argv.slice(2);
+        registry.run(commandName, args);
+      }
+    src/utils/color.ts: |
+      GARBAGE_038_COLOR_MARKER_A = "color";
+      GARBAGE_038_ANSI_MARKER_B = true;
+
+      export function red(text: string): string { return `\x1b[31m${text}\x1b[0m`; }
+      export function green(text: string): string { return `\x1b[32m${text}\x1b[0m`; }
+    src/utils/spinner.ts: |
+      GARBAGE_038_SPINNER_MARKER_C = "spinner";
+      GARBAGE_038_FRAMES_MARKER_D = true;
+
+      export class Spinner {
+        start(): void {}
+        stop(): void {}
+      }
+  commit_message: "feat: add default values and required validation for CLI options"
+fragments:
+- id: option_default_value
+  selector:
+    path: src/cli/options.ts
+    anchor: "defaultValue?: string"
+- id: validate_required_fn
+  selector:
+    path: src/cli/options.ts
+    anchor: "export function validateRequired"
+- id: command_imports_validate
+  selector:
+    path: src/cli/command.ts
+    anchor: "import { CliOption, parseOptions, validateRequired } from './options'"
+- id: command_calls_validate
+  selector:
+    path: src/cli/command.ts
+    anchor: "const errors = validateRequired"
+- id: registry_imports_command
+  selector:
+    path: src/cli/registry.ts
+    anchor: "import { Command, runCommand } from './command'"
+- id: main_imports_registry
+  selector:
+    path: src/main.ts
+    anchor: "import { CommandRegistry } from './cli/registry'"
+- id: no_color
+  selector:
+    path: src/utils/color.ts
+    anchor: "GARBAGE_038_COLOR_MARKER_A"
+- id: no_spinner
+  selector:
+    path: src/utils/spinner.ts
+    anchor: "GARBAGE_038_SPINNER_MARKER_C"
+oracle:
+  required:
+  - option_default_value
+  - validate_required_fn
+  - command_imports_validate
+  - command_calls_validate
+  - registry_imports_command
+  - main_imports_registry
+  allowed: []
+  forbidden:
+  - no_color
+  - no_spinner

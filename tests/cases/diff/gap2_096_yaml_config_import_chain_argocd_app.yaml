@@ -1,0 +1,134 @@
+name: gap2_096_yaml_config_import_chain_argocd_app
+tags:
+- change:config
+- change:multi_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:yaml
+xfail:
+  category: low-relevance-threshold-tuning
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    argocd/applications/web.yaml: |
+      apiVersion: argoproj.io/v1alpha1
+      kind: Application
+      metadata:
+        name: web-production
+        namespace: argocd
+      spec:
+        source:
+          repoURL: https://github.com/org/gitops
+          path: helm/web
+          targetRevision: main
+          helm:
+            valueFiles:
+              - values.yaml
+              - values-production.yaml
+        destination:
+          server: https://kubernetes.default.svc
+          namespace: web-production
+    helm/web/values.yaml: |
+      replicaCount: 1
+      image:
+        repository: ghcr.io/org/web
+        tag: latest
+      service:
+        type: ClusterIP
+        port: 3000
+      ingress:
+        enabled: false
+    helm/web/values-production.yaml: |
+      replicaCount: 3
+      ingress:
+        enabled: true
+        host: web.example.com
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+    helm/web/templates/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: web
+      spec:
+        type: "{{ .Values.service.type }}"
+        ports:
+        - port: "{{ .Values.service.port }}"
+    argocd/projects/monitoring.yaml: |
+      apiVersion: argoproj.io/v1alpha1
+      kind: AppProject
+      metadata:
+        name: TRAP_GAP2_096_MON_A
+      spec:
+        description: TRAP_GAP2_096_MON_B
+  changed_files:
+    argocd/applications/web.yaml: |
+      apiVersion: argoproj.io/v1alpha1
+      kind: Application
+      metadata:
+        name: web-production
+        namespace: argocd
+      spec:
+        source:
+          repoURL: https://github.com/org/gitops
+          path: helm/web
+          targetRevision: main
+          helm:
+            valueFiles:
+              - values.yaml
+              - values-production.yaml
+        destination:
+          server: https://kubernetes.default.svc
+          namespace: web-production
+        syncPolicy:
+          automated:
+            prune: true
+            selfHeal: true
+    helm/web/values-production.yaml: |
+      replicaCount: 5
+      ingress:
+        enabled: true
+        host: web.example.com
+        tls:
+          enabled: true
+          secretName: web-tls
+      resources:
+        requests:
+          cpu: 500m
+          memory: 1Gi
+  commit_message: Update files
+fragments:
+- id: auto_sync
+  selector:
+    path: argocd/applications/web.yaml
+    anchor: "selfHeal: true"
+- id: tls_config
+  selector:
+    path: helm/web/values-production.yaml
+    anchor: "secretName: web-tls"
+- id: replica_bump
+  selector:
+    path: helm/web/values-production.yaml
+    anchor: "replicaCount: 5"
+- id: no_monitoring
+  selector:
+    path: argocd/projects/monitoring.yaml
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_096_MON_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_096_MON_B
+oracle:
+  required:
+  - auto_sync
+  - tls_config
+  - replica_bump
+  forbidden:
+  - no_monitoring
+  - no_global_0
+  - no_global_1

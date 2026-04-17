@@ -1,164 +1,250 @@
 name: csharp_003_async_await
+tags:
+- lang:go
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:easy
 repo:
   initial_files:
-    Services/DataService.cs: |
-      using System;
-      using System.Net.Http;
-      using System.Threading.Tasks;
+    pkg/util/retry.go: |
+      package util
 
-      namespace MyApp.Services;
+      import "time"
 
-      public class DataService
-      {
-          private readonly HttpClient _httpClient;
-
-          public DataService(HttpClient httpClient)
-          {
-              _httpClient = httpClient;
+      func Retry(attempts int, delay time.Duration, fn func() error) error {
+          for i := 0; i < attempts; i++ {
+              if err := fn(); err == nil {
+                  return nil
+              }
+              if i < attempts-1 {
+                  time.Sleep(delay)
+              }
           }
-
-          public async Task<string> FetchDataAsync(string url)
-          {
-              var response = await _httpClient.GetAsync(url);
-              response.EnsureSuccessStatusCode();
-              return await response.Content.ReadAsStringAsync();
-          }
-
-          public async Task<byte[]> FetchBinaryAsync(string url)
-          {
-              return await _httpClient.GetByteArrayAsync(url);
-          }
+          return nil  // BUG: should return last error, not nil
       }
-    Program.cs: |
-      using System;
+    pkg/http/client.go: |
+      package http
 
-      class Program
-      {
-          static void Main()
-          {
-              Console.WriteLine("Starting application");
-          }
+      import (
+          "pkg/util"
+          "time"
+      )
+
+      type Client struct {
+          baseURL string
       }
-    Unrelated/LogRotator.cs: |
-      using System;
 
-      namespace MyApp.Unrelated;
-
-      public class LogRotator
-      {
-          private const string GARBAGE_CS_003_LOG_ROTATOR_A = "log_rotation_marker";
-
-          public void Rotate()
-          {
-              Console.WriteLine(GARBAGE_CS_003_LOG_ROTATOR_A);
-          }
+      func NewClient(baseURL string) *Client {
+          return &Client{baseURL: baseURL}
       }
-    Unrelated/AuditTrail.cs: |
-      namespace MyApp.Unrelated;
 
-      public class AuditTrail
-      {
-          public const string GARBAGE_CS_003_AUDIT_TRAIL_B = "audit_trail_marker";
-
-          public void Record(string action)
-          {
-              _ = GARBAGE_CS_003_AUDIT_TRAIL_B;
-          }
+      func (c *Client) Get(path string) (string, error) {
+          var result string
+          err := util.Retry(3, 500*time.Millisecond, func() error {
+              result = "response"
+              return nil
+          })
+          return result, err
       }
+    internal/gateway/upstream.go: |
+      package gateway
+
+      import "pkg/http"
+
+      type Upstream struct {
+          client *http.Client
+      }
+
+      func NewUpstream(baseURL string) *Upstream {
+          return &Upstream{client: http.NewClient(baseURL)}
+      }
+
+      func (u *Upstream) Fetch(path string) (string, error) {
+          return u.client.Get(path)
+      }
+    internal/service/proxy_service.go: |
+      package service
+
+      import "internal/gateway"
+
+      type ProxyService struct {
+          upstream *gateway.Upstream
+      }
+
+      func NewProxyService(u *gateway.Upstream) *ProxyService {
+          return &ProxyService{upstream: u}
+      }
+
+      func (s *ProxyService) Proxy(path string) (string, error) {
+          return s.upstream.Fetch(path)
+      }
+    garbage/GameLobby.go: |
+      package garbage
+
+      // GARBAGE_CSHAR003_A = "game_lobby_marker"
+
+      type GameLobby struct{ MaxPlayers int }
+    garbage/PaymentConfirmation.go: |
+      package garbage
+
+      // GARBAGE_CSHAR003_B = "payment_confirmation_marker"
+
+      type PaymentConfirmation struct{ TxID string }
+    garbage/IoTHealthCheck.go: |
+      package garbage
+
+      // GARBAGE_CSHAR003_C = "iot_health_check_marker"
+
+      type IoTHealthCheck struct{ Interval int }
+    garbage/StreamSegment.go: |
+      package garbage
+
+      // GARBAGE_CSHAR003_D = "stream_segment_marker"
+
+      type StreamSegment struct{ Duration float64 }
   changed_files:
-    Services/DataService.cs: |
-      using System;
-      using System.Net.Http;
-      using System.Threading.Tasks;
+    pkg/util/retry.go: |
+      package util
 
-      namespace MyApp.Services;
+      import (
+          "errors"
+          "time"
+      )
 
-      public class DataService
-      {
-          private readonly HttpClient _httpClient;
-
-          public DataService(HttpClient httpClient)
-          {
-              _httpClient = httpClient;
+      func Retry(attempts int, delay time.Duration, fn func() error) error {
+          var lastErr error
+          for i := 0; i < attempts; i++ {
+              if err := fn(); err == nil {
+                  return nil
+              } else {
+                  lastErr = err
+              }
+              if i < attempts-1 {
+                  time.Sleep(delay)
+              }
           }
-
-          public async Task<string> FetchDataAsync(string url)
-          {
-              var response = await _httpClient.GetAsync(url);
-              response.EnsureSuccessStatusCode();
-              return await response.Content.ReadAsStringAsync();
-          }
-
-          public async Task<byte[]> FetchBinaryAsync(string url)
-          {
-              return await _httpClient.GetByteArrayAsync(url);
-          }
+          return errors.Join(errors.New("retry exhausted"), lastErr)
       }
-    Program.cs: |
-      using System;
-      using System.Net.Http;
-      using System.Threading.Tasks;
-      using MyApp.Services;
+    pkg/http/client.go: |
+      package http
 
-      class Program
-      {
-          static async Task Main()
-          {
-              using var httpClient = new HttpClient();
-              var service = new DataService(httpClient);
-              var data = await service.FetchDataAsync("https://api.example.com/data");
-              Console.WriteLine($"Fetched {data.Length} characters");
-          }
+      import (
+          "pkg/util"
+          "time"
+      )
+
+      type Client struct {
+          baseURL string
       }
-    Unrelated/LogRotator.cs: |
-      using System;
 
-      namespace MyApp.Unrelated;
-
-      public class LogRotator
-      {
-          private const string GARBAGE_CS_003_LOG_ROTATOR_A = "log_rotation_marker";
-
-          public void Rotate()
-          {
-              Console.WriteLine(GARBAGE_CS_003_LOG_ROTATOR_A);
-          }
+      func NewClient(baseURL string) *Client {
+          return &Client{baseURL: baseURL}
       }
-    Unrelated/AuditTrail.cs: |
-      namespace MyApp.Unrelated;
 
-      public class AuditTrail
-      {
-          public const string GARBAGE_CS_003_AUDIT_TRAIL_B = "audit_trail_marker";
-
-          public void Record(string action)
-          {
-              _ = GARBAGE_CS_003_AUDIT_TRAIL_B;
-          }
+      func (c *Client) Get(path string) (string, error) {
+          var result string
+          err := util.Retry(3, 500*time.Millisecond, func() error {
+              result = "response"
+              return nil
+          })
+          return result, err
       }
-  commit_message: Update files
+    internal/gateway/upstream.go: |
+      package gateway
+
+      import "pkg/http"
+
+      type Upstream struct {
+          client *http.Client
+      }
+
+      func NewUpstream(baseURL string) *Upstream {
+          return &Upstream{client: http.NewClient(baseURL)}
+      }
+
+      func (u *Upstream) Fetch(path string) (string, error) {
+          return u.client.Get(path)
+      }
+    internal/service/proxy_service.go: |
+      package service
+
+      import "internal/gateway"
+
+      type ProxyService struct {
+          upstream *gateway.Upstream
+      }
+
+      func NewProxyService(u *gateway.Upstream) *ProxyService {
+          return &ProxyService{upstream: u}
+      }
+
+      func (s *ProxyService) Proxy(path string) (string, error) {
+          return s.upstream.Fetch(path)
+      }
+    garbage/GameLobby.go: |
+      package garbage
+
+      // GARBAGE_CSHAR003_A = "game_lobby_marker"
+
+      type GameLobby struct{ MaxPlayers int }
+    garbage/PaymentConfirmation.go: |
+      package garbage
+
+      // GARBAGE_CSHAR003_B = "payment_confirmation_marker"
+
+      type PaymentConfirmation struct{ TxID string }
+    garbage/IoTHealthCheck.go: |
+      package garbage
+
+      // GARBAGE_CSHAR003_C = "iot_health_check_marker"
+
+      type IoTHealthCheck struct{ Interval int }
+    garbage/StreamSegment.go: |
+      package garbage
+
+      // GARBAGE_CSHAR003_D = "stream_segment_marker"
+
+      type StreamSegment struct{ Duration float64 }
+  commit_message: "fix: return last error from Retry instead of nil on exhaustion"
 fragments:
-- id: program_file
+- id: last_err_var
   selector:
-    path: Program.cs
-- id: req_global_0
+    path: pkg/util/retry.go
+    anchor: "var lastErr error"
+- id: return_last_err
   selector:
-    anchor: using System.Net.Http;
-- id: req_global_1
+    path: pkg/util/retry.go
+    anchor: "return errors.Join(errors.New(\"retry exhausted\")"
+- id: http_client_get
   selector:
-    anchor: static async Task Main()
-- id: no_global_0
+    path: pkg/http/client.go
+    anchor: "func (c *Client) Get"
+- id: upstream_fetch
   selector:
-    anchor: GARBAGE_CS_003_AUDIT_TRAIL_B
-- id: no_global_1
+    path: internal/gateway/upstream.go
+    anchor: "func (u *Upstream) Fetch"
+- id: no_garbage_a
   selector:
-    anchor: AuditTrail.cs
+    anchor: GARBAGE_CSHAR003_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_CSHAR003_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_CSHAR003_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_CSHAR003_D
 oracle:
   required:
-  - program_file
-  - req_global_0
-  - req_global_1
-  allowed: []
+  - last_err_var
+  - return_last_err
+  - http_client_get
+  allowed:
+  - upstream_fetch
   forbidden:
-  - no_global_0
-  - no_global_1
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

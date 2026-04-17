@@ -1,0 +1,273 @@
+name: gap_189_zig_cross_module_ecs_component
+tags:
+- lang:zig
+- change:multi_file
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+repo:
+  initial_files:
+    src/ecs/entity.zig: |
+      const std = @import("std");
+      const comp = @import("component.zig");
+
+      pub const Entity = struct {
+          id: u64,
+          generation: u32,
+
+          pub fn hasComponent(self: Entity, comptime T: type) bool {
+              _ = self;
+              _ = T;
+              return false;
+          }
+      };
+
+      pub const EntityManager = struct {
+          next_id: u64,
+          pool: std.ArrayList(Entity),
+
+          pub fn spawn(self: *EntityManager) Entity {
+              const e = Entity{ .id = self.next_id, .generation = 0 };
+              self.next_id += 1;
+              return e;
+          }
+
+          pub fn despawn(self: *EntityManager, entity: Entity) void {
+              _ = self;
+              _ = entity;
+          }
+      };
+    src/ecs/component.zig: |
+      const store = @import("store.zig");
+
+      pub const Position = struct {
+          x: f32,
+          y: f32,
+      };
+
+      pub const Velocity = struct {
+          dx: f32,
+          dy: f32,
+      };
+
+      pub fn registerComponent(comptime T: type) void {
+          store.allocateStorage(T);
+      }
+
+      pub fn removeComponent(comptime T: type, entity_id: u64) void {
+          store.deallocateSlot(T, entity_id);
+      }
+    src/ecs/store.zig: |
+      pub fn allocateStorage(comptime T: type) void {
+          _ = T;
+      }
+
+      pub fn deallocateSlot(comptime T: type, slot: u64) void {
+          _ = T;
+          _ = slot;
+      }
+
+      pub fn getSlot(comptime T: type, slot: u64) ?*T {
+          _ = slot;
+          return null;
+      }
+    src/ecs/system.zig: |
+      const comp = @import("component.zig");
+
+      pub fn movementSystem(positions: []comp.Position, velocities: []const comp.Velocity, dt: f32) void {
+          for (positions, velocities) |*pos, vel| {
+              pos.x += vel.dx * dt;
+              pos.y += vel.dy * dt;
+          }
+      }
+    src/render/sprite.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_189_SPRITE_MARKER_A: []const u8 = "sprite_noise";
+      const TRAP_GAP_189_SPRITE_FLAG_B: u32 = 256;
+
+      pub const Sprite = struct {
+          texture_id: u32,
+          width: u16,
+          height: u16,
+      };
+
+      pub fn drawSprite(s: Sprite, x: f32, y: f32) void {
+          _ = s;
+          _ = x;
+          _ = y;
+      }
+    src/input/keyboard.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_189_INPUT_MARKER_C: []const u8 = "input_noise";
+      const TRAP_GAP_189_INPUT_FLAG_D: bool = true;
+
+      pub fn isKeyDown(keycode: u32) bool {
+          _ = keycode;
+          return false;
+      }
+
+      pub fn isKeyUp(keycode: u32) bool {
+          _ = keycode;
+          return true;
+      }
+  changed_files:
+    src/ecs/entity.zig: |
+      const std = @import("std");
+      const comp = @import("component.zig");
+
+      pub const Entity = struct {
+          id: u64,
+          generation: u32,
+          archetype: u16,
+
+          pub fn hasComponent(self: Entity, comptime T: type) bool {
+              _ = self;
+              _ = T;
+              return false;
+          }
+      };
+
+      pub const EntityManager = struct {
+          next_id: u64,
+          pool: std.ArrayList(Entity),
+
+          pub fn spawn(self: *EntityManager) Entity {
+              const e = Entity{ .id = self.next_id, .generation = 0, .archetype = 0 };
+              self.next_id += 1;
+              return e;
+          }
+
+          pub fn despawn(self: *EntityManager, entity: Entity) void {
+              _ = self;
+              _ = entity;
+          }
+      };
+    src/ecs/component.zig: |
+      const store = @import("store.zig");
+
+      pub const Position = struct {
+          x: f32,
+          y: f32,
+          z: f32,
+      };
+
+      pub const Velocity = struct {
+          dx: f32,
+          dy: f32,
+          dz: f32,
+      };
+
+      pub fn registerComponent(comptime T: type) void {
+          store.allocateStorage(T);
+      }
+
+      pub fn removeComponent(comptime T: type, entity_id: u64) void {
+          store.deallocateSlot(T, entity_id);
+      }
+    src/ecs/store.zig: |
+      pub fn allocateStorage(comptime T: type) void {
+          _ = T;
+      }
+
+      pub fn deallocateSlot(comptime T: type, slot: u64) void {
+          _ = T;
+          _ = slot;
+      }
+
+      pub fn getSlot(comptime T: type, slot: u64) ?*T {
+          _ = slot;
+          return null;
+      }
+    src/ecs/system.zig: |
+      const comp = @import("component.zig");
+
+      pub fn movementSystem(positions: []comp.Position, velocities: []const comp.Velocity, dt: f32) void {
+          for (positions, velocities) |*pos, vel| {
+              pos.x += vel.dx * dt;
+              pos.y += vel.dy * dt;
+          }
+      }
+    src/render/sprite.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_189_SPRITE_MARKER_A: []const u8 = "sprite_noise";
+      const TRAP_GAP_189_SPRITE_FLAG_B: u32 = 256;
+
+      pub const Sprite = struct {
+          texture_id: u32,
+          width: u16,
+          height: u16,
+      };
+
+      pub fn drawSprite(s: Sprite, x: f32, y: f32) void {
+          _ = s;
+          _ = x;
+          _ = y;
+      }
+    src/input/keyboard.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_189_INPUT_MARKER_C: []const u8 = "input_noise";
+      const TRAP_GAP_189_INPUT_FLAG_D: bool = true;
+
+      pub fn isKeyDown(keycode: u32) bool {
+          _ = keycode;
+          return false;
+      }
+
+      pub fn isKeyUp(keycode: u32) bool {
+          _ = keycode;
+          return true;
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: entity_archetype
+  selector:
+    path: src/ecs/entity.zig
+    anchor: "archetype: u16"
+- id: position_z
+  selector:
+    path: src/ecs/component.zig
+    anchor: "z: f32"
+- id: store_allocate
+  selector:
+    path: src/ecs/store.zig
+    anchor: "pub fn allocateStorage(comptime T: type) void"
+- id: system_movement
+  selector:
+    path: src/ecs/system.zig
+    anchor: "pub fn movementSystem"
+- id: no_sprite
+  selector:
+    path: src/render/sprite.zig
+- id: no_keyboard
+  selector:
+    path: src/input/keyboard.zig
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP_189_SPRITE_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP_189_SPRITE_FLAG_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP_189_INPUT_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP_189_INPUT_FLAG_D
+oracle:
+  required:
+  - entity_archetype
+  - position_z
+  allowed: []
+  forbidden:
+  - no_sprite
+  - no_keyboard
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

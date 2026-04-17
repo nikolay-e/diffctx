@@ -1,0 +1,197 @@
+name: bal3_1hop_059_scala_single_file_trait
+tags:
+- lang:scala
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: scala-no-tree-sitter
+repo:
+  initial_files:
+    src/main/scala/core/Transformer.scala: |
+      package core
+
+      trait Transformer[A, B] {
+        def transform(input: A): B
+      }
+
+      object Transformer {
+        def identity[A]: Transformer[A, A] = new Transformer[A, A] {
+          def transform(input: A): A = input
+        }
+      }
+    src/main/scala/pipeline/StringUpperTransformer.scala: |
+      package pipeline
+
+      import core.Transformer
+
+      class StringUpperTransformer extends Transformer[String, String] {
+        def transform(input: String): String = input.toUpperCase
+      }
+    src/main/scala/pipeline/IntToStringTransformer.scala: |
+      package pipeline
+
+      import core.Transformer
+
+      class IntToStringTransformer extends Transformer[Int, String] {
+        def transform(input: Int): String = input.toString
+      }
+    src/main/scala/pipeline/ListFlattenTransformer.scala: |
+      package pipeline
+
+      import core.Transformer
+
+      class ListFlattenTransformer extends Transformer[List[List[String]], List[String]] {
+        def transform(input: List[List[String]]): List[String] = input.flatten
+      }
+    src/main/scala/pipeline/MapFilterTransformer.scala: |
+      package pipeline
+
+      import core.Transformer
+
+      class MapFilterTransformer(predicate: String => Boolean) extends Transformer[Map[String, String], Map[String, String]] {
+        def transform(input: Map[String, String]): Map[String, String] = {
+          input.filter { case (k, _) => predicate(k) }
+        }
+      }
+    src/main/scala/pipeline/JsonTransformPipeline.scala: |
+      package pipeline
+
+      import core.Transformer
+
+      class JsonTransformPipeline(steps: List[Transformer[String, String]]) {
+        def execute(input: String): String = {
+          steps.foldLeft(input)((acc, t) => t.transform(acc))
+        }
+      }
+    src/main/scala/net/TcpClient.scala: |
+      package net
+
+      object TcpClient {
+        val GARBAGE_BAL3_059_TCP_A = "tcp"
+        val GARBAGE_BAL3_059_PORT_B = 8080
+
+        def connect(host: String, port: Int): Unit = ()
+      }
+    src/main/scala/net/UdpClient.scala: |
+      package net
+
+      object UdpClient {
+        val GARBAGE_BAL3_059_UDP_C = "udp"
+        val GARBAGE_BAL3_059_BUFSIZE_D = 1024
+
+        def send(host: String, data: Array[Byte]): Unit = ()
+      }
+    src/main/scala/net/DnsResolver.scala: |
+      package net
+
+      object DnsResolver {
+        val GARBAGE_BAL3_059_DNS_E = "dns"
+        val GARBAGE_BAL3_059_TTL_F = 300
+
+        def resolve(hostname: String): String = "127.0.0.1"
+      }
+  changed_files:
+    src/main/scala/core/Transformer.scala: |
+      package core
+
+      trait Transformer[A, B] {
+        def transform(input: A): B
+
+        def andThen[C](next: Transformer[B, C]): Transformer[A, C] = {
+          val self = this
+          new Transformer[A, C] {
+            def transform(input: A): C = next.transform(self.transform(input))
+          }
+        }
+
+        def map[C](f: B => C): Transformer[A, C] = {
+          val self = this
+          new Transformer[A, C] {
+            def transform(input: A): C = f(self.transform(input))
+          }
+        }
+      }
+
+      object Transformer {
+        def identity[A]: Transformer[A, A] = new Transformer[A, A] {
+          def transform(input: A): A = input
+        }
+
+        def from[A, B](f: A => B): Transformer[A, B] = new Transformer[A, B] {
+          def transform(input: A): B = f(input)
+        }
+      }
+  commit_message: "Add andThen, map, and from factory to Transformer trait"
+fragments:
+- id: string_upper
+  selector:
+    path: src/main/scala/pipeline/StringUpperTransformer.scala
+    anchor: "import core.Transformer"
+- id: string_extends
+  selector:
+    path: src/main/scala/pipeline/StringUpperTransformer.scala
+    anchor: "extends Transformer"
+- id: int_to_string
+  selector:
+    path: src/main/scala/pipeline/IntToStringTransformer.scala
+    anchor: "import core.Transformer"
+- id: list_flatten
+  selector:
+    path: src/main/scala/pipeline/ListFlattenTransformer.scala
+    anchor: "import core.Transformer"
+- id: map_filter
+  selector:
+    path: src/main/scala/pipeline/MapFilterTransformer.scala
+    anchor: "import core.Transformer"
+- id: json_pipeline
+  selector:
+    path: src/main/scala/pipeline/JsonTransformPipeline.scala
+    anchor: "import core.Transformer"
+- id: no_tcp
+  selector:
+    path: src/main/scala/net/TcpClient.scala
+- id: no_udp
+  selector:
+    path: src/main/scala/net/UdpClient.scala
+- id: no_dns
+  selector:
+    path: src/main/scala/net/DnsResolver.scala
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_059_TCP_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_059_PORT_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_059_UDP_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_059_BUFSIZE_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL3_059_DNS_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL3_059_TTL_F
+oracle:
+  required:
+  - string_upper
+  - string_extends
+  - int_to_string
+  - list_flatten
+  - map_filter
+  - json_pipeline
+  allowed: []
+  forbidden:
+  - no_tcp
+  - no_udp
+  - no_dns
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

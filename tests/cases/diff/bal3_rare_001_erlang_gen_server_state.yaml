@@ -1,0 +1,169 @@
+name: bal3_rare_001_erlang_gen_server_state
+tags:
+- lang:erlang
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+xfail:
+  category: erlang-no-tree-sitter
+repo:
+  initial_files:
+    src/cache_server.erl: |
+      -module(cache_server).
+      -behaviour(gen_server).
+      -export([start_link/0, get/1, put/2]).
+      -export([init/1, handle_call/3, handle_cast/2]).
+
+      -record(state, {store = #{}, max_size = 100}).
+
+      start_link() ->
+          gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+
+      init([]) ->
+          {ok, #state{}}.
+
+      get(Key) ->
+          gen_server:call(?MODULE, {get, Key}).
+
+      put(Key, Value) ->
+          gen_server:cast(?MODULE, {put, Key, Value}).
+
+      handle_call({get, Key}, _From, State) ->
+          Result = maps:get(Key, State#state.store, undefined),
+          {reply, Result, State}.
+
+      handle_cast({put, Key, Value}, State) ->
+          NewStore = maps:put(Key, Value, State#state.store),
+          {noreply, State#state{store = NewStore}}.
+    src/cache_client.erl: |
+      -module(cache_client).
+      -export([fetch_or_compute/2]).
+
+      fetch_or_compute(Key, ComputeFn) ->
+          case cache_server:get(Key) of
+              undefined ->
+                  Value = ComputeFn(),
+                  cache_server:put(Key, Value),
+                  Value;
+              Value ->
+                  Value
+          end.
+    src/logger.erl: |
+      -module(logger).
+
+      GARBAGE_RARE_001_LOG_A = "logger".
+      GARBAGE_RARE_001_LEVEL_B = "info".
+
+      -export([info/1]).
+
+      info(Msg) -> io:format("INFO: ~p~n", [Msg]).
+    src/metrics.erl: |
+      -module(metrics).
+
+      GARBAGE_RARE_001_METRIC_C = "counter".
+      GARBAGE_RARE_001_PROM_D = "prometheus".
+
+      -export([increment/1]).
+
+      increment(Name) -> ok.
+    src/utils.erl: |
+      -module(utils).
+
+      GARBAGE_RARE_001_UTIL_E = "helper".
+      GARBAGE_RARE_001_TRIM_F = "strip".
+
+      -export([to_binary/1]).
+
+      to_binary(Term) -> term_to_binary(Term).
+  changed_files:
+    src/cache_server.erl: |
+      -module(cache_server).
+      -behaviour(gen_server).
+      -export([start_link/1, get/1, put/2, evict/1]).
+      -export([init/1, handle_call/3, handle_cast/2]).
+
+      -record(state, {store = #{}, max_size = 100, ttl_ms = 60000}).
+
+      start_link(Opts) ->
+          gen_server:start_link({local, ?MODULE}, ?MODULE, Opts, []).
+
+      init(Opts) ->
+          MaxSize = proplists:get_value(max_size, Opts, 100),
+          TtlMs = proplists:get_value(ttl_ms, Opts, 60000),
+          {ok, #state{max_size = MaxSize, ttl_ms = TtlMs}}.
+
+      get(Key) ->
+          gen_server:call(?MODULE, {get, Key}).
+
+      put(Key, Value) ->
+          gen_server:cast(?MODULE, {put, Key, Value}).
+
+      evict(Key) ->
+          gen_server:cast(?MODULE, {evict, Key}).
+
+      handle_call({get, Key}, _From, State) ->
+          Result = maps:get(Key, State#state.store, undefined),
+          {reply, Result, State}.
+
+      handle_cast({put, Key, Value}, State) ->
+          NewStore = maps:put(Key, Value, State#state.store),
+          {noreply, State#state{store = NewStore}};
+      handle_cast({evict, Key}, State) ->
+          NewStore = maps:remove(Key, State#state.store),
+          {noreply, State#state{store = NewStore}}.
+  commit_message: "add TTL, evict, and configurable init to cache_server"
+fragments:
+- id: client_get_call
+  selector:
+    path: src/cache_client.erl
+    anchor: "cache_server:get(Key)"
+- id: client_put_call
+  selector:
+    path: src/cache_client.erl
+    anchor: "cache_server:put(Key, Value)"
+- id: no_logger
+  selector:
+    path: src/logger.erl
+    anchor: "info(Msg)"
+- id: no_metrics
+  selector:
+    path: src/metrics.erl
+    anchor: "increment(Name)"
+- id: no_utils
+  selector:
+    path: src/utils.erl
+    anchor: "to_binary(Term)"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_RARE_001_LOG_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_RARE_001_LEVEL_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_RARE_001_METRIC_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_RARE_001_PROM_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_RARE_001_UTIL_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_RARE_001_TRIM_F
+oracle:
+  required:
+  - client_get_call
+  - client_put_call
+  allowed: []
+  forbidden:
+  - no_logger
+  - no_metrics
+  - no_utils
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

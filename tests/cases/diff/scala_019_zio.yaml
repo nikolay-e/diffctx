@@ -1,141 +1,151 @@
 name: scala_019_zio
+tags:
+- lang:kotlin
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:easy
 repo:
   initial_files:
-    Client.scala: |
-      import zio._
+    util/NumberParser.kt: |
+      package util
 
-      trait Client {
-        def fetch(url: String): Task[String]
-      }
+      object NumberParser {
+          // BUG: throws NumberFormatException on non-numeric input instead of returning null
+          fun parseIntOrNull(raw: String): Int? {
+              return raw.toInt()
+          }
 
-      object Client {
-        val live: ULayer[Client] = ZLayer.succeed(new Client {
-          def fetch(url: String): Task[String] = ZIO.succeed(s"Response from $url")
-        })
+          fun parseDoubleOrNull(raw: String): Double? {
+              return raw.toDouble()
+          }
       }
-    DataFetcher.scala: |
-      object DataFetcher {}
-    HttpConfig.scala: |
-      case class HttpConfig(
-        baseUrl: String = "http://localhost:8080",
-        timeoutMillis: Int = 5000,
-        maxRetries: Int = 3
-      ) {
-        def withBaseUrl(url: String): HttpConfig = copy(baseUrl = url)
-        def withTimeout(millis: Int): HttpConfig = copy(timeoutMillis = millis)
-      }
-    MetricsCollector.scala: |
-      import zio._
+    domain/PriceTag.kt: |
+      package domain
 
-      trait MetricsCollector {
-        def recordLatency(endpoint: String, millis: Long): UIO[Unit]
-        def incrementCounter(name: String): UIO[Unit]
-      }
+      import util.NumberParser
 
-      object MetricsCollector {
-        val live: ULayer[MetricsCollector] = ZLayer.succeed(new MetricsCollector {
-          def recordLatency(endpoint: String, millis: Long): UIO[Unit] = ZIO.unit
-          def incrementCounter(name: String): UIO[Unit] = ZIO.unit
-        })
+      data class PriceTag(val rawAmount: String, val currency: String) {
+          val amount: Int? get() = NumberParser.parseIntOrNull(rawAmount)
+          val isValid: Boolean get() = amount != null && amount > 0
       }
+    service/ProductCatalog.kt: |
+      package service
+
+      import domain.PriceTag
+
+      class ProductCatalog {
+          fun buildPriceTag(rawAmount: String, currency: String): PriceTag {
+              return PriceTag(rawAmount, currency)
+          }
+      }
+    api/CatalogController.kt: |
+      package api
+
+      import service.ProductCatalog
+
+      class CatalogController(private val catalog: ProductCatalog) {
+          fun priceEndpoint(rawAmount: String, currency: String): String {
+              val tag = catalog.buildPriceTag(rawAmount, currency)
+              return if (tag.isValid) "${tag.amount} ${tag.currency}" else "invalid"
+          }
+      }
+    garbage/Formatter.kt: |
+      // GARBAGE_KNUM_A = "formatter_marker"
+      object Formatter { fun format(n: Int): String = n.toString() }
+    garbage/Converter.kt: |
+      // GARBAGE_KNUM_B = "converter_marker"
+      object Converter { fun toCents(amount: Double): Long = (amount * 100).toLong() }
+    garbage/Validator.kt: |
+      // GARBAGE_KNUM_C = "validator_marker"
+      object Validator { fun isPositive(n: Int) = n > 0 }
   changed_files:
-    Client.scala: |
-      import zio._
+    util/NumberParser.kt: |
+      package util
 
-      trait Client {
-        def fetch(url: String): Task[String]
+      object NumberParser {
+          fun parseIntOrNull(raw: String): Int? {
+              return raw.trim().toIntOrNull()
+          }
+
+          fun parseDoubleOrNull(raw: String): Double? {
+              return raw.trim().toDoubleOrNull()
+          }
       }
+    domain/PriceTag.kt: |
+      package domain
 
-      object Client {
-        val live: ULayer[Client] = ZLayer.succeed(new Client {
-          def fetch(url: String): Task[String] = ZIO.succeed(s"Response from $url")
-        })
+      import util.NumberParser
+
+      data class PriceTag(val rawAmount: String, val currency: String) {
+          val amount: Int? get() = NumberParser.parseIntOrNull(rawAmount)
+          val isValid: Boolean get() = amount != null && amount > 0
       }
-    DataFetcher.scala: |
-      import zio._
+    service/ProductCatalog.kt: |
+      package service
 
-      case class Data(content: String)
+      import domain.PriceTag
 
-      object DataFetcher {
-        def fetch(url: String): ZIO[Client, Throwable, Data] = {
-          for {
-            client <- ZIO.service[Client]
-            response <- client.fetch(url)
-          } yield Data(response)
-        }
-
-        def fetchMultiple(urls: List[String]): ZIO[Client, Throwable, List[Data]] = {
-          ZIO.foreach(urls)(fetch)
-        }
+      class ProductCatalog {
+          fun buildPriceTag(rawAmount: String, currency: String): PriceTag {
+              return PriceTag(rawAmount, currency)
+          }
       }
-    HttpConfig.scala: |
-      case class HttpConfig(
-        baseUrl: String = "http://localhost:8080",
-        timeoutMillis: Int = 5000,
-        maxRetries: Int = 3
-      ) {
-        def withBaseUrl(url: String): HttpConfig = copy(baseUrl = url)
-        def withTimeout(millis: Int): HttpConfig = copy(timeoutMillis = millis)
-      }
-    MetricsCollector.scala: |
-      import zio._
+    api/CatalogController.kt: |
+      package api
 
-      trait MetricsCollector {
-        def recordLatency(endpoint: String, millis: Long): UIO[Unit]
-        def incrementCounter(name: String): UIO[Unit]
-      }
+      import service.ProductCatalog
 
-      object MetricsCollector {
-        val live: ULayer[MetricsCollector] = ZLayer.succeed(new MetricsCollector {
-          def recordLatency(endpoint: String, millis: Long): UIO[Unit] = ZIO.unit
-          def incrementCounter(name: String): UIO[Unit] = ZIO.unit
-        })
+      class CatalogController(private val catalog: ProductCatalog) {
+          fun priceEndpoint(rawAmount: String, currency: String): String {
+              val tag = catalog.buildPriceTag(rawAmount, currency)
+              return if (tag.isValid) "${tag.amount} ${tag.currency}" else "invalid"
+          }
       }
-  commit_message: Update files
+    garbage/Formatter.kt: |
+      // GARBAGE_KNUM_A = "formatter_marker"
+      object Formatter { fun format(n: Int): String = n.toString() }
+    garbage/Converter.kt: |
+      // GARBAGE_KNUM_B = "converter_marker"
+      object Converter { fun toCents(amount: Double): Long = (amount * 100).toLong() }
+    garbage/Validator.kt: |
+      // GARBAGE_KNUM_C = "validator_marker"
+      object Validator { fun isPositive(n: Int) = n > 0 }
+  commit_message: "fix: use toIntOrNull/toDoubleOrNull to handle non-numeric input safely"
 fragments:
-- id: client
+- id: parse_int_or_null_fix
   selector:
-    path: Client.scala
-    anchor: 'def fetch(url: String): Task[String]'
-- id: client_1
+    anchor: "return raw.trim().toIntOrNull()"
+- id: number_parser_obj
   selector:
-    path: Client.scala
-    anchor: trait Client
-- id: no_httpconfig
+    anchor: "object NumberParser"
+- id: price_tag_imports_util
   selector:
-    path: HttpConfig.scala
-- id: no_metricscollector
+    anchor: "import util.NumberParser"
+- id: catalog_imports_domain
   selector:
-    path: MetricsCollector.scala
-- id: no_global_0
+    anchor: "import domain.PriceTag"
+- id: controller_imports_service
   selector:
-    anchor: HttpConfig
-- id: no_global_1
+    anchor: "import service.ProductCatalog"
+- id: no_garbage_a
   selector:
-    anchor: baseUrl
-- id: no_global_2
+    anchor: GARBAGE_KNUM_A
+- id: no_garbage_b
   selector:
-    anchor: maxRetries
-- id: no_global_3
+    anchor: GARBAGE_KNUM_B
+- id: no_garbage_c
   selector:
-    anchor: MetricsCollector
-- id: no_global_4
-  selector:
-    anchor: recordLatency
-- id: no_global_5
-  selector:
-    anchor: incrementCounter
+    anchor: GARBAGE_KNUM_C
 oracle:
   required:
-  - client
-  - client_1
-  allowed: []
+  - parse_int_or_null_fix
+  - number_parser_obj
+  - price_tag_imports_util
+  allowed:
+  - catalog_imports_domain
+  - controller_imports_service
   forbidden:
-  - no_httpconfig
-  - no_metricscollector
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

@@ -1,0 +1,281 @@
+name: bal3_3hop_087_csharp_observer_notification_chain
+tags:
+- lang:csharp
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/Observing/IObserver.cs: |
+      using System;
+
+      namespace App.Observing
+      {
+          public interface IObserver
+          {
+              void Update(string eventType, object data);
+          }
+      }
+    src/Observing/EventBus.cs: |
+      using System;
+      using System.Collections.Generic;
+      using App.Observing;
+
+      namespace App.Observing
+      {
+          public class EventBus
+          {
+              private readonly List<IObserver> _observers = new();
+              public void Subscribe(IObserver observer)
+              {
+                  _observers.Add(observer);
+              }
+              public void Publish(string eventType, object data)
+              {
+                  foreach (var obs in _observers)
+                  {
+                      obs.Update(eventType, data);
+                  }
+              }
+          }
+      }
+    src/Handlers/InventoryHandler.cs: |
+      using System;
+      using App.Observing;
+
+      namespace App.Handlers
+      {
+          public class InventoryHandler : IObserver
+          {
+              public void Update(string eventType, object data)
+              {
+                  if (eventType == "order.placed")
+                  {
+                      // reduce stock
+                  }
+              }
+          }
+      }
+    src/Services/OrderProcessingService.cs: |
+      using System;
+      using App.Observing;
+
+      namespace App.Services
+      {
+          public class OrderProcessingService
+          {
+              private readonly EventBus _bus;
+              public OrderProcessingService(EventBus bus)
+              {
+                  _bus = bus;
+              }
+              public void ProcessOrder(string orderId)
+              {
+                  _bus.Publish("order.placed", new { OrderId = orderId });
+              }
+          }
+      }
+    src/Controllers/OrderProcessingController.cs: |
+      using System;
+      using App.Services;
+
+      namespace App.Controllers
+      {
+          public class OrderProcessingController
+          {
+              private readonly OrderProcessingService _service;
+              public OrderProcessingController(OrderProcessingService service)
+              {
+                  _service = service;
+              }
+              public string Process(string orderId)
+              {
+                  _service.ProcessOrder(orderId);
+                  return "Processed";
+              }
+          }
+      }
+    src/Reports/SalesReport.cs: |
+      using System;
+      // GARBAGE_087_SALES_A = "report"
+      // GARBAGE_087_PERIOD_B = "monthly"
+
+      namespace App.Reports
+      {
+          public class SalesReport
+          {
+              public string Generate() => "Sales Report";
+          }
+      }
+    src/Reports/InventoryReport.cs: |
+      using System;
+      // GARBAGE_087_INV_C = "report"
+      // GARBAGE_087_STOCK_D = "all"
+
+      namespace App.Reports
+      {
+          public class InventoryReport
+          {
+              public string Generate() => "Inventory Report";
+          }
+      }
+  changed_files:
+    src/Observing/IObserver.cs: |
+      using System;
+      using System.Threading.Tasks;
+
+      namespace App.Observing
+      {
+          public interface IObserver
+          {
+              void Update(string eventType, object data);
+              int Priority { get; }
+          }
+      }
+    src/Observing/EventBus.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Linq;
+      using App.Observing;
+
+      namespace App.Observing
+      {
+          public class EventBus
+          {
+              private readonly List<IObserver> _observers = new();
+              public void Subscribe(IObserver observer)
+              {
+                  _observers.Add(observer);
+              }
+              public void Publish(string eventType, object data)
+              {
+                  foreach (var obs in _observers.OrderByDescending(o => o.Priority))
+                  {
+                      obs.Update(eventType, data);
+                  }
+              }
+          }
+      }
+    src/Handlers/InventoryHandler.cs: |
+      using System;
+      using App.Observing;
+
+      namespace App.Handlers
+      {
+          public class InventoryHandler : IObserver
+          {
+              public int Priority => 10;
+              public void Update(string eventType, object data)
+              {
+                  if (eventType == "order.placed")
+                  {
+                      // reduce stock
+                  }
+              }
+          }
+      }
+    src/Services/OrderProcessingService.cs: |
+      using System;
+      using App.Observing;
+
+      namespace App.Services
+      {
+          public class OrderProcessingService
+          {
+              private readonly EventBus _bus;
+              public OrderProcessingService(EventBus bus)
+              {
+                  _bus = bus;
+              }
+              public void ProcessOrder(string orderId)
+              {
+                  _bus.Publish("order.placed", new { OrderId = orderId });
+              }
+          }
+      }
+    src/Controllers/OrderProcessingController.cs: |
+      using System;
+      using App.Services;
+
+      namespace App.Controllers
+      {
+          public class OrderProcessingController
+          {
+              private readonly OrderProcessingService _service;
+              public OrderProcessingController(OrderProcessingService service)
+              {
+                  _service = service;
+              }
+              public string Process(string orderId)
+              {
+                  _service.ProcessOrder(orderId);
+                  return "Processed";
+              }
+          }
+      }
+    src/Reports/SalesReport.cs: |
+      using System;
+      // GARBAGE_087_SALES_A = "report"
+      // GARBAGE_087_PERIOD_B = "monthly"
+
+      namespace App.Reports
+      {
+          public class SalesReport
+          {
+              public string Generate() => "Sales Report";
+          }
+      }
+    src/Reports/InventoryReport.cs: |
+      using System;
+      // GARBAGE_087_INV_C = "report"
+      // GARBAGE_087_STOCK_D = "all"
+
+      namespace App.Reports
+      {
+          public class InventoryReport
+          {
+              public string Generate() => "Inventory Report";
+          }
+      }
+  commit_message: "feat: add priority-based observer ordering to EventBus"
+fragments:
+- id: observer_priority
+  selector:
+    path: src/Observing/IObserver.cs
+    anchor: "int Priority"
+- id: bus_order_by
+  selector:
+    path: src/Observing/EventBus.cs
+    anchor: "OrderByDescending"
+- id: handler_priority_impl
+  selector:
+    path: src/Handlers/InventoryHandler.cs
+    anchor: "Priority => 10"
+- id: service_uses_bus
+  selector:
+    path: src/Services/OrderProcessingService.cs
+    anchor: "using App.Observing"
+- id: controller_uses_service
+  selector:
+    path: src/Controllers/OrderProcessingController.cs
+    anchor: "using App.Services"
+- id: no_sales_report
+  selector:
+    path: src/Reports/SalesReport.cs
+    anchor: "GARBAGE_087_SALES_A"
+- id: no_inv_report
+  selector:
+    path: src/Reports/InventoryReport.cs
+    anchor: "GARBAGE_087_INV_C"
+oracle:
+  required:
+  - observer_priority
+  - bus_order_by
+  - handler_priority_impl
+  - service_uses_bus
+  - controller_uses_service
+  allowed: []
+  forbidden:
+  - no_sales_report
+  - no_inv_report

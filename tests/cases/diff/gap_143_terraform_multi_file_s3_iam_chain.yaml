@@ -1,0 +1,175 @@
+name: gap_143_terraform_multi_file_s3_iam_chain
+tags:
+- change:config
+- change:multi_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:terraform
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    storage/bucket.tf: |
+      variable "bucket_prefix" {
+        type    = string
+        default = "data-lake"
+      }
+
+      resource "aws_s3_bucket" "artifacts" {
+        bucket = "${var.bucket_prefix}-artifacts"
+
+        tags = {
+          Environment = "production"
+        }
+      }
+
+      resource "aws_s3_bucket_versioning" "artifacts" {
+        bucket = aws_s3_bucket.artifacts.id
+        versioning_configuration {
+          status = "Enabled"
+        }
+      }
+
+      output "bucket_arn" {
+        value = aws_s3_bucket.artifacts.arn
+      }
+    storage/policy.tf: |
+      variable "bucket_arn" {
+        type = string
+      }
+
+      data "aws_iam_policy_document" "bucket_access" {
+        statement {
+          actions   = ["s3:GetObject", "s3:ListBucket"]
+          resources = [var.bucket_arn, "${var.bucket_arn}/*"]
+        }
+      }
+
+      resource "aws_iam_policy" "bucket_reader" {
+        name   = "bucket-reader-policy"
+        policy = data.aws_iam_policy_document.bucket_access.json
+      }
+
+      output "policy_arn" {
+        value = aws_iam_policy.bucket_reader.arn
+      }
+    storage/role.tf: |
+      variable "policy_arn" {
+        type = string
+      }
+
+      resource "aws_iam_role" "processor" {
+        name = "data-processor-role"
+        assume_role_policy = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Action = "sts:AssumeRole"
+            Effect = "Allow"
+            Principal = { Service = "lambda.amazonaws.com" }
+          }]
+        })
+      }
+
+      resource "aws_iam_role_policy_attachment" "processor" {
+        role       = aws_iam_role.processor.name
+        policy_arn = var.policy_arn
+      }
+    logging/cloudtrail.tf: |
+      resource "aws_cloudtrail" "main" {
+        name                          = "org-trail"
+        s3_bucket_name                = "audit-logs-bucket"
+        include_global_service_events = true
+        is_multi_region_trail         = true
+        enable_logging                = true
+      }
+  changed_files:
+    storage/bucket.tf: |
+      variable "bucket_prefix" {
+        type    = string
+        default = "data-lake"
+      }
+
+      resource "aws_s3_bucket" "artifacts" {
+        bucket = "${var.bucket_prefix}-artifacts"
+
+        tags = {
+          Environment = "production"
+        }
+      }
+
+      resource "aws_s3_bucket_versioning" "artifacts" {
+        bucket = aws_s3_bucket.artifacts.id
+        versioning_configuration {
+          status = "Enabled"
+        }
+      }
+
+      resource "aws_s3_bucket_lifecycle_configuration" "artifacts" {
+        bucket = aws_s3_bucket.artifacts.id
+
+        rule {
+          id     = "archive-old-objects"
+          status = "Enabled"
+
+          transition {
+            days          = 90
+            storage_class = "GLACIER"
+          }
+
+          expiration {
+            days = 365
+          }
+        }
+      }
+
+      output "bucket_arn" {
+        value = aws_s3_bucket.artifacts.arn
+      }
+    storage/policy.tf: |
+      variable "bucket_arn" {
+        type = string
+      }
+
+      data "aws_iam_policy_document" "bucket_access" {
+        statement {
+          actions   = ["s3:GetObject", "s3:ListBucket", "s3:PutObject"]
+          resources = [var.bucket_arn, "${var.bucket_arn}/*"]
+        }
+      }
+
+      resource "aws_iam_policy" "bucket_reader" {
+        name   = "bucket-readwrite-policy"
+        policy = data.aws_iam_policy_document.bucket_access.json
+      }
+
+      output "policy_arn" {
+        value = aws_iam_policy.bucket_reader.arn
+      }
+fragments:
+- id: bucket_lifecycle
+  selector:
+    path: storage/bucket.tf
+    anchor: aws_s3_bucket_lifecycle_configuration
+- id: policy_actions
+  selector:
+    path: storage/policy.tf
+    anchor: s3:PutObject
+- id: role_attachment
+  selector:
+    path: storage/role.tf
+    anchor: aws_iam_role_policy_attachment
+- id: no_cloudtrail
+  selector:
+    path: logging/cloudtrail.tf
+- id: no_trail_resource
+  selector:
+    anchor: aws_cloudtrail
+oracle:
+  required:
+  - bucket_lifecycle
+  - policy_actions
+  - role_attachment
+  forbidden:
+  - no_cloudtrail
+  - no_trail_resource

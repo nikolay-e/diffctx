@@ -1,0 +1,264 @@
+name: bal3_refactor_003_go_consolidate_error_handling
+tags:
+- lang:typescript
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/graphql/schema.ts: |
+      import { TypeRegistry } from './type_registry';
+      import { Resolver } from './resolver';
+
+      export class Schema {
+          private registry: TypeRegistry;
+
+          constructor() {
+              this.registry = new TypeRegistry();
+          }
+
+          addType(name: string, fields: Record<string, string>): this {
+              this.registry.register(name, fields);
+              return this;
+          }
+
+          addResolver(typeName: string, fieldName: string, resolver: Resolver): this {
+              this.registry.attachResolver(typeName, fieldName, resolver);
+              return this;
+          }
+
+          build(): string {
+              return this.registry.toSDL();
+          }
+      }
+    src/graphql/type_registry.ts: |
+      import { Resolver } from './resolver';
+
+      interface TypeDef {
+          fields: Record<string, string>;
+          resolvers: Map<string, Resolver>;
+      }
+
+      export class TypeRegistry {
+          private types = new Map<string, TypeDef>();
+
+          register(name: string, fields: Record<string, string>): void {
+              this.types.set(name, { fields, resolvers: new Map() });
+          }
+
+          attachResolver(typeName: string, fieldName: string, resolver: Resolver): void {
+              const type = this.types.get(typeName);
+              if (!type) throw new Error(`Type ${typeName} not registered`);
+              type.resolvers.set(fieldName, resolver);
+          }
+
+          toSDL(): string {
+              return Array.from(this.types.entries())
+                  .map(([name, def]) => {
+                      const fields = Object.entries(def.fields).map(([f, t]) => `  ${f}: ${t}`).join('\n');
+                      return `type ${name} {\n${fields}\n}`;
+                  })
+                  .join('\n\n');
+          }
+      }
+    src/graphql/resolver.ts: |
+      export type Resolver = (parent: unknown, args: Record<string, unknown>) => unknown;
+    src/api/graphql_endpoint.ts: |
+      import { Schema } from '../graphql/schema';
+
+      export class GraphQLEndpoint {
+          constructor(private schema: Schema) {}
+
+          getSchemaSDL(): string {
+              return this.schema.build();
+          }
+      }
+    src/telemetry/tracer.ts: |
+      export const GARBAGE_BAL3R003_A = 'opentelemetry_tracer';
+
+      export class Tracer {
+          startSpan(name: string): { end: () => void } {
+              return { end: () => {} };
+          }
+      }
+    src/security/sanitizer.ts: |
+      export const GARBAGE_BAL3R003_B = 'graphql_depth_limit';
+      export const GARBAGE_BAL3R003_C = 10;
+
+      export function sanitizeQuery(query: string): string { return query.trim(); }
+    src/monitoring/metrics.ts: |
+      export const GARBAGE_BAL3R003_D = 'graphql_request_counter';
+
+      export class MetricsCollector {
+          increment(metric: string): void { console.log(metric); }
+      }
+  changed_files:
+    src/graphql/schema.ts: |
+      import { TypeRegistry } from './type_registry';
+      import { Resolver, ResolverContext } from './resolver';
+
+      export class Schema {
+          private registry: TypeRegistry;
+
+          constructor() {
+              this.registry = new TypeRegistry();
+          }
+
+          addType(name: string, fields: Record<string, string>): this {
+              this.registry.register(name, fields);
+              return this;
+          }
+
+          addResolver(typeName: string, fieldName: string, resolver: Resolver): this {
+              this.registry.attachResolver(typeName, fieldName, resolver);
+              return this;
+          }
+
+          addContextualResolver(typeName: string, fieldName: string, resolver: (ctx: ResolverContext) => Resolver): this {
+              this.registry.attachContextualResolver(typeName, fieldName, resolver);
+              return this;
+          }
+
+          build(): string {
+              return this.registry.toSDL();
+          }
+      }
+    src/graphql/type_registry.ts: |
+      import { Resolver, ResolverContext } from './resolver';
+
+      interface TypeDef {
+          fields: Record<string, string>;
+          resolvers: Map<string, Resolver>;
+          contextualResolvers: Map<string, (ctx: ResolverContext) => Resolver>;
+      }
+
+      export class TypeRegistry {
+          private types = new Map<string, TypeDef>();
+
+          register(name: string, fields: Record<string, string>): void {
+              this.types.set(name, { fields, resolvers: new Map(), contextualResolvers: new Map() });
+          }
+
+          attachResolver(typeName: string, fieldName: string, resolver: Resolver): void {
+              const type = this.types.get(typeName);
+              if (!type) throw new Error(`Type ${typeName} not registered`);
+              type.resolvers.set(fieldName, resolver);
+          }
+
+          attachContextualResolver(typeName: string, fieldName: string, factory: (ctx: ResolverContext) => Resolver): void {
+              const type = this.types.get(typeName);
+              if (!type) throw new Error(`Type ${typeName} not registered`);
+              type.contextualResolvers.set(fieldName, factory);
+          }
+
+          toSDL(): string {
+              return Array.from(this.types.entries())
+                  .map(([name, def]) => {
+                      const fields = Object.entries(def.fields).map(([f, t]) => `  ${f}: ${t}`).join('\n');
+                      return `type ${name} {\n${fields}\n}`;
+                  })
+                  .join('\n\n');
+          }
+      }
+    src/graphql/resolver.ts: |
+      export interface ResolverContext {
+          userId?: string;
+          permissions: string[];
+      }
+
+      export type Resolver = (parent: unknown, args: Record<string, unknown>, ctx?: ResolverContext) => unknown;
+    src/api/graphql_endpoint.ts: |
+      import { Schema } from '../graphql/schema';
+      import { ResolverContext } from '../graphql/resolver';
+
+      export class GraphQLEndpoint {
+          constructor(private schema: Schema) {}
+
+          getSchemaSDL(): string {
+              return this.schema.build();
+          }
+
+          createContext(userId?: string, permissions: string[] = []): ResolverContext {
+              return { userId, permissions };
+          }
+      }
+    src/telemetry/tracer.ts: |
+      export const GARBAGE_BAL3R003_A = 'opentelemetry_tracer';
+
+      export class Tracer {
+          startSpan(name: string): { end: () => void } {
+              return { end: () => {} };
+          }
+      }
+    src/security/sanitizer.ts: |
+      export const GARBAGE_BAL3R003_B = 'graphql_depth_limit';
+      export const GARBAGE_BAL3R003_C = 10;
+
+      export function sanitizeQuery(query: string): string { return query.trim(); }
+    src/monitoring/metrics.ts: |
+      export const GARBAGE_BAL3R003_D = 'graphql_request_counter';
+
+      export class MetricsCollector {
+          increment(metric: string): void { console.log(metric); }
+      }
+  commit_message: "refactor: add ResolverContext to graphql resolver and schema"
+fragments:
+- id: resolver_context_interface
+  selector:
+    path: src/graphql/resolver.ts
+    anchor: "export interface ResolverContext"
+- id: resolver_type_with_context
+  selector:
+    path: src/graphql/resolver.ts
+    anchor: "export type Resolver"
+- id: type_registry_contextual
+  selector:
+    path: src/graphql/type_registry.ts
+    anchor: "attachContextualResolver"
+- id: schema_contextual_resolver
+  selector:
+    path: src/graphql/schema.ts
+    anchor: "addContextualResolver"
+- id: endpoint_create_context
+  selector:
+    path: src/api/graphql_endpoint.ts
+    anchor: "createContext"
+- id: no_tracer
+  selector:
+    path: src/telemetry/tracer.ts
+- id: no_sanitizer
+  selector:
+    path: src/security/sanitizer.ts
+- id: no_metrics
+  selector:
+    path: src/monitoring/metrics.ts
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3R003_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3R003_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3R003_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3R003_D
+oracle:
+  required:
+  - resolver_context_interface
+  - resolver_type_with_context
+  - type_registry_contextual
+  - schema_contextual_resolver
+  - endpoint_create_context
+  allowed: []
+  forbidden:
+  - no_tracer
+  - no_sanitizer
+  - no_metrics
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

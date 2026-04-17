@@ -1,0 +1,147 @@
+name: bal4_refactor_001_go_rename_var
+tags:
+- lang:go
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    pkg/store/store.go: |
+      package store
+
+      var dbConn string
+
+      func Connect(dsn string) {
+          dbConn = dsn
+      }
+
+      func GetConn() string {
+          return dbConn
+      }
+    cmd/main.go: |
+      package main
+
+      import "app/pkg/store"
+
+      func main() {
+          store.Connect("localhost:5432")
+          c := store.GetConn()
+          _ = c
+      }
+    pkg/utils/format.go: |
+      package utils
+
+      GARBAGE_BAL4R001_FORMAT_A = "format"
+
+      func FormatID(id int) string {
+          return fmt.Sprintf("id-%d", id)
+      }
+
+      GARBAGE_BAL4R001_HELPER_B = true
+    garbage_logger.go: |
+      package garbage
+
+      GARBAGE_BAL4R001_LOG_C = "logger"
+      GARBAGE_BAL4R001_LEVEL_D = "INFO"
+
+      type Logger struct {
+          GARBAGE_BAL4R001_STRUCT_E bool
+      }
+  changed_files:
+    pkg/store/store.go: |
+      package store
+
+      var connection string
+
+      func Connect(dsn string) {
+          connection = dsn
+      }
+
+      func GetConn() string {
+          return connection
+      }
+    cmd/main.go: |
+      package main
+
+      import "app/pkg/store"
+
+      func main() {
+          store.Connect("localhost:5432")
+          c := store.GetConn()
+          _ = c
+      }
+    pkg/utils/format.go: |
+      package utils
+
+      GARBAGE_BAL4R001_FORMAT_A = "format"
+
+      func FormatID(id int) string {
+          return fmt.Sprintf("id-%d", id)
+      }
+
+      GARBAGE_BAL4R001_HELPER_B = true
+    garbage_logger.go: |
+      package garbage
+
+      GARBAGE_BAL4R001_LOG_C = "logger"
+      GARBAGE_BAL4R001_LEVEL_D = "INFO"
+
+      type Logger struct {
+          GARBAGE_BAL4R001_STRUCT_E bool
+      }
+  commit_message: "refactor: rename dbConn to connection in store"
+fragments:
+- id: renamed_var_decl
+  selector:
+    path: pkg/store/store.go
+    anchor: "var connection string"
+- id: renamed_var_assign
+  selector:
+    path: pkg/store/store.go
+    anchor: "connection = dsn"
+- id: renamed_var_return
+  selector:
+    path: pkg/store/store.go
+    anchor: "return connection"
+- id: caller_main
+  selector:
+    path: cmd/main.go
+    anchor: "store.GetConn()"
+- id: no_format
+  selector:
+    path: pkg/utils/format.go
+- id: no_garbage_logger
+  selector:
+    path: garbage_logger.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL4R001_FORMAT_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL4R001_HELPER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL4R001_LOG_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL4R001_LEVEL_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL4R001_STRUCT_E
+oracle:
+  required:
+  - renamed_var_decl
+  - renamed_var_assign
+  - renamed_var_return
+  allowed:
+  - caller_main
+  forbidden:
+  - no_format
+  - no_garbage_logger
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

@@ -1,0 +1,86 @@
+name: gap_171_shell_terraform_cert_renewal
+tags:
+- change:config
+- change:single_file
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:shell
+- lang:terraform
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    certs/renew.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      DOMAIN="shop.example.com"
+      CERT_DIR="/etc/letsencrypt/live/${DOMAIN}"
+      DAYS_BEFORE=30
+
+      EXPIRY=$(openssl x509 -enddate -noout -in "${CERT_DIR}/fullchain.pem")
+      EXPIRY_EPOCH=$(date -d "${EXPIRY#*=}" +%s)
+      NOW_EPOCH=$(date +%s)
+      DIFF=$(( (EXPIRY_EPOCH - NOW_EPOCH) / 86400 ))
+
+      if [ "$DIFF" -lt "$DAYS_BEFORE" ]; then
+        certbot renew --cert-name "$DOMAIN" --quiet
+        systemctl reload nginx
+      fi
+    certs/acm.tf: |
+      resource "aws_acm_certificate" "shop" {
+        domain_name       = "shop.example.com"
+        validation_method = "DNS"
+
+        lifecycle {
+          create_before_destroy = true
+        }
+      }
+    certs/rotate-keys.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      SSH_DIR="$HOME/.ssh"
+      ssh-keygen -t ed25519 -f "${SSH_DIR}/id_deploy" -N ""
+      echo "New deploy key generated"
+  changed_files:
+    certs/renew.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      DOMAIN="shop.example.com"
+      CERT_DIR="/etc/letsencrypt/live/${DOMAIN}"
+      DAYS_BEFORE=14
+
+      EXPIRY=$(openssl x509 -enddate -noout -in "${CERT_DIR}/fullchain.pem")
+      EXPIRY_EPOCH=$(date -d "${EXPIRY#*=}" +%s)
+      NOW_EPOCH=$(date +%s)
+      DIFF=$(( (EXPIRY_EPOCH - NOW_EPOCH) / 86400 ))
+
+      if [ "$DIFF" -lt "$DAYS_BEFORE" ]; then
+        certbot renew --cert-name "$DOMAIN" --quiet
+        systemctl reload nginx
+      fi
+fragments:
+- id: days_before
+  selector:
+    path: certs/renew.sh
+    anchor: DAYS_BEFORE=14
+- id: certbot_renew
+  selector:
+    path: certs/renew.sh
+    anchor: certbot renew
+- id: no_acm
+  selector:
+    path: certs/acm.tf
+- id: no_rotate
+  selector:
+    path: certs/rotate-keys.sh
+oracle:
+  required:
+  - days_before
+  - certbot_renew
+  forbidden:
+  - no_acm
+  - no_rotate

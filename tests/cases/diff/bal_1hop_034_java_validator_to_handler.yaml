@@ -1,0 +1,77 @@
+name: bal_1hop_034_java_validator_to_handler
+tags:
+- lang:java
+- change:bug_fix
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/main/java/com/api/validation/InputValidator.java: |
+      package com.api.validation;
+      public class InputValidator {
+          public boolean isValidEmail(String email) {
+              return email.contains("@");
+          }
+          public boolean isValidName(String name) {
+              return name != null && name.length() > 0;
+          }
+      }
+    src/main/java/com/api/handler/RegistrationHandler.java: |
+      package com.api.handler;
+      import com.api.validation.InputValidator;
+      public class RegistrationHandler {
+          private final InputValidator validator;
+          public RegistrationHandler(InputValidator validator) {
+              this.validator = validator;
+          }
+          public String register(String name, String email) {
+              if (!validator.isValidEmail(email)) {
+                  return "Invalid email";
+              }
+              if (!validator.isValidName(name)) {
+                  return "Invalid name";
+              }
+              return "Registered: " + name;
+          }
+      }
+    src/main/java/com/api/logging/AuditLogger.java: |
+      package com.api.logging;
+      public class AuditLogger {
+          public void log(String action, String user) {
+              System.out.println("[AUDIT] " + action + " by " + user);
+          }
+      }
+  changed_files:
+    src/main/java/com/api/validation/InputValidator.java: |
+      package com.api.validation;
+      public class InputValidator {
+          public boolean isValidEmail(String email) {
+              return email != null && email.contains("@") && email.indexOf("@") < email.length() - 1;
+          }
+          public boolean isValidName(String name) {
+              return name != null && name.length() > 0;
+          }
+      }
+  commit_message: "fix: stricter email validation in InputValidator"
+fragments:
+- id: validator_email_fix
+  selector:
+    path: InputValidator.java
+    anchor: "isValidEmail"
+- id: handler_uses_validator
+  selector:
+    path: RegistrationHandler.java
+    anchor: "validator.isValidEmail"
+- id: no_audit_logger
+  selector:
+    path: AuditLogger.java
+    anchor: "AuditLogger"
+oracle:
+  required:
+  - validator_email_fix
+  - handler_uses_validator
+  allowed: []
+  forbidden:
+  - no_audit_logger

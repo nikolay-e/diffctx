@@ -1,0 +1,347 @@
+name: bal3_1hop_040_php_multi_file_orm
+tags:
+- lang:php
+- change:multi_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: php-no-tree-sitter
+repo:
+  initial_files:
+    src/ORM/QueryBuilder.php: |
+      <?php
+      namespace App\ORM;
+
+      class QueryBuilder
+      {
+          private string $table;
+          private array $conditions = [];
+
+          public function from(string $table): self
+          {
+              $this->table = $table;
+              return $this;
+          }
+
+          public function where(string $column, mixed $value): self
+          {
+              $this->conditions[] = [$column, '=', $value];
+              return $this;
+          }
+
+          public function toSql(): string
+          {
+              $sql = "SELECT * FROM {$this->table}";
+              if (!empty($this->conditions)) {
+                  $parts = [];
+                  foreach ($this->conditions as [$col, $op, $val]) {
+                      $parts[] = "{$col} {$op} '{$val}'";
+                  }
+                  $sql .= ' WHERE ' . implode(' AND ', $parts);
+              }
+              return $sql;
+          }
+      }
+    src/ORM/EntityMapper.php: |
+      <?php
+      namespace App\ORM;
+
+      class EntityMapper
+      {
+          private QueryBuilder $builder;
+
+          public function __construct(QueryBuilder $builder)
+          {
+              $this->builder = $builder;
+          }
+
+          public function find(string $table, int $id): string
+          {
+              return $this->builder->from($table)->where('id', $id)->toSql();
+          }
+      }
+    src/Repositories/PostRepository.php: |
+      <?php
+      namespace App\Repositories;
+
+      use App\ORM\QueryBuilder;
+
+      class PostRepository
+      {
+          private QueryBuilder $qb;
+
+          public function __construct(QueryBuilder $qb)
+          {
+              $this->qb = $qb;
+          }
+
+          public function findByAuthor(int $authorId): string
+          {
+              return $this->qb->from('posts')->where('author_id', $authorId)->toSql();
+          }
+      }
+    src/Repositories/CommentRepository.php: |
+      <?php
+      namespace App\Repositories;
+
+      use App\ORM\QueryBuilder;
+
+      class CommentRepository
+      {
+          private QueryBuilder $qb;
+
+          public function __construct(QueryBuilder $qb)
+          {
+              $this->qb = $qb;
+          }
+
+          public function findByPost(int $postId): string
+          {
+              return $this->qb->from('comments')->where('post_id', $postId)->toSql();
+          }
+      }
+    src/Repositories/TagRepository.php: |
+      <?php
+      namespace App\Repositories;
+
+      use App\ORM\QueryBuilder;
+      use App\ORM\EntityMapper;
+
+      class TagRepository
+      {
+          private QueryBuilder $qb;
+          private EntityMapper $mapper;
+
+          public function __construct(QueryBuilder $qb, EntityMapper $mapper)
+          {
+              $this->qb = $qb;
+              $this->mapper = $mapper;
+          }
+
+          public function findByName(string $name): string
+          {
+              return $this->qb->from('tags')->where('name', $name)->toSql();
+          }
+
+          public function findById(int $id): string
+          {
+              return $this->mapper->find('tags', $id);
+          }
+      }
+    src/Repositories/CategoryRepository.php: |
+      <?php
+      namespace App\Repositories;
+
+      use App\ORM\EntityMapper;
+
+      class CategoryRepository
+      {
+          private EntityMapper $mapper;
+
+          public function __construct(EntityMapper $mapper)
+          {
+              $this->mapper = $mapper;
+          }
+
+          public function findById(int $id): string
+          {
+              return $this->mapper->find('categories', $id);
+          }
+      }
+    src/Mailer/SmtpTransport.php: |
+      <?php
+      namespace App\Mailer;
+
+      GARBAGE_BAL3_040_SMTP_A = 'smtp';
+      GARBAGE_BAL3_040_PORT_B = 587;
+
+      class SmtpTransport
+      {
+          public function send(string $to, string $body): bool
+          {
+              return true;
+          }
+      }
+    src/Mailer/TemplateEngine.php: |
+      <?php
+      namespace App\Mailer;
+
+      GARBAGE_BAL3_040_TMPL_C = 'template';
+      GARBAGE_BAL3_040_RENDER_D = true;
+
+      class TemplateEngine
+      {
+          public function render(string $template, array $vars): string
+          {
+              return $template;
+          }
+      }
+    src/Mailer/MailQueue.php: |
+      <?php
+      namespace App\Mailer;
+
+      GARBAGE_BAL3_040_MAILQ_E = 'mailqueue';
+      GARBAGE_BAL3_040_RETRY_F = 3;
+
+      class MailQueue
+      {
+          public function enqueue(array $mail): void
+          {
+          }
+      }
+  changed_files:
+    src/ORM/QueryBuilder.php: |
+      <?php
+      namespace App\ORM;
+
+      class QueryBuilder
+      {
+          private string $table;
+          private array $conditions = [];
+          private ?int $limit = null;
+          private ?int $offset = null;
+          private ?string $orderBy = null;
+
+          public function from(string $table): self
+          {
+              $this->table = $table;
+              return $this;
+          }
+
+          public function where(string $column, mixed $value, string $operator = '='): self
+          {
+              $this->conditions[] = [$column, $operator, $value];
+              return $this;
+          }
+
+          public function limit(int $limit): self
+          {
+              $this->limit = $limit;
+              return $this;
+          }
+
+          public function offset(int $offset): self
+          {
+              $this->offset = $offset;
+              return $this;
+          }
+
+          public function orderBy(string $column, string $direction = 'ASC'): self
+          {
+              $this->orderBy = "{$column} {$direction}";
+              return $this;
+          }
+
+          public function toSql(): string
+          {
+              $sql = "SELECT * FROM {$this->table}";
+              if (!empty($this->conditions)) {
+                  $parts = [];
+                  foreach ($this->conditions as [$col, $op, $val]) {
+                      $parts[] = "{$col} {$op} '{$val}'";
+                  }
+                  $sql .= ' WHERE ' . implode(' AND ', $parts);
+              }
+              if ($this->orderBy !== null) {
+                  $sql .= " ORDER BY {$this->orderBy}";
+              }
+              if ($this->limit !== null) {
+                  $sql .= " LIMIT {$this->limit}";
+              }
+              if ($this->offset !== null) {
+                  $sql .= " OFFSET {$this->offset}";
+              }
+              return $sql;
+          }
+      }
+    src/ORM/EntityMapper.php: |
+      <?php
+      namespace App\ORM;
+
+      class EntityMapper
+      {
+          private QueryBuilder $builder;
+
+          public function __construct(QueryBuilder $builder)
+          {
+              $this->builder = $builder;
+          }
+
+          public function find(string $table, int $id): string
+          {
+              return $this->builder->from($table)->where('id', $id)->toSql();
+          }
+
+          public function findAll(string $table, int $limit = 100): string
+          {
+              return $this->builder->from($table)->limit($limit)->toSql();
+          }
+      }
+  commit_message: "Add pagination, ordering, and operator support to QueryBuilder"
+fragments:
+- id: post_repo
+  selector:
+    path: src/Repositories/PostRepository.php
+    anchor: "use App\\ORM\\QueryBuilder"
+- id: post_usage
+  selector:
+    path: src/Repositories/PostRepository.php
+    anchor: "qb->from"
+- id: comment_repo
+  selector:
+    path: src/Repositories/CommentRepository.php
+    anchor: "use App\\ORM\\QueryBuilder"
+- id: tag_repo
+  selector:
+    path: src/Repositories/TagRepository.php
+    anchor: "use App\\ORM\\QueryBuilder"
+- id: category_repo
+  selector:
+    path: src/Repositories/CategoryRepository.php
+    anchor: "use App\\ORM\\EntityMapper"
+- id: no_smtp
+  selector:
+    path: src/Mailer/SmtpTransport.php
+- id: no_template
+  selector:
+    path: src/Mailer/TemplateEngine.php
+- id: no_mail_queue
+  selector:
+    path: src/Mailer/MailQueue.php
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_040_SMTP_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_040_PORT_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_040_TMPL_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_040_RENDER_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL3_040_MAILQ_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL3_040_RETRY_F
+oracle:
+  required:
+  - post_repo
+  - post_usage
+  - comment_repo
+  - tag_repo
+  - category_repo
+  allowed: []
+  forbidden:
+  - no_smtp
+  - no_template
+  - no_mail_queue
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

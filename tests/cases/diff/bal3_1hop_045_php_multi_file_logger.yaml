@@ -1,0 +1,319 @@
+name: bal3_1hop_045_php_multi_file_logger
+tags:
+- lang:php
+- change:multi_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: php-no-tree-sitter
+repo:
+  initial_files:
+    src/Log/Logger.php: |
+      <?php
+      namespace App\Log;
+
+      class Logger
+      {
+          private string $channel;
+
+          public function __construct(string $channel)
+          {
+              $this->channel = $channel;
+          }
+
+          public function info(string $message): string
+          {
+              return "[{$this->channel}] INFO: {$message}";
+          }
+
+          public function error(string $message): string
+          {
+              return "[{$this->channel}] ERROR: {$message}";
+          }
+      }
+    src/Log/LogFormatter.php: |
+      <?php
+      namespace App\Log;
+
+      class LogFormatter
+      {
+          private Logger $logger;
+
+          public function __construct(Logger $logger)
+          {
+              $this->logger = $logger;
+          }
+
+          public function formatInfo(string $msg): string
+          {
+              return $this->logger->info($msg);
+          }
+      }
+    src/Services/UserService.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Log\Logger;
+
+      class UserService
+      {
+          private Logger $logger;
+
+          public function __construct(Logger $logger)
+          {
+              $this->logger = $logger;
+          }
+
+          public function createUser(string $name): array
+          {
+              $this->logger->info("Creating user: {$name}");
+              return ['name' => $name];
+          }
+      }
+    src/Services/OrderService.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Log\Logger;
+
+      class OrderService
+      {
+          private Logger $logger;
+
+          public function __construct(Logger $logger)
+          {
+              $this->logger = $logger;
+          }
+
+          public function placeOrder(int $productId): array
+          {
+              $this->logger->info("Placing order for product: {$productId}");
+              return ['product_id' => $productId];
+          }
+
+          public function cancelOrder(int $orderId): void
+          {
+              $this->logger->error("Cancelling order: {$orderId}");
+          }
+      }
+    src/Services/PaymentService.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Log\Logger;
+
+      class PaymentService
+      {
+          private Logger $logger;
+
+          public function __construct(Logger $logger)
+          {
+              $this->logger = $logger;
+          }
+
+          public function processPayment(float $amount): array
+          {
+              $this->logger->info("Processing payment: {$amount}");
+              return ['amount' => $amount, 'status' => 'ok'];
+          }
+      }
+    src/Services/ShippingService.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Log\Logger;
+      use App\Log\LogFormatter;
+
+      class ShippingService
+      {
+          private Logger $logger;
+          private LogFormatter $formatter;
+
+          public function __construct(Logger $logger, LogFormatter $formatter)
+          {
+              $this->logger = $logger;
+              $this->formatter = $formatter;
+          }
+
+          public function ship(int $orderId): array
+          {
+              $this->logger->info("Shipping order: {$orderId}");
+              return ['order_id' => $orderId, 'shipped' => true];
+          }
+      }
+    src/Crypto/Encryptor.php: |
+      <?php
+      namespace App\Crypto;
+
+      GARBAGE_BAL3_045_ENC_A = 'encrypt';
+      GARBAGE_BAL3_045_ALGO_B = 'aes-256';
+
+      class Encryptor
+      {
+          public function encrypt(string $data): string
+          {
+              return base64_encode($data);
+          }
+      }
+    src/Crypto/Decryptor.php: |
+      <?php
+      namespace App\Crypto;
+
+      GARBAGE_BAL3_045_DEC_C = 'decrypt';
+      GARBAGE_BAL3_045_KEY_D = 'secret';
+
+      class Decryptor
+      {
+          public function decrypt(string $data): string
+          {
+              return base64_decode($data);
+          }
+      }
+    src/Crypto/KeyManager.php: |
+      <?php
+      namespace App\Crypto;
+
+      GARBAGE_BAL3_045_KEYMGR_E = 'keymgr';
+      GARBAGE_BAL3_045_ROTATE_F = 30;
+
+      class KeyManager
+      {
+          public function generateKey(): string
+          {
+              return bin2hex(random_bytes(32));
+          }
+      }
+  changed_files:
+    src/Log/Logger.php: |
+      <?php
+      namespace App\Log;
+
+      class Logger
+      {
+          private string $channel;
+          private array $context = [];
+
+          public function __construct(string $channel)
+          {
+              $this->channel = $channel;
+          }
+
+          public function withContext(array $context): self
+          {
+              $clone = clone $this;
+              $clone->context = array_merge($this->context, $context);
+              return $clone;
+          }
+
+          public function info(string $message): string
+          {
+              return $this->format('INFO', $message);
+          }
+
+          public function error(string $message): string
+          {
+              return $this->format('ERROR', $message);
+          }
+
+          public function warning(string $message): string
+          {
+              return $this->format('WARNING', $message);
+          }
+
+          private function format(string $level, string $message): string
+          {
+              $ctx = !empty($this->context) ? ' ' . json_encode($this->context) : '';
+              return "[{$this->channel}] {$level}: {$message}{$ctx}";
+          }
+      }
+    src/Log/LogFormatter.php: |
+      <?php
+      namespace App\Log;
+
+      class LogFormatter
+      {
+          private Logger $logger;
+
+          public function __construct(Logger $logger)
+          {
+              $this->logger = $logger;
+          }
+
+          public function formatInfo(string $msg): string
+          {
+              return $this->logger->info($msg);
+          }
+
+          public function formatWarning(string $msg): string
+          {
+              return $this->logger->warning($msg);
+          }
+      }
+  commit_message: "Add structured context, warning level, and format method to Logger"
+fragments:
+- id: user_service
+  selector:
+    path: src/Services/UserService.php
+    anchor: "use App\\Log\\Logger"
+- id: user_log
+  selector:
+    path: src/Services/UserService.php
+    anchor: "logger->info"
+- id: order_service
+  selector:
+    path: src/Services/OrderService.php
+    anchor: "use App\\Log\\Logger"
+- id: payment_service
+  selector:
+    path: src/Services/PaymentService.php
+    anchor: "use App\\Log\\Logger"
+- id: shipping_service
+  selector:
+    path: src/Services/ShippingService.php
+    anchor: "use App\\Log\\Logger"
+- id: no_encryptor
+  selector:
+    path: src/Crypto/Encryptor.php
+- id: no_decryptor
+  selector:
+    path: src/Crypto/Decryptor.php
+- id: no_keymgr
+  selector:
+    path: src/Crypto/KeyManager.php
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_045_ENC_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_045_ALGO_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_045_DEC_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_045_KEY_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL3_045_KEYMGR_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL3_045_ROTATE_F
+oracle:
+  required:
+  - user_service
+  - user_log
+  - order_service
+  - payment_service
+  - shipping_service
+  allowed: []
+  forbidden:
+  - no_encryptor
+  - no_decryptor
+  - no_keymgr
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

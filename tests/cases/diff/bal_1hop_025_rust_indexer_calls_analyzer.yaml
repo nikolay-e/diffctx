@@ -1,0 +1,113 @@
+name: bal_1hop_025_rust_indexer_calls_analyzer
+tags:
+- lang:python
+- lang:protobuf
+- change:multi_file
+- context:same_file
+- distance:0hop
+- difficulty:easy
+repo:
+  initial_files:
+    proto/analytics.proto: |
+      syntax = "proto3";
+
+      message Event {
+        string name = 1;
+        string user_id = 2;
+        int64 timestamp = 3;
+      }
+    service/analytics_service.py: |
+      from proto import analytics_pb2
+
+      class AnalyticsService:
+          def record_event(self, name: str, user_id: str, timestamp: int) -> analytics_pb2.Event:
+              return analytics_pb2.Event(name=name, user_id=user_id, timestamp=timestamp)
+
+          def list_events(self) -> list:
+              return []
+    garbage/billing.py: |
+      GARBAGE_BAL1HOP025_A = "billing_marker"
+
+      def noop():
+          pass
+    garbage/reports.py: |
+      GARBAGE_BAL1HOP025_B = "reports_marker"
+
+      def noop():
+          pass
+    garbage/export.py: |
+      GARBAGE_BAL1HOP025_C = "export_marker"
+
+      def noop():
+          pass
+  changed_files:
+    proto/analytics.proto: |
+      syntax = "proto3";
+
+      message Event {
+        string name = 1;
+        string user_id = 2;
+        int64 timestamp = 3;
+        map<string, string> properties = 4;
+      }
+    service/analytics_service.py: |
+      from proto import analytics_pb2
+
+      class AnalyticsService:
+          def record_event(
+              self,
+              name: str,
+              user_id: str,
+              timestamp: int,
+              properties: dict | None = None,
+          ) -> analytics_pb2.Event:
+              return analytics_pb2.Event(
+                  name=name,
+                  user_id=user_id,
+                  timestamp=timestamp,
+                  properties=properties or {},
+              )
+
+          def list_events(self) -> list:
+              return []
+    garbage/billing.py: |
+      GARBAGE_BAL1HOP025_A = "billing_marker"
+
+      def noop():
+          pass
+    garbage/reports.py: |
+      GARBAGE_BAL1HOP025_B = "reports_marker"
+
+      def noop():
+          pass
+    garbage/export.py: |
+      GARBAGE_BAL1HOP025_C = "export_marker"
+
+      def noop():
+          pass
+  commit_message: "feat: add properties map to Event proto and analytics service"
+fragments:
+- id: proto_file
+  selector:
+    path: proto/analytics.proto
+- id: service_file
+  selector:
+    path: service/analytics_service.py
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_BAL1HOP025_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_BAL1HOP025_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_BAL1HOP025_C
+oracle:
+  required:
+  - proto_file
+  - service_file
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

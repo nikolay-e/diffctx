@@ -1,0 +1,109 @@
+name: bal3_bugfix_027_php_type_coercion
+tags:
+- lang:php
+- change:single_file
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/Auth/Token.php: |
+      <?php
+      namespace App\Auth;
+
+      class Token
+      {
+          private string $value;
+          private int $expiresAt;
+
+          public function __construct(string $value, int $expiresAt)
+          {
+              $this->value = $value;
+              $this->expiresAt = $expiresAt;
+          }
+
+          public function isExpired(): bool
+          {
+              return $this->expiresAt == time();
+          }
+
+          public function getValue(): string
+          {
+              return $this->value;
+          }
+      }
+    src/Middleware/AuthCheck.php: |
+      <?php
+      namespace App\Middleware;
+
+      use App\Auth\Token;
+
+      class AuthCheck
+      {
+          public function validate(Token $token): bool
+          {
+              if ($token->isExpired()) {
+                  return false;
+              }
+              return strlen($token->getValue()) > 0;
+          }
+      }
+    src/Logging/FileLogger.php: |
+      <?php
+      namespace App\Logging;
+
+      class FileLogger
+      {
+          public function info(string $msg): void
+          {
+              error_log("[INFO] " . $msg);
+          }
+      }
+  changed_files:
+    src/Auth/Token.php: |
+      <?php
+      namespace App\Auth;
+
+      class Token
+      {
+          private string $value;
+          private int $expiresAt;
+
+          public function __construct(string $value, int $expiresAt)
+          {
+              $this->value = $value;
+              $this->expiresAt = $expiresAt;
+          }
+
+          public function isExpired(): bool
+          {
+              return $this->expiresAt < time();
+          }
+
+          public function getValue(): string
+          {
+              return $this->value;
+          }
+      }
+  commit_message: "fix: use < instead of == to correctly detect expired tokens"
+fragments:
+- id: comparison_fix
+  selector:
+    path: src/Auth/Token.php
+    anchor: "$this->expiresAt < time()"
+- id: middleware_calls_expired
+  selector:
+    path: src/Middleware/AuthCheck.php
+    anchor: "$token->isExpired()"
+- id: no_logger
+  selector:
+    path: src/Logging/FileLogger.php
+    anchor: "class FileLogger"
+oracle:
+  required:
+  - comparison_fix
+  - middleware_calls_expired
+  allowed: []
+  forbidden:
+  - no_logger

@@ -1,0 +1,125 @@
+name: bal4_testctx_005_go_queue_test
+tags:
+- lang:go
+- change:single_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    queue/queue.go: |
+      package queue
+
+      type Queue struct {
+          data []string
+      }
+
+      func (q *Queue) Enqueue(val string) {
+          q.data = append(q.data, val)
+      }
+
+      func (q *Queue) Dequeue() string {
+          val := q.data[0]
+          q.data = q.data[1:]
+          return val
+      }
+    queue/queue_test.go: |
+      package queue
+
+      import "testing"
+
+      func TestEnqueueDequeue(t *testing.T) {
+          q := &Queue{}
+          q.Enqueue("a")
+          q.Enqueue("b")
+          if got := q.Dequeue(); got != "a" {
+              t.Fatalf("expected a, got %s", got)
+          }
+      }
+
+      func TestDequeueOrder(t *testing.T) {
+          q := &Queue{}
+          q.Enqueue("x")
+          q.Enqueue("y")
+          q.Dequeue()
+          if got := q.Dequeue(); got != "y" {
+              t.Fatalf("expected y, got %s", got)
+          }
+      }
+    pool/worker.go: |
+      package pool
+
+      type Worker struct {
+          ID int
+      }
+
+      func (w *Worker) Run(task string) string {
+          return task + "_done"
+      }
+    net/client.go: |
+      package net
+
+      type Client struct {
+          BaseURL string
+      }
+
+      func (c *Client) Get(path string) string {
+          return c.BaseURL + path
+      }
+  changed_files:
+    queue/queue.go: |
+      package queue
+
+      type Queue struct {
+          data []string
+      }
+
+      func (q *Queue) Enqueue(val string) {
+          q.data = append(q.data, val)
+      }
+
+      func (q *Queue) Dequeue() string {
+          val := q.data[0]
+          q.data = q.data[1:]
+          return val
+      }
+
+      func (q *Queue) Len() int {
+          return len(q.data)
+      }
+
+      func (q *Queue) IsEmpty() bool {
+          return len(q.data) == 0
+      }
+  commit_message: "feat: add Len and IsEmpty to queue"
+fragments:
+- id: len_fn
+  selector:
+    path: queue/queue.go
+    anchor: "func (q *Queue) Len() int"
+- id: is_empty_fn
+  selector:
+    path: queue/queue.go
+    anchor: "func (q *Queue) IsEmpty() bool"
+- id: test_enqueue_dequeue
+  selector:
+    path: queue/queue_test.go
+    anchor: "func TestEnqueueDequeue(t *testing.T)"
+- id: no_worker
+  selector:
+    path: pool/worker.go
+    anchor: "type Worker struct"
+- id: no_client
+  selector:
+    path: net/client.go
+    anchor: "type Client struct"
+oracle:
+  required:
+  - len_fn
+  - is_empty_fn
+  - test_enqueue_dequeue
+  allowed: []
+  forbidden:
+  - no_worker
+  - no_client

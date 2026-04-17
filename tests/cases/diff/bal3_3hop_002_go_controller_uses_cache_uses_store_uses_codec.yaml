@@ -1,0 +1,205 @@
+name: bal3_3hop_002_go_controller_uses_cache_uses_store_uses_codec
+tags:
+- lang:go
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    internal/codec/json_codec.go: |
+      package codec
+
+      import "encoding/json"
+
+      type JSONCodec struct{}
+
+      func NewJSONCodec() *JSONCodec {
+          return &JSONCodec{}
+      }
+
+      func (c *JSONCodec) Encode(v interface{}) ([]byte, error) {
+          return json.Marshal(v)
+      }
+
+      func (c *JSONCodec) Decode(data []byte, v interface{}) error {
+          return json.Unmarshal(data, v)
+      }
+    internal/store/kv_store.go: |
+      package store
+
+      import "myapp/internal/codec"
+
+      type KVStore struct {
+          data  map[string][]byte
+          codec *codec.JSONCodec
+      }
+
+      func NewKVStore(codec *codec.JSONCodec) *KVStore {
+          return &KVStore{data: make(map[string][]byte), codec: codec}
+      }
+
+      func (s *KVStore) Set(key string, val interface{}) error {
+          b, err := s.codec.Encode(val)
+          if err != nil {
+              return err
+          }
+          s.data[key] = b
+          return nil
+      }
+
+      func (s *KVStore) Get(key string, out interface{}) error {
+          b, ok := s.data[key]
+          if !ok {
+              return nil
+          }
+          return s.codec.Decode(b, out)
+      }
+    internal/cache/lru_cache.go: |
+      package cache
+
+      import "myapp/internal/store"
+
+      type LRUCache struct {
+          store *store.KVStore
+          cap   int
+          keys  []string
+      }
+
+      func NewLRUCache(store *store.KVStore, cap int) *LRUCache {
+          return &LRUCache{store: store, cap: cap}
+      }
+
+      func (c *LRUCache) Put(key string, val interface{}) error {
+          if len(c.keys) >= c.cap {
+              c.keys = c.keys[1:]
+          }
+          c.keys = append(c.keys, key)
+          return c.store.Set(key, val)
+      }
+
+      func (c *LRUCache) Fetch(key string, out interface{}) error {
+          return c.store.Get(key, out)
+      }
+    internal/controller/item_controller.go: |
+      package controller
+
+      import "myapp/internal/cache"
+
+      type ItemController struct {
+          cache *cache.LRUCache
+      }
+
+      func NewItemController(cache *cache.LRUCache) *ItemController {
+          return &ItemController{cache: cache}
+      }
+
+      func (ic *ItemController) SaveItem(id string, item interface{}) error {
+          return ic.cache.Put(id, item)
+      }
+
+      func (ic *ItemController) LoadItem(id string, out interface{}) error {
+          return ic.cache.Fetch(id, out)
+      }
+    internal/util/strings.go: |
+      package util
+
+      var GARBAGE_BAL3_002_STR_MARKER_A = "strings"
+      var GARBAGE_BAL3_002_TRIM_MARKER_B = true
+
+      func TrimAll(s string) string {
+          return s
+      }
+    internal/util/numbers.go: |
+      package util
+
+      var GARBAGE_BAL3_002_NUM_MARKER_C = "numbers"
+      var GARBAGE_BAL3_002_ROUND_MARKER_D = 2
+
+      func RoundFloat(f float64) float64 {
+          return f
+      }
+  changed_files:
+    internal/codec/json_codec.go: |
+      package codec
+
+      import "encoding/json"
+
+      type JSONCodec struct {
+          pretty bool
+      }
+
+      func NewJSONCodec(pretty bool) *JSONCodec {
+          return &JSONCodec{pretty: pretty}
+      }
+
+      func (c *JSONCodec) Encode(v interface{}) ([]byte, error) {
+          if c.pretty {
+              return json.MarshalIndent(v, "", "  ")
+          }
+          return json.Marshal(v)
+      }
+
+      func (c *JSONCodec) Decode(data []byte, v interface{}) error {
+          return json.Unmarshal(data, v)
+      }
+  commit_message: "Add pretty-print option to JSON codec"
+fragments:
+- id: codec_struct
+  selector:
+    path: internal/codec/json_codec.go
+    anchor: "pretty bool"
+- id: codec_new
+  selector:
+    path: internal/codec/json_codec.go
+    anchor: "func NewJSONCodec(pretty bool)"
+- id: codec_encode
+  selector:
+    path: internal/codec/json_codec.go
+    anchor: "MarshalIndent"
+- id: store_kv
+  selector:
+    path: internal/store/kv_store.go
+    anchor: "func NewKVStore"
+- id: cache_lru
+  selector:
+    path: internal/cache/lru_cache.go
+    anchor: "func NewLRUCache"
+- id: controller_item
+  selector:
+    path: internal/controller/item_controller.go
+    anchor: "func NewItemController"
+- id: no_strings
+  selector:
+    path: internal/util/strings.go
+- id: no_numbers
+  selector:
+    path: internal/util/numbers.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_002_STR_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_002_TRIM_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_002_NUM_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_002_ROUND_MARKER_D
+oracle:
+  required:
+  - codec_struct
+  - codec_new
+  - codec_encode
+  - store_kv
+  - cache_lru
+  - controller_item
+  allowed: []
+  forbidden:
+  - no_strings
+  - no_numbers
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

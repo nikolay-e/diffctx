@@ -1,0 +1,102 @@
+name: r_lang_006_environment_variable
+tags:
+- lang:r
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    R/config.R: |
+      db_config <- function() {
+        list(
+          host = Sys.getenv("DB_HOST", "localhost"),
+          port = as.integer(Sys.getenv("DB_PORT", "5432")),
+          name = Sys.getenv("DB_NAME", "analytics"),
+          user = Sys.getenv("DB_USER", "app_user"),
+          password = Sys.getenv("DB_PASSWORD")
+        )
+      }
+    R/db_connect.R: |
+      source("R/config.R")
+
+      open_connection <- function() {
+        cfg <- db_config()
+        DBI::dbConnect(
+          RPostgres::Postgres(),
+          host = cfg$host,
+          port = cfg$port,
+          dbname = cfg$name,
+          user = cfg$user,
+          password = cfg$password
+        )
+      }
+
+      with_connection <- function(f) {
+        con <- open_connection()
+        on.exit(DBI::dbDisconnect(con))
+        f(con)
+      }
+    R/R_NOISE_006_cache.R: |
+      R_NOISE_006_make_cache <- function() {
+        env <- new.env(parent = emptyenv())
+        list(
+          get = function(key) env[[key]],
+          set = function(key, val) env[[key]] <- val,
+          has = function(key) exists(key, envir = env)
+        )
+      }
+    R/R_NOISE_006_retry.R: |
+      R_NOISE_006_with_retry <- function(f, n = 3, delay = 1) {
+        for (i in seq_len(n)) {
+          result <- tryCatch(f(), error = function(e) e)
+          if (!inherits(result, "error")) return(result)
+          if (i < n) Sys.sleep(delay)
+        }
+        stop("All ", n, " retries failed")
+      }
+  changed_files:
+    R/config.R: |
+      db_config <- function() {
+        list(
+          host = Sys.getenv("POSTGRES_HOST", "localhost"),
+          port = as.integer(Sys.getenv("POSTGRES_PORT", "5432")),
+          name = Sys.getenv("POSTGRES_DB", "analytics"),
+          user = Sys.getenv("POSTGRES_USER", "app_user"),
+          password = Sys.getenv("POSTGRES_PASSWORD"),
+          pool_size = as.integer(Sys.getenv("POSTGRES_POOL_SIZE", "5"))
+        )
+      }
+  commit_message: "Update files"
+fragments:
+- id: config_env_vars
+  selector:
+    path: R/config.R
+    anchor: POSTGRES_HOST
+- id: db_connect_uses_config
+  selector:
+    path: R/db_connect.R
+    anchor: db_config
+- id: no_cache
+  selector:
+    path: R/R_NOISE_006_cache.R
+- id: no_retry
+  selector:
+    path: R/R_NOISE_006_retry.R
+- id: no_global_0
+  selector:
+    anchor: R_NOISE_006_make_cache
+- id: no_global_1
+  selector:
+    anchor: R_NOISE_006_with_retry
+oracle:
+  required:
+  - config_env_vars
+  - db_connect_uses_config
+  allowed: []
+  forbidden:
+  - no_cache
+  - no_retry
+  - no_global_0
+  - no_global_1

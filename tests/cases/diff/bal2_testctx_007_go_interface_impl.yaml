@@ -1,0 +1,306 @@
+name: bal2_testctx_007_go_interface_impl
+tags:
+- lang:go
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    storage/store.go: |
+      package storage
+
+      type Record struct {
+          ID   string
+          Data map[string]string
+      }
+
+      type Store interface {
+          Get(id string) (*Record, error)
+          Put(record *Record) error
+      }
+    storage/memory.go: |
+      package storage
+
+      import "fmt"
+
+      type MemoryStore struct {
+          records map[string]*Record
+      }
+
+      func NewMemoryStore() *MemoryStore {
+          return &MemoryStore{records: make(map[string]*Record)}
+      }
+
+      func (m *MemoryStore) Get(id string) (*Record, error) {
+          r, ok := m.records[id]
+          if !ok {
+              return nil, fmt.Errorf("record %s not found", id)
+          }
+          return r, nil
+      }
+
+      func (m *MemoryStore) Put(record *Record) error {
+          m.records[record.ID] = record
+          return nil
+      }
+    storage/memory_test.go: |
+      package storage
+
+      import "testing"
+
+      func TestMemoryStorePutGet(t *testing.T) {
+          s := NewMemoryStore()
+          r := &Record{ID: "1", Data: map[string]string{"key": "val"}}
+          if err := s.Put(r); err != nil {
+              t.Fatal(err)
+          }
+          got, err := s.Get("1")
+          if err != nil {
+              t.Fatal(err)
+          }
+          if got.Data["key"] != "val" {
+              t.Fatal("wrong data")
+          }
+      }
+
+      func TestMemoryStoreGetNotFound(t *testing.T) {
+          s := NewMemoryStore()
+          _, err := s.Get("missing")
+          if err == nil {
+              t.Fatal("expected error")
+          }
+      }
+    storage/bolt.go: |
+      package storage
+
+      GARBAGE_BAL2_007_BOLT_A = "bolt"
+      GARBAGE_BAL2_007_BOLT_MARKER_B = true
+
+      type BoltStore struct {
+          path string
+      }
+
+      func NewBoltStore(path string) *BoltStore {
+          return &BoltStore{path: path}
+      }
+    storage/redis.go: |
+      package storage
+
+      GARBAGE_BAL2_007_REDIS_C = "redis"
+      GARBAGE_BAL2_007_REDIS_MARKER_D = true
+
+      type RedisStore struct {
+          addr string
+      }
+    config/settings.go: |
+      package config
+
+      GARBAGE_BAL2_007_CONFIG_E = "config"
+
+      type Settings struct {
+          StorageType string
+          StoragePath string
+      }
+  changed_files:
+    storage/store.go: |
+      package storage
+
+      type Record struct {
+          ID   string
+          Data map[string]string
+      }
+
+      type Store interface {
+          Get(id string) (*Record, error)
+          Put(record *Record) error
+          Delete(id string) error
+          List() ([]*Record, error)
+      }
+    storage/memory.go: |
+      package storage
+
+      import "fmt"
+
+      type MemoryStore struct {
+          records map[string]*Record
+      }
+
+      func NewMemoryStore() *MemoryStore {
+          return &MemoryStore{records: make(map[string]*Record)}
+      }
+
+      func (m *MemoryStore) Get(id string) (*Record, error) {
+          r, ok := m.records[id]
+          if !ok {
+              return nil, fmt.Errorf("record %s not found", id)
+          }
+          return r, nil
+      }
+
+      func (m *MemoryStore) Put(record *Record) error {
+          m.records[record.ID] = record
+          return nil
+      }
+
+      func (m *MemoryStore) Delete(id string) error {
+          if _, ok := m.records[id]; !ok {
+              return fmt.Errorf("record %s not found", id)
+          }
+          delete(m.records, id)
+          return nil
+      }
+
+      func (m *MemoryStore) List() ([]*Record, error) {
+          result := make([]*Record, 0, len(m.records))
+          for _, r := range m.records {
+              result = append(result, r)
+          }
+          return result, nil
+      }
+    storage/memory_test.go: |
+      package storage
+
+      import "testing"
+
+      func TestMemoryStorePutGet(t *testing.T) {
+          s := NewMemoryStore()
+          r := &Record{ID: "1", Data: map[string]string{"key": "val"}}
+          if err := s.Put(r); err != nil {
+              t.Fatal(err)
+          }
+          got, err := s.Get("1")
+          if err != nil {
+              t.Fatal(err)
+          }
+          if got.Data["key"] != "val" {
+              t.Fatal("wrong data")
+          }
+      }
+
+      func TestMemoryStoreGetNotFound(t *testing.T) {
+          s := NewMemoryStore()
+          _, err := s.Get("missing")
+          if err == nil {
+              t.Fatal("expected error")
+          }
+      }
+
+      func TestMemoryStoreDelete(t *testing.T) {
+          s := NewMemoryStore()
+          s.Put(&Record{ID: "1", Data: map[string]string{}})
+          if err := s.Delete("1"); err != nil {
+              t.Fatal(err)
+          }
+          _, err := s.Get("1")
+          if err == nil {
+              t.Fatal("expected not found after delete")
+          }
+      }
+
+      func TestMemoryStoreList(t *testing.T) {
+          s := NewMemoryStore()
+          s.Put(&Record{ID: "a", Data: map[string]string{}})
+          s.Put(&Record{ID: "b", Data: map[string]string{}})
+          records, err := s.List()
+          if err != nil {
+              t.Fatal(err)
+          }
+          if len(records) != 2 {
+              t.Fatalf("expected 2 records, got %d", len(records))
+          }
+      }
+    storage/bolt.go: |
+      package storage
+
+      GARBAGE_BAL2_007_BOLT_A = "bolt"
+      GARBAGE_BAL2_007_BOLT_MARKER_B = true
+
+      type BoltStore struct {
+          path string
+      }
+
+      func NewBoltStore(path string) *BoltStore {
+          return &BoltStore{path: path}
+      }
+    storage/redis.go: |
+      package storage
+
+      GARBAGE_BAL2_007_REDIS_C = "redis"
+      GARBAGE_BAL2_007_REDIS_MARKER_D = true
+
+      type RedisStore struct {
+          addr string
+      }
+    config/settings.go: |
+      package config
+
+      GARBAGE_BAL2_007_CONFIG_E = "config"
+
+      type Settings struct {
+          StorageType string
+          StoragePath string
+      }
+  commit_message: "Add Delete and List to Store interface and MemoryStore"
+fragments:
+- id: store_interface
+  selector:
+    path: storage/store.go
+    anchor: "Delete(id string) error"
+- id: memory_delete
+  selector:
+    path: storage/memory.go
+    anchor: "func (m *MemoryStore) Delete(id string) error"
+- id: memory_list
+  selector:
+    path: storage/memory.go
+    anchor: "func (m *MemoryStore) List()"
+- id: test_delete
+  selector:
+    path: storage/memory_test.go
+    anchor: "func TestMemoryStoreDelete"
+- id: test_list
+  selector:
+    path: storage/memory_test.go
+    anchor: "func TestMemoryStoreList"
+- id: no_bolt
+  selector:
+    path: storage/bolt.go
+- id: no_redis
+  selector:
+    path: storage/redis.go
+- id: no_config
+  selector:
+    path: config/settings.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL2_007_BOLT_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL2_007_BOLT_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL2_007_REDIS_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL2_007_REDIS_MARKER_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL2_007_CONFIG_E
+oracle:
+  required:
+  - store_interface
+  - memory_delete
+  - memory_list
+  - test_delete
+  - test_list
+  allowed: []
+  forbidden:
+  - no_bolt
+  - no_redis
+  - no_config
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

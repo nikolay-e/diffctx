@@ -1,23 +1,175 @@
 name: internals_035_null_byte_in_string_literal
+tags:
+- lang:sql
+- change:single_file
+- context:cross_module
+- distance:0hop
+- difficulty:medium
 repo:
   initial_files:
-    null_byte.py: |
-      x = 0
+    db/schema.sql: |
+      CREATE TABLE posts (
+          id SERIAL PRIMARY KEY,
+          author_id INTEGER NOT NULL REFERENCES users(id),
+          title VARCHAR(512) NOT NULL,
+          body TEXT NOT NULL,
+          published_at TIMESTAMP,
+          created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE tags (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(100) UNIQUE NOT NULL
+      );
+
+      CREATE TABLE post_tags (
+          post_id INTEGER REFERENCES posts(id) ON DELETE CASCADE,
+          tag_id INTEGER REFERENCES tags(id) ON DELETE CASCADE,
+          PRIMARY KEY (post_id, tag_id)
+      );
+    src/blog/post_repo.py: |
+      def get_published_posts(conn) -> list:
+          cur = conn.cursor()
+          cur.execute(
+              "SELECT id, title, published_at FROM posts WHERE published_at IS NOT NULL ORDER BY published_at DESC"
+          )
+          return cur.fetchall()
+    src/blog/tag_repo.py: |
+      def get_tags_for_post(conn, post_id: int) -> list:
+          cur = conn.cursor()
+          cur.execute(
+              """
+              SELECT t.id, t.name FROM tags t
+              JOIN post_tags pt ON pt.tag_id = t.id
+              WHERE pt.post_id = %s
+              """,
+              (post_id,)
+          )
+          return cur.fetchall()
+    garbage/comments.py: |
+      GARBAGE_NULL035_COMM_A = "comments_marker"
+
+
+      def get_comments(conn, post_id: int) -> list:
+          return []
+    garbage/likes.py: |
+      GARBAGE_NULL035_LIKES_B = "likes_marker"
+
+
+      def get_like_count(conn, post_id: int) -> int:
+          return 0
+    garbage/search.py: |
+      GARBAGE_NULL035_SEARCH_C = "search_marker"
+
+
+      def search_posts(conn, query: str) -> list:
+          return []
   changed_files:
-    null_byte.py: |
-      s = "hello\x00world"
-      result = process(s)
-  commit_message: Update files
+    db/schema.sql: |
+      CREATE TABLE posts (
+          id SERIAL PRIMARY KEY,
+          author_id INTEGER NOT NULL REFERENCES users(id),
+          title VARCHAR(512) NOT NULL,
+          slug VARCHAR(512) UNIQUE NOT NULL,
+          body TEXT NOT NULL,
+          excerpt TEXT,
+          status VARCHAR(20) NOT NULL DEFAULT 'draft',
+          published_at TIMESTAMP,
+          updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+          created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE tags (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(100) UNIQUE NOT NULL,
+          slug VARCHAR(100) UNIQUE NOT NULL
+      );
+
+      CREATE TABLE post_tags (
+          post_id INTEGER REFERENCES posts(id) ON DELETE CASCADE,
+          tag_id INTEGER REFERENCES tags(id) ON DELETE CASCADE,
+          PRIMARY KEY (post_id, tag_id)
+      );
+
+      CREATE INDEX idx_posts_slug ON posts(slug);
+      CREATE INDEX idx_posts_status ON posts(status);
+    src/blog/post_repo.py: |
+      def get_published_posts(conn) -> list:
+          cur = conn.cursor()
+          cur.execute(
+              "SELECT id, title, published_at FROM posts WHERE published_at IS NOT NULL ORDER BY published_at DESC"
+          )
+          return cur.fetchall()
+    src/blog/tag_repo.py: |
+      def get_tags_for_post(conn, post_id: int) -> list:
+          cur = conn.cursor()
+          cur.execute(
+              """
+              SELECT t.id, t.name FROM tags t
+              JOIN post_tags pt ON pt.tag_id = t.id
+              WHERE pt.post_id = %s
+              """,
+              (post_id,)
+          )
+          return cur.fetchall()
+    garbage/comments.py: |
+      GARBAGE_NULL035_COMM_A = "comments_marker"
+
+
+      def get_comments(conn, post_id: int) -> list:
+          return []
+    garbage/likes.py: |
+      GARBAGE_NULL035_LIKES_B = "likes_marker"
+
+
+      def get_like_count(conn, post_id: int) -> int:
+          return 0
+    garbage/search.py: |
+      GARBAGE_NULL035_SEARCH_C = "search_marker"
+
+
+      def search_posts(conn, query: str) -> list:
+          return []
+  commit_message: "feat: add slug, excerpt, status to posts and slug to tags"
 fragments:
-- id: null_byte_file
+- id: posts_slug_col
   selector:
-    path: null_byte.py
-- id: req_global_0
+    path: db/schema.sql
+    anchor: "slug VARCHAR(512)"
+- id: posts_status_col
   selector:
-    anchor: s = "hello\x00world"
+    path: db/schema.sql
+    anchor: "status VARCHAR(20)"
+- id: tags_slug_col
+  selector:
+    path: db/schema.sql
+    anchor: "slug VARCHAR(100) UNIQUE NOT NULL"
+- id: posts_indexes
+  selector:
+    path: db/schema.sql
+    anchor: "idx_posts_status"
+- id: post_repo_query
+  selector:
+    path: src/blog/post_repo.py
+    anchor: "SELECT id, title, published_at FROM posts"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_NULL035_COMM_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_NULL035_LIKES_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_NULL035_SEARCH_C
 oracle:
   required:
-  - null_byte_file
-  - req_global_0
+  - posts_slug_col
+  - posts_status_col
+  - tags_slug_col
+  - posts_indexes
+  - post_repo_query
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

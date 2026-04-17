@@ -1,0 +1,98 @@
+name: gap2_159_pyts_config_same_file_theme_colors
+tags:
+- change:config
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+- lang:python
+- lang:typescript
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    api/theme.py: |
+      THEME_COLORS = {
+          "primary": "#3b82f6",
+          "secondary": "#64748b",
+          "danger": "#ef4444",
+      }
+
+      def color_for_role(role: str) -> str:
+          return THEME_COLORS.get(role, "#000000")
+    ui/theme.ts: |
+      export const themeColors = {
+        primary: "#3b82f6",
+        secondary: "#64748b",
+        danger: "#ef4444",
+      } as const;
+
+      export function cssVar(role: keyof typeof themeColors): string {
+        return `var(--color-${role}, ${themeColors[role]})`;
+      }
+    api/email_templates.py: |
+      TEMPLATE_DIR = "templates/email"
+      DEFAULT_SENDER = "noreply@example.com"
+
+      class EmailRenderer:
+          def __init__(self):
+              self._cache: dict[str, str] = {}
+
+          def render(self, template_name: str, context: dict) -> str:
+              return f"<html>{template_name}</html>"
+  changed_files:
+    api/theme.py: |
+      THEME_COLORS = {
+          "primary": "#2563eb",
+          "secondary": "#64748b",
+          "danger": "#ef4444",
+          "success": "#22c55e",
+      }
+
+      def color_for_role(role: str) -> str:
+          return THEME_COLORS.get(role, "#000000")
+    ui/theme.ts: |
+      export const themeColors = {
+        primary: "#2563eb",
+        secondary: "#64748b",
+        danger: "#ef4444",
+        success: "#22c55e",
+      } as const;
+
+      export function cssVar(role: keyof typeof themeColors): string {
+        return `var(--color-${role}, ${themeColors[role]})`;
+      }
+  commit_message: "config: update primary color and add success theme"
+fragments:
+- id: py_primary_updated
+  selector:
+    path: api/theme.py
+    anchor: '"primary": "#2563eb"'
+- id: py_success_color
+  selector:
+    path: api/theme.py
+    anchor: '"success": "#22c55e"'
+- id: ts_primary_updated
+  selector:
+    path: ui/theme.ts
+    anchor: 'primary: "#2563eb"'
+- id: ts_success_color
+  selector:
+    path: ui/theme.ts
+    anchor: 'success: "#22c55e"'
+- id: no_email
+  selector:
+    path: api/email_templates.py
+- id: no_template_dir
+  selector:
+    anchor: TEMPLATE_DIR
+oracle:
+  required:
+  - py_primary_updated
+  - py_success_color
+  - ts_primary_updated
+  - ts_success_color
+  allowed: []
+  forbidden:
+  - no_email
+  - no_template_dir

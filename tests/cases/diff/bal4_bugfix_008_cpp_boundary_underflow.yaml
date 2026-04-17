@@ -1,0 +1,144 @@
+name: bal4_bugfix_008_cpp_boundary_underflow
+tags:
+- lang:cpp
+- change:single_file
+- change:bug_fix
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/stack.cpp: |
+      #include <vector>
+      #include <stdexcept>
+
+      class IntStack {
+      public:
+          void push(int val) {
+              data_.push_back(val);
+          }
+
+          int pop() {
+              int val = data_.back();
+              data_.pop_back();
+              return val;
+          }
+
+          int peek() const {
+              return data_.back();
+          }
+
+          bool empty() const {
+              return data_.empty();
+          }
+
+      private:
+          std::vector<int> data_;
+      };
+    garbage_bal4_008_serial.cpp: |
+      // GARBAGE_BAL4_008_SERIAL_A = "json"
+      // GARBAGE_BAL4_008_VERSION_B = 2
+      class Serializer {
+          // GARBAGE_BAL4_008_ENDIAN_C = "little"
+          void serialize() {}
+      };
+    garbage_bal4_008_config.cpp: |
+      // GARBAGE_BAL4_008_CONFIG_D = "yaml"
+      // GARBAGE_BAL4_008_ENV_E = "prod"
+      class ConfigLoader {
+          // GARBAGE_BAL4_008_PATH_F = "/etc/app"
+          void load() {}
+      };
+  changed_files:
+    src/stack.cpp: |
+      #include <vector>
+      #include <stdexcept>
+
+      class IntStack {
+      public:
+          void push(int val) {
+              data_.push_back(val);
+          }
+
+          int pop() {
+              if (data_.empty()) {
+                  throw std::underflow_error("pop from empty stack");
+              }
+              int val = data_.back();
+              data_.pop_back();
+              return val;
+          }
+
+          int peek() const {
+              return data_.back();
+          }
+
+          bool empty() const {
+              return data_.empty();
+          }
+
+      private:
+          std::vector<int> data_;
+      };
+    garbage_bal4_008_serial.cpp: |
+      // GARBAGE_BAL4_008_SERIAL_A = "json"
+      // GARBAGE_BAL4_008_VERSION_B = 2
+      class Serializer {
+          // GARBAGE_BAL4_008_ENDIAN_C = "little"
+          void serialize() {}
+      };
+    garbage_bal4_008_config.cpp: |
+      // GARBAGE_BAL4_008_CONFIG_D = "yaml"
+      // GARBAGE_BAL4_008_ENV_E = "prod"
+      class ConfigLoader {
+          // GARBAGE_BAL4_008_PATH_F = "/etc/app"
+          void load() {}
+      };
+  commit_message: "fix: guard against underflow on empty stack pop"
+fragments:
+- id: pop_func
+  selector:
+    path: src/stack.cpp
+    anchor: "int pop()"
+- id: empty_check
+  selector:
+    path: src/stack.cpp
+    anchor: "if (data_.empty())"
+- id: no_garbage_serial
+  selector:
+    path: garbage_bal4_008_serial.cpp
+- id: no_garbage_config
+  selector:
+    path: garbage_bal4_008_config.cpp
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL4_008_SERIAL_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL4_008_VERSION_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL4_008_ENDIAN_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL4_008_CONFIG_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL4_008_ENV_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL4_008_PATH_F
+oracle:
+  required:
+  - pop_func
+  - empty_check
+  allowed: []
+  forbidden:
+  - no_garbage_serial
+  - no_garbage_config
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

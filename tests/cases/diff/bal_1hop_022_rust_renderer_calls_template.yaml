@@ -1,0 +1,185 @@
+name: bal_1hop_022_rust_renderer_calls_template
+tags:
+- lang:rust
+- change:multi_file
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/template/engine.rs: |
+      use std::collections::HashMap;
+
+      pub struct Template {
+          pub raw: String,
+      }
+
+      impl Template {
+          pub fn new(raw: &str) -> Self {
+              Template { raw: raw.to_string() }
+          }
+
+          pub fn render(&self, vars: &HashMap<String, String>) -> String {
+              let mut output = self.raw.clone();
+              for (key, val) in vars {
+                  output = output.replace(&format!("{{{{{}}}}}", key), val);
+              }
+              output
+          }
+      }
+    src/template/loader.rs: |
+      use super::engine::Template;
+      use std::fs;
+      use std::path::Path;
+
+      pub fn load_template(path: &Path) -> Result<Template, String> {
+          let content = fs::read_to_string(path)
+              .map_err(|e| format!("failed to load template: {}", e))?;
+          Ok(Template::new(&content))
+      }
+    src/renderer/page.rs: |
+      use crate::template::engine::Template;
+      use std::collections::HashMap;
+
+      pub struct PageRenderer {
+          layout: Template,
+      }
+
+      impl PageRenderer {
+          pub fn new(layout: Template) -> Self {
+              PageRenderer { layout }
+          }
+
+          pub fn render_page(&self, title: &str, body: &str) -> String {
+              let mut vars = HashMap::new();
+              vars.insert("title".to_string(), title.to_string());
+              vars.insert("body".to_string(), body.to_string());
+              self.layout.render(&vars)
+          }
+      }
+    src/cache/memory.rs: |
+      use std::collections::HashMap;
+
+      pub struct MemoryCache {
+          store: HashMap<String, String>,
+      }
+
+      impl MemoryCache {
+          pub fn new() -> Self {
+              MemoryCache { store: HashMap::new() }
+          }
+
+          pub fn get(&self, key: &str) -> Option<&String> {
+              self.store.get(key)
+          }
+
+          pub fn set(&mut self, key: String, value: String) {
+              self.store.insert(key, value);
+          }
+      }
+  changed_files:
+    src/template/engine.rs: |
+      use std::collections::HashMap;
+
+      pub struct Template {
+          pub raw: String,
+      }
+
+      pub struct RenderOptions {
+          pub escape_html: bool,
+          pub trim_whitespace: bool,
+      }
+
+      impl Default for RenderOptions {
+          fn default() -> Self {
+              RenderOptions {
+                  escape_html: true,
+                  trim_whitespace: false,
+              }
+          }
+      }
+
+      impl Template {
+          pub fn new(raw: &str) -> Self {
+              Template { raw: raw.to_string() }
+          }
+
+          pub fn render(&self, vars: &HashMap<String, String>) -> String {
+              self.render_with_options(vars, &RenderOptions::default())
+          }
+
+          pub fn render_with_options(&self, vars: &HashMap<String, String>, opts: &RenderOptions) -> String {
+              let mut output = self.raw.clone();
+              for (key, val) in vars {
+                  let processed = if opts.escape_html {
+                      val.replace('&', "&amp;")
+                         .replace('<', "&lt;")
+                         .replace('>', "&gt;")
+                  } else {
+                      val.clone()
+                  };
+                  output = output.replace(&format!("{{{{{}}}}}", key), &processed);
+              }
+              if opts.trim_whitespace {
+                  output = output.lines().map(|l| l.trim()).collect::<Vec<_>>().join("\n");
+              }
+              output
+          }
+      }
+    src/template/loader.rs: |
+      use super::engine::Template;
+      use std::fs;
+      use std::path::Path;
+
+      pub fn load_template(path: &Path) -> Result<Template, String> {
+          let content = fs::read_to_string(path)
+              .map_err(|e| format!("failed to load template: {}", e))?;
+          Ok(Template::new(&content))
+      }
+
+      pub fn load_templates_dir(dir: &Path) -> Result<Vec<(String, Template)>, String> {
+          let mut templates = Vec::new();
+          let entries = fs::read_dir(dir)
+              .map_err(|e| format!("failed to read dir: {}", e))?;
+          for entry in entries {
+              let entry = entry.map_err(|e| format!("entry error: {}", e))?;
+              let path = entry.path();
+              if path.extension().map_or(false, |ext| ext == "html") {
+                  let name = path.file_stem().unwrap().to_string_lossy().to_string();
+                  let tmpl = load_template(&path)?;
+                  templates.push((name, tmpl));
+              }
+          }
+          Ok(templates)
+      }
+  commit_message: "feat: add HTML escaping options and directory template loading"
+fragments:
+- id: render_options_struct
+  selector:
+    path: src/template/engine.rs
+    anchor: "pub struct RenderOptions"
+- id: render_with_options
+  selector:
+    path: src/template/engine.rs
+    anchor: "pub fn render_with_options"
+- id: load_templates_dir
+  selector:
+    path: src/template/loader.rs
+    anchor: "pub fn load_templates_dir"
+- id: renderer_calls_render
+  selector:
+    path: src/renderer/page.rs
+    anchor: "self.layout.render(&vars)"
+- id: unrelated_cache
+  selector:
+    path: src/cache/memory.rs
+    anchor: "pub struct MemoryCache"
+oracle:
+  required:
+  - render_options_struct
+  - render_with_options
+  - renderer_calls_render
+  allowed:
+  - load_templates_dir
+  forbidden:
+  - unrelated_cache

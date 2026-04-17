@@ -1,0 +1,163 @@
+name: bal_3hop_014_python_validation_pipeline
+tags:
+- lang:python
+- change:single_file
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    validation/rule.py: |
+      class ValidationRule:
+          def __init__(self, field: str, rule_type: str):
+              self.field = field
+              self.rule_type = rule_type
+          def check(self, value) -> bool:
+              if self.rule_type == "required":
+                  return value is not None and value != ""
+              if self.rule_type == "positive":
+                  return isinstance(value, (int, float)) and value > 0
+              return True
+    validation/validator.py: |
+      from validation.rule import ValidationRule
+      class Validator:
+          def __init__(self):
+              self.rules: list[ValidationRule] = []
+          def add_rule(self, field: str, rule_type: str):
+              self.rules.append(ValidationRule(field, rule_type))
+          def validate(self, data: dict) -> list[str]:
+              errors = []
+              for rule in self.rules:
+                  value = data.get(rule.field)
+                  if not rule.check(value):
+                      errors.append(f"{rule.field}: failed {rule.rule_type}")
+              return errors
+    validation/form.py: |
+      from validation.validator import Validator
+      class FormValidator:
+          def __init__(self, schema: dict[str, list[str]]):
+              self.validator = Validator()
+              for field, rules in schema.items():
+                  for rule_type in rules:
+                      self.validator.add_rule(field, rule_type)
+          def validate_form(self, data: dict) -> dict:
+              errors = self.validator.validate(data)
+              return {"valid": len(errors) == 0, "errors": errors}
+    api/form_handler.py: |
+      from validation.form import FormValidator
+      user_schema = {"name": ["required"], "age": ["required", "positive"]}
+      form_validator = FormValidator(user_schema)
+      def handle_registration(data: dict) -> dict:
+          result = form_validator.validate_form(data)
+          if result["valid"]:
+              return {"status": "ok", "message": "Registration successful"}
+          return {"status": "error", "errors": result["errors"]}
+    utils/sanitizer.py: |
+      import html
+      def sanitize_input(text: str) -> str:
+          return html.escape(text.strip())
+    db/users.py: |
+      class UserStore:
+          def __init__(self):
+              self.users: list[dict] = []
+          def add(self, user: dict):
+              self.users.append(user)
+  changed_files:
+    validation/rule.py: |
+      import re
+      class ValidationRule:
+          def __init__(self, field: str, rule_type: str, pattern: str = ""):
+              self.field = field
+              self.rule_type = rule_type
+              self.pattern = pattern
+          def check(self, value) -> bool:
+              if self.rule_type == "required":
+                  return value is not None and value != ""
+              if self.rule_type == "positive":
+                  return isinstance(value, (int, float)) and value > 0
+              if self.rule_type == "pattern":
+                  return bool(re.match(self.pattern, str(value)))
+              if self.rule_type == "max_length":
+                  return len(str(value)) <= int(self.pattern)
+              return True
+    validation/validator.py: |
+      from validation.rule import ValidationRule
+      class Validator:
+          def __init__(self):
+              self.rules: list[ValidationRule] = []
+          def add_rule(self, field: str, rule_type: str):
+              self.rules.append(ValidationRule(field, rule_type))
+          def validate(self, data: dict) -> list[str]:
+              errors = []
+              for rule in self.rules:
+                  value = data.get(rule.field)
+                  if not rule.check(value):
+                      errors.append(f"{rule.field}: failed {rule.rule_type}")
+              return errors
+    validation/form.py: |
+      from validation.validator import Validator
+      class FormValidator:
+          def __init__(self, schema: dict[str, list[str]]):
+              self.validator = Validator()
+              for field, rules in schema.items():
+                  for rule_type in rules:
+                      self.validator.add_rule(field, rule_type)
+          def validate_form(self, data: dict) -> dict:
+              errors = self.validator.validate(data)
+              return {"valid": len(errors) == 0, "errors": errors}
+    api/form_handler.py: |
+      from validation.form import FormValidator
+      user_schema = {"name": ["required"], "age": ["required", "positive"]}
+      form_validator = FormValidator(user_schema)
+      def handle_registration(data: dict) -> dict:
+          result = form_validator.validate_form(data)
+          if result["valid"]:
+              return {"status": "ok", "message": "Registration successful"}
+          return {"status": "error", "errors": result["errors"]}
+    utils/sanitizer.py: |
+      import html
+      def sanitize_input(text: str) -> str:
+          return html.escape(text.strip())
+    db/users.py: |
+      class UserStore:
+          def __init__(self):
+              self.users: list[dict] = []
+          def add(self, user: dict):
+              self.users.append(user)
+  commit_message: "feat: add pattern and max_length validation rules"
+fragments:
+- id: rule_pattern_support
+  selector:
+    path: validation/rule.py
+    anchor: "if self.rule_type == \"pattern\""
+- id: validator_uses_rule
+  selector:
+    path: validation/validator.py
+    anchor: "from validation.rule import ValidationRule"
+- id: form_uses_validator
+  selector:
+    path: validation/form.py
+    anchor: "from validation.validator import Validator"
+- id: handler_uses_form
+  selector:
+    path: api/form_handler.py
+    anchor: "from validation.form import FormValidator"
+- id: no_sanitizer
+  selector:
+    path: utils/sanitizer.py
+    anchor: "def sanitize_input"
+- id: no_user_store
+  selector:
+    path: db/users.py
+    anchor: "class UserStore"
+oracle:
+  required:
+  - rule_pattern_support
+  - validator_uses_rule
+  - form_uses_validator
+  - handler_uses_form
+  allowed: []
+  forbidden:
+  - no_sanitizer
+  - no_user_store

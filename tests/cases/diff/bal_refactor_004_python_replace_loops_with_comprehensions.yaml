@@ -1,0 +1,151 @@
+name: bal_refactor_004_python_replace_loops_with_comprehensions
+tags:
+- lang:rust
+- change:bug_fix
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/graph/adjacency.rs: |
+      use std::collections::HashMap;
+
+      pub struct AdjacencyList {
+          edges: HashMap<u32, Vec<u32>>,
+      }
+
+      impl AdjacencyList {
+          pub fn new() -> Self {
+              AdjacencyList { edges: HashMap::new() }
+          }
+
+          pub fn add_edge(&mut self, from: u32, to: u32) {
+              // BUG: allows self-loops (from == to)
+              self.edges.entry(from).or_default().push(to);
+          }
+
+          pub fn neighbors(&self, node: u32) -> &[u32] {
+              self.edges.get(&node).map(|v| v.as_slice()).unwrap_or(&[])
+          }
+
+          pub fn node_count(&self) -> usize {
+              self.edges.len()
+          }
+      }
+    src/graph/bfs.rs: |
+      use crate::graph::adjacency::AdjacencyList;
+      use std::collections::{HashSet, VecDeque};
+
+      pub fn bfs(graph: &AdjacencyList, start: u32) -> Vec<u32> {
+          let mut visited = HashSet::new();
+          let mut queue = VecDeque::new();
+          let mut order = Vec::new();
+          queue.push_back(start);
+          visited.insert(start);
+          while let Some(node) = queue.pop_front() {
+              order.push(node);
+              for &neighbor in graph.neighbors(node) {
+                  if visited.insert(neighbor) {
+                      queue.push_back(neighbor);
+                  }
+              }
+          }
+          order
+      }
+    garbage/renderer.rs: |
+      // GARBAGE_GADJ_A = "renderer_marker"
+      pub fn render_dot(_nodes: &[u32]) -> String { String::new() }
+    garbage/partitioner.rs: |
+      // GARBAGE_GADJ_B = "partitioner_marker"
+      pub fn partition(_nodes: &[u32], _k: usize) -> Vec<Vec<u32>> { vec![] }
+    garbage/serializer.rs: |
+      // GARBAGE_GADJ_C = "serializer_marker"
+      pub fn to_json(_edges: &[(u32, u32)]) -> String { String::new() }
+  changed_files:
+    src/graph/adjacency.rs: |
+      use std::collections::HashMap;
+
+      pub struct AdjacencyList {
+          edges: HashMap<u32, Vec<u32>>,
+      }
+
+      impl AdjacencyList {
+          pub fn new() -> Self {
+              AdjacencyList { edges: HashMap::new() }
+          }
+
+          pub fn add_edge(&mut self, from: u32, to: u32) {
+              if from == to {
+                  return;
+              }
+              self.edges.entry(from).or_default().push(to);
+          }
+
+          pub fn neighbors(&self, node: u32) -> &[u32] {
+              self.edges.get(&node).map(|v| v.as_slice()).unwrap_or(&[])
+          }
+
+          pub fn node_count(&self) -> usize {
+              self.edges.len()
+          }
+      }
+    src/graph/bfs.rs: |
+      use crate::graph::adjacency::AdjacencyList;
+      use std::collections::{HashSet, VecDeque};
+
+      pub fn bfs(graph: &AdjacencyList, start: u32) -> Vec<u32> {
+          let mut visited = HashSet::new();
+          let mut queue = VecDeque::new();
+          let mut order = Vec::new();
+          queue.push_back(start);
+          visited.insert(start);
+          while let Some(node) = queue.pop_front() {
+              order.push(node);
+              for &neighbor in graph.neighbors(node) {
+                  if visited.insert(neighbor) {
+                      queue.push_back(neighbor);
+                  }
+              }
+          }
+          order
+      }
+    garbage/renderer.rs: |
+      // GARBAGE_GADJ_A = "renderer_marker"
+      pub fn render_dot(_nodes: &[u32]) -> String { String::new() }
+    garbage/partitioner.rs: |
+      // GARBAGE_GADJ_B = "partitioner_marker"
+      pub fn partition(_nodes: &[u32], _k: usize) -> Vec<Vec<u32>> { vec![] }
+    garbage/serializer.rs: |
+      // GARBAGE_GADJ_C = "serializer_marker"
+      pub fn to_json(_edges: &[(u32, u32)]) -> String { String::new() }
+  commit_message: "fix: reject self-loops in AdjacencyList::add_edge"
+fragments:
+- id: self_loop_check
+  selector:
+    anchor: "if from == to"
+- id: add_edge_func
+  selector:
+    anchor: "pub fn add_edge(&mut self, from: u32, to: u32)"
+- id: bfs_uses_adjacency
+  selector:
+    anchor: "use crate::graph::adjacency::AdjacencyList"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_GADJ_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_GADJ_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_GADJ_C
+oracle:
+  required:
+  - self_loop_check
+  - add_edge_func
+  - bfs_uses_adjacency
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

@@ -1,184 +1,105 @@
 name: csharp_002_partial_class
+tags:
+- lang:python
+- lang:protobuf
+- change:multi_file
+- context:same_file
+- distance:0hop
+- difficulty:easy
 repo:
   initial_files:
-    Models/User.cs: |
-      using System;
+    proto/inventory.proto: |
+      syntax = "proto3";
 
-      namespace MyApp.Models;
-
-      public partial class User
-      {
-          public int Id { get; set; }
-          public string Name { get; set; } = string.Empty;
-          public string Email { get; set; } = string.Empty;
-          public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-
-          public string DisplayName => $"{Name} ({Email})";
+      message Product {
+        string id = 1;
+        string name = 2;
+        int32 quantity = 3;
       }
-    Models/User.Validation.cs: |
-      using System.Text.RegularExpressions;
+    service/inventory_service.py: |
+      from proto import inventory_pb2
 
-      namespace MyApp.Models;
+      class InventoryService:
+          def get_product(self, product_id: str) -> inventory_pb2.Product:
+              return inventory_pb2.Product(id=product_id, name="Widget", quantity=100)
 
-      public partial class User
-      {
-          private static readonly Regex EmailRegex = new(@"^[^@\s]+@[^@\s]+\.[^@\s]+$");
+          def list_products(self) -> list:
+              return []
+    garbage/billing.py: |
+      GARBAGE_CS002_A = "billing_marker"
 
-          public bool IsValid()
-          {
-              return !string.IsNullOrEmpty(Name) && IsEmailValid();
-          }
+      def noop():
+          pass
+    garbage/audit.py: |
+      GARBAGE_CS002_B = "audit_marker"
 
-          public bool IsEmailValid()
-          {
-              return EmailRegex.IsMatch(Email);
-          }
-      }
-    Services/UserService.cs: |
-      namespace MyApp.Services;
+      def noop():
+          pass
+    garbage/reporting.py: |
+      GARBAGE_CS002_C = "reporting_marker"
 
-      public class UserService
-      {
-          public void Register() { }
-      }
-    Unrelated/MetricsReporter.cs: |
-      using System;
-
-      namespace MyApp.Unrelated;
-
-      public class MetricsReporter
-      {
-          private const string GARBAGE_CS_002_METRICS_REPORTER_A = "metrics_marker";
-
-          public void Report(string metric)
-          {
-              Console.WriteLine($"{GARBAGE_CS_002_METRICS_REPORTER_A}: {metric}");
-          }
-      }
-    Unrelated/FeatureFlags.cs: |
-      namespace MyApp.Unrelated;
-
-      public static class FeatureFlags
-      {
-          public const string GARBAGE_CS_002_FEATURE_FLAGS_B = "feature_flag_marker";
-
-          public static bool IsEnabled(string flag)
-          {
-              return flag != GARBAGE_CS_002_FEATURE_FLAGS_B;
-          }
-      }
+      def noop():
+          pass
   changed_files:
-    Models/User.cs: |
-      using System;
+    proto/inventory.proto: |
+      syntax = "proto3";
 
-      namespace MyApp.Models;
-
-      public partial class User
-      {
-          public int Id { get; set; }
-          public string Name { get; set; } = string.Empty;
-          public string Email { get; set; } = string.Empty;
-          public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-
-          public string DisplayName => $"{Name} ({Email})";
+      message Product {
+        string id = 1;
+        string name = 2;
+        int32 quantity = 3;
+        double price = 4;
       }
-    Models/User.Validation.cs: |
-      using System.Text.RegularExpressions;
+    service/inventory_service.py: |
+      from proto import inventory_pb2
 
-      namespace MyApp.Models;
+      class InventoryService:
+          def get_product(self, product_id: str) -> inventory_pb2.Product:
+              return inventory_pb2.Product(id=product_id, name="Widget", quantity=100, price=9.99)
 
-      public partial class User
-      {
-          private static readonly Regex EmailRegex = new(@"^[^@\s]+@[^@\s]+\.[^@\s]+$");
+          def list_products(self) -> list:
+              return []
 
-          public bool IsValid()
-          {
-              return !string.IsNullOrEmpty(Name) && IsEmailValid();
-          }
+          def update_price(self, product_id: str, price: float) -> inventory_pb2.Product:
+              return inventory_pb2.Product(id=product_id, name="Widget", quantity=100, price=price)
+    garbage/billing.py: |
+      GARBAGE_CS002_A = "billing_marker"
 
-          public bool IsEmailValid()
-          {
-              return EmailRegex.IsMatch(Email);
-          }
-      }
-    Services/UserService.cs: |
-      using MyApp.Models;
+      def noop():
+          pass
+    garbage/audit.py: |
+      GARBAGE_CS002_B = "audit_marker"
 
-      namespace MyApp.Services;
+      def noop():
+          pass
+    garbage/reporting.py: |
+      GARBAGE_CS002_C = "reporting_marker"
 
-      public class UserService
-      {
-          private readonly List<User> _users = new();
-
-          public bool Register(User user)
-          {
-              if (!user.IsValid()) return false;
-              _users.Add(user);
-              return true;
-          }
-
-          public User? FindByEmail(string email)
-          {
-              return _users.FirstOrDefault(u => u.Email == email);
-          }
-      }
-    Unrelated/MetricsReporter.cs: |
-      using System;
-
-      namespace MyApp.Unrelated;
-
-      public class MetricsReporter
-      {
-          private const string GARBAGE_CS_002_METRICS_REPORTER_A = "metrics_marker";
-
-          public void Report(string metric)
-          {
-              Console.WriteLine($"{GARBAGE_CS_002_METRICS_REPORTER_A}: {metric}");
-          }
-      }
-    Unrelated/FeatureFlags.cs: |
-      namespace MyApp.Unrelated;
-
-      public static class FeatureFlags
-      {
-          public const string GARBAGE_CS_002_FEATURE_FLAGS_B = "feature_flag_marker";
-
-          public static bool IsEnabled(string flag)
-          {
-              return flag != GARBAGE_CS_002_FEATURE_FLAGS_B;
-          }
-      }
-  commit_message: Update files
+      def noop():
+          pass
+  commit_message: "feat: add price field to Product proto and inventory service"
 fragments:
-- id: userservice_file
+- id: proto_file
   selector:
-    path: Services/UserService.cs
-- id: req_global_0
+    path: proto/inventory.proto
+- id: service_file
   selector:
-    anchor: using MyApp.Models;
-- id: req_global_1
+    path: service/inventory_service.py
+- id: no_garbage_a
   selector:
-    anchor: public bool Register(User user)
-- id: no_global_0
+    anchor: GARBAGE_CS002_A
+- id: no_garbage_b
   selector:
-    anchor: GARBAGE_CS_002_FEATURE_FLAGS_B
-- id: no_global_1
+    anchor: GARBAGE_CS002_B
+- id: no_garbage_c
   selector:
-    anchor: GARBAGE_CS_002_METRICS_REPORTER_A
-- id: no_global_2
-  selector:
-    anchor: FeatureFlags.cs
-- id: no_global_3
-  selector:
-    anchor: MetricsReporter.cs
+    anchor: GARBAGE_CS002_C
 oracle:
   required:
-  - userservice_file
-  - req_global_0
-  - req_global_1
+  - proto_file
+  - service_file
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

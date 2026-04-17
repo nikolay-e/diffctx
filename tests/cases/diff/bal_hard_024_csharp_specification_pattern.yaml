@@ -1,0 +1,235 @@
+name: bal_hard_024_csharp_specification_pattern
+tags:
+- lang:csharp
+- change:multi_file
+- change:new_function
+- context:cross_module
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/Specifications/ISpecification.cs: |
+      namespace App.Specifications
+      {
+          public interface ISpecification<T>
+          {
+              bool IsSatisfiedBy(T entity);
+          }
+      }
+    src/Specifications/AndSpecification.cs: |
+      namespace App.Specifications
+      {
+          public class AndSpecification<T> : ISpecification<T>
+          {
+              private readonly ISpecification<T> _left;
+              private readonly ISpecification<T> _right;
+              public AndSpecification(ISpecification<T> left, ISpecification<T> right)
+              {
+                  _left = left;
+                  _right = right;
+              }
+              public bool IsSatisfiedBy(T entity)
+              {
+                  return _left.IsSatisfiedBy(entity) && _right.IsSatisfiedBy(entity);
+              }
+          }
+      }
+    src/Models/Order.cs: |
+      namespace App.Models
+      {
+          using System;
+          public class Order
+          {
+              public string Id { get; set; }
+              public decimal Total { get; set; }
+              public string Status { get; set; }
+              public DateTime CreatedAt { get; set; }
+          }
+      }
+    src/Specifications/OrderSpecs/MinTotalSpec.cs: |
+      namespace App.Specifications.OrderSpecs
+      {
+          using App.Models;
+          public class MinTotalSpec : ISpecification<Order>
+          {
+              private readonly decimal _minTotal;
+              public MinTotalSpec(decimal minTotal) { _minTotal = minTotal; }
+              public bool IsSatisfiedBy(Order entity) => entity.Total >= _minTotal;
+          }
+      }
+    src/Specifications/OrderSpecs/StatusSpec.cs: |
+      namespace App.Specifications.OrderSpecs
+      {
+          using App.Models;
+          public class StatusSpec : ISpecification<Order>
+          {
+              private readonly string _status;
+              public StatusSpec(string status) { _status = status; }
+              public bool IsSatisfiedBy(Order entity) => entity.Status == _status;
+          }
+      }
+    src/Repository/OrderRepository.cs: |
+      namespace App.Repository
+      {
+          using System.Collections.Generic;
+          using System.Linq;
+          using App.Models;
+          using App.Specifications;
+          public class OrderRepository
+          {
+              private readonly List<Order> _orders = new();
+              public void Add(Order order) => _orders.Add(order);
+              public List<Order> FindBySpec(ISpecification<Order> spec)
+              {
+                  return _orders.Where(o => spec.IsSatisfiedBy(o)).ToList();
+              }
+          }
+      }
+    src/Service/OrderService.cs: |
+      namespace App.Service
+      {
+          using System.Collections.Generic;
+          using App.Models;
+          using App.Repository;
+          using App.Specifications;
+          using App.Specifications.OrderSpecs;
+          public class OrderService
+          {
+              private readonly OrderRepository _repo;
+              public OrderService(OrderRepository repo) { _repo = repo; }
+              public List<Order> GetHighValueCompleted(decimal minTotal)
+              {
+                  var spec = new AndSpecification<Order>(
+                      new MinTotalSpec(minTotal),
+                      new StatusSpec("completed")
+                  );
+                  return _repo.FindBySpec(spec);
+              }
+          }
+      }
+    src/Helpers/DateHelper.cs: |
+      namespace App.Helpers
+      {
+          using System;
+          public static class DateHelper
+          {
+              public static bool IsWeekend(DateTime date) => date.DayOfWeek == DayOfWeek.Saturday || date.DayOfWeek == DayOfWeek.Sunday;
+          }
+      }
+  changed_files:
+    src/Specifications/OrSpecification.cs: |
+      namespace App.Specifications
+      {
+          public class OrSpecification<T> : ISpecification<T>
+          {
+              private readonly ISpecification<T> _left;
+              private readonly ISpecification<T> _right;
+              public OrSpecification(ISpecification<T> left, ISpecification<T> right)
+              {
+                  _left = left;
+                  _right = right;
+              }
+              public bool IsSatisfiedBy(T entity)
+              {
+                  return _left.IsSatisfiedBy(entity) || _right.IsSatisfiedBy(entity);
+              }
+          }
+      }
+    src/Specifications/NotSpecification.cs: |
+      namespace App.Specifications
+      {
+          public class NotSpecification<T> : ISpecification<T>
+          {
+              private readonly ISpecification<T> _inner;
+              public NotSpecification(ISpecification<T> inner) { _inner = inner; }
+              public bool IsSatisfiedBy(T entity) => !_inner.IsSatisfiedBy(entity);
+          }
+      }
+    src/Service/OrderService.cs: |
+      namespace App.Service
+      {
+          using System.Collections.Generic;
+          using App.Models;
+          using App.Repository;
+          using App.Specifications;
+          using App.Specifications.OrderSpecs;
+          public class OrderService
+          {
+              private readonly OrderRepository _repo;
+              public OrderService(OrderRepository repo) { _repo = repo; }
+              public List<Order> GetHighValueCompleted(decimal minTotal)
+              {
+                  var spec = new AndSpecification<Order>(
+                      new MinTotalSpec(minTotal),
+                      new StatusSpec("completed")
+                  );
+                  return _repo.FindBySpec(spec);
+              }
+              public List<Order> GetActiveOrHighValue(decimal threshold)
+              {
+                  var spec = new OrSpecification<Order>(
+                      new StatusSpec("active"),
+                      new AndSpecification<Order>(
+                          new MinTotalSpec(threshold),
+                          new NotSpecification<Order>(new StatusSpec("cancelled"))
+                      )
+                  );
+                  return _repo.FindBySpec(spec);
+              }
+          }
+      }
+  commit_message: "feat: add Or and Not specification combinators"
+fragments:
+- id: or_specification
+  selector:
+    path: OrSpecification.cs
+    anchor: "class OrSpecification"
+- id: not_specification
+  selector:
+    path: NotSpecification.cs
+    anchor: "class NotSpecification"
+- id: service_uses_or
+  selector:
+    path: OrderService.cs
+    anchor: "new OrSpecification<Order>"
+- id: service_uses_not
+  selector:
+    path: OrderService.cs
+    anchor: "new NotSpecification<Order>"
+- id: ispecification_interface
+  selector:
+    path: ISpecification.cs
+    anchor: "public interface ISpecification"
+- id: and_specification
+  selector:
+    path: AndSpecification.cs
+    anchor: "class AndSpecification"
+- id: repo_find_by_spec
+  selector:
+    path: OrderRepository.cs
+    anchor: "public List<Order> FindBySpec"
+- id: order_model
+  selector:
+    path: Order.cs
+    anchor: "public class Order"
+- id: no_date_helper
+  selector:
+    path: Helpers/DateHelper.cs
+- id: no_min_total_body
+  selector:
+    path: MinTotalSpec.cs
+    anchor: "entity.Total >= _minTotal"
+oracle:
+  required:
+  - or_specification
+  - not_specification
+  - service_uses_or
+  - service_uses_not
+  - ispecification_interface
+  - and_specification
+  - repo_find_by_spec
+  allowed:
+  - order_model
+  forbidden:
+  - no_date_helper
+  - no_min_total_body

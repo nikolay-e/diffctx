@@ -1,0 +1,82 @@
+name: css_019_dark_mode_override
+tags:
+- lang:css
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    base.css: |
+      :root {
+        --bg: #ffffff;
+        --fg: #111827;
+        --border: #e5e7eb;
+        --surface: #f9fafb;
+      }
+    dark.css: |
+      @import "base.css";
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0f172a;
+          --fg: #f1f5f9;
+          --border: #334155;
+          --surface: #1e293b;
+        }
+      }
+    CSS_NOISE_019_reporting.css: |
+      .CSS_NOISE_019_report_table { border-collapse: collapse; width: 100%; }
+      .CSS_NOISE_019_report_total { font-weight: 700; border-top: 2px solid #374151; }
+    CSS_NOISE_019_onboarding.css: |
+      .CSS_NOISE_019_onboarding_step { display: none; }
+      .CSS_NOISE_019_onboarding_active { display: block; }
+  changed_files:
+    dark.css: |
+      @import "base.css";
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0f172a;
+          --fg: #f1f5f9;
+          --border: #334155;
+          --surface: #1e293b;
+          --muted: #64748b;
+          --link: #818cf8;
+        }
+      }
+  commit_message: "style: add --muted and --link tokens to dark mode overrides"
+fragments:
+- id: dark_muted_token
+  selector:
+    path: dark.css
+    anchor: "--muted: #64748b"
+- id: dark_link_token
+  selector:
+    path: dark.css
+    anchor: "--link: #818cf8"
+- id: base_css_vars
+  selector:
+    path: base.css
+    anchor: "--bg: #ffffff"
+- id: no_reporting
+  selector:
+    path: CSS_NOISE_019_reporting.css
+- id: no_onboarding
+  selector:
+    path: CSS_NOISE_019_onboarding.css
+- id: no_global_0
+  selector:
+    anchor: CSS_NOISE_019_report_table
+- id: no_global_1
+  selector:
+    anchor: CSS_NOISE_019_onboarding_step
+oracle:
+  required:
+  - dark_muted_token
+  - dark_link_token
+  - base_css_vars
+  allowed: []
+  forbidden:
+  - no_reporting
+  - no_onboarding
+  - no_global_0
+  - no_global_1

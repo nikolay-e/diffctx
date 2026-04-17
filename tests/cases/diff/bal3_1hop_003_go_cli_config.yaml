@@ -1,0 +1,145 @@
+name: bal3_1hop_003_go_cli_config
+tags:
+- lang:python
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:2hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/billing/invoicer.py: |
+      from decimal import Decimal
+
+      def compute_line_total(quantity: int, unit_price: Decimal) -> Decimal:
+          return Decimal(quantity) * unit_price
+
+      def compute_subtotal(lines: list[dict]) -> Decimal:
+          return sum(compute_line_total(l["quantity"], Decimal(str(l["unit_price"]))) for l in lines)
+    src/billing/tax.py: |
+      from decimal import Decimal
+      from src.billing.invoicer import compute_subtotal
+
+      def compute_tax(lines: list[dict], tax_rate: Decimal) -> Decimal:
+          subtotal = compute_subtotal(lines)
+          return (subtotal * tax_rate).quantize(Decimal("0.01"))
+
+      def compute_total_with_tax(lines: list[dict], tax_rate: Decimal) -> Decimal:
+          subtotal = compute_subtotal(lines)
+          tax = compute_tax(lines, tax_rate)
+          return subtotal + tax
+    src/billing/formatter.py: |
+      from decimal import Decimal
+      from src.billing.tax import compute_total_with_tax
+
+      def format_invoice(lines: list[dict], tax_rate: Decimal) -> str:
+          total = compute_total_with_tax(lines, tax_rate)
+          return f"Total due: {total}"
+    garbage/auth.py: |
+      GARBAGE_BAL31HOP003_A = "auth_marker"
+
+      def noop():
+          pass
+    garbage/logger.py: |
+      GARBAGE_BAL31HOP003_B = "log_marker"
+
+      def noop():
+          pass
+    garbage/notify.py: |
+      GARBAGE_BAL31HOP003_C = "notify_marker"
+
+      def noop():
+          pass
+  changed_files:
+    src/billing/invoicer.py: |
+      from decimal import Decimal
+
+      def compute_line_total(quantity: int, unit_price: Decimal) -> Decimal:
+          return Decimal(quantity) * unit_price
+
+      def compute_subtotal(lines: list[dict]) -> Decimal:
+          return sum(compute_line_total(l["quantity"], Decimal(str(l["unit_price"]))) for l in lines)
+
+      def compute_discount(subtotal: Decimal, discount_rate: Decimal) -> Decimal:
+          return (subtotal * discount_rate).quantize(Decimal("0.01"))
+    src/billing/tax.py: |
+      from decimal import Decimal
+      from src.billing.invoicer import compute_subtotal, compute_discount
+
+      def compute_tax(lines: list[dict], tax_rate: Decimal) -> Decimal:
+          subtotal = compute_subtotal(lines)
+          return (subtotal * tax_rate).quantize(Decimal("0.01"))
+
+      def compute_total_with_tax(
+          lines: list[dict],
+          tax_rate: Decimal,
+          discount_rate: Decimal = Decimal("0"),
+      ) -> Decimal:
+          subtotal = compute_subtotal(lines)
+          discount = compute_discount(subtotal, discount_rate)
+          tax = compute_tax(lines, tax_rate)
+          return subtotal - discount + tax
+    src/billing/formatter.py: |
+      from decimal import Decimal
+      from src.billing.tax import compute_total_with_tax
+
+      def format_invoice(
+          lines: list[dict],
+          tax_rate: Decimal,
+          discount_rate: Decimal = Decimal("0"),
+      ) -> str:
+          total = compute_total_with_tax(lines, tax_rate, discount_rate)
+          return f"Total due: {total}"
+    garbage/auth.py: |
+      GARBAGE_BAL31HOP003_A = "auth_marker"
+
+      def noop():
+          pass
+    garbage/logger.py: |
+      GARBAGE_BAL31HOP003_B = "log_marker"
+
+      def noop():
+          pass
+    garbage/notify.py: |
+      GARBAGE_BAL31HOP003_C = "notify_marker"
+
+      def noop():
+          pass
+  commit_message: "feat: add discount computation to billing pipeline"
+fragments:
+- id: invoicer_discount
+  selector:
+    path: src/billing/invoicer.py
+    anchor: "def compute_discount("
+- id: tax_imports_discount
+  selector:
+    path: src/billing/tax.py
+    anchor: "from src.billing.invoicer import compute_subtotal, compute_discount"
+- id: tax_uses_discount
+  selector:
+    path: src/billing/tax.py
+    anchor: "discount = compute_discount("
+- id: formatter_discount_param
+  selector:
+    path: src/billing/formatter.py
+    anchor: "discount_rate: Decimal = Decimal"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_BAL31HOP003_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_BAL31HOP003_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_BAL31HOP003_C
+oracle:
+  required:
+  - invoicer_discount
+  - tax_imports_discount
+  - tax_uses_discount
+  - formatter_discount_param
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

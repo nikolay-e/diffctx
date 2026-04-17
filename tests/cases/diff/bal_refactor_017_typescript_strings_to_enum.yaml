@@ -1,0 +1,130 @@
+name: bal_refactor_017_typescript_strings_to_enum
+tags:
+- lang:python
+- lang:shell
+- change:multi_file
+- context:same_file
+- distance:0hop
+- difficulty:easy
+repo:
+  initial_files:
+    scripts/sync.py: |
+      import os
+      import shutil
+
+      SOURCE_DIR = "/data/source"
+      DEST_DIR = "/data/dest"
+
+
+      def sync_directory(source: str = SOURCE_DIR, dest: str = DEST_DIR) -> int:
+          count = 0
+          for item in os.listdir(source):
+              src_path = os.path.join(source, item)
+              dst_path = os.path.join(dest, item)
+              shutil.copy2(src_path, dst_path)
+              count += 1
+          return count
+    scripts/sync.sh: |
+      #!/usr/bin/env bash
+      python3 scripts/sync.py
+    garbage/compress.py: |
+      GARBAGE_TS017_COMPRESS_A = "compress_marker"
+
+
+      def compress_file(path: str) -> str:
+          return path + ".gz"
+    garbage/encrypt.py: |
+      GARBAGE_TS017_ENCRYPT_B = "encrypt_marker"
+
+
+      def encrypt(data: bytes) -> bytes:
+          return data
+    garbage/checksum.py: |
+      GARBAGE_TS017_CHECKSUM_C = "checksum_marker"
+
+
+      def md5(path: str) -> str:
+          return ""
+  changed_files:
+    scripts/sync.py: |
+      import os
+      import shutil
+
+      SOURCE_DIR = "/data/source"
+      DEST_DIR = "/data/dest"
+
+
+      def sync_directory(source: str = SOURCE_DIR, dest: str = DEST_DIR) -> int:
+          count = 0
+          for item in os.listdir(source):
+              src_path = os.path.join(source, item)
+              dst_path = os.path.join(dest, item)
+              shutil.copy2(src_path, dst_path)
+              count += 1
+          return count
+
+
+      def dry_run(source: str = SOURCE_DIR) -> list[str]:
+          return [
+              os.path.join(source, item)
+              for item in sorted(os.listdir(source))
+          ]
+    scripts/sync.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      if [[ "${DRY_RUN:-0}" == "1" ]]; then
+          python3 -c "import scripts.sync; print('\n'.join(scripts.sync.dry_run()))"
+      else
+          python3 scripts/sync.py
+      fi
+    garbage/compress.py: |
+      GARBAGE_TS017_COMPRESS_A = "compress_marker"
+
+
+      def compress_file(path: str) -> str:
+          return path + ".gz"
+    garbage/encrypt.py: |
+      GARBAGE_TS017_ENCRYPT_B = "encrypt_marker"
+
+
+      def encrypt(data: bytes) -> bytes:
+          return data
+    garbage/checksum.py: |
+      GARBAGE_TS017_CHECKSUM_C = "checksum_marker"
+
+
+      def md5(path: str) -> str:
+          return ""
+  commit_message: "feat: add dry_run mode to sync script"
+fragments:
+- id: dry_run_fn
+  selector:
+    path: scripts/sync.py
+    anchor: "def dry_run"
+- id: sync_directory_fn
+  selector:
+    path: scripts/sync.py
+    anchor: "def sync_directory"
+- id: shell_dry_run_check
+  selector:
+    path: scripts/sync.sh
+    anchor: 'DRY_RUN'
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_TS017_COMPRESS_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_TS017_ENCRYPT_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_TS017_CHECKSUM_C
+oracle:
+  required:
+  - dry_run_fn
+  - sync_directory_fn
+  - shell_dry_run_check
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

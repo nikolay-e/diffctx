@@ -1,0 +1,223 @@
+name: bal3_1hop_013_go_storage_adapter
+tags:
+- lang:go
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    pkg/storage/blob.go: |
+      package storage
+
+      type BlobStore struct {
+          Bucket string
+      }
+
+      func NewBlobStore(bucket string) *BlobStore {
+          return &BlobStore{Bucket: bucket}
+      }
+
+      func (b *BlobStore) Upload(key string, data []byte) error {
+          return nil
+      }
+
+      func (b *BlobStore) Download(key string) ([]byte, error) {
+          return nil, nil
+      }
+    internal/media/image_service.go: |
+      package media
+
+      import "pkg/storage"
+
+      type ImageService struct {
+          store *storage.BlobStore
+      }
+
+      func NewImageService(s *storage.BlobStore) *ImageService {
+          return &ImageService{store: s}
+      }
+
+      func (is *ImageService) SaveImage(name string, data []byte) error {
+          return is.store.Upload("images/"+name, data)
+      }
+
+      func (is *ImageService) LoadImage(name string) ([]byte, error) {
+          return is.store.Download("images/" + name)
+      }
+    internal/media/video_service.go: |
+      package media
+
+      import "pkg/storage"
+
+      type VideoService struct {
+          store *storage.BlobStore
+      }
+
+      func NewVideoService(s *storage.BlobStore) *VideoService {
+          return &VideoService{store: s}
+      }
+
+      func (vs *VideoService) SaveVideo(name string, data []byte) error {
+          return vs.store.Upload("videos/"+name, data)
+      }
+    internal/backup/archiver.go: |
+      package backup
+
+      import "pkg/storage"
+
+      type Archiver struct {
+          store *storage.BlobStore
+      }
+
+      func NewArchiver(s *storage.BlobStore) *Archiver {
+          return &Archiver{store: s}
+      }
+
+      func (a *Archiver) Archive(name string, data []byte) error {
+          return a.store.Upload("archives/"+name, data)
+      }
+    internal/geo/locator.go: |
+      package geo
+
+      GARBAGE_013_GEO_A = "geo"
+
+      type Locator struct {
+          APIKey string
+      }
+
+      func (l *Locator) Lookup(ip string) string {
+          return "unknown"
+      }
+    internal/auth/oauth.go: |
+      package auth
+
+      GARBAGE_013_OAUTH_B = "oauth"
+
+      type OAuthClient struct {
+          ClientID string
+      }
+
+      func (o *OAuthClient) Authorize(code string) string {
+          return "token"
+      }
+    internal/webhook/sender.go: |
+      package webhook
+
+      GARBAGE_013_WEBHOOK_C = "webhook"
+
+      type Sender struct {
+          URL string
+      }
+
+      func (s *Sender) Send(payload []byte) error {
+          return nil
+      }
+  changed_files:
+    pkg/storage/blob.go: |
+      package storage
+
+      import "fmt"
+
+      type BlobMetadata struct {
+          Size        int64
+          ContentType string
+          ETag        string
+      }
+
+      type BlobStore struct {
+          Bucket string
+          Region string
+      }
+
+      func NewBlobStore(bucket, region string) *BlobStore {
+          return &BlobStore{Bucket: bucket, Region: region}
+      }
+
+      func (b *BlobStore) Upload(key string, data []byte) error {
+          return nil
+      }
+
+      func (b *BlobStore) Download(key string) ([]byte, error) {
+          return nil, nil
+      }
+
+      func (b *BlobStore) Delete(key string) error {
+          return nil
+      }
+
+      func (b *BlobStore) Metadata(key string) (*BlobMetadata, error) {
+          return &BlobMetadata{Size: 0, ContentType: "application/octet-stream", ETag: ""}, nil
+      }
+
+      func (b *BlobStore) URL(key string) string {
+          return fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", b.Bucket, b.Region, key)
+      }
+  commit_message: "feat: add Region, BlobMetadata, Delete, Metadata, URL to BlobStore"
+fragments:
+- id: blob_metadata_type
+  selector:
+    path: pkg/storage/blob.go
+    anchor: "type BlobMetadata struct"
+- id: region_field
+  selector:
+    path: pkg/storage/blob.go
+    anchor: "Region string"
+- id: delete_method
+  selector:
+    path: pkg/storage/blob.go
+    anchor: "func (b *BlobStore) Delete"
+- id: metadata_method
+  selector:
+    path: pkg/storage/blob.go
+    anchor: "func (b *BlobStore) Metadata"
+- id: image_service_upload
+  selector:
+    path: internal/media/image_service.go
+    anchor: "is.store.Upload(\"images/\""
+- id: video_service_upload
+  selector:
+    path: internal/media/video_service.go
+    anchor: "vs.store.Upload(\"videos/\""
+- id: archiver_upload
+  selector:
+    path: internal/backup/archiver.go
+    anchor: "a.store.Upload(\"archives/\""
+- id: unrelated_geo
+  selector:
+    path: internal/geo/locator.go
+    anchor: "type Locator struct"
+- id: unrelated_oauth
+  selector:
+    path: internal/auth/oauth.go
+    anchor: "type OAuthClient struct"
+- id: unrelated_webhook
+  selector:
+    path: internal/webhook/sender.go
+    anchor: "type Sender struct"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_013_GEO_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_013_OAUTH_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_013_WEBHOOK_C
+oracle:
+  required:
+  - blob_metadata_type
+  - region_field
+  - delete_method
+  - image_service_upload
+  allowed:
+  - metadata_method
+  - video_service_upload
+  - archiver_upload
+  forbidden:
+  - unrelated_geo
+  - unrelated_oauth
+  - unrelated_webhook
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

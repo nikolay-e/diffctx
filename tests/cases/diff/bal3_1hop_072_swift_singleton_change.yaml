@@ -1,0 +1,259 @@
+name: bal3_1hop_072_swift_singleton_change
+tags:
+- lang:swift
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    Sources/Core/AppState.swift: |
+      import Foundation
+
+      class AppState {
+          static let shared = AppState()
+          var isLoggedIn: Bool = false
+          var userId: String?
+          var theme: String = "light"
+
+          private init() {}
+
+          func reset() {
+              isLoggedIn = false
+              userId = nil
+          }
+      }
+    Sources/UI/HeaderView.swift: |
+      import Foundation
+      import Core
+
+      class HeaderView {
+          func render() -> String {
+              let state = AppState.shared
+              if state.isLoggedIn {
+                  return "Welcome, \(state.userId ?? "User")"
+              }
+              return "Please log in"
+          }
+      }
+    Sources/UI/SidebarView.swift: |
+      import Foundation
+      import Core
+
+      class SidebarView {
+          func render() -> String {
+              let state = AppState.shared
+              return "Theme: \(state.theme)"
+          }
+      }
+    Sources/UI/FooterView.swift: |
+      import Foundation
+      import Core
+
+      class FooterView {
+          func render() -> String {
+              let state = AppState.shared
+              return state.isLoggedIn ? "Logged in as \(state.userId ?? "")" : "Guest"
+          }
+      }
+    Sources/UI/StatusBar.swift: |
+      import Foundation
+      import Core
+
+      class StatusBar {
+          func connectionStatus() -> String {
+              let state = AppState.shared
+              return state.isLoggedIn ? "Online" : "Offline"
+          }
+      }
+    Sources/Networking/DNSResolver.swift: |
+      import Foundation
+      GARBAGE_072_DNS_SERVER_A = "8.8.8.8"
+      GARBAGE_072_DNS_TIMEOUT_B = 5
+
+      class DNSResolver {
+          func resolve(host: String) -> String { return "127.0.0.1" }
+      }
+    Sources/Networking/ProxyConfig.swift: |
+      import Foundation
+      GARBAGE_072_PROXY_HOST_C = "proxy.local"
+      GARBAGE_072_PROXY_PORT_D = 8080
+
+      class ProxyConfig {
+          var host: String = ""
+          var port: Int = 0
+      }
+    Sources/Debug/MemoryProfiler.swift: |
+      import Foundation
+      GARBAGE_072_MEM_LIMIT_E = 536870912
+      GARBAGE_072_SAMPLE_RATE_F = 100
+
+      class MemoryProfiler {
+          func snapshot() -> Int { return 0 }
+      }
+  changed_files:
+    Sources/Core/AppState.swift: |
+      import Foundation
+
+      enum AppTheme: String {
+          case light
+          case dark
+          case system
+      }
+
+      class AppState {
+          static let shared = AppState()
+          var isLoggedIn: Bool = false
+          var userId: String?
+          var theme: AppTheme = .system
+          var language: String = "en"
+          var isOnboarded: Bool = false
+
+          private init() {}
+
+          func reset() {
+              isLoggedIn = false
+              userId = nil
+              isOnboarded = false
+          }
+      }
+    Sources/UI/HeaderView.swift: |
+      import Foundation
+      import Core
+
+      class HeaderView {
+          func render() -> String {
+              let state = AppState.shared
+              if state.isLoggedIn {
+                  return "Welcome, \(state.userId ?? "User")"
+              }
+              return "Please log in"
+          }
+      }
+    Sources/UI/SidebarView.swift: |
+      import Foundation
+      import Core
+
+      class SidebarView {
+          func render() -> String {
+              let state = AppState.shared
+              return "Theme: \(state.theme)"
+          }
+      }
+    Sources/UI/FooterView.swift: |
+      import Foundation
+      import Core
+
+      class FooterView {
+          func render() -> String {
+              let state = AppState.shared
+              return state.isLoggedIn ? "Logged in as \(state.userId ?? "")" : "Guest"
+          }
+      }
+    Sources/UI/StatusBar.swift: |
+      import Foundation
+      import Core
+
+      class StatusBar {
+          func connectionStatus() -> String {
+              let state = AppState.shared
+              return state.isLoggedIn ? "Online" : "Offline"
+          }
+      }
+    Sources/Networking/DNSResolver.swift: |
+      import Foundation
+      GARBAGE_072_DNS_SERVER_A = "8.8.8.8"
+      GARBAGE_072_DNS_TIMEOUT_B = 5
+
+      class DNSResolver {
+          func resolve(host: String) -> String { return "127.0.0.1" }
+      }
+    Sources/Networking/ProxyConfig.swift: |
+      import Foundation
+      GARBAGE_072_PROXY_HOST_C = "proxy.local"
+      GARBAGE_072_PROXY_PORT_D = 8080
+
+      class ProxyConfig {
+          var host: String = ""
+          var port: Int = 0
+      }
+    Sources/Debug/MemoryProfiler.swift: |
+      import Foundation
+      GARBAGE_072_MEM_LIMIT_E = 536870912
+      GARBAGE_072_SAMPLE_RATE_F = 100
+
+      class MemoryProfiler {
+          func snapshot() -> Int { return 0 }
+      }
+  commit_message: "feat: add AppTheme enum, language and onboarding to AppState"
+fragments:
+- id: header_imports
+  selector:
+    path: Sources/UI/HeaderView.swift
+    anchor: "import Core"
+- id: header_state
+  selector:
+    path: Sources/UI/HeaderView.swift
+    anchor: "AppState.shared"
+- id: sidebar_imports
+  selector:
+    path: Sources/UI/SidebarView.swift
+    anchor: "import Core"
+- id: sidebar_theme
+  selector:
+    path: Sources/UI/SidebarView.swift
+    anchor: "state.theme"
+- id: footer_imports
+  selector:
+    path: Sources/UI/FooterView.swift
+    anchor: "import Core"
+- id: statusbar_imports
+  selector:
+    path: Sources/UI/StatusBar.swift
+    anchor: "import Core"
+- id: no_dns
+  selector:
+    path: Sources/Networking/DNSResolver.swift
+- id: no_proxy
+  selector:
+    path: Sources/Networking/ProxyConfig.swift
+- id: no_memory
+  selector:
+    path: Sources/Debug/MemoryProfiler.swift
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_072_DNS_SERVER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_072_DNS_TIMEOUT_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_072_PROXY_HOST_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_072_PROXY_PORT_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_072_MEM_LIMIT_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_072_SAMPLE_RATE_F
+oracle:
+  required:
+  - header_imports
+  - header_state
+  - sidebar_imports
+  - sidebar_theme
+  - footer_imports
+  - statusbar_imports
+  allowed: []
+  forbidden:
+  - no_dns
+  - no_proxy
+  - no_memory
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

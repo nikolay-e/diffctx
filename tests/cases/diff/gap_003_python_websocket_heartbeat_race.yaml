@@ -1,0 +1,131 @@
+name: gap_003_python_websocket_heartbeat_race
+tags:
+- lang:python
+- change:bug_fix
+- change:multi_file
+- context:import_chain
+- difficulty:hard
+- distance:1hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    realtime/connection.py: |
+      import asyncio
+      from realtime.protocol import encode_frame, FrameType
+
+      class WebSocketConnection:
+          def __init__(self, writer: asyncio.StreamWriter):
+              self._writer = writer
+              self._alive = True
+
+          async def send(self, payload: bytes) -> None:
+              frame = encode_frame(FrameType.DATA, payload)
+              self._writer.write(frame)
+              await self._writer.drain()
+
+          async def heartbeat(self, interval: float = 30.0) -> None:
+              while self._alive:
+                  await asyncio.sleep(interval)
+                  ping = encode_frame(FrameType.PING, b"")
+                  self._writer.write(ping)
+                  await self._writer.drain()
+
+          async def close(self) -> None:
+              self._alive = False
+              self._writer.close()
+    realtime/protocol.py: |
+      import struct
+      from enum import IntEnum
+
+      class FrameType(IntEnum):
+          DATA = 0x01
+          PING = 0x02
+          PONG = 0x03
+          CLOSE = 0x04
+
+      def encode_frame(frame_type: FrameType, payload: bytes) -> bytes:
+          header = struct.pack("!BH", frame_type, len(payload))
+          return header + payload
+
+      def decode_frame(data: bytes) -> tuple[FrameType, bytes]:
+          ft, length = struct.unpack("!BH", data[:3])
+          return FrameType(ft), data[3:3 + length]
+    realtime/metrics.py: |
+      class ConnectionMetrics:
+          def __init__(self):
+              self.messages_sent = 0
+              self.messages_received = 0
+              self.bytes_transferred = 0
+
+          def record_send(self, size: int) -> None:
+              self.messages_sent += 1
+              self.bytes_transferred += size
+
+          def record_receive(self, size: int) -> None:
+              self.messages_received += 1
+              self.bytes_transferred += size
+  changed_files:
+    realtime/connection.py: |
+      import asyncio
+      from realtime.protocol import encode_frame, FrameType
+
+      class WebSocketConnection:
+          def __init__(self, writer: asyncio.StreamWriter):
+              self._writer = writer
+              self._alive = True
+              self._write_lock = asyncio.Lock()
+
+          async def send(self, payload: bytes) -> None:
+              frame = encode_frame(FrameType.DATA, payload)
+              async with self._write_lock:
+                  self._writer.write(frame)
+                  await self._writer.drain()
+
+          async def heartbeat(self, interval: float = 30.0) -> None:
+              while self._alive:
+                  await asyncio.sleep(interval)
+                  ping = encode_frame(FrameType.PING, b"")
+                  async with self._write_lock:
+                      self._writer.write(ping)
+                      await self._writer.drain()
+
+          async def close(self) -> None:
+              self._alive = False
+              async with self._write_lock:
+                  close_frame = encode_frame(FrameType.CLOSE, b"")
+                  self._writer.write(close_frame)
+                  await self._writer.drain()
+              self._writer.close()
+fragments:
+- id: connection_send
+  selector:
+    path: realtime/connection.py
+    anchor: "def send"
+- id: connection_heartbeat
+  selector:
+    path: realtime/connection.py
+    anchor: "def heartbeat"
+- id: protocol_encode
+  selector:
+    path: realtime/protocol.py
+    anchor: "def encode_frame"
+- id: frame_type
+  selector:
+    path: realtime/protocol.py
+    anchor: "class FrameType"
+- id: no_metrics
+  selector:
+    path: realtime/metrics.py
+- id: no_connection_metrics
+  selector:
+    anchor: ConnectionMetrics
+oracle:
+  required:
+  - connection_send
+  - connection_heartbeat
+  - protocol_encode
+  - frame_type
+  forbidden:
+  - no_metrics
+  - no_connection_metrics

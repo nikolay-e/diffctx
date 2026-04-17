@@ -1,0 +1,217 @@
+name: bal_3hop_042_typescript_logger_transport_chain
+tags:
+- lang:typescript
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/logging/level.ts: |
+      export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+      export const LOG_PRIORITY: Record<LogLevel, number> = {
+        debug: 0,
+        info: 1,
+        warn: 2,
+        error: 3,
+      };
+
+      export function shouldLog(current: LogLevel, minimum: LogLevel): boolean {
+        return LOG_PRIORITY[current] >= LOG_PRIORITY[minimum];
+      }
+    src/logging/transport.ts: |
+      import { LogLevel, shouldLog } from './level';
+
+      export interface Transport {
+        write(level: LogLevel, message: string): void;
+      }
+
+      export class ConsoleTransport implements Transport {
+        constructor(private minLevel: LogLevel) {}
+
+        write(level: LogLevel, message: string): void {
+          if (shouldLog(level, this.minLevel)) {
+            console.log(`[${level.toUpperCase()}] ${message}`);
+          }
+        }
+      }
+    src/logging/logger.ts: |
+      import { Transport, ConsoleTransport } from './transport';
+      import { LogLevel } from './level';
+
+      export class Logger {
+        private transports: Transport[] = [];
+
+        addTransport(transport: Transport): void {
+          this.transports.push(transport);
+        }
+
+        log(level: LogLevel, message: string): void {
+          this.transports.forEach(t => t.write(level, message));
+        }
+
+        info(message: string): void { this.log('info', message); }
+        error(message: string): void { this.log('error', message); }
+      }
+    src/app/server.ts: |
+      import { Logger } from '../logging/logger';
+      import { ConsoleTransport } from '../logging/transport';
+
+      const logger = new Logger();
+      logger.addTransport(new ConsoleTransport('info'));
+
+      export function startServer(port: number): void {
+        logger.info(`Server starting on port ${port}`);
+      }
+
+      export function handleError(err: Error): void {
+        logger.error(`Unhandled error: ${err.message}`);
+      }
+    src/utils/uuid.ts: |
+      GARBAGE_042_UUID_MARKER_A = "uuid";
+      GARBAGE_042_V4_MARKER_B = true;
+
+      export function generateUUID(): string {
+        return crypto.randomUUID();
+      }
+    src/utils/config.ts: |
+      GARBAGE_042_CONFIG_MARKER_C = "config";
+      GARBAGE_042_YAML_MARKER_D = true;
+
+      export function loadConfig(path: string): Record<string, any> {
+        return {};
+      }
+  changed_files:
+    src/logging/level.ts: |
+      export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'fatal';
+
+      export const LOG_PRIORITY: Record<LogLevel, number> = {
+        debug: 0,
+        info: 1,
+        warn: 2,
+        error: 3,
+        fatal: 4,
+      };
+
+      export function shouldLog(current: LogLevel, minimum: LogLevel): boolean {
+        return LOG_PRIORITY[current] >= LOG_PRIORITY[minimum];
+      }
+
+      export function formatTimestamp(): string {
+        return new Date().toISOString();
+      }
+    src/logging/transport.ts: |
+      import { LogLevel, shouldLog, formatTimestamp } from './level';
+
+      export interface Transport {
+        write(level: LogLevel, message: string): void;
+      }
+
+      export class ConsoleTransport implements Transport {
+        constructor(private minLevel: LogLevel) {}
+
+        write(level: LogLevel, message: string): void {
+          if (shouldLog(level, this.minLevel)) {
+            console.log(`[${formatTimestamp()}] [${level.toUpperCase()}] ${message}`);
+          }
+        }
+      }
+    src/logging/logger.ts: |
+      import { Transport, ConsoleTransport } from './transport';
+      import { LogLevel } from './level';
+
+      export class Logger {
+        private transports: Transport[] = [];
+
+        addTransport(transport: Transport): void {
+          this.transports.push(transport);
+        }
+
+        log(level: LogLevel, message: string): void {
+          this.transports.forEach(t => t.write(level, message));
+        }
+
+        info(message: string): void { this.log('info', message); }
+        error(message: string): void { this.log('error', message); }
+        fatal(message: string): void { this.log('fatal', message); }
+      }
+    src/app/server.ts: |
+      import { Logger } from '../logging/logger';
+      import { ConsoleTransport } from '../logging/transport';
+
+      const logger = new Logger();
+      logger.addTransport(new ConsoleTransport('info'));
+
+      export function startServer(port: number): void {
+        logger.info(`Server starting on port ${port}`);
+      }
+
+      export function handleError(err: Error): void {
+        logger.error(`Unhandled error: ${err.message}`);
+      }
+
+      export function handleFatal(err: Error): void {
+        logger.fatal(`Fatal error: ${err.message}`);
+        process.exit(1);
+      }
+    src/utils/uuid.ts: |
+      GARBAGE_042_UUID_MARKER_A = "uuid";
+      GARBAGE_042_V4_MARKER_B = true;
+
+      export function generateUUID(): string {
+        return crypto.randomUUID();
+      }
+    src/utils/config.ts: |
+      GARBAGE_042_CONFIG_MARKER_C = "config";
+      GARBAGE_042_YAML_MARKER_D = true;
+
+      export function loadConfig(path: string): Record<string, any> {
+        return {};
+      }
+  commit_message: "feat: add fatal log level and timestamp formatting"
+fragments:
+- id: fatal_level
+  selector:
+    path: src/logging/level.ts
+    anchor: "'fatal'"
+- id: format_timestamp_fn
+  selector:
+    path: src/logging/level.ts
+    anchor: "export function formatTimestamp"
+- id: transport_uses_timestamp
+  selector:
+    path: src/logging/transport.ts
+    anchor: "formatTimestamp()"
+- id: logger_fatal_method
+  selector:
+    path: src/logging/logger.ts
+    anchor: "fatal(message: string)"
+- id: server_imports_logger
+  selector:
+    path: src/app/server.ts
+    anchor: "import { Logger } from '../logging/logger'"
+- id: server_handle_fatal
+  selector:
+    path: src/app/server.ts
+    anchor: "export function handleFatal"
+- id: no_uuid
+  selector:
+    path: src/utils/uuid.ts
+    anchor: "GARBAGE_042_UUID_MARKER_A"
+- id: no_config
+  selector:
+    path: src/utils/config.ts
+    anchor: "GARBAGE_042_CONFIG_MARKER_C"
+oracle:
+  required:
+  - fatal_level
+  - format_timestamp_fn
+  - transport_uses_timestamp
+  - logger_fatal_method
+  - server_imports_logger
+  - server_handle_fatal
+  allowed: []
+  forbidden:
+  - no_uuid
+  - no_config

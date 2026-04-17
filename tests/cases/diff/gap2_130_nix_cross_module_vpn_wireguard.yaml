@@ -1,0 +1,154 @@
+name: gap2_130_nix_cross_module_vpn_wireguard
+tags:
+- change:single_file
+- context:cross_module
+- difficulty:medium
+- distance:2hop
+- lang:nix
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    modules/wireguard.nix: |
+      { config, lib, pkgs, ... }:
+
+      {
+        options.vpn.wireguard.listenPort = lib.mkOption {
+          type = lib.types.port;
+          default = 51820;
+        };
+
+        config = {
+          networking.wireguard.interfaces.wg0 = {
+            listenPort = config.vpn.wireguard.listenPort;
+            privateKeyFile = "/etc/wireguard/private.key";
+            peers = [
+              { publicKey = "peer1pubkey"; allowedIPs = ["10.0.0.2/32"]; }
+            ];
+          };
+        };
+      }
+    modules/firewall.nix: |
+      { config, lib, pkgs, ... }:
+
+      {
+        config = {
+          networking.firewall = {
+            allowedUDPPorts = [ config.vpn.wireguard.listenPort ];
+            allowedTCPPorts = [ 22 80 443 ];
+          };
+        };
+      }
+    hosts/gateway.nix: |
+      { config, pkgs, ... }:
+
+      {
+        imports = [
+          ../modules/wireguard.nix
+          ../modules/firewall.nix
+        ];
+
+        networking.hostName = "gateway";
+        system.stateVersion = "24.05";
+      }
+    modules/dns.nix: |
+      { config, lib, pkgs, ... }:
+
+      {
+        TRAP_GAP2_130_DNS_A = "dns_noise";
+        TRAP_GAP2_130_DNS_B = 53;
+
+        config = {
+          services.unbound = {
+            enable = true;
+            settings.server.interface = ["0.0.0.0"];
+          };
+        };
+      }
+    modules/ntp.nix: |
+      { config, lib, pkgs, ... }:
+
+      {
+        TRAP_GAP2_130_NTP_C = "ntp_noise";
+        TRAP_GAP2_130_NTP_D = "pool.ntp.org";
+
+        config = {
+          services.chrony.enable = true;
+        };
+      }
+  changed_files:
+    modules/wireguard.nix: |
+      { config, lib, pkgs, ... }:
+
+      {
+        options.vpn.wireguard.listenPort = lib.mkOption {
+          type = lib.types.port;
+          default = 51820;
+        };
+
+        options.vpn.wireguard.subnet = lib.mkOption {
+          type = lib.types.str;
+          default = "10.0.0.0/24";
+        };
+
+        config = {
+          networking.wireguard.interfaces.wg0 = {
+            listenPort = config.vpn.wireguard.listenPort;
+            privateKeyFile = "/etc/wireguard/private.key";
+            ips = [ "${config.vpn.wireguard.subnet}" ];
+            peers = [
+              { publicKey = "peer1pubkey"; allowedIPs = ["10.0.0.2/32"]; }
+              { publicKey = "peer2pubkey"; allowedIPs = ["10.0.0.3/32"]; }
+            ];
+          };
+        };
+      }
+fragments:
+- id: subnet_option
+  selector:
+    path: modules/wireguard.nix
+    anchor: options.vpn.wireguard.subnet
+- id: subnet_usage
+  selector:
+    path: modules/wireguard.nix
+    anchor: config.vpn.wireguard.subnet
+- id: firewall_port
+  selector:
+    path: modules/firewall.nix
+    anchor: config.vpn.wireguard.listenPort
+- id: gateway_imports
+  selector:
+    path: hosts/gateway.nix
+    anchor: ../modules/wireguard.nix
+- id: no_dns
+  selector:
+    path: modules/dns.nix
+- id: no_ntp
+  selector:
+    path: modules/ntp.nix
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_130_DNS_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_130_DNS_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP2_130_NTP_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP2_130_NTP_D
+oracle:
+  required:
+  - subnet_option
+  - subnet_usage
+  - firewall_port
+  - gateway_imports
+  allowed: []
+  forbidden:
+  - no_dns
+  - no_ntp
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

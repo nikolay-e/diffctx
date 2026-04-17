@@ -1,0 +1,134 @@
+name: bal3_3hop_048_scala_repository_pattern
+tags:
+- lang:scala
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/com/app/domain/User.scala: |
+      package com.app.domain
+
+      case class User(
+        id: String,
+        name: String,
+        email: String
+      )
+    src/main/scala/com/app/repository/UserRepository.scala: |
+      package com.app.repository
+
+      import com.app.domain.User
+
+      trait UserRepository {
+        def findById(id: String): Option[User]
+        def save(user: User): Unit
+      }
+    src/main/scala/com/app/repository/InMemoryUserRepository.scala: |
+      package com.app.repository
+
+      import com.app.domain.User
+      import scala.collection.mutable
+
+      class InMemoryUserRepository extends UserRepository {
+        private val store = mutable.Map.empty[String, User]
+        def findById(id: String): Option[User] = store.get(id)
+        def save(user: User): Unit = store.put(user.id, user)
+      }
+    src/main/scala/com/app/service/UserService.scala: |
+      package com.app.service
+
+      import com.app.repository.UserRepository
+      import com.app.domain.User
+
+      class UserService(repo: UserRepository) {
+        def getUser(id: String): Option[User] = repo.findById(id)
+        def createUser(user: User): Unit = repo.save(user)
+      }
+    src/main/scala/com/app/api/UserEndpoint.scala: |
+      package com.app.api
+
+      import com.app.service.UserService
+      import com.app.domain.User
+
+      class UserEndpoint(service: UserService) {
+        def get(id: String): String = {
+          service.getUser(id).map(_.name).getOrElse("not found")
+        }
+      }
+    src/main/scala/com/app/util/IdGen.scala: |
+      package com.app.util
+
+      var GARBAGE_048_IDGEN_MARKER_A = "uuid"
+      var GARBAGE_048_SEQ_MARKER_B = 0
+
+      object IdGen {
+        def next(): String = java.util.UUID.randomUUID().toString
+      }
+    src/main/scala/com/app/util/Hasher.scala: |
+      package com.app.util
+
+      var GARBAGE_048_HASH_MARKER_C = "sha256"
+      var GARBAGE_048_SALT_MARKER_D = "salt"
+
+      object Hasher {
+        def hash(input: String): String = input
+      }
+  changed_files:
+    src/main/scala/com/app/domain/User.scala: |
+      package com.app.domain
+
+      case class User(
+        id: String,
+        name: String,
+        email: String,
+        role: String = "viewer",
+        active: Boolean = true
+      )
+  commit_message: "feat: add role and active status to User domain model"
+fragments:
+- id: user_role_field
+  selector:
+    path: src/main/scala/com/app/domain/User.scala
+    anchor: "role: String"
+- id: user_active_field
+  selector:
+    path: src/main/scala/com/app/domain/User.scala
+    anchor: "active: Boolean"
+- id: repo_trait_uses_user
+  selector:
+    path: src/main/scala/com/app/repository/UserRepository.scala
+    anchor: "import com.app.domain.User"
+- id: inmemory_extends_repo
+  selector:
+    path: src/main/scala/com/app/repository/InMemoryUserRepository.scala
+    anchor: "extends UserRepository"
+- id: service_imports_repo
+  selector:
+    path: src/main/scala/com/app/service/UserService.scala
+    anchor: "import com.app.repository.UserRepository"
+- id: endpoint_imports_service
+  selector:
+    path: src/main/scala/com/app/api/UserEndpoint.scala
+    anchor: "import com.app.service.UserService"
+- id: no_idgen
+  selector:
+    path: src/main/scala/com/app/util/IdGen.scala
+    anchor: "GARBAGE_048_IDGEN_MARKER_A"
+- id: no_hasher
+  selector:
+    path: src/main/scala/com/app/util/Hasher.scala
+    anchor: "GARBAGE_048_HASH_MARKER_C"
+oracle:
+  required:
+  - user_role_field
+  - user_active_field
+  - repo_trait_uses_user
+  - inmemory_extends_repo
+  - service_imports_repo
+  allowed:
+  - endpoint_imports_service
+  forbidden:
+  - no_idgen
+  - no_hasher

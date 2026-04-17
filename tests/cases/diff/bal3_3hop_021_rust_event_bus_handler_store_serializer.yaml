@@ -1,0 +1,192 @@
+name: bal3_3hop_021_rust_event_bus_handler_store_serializer
+tags:
+- lang:rust
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/serializer/json_ser.rs: |
+      pub struct JsonSerializer;
+
+      impl JsonSerializer {
+          pub fn new() -> Self {
+              Self
+          }
+
+          pub fn serialize(&self, key: &str, value: &str) -> String {
+              format!("{{\"{}\":\"{}\"}}", key, value)
+          }
+
+          pub fn deserialize(&self, data: &str) -> (String, String) {
+              let trimmed = data.trim_matches(|c| c == '{' || c == '}');
+              let parts: Vec<&str> = trimmed.split(':').collect();
+              if parts.len() == 2 {
+                  (parts[0].trim_matches('"').to_string(), parts[1].trim_matches('"').to_string())
+              } else {
+                  (String::new(), String::new())
+              }
+          }
+      }
+    src/serializer/mod.rs: |
+      pub mod json_ser;
+    src/event_store/store.rs: |
+      use crate::serializer::json_ser::JsonSerializer;
+
+      pub struct EventStore {
+          serializer: JsonSerializer,
+          events: Vec<String>,
+      }
+
+      impl EventStore {
+          pub fn new(serializer: JsonSerializer) -> Self {
+              Self { serializer, events: Vec::new() }
+          }
+
+          pub fn append(&mut self, key: &str, value: &str) {
+              let data = self.serializer.serialize(key, value);
+              self.events.push(data);
+          }
+
+          pub fn count(&self) -> usize {
+              self.events.len()
+          }
+      }
+    src/event_store/mod.rs: |
+      pub mod store;
+    src/event_handler/handler.rs: |
+      use crate::event_store::store::EventStore;
+
+      pub struct EventHandler {
+          store: EventStore,
+      }
+
+      impl EventHandler {
+          pub fn new(store: EventStore) -> Self {
+              Self { store }
+          }
+
+          pub fn handle(&mut self, key: &str, value: &str) {
+              self.store.append(key, value);
+          }
+      }
+    src/event_handler/mod.rs: |
+      pub mod handler;
+    src/bus/event_bus.rs: |
+      use crate::event_handler::handler::EventHandler;
+
+      pub struct EventBus {
+          handlers: Vec<EventHandler>,
+      }
+
+      impl EventBus {
+          pub fn new() -> Self {
+              Self { handlers: Vec::new() }
+          }
+
+          pub fn subscribe(&mut self, handler: EventHandler) {
+              self.handlers.push(handler);
+          }
+
+          pub fn publish(&mut self, key: &str, value: &str) {
+              for handler in &mut self.handlers {
+                  handler.handle(key, value);
+              }
+          }
+      }
+    src/bus/mod.rs: |
+      pub mod event_bus;
+    src/replay/replayer.rs: |
+      pub static GARBAGE_BAL3_021_REPLAY_MARKER_A: &str = "replay";
+      pub static GARBAGE_BAL3_021_OFFSET_MARKER_B: usize = 0;
+
+      pub struct Replayer;
+      impl Replayer {
+          pub fn replay(&self) {}
+      }
+    src/replay/mod.rs: |
+      pub mod replayer;
+    src/lib.rs: |
+      pub mod serializer;
+      pub mod event_store;
+      pub mod event_handler;
+      pub mod bus;
+      pub mod replay;
+  changed_files:
+    src/serializer/json_ser.rs: |
+      pub struct JsonSerializer {
+          include_timestamp: bool,
+      }
+
+      impl JsonSerializer {
+          pub fn new(include_timestamp: bool) -> Self {
+              Self { include_timestamp }
+          }
+
+          pub fn serialize(&self, key: &str, value: &str) -> String {
+              if self.include_timestamp {
+                  format!("{{\"{}\":\"{}\",\"ts\":\"now\"}}", key, value)
+              } else {
+                  format!("{{\"{}\":\"{}\"}}", key, value)
+              }
+          }
+
+          pub fn deserialize(&self, data: &str) -> (String, String) {
+              let trimmed = data.trim_matches(|c| c == '{' || c == '}');
+              let parts: Vec<&str> = trimmed.split(':').collect();
+              if parts.len() >= 2 {
+                  (parts[0].trim_matches('"').to_string(), parts[1].trim_matches('"').to_string())
+              } else {
+                  (String::new(), String::new())
+              }
+          }
+      }
+  commit_message: "Add timestamp inclusion option to JSON serializer"
+fragments:
+- id: ser_timestamp
+  selector:
+    path: src/serializer/json_ser.rs
+    anchor: "include_timestamp: bool"
+- id: ser_new
+  selector:
+    path: src/serializer/json_ser.rs
+    anchor: "pub fn new(include_timestamp: bool)"
+- id: ser_ts_format
+  selector:
+    path: src/serializer/json_ser.rs
+    anchor: "\"ts\":\"now\""
+- id: store_append
+  selector:
+    path: src/event_store/store.rs
+    anchor: "pub fn append"
+- id: handler_handle
+  selector:
+    path: src/event_handler/handler.rs
+    anchor: "pub fn handle"
+- id: bus_publish
+  selector:
+    path: src/bus/event_bus.rs
+    anchor: "pub fn publish"
+- id: no_replayer
+  selector:
+    path: src/replay/replayer.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_021_REPLAY_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_021_OFFSET_MARKER_B
+oracle:
+  required:
+  - ser_timestamp
+  - ser_new
+  - ser_ts_format
+  - store_append
+  - handler_handle
+  - bus_publish
+  allowed: []
+  forbidden:
+  - no_replayer
+  - no_global_0
+  - no_global_1

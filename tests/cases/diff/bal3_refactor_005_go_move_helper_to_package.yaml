@@ -1,0 +1,293 @@
+name: bal3_refactor_005_go_move_helper_to_package
+tags:
+- lang:rust
+- change:bug_fix
+- change:multi_file
+- context:test_file
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/payments/processor.rs: |
+      use crate::payments::gateway::PaymentGateway;
+      use crate::payments::types::{PaymentRequest, PaymentResult};
+
+      pub struct PaymentProcessor {
+          gateway: PaymentGateway,
+      }
+
+      impl PaymentProcessor {
+          pub fn new(gateway: PaymentGateway) -> Self {
+              Self { gateway }
+          }
+
+          pub fn process(&self, req: PaymentRequest) -> PaymentResult {
+              if req.amount <= 0.0 {
+                  return PaymentResult::failure("Invalid amount");
+              }
+              self.gateway.charge(req)
+          }
+      }
+    src/payments/gateway.rs: |
+      use crate::payments::types::{PaymentRequest, PaymentResult};
+
+      pub struct PaymentGateway {
+          api_key: String,
+      }
+
+      impl PaymentGateway {
+          pub fn new(api_key: String) -> Self {
+              Self { api_key }
+          }
+
+          pub fn charge(&self, req: PaymentRequest) -> PaymentResult {
+              if self.api_key.is_empty() {
+                  return PaymentResult::failure("Missing API key");
+              }
+              PaymentResult::success(req.amount)
+          }
+      }
+    src/payments/types.rs: |
+      #[derive(Debug)]
+      pub struct PaymentRequest {
+          pub amount: f64,
+          pub currency: String,
+          pub customer_id: String,
+      }
+
+      #[derive(Debug)]
+      pub struct PaymentResult {
+          pub success: bool,
+          pub amount: f64,
+          pub error: Option<String>,
+      }
+
+      impl PaymentResult {
+          pub fn success(amount: f64) -> Self {
+              Self { success: true, amount, error: None }
+          }
+
+          pub fn failure(msg: &str) -> Self {
+              Self { success: false, amount: 0.0, error: Some(msg.to_string()) }
+          }
+      }
+    tests/test_processor.rs: |
+      use crate::payments::processor::PaymentProcessor;
+      use crate::payments::gateway::PaymentGateway;
+      use crate::payments::types::PaymentRequest;
+
+      #[test]
+      fn test_process_rejects_zero_amount() {
+          let gw = PaymentGateway::new("test_key".to_string());
+          let processor = PaymentProcessor::new(gw);
+          let req = PaymentRequest { amount: 0.0, currency: "USD".to_string(), customer_id: "c1".to_string() };
+          let result = processor.process(req);
+          assert!(!result.success);
+      }
+
+      #[test]
+      fn test_process_rejects_negative_amount() {
+          let gw = PaymentGateway::new("test_key".to_string());
+          let processor = PaymentProcessor::new(gw);
+          let req = PaymentRequest { amount: -10.0, currency: "USD".to_string(), customer_id: "c1".to_string() };
+          let result = processor.process(req);
+          assert!(!result.success);
+      }
+    src/analytics/events.rs: |
+      pub const GARBAGE_BAL3R005_A: &str = "payment_attempted";
+      pub const GARBAGE_BAL3R005_B: &str = "payment_succeeded";
+
+      pub struct EventEmitter;
+      impl EventEmitter {
+          pub fn emit(&self, _event: &str) {}
+      }
+    src/config/app_config.rs: |
+      pub const GARBAGE_BAL3R005_C: &str = "payment_processor_config";
+
+      pub struct AppConfig {
+          pub timeout_ms: u64,
+      }
+    src/storage/audit_log.rs: |
+      pub const GARBAGE_BAL3R005_D: &str = "payment_audit_log";
+
+      pub struct AuditLog;
+      impl AuditLog {
+          pub fn record(&self, _entry: &str) {}
+      }
+  changed_files:
+    src/payments/processor.rs: |
+      use crate::payments::gateway::PaymentGateway;
+      use crate::payments::types::{PaymentRequest, PaymentResult};
+
+      pub struct PaymentProcessor {
+          gateway: PaymentGateway,
+      }
+
+      impl PaymentProcessor {
+          pub fn new(gateway: PaymentGateway) -> Self {
+              Self { gateway }
+          }
+
+          pub fn process(&self, req: PaymentRequest) -> PaymentResult {
+              if req.amount <= 0.0 {
+                  return PaymentResult::failure("Invalid amount");
+              }
+              if req.currency.is_empty() {
+                  return PaymentResult::failure("Currency is required");
+              }
+              if req.customer_id.is_empty() {
+                  return PaymentResult::failure("Customer ID is required");
+              }
+              self.gateway.charge(req)
+          }
+      }
+    src/payments/gateway.rs: |
+      use crate::payments::types::{PaymentRequest, PaymentResult};
+
+      pub struct PaymentGateway {
+          api_key: String,
+      }
+
+      impl PaymentGateway {
+          pub fn new(api_key: String) -> Self {
+              Self { api_key }
+          }
+
+          pub fn charge(&self, req: PaymentRequest) -> PaymentResult {
+              if self.api_key.is_empty() {
+                  return PaymentResult::failure("Missing API key");
+              }
+              PaymentResult::success(req.amount)
+          }
+      }
+    src/payments/types.rs: |
+      #[derive(Debug)]
+      pub struct PaymentRequest {
+          pub amount: f64,
+          pub currency: String,
+          pub customer_id: String,
+      }
+
+      #[derive(Debug)]
+      pub struct PaymentResult {
+          pub success: bool,
+          pub amount: f64,
+          pub error: Option<String>,
+      }
+
+      impl PaymentResult {
+          pub fn success(amount: f64) -> Self {
+              Self { success: true, amount, error: None }
+          }
+
+          pub fn failure(msg: &str) -> Self {
+              Self { success: false, amount: 0.0, error: Some(msg.to_string()) }
+          }
+      }
+    tests/test_processor.rs: |
+      use crate::payments::processor::PaymentProcessor;
+      use crate::payments::gateway::PaymentGateway;
+      use crate::payments::types::PaymentRequest;
+
+      #[test]
+      fn test_process_rejects_zero_amount() {
+          let gw = PaymentGateway::new("test_key".to_string());
+          let processor = PaymentProcessor::new(gw);
+          let req = PaymentRequest { amount: 0.0, currency: "USD".to_string(), customer_id: "c1".to_string() };
+          let result = processor.process(req);
+          assert!(!result.success);
+      }
+
+      #[test]
+      fn test_process_rejects_negative_amount() {
+          let gw = PaymentGateway::new("test_key".to_string());
+          let processor = PaymentProcessor::new(gw);
+          let req = PaymentRequest { amount: -10.0, currency: "USD".to_string(), customer_id: "c1".to_string() };
+          let result = processor.process(req);
+          assert!(!result.success);
+      }
+
+      #[test]
+      fn test_process_rejects_empty_currency() {
+          let gw = PaymentGateway::new("test_key".to_string());
+          let processor = PaymentProcessor::new(gw);
+          let req = PaymentRequest { amount: 100.0, currency: "".to_string(), customer_id: "c1".to_string() };
+          let result = processor.process(req);
+          assert!(!result.success);
+          assert_eq!(result.error.unwrap(), "Currency is required");
+      }
+    src/analytics/events.rs: |
+      pub const GARBAGE_BAL3R005_A: &str = "payment_attempted";
+      pub const GARBAGE_BAL3R005_B: &str = "payment_succeeded";
+
+      pub struct EventEmitter;
+      impl EventEmitter {
+          pub fn emit(&self, _event: &str) {}
+      }
+    src/config/app_config.rs: |
+      pub const GARBAGE_BAL3R005_C: &str = "payment_processor_config";
+
+      pub struct AppConfig {
+          pub timeout_ms: u64,
+      }
+    src/storage/audit_log.rs: |
+      pub const GARBAGE_BAL3R005_D: &str = "payment_audit_log";
+
+      pub struct AuditLog;
+      impl AuditLog {
+          pub fn record(&self, _entry: &str) {}
+      }
+  commit_message: "fix: validate currency and customer_id fields in payment processor"
+fragments:
+- id: processor_validate_currency
+  selector:
+    path: src/payments/processor.rs
+    anchor: "Currency is required"
+- id: processor_validate_customer
+  selector:
+    path: src/payments/processor.rs
+    anchor: "Customer ID is required"
+- id: test_empty_currency
+  selector:
+    path: tests/test_processor.rs
+    anchor: "fn test_process_rejects_empty_currency"
+- id: payment_request_struct
+  selector:
+    path: src/payments/types.rs
+    anchor: "pub struct PaymentRequest"
+- id: no_events
+  selector:
+    path: src/analytics/events.rs
+- id: no_config
+  selector:
+    path: src/config/app_config.rs
+- id: no_audit
+  selector:
+    path: src/storage/audit_log.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3R005_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3R005_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3R005_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3R005_D
+oracle:
+  required:
+  - processor_validate_currency
+  - processor_validate_customer
+  - test_empty_currency
+  - payment_request_struct
+  allowed: []
+  forbidden:
+  - no_events
+  - no_config
+  - no_audit
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

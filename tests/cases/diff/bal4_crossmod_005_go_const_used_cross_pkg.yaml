@@ -1,0 +1,144 @@
+name: bal4_crossmod_005_go_const_used_cross_pkg
+tags:
+- lang:go
+- change:single_file
+- context:cross_module
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    pkg/config/limits.go: |
+      package config
+
+      const MaxRetries = 3
+      const TimeoutSec = 30
+      const MaxBatchSize = 100
+    pkg/worker/processor.go: |
+      package worker
+
+      import "pkg/config"
+
+      func Process(items []string) error {
+          for i := 0; i < config.MaxRetries; i++ {
+              if len(items) > config.MaxBatchSize {
+                  items = items[:config.MaxBatchSize]
+              }
+          }
+          return nil
+      }
+    pkg/scheduler/cron.go: |
+      package scheduler
+
+      import "pkg/config"
+
+      func RunJob() {
+          for i := 0; i < config.MaxRetries; i++ {
+              break
+          }
+      }
+    pkg/notifier/email.go: |
+      package notifier
+
+      var GARBAGE_005_SMTP_A = "smtp.local"
+      var GARBAGE_005_PORT_B = 587
+
+      func Send(to string, body string) error {
+          return nil
+      }
+    garbage_deploy.go: |
+      package deploy
+
+      var GARBAGE_005_TARGET_C = "prod"
+      var GARBAGE_005_REGION_D = "us-east"
+
+      func Deploy() {}
+  changed_files:
+    pkg/config/limits.go: |
+      package config
+
+      const MaxRetries = 5
+      const TimeoutSec = 30
+      const MaxBatchSize = 100
+    pkg/worker/processor.go: |
+      package worker
+
+      import "pkg/config"
+
+      func Process(items []string) error {
+          for i := 0; i < config.MaxRetries; i++ {
+              if len(items) > config.MaxBatchSize {
+                  items = items[:config.MaxBatchSize]
+              }
+          }
+          return nil
+      }
+    pkg/scheduler/cron.go: |
+      package scheduler
+
+      import "pkg/config"
+
+      func RunJob() {
+          for i := 0; i < config.MaxRetries; i++ {
+              break
+          }
+      }
+    pkg/notifier/email.go: |
+      package notifier
+
+      var GARBAGE_005_SMTP_A = "smtp.local"
+      var GARBAGE_005_PORT_B = 587
+
+      func Send(to string, body string) error {
+          return nil
+      }
+    garbage_deploy.go: |
+      package deploy
+
+      var GARBAGE_005_TARGET_C = "prod"
+      var GARBAGE_005_REGION_D = "us-east"
+
+      func Deploy() {}
+  commit_message: "increase MaxRetries from 3 to 5"
+fragments:
+- id: worker_process
+  selector:
+    path: pkg/worker/processor.go
+    anchor: "func Process(items []string) error"
+- id: scheduler_runjob
+  selector:
+    path: pkg/scheduler/cron.go
+    anchor: "func RunJob()"
+- id: worker_uses_retries
+  selector:
+    path: pkg/worker/processor.go
+    anchor: "config.MaxRetries"
+- id: no_notifier
+  selector:
+    path: pkg/notifier/email.go
+- id: no_garbage_deploy
+  selector:
+    path: garbage_deploy.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_005_SMTP_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_005_PORT_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_005_TARGET_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_005_REGION_D
+oracle:
+  required:
+  - worker_process
+  - scheduler_runjob
+  allowed: []
+  forbidden:
+  - no_notifier
+  - no_garbage_deploy
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

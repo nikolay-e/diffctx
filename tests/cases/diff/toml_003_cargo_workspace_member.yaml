@@ -1,0 +1,123 @@
+name: toml_003_cargo_workspace_member
+tags:
+- lang:toml
+- lang:rust
+- change:multi_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    Cargo.toml: |
+      [workspace]
+      members = [
+          "crates/core",
+          "crates/api",
+      ]
+
+      [workspace.dependencies]
+      serde = { version = "1.0", features = ["derive"] }
+      tokio = { version = "1.0", features = ["full"] }
+    crates/core/Cargo.toml: |
+      [package]
+      name = "core"
+      version = "0.1.0"
+      edition = "2021"
+
+      [dependencies]
+      serde = { workspace = true }
+    crates/core/src/lib.rs: |
+      pub mod config;
+      pub mod error;
+    crates/api/Cargo.toml: |
+      [package]
+      name = "api"
+      version = "0.1.0"
+      edition = "2021"
+
+      [dependencies]
+      core = { path = "../core" }
+      tokio = { workspace = true }
+    crates/api/src/lib.rs: |
+      use core::config::Config;
+
+      pub async fn serve(config: Config) {
+          println!("Serving on {}", config.host);
+      }
+    TOML_NOISE_003_email.toml: |
+      [TOML_NOISE_003_smtp]
+      TOML_NOISE_003_host = "smtp.example.com"
+      TOML_NOISE_003_port = 587
+      TOML_NOISE_003_tls = true
+
+      [TOML_NOISE_003_templates]
+      TOML_NOISE_003_dir = "templates/email"
+    crates/api/src/toml_noise_003_orphan.rs: |
+      // TOML_NOISE_003_orphan module
+      pub fn toml_noise_003_noop() {}
+  changed_files:
+    Cargo.toml: |
+      [workspace]
+      members = [
+          "crates/core",
+          "crates/api",
+          "crates/metrics",
+      ]
+
+      [workspace.dependencies]
+      serde = { version = "1.0", features = ["derive"] }
+      tokio = { version = "1.0", features = ["full"] }
+      prometheus = "0.13"
+    crates/metrics/Cargo.toml: |
+      [package]
+      name = "metrics"
+      version = "0.1.0"
+      edition = "2021"
+
+      [dependencies]
+      prometheus = { workspace = true }
+    crates/metrics/src/lib.rs: |
+      use prometheus::{Counter, Registry};
+
+      pub fn new_request_counter(registry: &Registry) -> Counter {
+          let counter = Counter::new("requests_total", "Total HTTP requests").unwrap();
+          registry.register(Box::new(counter.clone())).unwrap();
+          counter
+      }
+  commit_message: "feat: add metrics workspace crate with prometheus counter"
+fragments:
+- id: workspace_toml_member
+  selector:
+    path: Cargo.toml
+    anchor: "crates/metrics"
+- id: metrics_cargo_toml
+  selector:
+    path: crates/metrics/Cargo.toml
+- id: metrics_lib_rs
+  selector:
+    path: crates/metrics/src/lib.rs
+    anchor: new_request_counter
+- id: no_noise_toml
+  selector:
+    path: TOML_NOISE_003_email.toml
+- id: no_orphan_rs
+  selector:
+    path: crates/api/src/toml_noise_003_orphan.rs
+- id: no_global_0
+  selector:
+    anchor: TOML_NOISE_003_host
+- id: no_global_1
+  selector:
+    anchor: toml_noise_003_noop
+oracle:
+  required:
+  - workspace_toml_member
+  - metrics_cargo_toml
+  - metrics_lib_rs
+  allowed: []
+  forbidden:
+  - no_noise_toml
+  - no_orphan_rs
+  - no_global_0
+  - no_global_1

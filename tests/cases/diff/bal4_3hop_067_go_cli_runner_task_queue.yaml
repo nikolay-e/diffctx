@@ -1,0 +1,120 @@
+name: bal4_3hop_067_go_cli_runner_task_queue
+tags:
+- lang:go
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:trivial
+repo:
+  initial_files:
+    pkg/queue/fifo.go: |
+      package queue
+
+      func Enqueue(val string) int {
+          return 1
+      }
+    pkg/task/scheduler.go: |
+      package task
+
+      import "myapp/pkg/queue"
+
+      func Schedule(name string) int {
+          return queue.Enqueue(name)
+      }
+    pkg/runner/exec.go: |
+      package runner
+
+      import "myapp/pkg/task"
+
+      func Run(name string) int {
+          return task.Schedule(name)
+      }
+    cmd/cli/main.go: |
+      package main
+
+      import "myapp/pkg/runner"
+
+      func dispatch(name string) int {
+          return runner.Run(name)
+      }
+    pkg/garbage/junk.go: |
+      package garbage
+
+      var GARBAGE_067_JUNK_A = "junk"
+      var GARBAGE_067_JUNK_B = 99
+
+      func GarbageJunk() {}
+  changed_files:
+    pkg/queue/fifo.go: |
+      package queue
+
+      func Enqueue(val string) int {
+          if val == "" {
+              return 0
+          }
+          return 1
+      }
+    pkg/task/scheduler.go: |
+      package task
+
+      import "myapp/pkg/queue"
+
+      func Schedule(name string) int {
+          return queue.Enqueue(name)
+      }
+    pkg/runner/exec.go: |
+      package runner
+
+      import "myapp/pkg/task"
+
+      func Run(name string) int {
+          return task.Schedule(name)
+      }
+    cmd/cli/main.go: |
+      package main
+
+      import "myapp/pkg/runner"
+
+      func dispatch(name string) int {
+          return runner.Run(name)
+      }
+    pkg/garbage/junk.go: |
+      package garbage
+
+      var GARBAGE_067_JUNK_A = "junk"
+      var GARBAGE_067_JUNK_B = 99
+
+      func GarbageJunk() {}
+  commit_message: "fix empty enqueue validation"
+fragments:
+- id: enqueue
+  selector:
+    path: pkg/queue/fifo.go
+    anchor: "func Enqueue"
+- id: schedule
+  selector:
+    path: pkg/task/scheduler.go
+    anchor: "func Schedule"
+- id: run
+  selector:
+    path: pkg/runner/exec.go
+    anchor: "func Run"
+- id: no_garbage_junk
+  selector:
+    path: pkg/garbage/junk.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_067_JUNK_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_067_JUNK_B
+oracle:
+  required:
+  - enqueue
+  - schedule
+  - run
+  allowed: []
+  forbidden:
+  - no_garbage_junk
+  - no_global_0
+  - no_global_1

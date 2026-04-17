@@ -1,0 +1,210 @@
+name: bal_3hop_035_typescript_state_management_store
+tags:
+- lang:typescript
+- change:multi_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/store/types.ts: |
+      export interface CartItem {
+        productId: string;
+        quantity: number;
+        price: number;
+      }
+
+      export interface CartState {
+        items: CartItem[];
+        total: number;
+      }
+    src/store/reducers/cart.ts: |
+      import { CartState, CartItem } from '../types';
+
+      export function addItem(state: CartState, item: CartItem): CartState {
+        const items = [...state.items, item];
+        const total = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+        return { items, total };
+      }
+
+      export function removeItem(state: CartState, productId: string): CartState {
+        const items = state.items.filter(i => i.productId !== productId);
+        const total = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+        return { items, total };
+      }
+    src/store/store.ts: |
+      import { addItem, removeItem } from './reducers/cart';
+      import { CartState, CartItem } from './types';
+
+      export class CartStore {
+        private state: CartState = { items: [], total: 0 };
+
+        add(item: CartItem): void {
+          this.state = addItem(this.state, item);
+        }
+
+        remove(productId: string): void {
+          this.state = removeItem(this.state, productId);
+        }
+
+        getState(): CartState {
+          return this.state;
+        }
+      }
+    src/components/CartWidget.ts: |
+      import { CartStore } from '../store/store';
+
+      export class CartWidget {
+        constructor(private store: CartStore) {}
+
+        render(): string {
+          const state = this.store.getState();
+          return `Cart (${state.items.length} items): $${state.total}`;
+        }
+
+        addToCart(productId: string, price: number): void {
+          this.store.add({ productId, quantity: 1, price });
+        }
+      }
+    src/utils/analytics.ts: |
+      GARBAGE_035_ANALYTICS_MARKER_A = "analytics";
+      GARBAGE_035_TRACK_MARKER_B = true;
+
+      export function trackEvent(name: string, data: any): void {
+        console.log(name, data);
+      }
+    src/utils/storage.ts: |
+      GARBAGE_035_STORAGE_MARKER_C = "storage";
+      GARBAGE_035_LOCAL_MARKER_D = true;
+
+      export function saveToLocal(key: string, value: string): void {
+        localStorage.setItem(key, value);
+      }
+  changed_files:
+    src/store/types.ts: |
+      export interface CartItem {
+        productId: string;
+        quantity: number;
+        price: number;
+        discount: number;
+      }
+
+      export interface CartState {
+        items: CartItem[];
+        total: number;
+        savings: number;
+      }
+    src/store/reducers/cart.ts: |
+      import { CartState, CartItem } from '../types';
+
+      function calculateTotal(items: CartItem[]): number {
+        return items.reduce((sum, i) => sum + (i.price - i.discount) * i.quantity, 0);
+      }
+
+      function calculateSavings(items: CartItem[]): number {
+        return items.reduce((sum, i) => sum + i.discount * i.quantity, 0);
+      }
+
+      export function addItem(state: CartState, item: CartItem): CartState {
+        const items = [...state.items, item];
+        return { items, total: calculateTotal(items), savings: calculateSavings(items) };
+      }
+
+      export function removeItem(state: CartState, productId: string): CartState {
+        const items = state.items.filter(i => i.productId !== productId);
+        return { items, total: calculateTotal(items), savings: calculateSavings(items) };
+      }
+    src/store/store.ts: |
+      import { addItem, removeItem } from './reducers/cart';
+      import { CartState, CartItem } from './types';
+
+      export class CartStore {
+        private state: CartState = { items: [], total: 0, savings: 0 };
+
+        add(item: CartItem): void {
+          this.state = addItem(this.state, item);
+        }
+
+        remove(productId: string): void {
+          this.state = removeItem(this.state, productId);
+        }
+
+        getState(): CartState {
+          return this.state;
+        }
+      }
+    src/components/CartWidget.ts: |
+      import { CartStore } from '../store/store';
+
+      export class CartWidget {
+        constructor(private store: CartStore) {}
+
+        render(): string {
+          const state = this.store.getState();
+          return `Cart (${state.items.length} items): $${state.total} (saved $${state.savings})`;
+        }
+
+        addToCart(productId: string, price: number): void {
+          this.store.add({ productId, quantity: 1, price, discount: 0 });
+        }
+      }
+    src/utils/analytics.ts: |
+      GARBAGE_035_ANALYTICS_MARKER_A = "analytics";
+      GARBAGE_035_TRACK_MARKER_B = true;
+
+      export function trackEvent(name: string, data: any): void {
+        console.log(name, data);
+      }
+    src/utils/storage.ts: |
+      GARBAGE_035_STORAGE_MARKER_C = "storage";
+      GARBAGE_035_LOCAL_MARKER_D = true;
+
+      export function saveToLocal(key: string, value: string): void {
+        localStorage.setItem(key, value);
+      }
+  commit_message: "feat: add discount and savings to cart"
+fragments:
+- id: cart_item_discount
+  selector:
+    path: src/store/types.ts
+    anchor: "discount: number"
+- id: cart_state_savings
+  selector:
+    path: src/store/types.ts
+    anchor: "savings: number"
+- id: reducer_calculate_savings
+  selector:
+    path: src/store/reducers/cart.ts
+    anchor: "function calculateSavings"
+- id: store_imports_reducer
+  selector:
+    path: src/store/store.ts
+    anchor: "import { addItem, removeItem } from './reducers/cart'"
+- id: widget_imports_store
+  selector:
+    path: src/components/CartWidget.ts
+    anchor: "import { CartStore } from '../store/store'"
+- id: widget_render_savings
+  selector:
+    path: src/components/CartWidget.ts
+    anchor: "saved $${state.savings}"
+- id: no_analytics
+  selector:
+    path: src/utils/analytics.ts
+    anchor: "GARBAGE_035_ANALYTICS_MARKER_A"
+- id: no_storage
+  selector:
+    path: src/utils/storage.ts
+    anchor: "GARBAGE_035_STORAGE_MARKER_C"
+oracle:
+  required:
+  - cart_item_discount
+  - cart_state_savings
+  - reducer_calculate_savings
+  - store_imports_reducer
+  - widget_imports_store
+  - widget_render_savings
+  allowed: []
+  forbidden:
+  - no_analytics
+  - no_storage

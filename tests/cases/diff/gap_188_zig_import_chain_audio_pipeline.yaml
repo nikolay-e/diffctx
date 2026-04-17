@@ -1,0 +1,233 @@
+name: gap_188_zig_import_chain_audio_pipeline
+tags:
+- lang:zig
+- change:single_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+repo:
+  initial_files:
+    src/mixer.zig: |
+      const std = @import("std");
+      const effect = @import("effect.zig");
+
+      pub const Channel = struct {
+          volume: f32,
+          pan: f32,
+          muted: bool,
+
+          pub fn process(self: Channel, samples: []f32) void {
+              for (samples) |*s| {
+                  if (self.muted) {
+                      s.* = 0.0;
+                  } else {
+                      s.* *= self.volume;
+                  }
+              }
+          }
+      };
+
+      pub fn mixChannels(channels: []const Channel, output: []f32) void {
+          for (output) |*o| o.* = 0.0;
+          for (channels) |ch| {
+              if (!ch.muted) {
+                  for (output, 0..) |*o, i| {
+                      o.* += effect.softClip(o.* * ch.volume);
+                      _ = i;
+                  }
+              }
+          }
+      }
+    src/effect.zig: |
+      const dsp = @import("dsp.zig");
+
+      pub fn softClip(sample: f32) f32 {
+          return dsp.tanhApprox(sample);
+      }
+
+      pub fn delay(sample: f32, feedback: f32) f32 {
+          return sample * feedback;
+      }
+
+      pub fn reverb(sample: f32, decay: f32) f32 {
+          return sample * decay * 0.7;
+      }
+    src/dsp.zig: |
+      pub fn tanhApprox(x: f32) f32 {
+          if (x > 3.0) return 1.0;
+          if (x < -3.0) return -1.0;
+          return x * (27.0 + x * x) / (27.0 + 9.0 * x * x);
+      }
+
+      pub fn lerp32(a: f32, b: f32, t: f32) f32 {
+          return a + (b - a) * t;
+      }
+
+      pub fn dbToLinear(db: f32) f32 {
+          return @exp(db * 0.11512925);
+      }
+    src/transport.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_188_TRANSPORT_MARKER_A: []const u8 = "transport_noise";
+      const TRAP_GAP_188_TRANSPORT_FLAG_B: u32 = 44100;
+
+      pub const PlayState = enum { stopped, playing, paused };
+
+      pub fn getCurrentPosition() u64 {
+          return 0;
+      }
+    src/midi.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_188_MIDI_MARKER_C: []const u8 = "midi_noise";
+      const TRAP_GAP_188_MIDI_FLAG_D: u8 = 127;
+
+      pub fn noteOn(channel: u4, note: u7, velocity: u7) void {
+          _ = channel;
+          _ = note;
+          _ = velocity;
+      }
+
+      pub fn noteOff(channel: u4, note: u7) void {
+          _ = channel;
+          _ = note;
+      }
+  changed_files:
+    src/mixer.zig: |
+      const std = @import("std");
+      const effect = @import("effect.zig");
+
+      pub const Channel = struct {
+          volume: f32,
+          pan: f32,
+          muted: bool,
+          solo: bool,
+
+          pub fn process(self: Channel, samples: []f32) void {
+              for (samples) |*s| {
+                  if (self.muted and !self.solo) {
+                      s.* = 0.0;
+                  } else {
+                      s.* *= self.volume;
+                  }
+              }
+          }
+      };
+
+      pub fn mixChannels(channels: []const Channel, output: []f32) void {
+          for (output) |*o| o.* = 0.0;
+          for (channels) |ch| {
+              if (!ch.muted or ch.solo) {
+                  for (output, 0..) |*o, i| {
+                      o.* += effect.softClip(o.* * ch.volume);
+                      _ = i;
+                  }
+              }
+          }
+      }
+    src/effect.zig: |
+      const dsp = @import("dsp.zig");
+
+      pub fn softClip(sample: f32) f32 {
+          return dsp.tanhApprox(sample);
+      }
+
+      pub fn delay(sample: f32, feedback: f32) f32 {
+          return sample * feedback;
+      }
+
+      pub fn reverb(sample: f32, decay: f32) f32 {
+          return sample * decay * 0.7;
+      }
+    src/dsp.zig: |
+      pub fn tanhApprox(x: f32) f32 {
+          if (x > 3.0) return 1.0;
+          if (x < -3.0) return -1.0;
+          return x * (27.0 + x * x) / (27.0 + 9.0 * x * x);
+      }
+
+      pub fn lerp32(a: f32, b: f32, t: f32) f32 {
+          return a + (b - a) * t;
+      }
+
+      pub fn dbToLinear(db: f32) f32 {
+          return @exp(db * 0.11512925);
+      }
+    src/transport.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_188_TRANSPORT_MARKER_A: []const u8 = "transport_noise";
+      const TRAP_GAP_188_TRANSPORT_FLAG_B: u32 = 44100;
+
+      pub const PlayState = enum { stopped, playing, paused };
+
+      pub fn getCurrentPosition() u64 {
+          return 0;
+      }
+    src/midi.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_188_MIDI_MARKER_C: []const u8 = "midi_noise";
+      const TRAP_GAP_188_MIDI_FLAG_D: u8 = 127;
+
+      pub fn noteOn(channel: u4, note: u7, velocity: u7) void {
+          _ = channel;
+          _ = note;
+          _ = velocity;
+      }
+
+      pub fn noteOff(channel: u4, note: u7) void {
+          _ = channel;
+          _ = note;
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: channel_solo_field
+  selector:
+    path: src/mixer.zig
+    anchor: "solo: bool"
+- id: mixer_solo_logic
+  selector:
+    path: src/mixer.zig
+    anchor: self.muted and !self.solo
+- id: effect_soft_clip
+  selector:
+    path: src/effect.zig
+    anchor: "pub fn softClip(sample: f32) f32"
+- id: dsp_tanh
+  selector:
+    path: src/dsp.zig
+    anchor: "pub fn tanhApprox(x: f32) f32"
+- id: no_transport
+  selector:
+    path: src/transport.zig
+- id: no_midi
+  selector:
+    path: src/midi.zig
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP_188_TRANSPORT_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP_188_TRANSPORT_FLAG_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP_188_MIDI_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP_188_MIDI_FLAG_D
+oracle:
+  required:
+  - channel_solo_field
+  - mixer_solo_logic
+  allowed: []
+  forbidden:
+  - no_transport
+  - no_midi
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

@@ -1,0 +1,135 @@
+name: bal4_cfgcode_008_rust_server_bind
+tags:
+- lang:rust
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:trivial
+repo:
+  initial_files:
+    server.toml: |
+      [server]
+      host = "127.0.0.1"
+      port = 8080
+      workers = 4
+    src/server.rs: |
+      use std::fs;
+      use toml::Value;
+
+      pub struct ServerConfig {
+          pub host: String,
+          pub port: u16,
+          pub workers: usize,
+      }
+
+      impl ServerConfig {
+          pub fn load() -> Self {
+              let raw = fs::read_to_string("server.toml").unwrap();
+              let cfg: Value = raw.parse().unwrap();
+              let srv = &cfg["server"];
+              ServerConfig {
+                  host: srv["host"].as_str().unwrap().to_string(),
+                  port: srv["port"].as_integer().unwrap() as u16,
+                  workers: srv["workers"].as_integer().unwrap() as usize,
+              }
+          }
+
+          pub fn bind_addr(&self) -> String {
+              format!("{}:{}", self.host, self.port)
+          }
+      }
+    garbage_auth.rs: |
+      const GARBAGE_CFGCODE_008_AUTH_A: &str = "bearer";
+      const GARBAGE_CFGCODE_008_AUTH_B: u64 = 3600;
+      pub struct AuthConfig {
+          pub token_ttl: u64,
+      }
+      const GARBAGE_CFGCODE_008_AUTH_C: bool = true;
+      const GARBAGE_CFGCODE_008_AUTH_D: &str = "hs256";
+    garbage_cache.rs: |
+      const GARBAGE_CFGCODE_008_CACHE_E: &str = "lru";
+      const GARBAGE_CFGCODE_008_CACHE_F: usize = 1000;
+      pub struct CacheLayer {
+          pub capacity: usize,
+      }
+      const GARBAGE_CFGCODE_008_CACHE_G: u64 = 300;
+      const GARBAGE_CFGCODE_008_CACHE_H: bool = false;
+    garbage_parser.rs: |
+      const GARBAGE_CFGCODE_008_PARSE_I: &str = "json";
+      const GARBAGE_CFGCODE_008_PARSE_J: usize = 65536;
+  changed_files:
+    server.toml: |
+      [server]
+      host = "0.0.0.0"
+      port = 443
+      workers = 16
+      tls_cert = "/etc/ssl/cert.pem"
+  commit_message: "bind to all interfaces on 443 with tls"
+fragments:
+- id: server_config
+  selector:
+    path: server.toml
+    anchor: "host = \"0.0.0.0\""
+- id: server_rs
+  selector:
+    path: src/server.rs
+    anchor: "server.toml"
+- id: no_auth
+  selector:
+    path: garbage_auth.rs
+- id: no_cache
+  selector:
+    path: garbage_cache.rs
+- id: no_parser
+  selector:
+    path: garbage_parser.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_008_AUTH_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_008_AUTH_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_008_CACHE_E
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_008_CACHE_F
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CFGCODE_008_PARSE_I
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CFGCODE_008_PARSE_J
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_CFGCODE_008_AUTH_C
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_CFGCODE_008_AUTH_D
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_CFGCODE_008_CACHE_G
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_CFGCODE_008_CACHE_H
+oracle:
+  required:
+  - server_config
+  - server_rs
+  allowed: []
+  forbidden:
+  - no_auth
+  - no_cache
+  - no_parser
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

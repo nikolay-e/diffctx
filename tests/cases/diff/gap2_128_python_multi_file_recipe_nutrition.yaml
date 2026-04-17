@@ -1,0 +1,148 @@
+name: gap2_128_python_multi_file_recipe_nutrition
+tags:
+- change:multi_file
+- change:new_function
+- change:signature
+- context:same_file
+- difficulty:medium
+- distance:0hop
+- lang:python
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    kitchen/ingredient.py: |
+      from dataclasses import dataclass
+
+      @dataclass
+      class Ingredient:
+          name: str
+          calories_per_gram: float
+          grams: float
+
+          def total_calories(self) -> float:
+              return self.calories_per_gram * self.grams
+    kitchen/recipe.py: |
+      from typing import List
+      from kitchen.ingredient import Ingredient
+
+      class Recipe:
+          def __init__(self, title: str, servings: int):
+              self.title = title
+              self.servings = servings
+              self._ingredients: List[Ingredient] = []
+
+          def add_ingredient(self, ingredient: Ingredient) -> None:
+              self._ingredients.append(ingredient)
+
+          def total_calories(self) -> float:
+              return sum(i.total_calories() for i in self._ingredients)
+
+          def calories_per_serving(self) -> float:
+              return self.total_calories() / self.servings
+    kitchen/pantry.py: |
+      TRAP_GAP2_128_PANTRY_A = "pantry_noise"
+      TRAP_GAP2_128_PANTRY_B = 50
+
+      STOCK = {"flour": 2000, "sugar": 1500, "butter": 500}
+
+      def check_stock(item):
+          return STOCK.get(item, 0)
+    kitchen/timer.py: |
+      TRAP_GAP2_128_TIMER_C = "timer_noise"
+      TRAP_GAP2_128_TIMER_D = 60
+
+      def set_timer(minutes):
+          return minutes * 60
+  changed_files:
+    kitchen/ingredient.py: |
+      from dataclasses import dataclass
+      from typing import Optional
+
+      @dataclass
+      class Ingredient:
+          name: str
+          calories_per_gram: float
+          grams: float
+          protein_per_gram: Optional[float] = None
+
+          def total_calories(self) -> float:
+              return self.calories_per_gram * self.grams
+
+          def total_protein(self) -> float:
+              if self.protein_per_gram is None:
+                  return 0.0
+              return self.protein_per_gram * self.grams
+    kitchen/recipe.py: |
+      from typing import List
+      from kitchen.ingredient import Ingredient
+
+      class Recipe:
+          def __init__(self, title: str, servings: int, prep_minutes: int = 0):
+              self.title = title
+              self.servings = servings
+              self.prep_minutes = prep_minutes
+              self._ingredients: List[Ingredient] = []
+
+          def add_ingredient(self, ingredient: Ingredient) -> None:
+              self._ingredients.append(ingredient)
+
+          def total_calories(self) -> float:
+              return sum(i.total_calories() for i in self._ingredients)
+
+          def calories_per_serving(self) -> float:
+              return self.total_calories() / self.servings
+
+          def total_protein(self) -> float:
+              return sum(i.total_protein() for i in self._ingredients)
+
+          def protein_per_serving(self) -> float:
+              return self.total_protein() / self.servings
+fragments:
+- id: protein_field
+  selector:
+    path: kitchen/ingredient.py
+    anchor: "protein_per_gram: Optional[float] = None"
+- id: total_protein_ingredient
+  selector:
+    path: kitchen/ingredient.py
+    anchor: "def total_protein(self) -> float:"
+- id: recipe_protein
+  selector:
+    path: kitchen/recipe.py
+    anchor: "def total_protein(self) -> float:"
+- id: prep_minutes
+  selector:
+    path: kitchen/recipe.py
+    anchor: "prep_minutes: int = 0"
+- id: no_pantry
+  selector:
+    path: kitchen/pantry.py
+- id: no_timer
+  selector:
+    path: kitchen/timer.py
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_128_PANTRY_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_128_PANTRY_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP2_128_TIMER_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP2_128_TIMER_D
+oracle:
+  required:
+  - protein_field
+  - total_protein_ingredient
+  - recipe_protein
+  - prep_minutes
+  forbidden:
+  - no_pantry
+  - no_timer
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

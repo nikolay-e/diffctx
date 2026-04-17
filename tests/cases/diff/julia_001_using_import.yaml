@@ -1,328 +1,104 @@
 name: julia_001_using_import
+tags:
+- lang:kotlin
+- change:bug_fix
+- change:single_file
+- context:test_file
+- distance:1hop
+- difficulty:trivial
 repo:
   initial_files:
-    src/DataProcessor.jl: |
-      module DataProcessor
+    src/main/kotlin/payments/FeeCalculator.kt: |
+      class FeeCalculator(private val feeRatePercent: Double) {
+          fun calculate(amount: Long): Long {
+              return (amount * feeRatePercent / 100).toLong()  // BUG: integer truncation loses cents
+          }
 
-      export transform, validate, normalize
+          fun calculateWithMinimum(amount: Long, minimumFee: Long): Long {
+              val fee = calculate(amount)
+              return if (fee < minimumFee) minimumFee else fee
+          }
+      }
+    src/test/kotlin/payments/FeeCalculatorTest.kt: |
+      import org.junit.Test
+      import kotlin.test.assertEquals
 
-      function transform(data::Vector{Float64}, scale::Float64)::Vector{Float64}
-          return data .* scale
-      end
+      class FeeCalculatorTest {
+          private val calc = FeeCalculator(2.5)
 
-      function validate(data::Vector{Float64})::Bool
-          return all(isfinite, data) && length(data) > 0
-      end
+          @Test fun chargesCorrectFee() {
+              assertEquals(25L, calc.calculate(1000L))
+          }
 
-      function normalize(data::Vector{Float64})::Vector{Float64}
-          min_val = minimum(data)
-          max_val = maximum(data)
-          range = max_val - min_val
-          if range == 0.0
-              return zeros(length(data))
-          end
-          return (data .- min_val) ./ range
-      end
-
-      function describe(data::Vector{Float64})::String
-          return "Vector(n=$(length(data)), mean=$(sum(data)/length(data)))"
-      end
-
-      end # module
-    src/pipeline.jl: |
-      using DataProcessor: transform, validate
-
-      function run_pipeline(raw_data::Vector{Float64}, scale::Float64)
-          if !validate(raw_data)
-              error("Invalid data")
-          end
-          return transform(raw_data, scale)
-      end
-    src/Visualizer.jl: |
-      module Visualizer
-
-      export plot_data, plot_histogram
-
-      GARBAGE_JULIA_001_A = "viz_marker"
-      GARBAGE_JULIA_001_B = "plot_marker"
-
-      function plot_data(data::Vector{Float64}, title::String)
-          println("Plotting: $title with $(length(data)) points")
-      end
-
-      function plot_histogram(data::Vector{Float64}, bins::Int)
-          println("Histogram: $(bins) bins for $(length(data)) values")
-      end
-
-      function save_plot(filename::String)
-          println("Saving plot to $filename")
-      end
-
-      end # module
-    src/IOHelper.jl: |
-      module IOHelper
-
-      export read_csv, write_csv
-
-      GARBAGE_JULIA_001_C = "io_marker"
-      GARBAGE_JULIA_001_D = "file_marker"
-
-      function read_csv(path::String)::Vector{Float64}
-          return Float64[]
-      end
-
-      function write_csv(path::String, data::Vector{Float64})
-          open(path, "w") do f
-              for val in data
-                  println(f, val)
-              end
-          end
-      end
-
-      end # module
-    src/Statistics.jl: |
-      module Statistics
-
-      export mean, stddev, standardize
-
-      GARBAGE_JULIA_001_E = "stats_marker"
-      GARBAGE_JULIA_001_F = "math_marker"
-
-      function mean(data::Vector{Float64})::Float64
-          return sum(data) / length(data)
-      end
-
-      function stddev(data::Vector{Float64})::Float64
-          m = mean(data)
-          return sqrt(sum((data .- m) .^ 2) / (length(data) - 1))
-      end
-
-      function standardize(data::Vector{Float64})::Vector{Float64}
-          m = mean(data)
-          s = stddev(data)
-          if s == 0.0
-              return zeros(length(data))
-          end
-          return (data .- m) ./ s
-      end
-
-      end # module
+          @Test fun respectsMinimum() {
+              assertEquals(50L, calc.calculateWithMinimum(100L, 50L))
+          }
+      }
+    garbage/ShipmentTracker.kt: |
+      // GARBAGE_JULIA001_A = "shipment_tracker_marker"
+    garbage/InventoryLock.kt: |
+      // GARBAGE_JULIA001_B = "inventory_lock_marker"
+    garbage/GameReward.kt: |
+      // GARBAGE_JULIA001_C = "game_reward_marker"
   changed_files:
-    src/DataProcessor.jl: |
-      module DataProcessor
+    src/main/kotlin/payments/FeeCalculator.kt: |
+      import kotlin.math.roundToLong
 
-      export transform, validate, normalize
+      class FeeCalculator(private val feeRatePercent: Double) {
+          fun calculate(amount: Long): Long {
+              return (amount * feeRatePercent / 100.0).roundToLong()
+          }
 
-      function transform(data::Vector{Float64}, scale::Float64)::Vector{Float64}
-          return data .* scale
-      end
+          fun calculateWithMinimum(amount: Long, minimumFee: Long): Long {
+              val fee = calculate(amount)
+              return if (fee < minimumFee) minimumFee else fee
+          }
+      }
+    src/test/kotlin/payments/FeeCalculatorTest.kt: |
+      import org.junit.Test
+      import kotlin.test.assertEquals
 
-      function validate(data::Vector{Float64})::Bool
-          return all(isfinite, data) && length(data) > 0
-      end
+      class FeeCalculatorTest {
+          private val calc = FeeCalculator(2.5)
 
-      function normalize(data::Vector{Float64})::Vector{Float64}
-          min_val = minimum(data)
-          max_val = maximum(data)
-          range = max_val - min_val
-          if range == 0.0
-              return zeros(length(data))
-          end
-          return (data .- min_val) ./ range
-      end
+          @Test fun chargesCorrectFee() {
+              assertEquals(25L, calc.calculate(1000L))
+          }
 
-      function describe(data::Vector{Float64})::String
-          return "Vector(n=$(length(data)), mean=$(sum(data)/length(data)))"
-      end
-
-      end # module
-    src/pipeline.jl: |
-      using DataProcessor: transform, validate, normalize
-
-      function run_pipeline(raw_data::Vector{Float64}, scale::Float64)
-          if !validate(raw_data)
-              error("Invalid data")
-          end
-          return transform(raw_data, scale)
-      end
-
-      function run_full_pipeline(raw_data::Vector{Float64}, scale::Float64)
-          if !validate(raw_data)
-              error("Invalid data")
-          end
-          normalized = normalize(raw_data)
-          return transform(normalized, scale)
-      end
-
-      function run_batch_pipeline(datasets::Vector{Vector{Float64}}, scale::Float64)
-          return [run_full_pipeline(d, scale) for d in datasets if validate(d)]
-      end
-    src/Visualizer.jl: |
-      module Visualizer
-
-      export plot_data, plot_histogram
-
-      GARBAGE_JULIA_001_A = "viz_marker"
-      GARBAGE_JULIA_001_B = "plot_marker"
-
-      function plot_data(data::Vector{Float64}, title::String)
-          println("Plotting: $title with $(length(data)) points")
-      end
-
-      function plot_histogram(data::Vector{Float64}, bins::Int)
-          println("Histogram: $(bins) bins for $(length(data)) values")
-      end
-
-      function save_plot(filename::String)
-          println("Saving plot to $filename")
-      end
-
-      end # module
-    src/IOHelper.jl: |
-      module IOHelper
-
-      export read_csv, write_csv
-
-      GARBAGE_JULIA_001_C = "io_marker"
-      GARBAGE_JULIA_001_D = "file_marker"
-
-      function read_csv(path::String)::Vector{Float64}
-          return Float64[]
-      end
-
-      function write_csv(path::String, data::Vector{Float64})
-          open(path, "w") do f
-              for val in data
-                  println(f, val)
-              end
-          end
-      end
-
-      end # module
-    src/Statistics.jl: |
-      module Statistics
-
-      export mean, stddev, standardize
-
-      GARBAGE_JULIA_001_E = "stats_marker"
-      GARBAGE_JULIA_001_F = "math_marker"
-
-      function mean(data::Vector{Float64})::Float64
-          return sum(data) / length(data)
-      end
-
-      function stddev(data::Vector{Float64})::Float64
-          m = mean(data)
-          return sqrt(sum((data .- m) .^ 2) / (length(data) - 1))
-      end
-
-      function standardize(data::Vector{Float64})::Vector{Float64}
-          m = mean(data)
-          s = stddev(data)
-          if s == 0.0
-              return zeros(length(data))
-          end
-          return (data .- m) ./ s
-      end
-
-      end # module
-  commit_message: Update files
+          @Test fun respectsMinimum() {
+              assertEquals(50L, calc.calculateWithMinimum(100L, 50L))
+          }
+      }
+    garbage/ShipmentTracker.kt: |
+      // GARBAGE_JULIA001_A = "shipment_tracker_marker"
+    garbage/InventoryLock.kt: |
+      // GARBAGE_JULIA001_B = "inventory_lock_marker"
+    garbage/GameReward.kt: |
+      // GARBAGE_JULIA001_C = "game_reward_marker"
+  commit_message: "fix: use roundToLong to avoid fee truncation in FeeCalculator"
 fragments:
-- id: pipeline
+- id: calculate_method
   selector:
-    path: src/pipeline.jl
-    anchor: 'using DataProcessor: transform, validate, normalize'
-- id: pipeline_1
+    path: src/main/kotlin/payments/FeeCalculator.kt
+    anchor: "fun calculate(amount: Long)"
+- id: test_file
   selector:
-    path: src/pipeline.jl
-    anchor: function run_full_pipeline
-- id: pipeline_2
+    path: src/test/kotlin/payments/FeeCalculatorTest.kt
+- id: no_garbage_a
   selector:
-    path: src/pipeline.jl
-    anchor: normalized = normalize(raw_data)
-- id: dataprocessor
+    anchor: GARBAGE_JULIA001_A
+- id: no_garbage_b
   selector:
-    path: src/DataProcessor.jl
-    anchor: function normalize(data::Vector{Float64})::Vector{Float64}
-- id: dataprocessor_1
+    anchor: GARBAGE_JULIA001_B
+- id: no_garbage_c
   selector:
-    path: src/DataProcessor.jl
-    anchor: min_val = minimum(data)
-- id: dataprocessor_2
-  selector:
-    path: src/DataProcessor.jl
-    anchor: max_val = maximum(data)
-- id: no_visualizer
-  selector:
-    path: src/Visualizer.jl
-- id: no_iohelper
-  selector:
-    path: src/IOHelper.jl
-- id: no_statistics
-  selector:
-    path: src/Statistics.jl
-- id: no_global_0
-  selector:
-    anchor: GARBAGE_JULIA_001_A
-- id: no_global_1
-  selector:
-    anchor: GARBAGE_JULIA_001_B
-- id: no_global_2
-  selector:
-    anchor: plot_data
-- id: no_global_3
-  selector:
-    anchor: plot_histogram
-- id: no_global_4
-  selector:
-    anchor: save_plot
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_JULIA_001_C
-- id: no_global_6
-  selector:
-    anchor: GARBAGE_JULIA_001_D
-- id: no_global_7
-  selector:
-    anchor: read_csv
-- id: no_global_8
-  selector:
-    anchor: write_csv
-- id: no_global_9
-  selector:
-    anchor: GARBAGE_JULIA_001_E
-- id: no_global_10
-  selector:
-    anchor: GARBAGE_JULIA_001_F
-- id: no_global_11
-  selector:
-    anchor: standardize
-- id: no_global_12
-  selector:
-    anchor: stddev
+    anchor: GARBAGE_JULIA001_C
 oracle:
   required:
-  - pipeline
-  - pipeline_1
-  - pipeline_2
-  - dataprocessor
-  - dataprocessor_1
-  - dataprocessor_2
+  - calculate_method
+  - test_file
   allowed: []
   forbidden:
-  - no_visualizer
-  - no_iohelper
-  - no_statistics
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
-  - no_global_8
-  - no_global_9
-  - no_global_10
-  - no_global_11
-  - no_global_12
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

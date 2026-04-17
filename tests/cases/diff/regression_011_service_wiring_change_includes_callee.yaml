@@ -1,4 +1,13 @@
 name: regression_011_service_wiring_change_includes_callee
+tags:
+- lang:python
+- change:multi_file
+- change:new_function
+- change:new_function
+- change:signature
+- context:cross_module
+- distance:2hop
+- difficulty:hard
 repo:
   initial_files:
     src/analytics/service.py: |

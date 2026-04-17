@@ -1,0 +1,126 @@
+name: xml_012_mvn_plugin_config_changed
+tags:
+- lang:xml
+- change:single_file
+- change:config
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    pom.xml: |
+      <project>
+        <modelVersion>4.0.0</modelVersion>
+        <groupId>com.example</groupId>
+        <artifactId>billing-service</artifactId>
+        <version>2.1.0</version>
+        <build>
+          <plugins>
+            <plugin>
+              <groupId>org.apache.maven.plugins</groupId>
+              <artifactId>maven-compiler-plugin</artifactId>
+              <version>3.11.0</version>
+              <configuration>
+                <source>11</source>
+                <target>11</target>
+                <encoding>UTF-8</encoding>
+              </configuration>
+            </plugin>
+            <plugin>
+              <groupId>org.apache.maven.plugins</groupId>
+              <artifactId>maven-surefire-plugin</artifactId>
+              <version>3.1.2</version>
+            </plugin>
+          </plugins>
+        </build>
+      </project>
+    XML_NOISE_012_settings.xml: |
+      <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0">
+        <!-- XML_NOISE_012_MAVEN_MIRROR -->
+        <mirrors>
+          <mirror>
+            <id>XML_NOISE_012_central-mirror</id>
+            <url>https://repo.example.com/maven2</url>
+            <mirrorOf>central</mirrorOf>
+          </mirror>
+        </mirrors>
+      </settings>
+    XML_NOISE_012_toolchains.xml: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <toolchains>
+        <!-- XML_NOISE_012_JDK_TOOLCHAIN -->
+        <toolchain>
+          <type>jdk</type>
+          <provides>
+            <version>XML_NOISE_012_JDK17</version>
+          </provides>
+          <configuration>
+            <jdkHome>/usr/lib/jvm/java-17</jdkHome>
+          </configuration>
+        </toolchain>
+      </toolchains>
+    garbage/DeployConfig.xml: |
+      <!-- XML_NOISE_012_DeployConfig = "kubernetes_deploy_config_marker" -->
+      <deploy><namespace>production</namespace></deploy>
+  changed_files:
+    pom.xml: |
+      <project>
+        <modelVersion>4.0.0</modelVersion>
+        <groupId>com.example</groupId>
+        <artifactId>billing-service</artifactId>
+        <version>2.1.0</version>
+        <build>
+          <plugins>
+            <plugin>
+              <groupId>org.apache.maven.plugins</groupId>
+              <artifactId>maven-compiler-plugin</artifactId>
+              <version>3.11.0</version>
+              <configuration>
+                <source>17</source>
+                <target>17</target>
+                <encoding>UTF-8</encoding>
+              </configuration>
+            </plugin>
+            <plugin>
+              <groupId>org.apache.maven.plugins</groupId>
+              <artifactId>maven-surefire-plugin</artifactId>
+              <version>3.1.2</version>
+            </plugin>
+          </plugins>
+        </build>
+      </project>
+  commit_message: "build: upgrade maven-compiler-plugin source/target from Java 11 to 17"
+fragments:
+- id: pom_compiler_version
+  selector:
+    path: pom.xml
+    anchor: maven-compiler-plugin
+- id: no_settings_xml
+  selector:
+    path: XML_NOISE_012_settings.xml
+- id: no_toolchains_xml
+  selector:
+    path: XML_NOISE_012_toolchains.xml
+- id: no_global_0
+  selector:
+    anchor: XML_NOISE_012_MAVEN_MIRROR
+- id: no_global_1
+  selector:
+    anchor: XML_NOISE_012_central-mirror
+- id: no_global_2
+  selector:
+    anchor: XML_NOISE_012_JDK_TOOLCHAIN
+- id: no_global_3
+  selector:
+    anchor: XML_NOISE_012_DeployConfig
+oracle:
+  required:
+  - pom_compiler_version
+  allowed: []
+  forbidden:
+  - no_settings_xml
+  - no_toolchains_xml
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

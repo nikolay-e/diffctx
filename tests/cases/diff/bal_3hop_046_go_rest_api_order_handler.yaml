@@ -1,0 +1,267 @@
+name: bal_3hop_046_go_rest_api_order_handler
+tags:
+- lang:go
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    pkg/model/order.go: |
+      package model
+
+      type OrderStatus string
+
+      const (
+        OrderPending   OrderStatus = "pending"
+        OrderConfirmed OrderStatus = "confirmed"
+      )
+
+      type Order struct {
+        ID     string
+        Amount float64
+        Status OrderStatus
+      }
+    pkg/repo/order.go: |
+      package repo
+
+      import "pkg/model"
+
+      type OrderRepo struct {
+        orders []model.Order
+      }
+
+      func NewOrderRepo() *OrderRepo {
+        return &OrderRepo{}
+      }
+
+      func (r *OrderRepo) Save(order model.Order) {
+        r.orders = append(r.orders, order)
+      }
+
+      func (r *OrderRepo) FindByID(id string) *model.Order {
+        for _, o := range r.orders {
+          if o.ID == id {
+            return &o
+          }
+        }
+        return nil
+      }
+    pkg/service/order.go: |
+      package service
+
+      import (
+        "pkg/model"
+        "pkg/repo"
+      )
+
+      type OrderService struct {
+        repo *repo.OrderRepo
+      }
+
+      func NewOrderService(r *repo.OrderRepo) *OrderService {
+        return &OrderService{repo: r}
+      }
+
+      func (s *OrderService) CreateOrder(id string, amount float64) model.Order {
+        order := model.Order{ID: id, Amount: amount, Status: model.OrderPending}
+        s.repo.Save(order)
+        return order
+      }
+    cmd/api/handler.go: |
+      package main
+
+      import (
+        "encoding/json"
+        "net/http"
+        "pkg/service"
+        "pkg/repo"
+      )
+
+      var orderService = service.NewOrderService(repo.NewOrderRepo())
+
+      func createOrderHandler(w http.ResponseWriter, r *http.Request) {
+        order := orderService.CreateOrder("new-id", 100.0)
+        json.NewEncoder(w).Encode(order)
+      }
+    pkg/telemetry/trace.go: |
+      package telemetry
+
+      var GARBAGE_046_TRACE_MARKER_A = "trace"
+      var GARBAGE_046_SPAN_MARKER_B = true
+
+      func StartSpan(name string) {}
+      func EndSpan() {}
+    pkg/config/env.go: |
+      package config
+
+      var GARBAGE_046_ENV_MARKER_C = "env"
+      var GARBAGE_046_PORT_MARKER_D = 8080
+
+      func GetPort() int { return 8080 }
+  changed_files:
+    pkg/model/order.go: |
+      package model
+
+      import "time"
+
+      type OrderStatus string
+
+      const (
+        OrderPending   OrderStatus = "pending"
+        OrderConfirmed OrderStatus = "confirmed"
+        OrderCancelled OrderStatus = "cancelled"
+      )
+
+      type Order struct {
+        ID        string
+        Amount    float64
+        Currency  string
+        Status    OrderStatus
+        CreatedAt time.Time
+      }
+    pkg/repo/order.go: |
+      package repo
+
+      import "pkg/model"
+
+      type OrderRepo struct {
+        orders []model.Order
+      }
+
+      func NewOrderRepo() *OrderRepo {
+        return &OrderRepo{}
+      }
+
+      func (r *OrderRepo) Save(order model.Order) {
+        r.orders = append(r.orders, order)
+      }
+
+      func (r *OrderRepo) FindByID(id string) *model.Order {
+        for _, o := range r.orders {
+          if o.ID == id {
+            return &o
+          }
+        }
+        return nil
+      }
+
+      func (r *OrderRepo) FindByStatus(status model.OrderStatus) []model.Order {
+        var result []model.Order
+        for _, o := range r.orders {
+          if o.Status == status {
+            result = append(result, o)
+          }
+        }
+        return result
+      }
+    pkg/service/order.go: |
+      package service
+
+      import (
+        "time"
+        "pkg/model"
+        "pkg/repo"
+      )
+
+      type OrderService struct {
+        repo *repo.OrderRepo
+      }
+
+      func NewOrderService(r *repo.OrderRepo) *OrderService {
+        return &OrderService{repo: r}
+      }
+
+      func (s *OrderService) CreateOrder(id string, amount float64, currency string) model.Order {
+        order := model.Order{
+          ID:        id,
+          Amount:    amount,
+          Currency:  currency,
+          Status:    model.OrderPending,
+          CreatedAt: time.Now(),
+        }
+        s.repo.Save(order)
+        return order
+      }
+    cmd/api/handler.go: |
+      package main
+
+      import (
+        "encoding/json"
+        "net/http"
+        "pkg/service"
+        "pkg/repo"
+      )
+
+      var orderService = service.NewOrderService(repo.NewOrderRepo())
+
+      func createOrderHandler(w http.ResponseWriter, r *http.Request) {
+        order := orderService.CreateOrder("new-id", 100.0, "USD")
+        json.NewEncoder(w).Encode(order)
+      }
+    pkg/telemetry/trace.go: |
+      package telemetry
+
+      var GARBAGE_046_TRACE_MARKER_A = "trace"
+      var GARBAGE_046_SPAN_MARKER_B = true
+
+      func StartSpan(name string) {}
+      func EndSpan() {}
+    pkg/config/env.go: |
+      package config
+
+      var GARBAGE_046_ENV_MARKER_C = "env"
+      var GARBAGE_046_PORT_MARKER_D = 8080
+
+      func GetPort() int { return 8080 }
+  commit_message: "feat: add currency, timestamps, and cancelled status to Order"
+fragments:
+- id: order_currency_field
+  selector:
+    path: pkg/model/order.go
+    anchor: "Currency  string"
+- id: order_created_at
+  selector:
+    path: pkg/model/order.go
+    anchor: "CreatedAt time.Time"
+- id: order_cancelled_status
+  selector:
+    path: pkg/model/order.go
+    anchor: "OrderCancelled"
+- id: repo_find_by_status
+  selector:
+    path: pkg/repo/order.go
+    anchor: "func (r *OrderRepo) FindByStatus"
+- id: service_create_currency
+  selector:
+    path: pkg/service/order.go
+    anchor: "func (s *OrderService) CreateOrder(id string, amount float64, currency string)"
+- id: handler_imports_service
+  selector:
+    path: cmd/api/handler.go
+    anchor: "pkg/service"
+- id: handler_passes_currency
+  selector:
+    path: cmd/api/handler.go
+    anchor: 'orderService.CreateOrder("new-id", 100.0, "USD")'
+- id: no_trace
+  selector:
+    path: pkg/telemetry/trace.go
+    anchor: "GARBAGE_046_TRACE_MARKER_A"
+- id: no_env
+  selector:
+    path: pkg/config/env.go
+    anchor: "GARBAGE_046_ENV_MARKER_C"
+oracle:
+  required:
+  - order_currency_field
+  - order_created_at
+  - order_cancelled_status
+  - repo_find_by_status
+  - service_create_currency
+  - handler_imports_service
+  - handler_passes_currency
+  allowed: []
+  forbidden:
+  - no_trace
+  - no_env

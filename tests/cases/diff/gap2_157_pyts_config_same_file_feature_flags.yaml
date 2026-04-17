@@ -1,0 +1,96 @@
+name: gap2_157_pyts_config_same_file_feature_flags
+tags:
+- change:config
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+- lang:python
+- lang:typescript
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    backend/config.py: |
+      FEATURE_FLAGS = {
+          "dark_mode": True,
+          "notifications": True,
+          "beta_search": False,
+      }
+
+      def is_enabled(flag: str) -> bool:
+          return FEATURE_FLAGS.get(flag, False)
+    frontend/config.ts: |
+      export const featureFlags = {
+        darkMode: true,
+        notifications: true,
+        betaSearch: false,
+      };
+
+      export function isEnabled(flag: keyof typeof featureFlags): boolean {
+        return featureFlags[flag];
+      }
+    backend/logging_setup.py: |
+      LOG_LEVEL = "INFO"
+      LOG_FORMAT = "%(asctime)s %(levelname)s %(message)s"
+
+      class LogConfig:
+          def __init__(self):
+              self.level = LOG_LEVEL
+              self.format = LOG_FORMAT
+  changed_files:
+    backend/config.py: |
+      FEATURE_FLAGS = {
+          "dark_mode": True,
+          "notifications": True,
+          "beta_search": True,
+          "ai_suggestions": False,
+      }
+
+      def is_enabled(flag: str) -> bool:
+          return FEATURE_FLAGS.get(flag, False)
+    frontend/config.ts: |
+      export const featureFlags = {
+        darkMode: true,
+        notifications: true,
+        betaSearch: true,
+        aiSuggestions: false,
+      };
+
+      export function isEnabled(flag: keyof typeof featureFlags): boolean {
+        return featureFlags[flag];
+      }
+  commit_message: "config: enable beta search and add ai suggestions flag"
+fragments:
+- id: py_beta_search
+  selector:
+    path: backend/config.py
+    anchor: '"beta_search": True'
+- id: py_ai_flag
+  selector:
+    path: backend/config.py
+    anchor: '"ai_suggestions": False'
+- id: ts_beta_search
+  selector:
+    path: frontend/config.ts
+    anchor: "betaSearch: true"
+- id: ts_ai_flag
+  selector:
+    path: frontend/config.ts
+    anchor: "aiSuggestions: false"
+- id: no_logging
+  selector:
+    path: backend/logging_setup.py
+- id: no_log_level
+  selector:
+    anchor: LOG_LEVEL
+oracle:
+  required:
+  - py_beta_search
+  - py_ai_flag
+  - ts_beta_search
+  - ts_ai_flag
+  allowed: []
+  forbidden:
+  - no_logging
+  - no_log_level

@@ -1,0 +1,144 @@
+name: gap2_104_shell_config_cross_module_ssl_cert_renewer
+tags:
+- change:config
+- change:single_file
+- context:cross_module
+- difficulty:easy
+- distance:0hop
+- lang:shell
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    config/certs.env: |
+      CERT_DIR="/etc/ssl/app"
+      DOMAIN="app.example.com"
+      PROVIDER="letsencrypt"
+      RENEW_DAYS_BEFORE=30
+      KEY_SIZE=2048
+    bin/renew.sh: |
+      #!/usr/bin/env bash
+      source config/certs.env
+
+      check_expiry() {
+          openssl x509 -in "$CERT_DIR/fullchain.pem" -noout -enddate
+      }
+
+      renew_certificate() {
+          certbot renew --cert-name "$DOMAIN" \
+              --rsa-key-size "$KEY_SIZE" \
+              --deploy-hook "systemctl reload nginx"
+      }
+    bin/verify.sh: |
+      #!/usr/bin/env bash
+      source config/certs.env
+
+      verify_chain() {
+          openssl verify -CAfile "$CERT_DIR/ca.pem" "$CERT_DIR/fullchain.pem"
+      }
+
+      print_subject() {
+          openssl x509 -in "$CERT_DIR/fullchain.pem" -noout -subject
+      }
+    lib/dns_check.sh: |
+      #!/usr/bin/env bash
+      TRAP_GAP2_104_DNS_A="dns_validator"
+      TRAP_GAP2_104_TIMEOUT_B=5
+
+      resolve_domain() {
+          local domain="$1"
+          dig +short "$domain" A
+      }
+
+      check_cname() {
+          local domain="$1"
+          dig +short "$domain" CNAME
+      }
+  changed_files:
+    config/certs.env: |
+      CERT_DIR="/etc/ssl/app"
+      DOMAIN="api.production.com"
+      PROVIDER="zerossl"
+      RENEW_DAYS_BEFORE=14
+      KEY_SIZE=4096
+      OCSP_STAPLING=true
+    bin/renew.sh: |
+      #!/usr/bin/env bash
+      source config/certs.env
+
+      check_expiry() {
+          openssl x509 -in "$CERT_DIR/fullchain.pem" -noout -enddate
+      }
+
+      renew_certificate() {
+          certbot renew --cert-name "$DOMAIN" \
+              --rsa-key-size "$KEY_SIZE" \
+              --deploy-hook "systemctl reload nginx"
+      }
+    bin/verify.sh: |
+      #!/usr/bin/env bash
+      source config/certs.env
+
+      verify_chain() {
+          openssl verify -CAfile "$CERT_DIR/ca.pem" "$CERT_DIR/fullchain.pem"
+      }
+
+      print_subject() {
+          openssl x509 -in "$CERT_DIR/fullchain.pem" -noout -subject
+      }
+    lib/dns_check.sh: |
+      #!/usr/bin/env bash
+      TRAP_GAP2_104_DNS_A="dns_validator"
+      TRAP_GAP2_104_TIMEOUT_B=5
+
+      resolve_domain() {
+          local domain="$1"
+          dig +short "$domain" A
+      }
+
+      check_cname() {
+          local domain="$1"
+          dig +short "$domain" CNAME
+      }
+  commit_message: Update files
+fragments:
+- id: conf_domain
+  selector:
+    path: config/certs.env
+    anchor: DOMAIN="api.production.com"
+- id: conf_provider
+  selector:
+    path: config/certs.env
+    anchor: PROVIDER="zerossl"
+- id: conf_keysize
+  selector:
+    path: config/certs.env
+    anchor: KEY_SIZE=4096
+- id: renew_source
+  selector:
+    path: bin/renew.sh
+    anchor: source config/certs.env
+- id: no_dns_check
+  selector:
+    path: lib/dns_check.sh
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_104_DNS_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_104_TIMEOUT_B
+- id: no_global_2
+  selector:
+    anchor: resolve_domain
+oracle:
+  required:
+  - conf_domain
+  - conf_provider
+  - conf_keysize
+  - renew_source
+  allowed: []
+  forbidden:
+  - no_dns_check
+  - no_global_0
+  - no_global_1
+  - no_global_2

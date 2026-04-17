@@ -1,0 +1,67 @@
+name: bal3_bugfix_011_ruby_nil_safe_navigation
+tags:
+- lang:ruby
+- change:single_file
+- change:bug_fix
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    lib/account.rb: |
+      class Account
+        attr_reader :owner, :balance
+
+        def initialize(owner, balance)
+          @owner = owner
+          @balance = balance
+        end
+
+        def owner_name
+          @owner.name.upcase
+        end
+
+        def display
+          "#{owner_name}: $#{@balance}"
+        end
+      end
+    lib/report.rb: |
+      class Report
+        def self.generate(accounts)
+          accounts.map(&:display).join("\n")
+        end
+      end
+  changed_files:
+    lib/account.rb: |
+      class Account
+        attr_reader :owner, :balance
+
+        def initialize(owner, balance)
+          @owner = owner
+          @balance = balance
+        end
+
+        def owner_name
+          @owner&.name&.upcase || 'Unknown'
+        end
+
+        def display
+          "#{owner_name}: $#{@balance}"
+        end
+      end
+  commit_message: "fix: use safe navigation to prevent NoMethodError on nil owner"
+fragments:
+- id: safe_nav_fix
+  selector:
+    path: lib/account.rb
+    anchor: "@owner&.name&.upcase"
+- id: no_report
+  selector:
+    path: lib/report.rb
+    anchor: "def self.generate"
+oracle:
+  required:
+  - safe_nav_fix
+  allowed: []
+  forbidden:
+  - no_report

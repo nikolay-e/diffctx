@@ -1,0 +1,154 @@
+name: bal3_testctx_021_ruby_shopping_cart_spec
+tags:
+- lang:ruby
+- change:single_file
+- change:bug_fix
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    lib/shopping_cart.rb: |
+      class ShoppingCart
+        attr_reader :items
+
+        def initialize
+          @items = []
+        end
+
+        def add_item(name, price, quantity = 1)
+          @items << { name: name, price: price, quantity: quantity }
+        end
+
+        def total
+          @items.sum { |item| item[:price] * item[:quantity] }
+        end
+
+        def item_count
+          @items.sum { |item| item[:quantity] }
+        end
+      end
+    spec/shopping_cart_spec.rb: |
+      require_relative '../lib/shopping_cart'
+
+      RSpec.describe ShoppingCart do
+        subject { described_class.new }
+
+        describe '#add_item' do
+          it 'adds item to cart' do
+            subject.add_item('Widget', 9.99)
+            expect(subject.items.size).to eq(1)
+          end
+        end
+
+        describe '#total' do
+          it 'calculates total price' do
+            subject.add_item('A', 10.0, 2)
+            subject.add_item('B', 5.0, 1)
+            expect(subject.total).to eq(25.0)
+          end
+        end
+
+        describe '#item_count' do
+          it 'counts all quantities' do
+            subject.add_item('A', 1.0, 3)
+            subject.add_item('B', 2.0, 2)
+            expect(subject.item_count).to eq(5)
+          end
+        end
+      end
+    lib/discount.rb: |
+      class Discount
+        def self.apply(price, percent)
+          price * (1 - percent / 100.0)
+        end
+      end
+    lib/receipt_printer.rb: |
+      class ReceiptPrinter
+        def print(cart)
+          cart.items.each { |i| puts "#{i[:name]}: $#{i[:price]}" }
+        end
+      end
+  changed_files:
+    lib/shopping_cart.rb: |
+      class ShoppingCart
+        attr_reader :items
+
+        def initialize
+          @items = []
+        end
+
+        def add_item(name, price, quantity = 1)
+          raise ArgumentError, 'Price must be positive' if price <= 0
+          raise ArgumentError, 'Quantity must be positive' if quantity <= 0
+
+          existing = @items.find { |item| item[:name] == name }
+          if existing
+            existing[:quantity] += quantity
+          else
+            @items << { name: name, price: price, quantity: quantity }
+          end
+        end
+
+        def remove_item(name)
+          @items.reject! { |item| item[:name] == name }
+        end
+
+        def total
+          @items.sum { |item| item[:price] * item[:quantity] }
+        end
+
+        def item_count
+          @items.sum { |item| item[:quantity] }
+        end
+
+        def empty?
+          @items.empty?
+        end
+      end
+  commit_message: "fix: merge duplicate items, validate inputs, add remove and empty?"
+fragments:
+- id: price_validation
+  selector:
+    path: lib/shopping_cart.rb
+    anchor: "Price must be positive"
+- id: merge_existing
+  selector:
+    path: lib/shopping_cart.rb
+    anchor: "existing[:quantity] += quantity"
+- id: remove_item_method
+  selector:
+    path: lib/shopping_cart.rb
+    anchor: "def remove_item(name)"
+- id: empty_method
+  selector:
+    path: lib/shopping_cart.rb
+    anchor: "def empty?"
+- id: spec_add_item
+  selector:
+    path: spec/shopping_cart_spec.rb
+    anchor: "describe '#add_item'"
+- id: spec_total
+  selector:
+    path: spec/shopping_cart_spec.rb
+    anchor: "describe '#total'"
+- id: no_discount
+  selector:
+    path: lib/discount.rb
+    anchor: "class Discount"
+- id: no_receipt
+  selector:
+    path: lib/receipt_printer.rb
+    anchor: "class ReceiptPrinter"
+oracle:
+  required:
+  - price_validation
+  - merge_existing
+  - remove_item_method
+  - spec_add_item
+  allowed:
+  - empty_method
+  - spec_total
+  forbidden:
+  - no_discount
+  - no_receipt

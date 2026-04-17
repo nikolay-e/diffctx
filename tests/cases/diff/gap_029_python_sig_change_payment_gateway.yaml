@@ -1,0 +1,120 @@
+name: gap_029_python_sig_change_payment_gateway
+tags:
+- change:signature
+- change:single_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:python
+repo:
+  initial_files:
+    payments/currency.py: |
+      from decimal import Decimal
+
+      EXCHANGE_RATES = {
+          ("USD", "EUR"): Decimal("0.85"),
+          ("EUR", "USD"): Decimal("1.18"),
+          ("USD", "GBP"): Decimal("0.73"),
+          ("GBP", "USD"): Decimal("1.37"),
+      }
+
+      def convert(amount: Decimal, from_currency: str, to_currency: str) -> Decimal:
+          if from_currency == to_currency:
+              return amount
+          rate = EXCHANGE_RATES.get((from_currency, to_currency), Decimal("1"))
+          return (amount * rate).quantize(Decimal("0.01"))
+    payments/processor.py: |
+      from decimal import Decimal
+      from payments.currency import convert
+
+      class PaymentProcessor:
+          def __init__(self, merchant_currency: str):
+              self.merchant_currency = merchant_currency
+
+          def charge(self, amount: Decimal, currency: str) -> dict:
+              settled = convert(amount, currency, self.merchant_currency)
+              return {"status": "charged", "settled_amount": settled}
+    payments/checkout.py: |
+      from decimal import Decimal
+      from payments.processor import PaymentProcessor
+
+      def process_cart(items: list[dict], currency: str, merchant_currency: str) -> dict:
+          total = Decimal(sum(i["price"] * i["qty"] for i in items))
+          processor = PaymentProcessor(merchant_currency)
+          return processor.charge(total, currency)
+    payments/refund.py: |
+      GARBAGE_GAP_029_REFUND_A = "refund_marker"
+      GARBAGE_GAP_029_POLICY_B = "30_days"
+
+      def issue_refund(transaction_id: str, amount: float) -> dict:
+          return {"status": "refunded", "transaction_id": transaction_id}
+    payments/audit.py: |
+      GARBAGE_GAP_029_AUDIT_C = "log_marker"
+      GARBAGE_GAP_029_LEVEL_D = "info"
+
+      def log_transaction(tx_id: str, action: str) -> None:
+          pass
+  changed_files:
+    payments/currency.py: |
+      from decimal import Decimal
+      from datetime import date
+
+      EXCHANGE_RATES = {
+          ("USD", "EUR"): Decimal("0.85"),
+          ("EUR", "USD"): Decimal("1.18"),
+          ("USD", "GBP"): Decimal("0.73"),
+          ("GBP", "USD"): Decimal("1.37"),
+      }
+
+      def convert(amount: Decimal, from_currency: str, to_currency: str, rate_date: date | None = None) -> Decimal:
+          if from_currency == to_currency:
+              return amount
+          rate = EXCHANGE_RATES.get((from_currency, to_currency), Decimal("1"))
+          return (amount * rate).quantize(Decimal("0.01"))
+  commit_message: "add rate_date parameter to currency convert"
+fixtures:
+  auto_garbage: true
+fragments:
+- id: currency_convert
+  selector:
+    path: payments/currency.py
+    anchor: "def convert"
+- id: processor_charge
+  selector:
+    path: payments/processor.py
+    anchor: "def charge"
+- id: checkout_process
+  selector:
+    path: payments/checkout.py
+    anchor: "def process_cart"
+- id: no_refund
+  selector:
+    path: payments/refund.py
+- id: no_audit
+  selector:
+    path: payments/audit.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_029_REFUND_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GAP_029_POLICY_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GAP_029_AUDIT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GAP_029_LEVEL_D
+oracle:
+  required:
+  - currency_convert
+  - processor_charge
+  - checkout_process
+  allowed: []
+  forbidden:
+  - no_refund
+  - no_audit
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

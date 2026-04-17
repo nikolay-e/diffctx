@@ -1,0 +1,129 @@
+name: bal_testctx_015_typescript_jwt_decoder_test
+tags:
+- lang:typescript
+- change:single_file
+- change:bug_fix
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/jwtDecoder.ts: |
+      export interface JwtPayload {
+        sub: string;
+        exp: number;
+        iat: number;
+        [key: string]: unknown;
+      }
+
+      export function decodePayload(token: string): JwtPayload {
+        const parts = token.split('.');
+        if (parts.length !== 3) {
+          throw new Error('Invalid JWT format');
+        }
+        const payload = JSON.parse(atob(parts[1]));
+        return payload as JwtPayload;
+      }
+
+      export function isExpired(payload: JwtPayload): boolean {
+        return Date.now() / 1000 > payload.exp;
+      }
+    __tests__/jwtDecoder.test.ts: |
+      import { decodePayload, isExpired, JwtPayload } from '../src/jwtDecoder';
+
+      describe('jwtDecoder', () => {
+        const makeToken = (payload: object): string => {
+          const header = btoa(JSON.stringify({ alg: 'HS256' }));
+          const body = btoa(JSON.stringify(payload));
+          return `${header}.${body}.fakesig`;
+        };
+
+        test('decodes valid token payload', () => {
+          const token = makeToken({ sub: 'user1', exp: 9999999999, iat: 1000 });
+          const payload = decodePayload(token);
+          expect(payload.sub).toBe('user1');
+        });
+
+        test('throws on invalid format', () => {
+          expect(() => decodePayload('not.a.valid.token')).toThrow();
+        });
+
+        test('isExpired returns false for future expiry', () => {
+          const payload: JwtPayload = { sub: 'u', exp: 9999999999, iat: 1000 };
+          expect(isExpired(payload)).toBe(false);
+        });
+      });
+    src/cookieParser.ts: |
+      export function parseCookies(header: string): Record<string, string> {
+        const cookies: Record<string, string> = {};
+        header.split(';').forEach(pair => {
+          const [key, value] = pair.trim().split('=');
+          if (key && value) {
+            cookies[key] = decodeURIComponent(value);
+          }
+        });
+        return cookies;
+      }
+  changed_files:
+    src/jwtDecoder.ts: |
+      export interface JwtPayload {
+        sub: string;
+        exp: number;
+        iat: number;
+        [key: string]: unknown;
+      }
+
+      export function decodePayload(token: string): JwtPayload {
+        const parts = token.split('.');
+        if (parts.length !== 3) {
+          throw new Error('Invalid JWT format');
+        }
+        try {
+          const payload = JSON.parse(atob(parts[1]));
+          if (!payload.sub || !payload.exp) {
+            throw new Error('Missing required JWT fields');
+          }
+          return payload as JwtPayload;
+        } catch (e) {
+          throw new Error(`Failed to decode JWT: ${(e as Error).message}`);
+        }
+      }
+
+      export function isExpired(payload: JwtPayload): boolean {
+        return Date.now() / 1000 > payload.exp;
+      }
+
+      export function getTimeUntilExpiry(payload: JwtPayload): number {
+        return Math.max(0, payload.exp - Date.now() / 1000);
+      }
+  commit_message: "fix: validate JWT fields, add getTimeUntilExpiry"
+fragments:
+- id: decode_payload_fn
+  selector:
+    path: src/jwtDecoder.ts
+    anchor: "export function decodePayload"
+- id: get_time_until_expiry
+  selector:
+    path: src/jwtDecoder.ts
+    anchor: "export function getTimeUntilExpiry"
+- id: test_imports_jwt
+  selector:
+    path: __tests__/jwtDecoder.test.ts
+    anchor: "import { decodePayload, isExpired"
+- id: test_decodes_valid
+  selector:
+    path: __tests__/jwtDecoder.test.ts
+    anchor: "test('decodes valid token payload'"
+- id: no_cookie_parser
+  selector:
+    path: src/cookieParser.ts
+    anchor: "export function parseCookies"
+oracle:
+  required:
+  - decode_payload_fn
+  - get_time_until_expiry
+  - test_imports_jwt
+  allowed:
+  - test_decodes_valid
+  forbidden:
+  - no_cookie_parser

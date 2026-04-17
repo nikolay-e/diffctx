@@ -1,0 +1,259 @@
+name: bal_3hop_055_go_template_engine_renderer
+tags:
+- lang:go
+- change:multi_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    pkg/template/token.go: |
+      package template
+
+      type TokenType int
+
+      const (
+        TokenText     TokenType = 0
+        TokenVariable TokenType = 1
+      )
+
+      type Token struct {
+        Type  TokenType
+        Value string
+      }
+
+      func Tokenize(input string) []Token {
+        var tokens []Token
+        tokens = append(tokens, Token{Type: TokenText, Value: input})
+        return tokens
+      }
+    pkg/template/parser.go: |
+      package template
+
+      type Node struct {
+        Type     string
+        Content  string
+        Children []Node
+      }
+
+      func Parse(tokens []Token) Node {
+        root := Node{Type: "root"}
+        for _, t := range tokens {
+          switch t.Type {
+          case TokenText:
+            root.Children = append(root.Children, Node{Type: "text", Content: t.Value})
+          case TokenVariable:
+            root.Children = append(root.Children, Node{Type: "variable", Content: t.Value})
+          }
+        }
+        return root
+      }
+    pkg/template/renderer.go: |
+      package template
+
+      import "strings"
+
+      type Renderer struct {
+        vars map[string]string
+      }
+
+      func NewRenderer(vars map[string]string) *Renderer {
+        return &Renderer{vars: vars}
+      }
+
+      func (r *Renderer) Render(input string) string {
+        tokens := Tokenize(input)
+        tree := Parse(tokens)
+        return r.renderNode(tree)
+      }
+
+      func (r *Renderer) renderNode(node Node) string {
+        var sb strings.Builder
+        for _, child := range node.Children {
+          switch child.Type {
+          case "text":
+            sb.WriteString(child.Content)
+          case "variable":
+            sb.WriteString(r.vars[child.Content])
+          }
+        }
+        return sb.String()
+      }
+    cmd/render/main.go: |
+      package main
+
+      import (
+        "fmt"
+        "pkg/template"
+      )
+
+      func main() {
+        r := template.NewRenderer(map[string]string{"name": "World"})
+        output := r.Render("Hello, {{name}}!")
+        fmt.Println(output)
+      }
+    pkg/util/escape.go: |
+      package util
+
+      var GARBAGE_055_ESCAPE_MARKER_A = "escape"
+      var GARBAGE_055_HTML_MARKER_B = true
+
+      func EscapeHTML(s string) string { return s }
+    pkg/util/minify.go: |
+      package util
+
+      var GARBAGE_055_MINIFY_MARKER_C = "minify"
+      var GARBAGE_055_COMPRESS_MARKER_D = true
+
+      func MinifyHTML(s string) string { return s }
+  changed_files:
+    pkg/template/token.go: |
+      package template
+
+      type TokenType int
+
+      const (
+        TokenText      TokenType = 0
+        TokenVariable  TokenType = 1
+        TokenCondition TokenType = 2
+      )
+
+      type Token struct {
+        Type  TokenType
+        Value string
+      }
+
+      func Tokenize(input string) []Token {
+        var tokens []Token
+        tokens = append(tokens, Token{Type: TokenText, Value: input})
+        return tokens
+      }
+    pkg/template/parser.go: |
+      package template
+
+      type Node struct {
+        Type      string
+        Content   string
+        Condition string
+        Children  []Node
+      }
+
+      func Parse(tokens []Token) Node {
+        root := Node{Type: "root"}
+        for _, t := range tokens {
+          switch t.Type {
+          case TokenText:
+            root.Children = append(root.Children, Node{Type: "text", Content: t.Value})
+          case TokenVariable:
+            root.Children = append(root.Children, Node{Type: "variable", Content: t.Value})
+          case TokenCondition:
+            root.Children = append(root.Children, Node{Type: "condition", Condition: t.Value})
+          }
+        }
+        return root
+      }
+    pkg/template/renderer.go: |
+      package template
+
+      import "strings"
+
+      type Renderer struct {
+        vars map[string]string
+      }
+
+      func NewRenderer(vars map[string]string) *Renderer {
+        return &Renderer{vars: vars}
+      }
+
+      func (r *Renderer) Render(input string) string {
+        tokens := Tokenize(input)
+        tree := Parse(tokens)
+        return r.renderNode(tree)
+      }
+
+      func (r *Renderer) renderNode(node Node) string {
+        var sb strings.Builder
+        for _, child := range node.Children {
+          switch child.Type {
+          case "text":
+            sb.WriteString(child.Content)
+          case "variable":
+            sb.WriteString(r.vars[child.Content])
+          case "condition":
+            if val, ok := r.vars[child.Condition]; ok && val != "" {
+              for _, sub := range child.Children {
+                sb.WriteString(r.renderNode(sub))
+              }
+            }
+          }
+        }
+        return sb.String()
+      }
+    cmd/render/main.go: |
+      package main
+
+      import (
+        "fmt"
+        "pkg/template"
+      )
+
+      func main() {
+        r := template.NewRenderer(map[string]string{"name": "World", "greeting": "true"})
+        output := r.Render("Hello, {{name}}!")
+        fmt.Println(output)
+      }
+    pkg/util/escape.go: |
+      package util
+
+      var GARBAGE_055_ESCAPE_MARKER_A = "escape"
+      var GARBAGE_055_HTML_MARKER_B = true
+
+      func EscapeHTML(s string) string { return s }
+    pkg/util/minify.go: |
+      package util
+
+      var GARBAGE_055_MINIFY_MARKER_C = "minify"
+      var GARBAGE_055_COMPRESS_MARKER_D = true
+
+      func MinifyHTML(s string) string { return s }
+  commit_message: "feat: add conditional blocks to template engine"
+fragments:
+- id: token_condition_type
+  selector:
+    path: pkg/template/token.go
+    anchor: "TokenCondition TokenType = 2"
+- id: node_condition_field
+  selector:
+    path: pkg/template/parser.go
+    anchor: "Condition string"
+- id: parser_condition_case
+  selector:
+    path: pkg/template/parser.go
+    anchor: "case TokenCondition"
+- id: renderer_condition_logic
+  selector:
+    path: pkg/template/renderer.go
+    anchor: 'case "condition"'
+- id: main_imports_template
+  selector:
+    path: cmd/render/main.go
+    anchor: "pkg/template"
+- id: no_escape
+  selector:
+    path: pkg/util/escape.go
+    anchor: "GARBAGE_055_ESCAPE_MARKER_A"
+- id: no_minify
+  selector:
+    path: pkg/util/minify.go
+    anchor: "GARBAGE_055_MINIFY_MARKER_C"
+oracle:
+  required:
+  - token_condition_type
+  - node_condition_field
+  - parser_condition_case
+  - renderer_condition_logic
+  - main_imports_template
+  allowed: []
+  forbidden:
+  - no_escape
+  - no_minify

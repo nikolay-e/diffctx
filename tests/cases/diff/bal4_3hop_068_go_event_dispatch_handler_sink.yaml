@@ -1,0 +1,121 @@
+name: bal4_3hop_068_go_event_dispatch_handler_sink
+tags:
+- lang:go
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:trivial
+repo:
+  initial_files:
+    pkg/sink/writer.go: |
+      package sink
+
+      func Write(msg string) bool {
+          return true
+      }
+    pkg/handler/event_handler.go: |
+      package handler
+
+      import "myapp/pkg/sink"
+
+      func Handle(msg string) bool {
+          return sink.Write(msg)
+      }
+    pkg/dispatch/bus.go: |
+      package dispatch
+
+      import "myapp/pkg/handler"
+
+      func Emit(msg string) bool {
+          return handler.Handle(msg)
+      }
+    pkg/event/producer.go: |
+      package event
+
+      import "myapp/pkg/dispatch"
+
+      func Publish(msg string) bool {
+          return dispatch.Emit(msg)
+      }
+    pkg/garbage/stub.go: |
+      package garbage
+
+      var GARBAGE_068_STUB_A = "stub"
+      var GARBAGE_068_STUB_B = false
+
+      func GarbageStub() {}
+  changed_files:
+    pkg/sink/writer.go: |
+      package sink
+
+      func Write(msg string) bool {
+          return true
+      }
+
+      func Flush() bool {
+          return true
+      }
+    pkg/handler/event_handler.go: |
+      package handler
+
+      import "myapp/pkg/sink"
+
+      func Handle(msg string) bool {
+          return sink.Write(msg)
+      }
+    pkg/dispatch/bus.go: |
+      package dispatch
+
+      import "myapp/pkg/handler"
+
+      func Emit(msg string) bool {
+          return handler.Handle(msg)
+      }
+    pkg/event/producer.go: |
+      package event
+
+      import "myapp/pkg/dispatch"
+
+      func Publish(msg string) bool {
+          return dispatch.Emit(msg)
+      }
+    pkg/garbage/stub.go: |
+      package garbage
+
+      var GARBAGE_068_STUB_A = "stub"
+      var GARBAGE_068_STUB_B = false
+
+      func GarbageStub() {}
+  commit_message: "add Flush function to sink"
+fragments:
+- id: flush
+  selector:
+    path: pkg/sink/writer.go
+    anchor: "func Flush"
+- id: write
+  selector:
+    path: pkg/sink/writer.go
+    anchor: "func Write"
+- id: handle
+  selector:
+    path: pkg/handler/event_handler.go
+    anchor: "func Handle"
+- id: no_garbage_stub
+  selector:
+    path: pkg/garbage/stub.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_068_STUB_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_068_STUB_B
+oracle:
+  required:
+  - flush
+  - write
+  - handle
+  allowed: []
+  forbidden:
+  - no_garbage_stub
+  - no_global_0
+  - no_global_1

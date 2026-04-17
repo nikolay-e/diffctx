@@ -1,0 +1,189 @@
+name: gap2_026_js_new_func_fleet_tracker_distance
+tags:
+- change:new_function
+- change:single_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:javascript
+repo:
+  initial_files:
+    src/geo/coordinates.js: |
+      const EARTH_RADIUS_KM = 6371;
+
+      function toRadians(degrees) {
+        return (degrees * Math.PI) / 180;
+      }
+
+      function haversine(lat1, lon1, lat2, lon2) {
+        const dLat = toRadians(lat2 - lat1);
+        const dLon = toRadians(lon2 - lon1);
+        const a =
+          Math.sin(dLat / 2) ** 2 +
+          Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLon / 2) ** 2;
+        return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      }
+
+      module.exports = { EARTH_RADIUS_KM, toRadians, haversine };
+    src/geo/route.js: |
+      const { haversine } = require("./coordinates");
+
+      function totalDistance(waypoints) {
+        let sum = 0;
+        for (let i = 1; i < waypoints.length; i++) {
+          sum += haversine(
+            waypoints[i - 1].lat, waypoints[i - 1].lon,
+            waypoints[i].lat, waypoints[i].lon
+          );
+        }
+        return sum;
+      }
+
+      module.exports = { totalDistance };
+    src/geo/fleet.js: |
+      const { totalDistance } = require("./route");
+
+      function fleetMileage(vehicles) {
+        return vehicles.map((v) => ({
+          id: v.id,
+          km: totalDistance(v.waypoints),
+        }));
+      }
+
+      module.exports = { fleetMileage };
+    src/geo/timezone.js: |
+      const TRAP_GAP2026_OFFSET_A = "UTC";
+      const TRAP_GAP2026_DST_B = false;
+
+      function getTimezone(lat, lon) {
+        return lat > 0 ? "Northern" : "Southern";
+      }
+
+      module.exports = { getTimezone };
+    src/geo/elevation.js: |
+      const TRAP_GAP2026_UNIT_C = "meters";
+      const TRAP_GAP2026_SOURCE_D = "srtm";
+
+      function estimateElevation(lat, lon) {
+        return Math.abs(lat * 10 + lon * 5);
+      }
+
+      module.exports = { estimateElevation };
+  changed_files:
+    src/geo/coordinates.js: |
+      const EARTH_RADIUS_KM = 6371;
+
+      function toRadians(degrees) {
+        return (degrees * Math.PI) / 180;
+      }
+
+      function haversine(lat1, lon1, lat2, lon2) {
+        const dLat = toRadians(lat2 - lat1);
+        const dLon = toRadians(lon2 - lon1);
+        const a =
+          Math.sin(dLat / 2) ** 2 +
+          Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLon / 2) ** 2;
+        return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      }
+
+      function bearing(lat1, lon1, lat2, lon2) {
+        const dLon = toRadians(lon2 - lon1);
+        const y = Math.sin(dLon) * Math.cos(toRadians(lat2));
+        const x =
+          Math.cos(toRadians(lat1)) * Math.sin(toRadians(lat2)) -
+          Math.sin(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.cos(dLon);
+        return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+      }
+
+      module.exports = { EARTH_RADIUS_KM, toRadians, haversine, bearing };
+    src/geo/route.js: |
+      const { haversine } = require("./coordinates");
+
+      function totalDistance(waypoints) {
+        let sum = 0;
+        for (let i = 1; i < waypoints.length; i++) {
+          sum += haversine(
+            waypoints[i - 1].lat, waypoints[i - 1].lon,
+            waypoints[i].lat, waypoints[i].lon
+          );
+        }
+        return sum;
+      }
+
+      module.exports = { totalDistance };
+    src/geo/fleet.js: |
+      const { totalDistance } = require("./route");
+
+      function fleetMileage(vehicles) {
+        return vehicles.map((v) => ({
+          id: v.id,
+          km: totalDistance(v.waypoints),
+        }));
+      }
+
+      module.exports = { fleetMileage };
+    src/geo/timezone.js: |
+      const TRAP_GAP2026_OFFSET_A = "UTC";
+      const TRAP_GAP2026_DST_B = false;
+
+      function getTimezone(lat, lon) {
+        return lat > 0 ? "Northern" : "Southern";
+      }
+
+      module.exports = { getTimezone };
+    src/geo/elevation.js: |
+      const TRAP_GAP2026_UNIT_C = "meters";
+      const TRAP_GAP2026_SOURCE_D = "srtm";
+
+      function estimateElevation(lat, lon) {
+        return Math.abs(lat * 10 + lon * 5);
+      }
+
+      module.exports = { estimateElevation };
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: bearing_func
+  selector:
+    path: src/geo/coordinates.js
+    anchor: function bearing(lat1, lon1, lat2, lon2) {
+- id: bearing_atan
+  selector:
+    path: src/geo/coordinates.js
+    anchor: Math.atan2(y, x)
+- id: to_radians
+  selector:
+    path: src/geo/coordinates.js
+    anchor: function toRadians(degrees) {
+- id: no_timezone
+  selector:
+    path: src/geo/timezone.js
+- id: no_elevation
+  selector:
+    path: src/geo/elevation.js
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2026_OFFSET_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2026_DST_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP2026_UNIT_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP2026_SOURCE_D
+oracle:
+  required:
+  - bearing_func
+  - bearing_atan
+  - to_radians
+  allowed: []
+  forbidden:
+  - no_timezone
+  - no_elevation
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

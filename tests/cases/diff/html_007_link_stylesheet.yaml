@@ -1,0 +1,91 @@
+name: html_007_link_stylesheet
+tags:
+- lang:html
+- lang:css
+- change:multi_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+xfail:
+  category: html-trivial-inline-change
+repo:
+  initial_files:
+    index.html: |
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <title>Site</title>
+        <link rel="stylesheet" href="old.css">
+      </head>
+      <body>
+        <div class="container">
+          <h1>Hello</h1>
+        </div>
+      </body>
+      </html>
+    old.css: |
+      /* HTML_NOISE_007_old_stylesheet_marker */
+      .container { max-width: 960px; margin: 0 auto; padding: 0 16px; }
+      h1 { font-size: 32px; color: #333; }
+    new.css: |
+      .container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+      h1 { font-size: 36px; color: #111827; font-weight: 700; }
+      body { font-family: system-ui, sans-serif; line-height: 1.6; }
+    HTML_NOISE_007_print.html: |
+      <!-- HTML_NOISE_007_print_template -->
+      <div class="HTML_NOISE_007_print_header">Invoice</div>
+    HTML_NOISE_007_amp.html: |
+      <!-- HTML_NOISE_007_amp_page -->
+      <div class="HTML_NOISE_007_amp_content">AMP version</div>
+  changed_files:
+    index.html: |
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <title>Site</title>
+        <link rel="stylesheet" href="new.css">
+      </head>
+      <body>
+        <div class="container">
+          <h1>Hello</h1>
+        </div>
+      </body>
+      </html>
+  commit_message: "style: switch stylesheet from old.css to new.css"
+fragments:
+- id: link_href_updated
+  selector:
+    path: index.html
+    anchor: new.css
+- id: new_css_rules
+  selector:
+    path: new.css
+    anchor: "1200px"
+- id: no_old_css
+  selector:
+    path: old.css
+- id: no_print
+  selector:
+    path: HTML_NOISE_007_print.html
+- id: no_amp
+  selector:
+    path: HTML_NOISE_007_amp.html
+- id: no_global_0
+  selector:
+    anchor: HTML_NOISE_007_old_stylesheet_marker
+- id: no_global_1
+  selector:
+    anchor: HTML_NOISE_007_print_header
+oracle:
+  required:
+  - link_href_updated
+  - new_css_rules
+  allowed: []
+  forbidden:
+  - no_old_css
+  - no_print
+  - no_amp
+  - no_global_0
+  - no_global_1

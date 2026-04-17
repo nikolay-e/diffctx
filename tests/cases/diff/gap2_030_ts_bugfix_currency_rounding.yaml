@@ -1,0 +1,166 @@
+name: gap2_030_ts_bugfix_currency_rounding
+tags:
+- lang:php
+- change:bug_fix
+- change:single_file
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/Shipping/RateCalculator.php: |
+      <?php
+      namespace App\Shipping;
+
+      class RateCalculator
+      {
+          private float $baseRate;
+          private float $perKgRate;
+
+          public function __construct(float $baseRate, float $perKgRate)
+          {
+              $this->baseRate = $baseRate;
+              $this->perKgRate = $perKgRate;
+          }
+
+          public function calculate(float $weightKg, string $zone): float
+          {
+              $multiplier = $this->zoneMultiplier($zone);
+              return ($this->baseRate + $this->perKgRate * $weightKg) * $multiplier;
+          }
+
+          public function calculateBulk(array $parcels, string $zone): float
+          {
+              $total = 0.0;
+              foreach ($parcels as $weight) {
+                  $total += $this->calculate($weight, $zone);
+              }
+              return $total;
+          }
+
+          private function zoneMultiplier(string $zone): float
+          {
+              return match($zone) {
+                  'local' => 1.0,
+                  'regional' => 1.5,
+                  'international' => 3.0,
+                  default => 1.0,
+              };
+          }
+      }
+    src/Shipping/TrackingService.php: |
+      <?php
+      namespace App\Shipping;
+
+      class TrackingService
+      {
+          public function generateLabel(string $orderId): string
+          {
+              return 'TRACK-' . strtoupper($orderId);
+          }
+      }
+    garbage/WarehouseLocator.php: |
+      <?php
+      // GARBAGE_CRNDG_A = "warehouse_locator_marker"
+    garbage/CarrierSelector.php: |
+      <?php
+      // GARBAGE_CRNDG_B = "carrier_selector_marker"
+    garbage/InsuranceAdder.php: |
+      <?php
+      // GARBAGE_CRNDG_C = "insurance_adder_marker"
+  changed_files:
+    src/Shipping/RateCalculator.php: |
+      <?php
+      namespace App\Shipping;
+
+      class RateCalculator
+      {
+          private float $baseRate;
+          private float $perKgRate;
+
+          public function __construct(float $baseRate, float $perKgRate)
+          {
+              $this->baseRate = $baseRate;
+              $this->perKgRate = $perKgRate;
+          }
+
+          public function calculate(float $weightKg, string $zone): float
+          {
+              if ($weightKg < 0) {
+                  throw new \InvalidArgumentException("Weight cannot be negative");
+              }
+              $multiplier = $this->zoneMultiplier($zone);
+              return round(($this->baseRate + $this->perKgRate * $weightKg) * $multiplier, 2);
+          }
+
+          public function calculateBulk(array $parcels, string $zone): float
+          {
+              $total = 0.0;
+              foreach ($parcels as $weight) {
+                  $total += $this->calculate($weight, $zone);
+              }
+              return round($total, 2);
+          }
+
+          private function zoneMultiplier(string $zone): float
+          {
+              return match($zone) {
+                  'local' => 1.0,
+                  'regional' => 1.5,
+                  'international' => 3.0,
+                  default => 1.0,
+              };
+          }
+      }
+    src/Shipping/TrackingService.php: |
+      <?php
+      namespace App\Shipping;
+
+      class TrackingService
+      {
+          public function generateLabel(string $orderId): string
+          {
+              return 'TRACK-' . strtoupper($orderId);
+          }
+      }
+    garbage/WarehouseLocator.php: |
+      <?php
+      // GARBAGE_CRNDG_A = "warehouse_locator_marker"
+    garbage/CarrierSelector.php: |
+      <?php
+      // GARBAGE_CRNDG_B = "carrier_selector_marker"
+    garbage/InsuranceAdder.php: |
+      <?php
+      // GARBAGE_CRNDG_C = "insurance_adder_marker"
+  commit_message: "fix: validate negative weight and round rate results to 2 decimals"
+fragments:
+- id: negative_weight_guard
+  selector:
+    path: src/Shipping/RateCalculator.php
+    anchor: "if ($weightKg < 0)"
+- id: rounding_applied
+  selector:
+    path: src/Shipping/RateCalculator.php
+    anchor: "return round(($this->baseRate"
+- id: no_tracking
+  selector:
+    path: src/Shipping/TrackingService.php
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_CRNDG_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_CRNDG_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_CRNDG_C
+oracle:
+  required:
+  - negative_weight_guard
+  - rounding_applied
+  allowed: []
+  forbidden:
+  - no_tracking
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

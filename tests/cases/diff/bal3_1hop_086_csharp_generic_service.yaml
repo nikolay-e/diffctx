@@ -1,0 +1,400 @@
+name: bal3_1hop_086_csharp_generic_service
+tags:
+- lang:csharp
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: csharp-no-tree-sitter
+repo:
+  initial_files:
+    src/Core/IMapper.cs: |
+      using System;
+
+      namespace App.Core
+      {
+          public interface IMapper<TSource, TDest>
+          {
+              TDest Map(TSource source);
+          }
+      }
+    src/Mappers/OrderMapper.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Mappers
+      {
+          public class OrderDto
+          {
+              public int Id { get; set; }
+              public decimal Total { get; set; }
+          }
+
+          public class OrderEntity
+          {
+              public int Id { get; set; }
+              public decimal Total { get; set; }
+              public DateTime Created { get; set; }
+          }
+
+          public class OrderMapper : IMapper<OrderEntity, OrderDto>
+          {
+              public OrderDto Map(OrderEntity source)
+              {
+                  return new OrderDto { Id = source.Id, Total = source.Total };
+              }
+          }
+      }
+    src/Mappers/UserMapper.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Mappers
+      {
+          public class UserDto
+          {
+              public int Id { get; set; }
+              public string Name { get; set; }
+          }
+
+          public class UserEntity
+          {
+              public int Id { get; set; }
+              public string Name { get; set; }
+              public string Email { get; set; }
+          }
+
+          public class UserMapper : IMapper<UserEntity, UserDto>
+          {
+              public UserDto Map(UserEntity source)
+              {
+                  return new UserDto { Id = source.Id, Name = source.Name };
+              }
+          }
+      }
+    src/Mappers/ProductMapper.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Mappers
+      {
+          public class ProductDto
+          {
+              public int Id { get; set; }
+              public string Name { get; set; }
+              public decimal Price { get; set; }
+          }
+
+          public class ProductEntity
+          {
+              public int Id { get; set; }
+              public string Name { get; set; }
+              public decimal Price { get; set; }
+              public int Stock { get; set; }
+          }
+
+          public class ProductMapper : IMapper<ProductEntity, ProductDto>
+          {
+              public ProductDto Map(ProductEntity source)
+              {
+                  return new ProductDto { Id = source.Id, Name = source.Name, Price = source.Price };
+              }
+          }
+      }
+    src/Mappers/InvoiceMapper.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Mappers
+      {
+          public class InvoiceDto
+          {
+              public string Number { get; set; }
+              public decimal Amount { get; set; }
+          }
+
+          public class InvoiceEntity
+          {
+              public string Number { get; set; }
+              public decimal Amount { get; set; }
+              public DateTime DueDate { get; set; }
+          }
+
+          public class InvoiceMapper : IMapper<InvoiceEntity, InvoiceDto>
+          {
+              public InvoiceDto Map(InvoiceEntity source)
+              {
+                  return new InvoiceDto { Number = source.Number, Amount = source.Amount };
+              }
+          }
+      }
+    src/Geo/GeocodingService.cs: |
+      using System;
+      GARBAGE_086_GEO_API_A = "https://geo.api.example.com";
+      GARBAGE_086_GEO_KEY_B = "key_xxx";
+
+      namespace App.Geo
+      {
+          public class GeocodingService
+          {
+              public string Geocode(string address) { return "0,0"; }
+          }
+      }
+    src/Geo/DistanceCalculator.cs: |
+      using System;
+      GARBAGE_086_EARTH_RADIUS_C = 6371;
+      GARBAGE_086_UNIT_D = "km";
+
+      namespace App.Geo
+      {
+          public class DistanceCalculator
+          {
+              public double Calculate(double lat1, double lon1, double lat2, double lon2) { return 0; }
+          }
+      }
+    src/Notifications/SlackNotifier.cs: |
+      using System;
+      GARBAGE_086_SLACK_WEBHOOK_E = "https://hooks.slack.com/xxx";
+      GARBAGE_086_SLACK_CHANNEL_F = "#general";
+
+      namespace App.Notifications
+      {
+          public class SlackNotifier
+          {
+              public void Send(string message) { }
+          }
+      }
+  changed_files:
+    src/Core/IMapper.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Linq;
+
+      namespace App.Core
+      {
+          public interface IMapper<TSource, TDest>
+          {
+              TDest Map(TSource source);
+              TSource ReverseMap(TDest dest);
+              IEnumerable<TDest> MapCollection(IEnumerable<TSource> sources);
+          }
+      }
+    src/Mappers/OrderMapper.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Mappers
+      {
+          public class OrderDto
+          {
+              public int Id { get; set; }
+              public decimal Total { get; set; }
+          }
+
+          public class OrderEntity
+          {
+              public int Id { get; set; }
+              public decimal Total { get; set; }
+              public DateTime Created { get; set; }
+          }
+
+          public class OrderMapper : IMapper<OrderEntity, OrderDto>
+          {
+              public OrderDto Map(OrderEntity source)
+              {
+                  return new OrderDto { Id = source.Id, Total = source.Total };
+              }
+          }
+      }
+    src/Mappers/UserMapper.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Mappers
+      {
+          public class UserDto
+          {
+              public int Id { get; set; }
+              public string Name { get; set; }
+          }
+
+          public class UserEntity
+          {
+              public int Id { get; set; }
+              public string Name { get; set; }
+              public string Email { get; set; }
+          }
+
+          public class UserMapper : IMapper<UserEntity, UserDto>
+          {
+              public UserDto Map(UserEntity source)
+              {
+                  return new UserDto { Id = source.Id, Name = source.Name };
+              }
+          }
+      }
+    src/Mappers/ProductMapper.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Mappers
+      {
+          public class ProductDto
+          {
+              public int Id { get; set; }
+              public string Name { get; set; }
+              public decimal Price { get; set; }
+          }
+
+          public class ProductEntity
+          {
+              public int Id { get; set; }
+              public string Name { get; set; }
+              public decimal Price { get; set; }
+              public int Stock { get; set; }
+          }
+
+          public class ProductMapper : IMapper<ProductEntity, ProductDto>
+          {
+              public ProductDto Map(ProductEntity source)
+              {
+                  return new ProductDto { Id = source.Id, Name = source.Name, Price = source.Price };
+              }
+          }
+      }
+    src/Mappers/InvoiceMapper.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Mappers
+      {
+          public class InvoiceDto
+          {
+              public string Number { get; set; }
+              public decimal Amount { get; set; }
+          }
+
+          public class InvoiceEntity
+          {
+              public string Number { get; set; }
+              public decimal Amount { get; set; }
+              public DateTime DueDate { get; set; }
+          }
+
+          public class InvoiceMapper : IMapper<InvoiceEntity, InvoiceDto>
+          {
+              public InvoiceDto Map(InvoiceEntity source)
+              {
+                  return new InvoiceDto { Number = source.Number, Amount = source.Amount };
+              }
+          }
+      }
+    src/Geo/GeocodingService.cs: |
+      using System;
+      GARBAGE_086_GEO_API_A = "https://geo.api.example.com";
+      GARBAGE_086_GEO_KEY_B = "key_xxx";
+
+      namespace App.Geo
+      {
+          public class GeocodingService
+          {
+              public string Geocode(string address) { return "0,0"; }
+          }
+      }
+    src/Geo/DistanceCalculator.cs: |
+      using System;
+      GARBAGE_086_EARTH_RADIUS_C = 6371;
+      GARBAGE_086_UNIT_D = "km";
+
+      namespace App.Geo
+      {
+          public class DistanceCalculator
+          {
+              public double Calculate(double lat1, double lon1, double lat2, double lon2) { return 0; }
+          }
+      }
+    src/Notifications/SlackNotifier.cs: |
+      using System;
+      GARBAGE_086_SLACK_WEBHOOK_E = "https://hooks.slack.com/xxx";
+      GARBAGE_086_SLACK_CHANNEL_F = "#general";
+
+      namespace App.Notifications
+      {
+          public class SlackNotifier
+          {
+              public void Send(string message) { }
+          }
+      }
+  commit_message: "feat: add ReverseMap and MapCollection to IMapper interface"
+fragments:
+- id: order_mapper_using
+  selector:
+    path: src/Mappers/OrderMapper.cs
+    anchor: "using App.Core"
+- id: order_mapper_impl
+  selector:
+    path: src/Mappers/OrderMapper.cs
+    anchor: "class OrderMapper : IMapper<OrderEntity, OrderDto>"
+- id: user_mapper_using
+  selector:
+    path: src/Mappers/UserMapper.cs
+    anchor: "using App.Core"
+- id: product_mapper_using
+  selector:
+    path: src/Mappers/ProductMapper.cs
+    anchor: "using App.Core"
+- id: product_mapper_impl
+  selector:
+    path: src/Mappers/ProductMapper.cs
+    anchor: "class ProductMapper : IMapper<ProductEntity, ProductDto>"
+- id: invoice_mapper_using
+  selector:
+    path: src/Mappers/InvoiceMapper.cs
+    anchor: "using App.Core"
+- id: no_geocoding
+  selector:
+    path: src/Geo/GeocodingService.cs
+- id: no_distance
+  selector:
+    path: src/Geo/DistanceCalculator.cs
+- id: no_slack
+  selector:
+    path: src/Notifications/SlackNotifier.cs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_086_GEO_API_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_086_GEO_KEY_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_086_EARTH_RADIUS_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_086_UNIT_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_086_SLACK_WEBHOOK_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_086_SLACK_CHANNEL_F
+oracle:
+  required:
+  - order_mapper_using
+  - order_mapper_impl
+  - user_mapper_using
+  - product_mapper_using
+  - product_mapper_impl
+  - invoice_mapper_using
+  allowed: []
+  forbidden:
+  - no_geocoding
+  - no_distance
+  - no_slack
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

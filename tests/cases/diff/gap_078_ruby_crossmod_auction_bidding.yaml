@@ -1,0 +1,292 @@
+name: gap_078_ruby_crossmod_auction_bidding
+tags:
+- change:new_function
+- change:single_file
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+- lang:ruby
+repo:
+  initial_files:
+    lib/auction/lot.rb: |
+      module Auction
+        class Lot
+          attr_reader :item_id, :title, :reserve_price, :bids
+
+          def initialize(item_id, title, reserve_price)
+            @item_id = item_id
+            @title = title
+            @reserve_price = reserve_price
+            @bids = []
+          end
+
+          def place_bid(bidder_id, amount)
+            @bids << { bidder: bidder_id, amount: amount, time: Time.now }
+          end
+
+          def highest_bid
+            @bids.max_by { |b| b[:amount] }
+          end
+
+          def reserve_met?
+            top = highest_bid
+            top && top[:amount] >= @reserve_price
+          end
+        end
+      end
+    lib/auction/house.rb: |
+      require_relative 'lot'
+
+      module Auction
+        class House
+          def initialize(name)
+            @name = name
+            @lots = {}
+          end
+
+          def register_lot(lot)
+            @lots[lot.item_id] = lot
+          end
+
+          def find_lot(item_id)
+            @lots[item_id]
+          end
+
+          def active_lots
+            @lots.values.select { |l| !l.reserve_met? }
+          end
+
+          def sold_lots
+            @lots.values.select(&:reserve_met?)
+          end
+        end
+      end
+    lib/auction/settlement.rb: |
+      require_relative 'house'
+
+      module Auction
+        class Settlement
+          COMMISSION_RATE = 0.10
+
+          def initialize(house)
+            @house = house
+          end
+
+          def calculate_payout(item_id)
+            lot = @house.find_lot(item_id)
+            return nil unless lot&.reserve_met?
+            winning = lot.highest_bid[:amount]
+            commission = winning * COMMISSION_RATE
+            { gross: winning, commission: commission, net: winning - commission }
+          end
+        end
+      end
+    lib/auction/catalog.rb: |
+      TRAP_GAP078_CATALOG_A = "auction_catalog"
+      TRAP_GAP078_EDITION_B = "spring_2026"
+
+      module Auction
+        class Catalog
+          def initialize
+            @entries = []
+          end
+
+          def add_entry(title, estimate_low, estimate_high)
+            @entries << { title: title, low: estimate_low, high: estimate_high }
+          end
+
+          def print_entries
+            @entries.map { |e| "#{e[:title]}: #{e[:low]}-#{e[:high]}" }
+          end
+        end
+      end
+    lib/auction/analytics.rb: |
+      TRAP_GAP078_ANALYTICS_C = "bid_analytics"
+      TRAP_GAP078_WINDOW_D = 24
+
+      module Auction
+        class Analytics
+          def initialize
+            @events = []
+          end
+
+          def record(event_type, data)
+            @events << { type: event_type, data: data }
+          end
+
+          def count(event_type)
+            @events.count { |e| e[:type] == event_type }
+          end
+        end
+      end
+  changed_files:
+    lib/auction/lot.rb: |
+      module Auction
+        class Lot
+          attr_reader :item_id, :title, :reserve_price, :bids
+
+          def initialize(item_id, title, reserve_price)
+            @item_id = item_id
+            @title = title
+            @reserve_price = reserve_price
+            @bids = []
+          end
+
+          def place_bid(bidder_id, amount)
+            @bids << { bidder: bidder_id, amount: amount, time: Time.now }
+          end
+
+          def highest_bid
+            @bids.max_by { |b| b[:amount] }
+          end
+
+          def reserve_met?
+            top = highest_bid
+            top && top[:amount] >= @reserve_price
+          end
+        end
+      end
+    lib/auction/house.rb: |
+      require_relative 'lot'
+
+      module Auction
+        class House
+          def initialize(name)
+            @name = name
+            @lots = {}
+          end
+
+          def register_lot(lot)
+            @lots[lot.item_id] = lot
+          end
+
+          def find_lot(item_id)
+            @lots[item_id]
+          end
+
+          def active_lots
+            @lots.values.select { |l| !l.reserve_met? }
+          end
+
+          def sold_lots
+            @lots.values.select(&:reserve_met?)
+          end
+        end
+      end
+    lib/auction/settlement.rb: |
+      require_relative 'house'
+
+      module Auction
+        class Settlement
+          COMMISSION_RATE = 0.10
+
+          def initialize(house)
+            @house = house
+          end
+
+          def calculate_payout(item_id)
+            lot = @house.find_lot(item_id)
+            return nil unless lot&.reserve_met?
+            winning = lot.highest_bid[:amount]
+            commission = winning * COMMISSION_RATE
+            { gross: winning, commission: commission, net: winning - commission }
+          end
+
+          def batch_settlement
+            @house.sold_lots.map do |lot|
+              payout = calculate_payout(lot.item_id)
+              { item_id: lot.item_id, title: lot.title }.merge(payout)
+            end
+          end
+        end
+      end
+    lib/auction/catalog.rb: |
+      TRAP_GAP078_CATALOG_A = "auction_catalog"
+      TRAP_GAP078_EDITION_B = "spring_2026"
+
+      module Auction
+        class Catalog
+          def initialize
+            @entries = []
+          end
+
+          def add_entry(title, estimate_low, estimate_high)
+            @entries << { title: title, low: estimate_low, high: estimate_high }
+          end
+
+          def print_entries
+            @entries.map { |e| "#{e[:title]}: #{e[:low]}-#{e[:high]}" }
+          end
+        end
+      end
+    lib/auction/analytics.rb: |
+      TRAP_GAP078_ANALYTICS_C = "bid_analytics"
+      TRAP_GAP078_WINDOW_D = 24
+
+      module Auction
+        class Analytics
+          def initialize
+            @events = []
+          end
+
+          def record(event_type, data)
+            @events << { type: event_type, data: data }
+          end
+
+          def count(event_type)
+            @events.count { |e| e[:type] == event_type }
+          end
+        end
+      end
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: settlement_batch
+  selector:
+    path: lib/auction/settlement.rb
+    anchor: 'def batch_settlement'
+- id: settlement_payout
+  selector:
+    path: lib/auction/settlement.rb
+    anchor: 'def calculate_payout(item_id)'
+- id: house_sold_lots
+  selector:
+    path: lib/auction/house.rb
+    anchor: 'def sold_lots'
+- id: lot_reserve_met
+  selector:
+    path: lib/auction/lot.rb
+    anchor: 'def reserve_met?'
+- id: no_catalog
+  selector:
+    path: lib/auction/catalog.rb
+- id: no_analytics
+  selector:
+    path: lib/auction/analytics.rb
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP078_CATALOG_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP078_EDITION_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP078_ANALYTICS_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP078_WINDOW_D
+oracle:
+  required:
+  - settlement_batch
+  - house_sold_lots
+  - lot_reserve_met
+  allowed:
+  - settlement_payout
+  forbidden:
+  - no_catalog
+  - no_analytics
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

@@ -1,0 +1,181 @@
+name: bal3_3hop_042_java_spring_validation_chain
+tags:
+- lang:java
+- change:multi_file
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/app/validation/ValidationResult.java: |
+      package com.app.validation;
+
+      public class ValidationResult {
+          private boolean valid;
+          private String message;
+          public ValidationResult(boolean valid, String message) {
+              this.valid = valid;
+              this.message = message;
+          }
+          public boolean isValid() { return valid; }
+          public String getMessage() { return message; }
+      }
+    src/main/java/com/app/validation/FieldValidator.java: |
+      package com.app.validation;
+
+      public class FieldValidator {
+          public ValidationResult validate(String field, String value) {
+              if (value == null || value.isEmpty()) {
+                  return new ValidationResult(false, field + " is required");
+              }
+              return new ValidationResult(true, "ok");
+          }
+      }
+    src/main/java/com/app/validation/FormValidator.java: |
+      package com.app.validation;
+
+      import java.util.Map;
+      import java.util.List;
+      import java.util.ArrayList;
+
+      public class FormValidator {
+          private final FieldValidator fieldValidator;
+          public FormValidator(FieldValidator fieldValidator) {
+              this.fieldValidator = fieldValidator;
+          }
+          public List<ValidationResult> validateForm(Map<String, String> fields) {
+              List<ValidationResult> results = new ArrayList<>();
+              for (Map.Entry<String, String> entry : fields.entrySet()) {
+                  results.add(fieldValidator.validate(entry.getKey(), entry.getValue()));
+              }
+              return results;
+          }
+      }
+    src/main/java/com/app/service/RegistrationService.java: |
+      package com.app.service;
+
+      import com.app.validation.FormValidator;
+      import com.app.validation.ValidationResult;
+      import java.util.List;
+      import java.util.Map;
+
+      public class RegistrationService {
+          private final FormValidator formValidator;
+          public RegistrationService(FormValidator formValidator) {
+              this.formValidator = formValidator;
+          }
+          public boolean register(Map<String, String> data) {
+              List<ValidationResult> results = formValidator.validateForm(data);
+              return results.stream().allMatch(ValidationResult::isValid);
+          }
+      }
+    src/main/java/com/app/web/RegistrationController.java: |
+      package com.app.web;
+
+      import com.app.service.RegistrationService;
+      import java.util.Map;
+
+      public class RegistrationController {
+          private final RegistrationService registrationService;
+          public RegistrationController(RegistrationService registrationService) {
+              this.registrationService = registrationService;
+          }
+          public String register(Map<String, String> form) {
+              boolean ok = registrationService.register(form);
+              return ok ? "registered" : "invalid";
+          }
+      }
+    src/main/java/com/app/util/Sanitizer.java: |
+      package com.app.util;
+
+      public class Sanitizer {
+          public static String GARBAGE_042_SANITIZE_MARKER_A = "xss";
+          public static String GARBAGE_042_STRIP_MARKER_B = "html";
+          public static String clean(String s) { return s; }
+      }
+    src/main/java/com/app/util/Normalizer.java: |
+      package com.app.util;
+
+      public class Normalizer {
+          public static String GARBAGE_042_NORM_MARKER_C = "nfc";
+          public static boolean GARBAGE_042_TRIM_MARKER_D = true;
+          public static String normalize(String s) { return s.trim(); }
+      }
+  changed_files:
+    src/main/java/com/app/validation/ValidationResult.java: |
+      package com.app.validation;
+
+      public class ValidationResult {
+          private boolean valid;
+          private String message;
+          private String fieldName;
+          private String severity;
+          public ValidationResult(boolean valid, String message, String fieldName, String severity) {
+              this.valid = valid;
+              this.message = message;
+              this.fieldName = fieldName;
+              this.severity = severity;
+          }
+          public boolean isValid() { return valid; }
+          public String getMessage() { return message; }
+          public String getFieldName() { return fieldName; }
+          public String getSeverity() { return severity; }
+      }
+    src/main/java/com/app/validation/FieldValidator.java: |
+      package com.app.validation;
+
+      public class FieldValidator {
+          public ValidationResult validate(String field, String value) {
+              if (value == null || value.isEmpty()) {
+                  return new ValidationResult(false, field + " is required", field, "error");
+              }
+              return new ValidationResult(true, "ok", field, "info");
+          }
+      }
+  commit_message: "feat: add fieldName and severity to ValidationResult"
+fragments:
+- id: result_field_name
+  selector:
+    path: src/main/java/com/app/validation/ValidationResult.java
+    anchor: "private String fieldName"
+- id: result_severity
+  selector:
+    path: src/main/java/com/app/validation/ValidationResult.java
+    anchor: "private String severity"
+- id: field_validator_uses_result
+  selector:
+    path: src/main/java/com/app/validation/FieldValidator.java
+    anchor: "new ValidationResult(false"
+- id: form_imports_field
+  selector:
+    path: src/main/java/com/app/validation/FormValidator.java
+    anchor: "private final FieldValidator fieldValidator"
+- id: service_imports_form
+  selector:
+    path: src/main/java/com/app/service/RegistrationService.java
+    anchor: "import com.app.validation.FormValidator"
+- id: controller_imports_service
+  selector:
+    path: src/main/java/com/app/web/RegistrationController.java
+    anchor: "import com.app.service.RegistrationService"
+- id: no_sanitizer
+  selector:
+    path: src/main/java/com/app/util/Sanitizer.java
+    anchor: "GARBAGE_042_SANITIZE_MARKER_A"
+- id: no_normalizer
+  selector:
+    path: src/main/java/com/app/util/Normalizer.java
+    anchor: "GARBAGE_042_NORM_MARKER_C"
+oracle:
+  required:
+  - result_field_name
+  - result_severity
+  - field_validator_uses_result
+  - form_imports_field
+  - service_imports_form
+  allowed:
+  - controller_imports_service
+  forbidden:
+  - no_sanitizer
+  - no_normalizer

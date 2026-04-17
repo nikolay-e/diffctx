@@ -1,135 +1,336 @@
 name: csharp_019_extension_method
+tags:
+- lang:rust
+- change:bug_fix
+- change:multi_file
+- context:test_file
+- distance:2hop
+- difficulty:hard
 repo:
   initial_files:
-    Extensions/StringExtensions.cs: |
-      namespace MyApp.Extensions;
+    src/queue/worker.rs: |
+      use std::collections::VecDeque;
+      use std::sync::{Arc, Mutex};
 
-      public static class StringExtensions
-      {
-          public static bool IsNullOrWhiteSpace(this string? value)
-          {
-              return string.IsNullOrWhiteSpace(value);
+      pub type Job = Box<dyn FnOnce() + Send + 'static>;
+
+      pub struct WorkQueue {
+          jobs: Arc<Mutex<VecDeque<Job>>>,
+      }
+
+      impl WorkQueue {
+          pub fn new() -> Self {
+              WorkQueue {
+                  jobs: Arc::new(Mutex::new(VecDeque::new())),
+              }
           }
 
-          public static string Truncate(this string value, int maxLength)
-          {
-              return value.Length <= maxLength ? value : value.Substring(0, maxLength) + "...";
+          pub fn enqueue(&self, job: Job) {
+              let mut q = self.jobs.lock().unwrap();
+              q.push_back(job);
           }
 
-          public static string ToSlug(this string value)
-          {
-              return value.ToLower().Replace(" ", "-");
+          pub fn dequeue(&self) -> Option<Job> {
+              let mut q = self.jobs.lock().unwrap();
+              q.pop_front()
+          }
+
+          pub fn len(&self) -> usize {
+              self.jobs.lock().unwrap().len()
           }
       }
-    Program.cs: |
-      using System;
+    src/queue/executor.rs: |
+      use crate::queue::worker::WorkQueue;
 
-      class Program
-      {
-          static void Main() { }
+      pub struct Executor {
+          queue: WorkQueue,
+          max_retries: u32,
       }
-    Unrelated/ApiGateway.cs: |
-      namespace MyApp.Unrelated;
 
-      public class ApiGateway
-      {
-          private const string GARBAGE_CS_019_API_GATEWAY_A = "api_gateway_marker";
+      impl Executor {
+          pub fn new(max_retries: u32) -> Self {
+              Executor {
+                  queue: WorkQueue::new(),
+                  max_retries,
+              }
+          }
 
-          public string Route(string path) => GARBAGE_CS_019_API_GATEWAY_A + path;
+          pub fn submit<F: FnOnce() + Send + 'static>(&self, f: F) {
+              self.queue.enqueue(Box::new(f));
+          }
+
+          pub fn run_next(&self) -> bool {
+              if let Some(job) = self.queue.dequeue() {
+                  job();
+                  true
+              } else {
+                  false
+              }
+          }
+
+          pub fn pending(&self) -> usize {
+              self.queue.len()
+          }
       }
-    Unrelated/LoadBalancer.cs: |
-      namespace MyApp.Unrelated;
+    src/pipeline/stage.rs: |
+      use crate::queue::executor::Executor;
+      use std::sync::{Arc, Mutex};
 
-      public class LoadBalancer
-      {
-          public const string GARBAGE_CS_019_LOAD_BALANCER_B = "load_balancer_marker";
-
-          public string GetNextServer() => GARBAGE_CS_019_LOAD_BALANCER_B;
+      pub struct Pipeline {
+          stages: Vec<Executor>,
+          results: Arc<Mutex<Vec<String>>>,
       }
+
+      impl Pipeline {
+          pub fn new(stage_count: usize, max_retries: u32) -> Self {
+              Pipeline {
+                  stages: (0..stage_count).map(|_| Executor::new(max_retries)).collect(),
+                  results: Arc::new(Mutex::new(Vec::new())),
+              }
+          }
+
+          pub fn stage(&self, index: usize) -> &Executor {
+              &self.stages[index]
+          }
+      }
+    tests/queue_integration.rs: |
+      use crate::queue::executor::Executor;
+      use std::sync::{Arc, Mutex};
+
+      #[test]
+      fn executor_runs_submitted_job() {
+          let exec = Executor::new(3);
+          let flag = Arc::new(Mutex::new(false));
+          let flag2 = Arc::clone(&flag);
+          exec.submit(move || { *flag2.lock().unwrap() = true; });
+          exec.run_next();
+          assert!(*flag.lock().unwrap());
+      }
+
+      #[test]
+      fn executor_pending_count_decrements() {
+          let exec = Executor::new(3);
+          exec.submit(|| {});
+          exec.submit(|| {});
+          assert_eq!(exec.pending(), 2);
+          exec.run_next();
+          assert_eq!(exec.pending(), 1);
+      }
+    src/storage/rocksdb.rs: |
+      // GARBAGE_CS19_A = "rocksdb_storage_unrelated"
+      pub fn open_db(path: &str) -> Result<(), String> {
+          Ok(())
+      }
+    src/tracing/span.rs: |
+      // GARBAGE_CS19_B = "tracing_span_unrelated"
+      pub struct Span {
+          name: String,
+      }
+      impl Span {
+          pub fn new(name: &str) -> Self { Span { name: name.to_string() } }
+          pub fn finish(&self) {}
+      }
+    src/health/check.rs: |
+      // GARBAGE_CS19_C = "health_check_unrelated"
+      pub fn is_healthy() -> bool { true }
+    src/feature/flags.rs: |
+      // GARBAGE_CS19_D = "feature_flags_unrelated"
+      pub fn is_enabled(flag: &str) -> bool { false }
   changed_files:
-    Extensions/StringExtensions.cs: |
-      namespace MyApp.Extensions;
+    src/queue/worker.rs: |
+      use std::collections::VecDeque;
+      use std::sync::{Arc, Mutex};
 
-      public static class StringExtensions
-      {
-          public static bool IsNullOrWhiteSpace(this string? value)
-          {
-              return string.IsNullOrWhiteSpace(value);
+      pub type Job = Box<dyn FnOnce() + Send + 'static>;
+
+      pub struct WorkQueue {
+          jobs: Arc<Mutex<VecDeque<Job>>>,
+      }
+
+      impl WorkQueue {
+          pub fn new() -> Self {
+              WorkQueue {
+                  jobs: Arc::new(Mutex::new(VecDeque::new())),
+              }
           }
 
-          public static string Truncate(this string value, int maxLength)
-          {
-              return value.Length <= maxLength ? value : value.Substring(0, maxLength) + "...";
+          pub fn enqueue(&self, job: Job) {
+              let mut q = self.jobs.lock().unwrap();
+              q.push_back(job);
           }
 
-          public static string ToSlug(this string value)
-          {
-              return value.ToLower().Replace(" ", "-");
+          pub fn dequeue(&self) -> Option<Job> {
+              let mut q = self.jobs.lock().unwrap();
+              q.pop_front()
+          }
+
+          pub fn is_empty(&self) -> bool {
+              self.jobs.lock().unwrap().is_empty()
+          }
+
+          pub fn len(&self) -> usize {
+              self.jobs.lock().unwrap().len()
           }
       }
-    Program.cs: |
-      using System;
-      using MyApp.Extensions;
+    src/queue/executor.rs: |
+      use crate::queue::worker::WorkQueue;
 
-      class Program
-      {
-          static void Main()
-          {
-              string title = "Hello World From CSharp";
-              var slug = title.ToSlug();
-              var truncated = title.Truncate(10);
-              Console.WriteLine($"{slug} - {truncated}");
+      pub struct Executor {
+          queue: WorkQueue,
+          max_retries: u32,
+      }
+
+      impl Executor {
+          pub fn new(max_retries: u32) -> Self {
+              Executor {
+                  queue: WorkQueue::new(),
+                  max_retries,
+              }
+          }
+
+          pub fn submit<F: FnOnce() + Send + 'static>(&self, f: F) {
+              self.queue.enqueue(Box::new(f));
+          }
+
+          pub fn run_next(&self) -> bool {
+              if let Some(job) = self.queue.dequeue() {
+                  job();
+                  true
+              } else {
+                  false
+              }
+          }
+
+          pub fn run_all(&self) -> usize {
+              let mut count = 0;
+              while self.run_next() {
+                  count += 1;
+              }
+              count
+          }
+
+          pub fn pending(&self) -> usize {
+              self.queue.len()
+          }
+
+          pub fn is_idle(&self) -> bool {
+              self.queue.is_empty()
           }
       }
-    Unrelated/ApiGateway.cs: |
-      namespace MyApp.Unrelated;
+    src/pipeline/stage.rs: |
+      use crate::queue::executor::Executor;
+      use std::sync::{Arc, Mutex};
 
-      public class ApiGateway
-      {
-          private const string GARBAGE_CS_019_API_GATEWAY_A = "api_gateway_marker";
-
-          public string Route(string path) => GARBAGE_CS_019_API_GATEWAY_A + path;
+      pub struct Pipeline {
+          stages: Vec<Executor>,
+          results: Arc<Mutex<Vec<String>>>,
       }
-    Unrelated/LoadBalancer.cs: |
-      namespace MyApp.Unrelated;
 
-      public class LoadBalancer
-      {
-          public const string GARBAGE_CS_019_LOAD_BALANCER_B = "load_balancer_marker";
+      impl Pipeline {
+          pub fn new(stage_count: usize, max_retries: u32) -> Self {
+              Pipeline {
+                  stages: (0..stage_count).map(|_| Executor::new(max_retries)).collect(),
+                  results: Arc::new(Mutex::new(Vec::new())),
+              }
+          }
 
-          public string GetNextServer() => GARBAGE_CS_019_LOAD_BALANCER_B;
+          pub fn stage(&self, index: usize) -> &Executor {
+              &self.stages[index]
+          }
       }
-  commit_message: Update files
+    tests/queue_integration.rs: |
+      use crate::queue::executor::Executor;
+      use std::sync::{Arc, Mutex};
+
+      #[test]
+      fn executor_runs_submitted_job() {
+          let exec = Executor::new(3);
+          let flag = Arc::new(Mutex::new(false));
+          let flag2 = Arc::clone(&flag);
+          exec.submit(move || { *flag2.lock().unwrap() = true; });
+          exec.run_next();
+          assert!(*flag.lock().unwrap());
+      }
+
+      #[test]
+      fn executor_pending_count_decrements() {
+          let exec = Executor::new(3);
+          exec.submit(|| {});
+          exec.submit(|| {});
+          assert_eq!(exec.pending(), 2);
+          exec.run_next();
+          assert_eq!(exec.pending(), 1);
+      }
+
+      #[test]
+      fn executor_run_all_drains_queue() {
+          let exec = Executor::new(3);
+          exec.submit(|| {});
+          exec.submit(|| {});
+          exec.submit(|| {});
+          let ran = exec.run_all();
+          assert_eq!(ran, 3);
+          assert!(exec.is_idle());
+      }
+    src/storage/rocksdb.rs: |
+      // GARBAGE_CS19_A = "rocksdb_storage_unrelated"
+      pub fn open_db(path: &str) -> Result<(), String> {
+          Ok(())
+      }
+    src/tracing/span.rs: |
+      // GARBAGE_CS19_B = "tracing_span_unrelated"
+      pub struct Span {
+          name: String,
+      }
+      impl Span {
+          pub fn new(name: &str) -> Self { Span { name: name.to_string() } }
+          pub fn finish(&self) {}
+      }
+    src/health/check.rs: |
+      // GARBAGE_CS19_C = "health_check_unrelated"
+      pub fn is_healthy() -> bool { true }
+    src/feature/flags.rs: |
+      // GARBAGE_CS19_D = "feature_flags_unrelated"
+      pub fn is_enabled(flag: &str) -> bool { false }
+  commit_message: "fix: add run_all and is_idle to Executor, is_empty to WorkQueue"
 fragments:
-- id: program_file
+- id: run_all_method
   selector:
-    path: Program.cs
-- id: req_global_0
+    path: src/queue/executor.rs
+    anchor: "pub fn run_all"
+- id: is_idle_method
   selector:
-    anchor: using MyApp.Extensions;
-- id: req_global_1
+    path: src/queue/executor.rs
+    anchor: "pub fn is_idle"
+- id: is_empty_method
   selector:
-    anchor: static void Main()
-- id: no_global_0
+    path: src/queue/worker.rs
+    anchor: "pub fn is_empty"
+- id: test_run_all_drains
   selector:
-    anchor: GARBAGE_CS_019_API_GATEWAY_A
-- id: no_global_1
+    path: tests/queue_integration.rs
+    anchor: "executor_run_all_drains_queue"
+- id: no_garbage_a
   selector:
-    anchor: GARBAGE_CS_019_LOAD_BALANCER_B
-- id: no_global_2
+    anchor: GARBAGE_CS19_A
+- id: no_garbage_b
   selector:
-    anchor: ApiGateway.cs
-- id: no_global_3
+    anchor: GARBAGE_CS19_B
+- id: no_garbage_c
   selector:
-    anchor: LoadBalancer.cs
+    anchor: GARBAGE_CS19_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_CS19_D
 oracle:
   required:
-  - program_file
-  - req_global_0
-  - req_global_1
+  - run_all_method
+  - is_idle_method
+  - is_empty_method
+  - test_run_all_drains
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

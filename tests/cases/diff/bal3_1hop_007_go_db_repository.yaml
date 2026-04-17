@@ -1,0 +1,212 @@
+name: bal3_1hop_007_go_db_repository
+tags:
+- lang:go
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    pkg/db/connection.go: |
+      package db
+
+      type Connection struct {
+          DSN     string
+          MaxOpen int
+      }
+
+      func NewConnection(dsn string) *Connection {
+          return &Connection{DSN: dsn, MaxOpen: 10}
+      }
+
+      func (c *Connection) Query(sql string) ([]map[string]string, error) {
+          return nil, nil
+      }
+
+      func (c *Connection) Execute(sql string) error {
+          return nil
+      }
+    internal/repo/user_repo.go: |
+      package repo
+
+      import "pkg/db"
+
+      type UserRepo struct {
+          conn *db.Connection
+      }
+
+      func NewUserRepo(c *db.Connection) *UserRepo {
+          return &UserRepo{conn: c}
+      }
+
+      func (r *UserRepo) FindByID(id string) (map[string]string, error) {
+          rows, err := r.conn.Query("SELECT * FROM users WHERE id = " + id)
+          if err != nil {
+              return nil, err
+          }
+          if len(rows) == 0 {
+              return nil, nil
+          }
+          return rows[0], nil
+      }
+    internal/repo/order_repo.go: |
+      package repo
+
+      import "pkg/db"
+
+      type OrderRepo struct {
+          conn *db.Connection
+      }
+
+      func NewOrderRepo(c *db.Connection) *OrderRepo {
+          return &OrderRepo{conn: c}
+      }
+
+      func (r *OrderRepo) FindByUserID(userID string) ([]map[string]string, error) {
+          return r.conn.Query("SELECT * FROM orders WHERE user_id = " + userID)
+      }
+    internal/repo/product_repo.go: |
+      package repo
+
+      import "pkg/db"
+
+      type ProductRepo struct {
+          conn *db.Connection
+      }
+
+      func NewProductRepo(c *db.Connection) *ProductRepo {
+          return &ProductRepo{conn: c}
+      }
+
+      func (r *ProductRepo) FindAll() ([]map[string]string, error) {
+          return r.conn.Query("SELECT * FROM products")
+      }
+    pkg/email/sender.go: |
+      package email
+
+      GARBAGE_007_SENDER_A = "sender"
+
+      type Sender struct {
+          Host string
+          Port int
+      }
+
+      func (s *Sender) Send(to, body string) error {
+          return nil
+      }
+    pkg/sms/gateway.go: |
+      package sms
+
+      GARBAGE_007_SMS_B = "sms"
+
+      type Gateway struct {
+          APIKey string
+      }
+
+      func (g *Gateway) Send(phone, msg string) error {
+          return nil
+      }
+    pkg/push/notifier.go: |
+      package push
+
+      GARBAGE_007_PUSH_C = "push"
+
+      type Notifier struct {
+          Token string
+      }
+
+      func (n *Notifier) Notify(deviceID, msg string) error {
+          return nil
+      }
+  changed_files:
+    pkg/db/connection.go: |
+      package db
+
+      import "context"
+
+      type Connection struct {
+          DSN      string
+          MaxOpen  int
+          MaxIdle  int
+          Timeout  int
+      }
+
+      func NewConnection(dsn string) *Connection {
+          return &Connection{DSN: dsn, MaxOpen: 10, MaxIdle: 5, Timeout: 30}
+      }
+
+      func (c *Connection) Query(ctx context.Context, sql string, args ...interface{}) ([]map[string]string, error) {
+          return nil, nil
+      }
+
+      func (c *Connection) Execute(ctx context.Context, sql string, args ...interface{}) error {
+          return nil
+      }
+  commit_message: "feat: add context and variadic args to db.Connection methods"
+fragments:
+- id: max_idle_field
+  selector:
+    path: pkg/db/connection.go
+    anchor: "MaxIdle  int"
+- id: timeout_field
+  selector:
+    path: pkg/db/connection.go
+    anchor: "Timeout  int"
+- id: query_ctx_sig
+  selector:
+    path: pkg/db/connection.go
+    anchor: "func (c *Connection) Query(ctx context.Context"
+- id: execute_ctx_sig
+  selector:
+    path: pkg/db/connection.go
+    anchor: "func (c *Connection) Execute(ctx context.Context"
+- id: user_repo_calls_query
+  selector:
+    path: internal/repo/user_repo.go
+    anchor: "r.conn.Query("
+- id: order_repo_calls_query
+  selector:
+    path: internal/repo/order_repo.go
+    anchor: "r.conn.Query("
+- id: product_repo_calls_query
+  selector:
+    path: internal/repo/product_repo.go
+    anchor: "r.conn.Query("
+- id: unrelated_sender
+  selector:
+    path: pkg/email/sender.go
+    anchor: "type Sender struct"
+- id: unrelated_sms
+  selector:
+    path: pkg/sms/gateway.go
+    anchor: "type Gateway struct"
+- id: unrelated_push
+  selector:
+    path: pkg/push/notifier.go
+    anchor: "type Notifier struct"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_007_SENDER_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_007_SMS_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_007_PUSH_C
+oracle:
+  required:
+  - max_idle_field
+  - query_ctx_sig
+  - execute_ctx_sig
+  - user_repo_calls_query
+  allowed:
+  - timeout_field
+  - order_repo_calls_query
+  - product_repo_calls_query
+  forbidden:
+  - unrelated_sender
+  - unrelated_sms
+  - unrelated_push
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

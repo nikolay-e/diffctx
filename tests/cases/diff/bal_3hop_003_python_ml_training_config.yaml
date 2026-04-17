@@ -1,0 +1,132 @@
+name: bal_3hop_003_python_ml_training_config
+tags:
+- lang:python
+- change:single_file
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    ml/config.py: |
+      class TrainingConfig:
+          def __init__(self, lr: float, epochs: int):
+              self.lr = lr
+              self.epochs = epochs
+    ml/optimizer.py: |
+      from ml.config import TrainingConfig
+      class Optimizer:
+          def __init__(self, config: TrainingConfig):
+              self.config = config
+          def step(self, gradients: list[float]) -> list[float]:
+              return [g * self.config.lr for g in gradients]
+    ml/trainer.py: |
+      from ml.optimizer import Optimizer
+      class Trainer:
+          def __init__(self, optimizer: Optimizer):
+              self.optimizer = optimizer
+          def train_epoch(self, data: list) -> float:
+              loss = sum(len(d) for d in data) / len(data)
+              return loss
+    ml/experiment.py: |
+      from ml.trainer import Trainer
+      from ml.optimizer import Optimizer
+      from ml.config import TrainingConfig
+      def run_experiment(lr: float, epochs: int, data: list) -> list[float]:
+          config = TrainingConfig(lr=lr, epochs=epochs)
+          optimizer = Optimizer(config)
+          trainer = Trainer(optimizer)
+          losses = []
+          for _ in range(config.epochs):
+              losses.append(trainer.train_epoch(data))
+          return losses
+    ml/data_loader.py: |
+      import random
+      def load_dataset(path: str) -> list[list[float]]:
+          random.seed(42)
+          return [[random.random() for _ in range(10)] for _ in range(100)]
+    utils/plotting.py: |
+      def plot_losses(losses: list[float]):
+          for i, loss in enumerate(losses):
+              print(f"Epoch {i}: {loss:.4f}")
+  changed_files:
+    ml/config.py: |
+      class TrainingConfig:
+          def __init__(self, lr: float, epochs: int, weight_decay: float = 0.01):
+              self.lr = lr
+              self.epochs = epochs
+              self.weight_decay = weight_decay
+          def effective_lr(self, step: int) -> float:
+              return self.lr * (1.0 / (1.0 + self.weight_decay * step))
+    ml/optimizer.py: |
+      from ml.config import TrainingConfig
+      class Optimizer:
+          def __init__(self, config: TrainingConfig):
+              self.config = config
+          def step(self, gradients: list[float]) -> list[float]:
+              return [g * self.config.lr for g in gradients]
+    ml/trainer.py: |
+      from ml.optimizer import Optimizer
+      class Trainer:
+          def __init__(self, optimizer: Optimizer):
+              self.optimizer = optimizer
+          def train_epoch(self, data: list) -> float:
+              loss = sum(len(d) for d in data) / len(data)
+              return loss
+    ml/experiment.py: |
+      from ml.trainer import Trainer
+      from ml.optimizer import Optimizer
+      from ml.config import TrainingConfig
+      def run_experiment(lr: float, epochs: int, data: list) -> list[float]:
+          config = TrainingConfig(lr=lr, epochs=epochs)
+          optimizer = Optimizer(config)
+          trainer = Trainer(optimizer)
+          losses = []
+          for _ in range(config.epochs):
+              losses.append(trainer.train_epoch(data))
+          return losses
+    ml/data_loader.py: |
+      import random
+      def load_dataset(path: str) -> list[list[float]]:
+          random.seed(42)
+          return [[random.random() for _ in range(10)] for _ in range(100)]
+    utils/plotting.py: |
+      def plot_losses(losses: list[float]):
+          for i, loss in enumerate(losses):
+              print(f"Epoch {i}: {loss:.4f}")
+  commit_message: "feat: add weight decay and effective_lr to TrainingConfig"
+fragments:
+- id: config_weight_decay
+  selector:
+    path: ml/config.py
+    anchor: "def effective_lr(self, step: int) -> float"
+- id: optimizer_uses_config
+  selector:
+    path: ml/optimizer.py
+    anchor: "from ml.config import TrainingConfig"
+- id: trainer_uses_optimizer
+  selector:
+    path: ml/trainer.py
+    anchor: "from ml.optimizer import Optimizer"
+- id: experiment_uses_trainer
+  selector:
+    path: ml/experiment.py
+    anchor: "from ml.trainer import Trainer"
+- id: no_data_loader
+  selector:
+    path: ml/data_loader.py
+    anchor: "def load_dataset"
+- id: no_plotting
+  selector:
+    path: utils/plotting.py
+    anchor: "def plot_losses"
+oracle:
+  required:
+  - config_weight_decay
+  - optimizer_uses_config
+  - trainer_uses_optimizer
+  - experiment_uses_trainer
+  allowed: []
+  forbidden:
+  - no_data_loader
+  - no_plotting

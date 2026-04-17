@@ -1,232 +1,240 @@
 name: php_013_anonymous_class
+tags:
+- lang:scala
+- change:multi_file
+- change:new_function
+- context:cross_module
+- distance:3hop+
+- difficulty:hard
 repo:
   initial_files:
-    src/Contracts/Handler.php: |
-      <?php
-      namespace App\Contracts;
+    src/main/scala/warehouse/Product.scala: |
+      package warehouse
 
-      interface Handler {
-          public function handle(mixed $data): mixed;
-          public function supports(string $type): bool;
+      case class Product(
+        sku: String,
+        name: String,
+        stockCount: Int,
+        reorderPoint: Int
+      )
+    src/main/scala/warehouse/ProductRepository.scala: |
+      package warehouse
+
+      class ProductRepository {
+        private var store: Map[String, Product] = Map.empty
+
+        def save(p: Product): Unit = {
+          store = store + (p.sku -> p)
+        }
+
+        def find(sku: String): Option[Product] = store.get(sku)
+
+        def all(): List[Product] = store.values.toList
       }
-    src/Pipeline/Pipeline.php: |
-      <?php
-      namespace App\Pipeline;
+    src/main/scala/warehouse/StockService.scala: |
+      package warehouse
 
-      use App\Contracts\Handler;
-
-      class Pipeline {
-          private array $handlers = [];
-
-          public function addHandler(Handler $handler): self {
-              $this->handlers[] = $handler;
-              return $this;
+      class StockService(repo: ProductRepository) {
+        def receive(sku: String, qty: Int): Either[String, Product] = {
+          repo.find(sku) match {
+            case None    => Left(s"SKU $sku not found")
+            case Some(p) =>
+              val updated = p.copy(stockCount = p.stockCount + qty)
+              repo.save(updated)
+              Right(updated)
           }
-
-          public function process(mixed $data, string $type): mixed {
-              foreach ($this->handlers as $handler) {
-                  if ($handler->supports($type)) {
-                      $data = $handler->handle($data);
-                  }
-              }
-              return $data;
-          }
+        }
       }
-    src/Pipeline/Middleware.php: |
-      <?php
-      namespace App\Pipeline;
+    src/main/scala/warehouse/api/StockController.scala: |
+      package warehouse.api
 
-      class Middleware {
-          private array $stack = [];
+      import warehouse.{StockService, ProductRepository, Product}
 
-          public function addMiddleware(callable $middleware): self {
-              $this->stack[] = $middleware;
-              return $this;
+      class StockController(service: StockService) {
+        def handleReceive(sku: String, qty: Int): String = {
+          service.receive(sku, qty) match {
+            case Right(p) => s"Received $qty units of ${p.sku}, stock now ${p.stockCount}"
+            case Left(e)  => s"ERROR: $e"
           }
-
-          public function process(mixed $request): mixed {
-              foreach ($this->stack as $middleware) {
-                  $request = $middleware($request);
-              }
-              return $request;
-          }
-
-          public function supports(string $contentType): bool {
-              return $contentType === 'application/json';
-          }
+        }
       }
-    src/Events/EventDispatcher.php: |
-      <?php
-      namespace App\Events;
+    src/main/scala/PHP013_Shipping.scala: |
+      package shipping
 
-      class EventDispatcher {
-          private array $listeners = [];
+      object PHP013_Shipping {
+        val PHP013_GARBAGE_A = "shipping_marker"
+        val PHP013_GARBAGE_B = "carrier_code"
 
-          public function addListener(string $event, callable $handler): void {
-              $this->listeners[$event][] = $handler;
-          }
+        def getLabel(orderId: String): String = s"LABEL-$orderId"
+      }
+    src/main/scala/PHP013_Pricing.scala: |
+      package pricing
 
-          public function dispatch(string $event, mixed $data): mixed {
-              foreach ($this->listeners[$event] ?? [] as $handler) {
-                  $data = $handler($data);
-              }
-              return $data;
-          }
+      object PHP013_Pricing {
+        val PHP013_GARBAGE_C = "pricing_marker"
+        val PHP013_GARBAGE_D = "currency"
 
-          public function supports(string $event): bool {
-              return isset($this->listeners[$event]);
-          }
+        def applyDiscount(price: Double, pct: Double): Double = price * (1 - pct / 100)
+      }
+    src/main/scala/PHP013_Analytics.scala: |
+      package analytics
+
+      object PHP013_Analytics {
+        val PHP013_GARBAGE_E = "analytics_marker"
+
+        def trackEvent(name: String): Unit = {}
       }
   changed_files:
-    src/Contracts/Handler.php: |
-      <?php
-      namespace App\Contracts;
+    src/main/scala/warehouse/Product.scala: |
+      package warehouse
 
-      interface Handler {
-          public function handle(mixed $data): mixed;
-          public function supports(string $type): bool;
+      case class Product(
+        sku: String,
+        name: String,
+        stockCount: Int,
+        reorderPoint: Int,
+        costPrice: Double
+      )
+    src/main/scala/warehouse/ProductRepository.scala: |
+      package warehouse
+
+      class ProductRepository {
+        private var store: Map[String, Product] = Map.empty
+
+        def save(p: Product): Unit = {
+          store = store + (p.sku -> p)
+        }
+
+        def find(sku: String): Option[Product] = store.get(sku)
+
+        def all(): List[Product] = store.values.toList
+
+        def belowReorder(): List[Product] =
+          store.values.filter(p => p.stockCount <= p.reorderPoint).toList
       }
-    src/Pipeline/Pipeline.php: |
-      <?php
-      namespace App\Pipeline;
+    src/main/scala/warehouse/StockService.scala: |
+      package warehouse
 
-      use App\Contracts\Handler;
-
-      class Pipeline {
-          private array $handlers = [];
-
-          public function addHandler(Handler $handler): self {
-              $this->handlers[] = $handler;
-              return $this;
+      class StockService(repo: ProductRepository) {
+        def receive(sku: String, qty: Int): Either[String, Product] = {
+          repo.find(sku) match {
+            case None    => Left(s"SKU $sku not found")
+            case Some(p) =>
+              val updated = p.copy(stockCount = p.stockCount + qty)
+              repo.save(updated)
+              Right(updated)
           }
+        }
 
-          public function process(mixed $data, string $type): mixed {
-              foreach ($this->handlers as $handler) {
-                  if ($handler->supports($type)) {
-                      $data = $handler->handle($data);
-                  }
+        def deduct(sku: String, qty: Int): Either[String, Product] = {
+          repo.find(sku) match {
+            case None    => Left(s"SKU $sku not found")
+            case Some(p) =>
+              if (p.stockCount < qty) Left(s"Insufficient stock for $sku")
+              else {
+                val updated = p.copy(stockCount = p.stockCount - qty)
+                repo.save(updated)
+                Right(updated)
               }
-              return $data;
           }
+        }
 
-          public function addInlineHandler(string $type, callable $callback): self {
-              $this->handlers[] = new class($type, $callback) implements Handler {
-                  public function __construct(
-                      private string $supportedType,
-                      private $callback
-                  ) {}
-
-                  public function handle(mixed $data): mixed {
-                      return ($this->callback)($data);
-                  }
-
-                  public function supports(string $type): bool {
-                      return $type === $this->supportedType;
-                  }
-              };
-              return $this;
-          }
+        def reorderAlerts(): List[Product] = repo.belowReorder()
       }
-    src/Pipeline/Middleware.php: |
-      <?php
-      namespace App\Pipeline;
+    src/main/scala/warehouse/api/StockController.scala: |
+      package warehouse.api
 
-      class Middleware {
-          private array $stack = [];
+      import warehouse.{StockService, ProductRepository, Product}
 
-          public function addMiddleware(callable $middleware): self {
-              $this->stack[] = $middleware;
-              return $this;
+      class StockController(service: StockService) {
+        def handleReceive(sku: String, qty: Int): String = {
+          service.receive(sku, qty) match {
+            case Right(p) => s"Received $qty units of ${p.sku}, stock now ${p.stockCount}"
+            case Left(e)  => s"ERROR: $e"
           }
+        }
 
-          public function process(mixed $request): mixed {
-              foreach ($this->stack as $middleware) {
-                  $request = $middleware($request);
-              }
-              return $request;
+        def handleDeduct(sku: String, qty: Int): String = {
+          service.deduct(sku, qty) match {
+            case Right(p) => s"Deducted $qty units of ${p.sku}, stock now ${p.stockCount}"
+            case Left(e)  => s"ERROR: $e"
           }
-
-          public function supports(string $contentType): bool {
-              return $contentType === 'application/json';
-          }
+        }
       }
-    src/Events/EventDispatcher.php: |
-      <?php
-      namespace App\Events;
+    src/main/scala/PHP013_Shipping.scala: |
+      package shipping
 
-      class EventDispatcher {
-          private array $listeners = [];
+      object PHP013_Shipping {
+        val PHP013_GARBAGE_A = "shipping_marker"
+        val PHP013_GARBAGE_B = "carrier_code"
 
-          public function addListener(string $event, callable $handler): void {
-              $this->listeners[$event][] = $handler;
-          }
-
-          public function dispatch(string $event, mixed $data): mixed {
-              foreach ($this->listeners[$event] ?? [] as $handler) {
-                  $data = $handler($data);
-              }
-              return $data;
-          }
-
-          public function supports(string $event): bool {
-              return isset($this->listeners[$event]);
-          }
+        def getLabel(orderId: String): String = s"LABEL-$orderId"
       }
-  commit_message: Update files
+    src/main/scala/PHP013_Pricing.scala: |
+      package pricing
+
+      object PHP013_Pricing {
+        val PHP013_GARBAGE_C = "pricing_marker"
+        val PHP013_GARBAGE_D = "currency"
+
+        def applyDiscount(price: Double, pct: Double): Double = price * (1 - pct / 100)
+      }
+    src/main/scala/PHP013_Analytics.scala: |
+      package analytics
+
+      object PHP013_Analytics {
+        val PHP013_GARBAGE_E = "analytics_marker"
+
+        def trackEvent(name: String): Unit = {}
+      }
+  commit_message: "feat: add costPrice to Product, deduct and reorderAlerts to StockService"
 fragments:
-- id: pipeline
+- id: product_cost_price
   selector:
-    path: src/Pipeline/Pipeline.php
-    anchor: new class($type, $callback) implements Handler
-- id: pipeline_1
+    path: src/main/scala/warehouse/Product.scala
+    anchor: "costPrice: Double"
+- id: repo_below_reorder
   selector:
-    path: src/Pipeline/Pipeline.php
-    anchor: public function addInlineHandler
-- id: handler
+    path: src/main/scala/warehouse/ProductRepository.scala
+    anchor: "def belowReorder()"
+- id: service_deduct
   selector:
-    path: src/Contracts/Handler.php
-    anchor: 'public function handle(mixed $data): mixed'
-- id: handler_1
+    path: src/main/scala/warehouse/StockService.scala
+    anchor: "def deduct(sku: String, qty: Int)"
+- id: service_reorder_alerts
   selector:
-    path: src/Contracts/Handler.php
-    anchor: 'public function supports(string $type): bool'
-- id: no_middleware
+    path: src/main/scala/warehouse/StockService.scala
+    anchor: "def reorderAlerts()"
+- id: controller_handle_deduct
   selector:
-    path: src/Pipeline/Middleware.php
-- id: no_eventdispatcher
+    path: src/main/scala/warehouse/api/StockController.scala
+    anchor: "def handleDeduct(sku: String, qty: Int)"
+- id: no_garbage_a
   selector:
-    path: src/Events/EventDispatcher.php
-- id: no_global_0
+    anchor: PHP013_GARBAGE_A
+- id: no_garbage_b
   selector:
-    anchor: Middleware
-- id: no_global_1
+    anchor: PHP013_GARBAGE_B
+- id: no_garbage_c
   selector:
-    anchor: EventDispatcher
-- id: no_global_2
+    anchor: PHP013_GARBAGE_C
+- id: no_garbage_d
   selector:
-    anchor: class Middleware
-- id: no_global_3
+    anchor: PHP013_GARBAGE_D
+- id: no_garbage_e
   selector:
-    anchor: class EventDispatcher
-- id: no_global_4
-  selector:
-    anchor: addMiddleware
-- id: no_global_5
-  selector:
-    anchor: addListener
+    anchor: PHP013_GARBAGE_E
 oracle:
   required:
-  - pipeline
-  - pipeline_1
-  - handler
-  - handler_1
+  - product_cost_price
+  - repo_below_reorder
+  - service_deduct
+  - service_reorder_alerts
+  - controller_handle_deduct
   allowed: []
   forbidden:
-  - no_middleware
-  - no_eventdispatcher
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d
+  - no_garbage_e

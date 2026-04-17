@@ -1,0 +1,96 @@
+name: bal_1hop_012_go_gateway_calls_circuit
+tags:
+- lang:kotlin
+- change:bug_fix
+- change:single_file
+- context:same_file
+- distance:0hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/healthcare/DosageCalculator.kt: |
+      data class Patient(val weightKg: Double, val ageYears: Int, val renalScore: Int)
+      data class Drug(val name: String, val baseDoseMgPerKg: Double, val maxDoseMg: Double)
+
+      class DosageCalculator {
+          fun calculate(patient: Patient, drug: Drug): Double {
+              val raw = patient.weightKg * drug.baseDoseMgPerKg
+              return if (raw > drug.maxDoseMg) drug.maxDoseMg else raw
+          }
+
+          fun adjustForRenal(dose: Double, renalScore: Int): Double {
+              // BUG: inverted condition — high renal score should reduce dose
+              return if (renalScore > 60) dose else dose * 0.5
+          }
+
+          fun finalDose(patient: Patient, drug: Drug): Double {
+              val base = calculate(patient, drug)
+              return adjustForRenal(base, patient.renalScore)
+          }
+      }
+    garbage/PharmacyInventory.kt: |
+      // GARBAGE_MED_A = "pharmacy_inventory_marker"
+    garbage/PatientRecord.kt: |
+      // GARBAGE_MED_B = "patient_record_marker"
+    garbage/BillingCode.kt: |
+      // GARBAGE_MED_C = "billing_code_marker"
+    garbage/InsuranceClaim.kt: |
+      // GARBAGE_MED_D = "insurance_claim_marker"
+  changed_files:
+    src/healthcare/DosageCalculator.kt: |
+      data class Patient(val weightKg: Double, val ageYears: Int, val renalScore: Int)
+      data class Drug(val name: String, val baseDoseMgPerKg: Double, val maxDoseMg: Double)
+
+      class DosageCalculator {
+          fun calculate(patient: Patient, drug: Drug): Double {
+              val raw = patient.weightKg * drug.baseDoseMgPerKg
+              return if (raw > drug.maxDoseMg) drug.maxDoseMg else raw
+          }
+
+          fun adjustForRenal(dose: Double, renalScore: Int): Double {
+              return if (renalScore <= 60) dose * 0.5 else dose
+          }
+
+          fun finalDose(patient: Patient, drug: Drug): Double {
+              val base = calculate(patient, drug)
+              return adjustForRenal(base, patient.renalScore)
+          }
+      }
+    garbage/PharmacyInventory.kt: |
+      // GARBAGE_MED_A = "pharmacy_inventory_marker"
+    garbage/PatientRecord.kt: |
+      // GARBAGE_MED_B = "patient_record_marker"
+    garbage/BillingCode.kt: |
+      // GARBAGE_MED_C = "billing_code_marker"
+    garbage/InsuranceClaim.kt: |
+      // GARBAGE_MED_D = "insurance_claim_marker"
+  commit_message: "fix: invert renal score condition in DosageCalculator.adjustForRenal"
+fragments:
+- id: adjust_for_renal
+  selector:
+    anchor: "fun adjustForRenal(dose: Double"
+- id: final_dose
+  selector:
+    anchor: "fun finalDose(patient: Patient"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_MED_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_MED_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_MED_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_MED_D
+oracle:
+  required:
+  - adjust_for_renal
+  allowed:
+  - final_dose
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

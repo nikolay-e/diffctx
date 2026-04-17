@@ -1,0 +1,203 @@
+name: bal2_3hop_015_java_metrics_collector
+tags:
+- lang:java
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/app/metrics/Metric.java: |
+      package com.app.metrics;
+
+      public class Metric {
+          private final String name;
+          private final double value;
+          public Metric(String name, double value) {
+              this.name = name;
+              this.value = value;
+          }
+          public String getName() { return name; }
+          public double getValue() { return value; }
+      }
+    src/main/java/com/app/metrics/MetricRegistry.java: |
+      package com.app.metrics;
+
+      import com.app.metrics.Metric;
+      import java.util.ArrayList;
+      import java.util.List;
+
+      public class MetricRegistry {
+          private final List<Metric> metrics = new ArrayList<>();
+          public void record(Metric metric) {
+              metrics.add(metric);
+          }
+          public List<Metric> getAll() { return metrics; }
+      }
+    src/main/java/com/app/monitor/HealthChecker.java: |
+      package com.app.monitor;
+
+      import com.app.metrics.MetricRegistry;
+      import com.app.metrics.Metric;
+
+      public class HealthChecker {
+          private final MetricRegistry registry;
+          public HealthChecker(MetricRegistry registry) {
+              this.registry = registry;
+          }
+          public boolean isHealthy() {
+              return registry.getAll().stream()
+                  .allMatch(m -> m.getValue() < 100);
+          }
+      }
+    src/main/java/com/app/api/StatusEndpoint.java: |
+      package com.app.api;
+
+      import com.app.monitor.HealthChecker;
+
+      public class StatusEndpoint {
+          private final HealthChecker checker;
+          public StatusEndpoint(HealthChecker checker) {
+              this.checker = checker;
+          }
+          public String status() {
+              return checker.isHealthy() ? "UP" : "DOWN";
+          }
+      }
+    src/main/java/com/app/util/Histogram.java: |
+      package com.app.util;
+
+      public class Histogram {
+          private double sum = 0;
+          private int count = 0;
+          public void observe(double val) { sum += val; count++; }
+          public double average() { return count > 0 ? sum / count : 0; }
+      }
+    src/main/java/com/app/util/Counter.java: |
+      package com.app.util;
+
+      public class Counter {
+          private long value = 0;
+          public void increment() { value++; }
+          public long get() { return value; }
+      }
+  changed_files:
+    src/main/java/com/app/metrics/Metric.java: |
+      package com.app.metrics;
+
+      import java.time.Instant;
+
+      public class Metric {
+          private final String name;
+          private final double value;
+          private final Instant timestamp;
+          private final String unit;
+          public Metric(String name, double value, String unit) {
+              this.name = name;
+              this.value = value;
+              this.unit = unit;
+              this.timestamp = Instant.now();
+          }
+          public String getName() { return name; }
+          public double getValue() { return value; }
+          public String getUnit() { return unit; }
+          public Instant getTimestamp() { return timestamp; }
+      }
+    src/main/java/com/app/metrics/MetricRegistry.java: |
+      package com.app.metrics;
+
+      import com.app.metrics.Metric;
+      import java.util.ArrayList;
+      import java.util.List;
+
+      public class MetricRegistry {
+          private final List<Metric> metrics = new ArrayList<>();
+          public void record(Metric metric) {
+              metrics.add(metric);
+          }
+          public List<Metric> getAll() { return metrics; }
+      }
+    src/main/java/com/app/monitor/HealthChecker.java: |
+      package com.app.monitor;
+
+      import com.app.metrics.MetricRegistry;
+      import com.app.metrics.Metric;
+
+      public class HealthChecker {
+          private final MetricRegistry registry;
+          public HealthChecker(MetricRegistry registry) {
+              this.registry = registry;
+          }
+          public boolean isHealthy() {
+              return registry.getAll().stream()
+                  .allMatch(m -> m.getValue() < 100);
+          }
+      }
+    src/main/java/com/app/api/StatusEndpoint.java: |
+      package com.app.api;
+
+      import com.app.monitor.HealthChecker;
+
+      public class StatusEndpoint {
+          private final HealthChecker checker;
+          public StatusEndpoint(HealthChecker checker) {
+              this.checker = checker;
+          }
+          public String status() {
+              return checker.isHealthy() ? "UP" : "DOWN";
+          }
+      }
+    src/main/java/com/app/util/Histogram.java: |
+      package com.app.util;
+
+      public class Histogram {
+          private double sum = 0;
+          private int count = 0;
+          public void observe(double val) { sum += val; count++; }
+          public double average() { return count > 0 ? sum / count : 0; }
+      }
+    src/main/java/com/app/util/Counter.java: |
+      package com.app.util;
+
+      public class Counter {
+          private long value = 0;
+          public void increment() { value++; }
+          public long get() { return value; }
+      }
+  commit_message: "feat: add timestamp and unit to Metric"
+fragments:
+- id: metric_timestamp
+  selector:
+    path: src/main/java/com/app/metrics/Metric.java
+    anchor: "private final Instant timestamp"
+- id: registry_imports_metric
+  selector:
+    path: src/main/java/com/app/metrics/MetricRegistry.java
+    anchor: "import com.app.metrics.Metric"
+- id: checker_imports_registry
+  selector:
+    path: src/main/java/com/app/monitor/HealthChecker.java
+    anchor: "import com.app.metrics.MetricRegistry"
+- id: status_imports_checker
+  selector:
+    path: src/main/java/com/app/api/StatusEndpoint.java
+    anchor: "import com.app.monitor.HealthChecker"
+- id: no_histogram
+  selector:
+    path: src/main/java/com/app/util/Histogram.java
+    anchor: "class Histogram"
+- id: no_counter
+  selector:
+    path: src/main/java/com/app/util/Counter.java
+    anchor: "class Counter"
+oracle:
+  required:
+  - metric_timestamp
+  - registry_imports_metric
+  - checker_imports_registry
+  - status_imports_checker
+  allowed: []
+  forbidden:
+  - no_histogram
+  - no_counter

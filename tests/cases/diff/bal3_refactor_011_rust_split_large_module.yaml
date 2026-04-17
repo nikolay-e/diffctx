@@ -1,0 +1,207 @@
+name: bal3_refactor_011_rust_split_large_module
+tags:
+- lang:rust
+- change:multi_file
+- change:refactor
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/models.rs: |
+      #[derive(Debug, Clone)]
+      pub struct User {
+          pub id: u64,
+          pub name: String,
+          pub email: String,
+      }
+
+      impl User {
+          pub fn new(id: u64, name: &str, email: &str) -> Self {
+              Self { id, name: name.to_string(), email: email.to_string() }
+          }
+      }
+
+      #[derive(Debug, Clone)]
+      pub struct Order {
+          pub id: u64,
+          pub user_id: u64,
+          pub total: f64,
+      }
+
+      impl Order {
+          pub fn new(id: u64, user_id: u64, total: f64) -> Self {
+              Self { id, user_id, total }
+          }
+      }
+
+      #[derive(Debug, Clone)]
+      pub struct Product {
+          pub id: u64,
+          pub name: String,
+          pub price: f64,
+      }
+
+      impl Product {
+          pub fn new(id: u64, name: &str, price: f64) -> Self {
+              Self { id, name: name.to_string(), price }
+          }
+      }
+    src/services/user_service.rs: |
+      use crate::models::User;
+
+      pub fn find_user(id: u64) -> Option<User> {
+          Some(User::new(id, "test", "test@example.com"))
+      }
+    src/services/order_service.rs: |
+      use crate::models::{Order, User};
+
+      pub fn create_order(user: &User, total: f64) -> Order {
+          Order::new(1, user.id, total)
+      }
+    src/lib.rs: |
+      pub mod models;
+      pub mod services;
+    src/analytics/report.rs: |
+      pub const GARBAGE_R011_REPORT_A: &str = "report";
+
+      pub fn generate_report() -> String {
+          String::from("report")
+      }
+    src/analytics/metrics.rs: |
+      pub const GARBAGE_R011_METRICS_B: &str = "metrics";
+
+      pub fn track_event(name: &str) {}
+    src/analytics/dashboard.rs: |
+      pub const GARBAGE_R011_DASH_C: &str = "dashboard";
+
+      pub fn render_dashboard() -> String {
+          String::from("dashboard")
+      }
+  changed_files:
+    src/models/user.rs: |
+      #[derive(Debug, Clone)]
+      pub struct User {
+          pub id: u64,
+          pub name: String,
+          pub email: String,
+      }
+
+      impl User {
+          pub fn new(id: u64, name: &str, email: &str) -> Self {
+              Self { id, name: name.to_string(), email: email.to_string() }
+          }
+      }
+    src/models/order.rs: |
+      #[derive(Debug, Clone)]
+      pub struct Order {
+          pub id: u64,
+          pub user_id: u64,
+          pub total: f64,
+      }
+
+      impl Order {
+          pub fn new(id: u64, user_id: u64, total: f64) -> Self {
+              Self { id, user_id, total }
+          }
+      }
+    src/models/product.rs: |
+      #[derive(Debug, Clone)]
+      pub struct Product {
+          pub id: u64,
+          pub name: String,
+          pub price: f64,
+      }
+
+      impl Product {
+          pub fn new(id: u64, name: &str, price: f64) -> Self {
+              Self { id, name: name.to_string(), price }
+          }
+      }
+    src/models/mod.rs: |
+      pub mod user;
+      pub mod order;
+      pub mod product;
+
+      pub use user::User;
+      pub use order::Order;
+      pub use product::Product;
+    src/services/user_service.rs: |
+      use crate::models::User;
+
+      pub fn find_user(id: u64) -> Option<User> {
+          Some(User::new(id, "test", "test@example.com"))
+      }
+    src/services/order_service.rs: |
+      use crate::models::{Order, User};
+
+      pub fn create_order(user: &User, total: f64) -> Order {
+          Order::new(1, user.id, total)
+      }
+    src/lib.rs: |
+      pub mod models;
+      pub mod services;
+    src/analytics/report.rs: |
+      pub const GARBAGE_R011_REPORT_A: &str = "report";
+
+      pub fn generate_report() -> String {
+          String::from("report")
+      }
+    src/analytics/metrics.rs: |
+      pub const GARBAGE_R011_METRICS_B: &str = "metrics";
+
+      pub fn track_event(name: &str) {}
+    src/analytics/dashboard.rs: |
+      pub const GARBAGE_R011_DASH_C: &str = "dashboard";
+
+      pub fn render_dashboard() -> String {
+          String::from("dashboard")
+      }
+  commit_message: "refactor: split monolithic models.rs into per-entity modules"
+fragments:
+- id: user_module
+  selector:
+    path: src/models/user.rs
+    anchor: "pub struct User"
+- id: order_module
+  selector:
+    path: src/models/order.rs
+    anchor: "pub struct Order"
+- id: product_module
+  selector:
+    path: src/models/product.rs
+    anchor: "pub struct Product"
+- id: mod_reexports
+  selector:
+    path: src/models/mod.rs
+    anchor: "pub use user::User"
+- id: user_service_import
+  selector:
+    path: src/services/user_service.rs
+    anchor: "use crate::models::User"
+- id: order_service_import
+  selector:
+    path: src/services/order_service.rs
+    anchor: "use crate::models::{Order, User}"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_R011_REPORT_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_R011_METRICS_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_R011_DASH_C
+oracle:
+  required:
+  - user_module
+  - order_module
+  - product_module
+  - mod_reexports
+  allowed:
+  - user_service_import
+  - order_service_import
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

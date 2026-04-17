@@ -1,0 +1,149 @@
+name: gap2_010_java_config_cache_ttl_redis
+tags:
+- lang:java
+- change:config
+- change:single_file
+- context:cross_module
+- distance:2hop
+- difficulty:medium
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/main/resources/cache-config.yaml: |
+      cache:
+        defaultTtlSeconds: 300
+        maxEntries: 1000
+        evictionPolicy: LRU
+        redisHost: localhost
+        redisPort: 6379
+    src/main/java/com/gaming/config/CacheSettings.java: |
+      package com.gaming.config;
+
+      import java.util.Map;
+
+      public class CacheSettings {
+          private final Map<String, Object> values;
+
+          public CacheSettings(Map<String, Object> values) {
+              this.values = values;
+          }
+
+          public int getDefaultTtl() {
+              return (int) values.getOrDefault("defaultTtlSeconds", 300);
+          }
+
+          public int getMaxEntries() {
+              return (int) values.getOrDefault("maxEntries", 1000);
+          }
+
+          public String getEvictionPolicy() {
+              return (String) values.getOrDefault("evictionPolicy", "LRU");
+          }
+
+          public String getRedisHost() {
+              return (String) values.getOrDefault("redisHost", "localhost");
+          }
+
+          public int getRedisPort() {
+              return (int) values.getOrDefault("redisPort", 6379);
+          }
+      }
+    src/main/java/com/gaming/cache/SessionCache.java: |
+      package com.gaming.cache;
+
+      import com.gaming.config.CacheSettings;
+      import java.util.LinkedHashMap;
+      import java.util.Map;
+
+      public class SessionCache {
+          private final Map<String, Object> store;
+          private final int ttl;
+
+          public SessionCache(CacheSettings settings) {
+              this.ttl = settings.getDefaultTtl();
+              int max = settings.getMaxEntries();
+              this.store = new LinkedHashMap<>(max, 0.75f, true);
+          }
+
+          public void put(String sessionId, Object data) {
+              store.put(sessionId, data);
+          }
+
+          public Object get(String sessionId) {
+              return store.get(sessionId);
+          }
+
+          public int getTtl() {
+              return ttl;
+          }
+      }
+    src/main/java/com/gaming/leaderboard/LeaderboardService.java: |
+      package com.gaming.leaderboard;
+
+      import com.gaming.cache.SessionCache;
+
+      public class LeaderboardService {
+          private final SessionCache cache;
+
+          public LeaderboardService(SessionCache cache) {
+              this.cache = cache;
+          }
+
+          public void recordScore(String playerId, int score) {
+              cache.put("score:" + playerId, score);
+          }
+
+          public Object getScore(String playerId) {
+              return cache.get("score:" + playerId);
+          }
+      }
+    src/main/java/com/gaming/util/TimeUtils.java: |
+      package com.gaming.util;
+
+      public class TimeUtils {
+          public static long nowMillis() {
+              return System.currentTimeMillis();
+          }
+
+          public static long nowSeconds() {
+              return System.currentTimeMillis() / 1000;
+          }
+      }
+  changed_files:
+    src/main/resources/cache-config.yaml: |
+      cache:
+        defaultTtlSeconds: 600
+        maxEntries: 5000
+        evictionPolicy: LFU
+        redisHost: localhost
+        redisPort: 6379
+  commit_message: "config: increase cache TTL and capacity, switch to LFU eviction"
+fragments:
+- id: config_yaml
+  selector:
+    path: src/main/resources/cache-config.yaml
+    anchor: "defaultTtlSeconds: 600"
+- id: settings_reader
+  selector:
+    path: src/main/java/com/gaming/config/CacheSettings.java
+    anchor: "getDefaultTtl"
+- id: cache_uses_settings
+  selector:
+    path: src/main/java/com/gaming/cache/SessionCache.java
+    anchor: "settings.getDefaultTtl()"
+- id: no_time_utils
+  selector:
+    path: src/main/java/com/gaming/util/TimeUtils.java
+- id: no_time_class
+  selector:
+    anchor: TimeUtils
+oracle:
+  required:
+  - config_yaml
+  - settings_reader
+  - cache_uses_settings
+  allowed: []
+  forbidden:
+  - no_time_utils
+  - no_time_class

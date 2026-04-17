@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -44,24 +45,61 @@ def _root_display_name(root_dir: Any) -> str:
     return name if name else str(root_dir)
 
 
-def _build_standard_tree(args: ParsedArgs) -> dict[str, Any]:
+def _build_file_node(file_path: Path, base_dir: Path, no_content: bool, max_file_bytes: int | None) -> dict[str, Any]:
+    try:
+        rel = file_path.relative_to(base_dir).as_posix()
+    except ValueError:
+        rel = file_path.name
+    node: dict[str, Any] = {"name": rel, "type": "file"}
+    if no_content:
+        return node
+    try:
+        size = file_path.stat().st_size
+        if max_file_bytes is not None and size > max_file_bytes:
+            return node
+        node["content"] = file_path.read_text(encoding="utf-8", errors="replace")
+    except (OSError, UnicodeDecodeError):
+        pass
+    return node
+
+
+def _build_single_dir_tree(root_dir: Path, args: ParsedArgs) -> dict[str, Any]:
     from .ignore import get_ignore_specs, get_whitelist_spec
     from .tree import TreeBuildContext, build_tree
 
     ctx = TreeBuildContext(
-        base_dir=args.root_dir,
-        combined_spec=get_ignore_specs(args.root_dir, args.ignore_file, args.no_default_ignores, args.output_file),
+        base_dir=root_dir,
+        combined_spec=get_ignore_specs(root_dir, args.ignore_file, args.no_default_ignores, args.output_file),
         output_file=args.output_file,
         max_depth=args.max_depth,
         no_content=args.no_content,
         max_file_bytes=args.max_file_bytes,
-        whitelist_spec=get_whitelist_spec(args.whitelist_file, args.root_dir),
+        whitelist_spec=get_whitelist_spec(args.whitelist_file, root_dir),
     )
     return {
-        "name": _root_display_name(args.root_dir),
+        "name": _root_display_name(root_dir),
         "type": "directory",
-        "children": build_tree(args.root_dir, ctx),
+        "children": build_tree(root_dir, ctx),
     }
+
+
+def _build_standard_tree(args: ParsedArgs) -> dict[str, Any]:
+    if not args.extra_dirs and not args.extra_files:
+        return _build_single_dir_tree(args.root_dir, args)
+
+    children: list[dict[str, Any]] = []
+
+    for d in args.extra_dirs or []:
+        children.append(_build_single_dir_tree(d, args))
+
+    base = args.root_dir
+    for f in args.extra_files or []:
+        children.append(_build_file_node(f, base, args.no_content, args.max_file_bytes))
+
+    if len(children) == 1:
+        return children[0]
+
+    return {"name": ".", "type": "directory", "children": children}
 
 
 def _handle_clipboard(output_content: str, args: ParsedArgs) -> bool:

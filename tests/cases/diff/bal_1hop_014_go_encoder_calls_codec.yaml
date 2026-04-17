@@ -1,0 +1,137 @@
+name: bal_1hop_014_go_encoder_calls_codec
+tags:
+- lang:rust
+- change:bug_fix
+- change:single_file
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/billing/invoice.rs: |
+      use rust_decimal::Decimal;
+
+      #[derive(Debug)]
+      pub struct LineItem {
+          pub description: String,
+          pub unit_price: Decimal,
+          pub quantity: u32,
+      }
+
+      impl LineItem {
+          pub fn subtotal(&self) -> Decimal {
+              self.unit_price * Decimal::from(self.quantity)
+          }
+      }
+
+      pub struct Invoice {
+          pub id: String,
+          pub items: Vec<LineItem>,
+          pub tax_rate: Decimal,
+      }
+
+      impl Invoice {
+          pub fn subtotal(&self) -> Decimal {
+              self.items.iter().map(|i| i.subtotal()).sum()
+          }
+
+          pub fn tax(&self) -> Decimal {
+              (self.subtotal() * self.tax_rate)
+                  .round_dp(2)
+          }
+
+          pub fn total(&self) -> Decimal {
+              self.subtotal() + self.tax()
+          }
+
+          pub fn item_count(&self) -> usize {
+              // BUG: should count quantities, not item types
+              self.items.len()
+          }
+      }
+    garbage/dunning.rs: |
+      // GARBAGE_1HOP14_DUNN_A = "dunning_marker"
+    garbage/credit.rs: |
+      // GARBAGE_1HOP14_CREDIT_B = "credit_marker"
+    garbage/reconcile.rs: |
+      // GARBAGE_1HOP14_RECON_C = "reconcile_marker"
+  changed_files:
+    src/billing/invoice.rs: |
+      use rust_decimal::Decimal;
+
+      #[derive(Debug)]
+      pub struct LineItem {
+          pub description: String,
+          pub unit_price: Decimal,
+          pub quantity: u32,
+      }
+
+      impl LineItem {
+          pub fn subtotal(&self) -> Decimal {
+              self.unit_price * Decimal::from(self.quantity)
+          }
+      }
+
+      pub struct Invoice {
+          pub id: String,
+          pub items: Vec<LineItem>,
+          pub tax_rate: Decimal,
+      }
+
+      impl Invoice {
+          pub fn subtotal(&self) -> Decimal {
+              self.items.iter().map(|i| i.subtotal()).sum()
+          }
+
+          pub fn tax(&self) -> Decimal {
+              (self.subtotal() * self.tax_rate)
+                  .round_dp(2)
+          }
+
+          pub fn total(&self) -> Decimal {
+              self.subtotal() + self.tax()
+          }
+
+          pub fn item_count(&self) -> usize {
+              self.items.iter().map(|i| i.quantity as usize).sum()
+          }
+      }
+    garbage/dunning.rs: |
+      // GARBAGE_1HOP14_DUNN_A = "dunning_marker"
+    garbage/credit.rs: |
+      // GARBAGE_1HOP14_CREDIT_B = "credit_marker"
+    garbage/reconcile.rs: |
+      // GARBAGE_1HOP14_RECON_C = "reconcile_marker"
+  commit_message: "fix: item_count sums quantities not item types"
+fragments:
+- id: item_count_fix
+  selector:
+    path: src/billing/invoice.rs
+    anchor: "self.items.iter().map(|i| i.quantity as usize).sum()"
+- id: line_item_quantity
+  selector:
+    path: src/billing/invoice.rs
+    anchor: "pub quantity: u32,"
+- id: invoice_total
+  selector:
+    path: src/billing/invoice.rs
+    anchor: "pub fn total(&self) -> Decimal {"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_1HOP14_DUNN_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_1HOP14_CREDIT_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_1HOP14_RECON_C
+oracle:
+  required:
+  - item_count_fix
+  - line_item_quantity
+  allowed:
+  - invoice_total
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

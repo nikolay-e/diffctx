@@ -1,0 +1,173 @@
+name: bal3_3hop_037_java_cache_eviction_policy
+tags:
+- lang:java
+- change:single_file
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/app/cache/CacheEntry.java: |
+      package com.app.cache;
+
+      public class CacheEntry {
+          private String key;
+          private Object value;
+          private long createdAt;
+          public CacheEntry(String key, Object value) {
+              this.key = key;
+              this.value = value;
+              this.createdAt = System.currentTimeMillis();
+          }
+          public String getKey() { return key; }
+          public Object getValue() { return value; }
+          public long getCreatedAt() { return createdAt; }
+      }
+    src/main/java/com/app/cache/EvictionPolicy.java: |
+      package com.app.cache;
+
+      import java.util.List;
+
+      public class EvictionPolicy {
+          public CacheEntry selectForEviction(List<CacheEntry> entries) {
+              return entries.stream()
+                  .min((a, b) -> Long.compare(a.getCreatedAt(), b.getCreatedAt()))
+                  .orElse(null);
+          }
+      }
+    src/main/java/com/app/cache/CacheManager.java: |
+      package com.app.cache;
+
+      import java.util.ArrayList;
+      import java.util.List;
+
+      public class CacheManager {
+          private final EvictionPolicy policy;
+          private final List<CacheEntry> entries = new ArrayList<>();
+          public CacheManager(EvictionPolicy policy) {
+              this.policy = policy;
+          }
+          public void put(String key, Object value) {
+              entries.add(new CacheEntry(key, value));
+          }
+          public void evict() {
+              CacheEntry victim = policy.selectForEviction(entries);
+              if (victim != null) entries.remove(victim);
+          }
+      }
+    src/main/java/com/app/service/CacheService.java: |
+      package com.app.service;
+
+      import com.app.cache.CacheManager;
+
+      public class CacheService {
+          private final CacheManager manager;
+          public CacheService(CacheManager manager) {
+              this.manager = manager;
+          }
+          public void store(String key, Object value) {
+              manager.put(key, value);
+          }
+          public void cleanup() {
+              manager.evict();
+          }
+      }
+    src/main/java/com/app/web/CacheController.java: |
+      package com.app.web;
+
+      import com.app.service.CacheService;
+
+      public class CacheController {
+          private final CacheService cacheService;
+          public CacheController(CacheService cacheService) {
+              this.cacheService = cacheService;
+          }
+          public String purge() {
+              cacheService.cleanup();
+              return "purged";
+          }
+      }
+    src/main/java/com/app/util/MetricsCollector.java: |
+      package com.app.util;
+
+      public class MetricsCollector {
+          public static String GARBAGE_037_METRIC_MARKER_A = "hits";
+          public static int GARBAGE_037_COUNT_MARKER_B = 0;
+          public static void record(String name) {}
+      }
+    src/main/java/com/app/util/ConfigLoader.java: |
+      package com.app.util;
+
+      public class ConfigLoader {
+          public static String GARBAGE_037_CFG_MARKER_C = "cfg";
+          public static boolean GARBAGE_037_RELOAD_MARKER_D = false;
+          public static String load(String path) { return ""; }
+      }
+  changed_files:
+    src/main/java/com/app/cache/CacheEntry.java: |
+      package com.app.cache;
+
+      public class CacheEntry {
+          private String key;
+          private Object value;
+          private long createdAt;
+          private long lastAccessedAt;
+          public CacheEntry(String key, Object value) {
+              this.key = key;
+              this.value = value;
+              this.createdAt = System.currentTimeMillis();
+              this.lastAccessedAt = this.createdAt;
+          }
+          public String getKey() { return key; }
+          public Object getValue() { return value; }
+          public long getCreatedAt() { return createdAt; }
+          public long getLastAccessedAt() { return lastAccessedAt; }
+          public void touch() { this.lastAccessedAt = System.currentTimeMillis(); }
+      }
+  commit_message: "feat: add LRU tracking with lastAccessedAt to CacheEntry"
+fragments:
+- id: entry_last_accessed
+  selector:
+    path: src/main/java/com/app/cache/CacheEntry.java
+    anchor: "private long lastAccessedAt"
+- id: entry_touch_method
+  selector:
+    path: src/main/java/com/app/cache/CacheEntry.java
+    anchor: "public void touch()"
+- id: policy_uses_entry
+  selector:
+    path: src/main/java/com/app/cache/EvictionPolicy.java
+    anchor: "selectForEviction"
+- id: manager_imports_policy
+  selector:
+    path: src/main/java/com/app/cache/CacheManager.java
+    anchor: "private final EvictionPolicy policy"
+- id: service_imports_manager
+  selector:
+    path: src/main/java/com/app/service/CacheService.java
+    anchor: "import com.app.cache.CacheManager"
+- id: controller_imports_service
+  selector:
+    path: src/main/java/com/app/web/CacheController.java
+    anchor: "import com.app.service.CacheService"
+- id: no_metrics
+  selector:
+    path: src/main/java/com/app/util/MetricsCollector.java
+    anchor: "GARBAGE_037_METRIC_MARKER_A"
+- id: no_config_loader
+  selector:
+    path: src/main/java/com/app/util/ConfigLoader.java
+    anchor: "GARBAGE_037_CFG_MARKER_C"
+oracle:
+  required:
+  - entry_last_accessed
+  - entry_touch_method
+  - policy_uses_entry
+  - manager_imports_policy
+  - service_imports_manager
+  allowed:
+  - controller_imports_service
+  forbidden:
+  - no_metrics
+  - no_config_loader

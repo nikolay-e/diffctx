@@ -1,0 +1,152 @@
+name: gap_109_scala_config_database_pool
+tags:
+- lang:scala
+- change:single_file
+- context:config_to_code
+- difficulty:medium
+- distance:2hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/main/scala/db/ConnectionPool.scala: |
+      package db
+
+      import config.DatabaseConfig
+
+      class ConnectionPool(config: DatabaseConfig) {
+        private var connections: List[Connection] = List.empty
+        private val maxSize: Int = config.maxPoolSize
+
+        def acquire(): Option[Connection] = {
+          connections match {
+            case head :: tail =>
+              connections = tail
+              Some(head)
+            case Nil if connections.size < maxSize =>
+              Some(Connection(config.jdbcUrl, config.username))
+            case _ => None
+          }
+        }
+
+        def release(conn: Connection): Unit = {
+          if (connections.size < maxSize) {
+            connections = conn :: connections
+          }
+        }
+      }
+
+      case class Connection(url: String, user: String)
+    src/main/scala/config/DatabaseConfig.scala: |
+      package config
+
+      case class DatabaseConfig(
+        jdbcUrl: String,
+        username: String,
+        password: String,
+        maxPoolSize: Int,
+        connectionTimeoutMs: Long
+      )
+    src/main/resources/application.conf: |
+      database {
+        jdbc-url = "jdbc:postgresql://localhost:5432/warehouse"
+        username = "app_user"
+        password = "changeme"
+        max-pool-size = 20
+        connection-timeout-ms = 5000
+      }
+    src/main/scala/logging/AuditLogger.scala: |
+      package logging
+
+      class AuditLogger(filePath: String) {
+        def logEvent(event: String, actor: String): Unit = {
+          val timestamp = System.currentTimeMillis()
+          val entry = s"$timestamp|$actor|$event"
+          println(entry)
+        }
+
+        def flush(): Unit = ()
+      }
+  changed_files:
+    src/main/resources/application.conf: |
+      database {
+        jdbc-url = "jdbc:postgresql://localhost:5432/warehouse"
+        username = "app_user"
+        password = "changeme"
+        max-pool-size = 20
+        connection-timeout-ms = 5000
+        idle-timeout-ms = 30000
+      }
+    src/main/scala/db/ConnectionPool.scala: |
+      package db
+
+      import config.DatabaseConfig
+
+      class ConnectionPool(config: DatabaseConfig) {
+        private var connections: List[Connection] = List.empty
+        private val maxSize: Int = config.maxPoolSize
+
+        def acquire(): Option[Connection] = {
+          connections match {
+            case head :: tail =>
+              connections = tail
+              Some(head)
+            case Nil if connections.size < maxSize =>
+              Some(Connection(config.jdbcUrl, config.username))
+            case _ => None
+          }
+        }
+
+        def release(conn: Connection): Unit = {
+          if (connections.size < maxSize) {
+            connections = conn :: connections
+          }
+        }
+
+        def evictIdle(idleTimeoutMs: Long): Int = {
+          val cutoff = System.currentTimeMillis() - idleTimeoutMs
+          val (active, idle) = connections.partition(_.createdAt > cutoff)
+          connections = active
+          idle.size
+        }
+      }
+
+      case class Connection(url: String, user: String, createdAt: Long = System.currentTimeMillis())
+    src/main/scala/config/DatabaseConfig.scala: |
+      package config
+
+      case class DatabaseConfig(
+        jdbcUrl: String,
+        username: String,
+        password: String,
+        maxPoolSize: Int,
+        connectionTimeoutMs: Long,
+        idleTimeoutMs: Long
+      )
+fragments:
+- id: pool_evict
+  selector:
+    path: src/main/scala/db/ConnectionPool.scala
+    anchor: "def evictIdle"
+- id: config_idle
+  selector:
+    path: src/main/scala/config/DatabaseConfig.scala
+    anchor: "idleTimeoutMs: Long"
+- id: conf_idle_setting
+  selector:
+    path: src/main/resources/application.conf
+    anchor: "idle-timeout-ms"
+- id: no_audit
+  selector:
+    path: src/main/scala/logging/AuditLogger.scala
+- id: no_audit_logger
+  selector:
+    anchor: AuditLogger
+oracle:
+  required:
+  - pool_evict
+  - config_idle
+  - conf_idle_setting
+  forbidden:
+  - no_audit
+  - no_audit_logger

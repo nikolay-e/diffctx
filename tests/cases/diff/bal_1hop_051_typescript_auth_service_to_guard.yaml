@@ -1,0 +1,140 @@
+name: bal_1hop_051_typescript_auth_service_to_guard
+tags:
+- lang:typescript
+- change:signature
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/auth/tokenService.ts: |
+      export interface TokenPayload {
+        userId: string;
+        role: string;
+        exp: number;
+      }
+
+      export function verifyToken(token: string): TokenPayload | null {
+        try {
+          const decoded = JSON.parse(atob(token.split('.')[1]));
+          if (decoded.exp < Date.now() / 1000) return null;
+          return decoded as TokenPayload;
+        } catch {
+          return null;
+        }
+      }
+
+      export function createToken(userId: string, role: string): string {
+        const payload = { userId, role, exp: Math.floor(Date.now() / 1000) + 3600 };
+        return `header.${btoa(JSON.stringify(payload))}.signature`;
+      }
+    src/middleware/authGuard.ts: |
+      import { verifyToken, TokenPayload } from '../auth/tokenService';
+
+      export interface AuthenticatedRequest {
+        headers: Record<string, string>;
+        user?: TokenPayload;
+      }
+
+      export function authenticate(req: AuthenticatedRequest): boolean {
+        const authHeader = req.headers['authorization'];
+        if (!authHeader?.startsWith('Bearer ')) return false;
+        const token = authHeader.slice(7);
+        const payload = verifyToken(token);
+        if (!payload) return false;
+        req.user = payload;
+        return true;
+      }
+    src/controllers/publicController.ts: |
+      export function getPublicData(): { message: string } {
+        return { message: 'This is public data' };
+      }
+    src/models/session.ts: |
+      export interface Session {
+        id: string;
+        userId: string;
+        createdAt: Date;
+        expiresAt: Date;
+      }
+
+      export function isSessionValid(session: Session): boolean {
+        return session.expiresAt > new Date();
+      }
+    src/config/authConfig.ts: |
+      export const AUTH_CONFIG = {
+        tokenExpiry: 3600,
+        refreshExpiry: 86400,
+        issuer: 'my-app',
+      };
+  changed_files:
+    src/auth/tokenService.ts: |
+      export interface TokenPayload {
+        userId: string;
+        role: string;
+        permissions: string[];
+        exp: number;
+      }
+
+      export function verifyToken(token: string): TokenPayload | null {
+        try {
+          const decoded = JSON.parse(atob(token.split('.')[1]));
+          if (decoded.exp < Date.now() / 1000) return null;
+          if (!Array.isArray(decoded.permissions)) {
+            decoded.permissions = [];
+          }
+          return decoded as TokenPayload;
+        } catch {
+          return null;
+        }
+      }
+
+      export function createToken(userId: string, role: string, permissions: string[] = []): string {
+        const payload = { userId, role, permissions, exp: Math.floor(Date.now() / 1000) + 3600 };
+        return `header.${btoa(JSON.stringify(payload))}.signature`;
+      }
+
+      export function hasPermission(payload: TokenPayload, permission: string): boolean {
+        return payload.permissions.includes(permission);
+      }
+  commit_message: "feat: add permissions array to token payload"
+fragments:
+- id: token_permissions_field
+  selector:
+    path: tokenService.ts
+    anchor: "permissions"
+- id: token_has_permission
+  selector:
+    path: tokenService.ts
+    anchor: "hasPermission"
+- id: guard_uses_verify
+  selector:
+    path: authGuard.ts
+    anchor: "verifyToken(token)"
+- id: guard_sets_user
+  selector:
+    path: authGuard.ts
+    anchor: "req.user = payload"
+- id: no_public_controller
+  selector:
+    path: publicController.ts
+    anchor: "getPublicData"
+- id: no_session_model
+  selector:
+    path: session.ts
+    anchor: "Session"
+- id: no_auth_config
+  selector:
+    path: authConfig.ts
+    anchor: "AUTH_CONFIG"
+oracle:
+  required:
+  - token_permissions_field
+  - token_has_permission
+  - guard_uses_verify
+  allowed:
+  - guard_sets_user
+  forbidden:
+  - no_public_controller
+  - no_session_model
+  - no_auth_config

@@ -1,0 +1,207 @@
+name: bal3_rare_005_dart_provider_state
+tags:
+- lang:rust
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/order.rs: |
+      #[derive(Debug, Clone, PartialEq)]
+      pub enum OrderStatus {
+          Pending,
+          Processing,
+          Shipped,
+          Delivered,
+      }
+
+      pub struct Order {
+          pub id: String,
+          pub customer_id: String,
+          pub total_usd: f64,
+          pub status: OrderStatus,
+      }
+
+      impl Order {
+          pub fn new(id: &str, customer_id: &str, total_usd: f64) -> Self {
+              Self {
+                  id: id.to_string(),
+                  customer_id: customer_id.to_string(),
+                  total_usd,
+                  status: OrderStatus::Pending,
+              }
+          }
+
+          pub fn advance(&mut self) {
+              self.status = match self.status {
+                  OrderStatus::Pending    => OrderStatus::Processing,
+                  OrderStatus::Processing => OrderStatus::Shipped,
+                  OrderStatus::Shipped    => OrderStatus::Delivered,
+                  OrderStatus::Delivered  => OrderStatus::Delivered,
+              };
+          }
+
+          pub fn is_complete(&self) -> bool {
+              self.status == OrderStatus::Delivered
+          }
+      }
+    src/fulfillment.rs: |
+      use crate::order::{Order, OrderStatus};
+
+      pub struct FulfillmentEngine {
+          orders: Vec<Order>,
+      }
+
+      impl FulfillmentEngine {
+          pub fn new() -> Self {
+              Self { orders: Vec::new() }
+          }
+
+          pub fn add_order(&mut self, o: Order) {
+              self.orders.push(o);
+          }
+
+          pub fn pending_count(&self) -> usize {
+              self.orders.iter().filter(|o| o.status == OrderStatus::Pending).count()
+          }
+      }
+    src/RARE005_payments.rs: |
+      // RARE005_GARBAGE_A = "payments_marker"
+      pub fn charge(_amount: f64) -> bool { true }
+    src/RARE005_notifications.rs: |
+      // RARE005_GARBAGE_B = "notifications_marker"
+      pub fn send_email(_to: &str, _msg: &str) {}
+    src/RARE005_reports.rs: |
+      // RARE005_GARBAGE_C = "reports_marker"
+      pub fn generate_daily_report() -> String { String::new() }
+  changed_files:
+    src/order.rs: |
+      #[derive(Debug, Clone, PartialEq)]
+      pub enum OrderStatus {
+          Pending,
+          Processing,
+          Shipped,
+          Delivered,
+          Cancelled,
+      }
+
+      pub struct Order {
+          pub id: String,
+          pub customer_id: String,
+          pub total_usd: f64,
+          pub status: OrderStatus,
+          pub tracking_code: Option<String>,
+      }
+
+      impl Order {
+          pub fn new(id: &str, customer_id: &str, total_usd: f64) -> Self {
+              Self {
+                  id: id.to_string(),
+                  customer_id: customer_id.to_string(),
+                  total_usd,
+                  status: OrderStatus::Pending,
+                  tracking_code: None,
+              }
+          }
+
+          pub fn advance(&mut self) {
+              self.status = match self.status {
+                  OrderStatus::Pending    => OrderStatus::Processing,
+                  OrderStatus::Processing => OrderStatus::Shipped,
+                  OrderStatus::Shipped    => OrderStatus::Delivered,
+                  OrderStatus::Delivered  => OrderStatus::Delivered,
+                  OrderStatus::Cancelled  => OrderStatus::Cancelled,
+              };
+          }
+
+          pub fn cancel(&mut self) {
+              if self.status != OrderStatus::Delivered {
+                  self.status = OrderStatus::Cancelled;
+              }
+          }
+
+          pub fn is_complete(&self) -> bool {
+              self.status == OrderStatus::Delivered
+          }
+
+          pub fn is_active(&self) -> bool {
+              self.status != OrderStatus::Delivered && self.status != OrderStatus::Cancelled
+          }
+      }
+    src/fulfillment.rs: |
+      use crate::order::{Order, OrderStatus};
+
+      pub struct FulfillmentEngine {
+          orders: Vec<Order>,
+      }
+
+      impl FulfillmentEngine {
+          pub fn new() -> Self {
+              Self { orders: Vec::new() }
+          }
+
+          pub fn add_order(&mut self, o: Order) {
+              self.orders.push(o);
+          }
+
+          pub fn pending_count(&self) -> usize {
+              self.orders.iter().filter(|o| o.status == OrderStatus::Pending).count()
+          }
+
+          pub fn active_count(&self) -> usize {
+              self.orders.iter().filter(|o| o.is_active()).count()
+          }
+      }
+    src/RARE005_payments.rs: |
+      // RARE005_GARBAGE_A = "payments_marker"
+      pub fn charge(_amount: f64) -> bool { true }
+    src/RARE005_notifications.rs: |
+      // RARE005_GARBAGE_B = "notifications_marker"
+      pub fn send_email(_to: &str, _msg: &str) {}
+    src/RARE005_reports.rs: |
+      // RARE005_GARBAGE_C = "reports_marker"
+      pub fn generate_daily_report() -> String { String::new() }
+  commit_message: "feat: add Cancelled state, cancel method, is_active to Order; active_count to FulfillmentEngine"
+fragments:
+- id: order_cancelled_state
+  selector:
+    path: src/order.rs
+    anchor: "Cancelled,"
+- id: order_cancel_method
+  selector:
+    path: src/order.rs
+    anchor: "pub fn cancel(&mut self)"
+- id: order_is_active
+  selector:
+    path: src/order.rs
+    anchor: "pub fn is_active(&self)"
+- id: fulfillment_active_count
+  selector:
+    path: src/fulfillment.rs
+    anchor: "pub fn active_count(&self)"
+- id: fulfillment_uses_is_active
+  selector:
+    path: src/fulfillment.rs
+    anchor: "o.is_active()"
+- id: no_garbage_a
+  selector:
+    anchor: RARE005_GARBAGE_A
+- id: no_garbage_b
+  selector:
+    anchor: RARE005_GARBAGE_B
+- id: no_garbage_c
+  selector:
+    anchor: RARE005_GARBAGE_C
+oracle:
+  required:
+  - order_cancelled_state
+  - order_cancel_method
+  - order_is_active
+  - fulfillment_active_count
+  - fulfillment_uses_is_active
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

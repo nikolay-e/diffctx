@@ -1,0 +1,270 @@
+name: bal_3hop_054_go_database_migration_runner
+tags:
+- lang:go
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    pkg/migration/types.go: |
+      package migration
+
+      type Migration struct {
+        Version int
+        Name    string
+        Up      string
+        Down    string
+      }
+
+      type MigrationStatus struct {
+        Version int
+        Applied bool
+      }
+    pkg/migration/registry.go: |
+      package migration
+
+      type Registry struct {
+        migrations []Migration
+      }
+
+      func NewRegistry() *Registry {
+        return &Registry{}
+      }
+
+      func (r *Registry) Register(m Migration) {
+        r.migrations = append(r.migrations, m)
+      }
+
+      func (r *Registry) GetAll() []Migration {
+        return r.migrations
+      }
+
+      func (r *Registry) GetByVersion(version int) *Migration {
+        for _, m := range r.migrations {
+          if m.Version == version {
+            return &m
+          }
+        }
+        return nil
+      }
+    pkg/migration/runner.go: |
+      package migration
+
+      import "fmt"
+
+      type Runner struct {
+        registry *Registry
+        applied  map[int]bool
+      }
+
+      func NewRunner(reg *Registry) *Runner {
+        return &Runner{registry: reg, applied: make(map[int]bool)}
+      }
+
+      func (r *Runner) Migrate() error {
+        for _, m := range r.registry.GetAll() {
+          if r.applied[m.Version] {
+            continue
+          }
+          fmt.Printf("Applying migration %d: %s\n", m.Version, m.Name)
+          r.applied[m.Version] = true
+        }
+        return nil
+      }
+    cmd/migrate/main.go: |
+      package main
+
+      import "pkg/migration"
+
+      func main() {
+        reg := migration.NewRegistry()
+        reg.Register(migration.Migration{Version: 1, Name: "create_users", Up: "CREATE TABLE users", Down: "DROP TABLE users"})
+        reg.Register(migration.Migration{Version: 2, Name: "create_orders", Up: "CREATE TABLE orders", Down: "DROP TABLE orders"})
+        runner := migration.NewRunner(reg)
+        runner.Migrate()
+      }
+    pkg/util/sql.go: |
+      package util
+
+      var GARBAGE_054_SQL_MARKER_A = "sql"
+      var GARBAGE_054_QUERY_MARKER_B = true
+
+      func EscapeSQL(s string) string { return s }
+    pkg/util/fs.go: |
+      package util
+
+      var GARBAGE_054_FS_MARKER_C = "fs"
+      var GARBAGE_054_READ_MARKER_D = true
+
+      func ReadDir(path string) []string { return nil }
+  changed_files:
+    pkg/migration/types.go: |
+      package migration
+
+      import "time"
+
+      type Migration struct {
+        Version     int
+        Name        string
+        Up          string
+        Down        string
+        Checksum    string
+      }
+
+      type MigrationStatus struct {
+        Version   int
+        Applied   bool
+        AppliedAt time.Time
+        Checksum  string
+      }
+    pkg/migration/registry.go: |
+      package migration
+
+      import "crypto/sha256"
+      import "fmt"
+
+      type Registry struct {
+        migrations []Migration
+      }
+
+      func NewRegistry() *Registry {
+        return &Registry{}
+      }
+
+      func (r *Registry) Register(m Migration) {
+        if m.Checksum == "" {
+          m.Checksum = computeChecksum(m.Up + m.Down)
+        }
+        r.migrations = append(r.migrations, m)
+      }
+
+      func (r *Registry) GetAll() []Migration {
+        return r.migrations
+      }
+
+      func (r *Registry) GetByVersion(version int) *Migration {
+        for _, m := range r.migrations {
+          if m.Version == version {
+            return &m
+          }
+        }
+        return nil
+      }
+
+      func computeChecksum(content string) string {
+        h := sha256.Sum256([]byte(content))
+        return fmt.Sprintf("%x", h[:8])
+      }
+    pkg/migration/runner.go: |
+      package migration
+
+      import (
+        "fmt"
+        "time"
+      )
+
+      type Runner struct {
+        registry *Registry
+        statuses map[int]MigrationStatus
+      }
+
+      func NewRunner(reg *Registry) *Runner {
+        return &Runner{registry: reg, statuses: make(map[int]MigrationStatus)}
+      }
+
+      func (r *Runner) Migrate() error {
+        for _, m := range r.registry.GetAll() {
+          if s, ok := r.statuses[m.Version]; ok && s.Applied {
+            if s.Checksum != m.Checksum {
+              return fmt.Errorf("checksum mismatch for migration %d", m.Version)
+            }
+            continue
+          }
+          fmt.Printf("Applying migration %d: %s\n", m.Version, m.Name)
+          r.statuses[m.Version] = MigrationStatus{Version: m.Version, Applied: true, AppliedAt: time.Now(), Checksum: m.Checksum}
+        }
+        return nil
+      }
+
+      func (r *Runner) Rollback(version int) error {
+        m := r.registry.GetByVersion(version)
+        if m == nil {
+          return fmt.Errorf("migration %d not found", version)
+        }
+        fmt.Printf("Rolling back migration %d: %s\n", m.Version, m.Name)
+        delete(r.statuses, version)
+        return nil
+      }
+    cmd/migrate/main.go: |
+      package main
+
+      import "pkg/migration"
+
+      func main() {
+        reg := migration.NewRegistry()
+        reg.Register(migration.Migration{Version: 1, Name: "create_users", Up: "CREATE TABLE users", Down: "DROP TABLE users"})
+        reg.Register(migration.Migration{Version: 2, Name: "create_orders", Up: "CREATE TABLE orders", Down: "DROP TABLE orders"})
+        runner := migration.NewRunner(reg)
+        runner.Migrate()
+      }
+    pkg/util/sql.go: |
+      package util
+
+      var GARBAGE_054_SQL_MARKER_A = "sql"
+      var GARBAGE_054_QUERY_MARKER_B = true
+
+      func EscapeSQL(s string) string { return s }
+    pkg/util/fs.go: |
+      package util
+
+      var GARBAGE_054_FS_MARKER_C = "fs"
+      var GARBAGE_054_READ_MARKER_D = true
+
+      func ReadDir(path string) []string { return nil }
+  commit_message: "feat: add checksum verification and rollback to migrations"
+fragments:
+- id: migration_checksum_field
+  selector:
+    path: pkg/migration/types.go
+    anchor: "Checksum    string"
+- id: status_applied_at
+  selector:
+    path: pkg/migration/types.go
+    anchor: "AppliedAt time.Time"
+- id: registry_compute_checksum
+  selector:
+    path: pkg/migration/registry.go
+    anchor: "func computeChecksum"
+- id: runner_checksum_mismatch
+  selector:
+    path: pkg/migration/runner.go
+    anchor: "checksum mismatch"
+- id: runner_rollback
+  selector:
+    path: pkg/migration/runner.go
+    anchor: "func (r *Runner) Rollback"
+- id: main_imports_migration
+  selector:
+    path: cmd/migrate/main.go
+    anchor: "pkg/migration"
+- id: no_sql
+  selector:
+    path: pkg/util/sql.go
+    anchor: "GARBAGE_054_SQL_MARKER_A"
+- id: no_fs
+  selector:
+    path: pkg/util/fs.go
+    anchor: "GARBAGE_054_FS_MARKER_C"
+oracle:
+  required:
+  - migration_checksum_field
+  - status_applied_at
+  - registry_compute_checksum
+  - runner_checksum_mismatch
+  - runner_rollback
+  - main_imports_migration
+  allowed: []
+  forbidden:
+  - no_sql
+  - no_fs

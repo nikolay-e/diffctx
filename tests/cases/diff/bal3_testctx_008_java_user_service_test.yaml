@@ -1,0 +1,111 @@
+name: bal3_testctx_008_java_user_service_test
+tags:
+- lang:java
+- change:single_file
+- change:signature
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/main/java/com/app/service/UserService.java: |
+      package com.app.service;
+
+      import java.util.HashMap;
+      import java.util.Map;
+      import java.util.Optional;
+
+      public class UserService {
+          private final Map<String, String> users = new HashMap<>();
+
+          public void register(String username, String email) {
+              users.put(username, email);
+          }
+
+          public Optional<String> findEmail(String username) {
+              return Optional.ofNullable(users.get(username));
+          }
+      }
+    src/test/java/com/app/service/UserServiceTest.java: |
+      package com.app.service;
+
+      import org.junit.jupiter.api.Test;
+      import static org.junit.jupiter.api.Assertions.*;
+
+      class UserServiceTest {
+          @Test
+          void testRegisterAndFind() {
+              UserService svc = new UserService();
+              svc.register("alice", "alice@test.com");
+              assertTrue(svc.findEmail("alice").isPresent());
+              assertEquals("alice@test.com", svc.findEmail("alice").get());
+          }
+
+          @Test
+          void testFindMissing() {
+              UserService svc = new UserService();
+              assertFalse(svc.findEmail("nobody").isPresent());
+          }
+      }
+    src/main/java/com/app/util/StringHelper.java: |
+      package com.app.util;
+
+      public class StringHelper {
+          public static String capitalize(String s) {
+              if (s == null || s.isEmpty()) return s;
+              return s.substring(0, 1).toUpperCase() + s.substring(1);
+          }
+      }
+  changed_files:
+    src/main/java/com/app/service/UserService.java: |
+      package com.app.service;
+
+      import java.util.HashMap;
+      import java.util.Map;
+      import java.util.Optional;
+
+      public class UserService {
+          private final Map<String, String> users = new HashMap<>();
+
+          public boolean register(String username, String email) {
+              if (users.containsKey(username)) {
+                  return false;
+              }
+              users.put(username, email);
+              return true;
+          }
+
+          public Optional<String> findEmail(String username) {
+              return Optional.ofNullable(users.get(username));
+          }
+
+          public boolean deregister(String username) {
+              return users.remove(username) != null;
+          }
+      }
+  commit_message: "feat: return boolean from register, add deregister"
+fragments:
+- id: register_returns_bool
+  selector:
+    path: src/main/java/com/app/service/UserService.java
+    anchor: "public boolean register(String username, String email)"
+- id: deregister_method
+  selector:
+    path: src/main/java/com/app/service/UserService.java
+    anchor: "public boolean deregister(String username)"
+- id: test_register_find
+  selector:
+    path: src/test/java/com/app/service/UserServiceTest.java
+    anchor: "void testRegisterAndFind()"
+- id: no_string_helper
+  selector:
+    path: src/main/java/com/app/util/StringHelper.java
+    anchor: "public static String capitalize"
+oracle:
+  required:
+  - register_returns_bool
+  - deregister_method
+  - test_register_find
+  allowed: []
+  forbidden:
+  - no_string_helper

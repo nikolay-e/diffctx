@@ -1,0 +1,195 @@
+name: bal3_3hop_009_go_event_bus_handler_store_serializer
+tags:
+- lang:go
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    events/serializer/json_ser.go: |
+      package serializer
+
+      import "encoding/json"
+
+      type JSONSerializer struct{}
+
+      func NewJSONSerializer() *JSONSerializer {
+          return &JSONSerializer{}
+      }
+
+      func (s *JSONSerializer) Serialize(v interface{}) ([]byte, error) {
+          return json.Marshal(v)
+      }
+
+      func (s *JSONSerializer) Deserialize(data []byte, v interface{}) error {
+          return json.Unmarshal(data, v)
+      }
+    events/store/event_store.go: |
+      package store
+
+      import "myapp/events/serializer"
+
+      type EventStore struct {
+          ser    *serializer.JSONSerializer
+          events [][]byte
+      }
+
+      func NewEventStore(ser *serializer.JSONSerializer) *EventStore {
+          return &EventStore{ser: ser}
+      }
+
+      func (s *EventStore) Append(event interface{}) error {
+          data, err := s.ser.Serialize(event)
+          if err != nil {
+              return err
+          }
+          s.events = append(s.events, data)
+          return nil
+      }
+
+      func (s *EventStore) Count() int {
+          return len(s.events)
+      }
+    events/handler/event_handler.go: |
+      package handler
+
+      import "myapp/events/store"
+
+      type EventHandler struct {
+          store *store.EventStore
+      }
+
+      func NewEventHandler(s *store.EventStore) *EventHandler {
+          return &EventHandler{store: s}
+      }
+
+      func (h *EventHandler) Handle(event interface{}) error {
+          return h.store.Append(event)
+      }
+    events/bus/event_bus.go: |
+      package bus
+
+      import "myapp/events/handler"
+
+      type EventBus struct {
+          handlers []*handler.EventHandler
+      }
+
+      func NewEventBus() *EventBus {
+          return &EventBus{}
+      }
+
+      func (b *EventBus) Subscribe(h *handler.EventHandler) {
+          b.handlers = append(b.handlers, h)
+      }
+
+      func (b *EventBus) Publish(event interface{}) error {
+          for _, h := range b.handlers {
+              if err := h.Handle(event); err != nil {
+                  return err
+              }
+          }
+          return nil
+      }
+    events/replay/replayer.go: |
+      package replay
+
+      var GARBAGE_BAL3_009_REPLAY_MARKER_A = "replay"
+      var GARBAGE_BAL3_009_OFFSET_MARKER_B = 0
+
+      type Replayer struct{}
+
+      func (r *Replayer) Replay() {}
+    events/snapshot/snapshotter.go: |
+      package snapshot
+
+      var GARBAGE_BAL3_009_SNAP_MARKER_C = "snapshot"
+      var GARBAGE_BAL3_009_INTERVAL_MARKER_D = 100
+
+      type Snapshotter struct{}
+
+      func (s *Snapshotter) Take() {}
+  changed_files:
+    events/serializer/json_ser.go: |
+      package serializer
+
+      import (
+          "encoding/json"
+          "time"
+      )
+
+      type Envelope struct {
+          Timestamp time.Time   `json:"timestamp"`
+          Payload   interface{} `json:"payload"`
+      }
+
+      type JSONSerializer struct{}
+
+      func NewJSONSerializer() *JSONSerializer {
+          return &JSONSerializer{}
+      }
+
+      func (s *JSONSerializer) Serialize(v interface{}) ([]byte, error) {
+          env := Envelope{Timestamp: time.Now(), Payload: v}
+          return json.Marshal(env)
+      }
+
+      func (s *JSONSerializer) Deserialize(data []byte, v interface{}) error {
+          return json.Unmarshal(data, v)
+      }
+  commit_message: "Wrap events in timestamped envelope during serialization"
+fragments:
+- id: envelope_type
+  selector:
+    path: events/serializer/json_ser.go
+    anchor: "type Envelope struct"
+- id: serialize_envelope
+  selector:
+    path: events/serializer/json_ser.go
+    anchor: "Envelope{Timestamp: time.Now()"
+- id: store_append
+  selector:
+    path: events/store/event_store.go
+    anchor: "func (s *EventStore) Append"
+- id: handler_handle
+  selector:
+    path: events/handler/event_handler.go
+    anchor: "func (h *EventHandler) Handle"
+- id: bus_publish
+  selector:
+    path: events/bus/event_bus.go
+    anchor: "func (b *EventBus) Publish"
+- id: no_replayer
+  selector:
+    path: events/replay/replayer.go
+- id: no_snapshotter
+  selector:
+    path: events/snapshot/snapshotter.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_009_REPLAY_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_009_OFFSET_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_009_SNAP_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_009_INTERVAL_MARKER_D
+oracle:
+  required:
+  - envelope_type
+  - serialize_envelope
+  - store_append
+  - handler_handle
+  - bus_publish
+  allowed: []
+  forbidden:
+  - no_replayer
+  - no_snapshotter
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

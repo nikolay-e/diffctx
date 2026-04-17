@@ -1,0 +1,101 @@
+name: bal3_bugfix_002_go_nil_map_check
+tags:
+- lang:go
+- change:single_file
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    internal/cache/store.go: |
+      package cache
+
+      type Store struct {
+          data map[string]string
+      }
+
+      func NewStore() *Store {
+          return &Store{}
+      }
+
+      func (s *Store) Get(key string) (string, bool) {
+          v, ok := s.data[key]
+          return v, ok
+      }
+
+      func (s *Store) Set(key, value string) {
+          s.data[key] = value
+      }
+    internal/api/handler.go: |
+      package api
+
+      import "myapp/internal/cache"
+
+      type Handler struct {
+          cache *cache.Store
+      }
+
+      func NewHandler() *Handler {
+          return &Handler{cache: cache.NewStore()}
+      }
+
+      func (h *Handler) Lookup(key string) string {
+          v, ok := h.cache.Get(key)
+          if !ok {
+              return "not found"
+          }
+          return v
+      }
+    internal/config/settings.go: |
+      package config
+
+      type Settings struct {
+          Port int
+          Host string
+      }
+
+      func DefaultSettings() Settings {
+          return Settings{Port: 8080, Host: "localhost"}
+      }
+  changed_files:
+    internal/cache/store.go: |
+      package cache
+
+      type Store struct {
+          data map[string]string
+      }
+
+      func NewStore() *Store {
+          return &Store{data: make(map[string]string)}
+      }
+
+      func (s *Store) Get(key string) (string, bool) {
+          v, ok := s.data[key]
+          return v, ok
+      }
+
+      func (s *Store) Set(key, value string) {
+          s.data[key] = value
+      }
+  commit_message: "fix: initialize map in NewStore to prevent nil map panic"
+fragments:
+- id: init_map_fix
+  selector:
+    path: internal/cache/store.go
+    anchor: "data: make(map[string]string)"
+- id: handler_uses_cache
+  selector:
+    path: internal/api/handler.go
+    anchor: "cache.NewStore()"
+- id: no_config
+  selector:
+    path: internal/config/settings.go
+    anchor: "func DefaultSettings"
+oracle:
+  required:
+  - init_map_fix
+  - handler_uses_cache
+  allowed: []
+  forbidden:
+  - no_config

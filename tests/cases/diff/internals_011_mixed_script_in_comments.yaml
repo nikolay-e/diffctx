@@ -1,26 +1,73 @@
 name: internals_011_mixed_script_in_comments
+tags:
+- lang:lua
+- change:bug_fix
+- change:single_file
+- context:same_file
+- distance:0hop
+- difficulty:trivial
 repo:
   initial_files:
-    mixed_script.py: |
-      def placeholder():
-          pass
+    src/loot_table.lua: |
+      local M = {}
+
+      M.tables = {}
+
+      function M.roll(table_name)
+          local t = M.tables[table_name]
+          return t[math.random(#t)]
+      end
+
+      return M
+    garbage/INT011_map.lua: |
+      -- INT011_GARBAGE_A = "map_marker"
+    garbage/INT011_quests.lua: |
+      -- INT011_GARBAGE_B = "quests_marker"
+    garbage/INT011_npc.lua: |
+      -- INT011_GARBAGE_C = "npc_marker"
   changed_files:
-    mixed_script.py: |
-      # This function handles データ処理
-      def process_data():
-          # Возвращает результат
-          return {"status": "ok"}
-  commit_message: Update files
+    src/loot_table.lua: |
+      local M = {}
+
+      M.tables = {}
+
+      function M.roll(table_name)
+          local t = M.tables[table_name]
+          if not t then
+              return nil, "unknown loot table: " .. tostring(table_name)
+          end
+          if #t == 0 then
+              return nil, "empty loot table: " .. table_name
+          end
+          return t[math.random(#t)]
+      end
+
+      return M
+    garbage/INT011_map.lua: |
+      -- INT011_GARBAGE_A = "map_marker"
+    garbage/INT011_quests.lua: |
+      -- INT011_GARBAGE_B = "quests_marker"
+    garbage/INT011_npc.lua: |
+      -- INT011_GARBAGE_C = "npc_marker"
+  commit_message: "fix: guard roll against missing or empty loot table"
 fragments:
-- id: mixed_script_file
+- id: roll_func
   selector:
-    path: mixed_script.py
-- id: req_global_0
+    anchor: "function M.roll"
+- id: no_garbage_a
   selector:
-    anchor: 'def process_data():'
+    anchor: INT011_GARBAGE_A
+- id: no_garbage_b
+  selector:
+    anchor: INT011_GARBAGE_B
+- id: no_garbage_c
+  selector:
+    anchor: INT011_GARBAGE_C
 oracle:
   required:
-  - mixed_script_file
-  - req_global_0
+  - roll_func
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

@@ -1,26 +1,166 @@
 name: internals_014_diff_with_mixed_unicode
+tags:
+- lang:rust
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
 repo:
   initial_files:
-    mixed_unicode.py: |
-      def placeholder():
-          pass
+    src/sensor.rs: |
+      pub struct TemperatureSensor {
+          pub id: u32,
+          pub location: String,
+      }
+
+      impl TemperatureSensor {
+          pub fn new(id: u32, location: &str) -> Self {
+              Self { id, location: location.to_string() }
+          }
+
+          pub fn read_celsius(&self) -> f32 {
+              22.5
+          }
+      }
+    src/monitor.rs: |
+      use crate::sensor::TemperatureSensor;
+
+      pub struct Monitor {
+          sensors: Vec<TemperatureSensor>,
+      }
+
+      impl Monitor {
+          pub fn new() -> Self {
+              Self { sensors: Vec::new() }
+          }
+
+          pub fn add_sensor(&mut self, s: TemperatureSensor) {
+              self.sensors.push(s);
+          }
+
+          pub fn average_celsius(&self) -> f32 {
+              if self.sensors.is_empty() {
+                  return 0.0;
+              }
+              let sum: f32 = self.sensors.iter().map(|s| s.read_celsius()).sum();
+              sum / self.sensors.len() as f32
+          }
+      }
+    src/INT014_logger.rs: |
+      // INT014_GARBAGE_A = "logger_marker"
+      pub fn log_info(msg: &str) {
+          println!("[INFO] {}", msg);
+      }
+    src/INT014_config.rs: |
+      // INT014_GARBAGE_B = "config_marker"
+      pub const DEFAULT_PORT: u16 = 8080;
+    src/INT014_storage.rs: |
+      // INT014_GARBAGE_C = "storage_marker"
+      pub fn store_reading(_val: f32) {}
   changed_files:
-    mixed_unicode.py: |
-      # 这是注释
-      def compute_arabic():
-          arabic_greeting = "مرحبا"
-          return arabic_greeting
-  commit_message: Update files
+    src/sensor.rs: |
+      pub struct TemperatureSensor {
+          pub id: u32,
+          pub location: String,
+          pub min_threshold: f32,
+          pub max_threshold: f32,
+      }
+
+      impl TemperatureSensor {
+          pub fn new(id: u32, location: &str) -> Self {
+              Self {
+                  id,
+                  location: location.to_string(),
+                  min_threshold: 0.0,
+                  max_threshold: 100.0,
+              }
+          }
+
+          pub fn read_celsius(&self) -> f32 {
+              22.5
+          }
+
+          pub fn is_out_of_range(&self, reading: f32) -> bool {
+              reading < self.min_threshold || reading > self.max_threshold
+          }
+      }
+    src/monitor.rs: |
+      use crate::sensor::TemperatureSensor;
+
+      pub struct Monitor {
+          sensors: Vec<TemperatureSensor>,
+      }
+
+      impl Monitor {
+          pub fn new() -> Self {
+              Self { sensors: Vec::new() }
+          }
+
+          pub fn add_sensor(&mut self, s: TemperatureSensor) {
+              self.sensors.push(s);
+          }
+
+          pub fn average_celsius(&self) -> f32 {
+              if self.sensors.is_empty() {
+                  return 0.0;
+              }
+              let sum: f32 = self.sensors.iter().map(|s| s.read_celsius()).sum();
+              sum / self.sensors.len() as f32
+          }
+
+          pub fn alerts(&self) -> Vec<u32> {
+              self.sensors.iter()
+                  .filter(|s| s.is_out_of_range(s.read_celsius()))
+                  .map(|s| s.id)
+                  .collect()
+          }
+      }
+    src/INT014_logger.rs: |
+      // INT014_GARBAGE_A = "logger_marker"
+      pub fn log_info(msg: &str) {
+          println!("[INFO] {}", msg);
+      }
+    src/INT014_config.rs: |
+      // INT014_GARBAGE_B = "config_marker"
+      pub const DEFAULT_PORT: u16 = 8080;
+    src/INT014_storage.rs: |
+      // INT014_GARBAGE_C = "storage_marker"
+      pub fn store_reading(_val: f32) {}
+  commit_message: "feat: add threshold fields to TemperatureSensor and alerts to Monitor"
 fragments:
-- id: mixed_unicode_file
+- id: sensor_is_out_of_range
   selector:
-    path: mixed_unicode.py
-- id: req_global_0
+    path: src/sensor.rs
+    anchor: "pub fn is_out_of_range(&self, reading: f32)"
+- id: sensor_thresholds
   selector:
-    anchor: 'def compute_arabic():'
+    path: src/sensor.rs
+    anchor: "pub min_threshold: f32"
+- id: monitor_alerts
+  selector:
+    path: src/monitor.rs
+    anchor: "pub fn alerts(&self)"
+- id: monitor_uses_is_out_of_range
+  selector:
+    path: src/monitor.rs
+    anchor: "s.is_out_of_range(s.read_celsius())"
+- id: no_garbage_a
+  selector:
+    anchor: INT014_GARBAGE_A
+- id: no_garbage_b
+  selector:
+    anchor: INT014_GARBAGE_B
+- id: no_garbage_c
+  selector:
+    anchor: INT014_GARBAGE_C
 oracle:
   required:
-  - mixed_unicode_file
-  - req_global_0
+  - sensor_is_out_of_range
+  - sensor_thresholds
+  - monitor_alerts
+  - monitor_uses_is_out_of_range
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

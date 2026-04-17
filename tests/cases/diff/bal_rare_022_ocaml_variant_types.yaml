@@ -1,0 +1,162 @@
+name: bal_rare_022_ocaml_variant_types
+tags:
+- lang:ocaml
+- change:single_file
+- change:new_function
+- context:same_file
+- distance:0hop
+- difficulty:easy
+repo:
+  initial_files:
+    lib/expr.ml: |
+      type expr =
+        | Num of float
+        | Add of expr * expr
+        | Mul of expr * expr
+
+      let rec eval = function
+        | Num n -> n
+        | Add (a, b) -> eval a +. eval b
+        | Mul (a, b) -> eval a *. eval b
+
+      let rec to_string = function
+        | Num n -> string_of_float n
+        | Add (a, b) -> "(" ^ to_string a ^ " + " ^ to_string b ^ ")"
+        | Mul (a, b) -> "(" ^ to_string a ^ " * " ^ to_string b ^ ")"
+    lib/parser.ml: |
+      open Expr
+
+      let parse_num s =
+        try Some (Num (float_of_string s))
+        with _ -> None
+
+      let parse_simple a op b =
+        match op with
+        | "+" -> Some (Add (Num a, Num b))
+        | "*" -> Some (Mul (Num a, Num b))
+        | _ -> None
+    garbage_lexer.ml: |
+      let garbage_rare_022_token_a = "IDENT"
+      let garbage_rare_022_delim_b = ";"
+
+      let garbage_lex () =
+        garbage_rare_022_token_a
+
+      let garbage_rare_022_ws_c = " "
+    garbage_pretty.ml: |
+      let garbage_rare_022_indent_d = 2
+      let garbage_rare_022_width_e = 80
+
+      let garbage_pretty () =
+        garbage_rare_022_indent_d
+
+      let garbage_rare_022_newline_f = "\n"
+  changed_files:
+    lib/expr.ml: |
+      type expr =
+        | Num of float
+        | Add of expr * expr
+        | Sub of expr * expr
+        | Mul of expr * expr
+        | Div of expr * expr
+
+      let rec eval = function
+        | Num n -> n
+        | Add (a, b) -> eval a +. eval b
+        | Sub (a, b) -> eval a -. eval b
+        | Mul (a, b) -> eval a *. eval b
+        | Div (a, b) ->
+          let denom = eval b in
+          if denom = 0.0 then 0.0 else eval a /. denom
+
+      let rec to_string = function
+        | Num n -> string_of_float n
+        | Add (a, b) -> "(" ^ to_string a ^ " + " ^ to_string b ^ ")"
+        | Sub (a, b) -> "(" ^ to_string a ^ " - " ^ to_string b ^ ")"
+        | Mul (a, b) -> "(" ^ to_string a ^ " * " ^ to_string b ^ ")"
+        | Div (a, b) -> "(" ^ to_string a ^ " / " ^ to_string b ^ ")"
+    lib/parser.ml: |
+      open Expr
+
+      let parse_num s =
+        try Some (Num (float_of_string s))
+        with _ -> None
+
+      let parse_simple a op b =
+        match op with
+        | "+" -> Some (Add (Num a, Num b))
+        | "*" -> Some (Mul (Num a, Num b))
+        | _ -> None
+    garbage_lexer.ml: |
+      let garbage_rare_022_token_a = "IDENT"
+      let garbage_rare_022_delim_b = ";"
+
+      let garbage_lex () =
+        garbage_rare_022_token_a
+
+      let garbage_rare_022_ws_c = " "
+    garbage_pretty.ml: |
+      let garbage_rare_022_indent_d = 2
+      let garbage_rare_022_width_e = 80
+
+      let garbage_pretty () =
+        garbage_rare_022_indent_d
+
+      let garbage_rare_022_newline_f = "\n"
+  commit_message: "feat: add Sub and Div variants to expression type"
+fragments:
+- id: sub_variant
+  selector:
+    path: lib/expr.ml
+    anchor: "| Sub of expr * expr"
+- id: div_variant
+  selector:
+    path: lib/expr.ml
+    anchor: "| Div of expr * expr"
+- id: eval_div_safety
+  selector:
+    path: lib/expr.ml
+    anchor: "if denom = 0.0 then 0.0"
+- id: no_parser
+  selector:
+    path: lib/parser.ml
+- id: no_garbage_lexer
+  selector:
+    path: garbage_lexer.ml
+- id: no_garbage_pretty
+  selector:
+    path: garbage_pretty.ml
+- id: no_global_0
+  selector:
+    anchor: garbage_rare_022_token_a
+- id: no_global_1
+  selector:
+    anchor: garbage_rare_022_delim_b
+- id: no_global_2
+  selector:
+    anchor: garbage_rare_022_ws_c
+- id: no_global_3
+  selector:
+    anchor: garbage_rare_022_indent_d
+- id: no_global_4
+  selector:
+    anchor: garbage_rare_022_width_e
+- id: no_global_5
+  selector:
+    anchor: garbage_rare_022_newline_f
+oracle:
+  required:
+  - sub_variant
+  - div_variant
+  - eval_div_safety
+  allowed: []
+  forbidden:
+  - no_parser
+  - no_garbage_lexer
+  - no_garbage_pretty
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

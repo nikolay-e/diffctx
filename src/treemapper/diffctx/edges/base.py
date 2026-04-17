@@ -9,6 +9,15 @@ from ..config.extensions import CODE_EXTENSIONS
 from ..types import Fragment, FragmentId
 
 
+def read_cached(path: Path, cache: dict[Path, str] | None) -> str | None:
+    if cache is not None and path in cache:
+        return cache[path]
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
 @functools.lru_cache(maxsize=16384)
 def _cached_relative_to(path: Path, root: Path) -> Path | None:
     try:

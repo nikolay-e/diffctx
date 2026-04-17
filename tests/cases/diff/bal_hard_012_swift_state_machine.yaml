@@ -1,0 +1,185 @@
+name: bal_hard_012_swift_state_machine
+tags:
+- lang:swift
+- change:multi_file
+- change:new_function
+- context:cross_module
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    Sources/StateMachine/State.swift: |
+      protocol State {
+          var name: String { get }
+          func onEnter()
+          func onExit()
+      }
+    Sources/StateMachine/Transition.swift: |
+      struct Transition {
+          let from: String
+          let to: String
+          let event: String
+      }
+    Sources/StateMachine/Machine.swift: |
+      class Machine {
+          private var currentState: State
+          private var states: [String: State] = [:]
+          private var transitions: [Transition] = []
+          init(initial: State) {
+              self.currentState = initial
+              states[initial.name] = initial
+          }
+          func addState(_ state: State) {
+              states[state.name] = state
+          }
+          func addTransition(_ transition: Transition) {
+              transitions.append(transition)
+          }
+          func send(event: String) {
+              guard let transition = transitions.first(where: { $0.from == currentState.name && $0.event == event }) else { return }
+              guard let nextState = states[transition.to] else { return }
+              currentState.onExit()
+              currentState = nextState
+              currentState.onEnter()
+          }
+      }
+    Sources/Order/IdleState.swift: |
+      class IdleState: State {
+          let name = "idle"
+          func onEnter() { print("Order idle") }
+          func onExit() { print("Leaving idle") }
+      }
+    Sources/Order/ProcessingState.swift: |
+      class ProcessingState: State {
+          let name = "processing"
+          func onEnter() { print("Processing order") }
+          func onExit() { print("Done processing") }
+      }
+    Sources/Order/CompletedState.swift: |
+      class CompletedState: State {
+          let name = "completed"
+          func onEnter() { print("Order completed") }
+          func onExit() { print("Leaving completed") }
+      }
+    Sources/Order/OrderFlow.swift: |
+      class OrderFlow {
+          let machine: Machine
+          init() {
+              let idle = IdleState()
+              let processing = ProcessingState()
+              let completed = CompletedState()
+              machine = Machine(initial: idle)
+              machine.addState(processing)
+              machine.addState(completed)
+              machine.addTransition(Transition(from: "idle", to: "processing", event: "start"))
+              machine.addTransition(Transition(from: "processing", to: "completed", event: "finish"))
+          }
+      }
+    Sources/Helpers/NotificationCenter.swift: |
+      class AppNotificationCenter {
+          static let shared = AppNotificationCenter()
+          func post(name: String) { print("Notification: \(name)") }
+      }
+  changed_files:
+    Sources/StateMachine/Transition.swift: |
+      struct Transition {
+          let from: String
+          let to: String
+          let event: String
+          let guard_condition: ((String) -> Bool)?
+          init(from: String, to: String, event: String, guard_condition: ((String) -> Bool)? = nil) {
+              self.from = from
+              self.to = to
+              self.event = event
+              self.guard_condition = guard_condition
+          }
+      }
+    Sources/StateMachine/Machine.swift: |
+      class Machine {
+          private var currentState: State
+          private var states: [String: State] = [:]
+          private var transitions: [Transition] = []
+          init(initial: State) {
+              self.currentState = initial
+              states[initial.name] = initial
+          }
+          func addState(_ state: State) {
+              states[state.name] = state
+          }
+          func addTransition(_ transition: Transition) {
+              transitions.append(transition)
+          }
+          func send(event: String, context: String = "") {
+              guard let transition = transitions.first(where: {
+                  $0.from == currentState.name && $0.event == event && ($0.guard_condition?(context) ?? true)
+              }) else { return }
+              guard let nextState = states[transition.to] else { return }
+              currentState.onExit()
+              currentState = nextState
+              currentState.onEnter()
+          }
+      }
+    Sources/Order/OrderFlow.swift: |
+      class OrderFlow {
+          let machine: Machine
+          init() {
+              let idle = IdleState()
+              let processing = ProcessingState()
+              let completed = CompletedState()
+              machine = Machine(initial: idle)
+              machine.addState(processing)
+              machine.addState(completed)
+              machine.addTransition(Transition(from: "idle", to: "processing", event: "start", guard_condition: { ctx in !ctx.isEmpty }))
+              machine.addTransition(Transition(from: "processing", to: "completed", event: "finish"))
+          }
+      }
+  commit_message: "feat: add guard conditions to state transitions"
+fragments:
+- id: transition_guard
+  selector:
+    path: Transition.swift
+    anchor: "let guard_condition"
+- id: machine_checks_guard
+  selector:
+    path: Machine.swift
+    anchor: "guard_condition?(context)"
+- id: machine_send_context
+  selector:
+    path: Machine.swift
+    anchor: "func send(event: String, context: String"
+- id: order_flow_uses_guard
+  selector:
+    path: OrderFlow.swift
+    anchor: "guard_condition: { ctx in"
+- id: state_protocol
+  selector:
+    path: State.swift
+    anchor: "protocol State"
+- id: idle_state
+  selector:
+    path: IdleState.swift
+    anchor: 'let name = "idle"'
+- id: no_notification_center
+  selector:
+    path: Helpers/NotificationCenter.swift
+- id: no_completed_body
+  selector:
+    path: CompletedState.swift
+    anchor: "Order completed"
+- id: no_processing_body
+  selector:
+    path: ProcessingState.swift
+    anchor: "Processing order"
+oracle:
+  required:
+  - transition_guard
+  - machine_checks_guard
+  - machine_send_context
+  - order_flow_uses_guard
+  - state_protocol
+  - idle_state
+  allowed: []
+  forbidden:
+  - no_notification_center
+  - no_completed_body
+  - no_processing_body

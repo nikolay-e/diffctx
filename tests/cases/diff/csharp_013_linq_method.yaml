@@ -1,127 +1,93 @@
 name: csharp_013_linq_method
+tags:
+- lang:julia
+- change:single_file
+- context:same_file
+- distance:0hop
+- difficulty:trivial
 repo:
   initial_files:
-    Models/Order.cs: |
-      namespace MyApp.Models;
+    src/Dosage.jl: |
+      module Dosage
 
-      public class Order
-      {
-          public int Id { get; set; }
-          public int CustomerId { get; set; }
-          public decimal Total { get; set; }
-          public DateTime Date { get; set; }
-      }
-    Services/OrderService.cs: |
-      namespace MyApp.Services;
+      export DosageRecord, daily_total
 
-      public class OrderService { }
-    Unrelated/SmsGateway.cs: |
-      namespace MyApp.Unrelated;
+      struct DosageRecord
+          drug::String
+          dose_mg::Float64
+          times_per_day::Int
+      end
 
-      public class SmsGateway
-      {
-          private const string GARBAGE_CS_013_SMS_GATEWAY_A = "sms_gateway_marker";
+      function daily_total(record::DosageRecord)::Float64
+          return record.dose_mg * record.times_per_day
+      end
 
-          public void SendSms(string phone, string text) => _ = GARBAGE_CS_013_SMS_GATEWAY_A + phone;
-      }
-    Unrelated/WebhookDispatcher.cs: |
-      namespace MyApp.Unrelated;
-
-      public class WebhookDispatcher
-      {
-          public const string GARBAGE_CS_013_WEBHOOK_DISPATCHER_B = "webhook_dispatcher_marker";
-
-          public void Dispatch(string url) => _ = GARBAGE_CS_013_WEBHOOK_DISPATCHER_B + url;
-      }
+      end
+    garbage/CS013_lab.jl: |
+      # CS013_GARBAGE_A = "lab_marker"
+    garbage/CS013_billing.jl: |
+      # CS013_GARBAGE_B = "billing_marker"
+    garbage/CS013_scheduling.jl: |
+      # CS013_GARBAGE_C = "scheduling_marker"
   changed_files:
-    Models/Order.cs: |
-      namespace MyApp.Models;
+    src/Dosage.jl: |
+      module Dosage
 
-      public class Order
-      {
-          public int Id { get; set; }
-          public int CustomerId { get; set; }
-          public decimal Total { get; set; }
-          public DateTime Date { get; set; }
-      }
-    Services/OrderService.cs: |
-      using MyApp.Models;
+      export DosageRecord, daily_total, weekly_total, exceeds_limit
 
-      namespace MyApp.Services;
+      struct DosageRecord
+          drug::String
+          dose_mg::Float64
+          times_per_day::Int
+          max_daily_mg::Float64
+      end
 
-      public class OrderService
-      {
-          private readonly List<Order> _orders = new();
+      function daily_total(record::DosageRecord)::Float64
+          return record.dose_mg * record.times_per_day
+      end
 
-          public IEnumerable<Order> GetRecentOrders(int days)
-          {
-              return _orders
-                  .Where(o => o.Date >= DateTime.Now.AddDays(-days))
-                  .OrderByDescending(o => o.Date)
-                  .Take(10);
-          }
+      function weekly_total(record::DosageRecord)::Float64
+          return daily_total(record) * 7
+      end
 
-          public decimal GetTotalRevenue()
-          {
-              return _orders.Sum(o => o.Total);
-          }
+      function exceeds_limit(record::DosageRecord)::Bool
+          return daily_total(record) > record.max_daily_mg
+      end
 
-          public Dictionary<int, decimal> GetCustomerTotals()
-          {
-              return _orders
-                  .GroupBy(o => o.CustomerId)
-                  .ToDictionary(g => g.Key, g => g.Sum(o => o.Total));
-          }
-      }
-    Unrelated/SmsGateway.cs: |
-      namespace MyApp.Unrelated;
-
-      public class SmsGateway
-      {
-          private const string GARBAGE_CS_013_SMS_GATEWAY_A = "sms_gateway_marker";
-
-          public void SendSms(string phone, string text) => _ = GARBAGE_CS_013_SMS_GATEWAY_A + phone;
-      }
-    Unrelated/WebhookDispatcher.cs: |
-      namespace MyApp.Unrelated;
-
-      public class WebhookDispatcher
-      {
-          public const string GARBAGE_CS_013_WEBHOOK_DISPATCHER_B = "webhook_dispatcher_marker";
-
-          public void Dispatch(string url) => _ = GARBAGE_CS_013_WEBHOOK_DISPATCHER_B + url;
-      }
-  commit_message: Update files
+      end
+    garbage/CS013_lab.jl: |
+      # CS013_GARBAGE_A = "lab_marker"
+    garbage/CS013_billing.jl: |
+      # CS013_GARBAGE_B = "billing_marker"
+    garbage/CS013_scheduling.jl: |
+      # CS013_GARBAGE_C = "scheduling_marker"
+  commit_message: "feat: add max_daily_mg to DosageRecord, add weekly_total and exceeds_limit"
 fragments:
-- id: orderservice_file
+- id: weekly_total_func
   selector:
-    path: Services/OrderService.cs
-- id: req_global_0
+    anchor: "function weekly_total(record::DosageRecord)"
+- id: exceeds_limit_func
   selector:
-    anchor: public IEnumerable<Order> GetRecentOrders(int days)
-- id: req_global_1
+    anchor: "function exceeds_limit(record::DosageRecord)"
+- id: max_daily_mg_field
   selector:
-    anchor: public decimal GetTotalRevenue()
-- id: no_global_0
+    anchor: "max_daily_mg::Float64"
+- id: no_garbage_a
   selector:
-    anchor: GARBAGE_CS_013_SMS_GATEWAY_A
-- id: no_global_1
+    anchor: CS013_GARBAGE_A
+- id: no_garbage_b
   selector:
-    anchor: GARBAGE_CS_013_WEBHOOK_DISPATCHER_B
-- id: no_global_2
+    anchor: CS013_GARBAGE_B
+- id: no_garbage_c
   selector:
-    anchor: SmsGateway.cs
-- id: no_global_3
-  selector:
-    anchor: WebhookDispatcher.cs
+    anchor: CS013_GARBAGE_C
 oracle:
   required:
-  - orderservice_file
-  - req_global_0
-  - req_global_1
+  - weekly_total_func
+  - exceeds_limit_func
+  - max_daily_mg_field
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

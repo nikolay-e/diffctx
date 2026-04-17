@@ -1,0 +1,165 @@
+name: gap_126_swift_same_file_weather_service
+tags:
+- lang:swift
+- change:new_function
+- change:signature
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    Sources/Weather/WeatherService.swift: |
+      import Foundation
+
+      enum TemperatureUnit {
+          case celsius
+          case fahrenheit
+      }
+
+      struct WeatherReading {
+          let temperature: Double
+          let humidity: Double
+          let windSpeed: Double
+          let timestamp: Date
+      }
+
+      class WeatherService {
+          private var readings: [WeatherReading] = []
+          private let unit: TemperatureUnit
+
+          init(unit: TemperatureUnit = .celsius) {
+              self.unit = unit
+          }
+
+          func record(_ reading: WeatherReading) {
+              readings.append(reading)
+          }
+
+          func averageTemperature() -> Double {
+              guard !readings.isEmpty else { return 0 }
+              let sum = readings.reduce(0.0) { $0 + $1.temperature }
+              return sum / Double(readings.count)
+          }
+
+          func maxWindSpeed() -> Double {
+              readings.map(\.windSpeed).max() ?? 0
+          }
+      }
+    Sources/Weather/ForecastModel.swift: |
+      import Foundation
+
+      struct Forecast {
+          let date: Date
+          let highTemp: Double
+          let lowTemp: Double
+          let precipChance: Double
+      }
+
+      class ForecastModel {
+          func predict(basedOn readings: [WeatherReading]) -> [Forecast] {
+              return []
+          }
+
+          func accuracy(predicted: Forecast, actual: WeatherReading) -> Double {
+              let tempDiff = abs(predicted.highTemp - actual.temperature)
+              return max(0, 1.0 - tempDiff / 50.0)
+          }
+      }
+    Sources/Alerts/AlertManager.swift: |
+      import Foundation
+
+      struct WeatherAlert {
+          let severity: Int
+          let message: String
+          let expiresAt: Date
+      }
+
+      class AlertManager {
+          private var alerts: [WeatherAlert] = []
+
+          func addAlert(_ alert: WeatherAlert) {
+              alerts.append(alert)
+          }
+
+          func activeAlerts() -> [WeatherAlert] {
+              let now = Date()
+              return alerts.filter { $0.expiresAt > now }
+          }
+      }
+  changed_files:
+    Sources/Weather/WeatherService.swift: |
+      import Foundation
+
+      enum TemperatureUnit {
+          case celsius
+          case fahrenheit
+      }
+
+      struct WeatherReading {
+          let temperature: Double
+          let humidity: Double
+          let windSpeed: Double
+          let timestamp: Date
+      }
+
+      class WeatherService {
+          private var readings: [WeatherReading] = []
+          private let unit: TemperatureUnit
+
+          init(unit: TemperatureUnit = .celsius) {
+              self.unit = unit
+          }
+
+          func record(_ reading: WeatherReading) {
+              readings.append(reading)
+          }
+
+          func averageTemperature() -> Double {
+              guard !readings.isEmpty else { return 0 }
+              let sum = readings.reduce(0.0) { $0 + $1.temperature }
+              return sum / Double(readings.count)
+          }
+
+          func maxWindSpeed() -> Double {
+              readings.map(\.windSpeed).max() ?? 0
+          }
+
+          func averageHumidity() -> Double {
+              guard !readings.isEmpty else { return 0 }
+              let sum = readings.reduce(0.0) { $0 + $1.humidity }
+              return sum / Double(readings.count)
+          }
+      }
+fragments:
+- id: avg_humidity
+  selector:
+    path: Sources/Weather/WeatherService.swift
+    anchor: averageHumidity
+- id: weather_class
+  selector:
+    path: Sources/Weather/WeatherService.swift
+    anchor: class WeatherService
+- id: reading_struct
+  selector:
+    path: Sources/Weather/WeatherService.swift
+    anchor: struct WeatherReading
+- id: no_forecast
+  selector:
+    path: Sources/Weather/ForecastModel.swift
+- id: no_alerts
+  selector:
+    path: Sources/Alerts/AlertManager.swift
+- id: no_alert_add
+  selector:
+    anchor: func addAlert
+oracle:
+  required:
+  - avg_humidity
+  - weather_class
+  forbidden:
+  - no_forecast
+  - no_alerts
+  - no_alert_add

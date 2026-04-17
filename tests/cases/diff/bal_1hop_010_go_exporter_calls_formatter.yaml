@@ -1,0 +1,153 @@
+name: bal_1hop_010_go_exporter_calls_formatter
+tags:
+- lang:cpp
+- change:new_function
+- change:single_file
+- context:cross_module
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    include/iot/sensor_aggregator.hpp: |
+      #pragma once
+      #include <vector>
+      #include <string>
+      #include <cstdint>
+
+      namespace iot {
+
+      struct SensorReading {
+          uint32_t device_id;
+          double value;
+          int64_t timestamp_ms;
+      };
+
+      class SensorAggregator {
+      public:
+          void add_reading(const SensorReading& r);
+          double compute_mean() const;
+          double compute_max() const;
+          size_t count() const;
+          void clear();
+
+      private:
+          std::vector<SensorReading> readings_;
+      };
+
+      } // namespace iot
+    src/iot/telemetry_publisher.cpp: |
+      #include "iot/sensor_aggregator.hpp"
+      #include <string>
+
+      namespace iot {
+
+      class TelemetryPublisher {
+      public:
+          explicit TelemetryPublisher(const std::string& topic) : topic_(topic) {}
+
+          void publish_stats(SensorAggregator& agg) {
+              if (agg.count() == 0) return;
+              send_metric(topic_ + ".mean", agg.compute_mean());
+              send_metric(topic_ + ".max", agg.compute_max());
+              agg.clear();
+          }
+
+      private:
+          void send_metric(const std::string& name, double value);
+          std::string topic_;
+      };
+
+      } // namespace iot
+    garbage/device_registry.cpp: |
+      // GARBAGE_IOTPUB_A = "device_registry_marker"
+    garbage/ota_updater.cpp: |
+      // GARBAGE_IOTPUB_B = "ota_updater_marker"
+    garbage/mqtt_broker.cpp: |
+      // GARBAGE_IOTPUB_C = "mqtt_broker_marker"
+  changed_files:
+    include/iot/sensor_aggregator.hpp: |
+      #pragma once
+      #include <vector>
+      #include <string>
+      #include <cstdint>
+
+      namespace iot {
+
+      struct SensorReading {
+          uint32_t device_id;
+          double value;
+          int64_t timestamp_ms;
+      };
+
+      class SensorAggregator {
+      public:
+          void add_reading(const SensorReading& r);
+          double compute_mean() const;
+          double compute_max() const;
+          double compute_min() const;
+          size_t count() const;
+          void clear();
+
+      private:
+          std::vector<SensorReading> readings_;
+      };
+
+      } // namespace iot
+    src/iot/telemetry_publisher.cpp: |
+      #include "iot/sensor_aggregator.hpp"
+      #include <string>
+
+      namespace iot {
+
+      class TelemetryPublisher {
+      public:
+          explicit TelemetryPublisher(const std::string& topic) : topic_(topic) {}
+
+          void publish_stats(SensorAggregator& agg) {
+              if (agg.count() == 0) return;
+              send_metric(topic_ + ".mean", agg.compute_mean());
+              send_metric(topic_ + ".max", agg.compute_max());
+              send_metric(topic_ + ".min", agg.compute_min());
+              agg.clear();
+          }
+
+      private:
+          void send_metric(const std::string& name, double value);
+          std::string topic_;
+      };
+
+      } // namespace iot
+    garbage/device_registry.cpp: |
+      // GARBAGE_IOTPUB_A = "device_registry_marker"
+    garbage/ota_updater.cpp: |
+      // GARBAGE_IOTPUB_B = "ota_updater_marker"
+    garbage/mqtt_broker.cpp: |
+      // GARBAGE_IOTPUB_C = "mqtt_broker_marker"
+  commit_message: "feat: add compute_min to SensorAggregator"
+fragments:
+- id: compute_min_decl
+  selector:
+    path: include/iot/sensor_aggregator.hpp
+    anchor: "double compute_min() const;"
+- id: publisher_uses_min
+  selector:
+    path: src/iot/telemetry_publisher.cpp
+    anchor: "agg.compute_min()"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_IOTPUB_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_IOTPUB_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_IOTPUB_C
+oracle:
+  required:
+  - compute_min_decl
+  allowed:
+  - publisher_uses_min
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

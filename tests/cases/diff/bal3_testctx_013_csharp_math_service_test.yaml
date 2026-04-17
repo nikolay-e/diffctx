@@ -1,0 +1,98 @@
+name: bal3_testctx_013_csharp_math_service_test
+tags:
+- lang:csharp
+- change:single_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/MathService.cs: |
+      namespace App;
+
+      public class MathService
+      {
+          public int Add(int a, int b) => a + b;
+
+          public int Subtract(int a, int b) => a - b;
+      }
+    tests/MathServiceTests.cs: |
+      using Xunit;
+      using App;
+
+      public class MathServiceTests
+      {
+          private readonly MathService _svc = new();
+
+          [Fact]
+          public void Add_ReturnsSum()
+          {
+              Assert.Equal(5, _svc.Add(2, 3));
+          }
+
+          [Fact]
+          public void Subtract_ReturnsDifference()
+          {
+              Assert.Equal(2, _svc.Subtract(5, 3));
+          }
+      }
+    src/Logger.cs: |
+      namespace App;
+
+      public static class Logger
+      {
+          public static void Info(string message)
+          {
+              System.Console.WriteLine($"[INFO] {message}");
+          }
+      }
+  changed_files:
+    src/MathService.cs: |
+      namespace App;
+
+      public class MathService
+      {
+          public int Add(int a, int b) => a + b;
+
+          public int Subtract(int a, int b) => a - b;
+
+          public int Multiply(int a, int b) => a * b;
+
+          public double Divide(int a, int b)
+          {
+              if (b == 0) throw new System.DivideByZeroException();
+              return (double)a / b;
+          }
+      }
+  commit_message: "feat: add Multiply and Divide to MathService"
+fragments:
+- id: multiply_method
+  selector:
+    path: src/MathService.cs
+    anchor: "public int Multiply(int a, int b)"
+- id: divide_method
+  selector:
+    path: src/MathService.cs
+    anchor: "public double Divide(int a, int b)"
+- id: test_imports
+  selector:
+    path: tests/MathServiceTests.cs
+    anchor: "using App"
+- id: test_add
+  selector:
+    path: tests/MathServiceTests.cs
+    anchor: "public void Add_ReturnsSum()"
+- id: no_logger
+  selector:
+    path: src/Logger.cs
+    anchor: "public static class Logger"
+oracle:
+  required:
+  - multiply_method
+  - divide_method
+  - test_imports
+  allowed:
+  - test_add
+  forbidden:
+  - no_logger

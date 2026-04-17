@@ -1,0 +1,280 @@
+name: bal3_refactor_008_rust_rename_module
+tags:
+- lang:rust
+- change:bug_fix
+- change:multi_file
+- context:test_file
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/retry/policy.rs: |
+      use crate::retry::backoff::BackoffStrategy;
+
+      pub struct RetryPolicy {
+          pub max_attempts: u32,
+          pub backoff: BackoffStrategy,
+      }
+
+      impl RetryPolicy {
+          pub fn new(max_attempts: u32, backoff: BackoffStrategy) -> Self {
+              Self { max_attempts, backoff }
+          }
+
+          pub fn should_retry(&self, attempt: u32) -> bool {
+              attempt < self.max_attempts
+          }
+
+          pub fn delay_for_attempt(&self, attempt: u32) -> std::time::Duration {
+              self.backoff.compute(attempt)
+          }
+      }
+    src/retry/backoff.rs: |
+      pub enum BackoffStrategy {
+          Fixed(u64),
+          Exponential { base_ms: u64, max_ms: u64 },
+      }
+
+      impl BackoffStrategy {
+          pub fn compute(&self, attempt: u32) -> std::time::Duration {
+              match self {
+                  BackoffStrategy::Fixed(ms) => std::time::Duration::from_millis(*ms),
+                  BackoffStrategy::Exponential { base_ms, max_ms } => {
+                      let ms = base_ms * 2u64.pow(attempt);
+                      std::time::Duration::from_millis(ms.min(*max_ms))
+                  }
+              }
+          }
+      }
+    src/retry/executor.rs: |
+      use crate::retry::policy::RetryPolicy;
+
+      pub struct RetryExecutor {
+          policy: RetryPolicy,
+      }
+
+      impl RetryExecutor {
+          pub fn new(policy: RetryPolicy) -> Self {
+              Self { policy }
+          }
+
+          pub fn execute<F, T, E>(&self, mut operation: F) -> Result<T, E>
+          where
+              F: FnMut() -> Result<T, E>,
+          {
+              let mut attempt = 0;
+              loop {
+                  match operation() {
+                      Ok(v) => return Ok(v),
+                      Err(e) if self.policy.should_retry(attempt) => {
+                          attempt += 1;
+                      }
+                      Err(e) => return Err(e),
+                  }
+              }
+          }
+      }
+    tests/test_retry.rs: |
+      use crate::retry::policy::RetryPolicy;
+      use crate::retry::backoff::BackoffStrategy;
+      use crate::retry::executor::RetryExecutor;
+
+      #[test]
+      fn test_retry_succeeds_on_third_attempt() {
+          let policy = RetryPolicy::new(3, BackoffStrategy::Fixed(0));
+          let executor = RetryExecutor::new(policy);
+          let mut calls = 0;
+          let result: Result<&str, &str> = executor.execute(|| {
+              calls += 1;
+              if calls < 3 { Err("fail") } else { Ok("ok") }
+          });
+          assert_eq!(result, Ok("ok"));
+      }
+    src/network/http_client.rs: |
+      pub const GARBAGE_BAL3R008_A: &str = "http_client_user_agent";
+
+      pub struct HttpClient;
+      impl HttpClient {
+          pub fn get(&self, url: &str) -> Result<String, String> { Ok(url.to_string()) }
+      }
+    src/logging/structured.rs: |
+      pub const GARBAGE_BAL3R008_B: &str = "structured_log_format";
+      pub const GARBAGE_BAL3R008_C: &str = "json";
+
+      pub fn log(level: &str, msg: &str) { println!("{}: {}", level, msg); }
+    src/config/retry_config.rs: |
+      pub const GARBAGE_BAL3R008_D: &str = "retry_config_section";
+
+      pub struct RetryConfig { pub enabled: bool }
+  changed_files:
+    src/retry/policy.rs: |
+      use crate::retry::backoff::BackoffStrategy;
+
+      pub struct RetryPolicy {
+          pub max_attempts: u32,
+          pub backoff: BackoffStrategy,
+      }
+
+      impl RetryPolicy {
+          pub fn new(max_attempts: u32, backoff: BackoffStrategy) -> Self {
+              Self { max_attempts, backoff }
+          }
+
+          pub fn should_retry(&self, attempt: u32) -> bool {
+              attempt < self.max_attempts
+          }
+
+          pub fn delay_for_attempt(&self, attempt: u32) -> std::time::Duration {
+              self.backoff.compute(attempt)
+          }
+      }
+    src/retry/backoff.rs: |
+      pub enum BackoffStrategy {
+          Fixed(u64),
+          Exponential { base_ms: u64, max_ms: u64 },
+      }
+
+      impl BackoffStrategy {
+          pub fn compute(&self, attempt: u32) -> std::time::Duration {
+              match self {
+                  BackoffStrategy::Fixed(ms) => std::time::Duration::from_millis(*ms),
+                  BackoffStrategy::Exponential { base_ms, max_ms } => {
+                      let ms = base_ms * 2u64.pow(attempt);
+                      std::time::Duration::from_millis(ms.min(*max_ms))
+                  }
+              }
+          }
+      }
+    src/retry/executor.rs: |
+      use crate::retry::policy::RetryPolicy;
+
+      pub struct RetryExecutor {
+          policy: RetryPolicy,
+      }
+
+      impl RetryExecutor {
+          pub fn new(policy: RetryPolicy) -> Self {
+              Self { policy }
+          }
+
+          pub fn execute<F, T, E>(&self, mut operation: F) -> Result<T, E>
+          where
+              F: FnMut() -> Result<T, E>,
+          {
+              let mut attempt = 0;
+              loop {
+                  match operation() {
+                      Ok(v) => return Ok(v),
+                      Err(e) if self.policy.should_retry(attempt) => {
+                          let delay = self.policy.delay_for_attempt(attempt);
+                          if delay.as_millis() > 0 {
+                              std::thread::sleep(delay);
+                          }
+                          attempt += 1;
+                      }
+                      Err(e) => return Err(e),
+                  }
+              }
+          }
+      }
+    tests/test_retry.rs: |
+      use crate::retry::policy::RetryPolicy;
+      use crate::retry::backoff::BackoffStrategy;
+      use crate::retry::executor::RetryExecutor;
+
+      #[test]
+      fn test_retry_succeeds_on_third_attempt() {
+          let policy = RetryPolicy::new(3, BackoffStrategy::Fixed(0));
+          let executor = RetryExecutor::new(policy);
+          let mut calls = 0;
+          let result: Result<&str, &str> = executor.execute(|| {
+              calls += 1;
+              if calls < 3 { Err("fail") } else { Ok("ok") }
+          });
+          assert_eq!(result, Ok("ok"));
+      }
+
+      #[test]
+      fn test_retry_exhausted_returns_last_error() {
+          let policy = RetryPolicy::new(2, BackoffStrategy::Fixed(0));
+          let executor = RetryExecutor::new(policy);
+          let result: Result<&str, &str> = executor.execute(|| Err("always_fails"));
+          assert_eq!(result, Err("always_fails"));
+      }
+
+      #[test]
+      fn test_exponential_backoff_caps_at_max() {
+          let strategy = BackoffStrategy::Exponential { base_ms: 100, max_ms: 500 };
+          let delay = strategy.compute(10);
+          assert!(delay.as_millis() <= 500);
+      }
+    src/network/http_client.rs: |
+      pub const GARBAGE_BAL3R008_A: &str = "http_client_user_agent";
+
+      pub struct HttpClient;
+      impl HttpClient {
+          pub fn get(&self, url: &str) -> Result<String, String> { Ok(url.to_string()) }
+      }
+    src/logging/structured.rs: |
+      pub const GARBAGE_BAL3R008_B: &str = "structured_log_format";
+      pub const GARBAGE_BAL3R008_C: &str = "json";
+
+      pub fn log(level: &str, msg: &str) { println!("{}: {}", level, msg); }
+    src/config/retry_config.rs: |
+      pub const GARBAGE_BAL3R008_D: &str = "retry_config_section";
+
+      pub struct RetryConfig { pub enabled: bool }
+  commit_message: "fix: apply backoff delay in RetryExecutor before next attempt"
+fragments:
+- id: executor_sleep_delay
+  selector:
+    path: src/retry/executor.rs
+    anchor: "std::thread::sleep(delay)"
+- id: executor_delay_for_attempt
+  selector:
+    path: src/retry/executor.rs
+    anchor: "let delay = self.policy.delay_for_attempt(attempt)"
+- id: test_exhausted
+  selector:
+    path: tests/test_retry.rs
+    anchor: "fn test_retry_exhausted_returns_last_error"
+- id: test_backoff_caps
+  selector:
+    path: tests/test_retry.rs
+    anchor: "fn test_exponential_backoff_caps_at_max"
+- id: no_http_client
+  selector:
+    path: src/network/http_client.rs
+- id: no_structured_log
+  selector:
+    path: src/logging/structured.rs
+- id: no_retry_config
+  selector:
+    path: src/config/retry_config.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3R008_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3R008_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3R008_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3R008_D
+oracle:
+  required:
+  - executor_sleep_delay
+  - executor_delay_for_attempt
+  - test_exhausted
+  - test_backoff_caps
+  allowed: []
+  forbidden:
+  - no_http_client
+  - no_structured_log
+  - no_retry_config
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

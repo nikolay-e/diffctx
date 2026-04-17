@@ -1,0 +1,137 @@
+name: xml_013_spring_security_config
+tags:
+- lang:xml
+- lang:java
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/main/resources/security.xml: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <beans:beans xmlns="http://www.springframework.org/schema/security"
+          xmlns:beans="http://www.springframework.org/schema/beans"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://www.springframework.org/schema/security
+              http://www.springframework.org/schema/security/spring-security.xsd
+              http://www.springframework.org/schema/beans
+              http://www.springframework.org/schema/beans/spring-beans.xsd">
+        <http>
+          <intercept-url pattern="/public/**" access="permitAll"/>
+          <intercept-url pattern="/api/**" access="isAuthenticated()"/>
+          <intercept-url pattern="/**" access="isAuthenticated()"/>
+          <form-login login-page="/login" default-target-url="/dashboard"/>
+          <logout logout-url="/logout" logout-success-url="/login"/>
+        </http>
+        <authentication-manager>
+          <authentication-provider>
+            <user-service>
+              <user name="admin" password="{noop}admin123" authorities="ROLE_ADMIN"/>
+            </user-service>
+          </authentication-provider>
+        </authentication-manager>
+      </beans:beans>
+    src/main/java/com/example/web/AdminController.java: |
+      package com.example.web;
+      import org.springframework.security.access.prepost.PreAuthorize;
+      import org.springframework.web.bind.annotation.GetMapping;
+      import org.springframework.web.bind.annotation.RequestMapping;
+      import org.springframework.web.bind.annotation.RestController;
+      @RestController
+      @RequestMapping("/admin")
+      public class AdminController {
+          @GetMapping("/stats")
+          @PreAuthorize("hasRole('ROLE_ADMIN')")
+          public String getStats() {
+              return "admin stats";
+          }
+      }
+    src/main/java/com/example/web/DashboardController.java: |
+      package com.example.web;
+      import org.springframework.web.bind.annotation.GetMapping;
+      import org.springframework.web.bind.annotation.RequestMapping;
+      import org.springframework.web.bind.annotation.RestController;
+      @RestController
+      @RequestMapping("/dashboard")
+      public class DashboardController {
+          @GetMapping
+          public String getDashboard() { return "dashboard"; }
+      }
+    XML_NOISE_013_ehcache.xml: |
+      <ehcache>
+        <!-- XML_NOISE_013_CACHE_CONFIG -->
+        <cache name="XML_NOISE_013_userCache"
+               maxEntriesLocalHeap="1000"
+               timeToLiveSeconds="300"/>
+        <cache name="XML_NOISE_013_sessionCache"
+               maxEntriesLocalHeap="500"
+               timeToLiveSeconds="1800"/>
+      </ehcache>
+    garbage/AclConfig.java: |
+      // XML_NOISE_013_AclConfig = "spring_acl_config_marker"
+    garbage/TokenStore.java: |
+      // XML_NOISE_013_TokenStore = "oauth2_token_store_marker"
+  changed_files:
+    src/main/resources/security.xml: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <beans:beans xmlns="http://www.springframework.org/schema/security"
+          xmlns:beans="http://www.springframework.org/schema/beans"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://www.springframework.org/schema/security
+              http://www.springframework.org/schema/security/spring-security.xsd
+              http://www.springframework.org/schema/beans
+              http://www.springframework.org/schema/beans/spring-beans.xsd">
+        <http>
+          <intercept-url pattern="/public/**" access="permitAll"/>
+          <intercept-url pattern="/admin/**" access="hasRole('ROLE_ADMIN')"/>
+          <intercept-url pattern="/api/**" access="isAuthenticated()"/>
+          <intercept-url pattern="/**" access="isAuthenticated()"/>
+          <form-login login-page="/login" default-target-url="/dashboard"/>
+          <logout logout-url="/logout" logout-success-url="/login"/>
+        </http>
+        <authentication-manager>
+          <authentication-provider>
+            <user-service>
+              <user name="admin" password="{noop}admin123" authorities="ROLE_ADMIN"/>
+            </user-service>
+          </authentication-provider>
+        </authentication-manager>
+      </beans:beans>
+  commit_message: "security: restrict /admin/** to ROLE_ADMIN in security.xml"
+fragments:
+- id: security_xml_admin_intercept
+  selector:
+    path: src/main/resources/security.xml
+    anchor: "/admin/**"
+- id: admin_controller
+  selector:
+    path: src/main/java/com/example/web/AdminController.java
+    anchor: ROLE_ADMIN
+- id: no_ehcache
+  selector:
+    path: XML_NOISE_013_ehcache.xml
+- id: no_acl_config
+  selector:
+    path: garbage/AclConfig.java
+- id: no_global_0
+  selector:
+    anchor: XML_NOISE_013_CACHE_CONFIG
+- id: no_global_1
+  selector:
+    anchor: XML_NOISE_013_userCache
+- id: no_global_2
+  selector:
+    anchor: XML_NOISE_013_AclConfig
+oracle:
+  required:
+  - security_xml_admin_intercept
+  - admin_controller
+  allowed: []
+  forbidden:
+  - no_ehcache
+  - no_acl_config
+  - no_global_0
+  - no_global_1
+  - no_global_2

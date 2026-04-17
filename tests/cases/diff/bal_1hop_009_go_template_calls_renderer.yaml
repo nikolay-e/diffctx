@@ -1,0 +1,101 @@
+name: bal_1hop_009_go_template_calls_renderer
+tags:
+- lang:go
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    pkg/renderer/html.go: |
+      package renderer
+
+      import (
+          "bytes"
+          "html/template"
+      )
+
+      func RenderHTML(tmpl string, data interface{}) (string, error) {
+          t, err := template.New("page").Parse(tmpl)
+          if err != nil {
+              return "", err
+          }
+          var buf bytes.Buffer
+          err = t.Execute(&buf, data)
+          return buf.String(), err
+      }
+    pkg/web/page.go: |
+      package web
+
+      import (
+          "net/http"
+          "myapp/pkg/renderer"
+      )
+
+      const homeTmpl = `<html><body>Hello {{.Name}}</body></html>`
+
+      func HomePage(w http.ResponseWriter, r *http.Request) {
+          out, err := renderer.RenderHTML(homeTmpl, map[string]string{"Name": "World"})
+          if err != nil {
+              http.Error(w, err.Error(), 500)
+              return
+          }
+          w.Write([]byte(out))
+      }
+    pkg/static/assets.go: |
+      package static
+
+      import "net/http"
+
+      func ServeStatic(dir string) http.Handler {
+          return http.FileServer(http.Dir(dir))
+      }
+  changed_files:
+    pkg/renderer/html.go: |
+      package renderer
+
+      import (
+          "bytes"
+          "html/template"
+      )
+
+      func RenderHTML(tmpl string, data interface{}) (string, error) {
+          t, err := template.New("page").Parse(tmpl)
+          if err != nil {
+              return "", err
+          }
+          var buf bytes.Buffer
+          err = t.Execute(&buf, data)
+          return buf.String(), err
+      }
+
+      func RenderHTMLWithFuncs(tmpl string, funcs template.FuncMap, data interface{}) (string, error) {
+          t, err := template.New("page").Funcs(funcs).Parse(tmpl)
+          if err != nil {
+              return "", err
+          }
+          var buf bytes.Buffer
+          err = t.Execute(&buf, data)
+          return buf.String(), err
+      }
+  commit_message: "feat: add RenderHTMLWithFuncs for custom template functions"
+fragments:
+- id: render_with_funcs
+  selector:
+    path: pkg/renderer/html.go
+    anchor: "func RenderHTMLWithFuncs"
+- id: web_calls_render
+  selector:
+    path: pkg/web/page.go
+    anchor: "renderer.RenderHTML(homeTmpl"
+- id: unrelated_static
+  selector:
+    path: pkg/static/assets.go
+    anchor: "func ServeStatic"
+oracle:
+  required:
+  - render_with_funcs
+  - web_calls_render
+  allowed: []
+  forbidden:
+  - unrelated_static

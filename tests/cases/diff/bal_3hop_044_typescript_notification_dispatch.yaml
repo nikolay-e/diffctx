@@ -1,0 +1,223 @@
+name: bal_3hop_044_typescript_notification_dispatch
+tags:
+- lang:typescript
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/notifications/channel.ts: |
+      export interface NotificationChannel {
+        type: 'email' | 'sms';
+        send(to: string, message: string): Promise<boolean>;
+      }
+
+      export class EmailChannel implements NotificationChannel {
+        type: 'email' = 'email';
+        async send(to: string, message: string): Promise<boolean> {
+          console.log(`Email to ${to}: ${message}`);
+          return true;
+        }
+      }
+
+      export class SmsChannel implements NotificationChannel {
+        type: 'sms' = 'sms';
+        async send(to: string, message: string): Promise<boolean> {
+          console.log(`SMS to ${to}: ${message}`);
+          return true;
+        }
+      }
+    src/notifications/dispatcher.ts: |
+      import { NotificationChannel } from './channel';
+
+      export class NotificationDispatcher {
+        private channels: NotificationChannel[] = [];
+
+        addChannel(channel: NotificationChannel): void {
+          this.channels.push(channel);
+        }
+
+        async dispatch(to: string, message: string): Promise<boolean[]> {
+          return Promise.all(this.channels.map(c => c.send(to, message)));
+        }
+      }
+    src/services/alertService.ts: |
+      import { NotificationDispatcher } from '../notifications/dispatcher';
+
+      export class AlertService {
+        constructor(private dispatcher: NotificationDispatcher) {}
+
+        async sendAlert(userId: string, alert: string): Promise<void> {
+          await this.dispatcher.dispatch(userId, alert);
+        }
+      }
+    src/controllers/alertController.ts: |
+      import { AlertService } from '../services/alertService';
+      import { NotificationDispatcher } from '../notifications/dispatcher';
+      import { EmailChannel } from '../notifications/channel';
+
+      const dispatcher = new NotificationDispatcher();
+      dispatcher.addChannel(new EmailChannel());
+      const alertService = new AlertService(dispatcher);
+
+      export async function handleAlert(req: any, res: any): Promise<void> {
+        await alertService.sendAlert(req.body.userId, req.body.message);
+        res.status(200).json({ sent: true });
+      }
+    src/utils/throttle.ts: |
+      GARBAGE_044_THROTTLE_MARKER_A = "throttle";
+      GARBAGE_044_RATE_MARKER_B = 100;
+
+      export function throttle(fn: Function, ms: number): Function {
+        let last = 0;
+        return (...args: any[]) => {
+          if (Date.now() - last >= ms) { last = Date.now(); fn(...args); }
+        };
+      }
+    src/utils/mask.ts: |
+      GARBAGE_044_MASK_MARKER_C = "mask";
+      GARBAGE_044_PII_MARKER_D = true;
+
+      export function maskEmail(email: string): string {
+        const [user, domain] = email.split('@');
+        return `${user[0]}***@${domain}`;
+      }
+  changed_files:
+    src/notifications/channel.ts: |
+      export type ChannelType = 'email' | 'sms' | 'push';
+
+      export interface NotificationChannel {
+        type: ChannelType;
+        send(to: string, message: string): Promise<boolean>;
+      }
+
+      export class EmailChannel implements NotificationChannel {
+        type: ChannelType = 'email';
+        async send(to: string, message: string): Promise<boolean> {
+          console.log(`Email to ${to}: ${message}`);
+          return true;
+        }
+      }
+
+      export class SmsChannel implements NotificationChannel {
+        type: ChannelType = 'sms';
+        async send(to: string, message: string): Promise<boolean> {
+          console.log(`SMS to ${to}: ${message}`);
+          return true;
+        }
+      }
+
+      export class PushChannel implements NotificationChannel {
+        type: ChannelType = 'push';
+        async send(to: string, message: string): Promise<boolean> {
+          console.log(`Push to ${to}: ${message}`);
+          return true;
+        }
+      }
+    src/notifications/dispatcher.ts: |
+      import { NotificationChannel, ChannelType } from './channel';
+
+      export class NotificationDispatcher {
+        private channels: NotificationChannel[] = [];
+
+        addChannel(channel: NotificationChannel): void {
+          this.channels.push(channel);
+        }
+
+        async dispatch(to: string, message: string, types?: ChannelType[]): Promise<boolean[]> {
+          const targets = types
+            ? this.channels.filter(c => types.includes(c.type))
+            : this.channels;
+          return Promise.all(targets.map(c => c.send(to, message)));
+        }
+      }
+    src/services/alertService.ts: |
+      import { NotificationDispatcher } from '../notifications/dispatcher';
+      import { ChannelType } from '../notifications/channel';
+
+      export class AlertService {
+        constructor(private dispatcher: NotificationDispatcher) {}
+
+        async sendAlert(userId: string, alert: string, channels?: ChannelType[]): Promise<void> {
+          await this.dispatcher.dispatch(userId, alert, channels);
+        }
+      }
+    src/controllers/alertController.ts: |
+      import { AlertService } from '../services/alertService';
+      import { NotificationDispatcher } from '../notifications/dispatcher';
+      import { EmailChannel, PushChannel } from '../notifications/channel';
+
+      const dispatcher = new NotificationDispatcher();
+      dispatcher.addChannel(new EmailChannel());
+      dispatcher.addChannel(new PushChannel());
+      const alertService = new AlertService(dispatcher);
+
+      export async function handleAlert(req: any, res: any): Promise<void> {
+        await alertService.sendAlert(req.body.userId, req.body.message, req.body.channels);
+        res.status(200).json({ sent: true });
+      }
+    src/utils/throttle.ts: |
+      GARBAGE_044_THROTTLE_MARKER_A = "throttle";
+      GARBAGE_044_RATE_MARKER_B = 100;
+
+      export function throttle(fn: Function, ms: number): Function {
+        let last = 0;
+        return (...args: any[]) => {
+          if (Date.now() - last >= ms) { last = Date.now(); fn(...args); }
+        };
+      }
+    src/utils/mask.ts: |
+      GARBAGE_044_MASK_MARKER_C = "mask";
+      GARBAGE_044_PII_MARKER_D = true;
+
+      export function maskEmail(email: string): string {
+        const [user, domain] = email.split('@');
+        return `${user[0]}***@${domain}`;
+      }
+  commit_message: "feat: add push notification channel and targeted dispatch"
+fragments:
+- id: channel_type_push
+  selector:
+    path: src/notifications/channel.ts
+    anchor: "export type ChannelType"
+- id: push_channel_class
+  selector:
+    path: src/notifications/channel.ts
+    anchor: "export class PushChannel"
+- id: dispatcher_filter_types
+  selector:
+    path: src/notifications/dispatcher.ts
+    anchor: "types?: ChannelType[]"
+- id: alert_service_channels
+  selector:
+    path: src/services/alertService.ts
+    anchor: "channels?: ChannelType[]"
+- id: controller_imports_push
+  selector:
+    path: src/controllers/alertController.ts
+    anchor: "EmailChannel, PushChannel"
+- id: controller_sends_channels
+  selector:
+    path: src/controllers/alertController.ts
+    anchor: "req.body.channels"
+- id: no_throttle
+  selector:
+    path: src/utils/throttle.ts
+    anchor: "GARBAGE_044_THROTTLE_MARKER_A"
+- id: no_mask
+  selector:
+    path: src/utils/mask.ts
+    anchor: "GARBAGE_044_MASK_MARKER_C"
+oracle:
+  required:
+  - channel_type_push
+  - push_channel_class
+  - dispatcher_filter_types
+  - alert_service_channels
+  - controller_imports_push
+  - controller_sends_channels
+  allowed: []
+  forbidden:
+  - no_throttle
+  - no_mask

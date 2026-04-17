@@ -1,213 +1,200 @@
 name: scala_002_trait_mixin
+tags:
+- lang:rust
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
 repo:
   initial_files:
-    src/traits/Logging.scala: |
-      package traits
-
-      trait Logging {
-        protected def logPrefix: String = getClass.getSimpleName
-
-        def log(message: String): Unit =
-          println(s"[$logPrefix][LOG] $message")
-
-        def debug(message: String): Unit =
-          println(s"[$logPrefix][DEBUG] $message")
-
-        def error(message: String, cause: Throwable): Unit =
-          println(s"[$logPrefix][ERROR] $message: ${cause.getMessage}")
+    src/valve.rs: |
+      #[derive(Debug, Clone, PartialEq)]
+      pub enum ValveState {
+          Open,
+          Closed,
       }
-    src/traits/Metrics.scala: |
-      package traits
 
-      trait Metrics {
-        private var counters: Map[String, Long] = Map.empty
-
-        def recordMetric(name: String, value: Double): Unit = {
-          println(s"Metric: $name = $value")
-        }
-
-        def incrementCounter(name: String): Unit = {
-          counters = counters.updated(name, counters.getOrElse(name, 0L) + 1)
-        }
-
-        def getCounter(name: String): Long = counters.getOrElse(name, 0L)
+      pub struct Valve {
+          pub id: String,
+          pub state: ValveState,
+          pub flow_rate: f32,
       }
-    src/services/OrderService.scala: |
-      package services
 
-      class OrderService {
-        def processOrder(orderId: String): String = {
-          s"Processing order $orderId"
-        }
-      }
-    src/traits/Serializable.scala: |
-      package traits
-
-      trait Serializable {
-        def serialize: String
-        def deserialize(data: String): Unit
-
-        def toJson: String = s"""{"type":"${getClass.getSimpleName}","data":"${serialize}"}"""
-      }
-    src/services/InventoryService.scala: |
-      package services
-
-      class InventoryService {
-        private var stock: Map[String, Int] = Map.empty
-
-        def addStock(productId: String, quantity: Int): Unit = {
-          stock = stock.updated(productId, stock.getOrElse(productId, 0) + quantity)
-        }
-
-        def removeStock(productId: String, quantity: Int): Boolean = {
-          stock.get(productId) match {
-            case Some(current) if current >= quantity =>
-              stock = stock.updated(productId, current - quantity)
-              true
-            case _ => false
+      impl Valve {
+          pub fn new(id: &str, flow_rate: f32) -> Self {
+              Self {
+                  id: id.to_string(),
+                  state: ValveState::Closed,
+                  flow_rate,
+              }
           }
-        }
 
-        def getStock(productId: String): Int = stock.getOrElse(productId, 0)
+          pub fn open(&mut self) {
+              self.state = ValveState::Open;
+          }
+
+          pub fn close(&mut self) {
+              self.state = ValveState::Closed;
+          }
+
+          pub fn is_open(&self) -> bool {
+              self.state == ValveState::Open
+          }
       }
+    src/pipeline.rs: |
+      use crate::valve::Valve;
+
+      pub struct Pipeline {
+          valves: Vec<Valve>,
+      }
+
+      impl Pipeline {
+          pub fn new() -> Self {
+              Self { valves: Vec::new() }
+          }
+
+          pub fn add_valve(&mut self, v: Valve) {
+              self.valves.push(v);
+          }
+
+          pub fn total_flow(&self) -> f32 {
+              self.valves.iter()
+                  .filter(|v| v.is_open())
+                  .map(|v| v.flow_rate)
+                  .sum()
+          }
+      }
+    src/SCALA002_telemetry.rs: |
+      // SCALA002_GARBAGE_A = "telemetry_marker"
+      pub fn emit_metric(_name: &str, _value: f32) {}
+    src/SCALA002_config.rs: |
+      // SCALA002_GARBAGE_B = "config_marker"
+      pub const MAX_PRESSURE: f32 = 10.0;
+    src/SCALA002_auth.rs: |
+      // SCALA002_GARBAGE_C = "auth_marker"
+      pub fn verify_token(_token: &str) -> bool { true }
   changed_files:
-    src/traits/Logging.scala: |
-      package traits
-
-      trait Logging {
-        protected def logPrefix: String = getClass.getSimpleName
-
-        def log(message: String): Unit =
-          println(s"[$logPrefix][LOG] $message")
-
-        def debug(message: String): Unit =
-          println(s"[$logPrefix][DEBUG] $message")
-
-        def error(message: String, cause: Throwable): Unit =
-          println(s"[$logPrefix][ERROR] $message: ${cause.getMessage}")
+    src/valve.rs: |
+      #[derive(Debug, Clone, PartialEq)]
+      pub enum ValveState {
+          Open,
+          Closed,
+          Faulty,
       }
-    src/traits/Metrics.scala: |
-      package traits
 
-      trait Metrics {
-        private var counters: Map[String, Long] = Map.empty
-
-        def recordMetric(name: String, value: Double): Unit = {
-          println(s"Metric: $name = $value")
-        }
-
-        def incrementCounter(name: String): Unit = {
-          counters = counters.updated(name, counters.getOrElse(name, 0L) + 1)
-        }
-
-        def getCounter(name: String): Long = counters.getOrElse(name, 0L)
+      pub struct Valve {
+          pub id: String,
+          pub state: ValveState,
+          pub flow_rate: f32,
+          pub max_pressure: f32,
       }
-    src/services/OrderService.scala: |
-      package services
 
-      import traits.{Logging, Metrics}
-
-      class OrderService extends Logging with Metrics {
-        def processOrder(orderId: String): String = {
-          log(s"Processing order $orderId")
-          incrementCounter("orders_processed")
-          recordMetric("process_count", getCounter("orders_processed").toDouble)
-          val result = s"Order $orderId processed"
-          debug(s"Completed: $result")
-          result
-        }
-
-        def cancelOrder(orderId: String): String = {
-          log(s"Cancelling order $orderId")
-          incrementCounter("orders_cancelled")
-          s"Order $orderId cancelled"
-        }
-      }
-    src/traits/Serializable.scala: |
-      package traits
-
-      trait Serializable {
-        def serialize: String
-        def deserialize(data: String): Unit
-
-        def toJson: String = s"""{"type":"${getClass.getSimpleName}","data":"${serialize}"}"""
-      }
-    src/services/InventoryService.scala: |
-      package services
-
-      class InventoryService {
-        private var stock: Map[String, Int] = Map.empty
-
-        def addStock(productId: String, quantity: Int): Unit = {
-          stock = stock.updated(productId, stock.getOrElse(productId, 0) + quantity)
-        }
-
-        def removeStock(productId: String, quantity: Int): Boolean = {
-          stock.get(productId) match {
-            case Some(current) if current >= quantity =>
-              stock = stock.updated(productId, current - quantity)
-              true
-            case _ => false
+      impl Valve {
+          pub fn new(id: &str, flow_rate: f32) -> Self {
+              Self {
+                  id: id.to_string(),
+                  state: ValveState::Closed,
+                  flow_rate,
+                  max_pressure: 10.0,
+              }
           }
-        }
 
-        def getStock(productId: String): Int = stock.getOrElse(productId, 0)
+          pub fn open(&mut self) {
+              self.state = ValveState::Open;
+          }
+
+          pub fn close(&mut self) {
+              self.state = ValveState::Closed;
+          }
+
+          pub fn mark_faulty(&mut self) {
+              self.state = ValveState::Faulty;
+          }
+
+          pub fn is_open(&self) -> bool {
+              self.state == ValveState::Open
+          }
+
+          pub fn is_operational(&self) -> bool {
+              self.state != ValveState::Faulty
+          }
       }
-  commit_message: Update files
+    src/pipeline.rs: |
+      use crate::valve::Valve;
+
+      pub struct Pipeline {
+          valves: Vec<Valve>,
+      }
+
+      impl Pipeline {
+          pub fn new() -> Self {
+              Self { valves: Vec::new() }
+          }
+
+          pub fn add_valve(&mut self, v: Valve) {
+              self.valves.push(v);
+          }
+
+          pub fn total_flow(&self) -> f32 {
+              self.valves.iter()
+                  .filter(|v| v.is_open())
+                  .map(|v| v.flow_rate)
+                  .sum()
+          }
+
+          pub fn faulty_count(&self) -> usize {
+              self.valves.iter().filter(|v| !v.is_operational()).count()
+          }
+      }
+    src/SCALA002_telemetry.rs: |
+      // SCALA002_GARBAGE_A = "telemetry_marker"
+      pub fn emit_metric(_name: &str, _value: f32) {}
+    src/SCALA002_config.rs: |
+      // SCALA002_GARBAGE_B = "config_marker"
+      pub const MAX_PRESSURE: f32 = 10.0;
+    src/SCALA002_auth.rs: |
+      // SCALA002_GARBAGE_C = "auth_marker"
+      pub fn verify_token(_token: &str) -> bool { true }
+  commit_message: "feat: add Faulty state to Valve, is_operational method, and faulty_count to Pipeline"
 fragments:
-- id: orderservice
+- id: valve_faulty_state
   selector:
-    path: src/services/OrderService.scala
-    anchor: import traits.{Logging, Metrics}
-- id: orderservice_1
+    path: src/valve.rs
+    anchor: "Faulty,"
+- id: valve_mark_faulty
   selector:
-    path: src/services/OrderService.scala
-    anchor: class OrderService extends Logging with Metrics {
-- id: logging
+    path: src/valve.rs
+    anchor: "pub fn mark_faulty(&mut self)"
+- id: valve_is_operational
   selector:
-    path: src/traits/Logging.scala
-    anchor: trait Logging {
-- id: metrics
+    path: src/valve.rs
+    anchor: "pub fn is_operational(&self)"
+- id: pipeline_faulty_count
   selector:
-    path: src/traits/Metrics.scala
-    anchor: trait Metrics {
-- id: no_serializable
+    path: src/pipeline.rs
+    anchor: "pub fn faulty_count(&self)"
+- id: pipeline_uses_is_operational
   selector:
-    path: src/traits/Serializable.scala
-- id: no_inventoryservice
+    path: src/pipeline.rs
+    anchor: "!v.is_operational()"
+- id: no_garbage_a
   selector:
-    path: src/services/InventoryService.scala
-- id: no_global_0
+    anchor: SCALA002_GARBAGE_A
+- id: no_garbage_b
   selector:
-    anchor: trait Serializable
-- id: no_global_1
+    anchor: SCALA002_GARBAGE_B
+- id: no_garbage_c
   selector:
-    anchor: toJson
-- id: no_global_2
-  selector:
-    anchor: deserialize
-- id: no_global_3
-  selector:
-    anchor: InventoryService
-- id: no_global_4
-  selector:
-    anchor: addStock
-- id: no_global_5
-  selector:
-    anchor: removeStock
+    anchor: SCALA002_GARBAGE_C
 oracle:
   required:
-  - orderservice
-  - orderservice_1
-  - logging
-  - metrics
+  - valve_faulty_state
+  - valve_mark_faulty
+  - valve_is_operational
+  - pipeline_faulty_count
+  - pipeline_uses_is_operational
   allowed: []
   forbidden:
-  - no_serializable
-  - no_inventoryservice
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

@@ -1,0 +1,265 @@
+name: bal_rare_011_lua_event_system
+tags:
+- lang:lua
+- change:multi_file
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/event.lua: |
+      local Event = {}
+      Event.__index = Event
+
+      function Event.new()
+        return setmetatable({listeners = {}}, Event)
+      end
+
+      function Event:on(name, callback)
+        if not self.listeners[name] then
+          self.listeners[name] = {}
+        end
+        table.insert(self.listeners[name], callback)
+      end
+
+      function Event:emit(name, ...)
+        local callbacks = self.listeners[name]
+        if callbacks then
+          for _, cb in ipairs(callbacks) do
+            cb(...)
+          end
+        end
+      end
+
+      return Event
+    src/player.lua: |
+      local Event = require("src.event")
+
+      local Player = {}
+      Player.__index = Player
+
+      function Player.new(name)
+        local self = setmetatable({}, Player)
+        self.name = name
+        self.health = 100
+        self.events = Event.new()
+        return self
+      end
+
+      function Player:take_damage(amount)
+        self.health = math.max(0, self.health - amount)
+        self.events:emit("damage", self, amount)
+        if self.health == 0 then
+          self.events:emit("death", self)
+        end
+      end
+
+      return Player
+    src/game.lua: |
+      local Player = require("src.player")
+
+      local Game = {}
+
+      function Game.start()
+        local p = Player.new("Hero")
+        p.events:on("death", function(player)
+          print(player.name .. " has died!")
+        end)
+        return p
+      end
+
+      return Game
+    garbage_render.lua: |
+      local GARBAGE_RARE_011_FPS_A = 60
+      local GARBAGE_RARE_011_VSYNC_B = true
+
+      local GarbageRender = {}
+
+      function GarbageRender.draw()
+        return GARBAGE_RARE_011_FPS_A
+      end
+
+      local GARBAGE_RARE_011_RES_C = "1920x1080"
+
+      return GarbageRender
+    garbage_save.lua: |
+      local GARBAGE_RARE_011_SLOT_D = 3
+      local GARBAGE_RARE_011_AUTO_E = true
+
+      local GarbageSave = {}
+
+      function GarbageSave.save()
+        return GARBAGE_RARE_011_SLOT_D
+      end
+
+      local GARBAGE_RARE_011_FORMAT_F = "json"
+
+      return GarbageSave
+  changed_files:
+    src/event.lua: |
+      local Event = {}
+      Event.__index = Event
+
+      function Event.new()
+        return setmetatable({listeners = {}}, Event)
+      end
+
+      function Event:on(name, callback)
+        if not self.listeners[name] then
+          self.listeners[name] = {}
+        end
+        table.insert(self.listeners[name], callback)
+      end
+
+      function Event:off(name, callback)
+        local callbacks = self.listeners[name]
+        if callbacks then
+          for i, cb in ipairs(callbacks) do
+            if cb == callback then
+              table.remove(callbacks, i)
+              return true
+            end
+          end
+        end
+        return false
+      end
+
+      function Event:emit(name, ...)
+        local callbacks = self.listeners[name]
+        if callbacks then
+          for _, cb in ipairs(callbacks) do
+            cb(...)
+          end
+        end
+      end
+
+      return Event
+    src/player.lua: |
+      local Event = require("src.event")
+
+      local Player = {}
+      Player.__index = Player
+
+      function Player.new(name)
+        local self = setmetatable({}, Player)
+        self.name = name
+        self.health = 100
+        self.events = Event.new()
+        return self
+      end
+
+      function Player:take_damage(amount)
+        self.health = math.max(0, self.health - amount)
+        self.events:emit("damage", self, amount)
+        if self.health == 0 then
+          self.events:emit("death", self)
+        end
+      end
+
+      function Player:heal(amount)
+        local old_health = self.health
+        self.health = math.min(100, self.health + amount)
+        if self.health > old_health then
+          self.events:emit("heal", self, self.health - old_health)
+        end
+      end
+
+      return Player
+    src/game.lua: |
+      local Player = require("src.player")
+
+      local Game = {}
+
+      function Game.start()
+        local p = Player.new("Hero")
+        p.events:on("death", function(player)
+          print(player.name .. " has died!")
+        end)
+        return p
+      end
+
+      return Game
+    garbage_render.lua: |
+      local GARBAGE_RARE_011_FPS_A = 60
+      local GARBAGE_RARE_011_VSYNC_B = true
+
+      local GarbageRender = {}
+
+      function GarbageRender.draw()
+        return GARBAGE_RARE_011_FPS_A
+      end
+
+      local GARBAGE_RARE_011_RES_C = "1920x1080"
+
+      return GarbageRender
+    garbage_save.lua: |
+      local GARBAGE_RARE_011_SLOT_D = 3
+      local GARBAGE_RARE_011_AUTO_E = true
+
+      local GarbageSave = {}
+
+      function GarbageSave.save()
+        return GARBAGE_RARE_011_SLOT_D
+      end
+
+      local GARBAGE_RARE_011_FORMAT_F = "json"
+
+      return GarbageSave
+  commit_message: "feat: add event unsubscribe and player heal method"
+fragments:
+- id: event_off_method
+  selector:
+    path: src/event.lua
+    anchor: "function Event:off(name, callback)"
+- id: player_heal
+  selector:
+    path: src/player.lua
+    anchor: "function Player:heal(amount)"
+- id: heal_emit
+  selector:
+    path: src/player.lua
+    anchor: 'self.events:emit("heal"'
+- id: no_game
+  selector:
+    path: src/game.lua
+- id: no_garbage_render
+  selector:
+    path: garbage_render.lua
+- id: no_garbage_save
+  selector:
+    path: garbage_save.lua
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_RARE_011_FPS_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_RARE_011_VSYNC_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_RARE_011_RES_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_RARE_011_SLOT_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_RARE_011_AUTO_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_RARE_011_FORMAT_F
+oracle:
+  required:
+  - event_off_method
+  - player_heal
+  - heal_emit
+  allowed: []
+  forbidden:
+  - no_game
+  - no_garbage_render
+  - no_garbage_save
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

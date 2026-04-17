@@ -1,0 +1,193 @@
+name: gap_086_rust_test_file_rate_limiter
+tags:
+- lang:rust
+- change:new_function
+- change:signature
+- change:single_file
+- context:test_file
+- difficulty:medium
+- distance:2hop
+repo:
+  initial_files:
+    src/limiter.rs: |
+      use std::time::Instant;
+
+      pub struct RateLimiter {
+          max_requests: u32,
+          window_start: Instant,
+          count: u32,
+      }
+
+      impl RateLimiter {
+          pub fn new(max_requests: u32) -> Self {
+              RateLimiter {
+                  max_requests,
+                  window_start: Instant::now(),
+                  count: 0,
+              }
+          }
+
+          pub fn allow(&mut self) -> bool {
+              if self.count < self.max_requests {
+                  self.count += 1;
+                  true
+              } else {
+                  false
+              }
+          }
+
+          pub fn remaining(&self) -> u32 {
+              self.max_requests.saturating_sub(self.count)
+          }
+
+          pub fn reset(&mut self) {
+              self.count = 0;
+              self.window_start = Instant::now();
+          }
+      }
+    tests/test_limiter.rs: |
+      use crate::limiter::RateLimiter;
+
+      #[cfg(test)]
+      mod tests {
+          use super::*;
+
+          #[test]
+          fn test_allows_within_limit() {
+              let mut limiter = RateLimiter::new(3);
+              assert!(limiter.allow());
+              assert!(limiter.allow());
+              assert!(limiter.allow());
+          }
+
+          #[test]
+          fn test_blocks_over_limit() {
+              let mut limiter = RateLimiter::new(1);
+              assert!(limiter.allow());
+              assert!(!limiter.allow());
+          }
+
+          #[test]
+          fn test_remaining_count() {
+              let mut limiter = RateLimiter::new(5);
+              limiter.allow();
+              assert_eq!(limiter.remaining(), 4);
+          }
+      }
+    src/circuit_breaker.rs: |
+      pub enum CircuitState {
+          Closed,
+          Open,
+          HalfOpen,
+      }
+
+      pub struct CircuitBreaker {
+          state: CircuitState,
+          failure_count: u32,
+          threshold: u32,
+      }
+
+      impl CircuitBreaker {
+          pub fn new(threshold: u32) -> Self {
+              CircuitBreaker {
+                  state: CircuitState::Closed,
+                  failure_count: 0,
+                  threshold,
+              }
+          }
+
+          pub fn record_failure(&mut self) {
+              self.failure_count += 1;
+              if self.failure_count >= self.threshold {
+                  self.state = CircuitState::Open;
+              }
+          }
+
+          pub fn is_open(&self) -> bool {
+              matches!(self.state, CircuitState::Open)
+          }
+      }
+  changed_files:
+    src/limiter.rs: |
+      use std::time::Instant;
+
+      pub struct RateLimiter {
+          max_requests: u32,
+          burst_size: u32,
+          window_start: Instant,
+          count: u32,
+      }
+
+      impl RateLimiter {
+          pub fn new(max_requests: u32) -> Self {
+              RateLimiter {
+                  max_requests,
+                  burst_size: max_requests,
+                  window_start: Instant::now(),
+                  count: 0,
+              }
+          }
+
+          pub fn with_burst(max_requests: u32, burst_size: u32) -> Self {
+              RateLimiter {
+                  max_requests,
+                  burst_size,
+                  window_start: Instant::now(),
+                  count: 0,
+              }
+          }
+
+          pub fn allow(&mut self) -> bool {
+              if self.count < self.burst_size {
+                  self.count += 1;
+                  true
+              } else {
+                  false
+              }
+          }
+
+          pub fn remaining(&self) -> u32 {
+              self.burst_size.saturating_sub(self.count)
+          }
+
+          pub fn reset(&mut self) {
+              self.count = 0;
+              self.window_start = Instant::now();
+          }
+      }
+  commit_message: "feat(limiter): add burst capacity"
+fixtures:
+  auto_garbage: true
+fragments:
+- id: limiter_burst_field
+  selector:
+    path: src/limiter.rs
+    anchor: "burst_size: u32"
+- id: limiter_with_burst
+  selector:
+    path: src/limiter.rs
+    anchor: "pub fn with_burst(max_requests: u32, burst_size: u32)"
+- id: limiter_allow_burst
+  selector:
+    path: src/limiter.rs
+    anchor: "self.count < self.burst_size"
+- id: test_uses_limiter
+  selector:
+    path: tests/test_limiter.rs
+    anchor: "RateLimiter::new(3)"
+- id: no_circuit_breaker
+  selector:
+    path: src/circuit_breaker.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_086_A
+oracle:
+  required:
+  - limiter_burst_field
+  - limiter_with_burst
+  - limiter_allow_burst
+  - test_uses_limiter
+  allowed: []
+  forbidden:
+  - no_circuit_breaker
+  - no_global_0

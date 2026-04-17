@@ -1,0 +1,220 @@
+name: bal_rare_014_julia_dispatch_hierarchy
+tags:
+- lang:julia
+- change:multi_file
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/Shapes.jl: |
+      module Shapes
+
+      abstract type Shape end
+
+      struct Circle <: Shape
+          radius::Float64
+      end
+
+      struct Rectangle <: Shape
+          width::Float64
+          height::Float64
+      end
+
+      area(c::Circle) = pi * c.radius^2
+      area(r::Rectangle) = r.width * r.height
+
+      perimeter(c::Circle) = 2 * pi * c.radius
+      perimeter(r::Rectangle) = 2 * (r.width + r.height)
+
+      export Shape, Circle, Rectangle, area, perimeter
+
+      end
+    src/Renderer.jl: |
+      module Renderer
+      using ..Shapes
+
+      function render(shape::Shape)
+          a = area(shape)
+          p = perimeter(shape)
+          "Shape: area=$a, perimeter=$p"
+      end
+
+      export render
+
+      end
+    src/App.jl: |
+      module App
+      include("Shapes.jl")
+      include("Renderer.jl")
+      using .Shapes
+      using .Renderer
+
+      function main()
+          c = Circle(5.0)
+          r = Rectangle(3.0, 4.0)
+          println(render(c))
+          println(render(r))
+      end
+
+      end
+    garbage_optimizer.jl: |
+      GARBAGE_RARE_014_EPOCHS_A = 100
+      GARBAGE_RARE_014_LR_B = 0.01
+
+      function garbage_optimize()
+          return GARBAGE_RARE_014_EPOCHS_A
+      end
+
+      GARBAGE_RARE_014_MOMENTUM_C = 0.9
+    garbage_sampler.jl: |
+      GARBAGE_RARE_014_SEED_D = 42
+      GARBAGE_RARE_014_SIZE_E = 1000
+
+      function garbage_sample()
+          return GARBAGE_RARE_014_SEED_D
+      end
+
+      GARBAGE_RARE_014_REPLACE_F = false
+  changed_files:
+    src/Shapes.jl: |
+      module Shapes
+
+      abstract type Shape end
+
+      struct Circle <: Shape
+          radius::Float64
+      end
+
+      struct Rectangle <: Shape
+          width::Float64
+          height::Float64
+      end
+
+      struct Ellipse <: Shape
+          semi_major::Float64
+          semi_minor::Float64
+      end
+
+      area(c::Circle) = pi * c.radius^2
+      area(r::Rectangle) = r.width * r.height
+      area(e::Ellipse) = pi * e.semi_major * e.semi_minor
+
+      perimeter(c::Circle) = 2 * pi * c.radius
+      perimeter(r::Rectangle) = 2 * (r.width + r.height)
+      perimeter(e::Ellipse) = pi * (3 * (e.semi_major + e.semi_minor) - sqrt((3 * e.semi_major + e.semi_minor) * (e.semi_major + 3 * e.semi_minor)))
+
+      export Shape, Circle, Rectangle, Ellipse, area, perimeter
+
+      end
+    src/Renderer.jl: |
+      module Renderer
+      using ..Shapes
+
+      function render(shape::Shape)
+          a = area(shape)
+          p = perimeter(shape)
+          "Shape: area=$a, perimeter=$p"
+      end
+
+      export render
+
+      end
+    src/App.jl: |
+      module App
+      include("Shapes.jl")
+      include("Renderer.jl")
+      using .Shapes
+      using .Renderer
+
+      function main()
+          c = Circle(5.0)
+          r = Rectangle(3.0, 4.0)
+          e = Ellipse(5.0, 3.0)
+          println(render(c))
+          println(render(r))
+          println(render(e))
+      end
+
+      end
+    garbage_optimizer.jl: |
+      GARBAGE_RARE_014_EPOCHS_A = 100
+      GARBAGE_RARE_014_LR_B = 0.01
+
+      function garbage_optimize()
+          return GARBAGE_RARE_014_EPOCHS_A
+      end
+
+      GARBAGE_RARE_014_MOMENTUM_C = 0.9
+    garbage_sampler.jl: |
+      GARBAGE_RARE_014_SEED_D = 42
+      GARBAGE_RARE_014_SIZE_E = 1000
+
+      function garbage_sample()
+          return GARBAGE_RARE_014_SEED_D
+      end
+
+      GARBAGE_RARE_014_REPLACE_F = false
+  commit_message: "feat: add Ellipse shape with area and perimeter"
+fragments:
+- id: ellipse_struct
+  selector:
+    path: src/Shapes.jl
+    anchor: "struct Ellipse <: Shape"
+- id: ellipse_area
+  selector:
+    path: src/Shapes.jl
+    anchor: "area(e::Ellipse)"
+- id: ellipse_perimeter
+  selector:
+    path: src/Shapes.jl
+    anchor: "perimeter(e::Ellipse)"
+- id: app_uses_ellipse
+  selector:
+    path: src/App.jl
+    anchor: "Ellipse(5.0, 3.0)"
+- id: no_renderer
+  selector:
+    path: src/Renderer.jl
+- id: no_garbage_optimizer
+  selector:
+    path: garbage_optimizer.jl
+- id: no_garbage_sampler
+  selector:
+    path: garbage_sampler.jl
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_RARE_014_EPOCHS_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_RARE_014_LR_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_RARE_014_MOMENTUM_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_RARE_014_SEED_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_RARE_014_SIZE_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_RARE_014_REPLACE_F
+oracle:
+  required:
+  - ellipse_struct
+  - ellipse_area
+  - ellipse_perimeter
+  - app_uses_ellipse
+  allowed: []
+  forbidden:
+  - no_renderer
+  - no_garbage_optimizer
+  - no_garbage_sampler
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

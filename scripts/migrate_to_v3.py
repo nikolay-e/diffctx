@@ -50,10 +50,13 @@ class _LiteralStr(str):
     pass
 
 
+_YAML_STR_TAG = "tag:yaml.org,2002:str"
+
+
 def _literal_representer(dumper, data):
     if "\n" in data:
-        return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
-    return dumper.represent_scalar("tag:yaml.org,2002:str", data)
+        return dumper.represent_scalar(_YAML_STR_TAG, data, style="|")
+    return dumper.represent_scalar(_YAML_STR_TAG, data)
 
 
 def _none_representer(dumper, _data):

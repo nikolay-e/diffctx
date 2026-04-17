@@ -1,0 +1,404 @@
+name: bal3_1hop_089_csharp_bug_fix_concurrency
+tags:
+- lang:csharp
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: csharp-no-tree-sitter
+repo:
+  initial_files:
+    src/Core/RateLimiter.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Core
+      {
+          public class RateLimiter
+          {
+              private readonly Dictionary<string, int> _counters = new Dictionary<string, int>();
+              private readonly int _maxRequests;
+
+              public RateLimiter(int maxRequests)
+              {
+                  _maxRequests = maxRequests;
+              }
+
+              public bool TryAcquire(string clientId)
+              {
+                  if (!_counters.ContainsKey(clientId))
+                      _counters[clientId] = 0;
+
+                  if (_counters[clientId] >= _maxRequests)
+                      return false;
+
+                  _counters[clientId]++;
+                  return true;
+              }
+
+              public void Reset(string clientId)
+              {
+                  _counters[clientId] = 0;
+              }
+          }
+      }
+    src/Middleware/ApiRateLimiter.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Middleware
+      {
+          public class ApiRateLimiter
+          {
+              private readonly RateLimiter _limiter;
+
+              public ApiRateLimiter(RateLimiter limiter)
+              {
+                  _limiter = limiter;
+              }
+
+              public bool AllowRequest(string apiKey)
+              {
+                  return _limiter.TryAcquire(apiKey);
+              }
+          }
+      }
+    src/Middleware/WebSocketLimiter.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Middleware
+      {
+          public class WebSocketLimiter
+          {
+              private readonly RateLimiter _limiter;
+
+              public WebSocketLimiter(RateLimiter limiter)
+              {
+                  _limiter = limiter;
+              }
+
+              public bool AllowConnection(string userId)
+              {
+                  return _limiter.TryAcquire(userId);
+              }
+          }
+      }
+    src/Middleware/UploadLimiter.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Middleware
+      {
+          public class UploadLimiter
+          {
+              private readonly RateLimiter _limiter;
+
+              public UploadLimiter(RateLimiter limiter)
+              {
+                  _limiter = limiter;
+              }
+
+              public bool AllowUpload(string userId)
+              {
+                  return _limiter.TryAcquire(userId);
+              }
+          }
+      }
+    src/Middleware/SearchLimiter.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Middleware
+      {
+          public class SearchLimiter
+          {
+              private readonly RateLimiter _limiter;
+
+              public SearchLimiter(RateLimiter limiter)
+              {
+                  _limiter = limiter;
+              }
+
+              public bool AllowSearch(string clientIp)
+              {
+                  return _limiter.TryAcquire(clientIp);
+              }
+          }
+      }
+    src/Templating/RazorEngine.cs: |
+      using System;
+      GARBAGE_089_TEMPLATE_DIR_A = "views/";
+      GARBAGE_089_CACHE_ENABLED_B = true;
+
+      namespace App.Templating
+      {
+          public class RazorEngine
+          {
+              public string Render(string template, object model) { return ""; }
+          }
+      }
+    src/Templating/HandlebarsEngine.cs: |
+      using System;
+      GARBAGE_089_PARTIAL_DIR_C = "partials/";
+      GARBAGE_089_STRICT_MODE_D = false;
+
+      namespace App.Templating
+      {
+          public class HandlebarsEngine
+          {
+              public string Render(string template, object data) { return ""; }
+          }
+      }
+    src/Validation/SchemaValidator.cs: |
+      using System;
+      GARBAGE_089_SCHEMA_VER_E = "draft-07";
+      GARBAGE_089_MAX_ERRORS_F = 100;
+
+      namespace App.Validation
+      {
+          public class SchemaValidator
+          {
+              public bool Validate(string json, string schema) { return true; }
+          }
+      }
+  changed_files:
+    src/Core/RateLimiter.cs: |
+      using System;
+      using System.Collections.Concurrent;
+
+      namespace App.Core
+      {
+          public class RateLimiter
+          {
+              private readonly ConcurrentDictionary<string, int> _counters = new ConcurrentDictionary<string, int>();
+              private readonly int _maxRequests;
+              private readonly object _lock = new object();
+
+              public RateLimiter(int maxRequests)
+              {
+                  _maxRequests = maxRequests;
+              }
+
+              public bool TryAcquire(string clientId)
+              {
+                  lock (_lock)
+                  {
+                      var current = _counters.GetOrAdd(clientId, 0);
+                      if (current >= _maxRequests)
+                          return false;
+
+                      _counters[clientId] = current + 1;
+                      return true;
+                  }
+              }
+
+              public void Reset(string clientId)
+              {
+                  _counters[clientId] = 0;
+              }
+
+              public void ResetAll()
+              {
+                  _counters.Clear();
+              }
+
+              public int GetCount(string clientId)
+              {
+                  return _counters.GetOrAdd(clientId, 0);
+              }
+          }
+      }
+    src/Middleware/ApiRateLimiter.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Middleware
+      {
+          public class ApiRateLimiter
+          {
+              private readonly RateLimiter _limiter;
+
+              public ApiRateLimiter(RateLimiter limiter)
+              {
+                  _limiter = limiter;
+              }
+
+              public bool AllowRequest(string apiKey)
+              {
+                  return _limiter.TryAcquire(apiKey);
+              }
+          }
+      }
+    src/Middleware/WebSocketLimiter.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Middleware
+      {
+          public class WebSocketLimiter
+          {
+              private readonly RateLimiter _limiter;
+
+              public WebSocketLimiter(RateLimiter limiter)
+              {
+                  _limiter = limiter;
+              }
+
+              public bool AllowConnection(string userId)
+              {
+                  return _limiter.TryAcquire(userId);
+              }
+          }
+      }
+    src/Middleware/UploadLimiter.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Middleware
+      {
+          public class UploadLimiter
+          {
+              private readonly RateLimiter _limiter;
+
+              public UploadLimiter(RateLimiter limiter)
+              {
+                  _limiter = limiter;
+              }
+
+              public bool AllowUpload(string userId)
+              {
+                  return _limiter.TryAcquire(userId);
+              }
+          }
+      }
+    src/Middleware/SearchLimiter.cs: |
+      using System;
+      using App.Core;
+
+      namespace App.Middleware
+      {
+          public class SearchLimiter
+          {
+              private readonly RateLimiter _limiter;
+
+              public SearchLimiter(RateLimiter limiter)
+              {
+                  _limiter = limiter;
+              }
+
+              public bool AllowSearch(string clientIp)
+              {
+                  return _limiter.TryAcquire(clientIp);
+              }
+          }
+      }
+    src/Templating/RazorEngine.cs: |
+      using System;
+      GARBAGE_089_TEMPLATE_DIR_A = "views/";
+      GARBAGE_089_CACHE_ENABLED_B = true;
+
+      namespace App.Templating
+      {
+          public class RazorEngine
+          {
+              public string Render(string template, object model) { return ""; }
+          }
+      }
+    src/Templating/HandlebarsEngine.cs: |
+      using System;
+      GARBAGE_089_PARTIAL_DIR_C = "partials/";
+      GARBAGE_089_STRICT_MODE_D = false;
+
+      namespace App.Templating
+      {
+          public class HandlebarsEngine
+          {
+              public string Render(string template, object data) { return ""; }
+          }
+      }
+    src/Validation/SchemaValidator.cs: |
+      using System;
+      GARBAGE_089_SCHEMA_VER_E = "draft-07";
+      GARBAGE_089_MAX_ERRORS_F = 100;
+
+      namespace App.Validation
+      {
+          public class SchemaValidator
+          {
+              public bool Validate(string json, string schema) { return true; }
+          }
+      }
+  commit_message: "fix: use ConcurrentDictionary and lock for thread-safe RateLimiter"
+fragments:
+- id: api_limiter_using
+  selector:
+    path: src/Middleware/ApiRateLimiter.cs
+    anchor: "using App.Core"
+- id: api_limiter_acquire
+  selector:
+    path: src/Middleware/ApiRateLimiter.cs
+    anchor: "_limiter.TryAcquire(apiKey)"
+- id: ws_limiter_using
+  selector:
+    path: src/Middleware/WebSocketLimiter.cs
+    anchor: "using App.Core"
+- id: upload_limiter_using
+  selector:
+    path: src/Middleware/UploadLimiter.cs
+    anchor: "using App.Core"
+- id: search_limiter_using
+  selector:
+    path: src/Middleware/SearchLimiter.cs
+    anchor: "using App.Core"
+- id: search_limiter_acquire
+  selector:
+    path: src/Middleware/SearchLimiter.cs
+    anchor: "_limiter.TryAcquire(clientIp)"
+- id: no_razor
+  selector:
+    path: src/Templating/RazorEngine.cs
+- id: no_handlebars
+  selector:
+    path: src/Templating/HandlebarsEngine.cs
+- id: no_schema
+  selector:
+    path: src/Validation/SchemaValidator.cs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_089_TEMPLATE_DIR_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_089_CACHE_ENABLED_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_089_PARTIAL_DIR_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_089_STRICT_MODE_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_089_SCHEMA_VER_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_089_MAX_ERRORS_F
+oracle:
+  required:
+  - api_limiter_using
+  - api_limiter_acquire
+  - ws_limiter_using
+  - upload_limiter_using
+  - search_limiter_using
+  - search_limiter_acquire
+  allowed: []
+  forbidden:
+  - no_razor
+  - no_handlebars
+  - no_schema
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

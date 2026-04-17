@@ -1,0 +1,166 @@
+name: gap2_117_lua_signature_import_chain_http_client
+tags:
+- change:signature
+- change:single_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:lua
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    net/request.lua: |
+      local M = {}
+
+      function M.get(url)
+          return { status = 200, body = "OK", url = url }
+      end
+
+      function M.post(url, body)
+          return { status = 201, body = body, url = url }
+      end
+
+      return M
+    net/api.lua: |
+      local request = require("net.request")
+
+      local M = {}
+
+      function M.fetch_user(user_id)
+          local resp = request.get("/api/users/" .. user_id)
+          return resp.body
+      end
+
+      function M.create_user(data)
+          local resp = request.post("/api/users", data)
+          return resp.status == 201
+      end
+
+      return M
+    app/dashboard.lua: |
+      local api = require("net.api")
+
+      local M = {}
+
+      function M.load_profile(user_id)
+          local data = api.fetch_user(user_id)
+          return "Profile: " .. tostring(data)
+      end
+
+      function M.register(name)
+          local ok = api.create_user(name)
+          return ok and "registered" or "failed"
+      end
+
+      return M
+    net/cache.lua: |
+      local TRAP_GAP2_117_CACHE_A = "response_cache"
+      local TRAP_GAP2_117_TTL_B = 300
+
+      local M = {}
+
+      function M.lookup(key)
+          return nil
+      end
+
+      function M.store(key, value)
+          return true
+      end
+
+      return M
+  changed_files:
+    net/request.lua: |
+      local M = {}
+
+      function M.get(url, headers)
+          headers = headers or {}
+          return { status = 200, body = "OK", url = url, headers = headers }
+      end
+
+      function M.post(url, body, headers)
+          headers = headers or {}
+          return { status = 201, body = body, url = url, headers = headers }
+      end
+
+      return M
+    net/api.lua: |
+      local request = require("net.request")
+
+      local M = {}
+
+      function M.fetch_user(user_id)
+          local resp = request.get("/api/users/" .. user_id)
+          return resp.body
+      end
+
+      function M.create_user(data)
+          local resp = request.post("/api/users", data)
+          return resp.status == 201
+      end
+
+      return M
+    app/dashboard.lua: |
+      local api = require("net.api")
+
+      local M = {}
+
+      function M.load_profile(user_id)
+          local data = api.fetch_user(user_id)
+          return "Profile: " .. tostring(data)
+      end
+
+      function M.register(name)
+          local ok = api.create_user(name)
+          return ok and "registered" or "failed"
+      end
+
+      return M
+    net/cache.lua: |
+      local TRAP_GAP2_117_CACHE_A = "response_cache"
+      local TRAP_GAP2_117_TTL_B = 300
+
+      local M = {}
+
+      function M.lookup(key)
+          return nil
+      end
+
+      function M.store(key, value)
+          return true
+      end
+
+      return M
+  commit_message: Update files
+fragments:
+- id: get_sig
+  selector:
+    path: net/request.lua
+    anchor: function M.get(url, headers)
+- id: post_sig
+  selector:
+    path: net/request.lua
+    anchor: function M.post(url, body, headers)
+- id: api_require
+  selector:
+    path: net/api.lua
+    anchor: require("net.request")
+- id: no_cache
+  selector:
+    path: net/cache.lua
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_117_CACHE_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_117_TTL_B
+oracle:
+  required:
+  - get_sig
+  - post_sig
+  - api_require
+  allowed: []
+  forbidden:
+  - no_cache
+  - no_global_0
+  - no_global_1

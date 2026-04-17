@@ -1,0 +1,129 @@
+name: bal4_testctx_018_kotlin_queue_test
+tags:
+- lang:kotlin
+- change:single_file
+- change:signature
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/main/kotlin/ds/BoundedQueue.kt: |
+      package ds
+
+      class BoundedQueue(private val capacity: Int) {
+          private val items = mutableListOf<String>()
+
+          fun enqueue(item: String) {
+              if (items.size >= capacity) {
+                  throw IllegalStateException("Queue is full")
+              }
+              items.add(item)
+          }
+
+          fun dequeue(): String {
+              if (items.isEmpty()) {
+                  throw NoSuchElementException("Queue is empty")
+              }
+              return items.removeAt(0)
+          }
+
+          fun size(): Int = items.size
+      }
+    src/test/kotlin/ds/BoundedQueueTest.kt: |
+      package ds
+
+      import org.junit.jupiter.api.Test
+      import org.junit.jupiter.api.Assertions.assertEquals
+      import org.junit.jupiter.api.assertThrows
+
+      class BoundedQueueTest {
+          @Test
+          fun testEnqueueDequeue() {
+              val q = BoundedQueue(5)
+              q.enqueue("a")
+              assertEquals("a", q.dequeue())
+          }
+
+          @Test
+          fun testFullQueue() {
+              val q = BoundedQueue(1)
+              q.enqueue("x")
+              assertThrows<IllegalStateException> { q.enqueue("y") }
+          }
+
+          @Test
+          fun testEmptyDequeue() {
+              val q = BoundedQueue(5)
+              assertThrows<NoSuchElementException> { q.dequeue() }
+          }
+      }
+    src/main/kotlin/ds/LinkedList.kt: |
+      package ds
+
+      class LinkedList<T> {
+          private var head: Node<T>? = null
+
+          data class Node<T>(val value: T, var next: Node<T>? = null)
+
+          fun prepend(value: T) {
+              head = Node(value, head)
+          }
+      }
+    src/main/kotlin/ds/TreeNode.kt: |
+      package ds
+
+      data class TreeNode(val value: Int, val left: TreeNode? = null, val right: TreeNode? = null)
+  changed_files:
+    src/main/kotlin/ds/BoundedQueue.kt: |
+      package ds
+
+      class BoundedQueue(private val capacity: Int) {
+          private val items = mutableListOf<String>()
+
+          fun enqueue(item: String): Boolean {
+              if (items.size >= capacity) return false
+              items.add(item)
+              return true
+          }
+
+          fun dequeue(): String {
+              if (items.isEmpty()) {
+                  throw NoSuchElementException("Queue is empty")
+              }
+              return items.removeAt(0)
+          }
+
+          fun size(): Int = items.size
+      }
+  commit_message: "refactor: enqueue returns Boolean instead of throwing"
+fragments:
+- id: enqueue_fn
+  selector:
+    path: src/main/kotlin/ds/BoundedQueue.kt
+    anchor: "fun enqueue(item: String): Boolean"
+- id: test_enqueue
+  selector:
+    path: src/test/kotlin/ds/BoundedQueueTest.kt
+    anchor: "fun testEnqueueDequeue()"
+- id: test_full
+  selector:
+    path: src/test/kotlin/ds/BoundedQueueTest.kt
+    anchor: "fun testFullQueue()"
+- id: no_linked_list
+  selector:
+    path: src/main/kotlin/ds/LinkedList.kt
+    anchor: "class LinkedList"
+- id: no_tree_node
+  selector:
+    path: src/main/kotlin/ds/TreeNode.kt
+    anchor: "data class TreeNode"
+oracle:
+  required:
+  - enqueue_fn
+  - test_enqueue
+  - test_full
+  allowed: []
+  forbidden:
+  - no_linked_list
+  - no_tree_node

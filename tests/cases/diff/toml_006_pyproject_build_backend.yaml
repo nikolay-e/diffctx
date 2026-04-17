@@ -1,0 +1,95 @@
+name: toml_006_pyproject_build_backend
+tags:
+- lang:toml
+- lang:python
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    pyproject.toml: |
+      [project]
+      name = "mypackage"
+      version = "2.1.0"
+      requires-python = ">=3.10"
+      dependencies = ["click>=8.0"]
+
+      [build-system]
+      requires = ["setuptools>=68", "wheel"]
+      build-backend = "setuptools.build_meta"
+
+      [tool.setuptools.packages.find]
+      where = ["src"]
+    src/mypackage/__init__.py: |
+      __version__ = "2.1.0"
+    src/mypackage/cli.py: |
+      import click
+      from mypackage import __version__
+
+      @click.command()
+      @click.version_option(__version__)
+      def main():
+          click.echo("Running mypackage")
+    TOML_NOISE_006_redis.toml: |
+      [TOML_NOISE_006_redis]
+      TOML_NOISE_006_host = "redis.internal"
+      TOML_NOISE_006_port = 6379
+      TOML_NOISE_006_db = 0
+      TOML_NOISE_006_max_connections = 20
+    src/mypackage/toml_noise_006_compat.py: |
+      # TOML_NOISE_006_compatibility shim
+      TOML_NOISE_006_COMPAT = "v1_api_shim"
+  changed_files:
+    pyproject.toml: |
+      [project]
+      name = "mypackage"
+      version = "2.1.0"
+      requires-python = ">=3.10"
+      dependencies = ["click>=8.0"]
+
+      [build-system]
+      requires = ["hatchling>=1.21"]
+      build-backend = "hatchling.build"
+
+      [tool.hatch.build.targets.wheel]
+      packages = ["src/mypackage"]
+    src/mypackage/__init__.py: |
+      try:
+          from importlib.metadata import version
+          __version__ = version("mypackage")
+      except Exception:
+          __version__ = "2.1.0"
+  commit_message: "chore: migrate build backend from setuptools to hatchling"
+fragments:
+- id: pyproject_hatchling
+  selector:
+    path: pyproject.toml
+    anchor: "hatchling.build"
+- id: init_version_check
+  selector:
+    path: src/mypackage/__init__.py
+    anchor: "importlib.metadata"
+- id: no_noise_toml
+  selector:
+    path: TOML_NOISE_006_redis.toml
+- id: no_compat_py
+  selector:
+    path: src/mypackage/toml_noise_006_compat.py
+- id: no_global_0
+  selector:
+    anchor: TOML_NOISE_006_host
+- id: no_global_1
+  selector:
+    anchor: TOML_NOISE_006_COMPAT
+oracle:
+  required:
+  - pyproject_hatchling
+  - init_version_check
+  allowed: []
+  forbidden:
+  - no_noise_toml
+  - no_compat_py
+  - no_global_0
+  - no_global_1

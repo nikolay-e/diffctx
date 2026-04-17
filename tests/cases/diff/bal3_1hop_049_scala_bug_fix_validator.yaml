@@ -1,0 +1,178 @@
+name: bal3_1hop_049_scala_bug_fix_validator
+tags:
+- lang:scala
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/validation/EmailValidator.scala: |
+      package validation
+
+      object EmailValidator {
+        def isValid(email: String): Boolean = {
+          email.contains("@")
+        }
+
+        def extractDomain(email: String): String = {
+          email.split("@")(1)
+        }
+      }
+    src/main/scala/service/SignupService.scala: |
+      package service
+
+      import validation.EmailValidator
+
+      class SignupService {
+        def signup(email: String, name: String): Either[String, Map[String, String]] = {
+          if (!EmailValidator.isValid(email)) Left("Invalid email")
+          else {
+            val domain = EmailValidator.extractDomain(email)
+            Right(Map("email" -> email, "name" -> name, "domain" -> domain))
+          }
+        }
+      }
+    src/main/scala/service/NewsletterService.scala: |
+      package service
+
+      import validation.EmailValidator
+
+      class NewsletterService {
+        def subscribe(email: String): Boolean = {
+          EmailValidator.isValid(email)
+        }
+      }
+    src/main/scala/service/ContactService.scala: |
+      package service
+
+      import validation.EmailValidator
+
+      class ContactService {
+        def submitContact(email: String, message: String): Either[String, String] = {
+          if (!EmailValidator.isValid(email)) Left("Bad email")
+          else Right("Submitted")
+        }
+      }
+    src/main/scala/service/InvitationService.scala: |
+      package service
+
+      import validation.EmailValidator
+
+      class InvitationService {
+        def sendInvite(email: String): Either[String, String] = {
+          if (!EmailValidator.isValid(email)) Left("Invalid")
+          else Right(s"Invited $email")
+        }
+      }
+    src/main/scala/io/FileReader.scala: |
+      package io
+
+      object FileReader {
+        val GARBAGE_BAL3_049_READER_A = "reader"
+        val GARBAGE_BAL3_049_BUFFER_B = 4096
+
+        def readAll(path: String): String = ""
+      }
+    src/main/scala/io/FileWriter.scala: |
+      package io
+
+      object FileWriter {
+        val GARBAGE_BAL3_049_WRITER_C = "writer"
+        val GARBAGE_BAL3_049_APPEND_D = false
+
+        def writeAll(path: String, content: String): Unit = ()
+      }
+    src/main/scala/io/PathResolver.scala: |
+      package io
+
+      object PathResolver {
+        val GARBAGE_BAL3_049_RESOLVE_E = "resolver"
+        val GARBAGE_BAL3_049_BASE_F = "/tmp"
+
+        def resolve(relative: String): String = s"/tmp/$relative"
+      }
+  changed_files:
+    src/main/scala/validation/EmailValidator.scala: |
+      package validation
+
+      object EmailValidator {
+        private val EmailPattern = """^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$""".r
+
+        def isValid(email: String): Boolean = {
+          if (email == null || email.isEmpty) false
+          else EmailPattern.matches(email)
+        }
+
+        def extractDomain(email: String): Option[String] = {
+          val parts = email.split("@")
+          if (parts.length == 2) Some(parts(1)) else None
+        }
+      }
+  commit_message: "Fix email validation with proper regex and null safety"
+fragments:
+- id: signup_service
+  selector:
+    path: src/main/scala/service/SignupService.scala
+    anchor: "import validation.EmailValidator"
+- id: signup_valid
+  selector:
+    path: src/main/scala/service/SignupService.scala
+    anchor: "EmailValidator.isValid"
+- id: newsletter_service
+  selector:
+    path: src/main/scala/service/NewsletterService.scala
+    anchor: "import validation.EmailValidator"
+- id: contact_service
+  selector:
+    path: src/main/scala/service/ContactService.scala
+    anchor: "import validation.EmailValidator"
+- id: invitation_service
+  selector:
+    path: src/main/scala/service/InvitationService.scala
+    anchor: "import validation.EmailValidator"
+- id: no_file_reader
+  selector:
+    path: src/main/scala/io/FileReader.scala
+- id: no_file_writer
+  selector:
+    path: src/main/scala/io/FileWriter.scala
+- id: no_path_resolver
+  selector:
+    path: src/main/scala/io/PathResolver.scala
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_049_READER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_049_BUFFER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_049_WRITER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_049_APPEND_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL3_049_RESOLVE_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL3_049_BASE_F
+oracle:
+  required:
+  - signup_service
+  - signup_valid
+  - newsletter_service
+  - contact_service
+  - invitation_service
+  allowed: []
+  forbidden:
+  - no_file_reader
+  - no_file_writer
+  - no_path_resolver
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

@@ -1,0 +1,187 @@
+name: bal_3hop_025_python_graph_traversal
+tags:
+- lang:python
+- change:single_file
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    graph/node.py: |
+      class Node:
+          def __init__(self, node_id: str, label: str):
+              self.node_id = node_id
+              self.label = label
+              self.edges: list[str] = []
+          def add_edge(self, target_id: str):
+              if target_id not in self.edges:
+                  self.edges.append(target_id)
+          def degree(self) -> int:
+              return len(self.edges)
+    graph/graph.py: |
+      from graph.node import Node
+      class Graph:
+          def __init__(self):
+              self.nodes: dict[str, Node] = {}
+          def add_node(self, node_id: str, label: str) -> Node:
+              node = Node(node_id, label)
+              self.nodes[node_id] = node
+              return node
+          def add_edge(self, source: str, target: str):
+              self.nodes[source].add_edge(target)
+          def neighbors(self, node_id: str) -> list[str]:
+              return self.nodes[node_id].edges
+    graph/traversal.py: |
+      from collections import deque
+      from graph.graph import Graph
+      class Traversal:
+          def __init__(self, graph: Graph):
+              self.graph = graph
+          def bfs(self, start: str) -> list[str]:
+              visited = []
+              queue = deque([start])
+              seen = {start}
+              while queue:
+                  current = queue.popleft()
+                  visited.append(current)
+                  for neighbor in self.graph.neighbors(current):
+                      if neighbor not in seen:
+                          seen.add(neighbor)
+                          queue.append(neighbor)
+              return visited
+    app/pathfinder.py: |
+      from graph.traversal import Traversal
+      from graph.graph import Graph
+      class Pathfinder:
+          def __init__(self, graph: Graph):
+              self.traversal = Traversal(graph)
+              self.graph = graph
+          def reachable_from(self, start: str) -> list[str]:
+              return self.traversal.bfs(start)
+          def is_connected(self, source: str, target: str) -> bool:
+              reachable = self.traversal.bfs(source)
+              return target in reachable
+    utils/dot_export.py: |
+      def to_dot(nodes: list[tuple], edges: list[tuple]) -> str:
+          lines = ["digraph G {"]
+          for node_id, label in nodes:
+              lines.append(f'  {node_id} [label="{label}"];')
+          for src, tgt in edges:
+              lines.append(f"  {src} -> {tgt};")
+          lines.append("}")
+          return "\n".join(lines)
+    config/graph_config.py: |
+      MAX_NODES = 10000
+      MAX_EDGES = 50000
+      DEFAULT_WEIGHT = 1.0
+  changed_files:
+    graph/node.py: |
+      from typing import Optional
+      class Node:
+          def __init__(self, node_id: str, label: str,
+                       weight: float = 1.0):
+              self.node_id = node_id
+              self.label = label
+              self.weight = weight
+              self.edges: list[str] = []
+              self.metadata: dict = {}
+          def add_edge(self, target_id: str):
+              if target_id not in self.edges:
+                  self.edges.append(target_id)
+          def degree(self) -> int:
+              return len(self.edges)
+          def set_metadata(self, key: str, value):
+              self.metadata[key] = value
+    graph/graph.py: |
+      from graph.node import Node
+      class Graph:
+          def __init__(self):
+              self.nodes: dict[str, Node] = {}
+          def add_node(self, node_id: str, label: str) -> Node:
+              node = Node(node_id, label)
+              self.nodes[node_id] = node
+              return node
+          def add_edge(self, source: str, target: str):
+              self.nodes[source].add_edge(target)
+          def neighbors(self, node_id: str) -> list[str]:
+              return self.nodes[node_id].edges
+    graph/traversal.py: |
+      from collections import deque
+      from graph.graph import Graph
+      class Traversal:
+          def __init__(self, graph: Graph):
+              self.graph = graph
+          def bfs(self, start: str) -> list[str]:
+              visited = []
+              queue = deque([start])
+              seen = {start}
+              while queue:
+                  current = queue.popleft()
+                  visited.append(current)
+                  for neighbor in self.graph.neighbors(current):
+                      if neighbor not in seen:
+                          seen.add(neighbor)
+                          queue.append(neighbor)
+              return visited
+    app/pathfinder.py: |
+      from graph.traversal import Traversal
+      from graph.graph import Graph
+      class Pathfinder:
+          def __init__(self, graph: Graph):
+              self.traversal = Traversal(graph)
+              self.graph = graph
+          def reachable_from(self, start: str) -> list[str]:
+              return self.traversal.bfs(start)
+          def is_connected(self, source: str, target: str) -> bool:
+              reachable = self.traversal.bfs(source)
+              return target in reachable
+    utils/dot_export.py: |
+      def to_dot(nodes: list[tuple], edges: list[tuple]) -> str:
+          lines = ["digraph G {"]
+          for node_id, label in nodes:
+              lines.append(f'  {node_id} [label="{label}"];')
+          for src, tgt in edges:
+              lines.append(f"  {src} -> {tgt};")
+          lines.append("}")
+          return "\n".join(lines)
+    config/graph_config.py: |
+      MAX_NODES = 10000
+      MAX_EDGES = 50000
+      DEFAULT_WEIGHT = 1.0
+  commit_message: "feat: add weight, metadata support to Node"
+fragments:
+- id: node_weight_metadata
+  selector:
+    path: graph/node.py
+    anchor: "weight: float = 1.0"
+- id: graph_uses_node
+  selector:
+    path: graph/graph.py
+    anchor: "from graph.node import Node"
+- id: traversal_uses_graph
+  selector:
+    path: graph/traversal.py
+    anchor: "from graph.graph import Graph"
+- id: pathfinder_uses_traversal
+  selector:
+    path: app/pathfinder.py
+    anchor: "from graph.traversal import Traversal"
+- id: no_dot_export
+  selector:
+    path: utils/dot_export.py
+    anchor: "def to_dot"
+- id: no_graph_config
+  selector:
+    path: config/graph_config.py
+    anchor: "MAX_NODES"
+oracle:
+  required:
+  - node_weight_metadata
+  - graph_uses_node
+  - traversal_uses_graph
+  - pathfinder_uses_traversal
+  allowed: []
+  forbidden:
+  - no_dot_export
+  - no_graph_config

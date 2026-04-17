@@ -1,0 +1,181 @@
+name: bal2_3hop_041_rust_config_hot_reload
+tags:
+- lang:rust
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/config/value.rs: |
+      #[derive(Debug, Clone)]
+      pub enum ConfigValue {
+          String(String),
+          Int(i64),
+          Bool(bool),
+      }
+
+      impl ConfigValue {
+          pub fn as_string(&self) -> Option<&str> {
+              match self {
+                  ConfigValue::String(s) => Some(s),
+                  _ => None,
+              }
+          }
+
+          pub fn as_int(&self) -> Option<i64> {
+              match self {
+                  ConfigValue::Int(v) => Some(*v),
+                  _ => None,
+              }
+          }
+      }
+    src/config/store.rs: |
+      use crate::config::value::ConfigValue;
+      use std::collections::HashMap;
+
+      pub struct ConfigStore {
+          entries: HashMap<String, ConfigValue>,
+      }
+
+      impl ConfigStore {
+          pub fn new() -> Self {
+              Self { entries: HashMap::new() }
+          }
+
+          pub fn set(&mut self, key: &str, val: ConfigValue) {
+              self.entries.insert(key.to_string(), val);
+          }
+
+          pub fn get(&self, key: &str) -> Option<&ConfigValue> {
+              self.entries.get(key)
+          }
+      }
+    src/config/watcher.rs: |
+      use crate::config::store::ConfigStore;
+
+      pub struct FileWatcher {
+          path: String,
+          store: ConfigStore,
+      }
+
+      impl FileWatcher {
+          pub fn new(path: &str, store: ConfigStore) -> Self {
+              Self { path: path.to_string(), store }
+          }
+
+          pub fn poll(&self) -> bool {
+              true
+          }
+
+          pub fn reload(&mut self) -> &ConfigStore {
+              &self.store
+          }
+      }
+    src/app/settings.rs: |
+      use crate::config::watcher::FileWatcher;
+
+      pub struct AppSettings {
+          watcher: FileWatcher,
+      }
+
+      impl AppSettings {
+          pub fn new(watcher: FileWatcher) -> Self {
+              Self { watcher }
+          }
+
+          pub fn refresh(&mut self) -> bool {
+              self.watcher.poll()
+          }
+      }
+    src/config/env_override.rs: |
+      GARBAGE_041_ENV_MARKER_A = "env_override";
+      GARBAGE_041_PREFIX_MARKER_B = "APP_";
+
+      pub fn env_override(key: &str) -> Option<String> {
+          std::env::var(key).ok()
+      }
+    src/logging/trace.rs: |
+      GARBAGE_041_TRACE_MARKER_C = "tracing";
+      GARBAGE_041_LEVEL_MARKER_D = "info";
+
+      pub fn trace(msg: &str) {
+          println!("[TRACE] {}", msg);
+      }
+    src/health/probe.rs: |
+      GARBAGE_041_PROBE_MARKER_E = "liveness";
+      GARBAGE_041_STATUS_MARKER_F = "ok";
+
+      pub struct HealthProbe {
+          healthy: bool,
+      }
+
+      impl HealthProbe {
+          pub fn check(&self) -> bool { self.healthy }
+      }
+  changed_files:
+    src/config/value.rs: |
+      #[derive(Debug, Clone)]
+      pub enum ConfigValue {
+          String(String),
+          Int(i64),
+          Bool(bool),
+      }
+
+      impl ConfigValue {
+          pub fn as_string(&self) -> Option<&str> {
+              match self {
+                  ConfigValue::String(s) => Some(s),
+                  _ => None,
+              }
+          }
+
+          pub fn as_int(&self) -> Option<i64> {
+              match self {
+                  ConfigValue::Int(v) => Some(*v),
+                  ConfigValue::Bool(b) => Some(if *b { 1 } else { 0 }),
+                  _ => None,
+              }
+          }
+      }
+  commit_message: "fix: allow bool-to-int coercion in ConfigValue::as_int"
+fragments:
+- id: value_as_int_fix
+  selector:
+    path: src/config/value.rs
+    anchor: "ConfigValue::Bool(b)"
+- id: store_get
+  selector:
+    path: src/config/store.rs
+    anchor: "pub fn get"
+- id: watcher_reload
+  selector:
+    path: src/config/watcher.rs
+    anchor: "pub fn reload"
+- id: settings_refresh
+  selector:
+    path: src/app/settings.rs
+    anchor: "pub fn refresh"
+- id: no_env_override
+  selector:
+    path: src/config/env_override.rs
+    anchor: "GARBAGE_041_ENV_MARKER_A"
+- id: no_trace
+  selector:
+    path: src/logging/trace.rs
+    anchor: "GARBAGE_041_TRACE_MARKER_C"
+- id: no_probe
+  selector:
+    path: src/health/probe.rs
+    anchor: "GARBAGE_041_PROBE_MARKER_E"
+oracle:
+  required:
+  - value_as_int_fix
+  - store_get
+  - watcher_reload
+  - settings_refresh
+  allowed: []
+  forbidden:
+  - no_env_override
+  - no_trace
+  - no_probe

@@ -1,0 +1,214 @@
+name: bal3_3hop_076_php_notification_channel_chain
+tags:
+- lang:php
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/Channels/EmailChannel.php: |
+      <?php
+      namespace App\Channels;
+
+      class EmailChannel {
+          public function send(string $to, string $message): bool {
+              return true;
+          }
+      }
+    src/Notifications/NotificationSender.php: |
+      <?php
+      namespace App\Notifications;
+
+      use App\Channels\EmailChannel;
+
+      class NotificationSender {
+          private EmailChannel $email;
+          public function __construct(EmailChannel $email) {
+              $this->email = $email;
+          }
+          public function notify(string $to, string $message): bool {
+              return $this->email->send($to, $message);
+          }
+      }
+    src/Services/AlertService.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Notifications\NotificationSender;
+
+      class AlertService {
+          private NotificationSender $sender;
+          public function __construct(NotificationSender $sender) {
+              $this->sender = $sender;
+          }
+          public function triggerAlert(string $userId, string $alertMessage): bool {
+              return $this->sender->notify($userId, $alertMessage);
+          }
+      }
+    src/Controllers/AlertController.php: |
+      <?php
+      namespace App\Controllers;
+
+      use App\Services\AlertService;
+
+      class AlertController {
+          private AlertService $service;
+          public function __construct(AlertService $service) {
+              $this->service = $service;
+          }
+          public function fire(string $userId, string $message): array {
+              $sent = $this->service->triggerAlert($userId, $message);
+              return ['sent' => $sent];
+          }
+      }
+    src/Jobs/CleanupJob.php: |
+      <?php
+      namespace App\Jobs;
+      define('GARBAGE_076_CLEANUP_A', 'job');
+      define('GARBAGE_076_BATCH_B', 100);
+
+      class CleanupJob {
+          public function handle(): void {}
+      }
+    src/Jobs/SyncJob.php: |
+      <?php
+      namespace App\Jobs;
+      define('GARBAGE_076_SYNC_C', 'job');
+      define('GARBAGE_076_INTERVAL_D', 300);
+
+      class SyncJob {
+          public function handle(): void {}
+      }
+  changed_files:
+    src/Channels/EmailChannel.php: |
+      <?php
+      namespace App\Channels;
+
+      class EmailChannel {
+          private int $maxRetries;
+          public function __construct(int $maxRetries = 3) {
+              $this->maxRetries = $maxRetries;
+          }
+          public function send(string $to, string $message): bool {
+              return true;
+          }
+          public function sendWithRetry(string $to, string $message): bool {
+              for ($i = 0; $i < $this->maxRetries; $i++) {
+                  if ($this->send($to, $message)) {
+                      return true;
+                  }
+              }
+              return false;
+          }
+      }
+    src/Notifications/NotificationSender.php: |
+      <?php
+      namespace App\Notifications;
+
+      use App\Channels\EmailChannel;
+
+      class NotificationSender {
+          private EmailChannel $email;
+          public function __construct(EmailChannel $email) {
+              $this->email = $email;
+          }
+          public function notify(string $to, string $message): bool {
+              return $this->email->send($to, $message);
+          }
+          public function notifyReliable(string $to, string $message): bool {
+              return $this->email->sendWithRetry($to, $message);
+          }
+      }
+    src/Services/AlertService.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Notifications\NotificationSender;
+
+      class AlertService {
+          private NotificationSender $sender;
+          public function __construct(NotificationSender $sender) {
+              $this->sender = $sender;
+          }
+          public function triggerAlert(string $userId, string $alertMessage): bool {
+              return $this->sender->notify($userId, $alertMessage);
+          }
+          public function triggerCriticalAlert(string $userId, string $alertMessage): bool {
+              return $this->sender->notifyReliable($userId, $alertMessage);
+          }
+      }
+    src/Controllers/AlertController.php: |
+      <?php
+      namespace App\Controllers;
+
+      use App\Services\AlertService;
+
+      class AlertController {
+          private AlertService $service;
+          public function __construct(AlertService $service) {
+              $this->service = $service;
+          }
+          public function fire(string $userId, string $message): array {
+              $sent = $this->service->triggerAlert($userId, $message);
+              return ['sent' => $sent];
+          }
+          public function fireCritical(string $userId, string $message): array {
+              $sent = $this->service->triggerCriticalAlert($userId, $message);
+              return ['sent' => $sent, 'priority' => 'critical'];
+          }
+      }
+    src/Jobs/CleanupJob.php: |
+      <?php
+      namespace App\Jobs;
+      define('GARBAGE_076_CLEANUP_A', 'job');
+      define('GARBAGE_076_BATCH_B', 100);
+
+      class CleanupJob {
+          public function handle(): void {}
+      }
+    src/Jobs/SyncJob.php: |
+      <?php
+      namespace App\Jobs;
+      define('GARBAGE_076_SYNC_C', 'job');
+      define('GARBAGE_076_INTERVAL_D', 300);
+
+      class SyncJob {
+          public function handle(): void {}
+      }
+  commit_message: "feat: add retry mechanism for critical notifications"
+fragments:
+- id: channel_retry
+  selector:
+    path: src/Channels/EmailChannel.php
+    anchor: "function sendWithRetry"
+- id: sender_reliable
+  selector:
+    path: src/Notifications/NotificationSender.php
+    anchor: "function notifyReliable"
+- id: alert_critical
+  selector:
+    path: src/Services/AlertService.php
+    anchor: "function triggerCriticalAlert"
+- id: controller_fire_critical
+  selector:
+    path: src/Controllers/AlertController.php
+    anchor: "function fireCritical"
+- id: no_cleanup_job
+  selector:
+    path: src/Jobs/CleanupJob.php
+    anchor: "GARBAGE_076_CLEANUP_A"
+- id: no_sync_job
+  selector:
+    path: src/Jobs/SyncJob.php
+    anchor: "GARBAGE_076_SYNC_C"
+oracle:
+  required:
+  - channel_retry
+  - sender_reliable
+  - alert_critical
+  - controller_fire_critical
+  allowed: []
+  forbidden:
+  - no_cleanup_job
+  - no_sync_job

@@ -1,0 +1,156 @@
+name: gap_173_terraform_hard_rds_security_group
+tags:
+- change:config
+- change:single_file
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+- lang:terraform
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    terraform/environments/prod/database.tf: |
+      module "rds" {
+        source          = "../../modules/rds"
+        instance_class  = "db.r6g.large"
+        engine_version  = "15.4"
+        db_name         = "analytics"
+        security_groups = [module.sg.rds_sg_id]
+      }
+
+      module "sg" {
+        source   = "../../modules/security-groups"
+        vpc_id   = data.aws_vpc.main.id
+        app_port = 5432
+      }
+    terraform/environments/prod/data.tf: |
+      data "aws_vpc" "main" {
+        filter {
+          name   = "tag:Name"
+          values = ["prod-vpc"]
+        }
+      }
+    terraform/modules/rds/main.tf: |
+      resource "aws_db_instance" "this" {
+        engine               = "postgres"
+        engine_version       = var.engine_version
+        instance_class       = var.instance_class
+        db_name              = var.db_name
+        allocated_storage    = 100
+        max_allocated_storage = 500
+        storage_encrypted    = true
+
+        vpc_security_group_ids = var.security_groups
+      }
+    terraform/modules/rds/variables.tf: |
+      variable "instance_class" {
+        type = string
+      }
+
+      variable "engine_version" {
+        type = string
+      }
+
+      variable "db_name" {
+        type = string
+      }
+
+      variable "security_groups" {
+        type = list(string)
+      }
+    terraform/modules/security-groups/main.tf: |
+      resource "aws_security_group" "rds" {
+        name   = "rds-access"
+        vpc_id = var.vpc_id
+
+        ingress {
+          from_port   = var.app_port
+          to_port     = var.app_port
+          protocol    = "tcp"
+          cidr_blocks = ["10.0.0.0/8"]
+        }
+      }
+    terraform/modules/security-groups/variables.tf: |
+      variable "vpc_id" {
+        type = string
+      }
+
+      variable "app_port" {
+        type = number
+      }
+    terraform/modules/security-groups/outputs.tf: |
+      output "rds_sg_id" {
+        value = aws_security_group.rds.id
+      }
+    terraform/modules/elasticache/main.tf: |
+      resource "aws_elasticache_cluster" "memcached" {
+        cluster_id           = "session-cache"
+        engine               = "memcached"
+        node_type            = "cache.t3.small"
+        num_cache_nodes      = 2
+      }
+  changed_files:
+    terraform/modules/security-groups/main.tf: |
+      resource "aws_security_group" "rds" {
+        name   = "rds-access"
+        vpc_id = var.vpc_id
+
+        ingress {
+          from_port   = var.app_port
+          to_port     = var.app_port
+          protocol    = "tcp"
+          cidr_blocks = var.allowed_cidrs
+        }
+
+        egress {
+          from_port   = 0
+          to_port     = 0
+          protocol    = "-1"
+          cidr_blocks = ["0.0.0.0/0"]
+        }
+      }
+    terraform/modules/security-groups/variables.tf: |
+      variable "vpc_id" {
+        type = string
+      }
+
+      variable "app_port" {
+        type = number
+      }
+
+      variable "allowed_cidrs" {
+        type    = list(string)
+        default = ["10.0.0.0/8"]
+      }
+fragments:
+- id: sg_allowed_cidrs
+  selector:
+    path: terraform/modules/security-groups/main.tf
+    anchor: allowed_cidrs
+- id: sg_egress
+  selector:
+    path: terraform/modules/security-groups/main.tf
+    anchor: egress
+- id: sg_var_cidrs
+  selector:
+    path: terraform/modules/security-groups/variables.tf
+    anchor: allowed_cidrs
+- id: prod_db_uses_sg
+  selector:
+    path: terraform/environments/prod/database.tf
+    anchor: security_groups
+- id: no_elasticache
+  selector:
+    path: terraform/modules/elasticache/main.tf
+- id: no_rds_module
+  selector:
+    path: terraform/modules/rds/main.tf
+oracle:
+  required:
+  - sg_allowed_cidrs
+  - sg_egress
+  - sg_var_cidrs
+  forbidden:
+  - no_elasticache
+  - no_rds_module

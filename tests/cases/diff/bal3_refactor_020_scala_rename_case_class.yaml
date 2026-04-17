@@ -1,0 +1,157 @@
+name: bal3_refactor_020_scala_rename_case_class
+tags:
+- lang:scala
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/main/scala/domain/Event.scala: |
+      package domain
+
+      case class Event(id: String, name: String, payload: Map[String, String])
+    src/main/scala/services/EventBus.scala: |
+      package services
+
+      import domain.Event
+
+      class EventBus {
+        private var listeners: List[Event => Unit] = Nil
+
+        def subscribe(listener: Event => Unit): Unit =
+          listeners = listener :: listeners
+
+        def publish(event: Event): Unit =
+          listeners.foreach(_(event))
+      }
+    src/main/scala/handlers/EventHandler.scala: |
+      package handlers
+
+      import domain.Event
+      import services.EventBus
+
+      class EventHandler(bus: EventBus) {
+        bus.subscribe(handle)
+
+        def handle(event: Event): Unit =
+          println(s"Handling ${event.name}")
+      }
+    src/main/scala/persistence/FileStore.scala: |
+      package persistence
+
+      val GARBAGE_R020_FILE_A: String = "file_store"
+
+      class FileStore {
+        def write(path: String, data: String): Unit = ()
+      }
+    src/main/scala/persistence/Cache.scala: |
+      package persistence
+
+      val GARBAGE_R020_CACHE_B: String = "cache"
+
+      class Cache {
+        def get(key: String): Option[String] = None
+      }
+    src/main/scala/persistence/Queue.scala: |
+      package persistence
+
+      val GARBAGE_R020_QUEUE_C: String = "queue"
+
+      class Queue {
+        def enqueue(item: String): Unit = ()
+      }
+  changed_files:
+    src/main/scala/domain/DomainEvent.scala: |
+      package domain
+
+      case class DomainEvent(id: String, name: String, payload: Map[String, String])
+    src/main/scala/services/EventBus.scala: |
+      package services
+
+      import domain.DomainEvent
+
+      class EventBus {
+        private var listeners: List[DomainEvent => Unit] = Nil
+
+        def subscribe(listener: DomainEvent => Unit): Unit =
+          listeners = listener :: listeners
+
+        def publish(event: DomainEvent): Unit =
+          listeners.foreach(_(event))
+      }
+    src/main/scala/handlers/EventHandler.scala: |
+      package handlers
+
+      import domain.DomainEvent
+      import services.EventBus
+
+      class EventHandler(bus: EventBus) {
+        bus.subscribe(handle)
+
+        def handle(event: DomainEvent): Unit =
+          println(s"Handling ${event.name}")
+      }
+    src/main/scala/persistence/FileStore.scala: |
+      package persistence
+
+      val GARBAGE_R020_FILE_A: String = "file_store"
+
+      class FileStore {
+        def write(path: String, data: String): Unit = ()
+      }
+    src/main/scala/persistence/Cache.scala: |
+      package persistence
+
+      val GARBAGE_R020_CACHE_B: String = "cache"
+
+      class Cache {
+        def get(key: String): Option[String] = None
+      }
+    src/main/scala/persistence/Queue.scala: |
+      package persistence
+
+      val GARBAGE_R020_QUEUE_C: String = "queue"
+
+      class Queue {
+        def enqueue(item: String): Unit = ()
+      }
+  commit_message: "refactor: rename Event to DomainEvent to avoid naming collisions"
+fragments:
+- id: domain_event_class
+  selector:
+    path: src/main/scala/domain/DomainEvent.scala
+    anchor: "case class DomainEvent"
+- id: bus_uses_domain_event
+  selector:
+    path: src/main/scala/services/EventBus.scala
+    anchor: "import domain.DomainEvent"
+- id: bus_publish
+  selector:
+    path: src/main/scala/services/EventBus.scala
+    anchor: "def publish(event: DomainEvent)"
+- id: handler_uses_domain_event
+  selector:
+    path: src/main/scala/handlers/EventHandler.scala
+    anchor: "import domain.DomainEvent"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_R020_FILE_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_R020_CACHE_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_R020_QUEUE_C
+oracle:
+  required:
+  - domain_event_class
+  - bus_uses_domain_event
+  - bus_publish
+  - handler_uses_domain_event
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

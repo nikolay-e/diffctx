@@ -1,0 +1,152 @@
+name: bal_3hop_021_python_feature_flag
+tags:
+- lang:python
+- change:single_file
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    flags/flag.py: |
+      class FeatureFlag:
+          def __init__(self, name: str, enabled: bool = False):
+              self.name = name
+              self.enabled = enabled
+          def is_active(self) -> bool:
+              return self.enabled
+          def toggle(self):
+              self.enabled = not self.enabled
+    flags/store.py: |
+      from flags.flag import FeatureFlag
+      class FlagStore:
+          def __init__(self):
+              self.flags: dict[str, FeatureFlag] = {}
+          def register(self, name: str, enabled: bool = False):
+              self.flags[name] = FeatureFlag(name, enabled)
+          def get(self, name: str) -> FeatureFlag:
+              return self.flags.get(name, FeatureFlag(name, False))
+          def is_enabled(self, name: str) -> bool:
+              return self.get(name).is_active()
+    flags/evaluator.py: |
+      from flags.store import FlagStore
+      class FlagEvaluator:
+          def __init__(self, store: FlagStore):
+              self.store = store
+          def evaluate(self, flag_name: str, context: dict) -> bool:
+              return self.store.is_enabled(flag_name)
+          def evaluate_all(self, flag_names: list[str], context: dict) -> dict[str, bool]:
+              return {name: self.evaluate(name, context) for name in flag_names}
+    api/feature_api.py: |
+      from flags.evaluator import FlagEvaluator
+      from flags.store import FlagStore
+      class FeatureAPI:
+          def __init__(self):
+              self.store = FlagStore()
+              self.evaluator = FlagEvaluator(self.store)
+          def check_feature(self, name: str, user_context: dict) -> dict:
+              enabled = self.evaluator.evaluate(name, user_context)
+              return {"feature": name, "enabled": enabled}
+    utils/percentage.py: |
+      import hashlib
+      def hash_percentage(key: str) -> float:
+          digest = hashlib.md5(key.encode()).hexdigest()
+          return int(digest[:8], 16) / 0xFFFFFFFF
+    config/feature_defaults.py: |
+      DEFAULT_FLAGS = {
+          "dark_mode": True,
+          "new_dashboard": False,
+          "beta_search": False,
+      }
+  changed_files:
+    flags/flag.py: |
+      from typing import Optional
+      class FeatureFlag:
+          def __init__(self, name: str, enabled: bool = False,
+                       rollout_percentage: int = 100):
+              self.name = name
+              self.enabled = enabled
+              self.rollout_percentage = rollout_percentage
+          def is_active(self) -> bool:
+              return self.enabled
+          def toggle(self):
+              self.enabled = not self.enabled
+          def is_in_rollout(self, user_hash: int) -> bool:
+              return self.enabled and (user_hash % 100) < self.rollout_percentage
+    flags/store.py: |
+      from flags.flag import FeatureFlag
+      class FlagStore:
+          def __init__(self):
+              self.flags: dict[str, FeatureFlag] = {}
+          def register(self, name: str, enabled: bool = False):
+              self.flags[name] = FeatureFlag(name, enabled)
+          def get(self, name: str) -> FeatureFlag:
+              return self.flags.get(name, FeatureFlag(name, False))
+          def is_enabled(self, name: str) -> bool:
+              return self.get(name).is_active()
+    flags/evaluator.py: |
+      from flags.store import FlagStore
+      class FlagEvaluator:
+          def __init__(self, store: FlagStore):
+              self.store = store
+          def evaluate(self, flag_name: str, context: dict) -> bool:
+              return self.store.is_enabled(flag_name)
+          def evaluate_all(self, flag_names: list[str], context: dict) -> dict[str, bool]:
+              return {name: self.evaluate(name, context) for name in flag_names}
+    api/feature_api.py: |
+      from flags.evaluator import FlagEvaluator
+      from flags.store import FlagStore
+      class FeatureAPI:
+          def __init__(self):
+              self.store = FlagStore()
+              self.evaluator = FlagEvaluator(self.store)
+          def check_feature(self, name: str, user_context: dict) -> dict:
+              enabled = self.evaluator.evaluate(name, user_context)
+              return {"feature": name, "enabled": enabled}
+    utils/percentage.py: |
+      import hashlib
+      def hash_percentage(key: str) -> float:
+          digest = hashlib.md5(key.encode()).hexdigest()
+          return int(digest[:8], 16) / 0xFFFFFFFF
+    config/feature_defaults.py: |
+      DEFAULT_FLAGS = {
+          "dark_mode": True,
+          "new_dashboard": False,
+          "beta_search": False,
+      }
+  commit_message: "feat: add rollout percentage support to FeatureFlag"
+fragments:
+- id: flag_rollout
+  selector:
+    path: flags/flag.py
+    anchor: "rollout_percentage: int = 100"
+- id: store_uses_flag
+  selector:
+    path: flags/store.py
+    anchor: "from flags.flag import FeatureFlag"
+- id: evaluator_uses_store
+  selector:
+    path: flags/evaluator.py
+    anchor: "from flags.store import FlagStore"
+- id: api_uses_evaluator
+  selector:
+    path: api/feature_api.py
+    anchor: "from flags.evaluator import FlagEvaluator"
+- id: no_percentage
+  selector:
+    path: utils/percentage.py
+    anchor: "def hash_percentage"
+- id: no_feature_defaults
+  selector:
+    path: config/feature_defaults.py
+    anchor: "DEFAULT_FLAGS"
+oracle:
+  required:
+  - flag_rollout
+  - store_uses_flag
+  - evaluator_uses_store
+  - api_uses_evaluator
+  allowed: []
+  forbidden:
+  - no_percentage
+  - no_feature_defaults

@@ -1,0 +1,180 @@
+name: bal_3hop_029_python_dependency_injector
+tags:
+- lang:python
+- change:single_file
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    di/binding.py: |
+      class Binding:
+          def __init__(self, interface: str, implementation, singleton: bool = False):
+              self.interface = interface
+              self.implementation = implementation
+              self.singleton = singleton
+              self.instance = None
+          def resolve(self):
+              if self.singleton:
+                  if self.instance is None:
+                      self.instance = self.implementation()
+                  return self.instance
+              return self.implementation()
+    di/container.py: |
+      from di.binding import Binding
+      class Container:
+          def __init__(self):
+              self.bindings: dict[str, Binding] = {}
+          def bind(self, interface: str, implementation, singleton: bool = False):
+              self.bindings[interface] = Binding(interface, implementation, singleton)
+          def resolve(self, interface: str):
+              binding = self.bindings.get(interface)
+              if binding is None:
+                  raise KeyError(f"No binding for {interface}")
+              return binding.resolve()
+    di/provider.py: |
+      from di.container import Container
+      class ServiceProvider:
+          def __init__(self, container: Container):
+              self.container = container
+          def register_services(self):
+              pass
+          def boot(self):
+              pass
+          def get(self, interface: str):
+              return self.container.resolve(interface)
+    app/kernel.py: |
+      from di.provider import ServiceProvider
+      from di.container import Container
+      class AppKernel:
+          def __init__(self):
+              self.container = Container()
+              self.providers: list[ServiceProvider] = []
+          def register_provider(self, provider_cls):
+              provider = provider_cls(self.container)
+              provider.register_services()
+              self.providers.append(provider)
+          def boot(self):
+              for provider in self.providers:
+                  provider.boot()
+          def make(self, interface: str):
+              return self.container.resolve(interface)
+    utils/reflection.py: |
+      import inspect
+      def get_constructor_params(cls) -> list[str]:
+          sig = inspect.signature(cls.__init__)
+          return [p.name for p in sig.parameters.values() if p.name != "self"]
+    config/services.py: |
+      SERVICES = {
+          "database": "DatabaseService",
+          "cache": "CacheService",
+          "mailer": "MailerService",
+      }
+  changed_files:
+    di/binding.py: |
+      from typing import Optional, Callable
+      class Binding:
+          def __init__(self, interface: str, implementation,
+                       singleton: bool = False, tags: list[str] = None):
+              self.interface = interface
+              self.implementation = implementation
+              self.singleton = singleton
+              self.tags = tags or []
+              self.instance = None
+          def resolve(self):
+              if self.singleton:
+                  if self.instance is None:
+                      self.instance = self.implementation()
+                  return self.instance
+              return self.implementation()
+          def has_tag(self, tag: str) -> bool:
+              return tag in self.tags
+          def reset(self):
+              self.instance = None
+    di/container.py: |
+      from di.binding import Binding
+      class Container:
+          def __init__(self):
+              self.bindings: dict[str, Binding] = {}
+          def bind(self, interface: str, implementation, singleton: bool = False):
+              self.bindings[interface] = Binding(interface, implementation, singleton)
+          def resolve(self, interface: str):
+              binding = self.bindings.get(interface)
+              if binding is None:
+                  raise KeyError(f"No binding for {interface}")
+              return binding.resolve()
+    di/provider.py: |
+      from di.container import Container
+      class ServiceProvider:
+          def __init__(self, container: Container):
+              self.container = container
+          def register_services(self):
+              pass
+          def boot(self):
+              pass
+          def get(self, interface: str):
+              return self.container.resolve(interface)
+    app/kernel.py: |
+      from di.provider import ServiceProvider
+      from di.container import Container
+      class AppKernel:
+          def __init__(self):
+              self.container = Container()
+              self.providers: list[ServiceProvider] = []
+          def register_provider(self, provider_cls):
+              provider = provider_cls(self.container)
+              provider.register_services()
+              self.providers.append(provider)
+          def boot(self):
+              for provider in self.providers:
+                  provider.boot()
+          def make(self, interface: str):
+              return self.container.resolve(interface)
+    utils/reflection.py: |
+      import inspect
+      def get_constructor_params(cls) -> list[str]:
+          sig = inspect.signature(cls.__init__)
+          return [p.name for p in sig.parameters.values() if p.name != "self"]
+    config/services.py: |
+      SERVICES = {
+          "database": "DatabaseService",
+          "cache": "CacheService",
+          "mailer": "MailerService",
+      }
+  commit_message: "feat: add tagging and reset to Binding"
+fragments:
+- id: binding_tags
+  selector:
+    path: di/binding.py
+    anchor: "tags: list[str] = None"
+- id: container_uses_binding
+  selector:
+    path: di/container.py
+    anchor: "from di.binding import Binding"
+- id: provider_uses_container
+  selector:
+    path: di/provider.py
+    anchor: "from di.container import Container"
+- id: kernel_uses_provider
+  selector:
+    path: app/kernel.py
+    anchor: "from di.provider import ServiceProvider"
+- id: no_reflection
+  selector:
+    path: utils/reflection.py
+    anchor: "def get_constructor_params"
+- id: no_services_config
+  selector:
+    path: config/services.py
+    anchor: "SERVICES"
+oracle:
+  required:
+  - binding_tags
+  - container_uses_binding
+  - provider_uses_container
+  - kernel_uses_provider
+  allowed: []
+  forbidden:
+  - no_reflection
+  - no_services_config

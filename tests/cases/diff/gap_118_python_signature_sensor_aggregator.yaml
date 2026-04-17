@@ -1,0 +1,102 @@
+name: gap_118_python_signature_sensor_aggregator
+tags:
+- lang:python
+- change:signature
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:1hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/sensors/aggregator.py: |
+      from src.sensors.reading import SensorReading
+
+      class SensorAggregator:
+          def __init__(self):
+              self._readings: list[SensorReading] = []
+
+          def record(self, reading: SensorReading) -> None:
+              self._readings.append(reading)
+
+          def average(self) -> float:
+              if not self._readings:
+                  return 0.0
+              return sum(r.value for r in self._readings) / len(self._readings)
+    src/sensors/reading.py: |
+      from dataclasses import dataclass
+
+      @dataclass
+      class SensorReading:
+          sensor_id: str
+          value: float
+          timestamp: int
+
+          def is_valid(self) -> bool:
+              return self.value >= -273.15
+
+          def age_seconds(self, now: int) -> int:
+              return now - self.timestamp
+    src/sensors/calibration.py: |
+      class CalibrationProfile:
+          def __init__(self, offset: float, scale: float):
+              self._offset = offset
+              self._scale = scale
+
+          def apply(self, raw_value: float) -> float:
+              return (raw_value + self._offset) * self._scale
+
+          def identity() -> "CalibrationProfile":
+              return CalibrationProfile(0.0, 1.0)
+    src/dashboard/chart_renderer.py: |
+      class ChartRenderer:
+          def __init__(self, width: int, height: int):
+              self._width = width
+              self._height = height
+
+          def render_line(self, points: list[tuple[float, float]]) -> str:
+              return f"line:{len(points)}pts@{self._width}x{self._height}"
+
+          def render_bar(self, values: list[float]) -> str:
+              return f"bar:{len(values)}bars@{self._width}x{self._height}"
+  changed_files:
+    src/sensors/aggregator.py: |
+      from src.sensors.reading import SensorReading
+
+      class SensorAggregator:
+          def __init__(self):
+              self._readings: list[SensorReading] = []
+
+          def record(self, reading: SensorReading) -> None:
+              self._readings.append(reading)
+
+          def average(self, max_age_seconds: int = 0, now: int = 0) -> float:
+              filtered = self._readings
+              if max_age_seconds > 0 and now > 0:
+                  filtered = [r for r in self._readings if r.age_seconds(now) <= max_age_seconds]
+              if not filtered:
+                  return 0.0
+              return sum(r.value for r in filtered) / len(filtered)
+fragments:
+- id: aggregator_average
+  selector:
+    path: src/sensors/aggregator.py
+    anchor: "def average(self, max_age_seconds"
+- id: reading_age
+  selector:
+    path: src/sensors/reading.py
+    anchor: "def age_seconds"
+- id: no_chart
+  selector:
+    path: src/dashboard/chart_renderer.py
+- id: no_chart_renderer
+  selector:
+    anchor: ChartRenderer
+oracle:
+  required:
+  - aggregator_average
+  - reading_age
+  forbidden:
+  - no_chart
+  - no_chart_renderer

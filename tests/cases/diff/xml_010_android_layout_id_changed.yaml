@@ -1,0 +1,165 @@
+name: xml_010_android_layout_id_changed
+tags:
+- lang:xml
+- lang:java
+- change:multi_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    app/src/main/res/layout/activity_main.xml: |
+      <?xml version="1.0" encoding="utf-8"?>
+      <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+          android:layout_width="match_parent"
+          android:layout_height="match_parent"
+          android:orientation="vertical"
+          android:padding="16dp">
+        <EditText
+            android:id="@+id/editTextSearch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Search..."/>
+        <Button
+            android:id="@+id/btnGo"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Go"/>
+        <RecyclerView
+            android:id="@+id/recyclerResults"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"/>
+      </LinearLayout>
+    app/src/main/java/com/example/search/MainActivity.java: |
+      package com.example.search;
+      import android.os.Bundle;
+      import android.widget.Button;
+      import android.widget.EditText;
+      import androidx.appcompat.app.AppCompatActivity;
+      import androidx.recyclerview.widget.RecyclerView;
+      public class MainActivity extends AppCompatActivity {
+          private EditText editTextSearch;
+          private Button btnGo;
+          private RecyclerView recyclerResults;
+          @Override
+          protected void onCreate(Bundle savedInstanceState) {
+              super.onCreate(savedInstanceState);
+              setContentView(R.layout.activity_main);
+              editTextSearch = findViewById(R.id.editTextSearch);
+              btnGo = findViewById(R.id.btnGo);
+              recyclerResults = findViewById(R.id.recyclerResults);
+              btnGo.setOnClickListener(v -> performSearch(editTextSearch.getText().toString()));
+          }
+          private void performSearch(String query) {}
+      }
+    app/src/main/java/com/example/search/SearchViewModel.java: |
+      package com.example.search;
+      import androidx.lifecycle.LiveData;
+      import androidx.lifecycle.MutableLiveData;
+      import androidx.lifecycle.ViewModel;
+      import java.util.List;
+      public class SearchViewModel extends ViewModel {
+          private final MutableLiveData<List<String>> results = new MutableLiveData<>();
+          public LiveData<List<String>> getResults() { return results; }
+          public void search(String query) {
+              results.setValue(List.of("Result for: " + query));
+          }
+      }
+    XML_NOISE_010_activity_settings.xml: |
+      <?xml version="1.0" encoding="utf-8"?>
+      <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+          android:layout_width="match_parent"
+          android:layout_height="match_parent">
+        <!-- XML_NOISE_010_SETTINGS_LAYOUT -->
+        <Switch android:id="@+id/XML_NOISE_010_switchDarkMode"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"/>
+      </LinearLayout>
+    garbage/AnalyticsTracker.java: |
+      // XML_NOISE_010_AnalyticsTracker = "firebase_analytics_marker"
+    garbage/NotificationReceiver.java: |
+      // XML_NOISE_010_NotificationReceiver = "fcm_notification_marker"
+  changed_files:
+    app/src/main/res/layout/activity_main.xml: |
+      <?xml version="1.0" encoding="utf-8"?>
+      <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+          android:layout_width="match_parent"
+          android:layout_height="match_parent"
+          android:orientation="vertical"
+          android:padding="16dp">
+        <EditText
+            android:id="@+id/inputSearch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Search..."/>
+        <Button
+            android:id="@+id/btnSearch"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Search"/>
+        <RecyclerView
+            android:id="@+id/recyclerResults"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"/>
+      </LinearLayout>
+    app/src/main/java/com/example/search/MainActivity.java: |
+      package com.example.search;
+      import android.os.Bundle;
+      import android.widget.Button;
+      import android.widget.EditText;
+      import androidx.appcompat.app.AppCompatActivity;
+      import androidx.recyclerview.widget.RecyclerView;
+      public class MainActivity extends AppCompatActivity {
+          private EditText inputSearch;
+          private Button btnSearch;
+          private RecyclerView recyclerResults;
+          @Override
+          protected void onCreate(Bundle savedInstanceState) {
+              super.onCreate(savedInstanceState);
+              setContentView(R.layout.activity_main);
+              inputSearch = findViewById(R.id.inputSearch);
+              btnSearch = findViewById(R.id.btnSearch);
+              recyclerResults = findViewById(R.id.recyclerResults);
+              btnSearch.setOnClickListener(v -> performSearch(inputSearch.getText().toString()));
+          }
+          private void performSearch(String query) {}
+      }
+  commit_message: "refactor: rename editTextSearch/btnGo to inputSearch/btnSearch in layout and activity"
+fragments:
+- id: layout_input_search
+  selector:
+    path: app/src/main/res/layout/activity_main.xml
+    anchor: inputSearch
+- id: activity_find_view
+  selector:
+    path: app/src/main/java/com/example/search/MainActivity.java
+    anchor: "R.id.inputSearch"
+- id: no_settings_layout
+  selector:
+    path: XML_NOISE_010_activity_settings.xml
+- id: no_analytics_tracker
+  selector:
+    path: garbage/AnalyticsTracker.java
+- id: no_global_0
+  selector:
+    anchor: XML_NOISE_010_SETTINGS_LAYOUT
+- id: no_global_1
+  selector:
+    anchor: XML_NOISE_010_switchDarkMode
+- id: no_global_2
+  selector:
+    anchor: XML_NOISE_010_AnalyticsTracker
+oracle:
+  required:
+  - layout_input_search
+  - activity_find_view
+  allowed: []
+  forbidden:
+  - no_settings_layout
+  - no_analytics_tracker
+  - no_global_0
+  - no_global_1
+  - no_global_2

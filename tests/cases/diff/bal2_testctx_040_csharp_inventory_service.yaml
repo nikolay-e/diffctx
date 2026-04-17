@@ -1,0 +1,161 @@
+name: bal2_testctx_040_csharp_inventory_service
+tags:
+- lang:csharp
+- change:bug_fix
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/Services/InventoryService.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Services
+      {
+          public class InventoryService
+          {
+              private readonly Dictionary<string, int> _stock = new();
+
+              public void AddStock(string productId, int quantity)
+              {
+                  if (!_stock.ContainsKey(productId))
+                      _stock[productId] = 0;
+                  _stock[productId] += quantity;
+              }
+
+              public bool Reserve(string productId, int quantity)
+              {
+                  if (!_stock.ContainsKey(productId)) return false;
+                  if (_stock[productId] < quantity) return false;
+                  _stock[productId] -= quantity;
+                  return true;
+              }
+
+              public int GetStock(string productId)
+              {
+                  return _stock.GetValueOrDefault(productId, 0);
+              }
+          }
+      }
+    Tests/InventoryServiceTests.cs: |
+      using Xunit;
+      using App.Services;
+
+      namespace App.Tests
+      {
+          public class InventoryServiceTests
+          {
+              [Fact]
+              public void AddStock_IncreasesQuantity()
+              {
+                  var svc = new InventoryService();
+                  svc.AddStock("item1", 10);
+                  Assert.Equal(10, svc.GetStock("item1"));
+              }
+
+              [Fact]
+              public void Reserve_SufficientStock_ReturnsTrue()
+              {
+                  var svc = new InventoryService();
+                  svc.AddStock("item1", 10);
+                  Assert.True(svc.Reserve("item1", 5));
+                  Assert.Equal(5, svc.GetStock("item1"));
+              }
+
+              [Fact]
+              public void Reserve_InsufficientStock_ReturnsFalse()
+              {
+                  var svc = new InventoryService();
+                  svc.AddStock("item1", 3);
+                  Assert.False(svc.Reserve("item1", 5));
+              }
+          }
+      }
+    src/Services/PricingService.cs: |
+      using System;
+
+      namespace App.Services
+      {
+          public class PricingService
+          {
+              public decimal ApplyDiscount(decimal price, decimal discountPercent)
+              {
+                  return price * (1 - discountPercent / 100);
+              }
+          }
+      }
+  changed_files:
+    src/Services/InventoryService.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Services
+      {
+          public class InventoryService
+          {
+              private readonly Dictionary<string, int> _stock = new();
+
+              public void AddStock(string productId, int quantity)
+              {
+                  if (quantity <= 0)
+                      throw new ArgumentException("Quantity must be positive", nameof(quantity));
+                  if (!_stock.ContainsKey(productId))
+                      _stock[productId] = 0;
+                  _stock[productId] += quantity;
+              }
+
+              public bool Reserve(string productId, int quantity)
+              {
+                  if (quantity <= 0)
+                      throw new ArgumentException("Quantity must be positive", nameof(quantity));
+                  if (!_stock.ContainsKey(productId)) return false;
+                  if (_stock[productId] < quantity) return false;
+                  _stock[productId] -= quantity;
+                  return true;
+              }
+
+              public int GetStock(string productId)
+              {
+                  return _stock.GetValueOrDefault(productId, 0);
+              }
+
+              public void ReleaseReservation(string productId, int quantity)
+              {
+                  if (!_stock.ContainsKey(productId))
+                      _stock[productId] = 0;
+                  _stock[productId] += quantity;
+              }
+          }
+      }
+  commit_message: "fix: validate positive quantity, add reservation release"
+fragments:
+- id: add_stock_validation
+  selector:
+    path: src/Services/InventoryService.cs
+    anchor: "Quantity must be positive"
+- id: release_reservation
+  selector:
+    path: src/Services/InventoryService.cs
+    anchor: "public void ReleaseReservation"
+- id: test_imports
+  selector:
+    path: Tests/InventoryServiceTests.cs
+    anchor: "using App.Services"
+- id: test_reserve
+  selector:
+    path: Tests/InventoryServiceTests.cs
+    anchor: "Reserve_SufficientStock_ReturnsTrue"
+- id: no_pricing
+  selector:
+    path: src/Services/PricingService.cs
+    anchor: "class PricingService"
+oracle:
+  required:
+  - add_stock_validation
+  - release_reservation
+  - test_imports
+  allowed:
+  - test_reserve
+  forbidden:
+  - no_pricing

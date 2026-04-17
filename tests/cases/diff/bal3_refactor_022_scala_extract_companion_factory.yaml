@@ -1,0 +1,209 @@
+name: bal3_refactor_022_scala_extract_companion_factory
+tags:
+- lang:scala
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/main/scala/models/Connection.scala: |
+      package models
+
+      case class Connection(
+        host: String,
+        port: Int,
+        ssl: Boolean,
+        timeout: Int
+      )
+    src/main/scala/services/DatabaseService.scala: |
+      package services
+
+      import models.Connection
+
+      class DatabaseService {
+        def connect(): Connection = {
+          Connection("localhost", 5432, ssl = false, timeout = 30)
+        }
+
+        def connectProd(): Connection = {
+          Connection("db.prod.internal", 5432, ssl = true, timeout = 10)
+        }
+      }
+    src/main/scala/services/CacheService.scala: |
+      package services
+
+      import models.Connection
+
+      class CacheService {
+        def connect(): Connection = {
+          Connection("redis.local", 6379, ssl = false, timeout = 5)
+        }
+
+        def connectProd(): Connection = {
+          Connection("redis.prod.internal", 6379, ssl = true, timeout = 3)
+        }
+      }
+    src/main/scala/workers/MigrationWorker.scala: |
+      package workers
+
+      import services.DatabaseService
+
+      class MigrationWorker {
+        val db = new DatabaseService
+        def run(): Unit = {
+          val conn = db.connect()
+          println(s"Migrating ${conn.host}")
+        }
+      }
+    src/main/scala/workers/CleanupWorker.scala: |
+      package workers
+
+      val GARBAGE_R022_CLEANUP_A: String = "cleanup"
+
+      class CleanupWorker {
+        def run(): Unit = ()
+      }
+    src/main/scala/workers/IndexWorker.scala: |
+      package workers
+
+      val GARBAGE_R022_INDEX_B: String = "index"
+
+      class IndexWorker {
+        def run(): Unit = ()
+      }
+    src/main/scala/workers/NotifyWorker.scala: |
+      package workers
+
+      val GARBAGE_R022_NOTIFY_C: String = "notify"
+
+      class NotifyWorker {
+        def run(): Unit = ()
+      }
+  changed_files:
+    src/main/scala/models/Connection.scala: |
+      package models
+
+      case class Connection(
+        host: String,
+        port: Int,
+        ssl: Boolean,
+        timeout: Int
+      )
+
+      object Connection {
+        def local(host: String, port: Int, timeout: Int): Connection =
+          Connection(host, port, ssl = false, timeout)
+
+        def production(host: String, port: Int, timeout: Int): Connection =
+          Connection(host, port, ssl = true, timeout)
+      }
+    src/main/scala/services/DatabaseService.scala: |
+      package services
+
+      import models.Connection
+
+      class DatabaseService {
+        def connect(): Connection =
+          Connection.local("localhost", 5432, timeout = 30)
+
+        def connectProd(): Connection =
+          Connection.production("db.prod.internal", 5432, timeout = 10)
+      }
+    src/main/scala/services/CacheService.scala: |
+      package services
+
+      import models.Connection
+
+      class CacheService {
+        def connect(): Connection =
+          Connection.local("redis.local", 6379, timeout = 5)
+
+        def connectProd(): Connection =
+          Connection.production("redis.prod.internal", 6379, timeout = 3)
+      }
+    src/main/scala/workers/MigrationWorker.scala: |
+      package workers
+
+      import services.DatabaseService
+
+      class MigrationWorker {
+        val db = new DatabaseService
+        def run(): Unit = {
+          val conn = db.connect()
+          println(s"Migrating ${conn.host}")
+        }
+      }
+    src/main/scala/workers/CleanupWorker.scala: |
+      package workers
+
+      val GARBAGE_R022_CLEANUP_A: String = "cleanup"
+
+      class CleanupWorker {
+        def run(): Unit = ()
+      }
+    src/main/scala/workers/IndexWorker.scala: |
+      package workers
+
+      val GARBAGE_R022_INDEX_B: String = "index"
+
+      class IndexWorker {
+        def run(): Unit = ()
+      }
+    src/main/scala/workers/NotifyWorker.scala: |
+      package workers
+
+      val GARBAGE_R022_NOTIFY_C: String = "notify"
+
+      class NotifyWorker {
+        def run(): Unit = ()
+      }
+  commit_message: "refactor: extract companion object factory methods for Connection"
+fragments:
+- id: connection_companion
+  selector:
+    path: src/main/scala/models/Connection.scala
+    anchor: "object Connection"
+- id: local_factory
+  selector:
+    path: src/main/scala/models/Connection.scala
+    anchor: "def local(host: String"
+- id: production_factory
+  selector:
+    path: src/main/scala/models/Connection.scala
+    anchor: "def production(host: String"
+- id: db_uses_local
+  selector:
+    path: src/main/scala/services/DatabaseService.scala
+    anchor: "Connection.local("
+- id: cache_uses_production
+  selector:
+    path: src/main/scala/services/CacheService.scala
+    anchor: "Connection.production("
+- id: migration_context
+  selector:
+    path: src/main/scala/workers/MigrationWorker.scala
+    anchor: "db.connect()"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_R022_CLEANUP_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_R022_INDEX_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_R022_NOTIFY_C
+oracle:
+  required:
+  - connection_companion
+  - local_factory
+  - production_factory
+  - db_uses_local
+  - cache_uses_production
+  allowed:
+  - migration_context
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

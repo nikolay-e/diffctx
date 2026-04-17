@@ -1,0 +1,160 @@
+name: bal3_rare_002_erlang_supervisor_child
+tags:
+- lang:erlang
+- change:single_file
+- change:refactor
+- context:call_graph
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/app_sup.erl: |
+      -module(app_sup).
+      -behaviour(supervisor).
+      -export([start_link/0, init/1]).
+
+      start_link() ->
+          supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+
+      init([]) ->
+          Children = [
+              #{id => worker_pool,
+                start => {worker_pool, start_link, []},
+                restart => permanent,
+                type => worker}
+          ],
+          {ok, {#{strategy => one_for_one, intensity => 5, period => 10}, Children}}.
+    src/worker_pool.erl: |
+      -module(worker_pool).
+      -export([start_link/0, submit/1]).
+
+      start_link() ->
+          {ok, spawn_link(fun loop/0)}.
+
+      loop() ->
+          receive
+              {submit, Task} ->
+                  Task(),
+                  loop()
+          end.
+
+      submit(Task) ->
+          worker_pool ! {submit, Task}.
+    src/task_runner.erl: |
+      -module(task_runner).
+      -export([run/1]).
+
+      run(TaskFn) ->
+          worker_pool:submit(TaskFn).
+    src/http_handler.erl: |
+      -module(http_handler).
+
+      GARBAGE_RARE_002_HTTP_A = "handler".
+      GARBAGE_RARE_002_PORT_B = 8080.
+
+      -export([handle/1]).
+
+      handle(Request) -> {200, "OK"}.
+    src/db_pool.erl: |
+      -module(db_pool).
+
+      GARBAGE_RARE_002_DB_C = "postgres".
+      GARBAGE_RARE_002_CONN_D = 5.
+
+      -export([checkout/0]).
+
+      checkout() -> {ok, connection}.
+    src/mailer.erl: |
+      -module(mailer).
+
+      GARBAGE_RARE_002_SMTP_E = "smtp".
+      GARBAGE_RARE_002_FROM_F = "no-reply".
+
+      -export([send/2]).
+
+      send(To, Body) -> ok.
+  changed_files:
+    src/worker_pool.erl: |
+      -module(worker_pool).
+      -export([start_link/0, start_link/1, submit/1, status/0]).
+
+      start_link() ->
+          start_link(#{max_workers => 4}).
+
+      start_link(Opts) ->
+          MaxWorkers = maps:get(max_workers, Opts, 4),
+          {ok, spawn_link(fun() -> loop(MaxWorkers, 0) end)}.
+
+      loop(Max, Active) ->
+          receive
+              {submit, Task} when Active < Max ->
+                  spawn(fun() -> Task(), worker_pool ! done end),
+                  loop(Max, Active + 1);
+              done ->
+                  loop(Max, Active - 1);
+              {status, From} ->
+                  From ! {pool_status, Active, Max},
+                  loop(Max, Active)
+          end.
+
+      submit(Task) ->
+          worker_pool ! {submit, Task}.
+
+      status() ->
+          worker_pool ! {status, self()},
+          receive {pool_status, Active, Max} -> {Active, Max} end.
+  commit_message: "add max workers limit and status to worker_pool"
+fragments:
+- id: supervisor_child_spec
+  selector:
+    path: src/app_sup.erl
+    anchor: "worker_pool, start_link"
+- id: task_runner_uses_pool
+  selector:
+    path: src/task_runner.erl
+    anchor: "worker_pool:submit(TaskFn)"
+- id: no_http
+  selector:
+    path: src/http_handler.erl
+    anchor: "handle(Request)"
+- id: no_db
+  selector:
+    path: src/db_pool.erl
+    anchor: "checkout()"
+- id: no_mailer
+  selector:
+    path: src/mailer.erl
+    anchor: "send(To, Body)"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_RARE_002_HTTP_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_RARE_002_PORT_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_RARE_002_DB_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_RARE_002_CONN_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_RARE_002_SMTP_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_RARE_002_FROM_F
+oracle:
+  required:
+  - supervisor_child_spec
+  - task_runner_uses_pool
+  allowed: []
+  forbidden:
+  - no_http
+  - no_db
+  - no_mailer
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

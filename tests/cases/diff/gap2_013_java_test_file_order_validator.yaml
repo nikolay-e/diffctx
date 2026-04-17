@@ -1,0 +1,139 @@
+name: gap2_013_java_test_file_order_validator
+tags:
+- lang:java
+- change:single_file
+- context:test_file
+- distance:2hop
+- difficulty:easy
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/main/java/com/ecommerce/validation/OrderValidator.java: |
+      package com.ecommerce.validation;
+
+      import com.ecommerce.model.Order;
+
+      public class OrderValidator {
+          private static final double MAX_ORDER_TOTAL = 10000.0;
+
+          public boolean isValid(Order order) {
+              if (order.getItems().isEmpty()) return false;
+              if (order.getTotal() > MAX_ORDER_TOTAL) return false;
+              return order.getCustomerId() != null;
+          }
+
+          public boolean hasValidShipping(Order order) {
+              return order.getShippingAddress() != null
+                  && !order.getShippingAddress().isEmpty();
+          }
+      }
+    src/main/java/com/ecommerce/model/Order.java: |
+      package com.ecommerce.model;
+
+      import java.util.List;
+
+      public class Order {
+          private final String customerId;
+          private final List<String> items;
+          private final double total;
+          private final String shippingAddress;
+
+          public Order(String customerId, List<String> items, double total, String shippingAddress) {
+              this.customerId = customerId;
+              this.items = items;
+              this.total = total;
+              this.shippingAddress = shippingAddress;
+          }
+
+          public String getCustomerId() { return customerId; }
+          public List<String> getItems() { return items; }
+          public double getTotal() { return total; }
+          public String getShippingAddress() { return shippingAddress; }
+      }
+    src/test/java/com/ecommerce/validation/OrderValidatorTest.java: |
+      package com.ecommerce.validation;
+
+      import com.ecommerce.model.Order;
+      import org.junit.jupiter.api.Test;
+      import java.util.List;
+      import static org.junit.jupiter.api.Assertions.*;
+
+      class OrderValidatorTest {
+          private final OrderValidator validator = new OrderValidator();
+
+          @Test
+          void validOrderReturnsTrue() {
+              Order order = new Order("C1", List.of("item1"), 50.0, "123 Main St");
+              assertTrue(validator.isValid(order));
+          }
+
+          @Test
+          void emptyItemsReturnsFalse() {
+              Order order = new Order("C1", List.of(), 0.0, "123 Main St");
+              assertFalse(validator.isValid(order));
+          }
+      }
+    src/main/java/com/ecommerce/service/DiscountService.java: |
+      package com.ecommerce.service;
+
+      public class DiscountService {
+          public double applyDiscount(double total, double percent) {
+              return total * (1 - percent / 100);
+          }
+
+          public boolean isEligible(double total) {
+              return total > 100.0;
+          }
+      }
+  changed_files:
+    src/main/java/com/ecommerce/validation/OrderValidator.java: |
+      package com.ecommerce.validation;
+
+      import com.ecommerce.model.Order;
+
+      public class OrderValidator {
+          private static final double MAX_ORDER_TOTAL = 10000.0;
+          private static final int MAX_ITEMS = 50;
+
+          public boolean isValid(Order order) {
+              if (order.getItems().isEmpty()) return false;
+              if (order.getItems().size() > MAX_ITEMS) return false;
+              if (order.getTotal() > MAX_ORDER_TOTAL) return false;
+              return order.getCustomerId() != null;
+          }
+
+          public boolean hasValidShipping(Order order) {
+              return order.getShippingAddress() != null
+                  && !order.getShippingAddress().isEmpty();
+          }
+      }
+  commit_message: "feat: add max items limit to order validation"
+fragments:
+- id: validator_max_items
+  selector:
+    path: src/main/java/com/ecommerce/validation/OrderValidator.java
+    anchor: "MAX_ITEMS = 50"
+- id: validator_check
+  selector:
+    path: src/main/java/com/ecommerce/validation/OrderValidator.java
+    anchor: "order.getItems().size() > MAX_ITEMS"
+- id: test_uses_validator
+  selector:
+    path: src/test/java/com/ecommerce/validation/OrderValidatorTest.java
+    anchor: "new OrderValidator()"
+- id: no_discount
+  selector:
+    path: src/main/java/com/ecommerce/service/DiscountService.java
+- id: no_discount_class
+  selector:
+    anchor: DiscountService
+oracle:
+  required:
+  - validator_max_items
+  - validator_check
+  - test_uses_validator
+  allowed: []
+  forbidden:
+  - no_discount
+  - no_discount_class

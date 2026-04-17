@@ -1,0 +1,266 @@
+name: kotlin_001_sealed_class_refactor
+tags:
+- lang:kotlin
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/kotlin/domain/Result.kt: |
+      package domain
+
+      class Success<T>(val data: T)
+      class Failure(val error: String, val code: Int)
+
+      fun <T> isSuccess(result: Any): Boolean {
+          return result is Success<*>
+      }
+    src/main/kotlin/service/UserService.kt: |
+      package service
+
+      import domain.Success
+      import domain.Failure
+      import repository.UserRepository
+
+      class UserService(private val repo: UserRepository) {
+          fun findUser(id: String): Any {
+              val user = repo.findById(id)
+              return if (user != null) {
+                  Success(user)
+              } else {
+                  Failure("User not found", 404)
+              }
+          }
+
+          fun deleteUser(id: String): Any {
+              return if (repo.delete(id)) {
+                  Success(Unit)
+              } else {
+                  Failure("Delete failed", 500)
+              }
+          }
+      }
+    src/main/kotlin/repository/UserRepository.kt: |
+      package repository
+
+      data class User(val id: String, val name: String, val email: String)
+
+      class UserRepository {
+          private val users = mutableMapOf<String, User>()
+
+          fun findById(id: String): User? = users[id]
+
+          fun save(user: User) {
+              users[user.id] = user
+          }
+
+          fun delete(id: String): Boolean {
+              return users.remove(id) != null
+          }
+      }
+    src/main/kotlin/api/UserController.kt: |
+      package api
+
+      import service.UserService
+      import domain.Success
+      import domain.Failure
+
+      class UserController(private val service: UserService) {
+          fun getUser(id: String): String {
+              val result = service.findUser(id)
+              return when (result) {
+                  is Success<*> -> "200: ${result.data}"
+                  is Failure -> "${result.code}: ${result.error}"
+                  else -> "500: Unknown"
+              }
+          }
+      }
+    src/main/kotlin/util/Logging.kt: |
+      package util
+
+      object Logging {
+          fun info(message: String) {
+              println("[INFO] $message")
+          }
+
+          fun error(message: String) {
+              println("[ERROR] $message")
+          }
+
+          fun debug(message: String) {
+              println("[DEBUG] $message")
+          }
+      }
+    src/main/kotlin/util/Metrics.kt: |
+      package util
+
+      object Metrics {
+          private val counters = mutableMapOf<String, Long>()
+
+          fun increment(name: String) {
+              counters[name] = (counters[name] ?: 0) + 1
+          }
+
+          fun get(name: String): Long = counters[name] ?: 0
+      }
+  changed_files:
+    src/main/kotlin/domain/Result.kt: |
+      package domain
+
+      sealed class Result<out T> {
+          data class Success<T>(val data: T) : Result<T>()
+          data class Failure(val error: String, val code: Int) : Result<Nothing>()
+      }
+
+      fun <T> Result<T>.getOrNull(): T? = when (this) {
+          is Result.Success -> data
+          is Result.Failure -> null
+      }
+    src/main/kotlin/service/UserService.kt: |
+      package service
+
+      import domain.Result
+      import repository.UserRepository
+
+      class UserService(private val repo: UserRepository) {
+          fun findUser(id: String): Result<repository.User> {
+              val user = repo.findById(id)
+              return if (user != null) {
+                  Result.Success(user)
+              } else {
+                  Result.Failure("User not found", 404)
+              }
+          }
+
+          fun deleteUser(id: String): Result<Unit> {
+              return if (repo.delete(id)) {
+                  Result.Success(Unit)
+              } else {
+                  Result.Failure("Delete failed", 500)
+              }
+          }
+      }
+    src/main/kotlin/repository/UserRepository.kt: |
+      package repository
+
+      data class User(val id: String, val name: String, val email: String)
+
+      class UserRepository {
+          private val users = mutableMapOf<String, User>()
+
+          fun findById(id: String): User? = users[id]
+
+          fun save(user: User) {
+              users[user.id] = user
+          }
+
+          fun delete(id: String): Boolean {
+              return users.remove(id) != null
+          }
+      }
+    src/main/kotlin/api/UserController.kt: |
+      package api
+
+      import service.UserService
+      import domain.Result
+
+      class UserController(private val service: UserService) {
+          fun getUser(id: String): String {
+              return when (val result = service.findUser(id)) {
+                  is Result.Success -> "200: ${result.data}"
+                  is Result.Failure -> "${result.code}: ${result.error}"
+              }
+          }
+      }
+    src/main/kotlin/util/Logging.kt: |
+      package util
+
+      object Logging {
+          fun info(message: String) {
+              println("[INFO] $message")
+          }
+
+          fun error(message: String) {
+              println("[ERROR] $message")
+          }
+
+          fun debug(message: String) {
+              println("[DEBUG] $message")
+          }
+      }
+    src/main/kotlin/util/Metrics.kt: |
+      package util
+
+      object Metrics {
+          private val counters = mutableMapOf<String, Long>()
+
+          fun increment(name: String) {
+              counters[name] = (counters[name] ?: 0) + 1
+          }
+
+          fun get(name: String): Long = counters[name] ?: 0
+      }
+  commit_message: "refactor: replace loose Result classes with sealed class hierarchy"
+fragments:
+- id: sealed_result
+  selector:
+    path: domain/Result.kt
+    anchor: "sealed class Result<out T>"
+- id: result_success
+  selector:
+    path: domain/Result.kt
+    anchor: "data class Success<T>(val data: T) : Result<T>()"
+- id: result_failure
+  selector:
+    path: domain/Result.kt
+    anchor: "data class Failure(val error: String, val code: Int) : Result<Nothing>()"
+- id: get_or_null_ext
+  selector:
+    path: domain/Result.kt
+    anchor: "fun <T> Result<T>.getOrNull()"
+- id: service_uses_sealed
+  selector:
+    path: service/UserService.kt
+    anchor: "Result.Success(user)"
+- id: service_return_type
+  selector:
+    path: service/UserService.kt
+    anchor: "fun findUser(id: String): Result<repository.User>"
+- id: controller_when_sealed
+  selector:
+    path: api/UserController.kt
+    anchor: "is Result.Success"
+- id: controller_imports_result
+  selector:
+    path: api/UserController.kt
+    anchor: "import domain.Result"
+- id: no_logging
+  selector:
+    path: util/Logging.kt
+- id: no_metrics
+  selector:
+    path: util/Metrics.kt
+- id: no_info_log
+  selector:
+    anchor: "fun info(message: String)"
+- id: no_increment
+  selector:
+    anchor: "fun increment(name: String)"
+oracle:
+  required:
+  - sealed_result
+  - result_success
+  - result_failure
+  - get_or_null_ext
+  - service_uses_sealed
+  - service_return_type
+  - controller_when_sealed
+  - controller_imports_result
+  allowed: []
+  forbidden:
+  - no_logging
+  - no_metrics
+  - no_info_log
+  - no_increment

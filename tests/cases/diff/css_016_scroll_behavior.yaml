@@ -1,0 +1,70 @@
+name: css_016_scroll_behavior
+tags:
+- lang:css
+- change:single_file
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    base.css: |
+      *, *::before, *::after { box-sizing: border-box; }
+      html { font-size: 16px; }
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: system-ui, sans-serif;
+        color: #111827;
+        background: #f9fafb;
+      }
+      a { color: inherit; }
+      img { max-width: 100%; display: block; }
+    CSS_NOISE_016_wysiwyg.css: |
+      .CSS_NOISE_016_wysiwyg_toolbar { display: flex; gap: 4px; border-bottom: 1px solid #e5e7eb; }
+      .CSS_NOISE_016_wysiwyg_content { min-height: 200px; padding: 12px; outline: none; }
+    CSS_NOISE_016_kanban.css: |
+      .CSS_NOISE_016_kanban_board { display: flex; gap: 16px; overflow-x: auto; }
+      .CSS_NOISE_016_kanban_column { width: 280px; flex-shrink: 0; }
+  changed_files:
+    base.css: |
+      *, *::before, *::after { box-sizing: border-box; }
+      html {
+        font-size: 16px;
+        scroll-behavior: smooth;
+      }
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: system-ui, sans-serif;
+        color: #111827;
+        background: #f9fafb;
+      }
+      a { color: inherit; }
+      img { max-width: 100%; display: block; }
+  commit_message: "style: enable smooth scroll-behavior on html element"
+fragments:
+- id: scroll_behavior_smooth
+  selector:
+    path: base.css
+    anchor: scroll-behavior
+- id: no_wysiwyg
+  selector:
+    path: CSS_NOISE_016_wysiwyg.css
+- id: no_kanban
+  selector:
+    path: CSS_NOISE_016_kanban.css
+- id: no_global_0
+  selector:
+    anchor: CSS_NOISE_016_wysiwyg_toolbar
+- id: no_global_1
+  selector:
+    anchor: CSS_NOISE_016_kanban_board
+oracle:
+  required:
+  - scroll_behavior_smooth
+  allowed: []
+  forbidden:
+  - no_wysiwyg
+  - no_kanban
+  - no_global_0
+  - no_global_1

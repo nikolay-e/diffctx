@@ -1,0 +1,112 @@
+name: gap_152_shell_terraform_logrotate_same_file
+tags:
+- change:config
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+- lang:shell
+- lang:terraform
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    ops/logrotate.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      LOG_DIR="${LOG_DIR:-/var/log/app}"
+      MAX_SIZE_MB=100
+      KEEP_COUNT=5
+      COMPRESS=true
+
+      for logfile in "${LOG_DIR}"/*.log; do
+        [[ -f "${logfile}" ]] || continue
+        size_mb=$(du -m "${logfile}" | cut -f1)
+        if [[ ${size_mb} -ge ${MAX_SIZE_MB} ]]; then
+          mv "${logfile}" "${logfile}.$(date +%s)"
+          touch "${logfile}"
+        fi
+      done
+
+      ls -t "${LOG_DIR}"/*.log.* 2>/dev/null | tail -n +$((KEEP_COUNT + 1)) | xargs -r rm -f
+
+      if [[ "${COMPRESS}" == "true" ]]; then
+        find "${LOG_DIR}" -name "*.log.*" ! -name "*.gz" -exec gzip {} \;
+      fi
+    terraform/cloudwatch_logs.tf: |
+      resource "aws_cloudwatch_log_group" "app" {
+        name              = "/app/production"
+        retention_in_days = 30
+      }
+
+      resource "aws_cloudwatch_log_group" "audit" {
+        name              = "/app/audit"
+        retention_in_days = 365
+      }
+    terraform/kinesis.tf: |
+      resource "aws_kinesis_firehose_delivery_stream" "logs" {
+        name        = "log-delivery"
+        destination = "extended_s3"
+
+        extended_s3_configuration {
+          role_arn   = "arn:aws:iam::role/firehose"
+          bucket_arn = "arn:aws:s3:::log-archive"
+          prefix     = "logs/"
+        }
+      }
+  changed_files:
+    ops/logrotate.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      LOG_DIR="${LOG_DIR:-/var/log/app}"
+      MAX_SIZE_MB=50
+      KEEP_COUNT=10
+      COMPRESS=true
+      ARCHIVE_DIR="${ARCHIVE_DIR:-/var/log/archive}"
+
+      mkdir -p "${ARCHIVE_DIR}"
+
+      for logfile in "${LOG_DIR}"/*.log; do
+        [[ -f "${logfile}" ]] || continue
+        size_mb=$(du -m "${logfile}" | cut -f1)
+        if [[ ${size_mb} -ge ${MAX_SIZE_MB} ]]; then
+          rotated="${ARCHIVE_DIR}/$(basename "${logfile}").$(date +%s)"
+          mv "${logfile}" "${rotated}"
+          touch "${logfile}"
+        fi
+      done
+
+      ls -t "${ARCHIVE_DIR}"/*.log.* 2>/dev/null | tail -n +$((KEEP_COUNT + 1)) | xargs -r rm -f
+
+      if [[ "${COMPRESS}" == "true" ]]; then
+        find "${ARCHIVE_DIR}" -name "*.log.*" ! -name "*.gz" -exec gzip {} \;
+      fi
+fragments:
+- id: max_size
+  selector:
+    path: ops/logrotate.sh
+    anchor: MAX_SIZE_MB=50
+- id: keep_count
+  selector:
+    path: ops/logrotate.sh
+    anchor: KEEP_COUNT=10
+- id: archive_dir
+  selector:
+    path: ops/logrotate.sh
+    anchor: ARCHIVE_DIR
+- id: no_cloudwatch_logs
+  selector:
+    path: terraform/cloudwatch_logs.tf
+- id: no_kinesis
+  selector:
+    path: terraform/kinesis.tf
+oracle:
+  required:
+  - max_size
+  - keep_count
+  - archive_dir
+  forbidden:
+  - no_cloudwatch_logs
+  - no_kinesis

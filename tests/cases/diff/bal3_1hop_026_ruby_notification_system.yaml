@@ -1,0 +1,205 @@
+name: bal3_1hop_026_ruby_notification_system
+tags:
+- lang:ruby
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    lib/notifications/channel.rb: |
+      module Notifications
+        class Channel
+          attr_reader :name
+
+          def initialize(name)
+            @name = name
+          end
+
+          def deliver(recipient, message)
+            "#{name}: #{message} -> #{recipient}"
+          end
+        end
+      end
+    lib/notifications/email_channel.rb: |
+      require_relative 'channel'
+
+      module Notifications
+        class EmailChannel < Channel
+          def initialize
+            super('email')
+          end
+
+          def deliver(recipient, message)
+            "Emailing #{recipient}: #{message}"
+          end
+        end
+      end
+    lib/notifications/sms_channel.rb: |
+      require_relative 'channel'
+
+      module Notifications
+        class SmsChannel < Channel
+          def initialize
+            super('sms')
+          end
+
+          def deliver(recipient, message)
+            "Texting #{recipient}: #{message}"
+          end
+        end
+      end
+    lib/notifications/push_channel.rb: |
+      require_relative 'channel'
+
+      module Notifications
+        class PushChannel < Channel
+          def initialize
+            super('push')
+          end
+
+          def deliver(recipient, message)
+            "Pushing to #{recipient}: #{message}"
+          end
+        end
+      end
+    lib/formatters/html_formatter.rb: |
+      GARBAGE_026_HTML_A = "html_formatter"
+
+      module Formatters
+        class HtmlFormatter
+          def format(text)
+            "<p>#{text}</p>"
+          end
+        end
+      end
+    lib/formatters/markdown_formatter.rb: |
+      GARBAGE_026_MARKDOWN_B = "markdown_formatter"
+
+      module Formatters
+        class MarkdownFormatter
+          def format(text)
+            "**#{text}**"
+          end
+        end
+      end
+    lib/formatters/plain_formatter.rb: |
+      GARBAGE_026_PLAIN_C = "plain_formatter"
+
+      module Formatters
+        class PlainFormatter
+          def format(text)
+            text
+          end
+        end
+      end
+  changed_files:
+    lib/notifications/channel.rb: |
+      module Notifications
+        class DeliveryResult
+          attr_reader :success, :channel_name, :error
+
+          def initialize(success:, channel_name:, error: nil)
+            @success = success
+            @channel_name = channel_name
+            @error = error
+          end
+
+          def success?
+            @success
+          end
+        end
+
+        class Channel
+          attr_reader :name, :enabled
+
+          def initialize(name, enabled: true)
+            @name = name
+            @enabled = enabled
+          end
+
+          def deliver(recipient, message)
+            return DeliveryResult.new(success: false, channel_name: name, error: 'disabled') unless @enabled
+            result = perform_delivery(recipient, message)
+            DeliveryResult.new(success: true, channel_name: name)
+          end
+
+          def disable!
+            @enabled = false
+          end
+
+          private
+
+          def perform_delivery(recipient, message)
+            "#{name}: #{message} -> #{recipient}"
+          end
+        end
+      end
+  commit_message: "feat: add DeliveryResult, enabled flag, and disable! to Channel"
+fragments:
+- id: delivery_result_class
+  selector:
+    path: lib/notifications/channel.rb
+    anchor: "class DeliveryResult"
+- id: enabled_attr
+  selector:
+    path: lib/notifications/channel.rb
+    anchor: "enabled: true"
+- id: disable_method
+  selector:
+    path: lib/notifications/channel.rb
+    anchor: "def disable!"
+- id: deliver_returns_result
+  selector:
+    path: lib/notifications/channel.rb
+    anchor: "DeliveryResult.new(success: true"
+- id: email_inherits_channel
+  selector:
+    path: lib/notifications/email_channel.rb
+    anchor: "class EmailChannel < Channel"
+- id: sms_inherits_channel
+  selector:
+    path: lib/notifications/sms_channel.rb
+    anchor: "class SmsChannel < Channel"
+- id: push_inherits_channel
+  selector:
+    path: lib/notifications/push_channel.rb
+    anchor: "class PushChannel < Channel"
+- id: unrelated_html
+  selector:
+    path: lib/formatters/html_formatter.rb
+    anchor: "class HtmlFormatter"
+- id: unrelated_markdown
+  selector:
+    path: lib/formatters/markdown_formatter.rb
+    anchor: "class MarkdownFormatter"
+- id: unrelated_plain
+  selector:
+    path: lib/formatters/plain_formatter.rb
+    anchor: "class PlainFormatter"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_026_HTML_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_026_MARKDOWN_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_026_PLAIN_C
+oracle:
+  required:
+  - delivery_result_class
+  - enabled_attr
+  - disable_method
+  - email_inherits_channel
+  allowed:
+  - deliver_returns_result
+  - sms_inherits_channel
+  - push_inherits_channel
+  forbidden:
+  - unrelated_html
+  - unrelated_markdown
+  - unrelated_plain
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

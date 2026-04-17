@@ -1,0 +1,77 @@
+name: powershell_001_function_parameter_added
+tags:
+- lang:powershell
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    UserModule.psm1: |
+      function Get-UserInfo {
+          param([string]$Username)
+          return @{ Name = $Username; Active = $true }
+      }
+      Export-ModuleMember -Function Get-UserInfo
+    Invoke-UserReport.ps1: |
+      Import-Module ./UserModule.psm1
+      $info = Get-UserInfo -Username "alice"
+      Write-Output $info.Name
+    PS_NOISE_001_FileUtils.psm1: |
+      function PS_NOISE_001_Copy-SafeFile {
+          param([string]$Source, [string]$Dest)
+          Copy-Item $Source $Dest -Force
+      }
+      Export-ModuleMember -Function PS_NOISE_001_Copy-SafeFile
+    PS_NOISE_001_NetworkUtils.psm1: |
+      function PS_NOISE_001_Test-PortOpen {
+          param([string]$Host, [int]$Port)
+          $tcp = New-Object Net.Sockets.TcpClient
+          return $tcp.ConnectAsync($Host, $Port).Wait(1000)
+      }
+      Export-ModuleMember -Function PS_NOISE_001_Test-PortOpen
+  changed_files:
+    UserModule.psm1: |
+      function Get-UserInfo {
+          param(
+              [string]$Username,
+              [switch]$IncludeGroups
+          )
+          $info = @{ Name = $Username; Active = $true }
+          if ($IncludeGroups) { $info.Groups = @("Admins", "Users") }
+          return $info
+      }
+      Export-ModuleMember -Function Get-UserInfo
+  commit_message: "feat: add -IncludeGroups switch to Get-UserInfo"
+fragments:
+- id: user_module
+  selector:
+    path: UserModule.psm1
+    anchor: IncludeGroups
+- id: invoke_report
+  selector:
+    path: Invoke-UserReport.ps1
+    anchor: Get-UserInfo
+- id: no_file_utils
+  selector:
+    path: PS_NOISE_001_FileUtils.psm1
+- id: no_network_utils
+  selector:
+    path: PS_NOISE_001_NetworkUtils.psm1
+- id: no_global_0
+  selector:
+    anchor: PS_NOISE_001_Copy-SafeFile
+- id: no_global_1
+  selector:
+    anchor: PS_NOISE_001_Test-PortOpen
+oracle:
+  required:
+  - user_module
+  - invoke_report
+  allowed: []
+  forbidden:
+  - no_file_utils
+  - no_network_utils
+  - no_global_0
+  - no_global_1

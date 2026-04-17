@@ -1,0 +1,194 @@
+name: gap_129_swift_cross_module_payment_processor
+tags:
+- lang:swift
+- change:new_function
+- change:single_file
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    Sources/Payments/PaymentProcessor.swift: |
+      import Foundation
+
+      enum PaymentStatus {
+          case pending
+          case authorized
+          case captured
+          case failed
+      }
+
+      struct PaymentResult {
+          let transactionId: String
+          let status: PaymentStatus
+          let amount: Decimal
+      }
+
+      class PaymentProcessor {
+          private let gateway: PaymentGateway
+          private let ledger: TransactionLedger
+
+          init(gateway: PaymentGateway, ledger: TransactionLedger) {
+              self.gateway = gateway
+              self.ledger = ledger
+          }
+
+          func authorize(amount: Decimal, cardToken: String) -> PaymentResult {
+              let txId = UUID().uuidString
+              let authorized = gateway.charge(token: cardToken, amount: amount)
+              let status: PaymentStatus = authorized ? .authorized : .failed
+              ledger.record(transactionId: txId, amount: amount, status: status)
+              return PaymentResult(transactionId: txId, status: status, amount: amount)
+          }
+      }
+    Sources/Payments/PaymentGateway.swift: |
+      import Foundation
+
+      class PaymentGateway {
+          private let apiEndpoint: String
+          private let merchantId: String
+
+          init(apiEndpoint: String, merchantId: String) {
+              self.apiEndpoint = apiEndpoint
+              self.merchantId = merchantId
+          }
+
+          func charge(token: String, amount: Decimal) -> Bool {
+              return true
+          }
+
+          func refund(transactionId: String, amount: Decimal) -> Bool {
+              return true
+          }
+
+          func validateToken(_ token: String) -> Bool {
+              token.count == 32
+          }
+      }
+    Sources/Ledger/TransactionLedger.swift: |
+      import Foundation
+
+      struct LedgerEntry {
+          let transactionId: String
+          let amount: Decimal
+          let status: PaymentStatus
+          let timestamp: Date
+      }
+
+      class TransactionLedger {
+          private var entries: [LedgerEntry] = []
+
+          func record(transactionId: String, amount: Decimal, status: PaymentStatus) {
+              let entry = LedgerEntry(
+                  transactionId: transactionId,
+                  amount: amount,
+                  status: status,
+                  timestamp: Date()
+              )
+              entries.append(entry)
+          }
+
+          func lookup(transactionId: String) -> LedgerEntry? {
+              entries.first { $0.transactionId == transactionId }
+          }
+
+          func totalCaptured() -> Decimal {
+              entries.filter { $0.status == .captured }
+                  .reduce(Decimal.zero) { $0 + $1.amount }
+          }
+      }
+    Sources/Notifications/EmailSender.swift: |
+      import Foundation
+
+      struct EmailMessage {
+          let to: String
+          let subject: String
+          let body: String
+      }
+
+      class EmailSender {
+          func send(_ message: EmailMessage) -> Bool {
+              return true
+          }
+
+          func sendBulk(_ messages: [EmailMessage]) -> Int {
+              messages.filter { send($0) }.count
+          }
+      }
+  changed_files:
+    Sources/Payments/PaymentProcessor.swift: |
+      import Foundation
+
+      enum PaymentStatus {
+          case pending
+          case authorized
+          case captured
+          case failed
+      }
+
+      struct PaymentResult {
+          let transactionId: String
+          let status: PaymentStatus
+          let amount: Decimal
+      }
+
+      class PaymentProcessor {
+          private let gateway: PaymentGateway
+          private let ledger: TransactionLedger
+
+          init(gateway: PaymentGateway, ledger: TransactionLedger) {
+              self.gateway = gateway
+              self.ledger = ledger
+          }
+
+          func authorize(amount: Decimal, cardToken: String) -> PaymentResult {
+              let txId = UUID().uuidString
+              let authorized = gateway.charge(token: cardToken, amount: amount)
+              let status: PaymentStatus = authorized ? .authorized : .failed
+              ledger.record(transactionId: txId, amount: amount, status: status)
+              return PaymentResult(transactionId: txId, status: status, amount: amount)
+          }
+
+          func refund(transactionId: String) -> PaymentResult {
+              guard let entry = ledger.lookup(transactionId: transactionId) else {
+                  return PaymentResult(transactionId: transactionId, status: .failed, amount: 0)
+              }
+              let success = gateway.refund(transactionId: transactionId, amount: entry.amount)
+              let status: PaymentStatus = success ? .captured : .failed
+              ledger.record(transactionId: transactionId, amount: -entry.amount, status: status)
+              return PaymentResult(transactionId: transactionId, status: status, amount: entry.amount)
+          }
+      }
+fragments:
+- id: refund_fn
+  selector:
+    path: Sources/Payments/PaymentProcessor.swift
+    anchor: "func refund"
+- id: gateway_refund
+  selector:
+    path: Sources/Payments/PaymentGateway.swift
+    anchor: "func refund"
+- id: ledger_lookup
+  selector:
+    path: Sources/Ledger/TransactionLedger.swift
+    anchor: "func lookup"
+- id: ledger_record
+  selector:
+    path: Sources/Ledger/TransactionLedger.swift
+    anchor: "func record"
+- id: no_email
+  selector:
+    path: Sources/Notifications/EmailSender.swift
+- id: no_send_bulk
+  selector:
+    anchor: func sendBulk
+oracle:
+  required:
+  - refund_fn
+  - gateway_refund
+  - ledger_lookup
+  forbidden:
+  - no_email
+  - no_send_bulk

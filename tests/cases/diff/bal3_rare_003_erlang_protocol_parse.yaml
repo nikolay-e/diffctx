@@ -1,0 +1,143 @@
+name: bal3_rare_003_erlang_protocol_parse
+tags:
+- lang:erlang
+- change:single_file
+- change:bug_fix
+- context:same_file
+- distance:0hop
+- difficulty:easy
+xfail:
+  category: erlang-no-tree-sitter
+repo:
+  initial_files:
+    src/protocol.erl: |
+      -module(protocol).
+      -export([parse/1, encode/1]).
+
+      parse(<<Type:8, Len:16, Payload:Len/binary, Rest/binary>>) ->
+          {ok, {Type, Payload}, Rest};
+      parse(_) ->
+          {error, incomplete}.
+
+      encode({Type, Payload}) ->
+          Len = byte_size(Payload),
+          <<Type:8, Len:16, Payload/binary>>.
+    src/handler.erl: |
+      -module(handler).
+      -export([process/1]).
+
+      process(Data) ->
+          case protocol:parse(Data) of
+              {ok, {Type, Payload}, _Rest} ->
+                  dispatch(Type, Payload);
+              {error, Reason} ->
+                  {error, Reason}
+          end.
+
+      dispatch(1, Payload) -> {ping, Payload};
+      dispatch(2, Payload) -> {data, Payload};
+      dispatch(_, _) -> {unknown}.
+    src/codec.erl: |
+      -module(codec).
+
+      GARBAGE_RARE_003_CODEC_A = "json".
+      GARBAGE_RARE_003_ENC_B = "utf8".
+
+      -export([to_json/1]).
+
+      to_json(Term) -> term_to_binary(Term).
+    src/transport.erl: |
+      -module(transport).
+
+      GARBAGE_RARE_003_TCP_C = "tcp".
+      GARBAGE_RARE_003_PORT_D = 4000.
+
+      -export([connect/2]).
+
+      connect(Host, Port) -> {ok, socket}.
+    src/auth.erl: |
+      -module(auth).
+
+      GARBAGE_RARE_003_AUTH_E = "token".
+      GARBAGE_RARE_003_EXP_F = 3600.
+
+      -export([verify/1]).
+
+      verify(Token) -> {ok, Token}.
+  changed_files:
+    src/protocol.erl: |
+      -module(protocol).
+      -export([parse/1, encode/1, parse_all/1]).
+
+      parse(<<Type:8, Len:16, Payload:Len/binary, Rest/binary>>) ->
+          {ok, {Type, Payload}, Rest};
+      parse(<<>>) ->
+          {ok, eof};
+      parse(_) ->
+          {error, incomplete}.
+
+      encode({Type, Payload}) ->
+          Len = byte_size(Payload),
+          <<Type:8, Len:16, Payload/binary>>.
+
+      parse_all(Data) ->
+          parse_all(Data, []).
+
+      parse_all(<<>>, Acc) ->
+          {ok, lists:reverse(Acc)};
+      parse_all(Data, Acc) ->
+          case parse(Data) of
+              {ok, eof} -> {ok, lists:reverse(Acc)};
+              {ok, Msg, Rest} -> parse_all(Rest, [Msg | Acc]);
+              {error, _} = Err -> Err
+          end.
+  commit_message: "handle empty binary and add parse_all for streaming"
+fragments:
+- id: handler_uses_parse
+  selector:
+    path: src/handler.erl
+    anchor: "protocol:parse(Data)"
+- id: no_codec
+  selector:
+    path: src/codec.erl
+    anchor: "to_json(Term)"
+- id: no_transport
+  selector:
+    path: src/transport.erl
+    anchor: "connect(Host, Port)"
+- id: no_auth
+  selector:
+    path: src/auth.erl
+    anchor: "verify(Token)"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_RARE_003_CODEC_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_RARE_003_ENC_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_RARE_003_TCP_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_RARE_003_PORT_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_RARE_003_AUTH_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_RARE_003_EXP_F
+oracle:
+  required:
+  - handler_uses_parse
+  allowed: []
+  forbidden:
+  - no_codec
+  - no_transport
+  - no_auth
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

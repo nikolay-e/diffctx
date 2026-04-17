@@ -1,0 +1,128 @@
+name: bal3_3hop_052_scala_rule_engine
+tags:
+- lang:scala
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/com/app/rules/Fact.scala: |
+      package com.app.rules
+
+      case class Fact(
+        name: String,
+        value: Any
+      )
+    src/main/scala/com/app/rules/Rule.scala: |
+      package com.app.rules
+
+      trait Rule {
+        def evaluate(fact: Fact): Boolean
+      }
+    src/main/scala/com/app/rules/RuleEngine.scala: |
+      package com.app.rules
+
+      class RuleEngine(rules: List[Rule]) {
+        def evaluate(fact: Fact): List[Boolean] = {
+          rules.map(_.evaluate(fact))
+        }
+        def allMatch(fact: Fact): Boolean = {
+          rules.forall(_.evaluate(fact))
+        }
+      }
+    src/main/scala/com/app/service/DecisionService.scala: |
+      package com.app.service
+
+      import com.app.rules.{RuleEngine, Fact}
+
+      class DecisionService(engine: RuleEngine) {
+        def decide(factName: String, factValue: Any): Boolean = {
+          engine.allMatch(Fact(factName, factValue))
+        }
+      }
+    src/main/scala/com/app/api/DecisionEndpoint.scala: |
+      package com.app.api
+
+      import com.app.service.DecisionService
+
+      class DecisionEndpoint(service: DecisionService) {
+        def check(name: String, value: String): String = {
+          if (service.decide(name, value)) "approved" else "rejected"
+        }
+      }
+    src/main/scala/com/app/util/AuditLogger.scala: |
+      package com.app.util
+
+      var GARBAGE_052_AUDIT_MARKER_A = "audit"
+      var GARBAGE_052_LEVEL_MARKER_B = "info"
+
+      object AuditLogger {
+        def log(msg: String): Unit = println(msg)
+      }
+    src/main/scala/com/app/util/FeatureFlag.scala: |
+      package com.app.util
+
+      var GARBAGE_052_FLAG_MARKER_C = "flag"
+      var GARBAGE_052_ENABLED_MARKER_D = true
+
+      object FeatureFlag {
+        def isEnabled(name: String): Boolean = true
+      }
+  changed_files:
+    src/main/scala/com/app/rules/Fact.scala: |
+      package com.app.rules
+
+      case class Fact(
+        name: String,
+        value: Any,
+        category: String = "general",
+        weight: Double = 1.0
+      )
+  commit_message: "feat: add category and weight to Fact for weighted rule evaluation"
+fragments:
+- id: fact_category_field
+  selector:
+    path: src/main/scala/com/app/rules/Fact.scala
+    anchor: "category: String"
+- id: fact_weight_field
+  selector:
+    path: src/main/scala/com/app/rules/Fact.scala
+    anchor: "weight: Double"
+- id: rule_evaluates_fact
+  selector:
+    path: src/main/scala/com/app/rules/Rule.scala
+    anchor: "evaluate(fact: Fact)"
+- id: engine_uses_rules
+  selector:
+    path: src/main/scala/com/app/rules/RuleEngine.scala
+    anchor: "rules: List[Rule]"
+- id: service_imports_engine
+  selector:
+    path: src/main/scala/com/app/service/DecisionService.scala
+    anchor: "import com.app.rules"
+- id: endpoint_imports_service
+  selector:
+    path: src/main/scala/com/app/api/DecisionEndpoint.scala
+    anchor: "import com.app.service.DecisionService"
+- id: no_audit_logger
+  selector:
+    path: src/main/scala/com/app/util/AuditLogger.scala
+    anchor: "GARBAGE_052_AUDIT_MARKER_A"
+- id: no_feature_flag
+  selector:
+    path: src/main/scala/com/app/util/FeatureFlag.scala
+    anchor: "GARBAGE_052_FLAG_MARKER_C"
+oracle:
+  required:
+  - fact_category_field
+  - fact_weight_field
+  - rule_evaluates_fact
+  - engine_uses_rules
+  - service_imports_engine
+  allowed:
+  - endpoint_imports_service
+  forbidden:
+  - no_audit_logger
+  - no_feature_flag

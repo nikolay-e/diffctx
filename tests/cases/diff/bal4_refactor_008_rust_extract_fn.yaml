@@ -1,0 +1,114 @@
+name: bal4_refactor_008_rust_extract_fn
+tags:
+- lang:rust
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/parser.rs: |
+      pub fn parse(input: &str) -> Result<i64, String> {
+          let trimmed = input.trim();
+          if trimmed.is_empty() {
+              return Err("empty".into());
+          }
+          trimmed.parse::<i64>().map_err(|e| e.to_string())
+      }
+    src/main.rs: |
+      mod parser;
+
+      fn main() {
+          let val = parser::parse("42").unwrap();
+          println!("{}", val);
+      }
+    src/garbage_io.rs: |
+      // GARBAGE_BAL4R008_IO_A
+      pub const GARBAGE_BAL4R008_BUF_B: usize = 1024;
+
+      pub struct GarbageReader {
+          // GARBAGE_BAL4R008_READ_C
+      }
+    src/garbage_net.rs: |
+      // GARBAGE_BAL4R008_NET_D
+      pub const GARBAGE_BAL4R008_PORT_E: u16 = 9090;
+  changed_files:
+    src/parser.rs: |
+      pub fn parse(input: &str) -> Result<i64, String> {
+          let trimmed = clean(input);
+          if trimmed.is_empty() {
+              return Err("empty".into());
+          }
+          trimmed.parse::<i64>().map_err(|e| e.to_string())
+      }
+
+      fn clean(input: &str) -> String {
+          input.trim().to_string()
+      }
+    src/main.rs: |
+      mod parser;
+
+      fn main() {
+          let val = parser::parse("42").unwrap();
+          println!("{}", val);
+      }
+    src/garbage_io.rs: |
+      // GARBAGE_BAL4R008_IO_A
+      pub const GARBAGE_BAL4R008_BUF_B: usize = 1024;
+
+      pub struct GarbageReader {
+          // GARBAGE_BAL4R008_READ_C
+      }
+    src/garbage_net.rs: |
+      // GARBAGE_BAL4R008_NET_D
+      pub const GARBAGE_BAL4R008_PORT_E: u16 = 9090;
+  commit_message: "refactor: extract clean helper from parse"
+fragments:
+- id: parse_calls_clean
+  selector:
+    path: src/parser.rs
+    anchor: "clean(input)"
+- id: new_clean_fn
+  selector:
+    path: src/parser.rs
+    anchor: "fn clean(input: &str) -> String"
+- id: main_calls_parse
+  selector:
+    path: src/main.rs
+    anchor: "parser::parse"
+- id: no_garbage_io
+  selector:
+    path: src/garbage_io.rs
+- id: no_garbage_net
+  selector:
+    path: src/garbage_net.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL4R008_IO_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL4R008_BUF_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL4R008_READ_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL4R008_NET_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL4R008_PORT_E
+oracle:
+  required:
+  - parse_calls_clean
+  - new_clean_fn
+  allowed:
+  - main_calls_parse
+  forbidden:
+  - no_garbage_io
+  - no_garbage_net
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

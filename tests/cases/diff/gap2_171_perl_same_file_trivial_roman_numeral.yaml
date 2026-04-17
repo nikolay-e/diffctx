@@ -1,0 +1,133 @@
+name: gap2_171_perl_same_file_trivial_roman_numeral
+tags:
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+- lang:perl
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    lib/Roman.pm: |
+      package Roman;
+      use strict;
+      use warnings;
+
+      my @SYMBOLS = (
+          [1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'],
+          [100, 'C'], [90, 'XC'], [50, 'L'], [40, 'XL'],
+          [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I'],
+      );
+
+      sub to_roman {
+          my ($num) = @_;
+          my $result = '';
+          for my $pair (@SYMBOLS) {
+              while ($num >= $pair->[0]) {
+                  $result .= $pair->[1];
+                  $num -= $pair->[0];
+              }
+          }
+          return $result;
+      }
+
+      1;
+    lib/BaseConvert.pm: |
+      package BaseConvert;
+      use strict;
+      use warnings;
+
+      sub to_binary {
+          my ($n) = @_;
+          return sprintf('%b', $n);
+      }
+
+      sub to_hex {
+          my ($n) = @_;
+          return sprintf('%x', $n);
+      }
+
+      1;
+    lib/MathUtils.pm: |
+      package MathUtils;
+      use strict;
+      use warnings;
+
+      sub factorial {
+          my ($n) = @_;
+          return 1 if $n <= 1;
+          return $n * factorial($n - 1);
+      }
+
+      sub gcd {
+          my ($a, $b) = @_;
+          return $a unless $b;
+          return gcd($b, $a % $b);
+      }
+
+      1;
+  changed_files:
+    lib/Roman.pm: |
+      package Roman;
+      use strict;
+      use warnings;
+
+      my @SYMBOLS = (
+          [1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'],
+          [100, 'C'], [90, 'XC'], [50, 'L'], [40, 'XL'],
+          [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I'],
+      );
+
+      my %ROMAN_VALUES = (M => 1000, D => 500, C => 100, L => 50, X => 10, V => 5, I => 1);
+
+      sub to_roman {
+          my ($num) = @_;
+          my $result = '';
+          for my $pair (@SYMBOLS) {
+              while ($num >= $pair->[0]) {
+                  $result .= $pair->[1];
+                  $num -= $pair->[0];
+              }
+          }
+          return $result;
+      }
+
+      sub from_roman {
+          my ($str) = @_;
+          my $total = 0;
+          my @chars = split(//, $str);
+          for my $i (0..$#chars) {
+              my $val = $ROMAN_VALUES{$chars[$i]};
+              if ($i < $#chars && $val < $ROMAN_VALUES{$chars[$i+1]}) {
+                  $total -= $val;
+              } else {
+                  $total += $val;
+              }
+          }
+          return $total;
+      }
+
+      1;
+fragments:
+- id: from_roman
+  selector:
+    path: lib/Roman.pm
+    anchor: sub from_roman
+- id: roman_values
+  selector:
+    path: lib/Roman.pm
+    anchor: ROMAN_VALUES
+- id: no_base_convert
+  selector:
+    path: lib/BaseConvert.pm
+- id: no_math_utils
+  selector:
+    path: lib/MathUtils.pm
+oracle:
+  required:
+  - from_roman
+  - roman_values
+  forbidden:
+  - no_base_convert
+  - no_math_utils

@@ -1,0 +1,185 @@
+name: gap2_051_julia_multifile_same_file_graph_traversal
+tags:
+- lang:julia
+- change:refactor
+- change:single_file
+- context:call_graph
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/RouteOptimizer.jl: |
+      module RouteOptimizer
+
+      export Route, optimize_route, total_distance
+
+      struct Route
+          waypoints::Vector{Tuple{Float64,Float64}}
+          label::String
+      end
+
+      function total_distance(route::Route)::Float64
+          total = 0.0
+          for i in 2:length(route.waypoints)
+              dx = route.waypoints[i][1] - route.waypoints[i-1][1]
+              dy = route.waypoints[i][2] - route.waypoints[i-1][2]
+              total += sqrt(dx^2 + dy^2)
+          end
+          return total
+      end
+
+      function optimize_route(route::Route)::Route
+          return route
+      end
+
+      end
+    src/DeliveryPlanner.jl: |
+      module DeliveryPlanner
+
+      include("RouteOptimizer.jl")
+      using .RouteOptimizer
+
+      function plan_deliveries(routes::Vector{Route})::Vector{Route}
+          return sort(routes, by=total_distance)
+      end
+
+      function shortest_route(routes::Vector{Route})::Union{Route,Nothing}
+          isempty(routes) && return nothing
+          return first(plan_deliveries(routes))
+      end
+
+      end
+    src/ReportGenerator.jl: |
+      module ReportGenerator
+
+      include("RouteOptimizer.jl")
+      using .RouteOptimizer
+
+      function route_report(routes::Vector{Route})::Vector{String}
+          return ["$(r.label): $(round(total_distance(r), digits=2)) km" for r in routes]
+      end
+
+      end
+    src/GAP051_Auth.jl: |
+      module Auth
+
+      GAP051_GARBAGE_A = "auth_marker"
+      GAP051_GARBAGE_B = "api_key"
+
+      function authenticate(token::String)::Bool
+          return length(token) > 0
+      end
+
+      end
+    src/GAP051_Notify.jl: |
+      module Notify
+
+      GAP051_GARBAGE_C = "notify_marker"
+      GAP051_GARBAGE_D = "webhook_url"
+
+      function notify(msg::String)
+          println("NOTIFY: $msg")
+      end
+
+      end
+  changed_files:
+    src/RouteOptimizer.jl: |
+      module RouteOptimizer
+
+      export Route, optimize_route, total_distance, segment_distances
+
+      struct Route
+          waypoints::Vector{Tuple{Float64,Float64}}
+          label::String
+          priority::Int
+      end
+
+      function total_distance(route::Route)::Float64
+          total = 0.0
+          for i in 2:length(route.waypoints)
+              dx = route.waypoints[i][1] - route.waypoints[i-1][1]
+              dy = route.waypoints[i][2] - route.waypoints[i-1][2]
+              total += sqrt(dx^2 + dy^2)
+          end
+          return total
+      end
+
+      function segment_distances(route::Route)::Vector{Float64}
+          segs = Float64[]
+          for i in 2:length(route.waypoints)
+              dx = route.waypoints[i][1] - route.waypoints[i-1][1]
+              dy = route.waypoints[i][2] - route.waypoints[i-1][2]
+              push!(segs, sqrt(dx^2 + dy^2))
+          end
+          return segs
+      end
+
+      function optimize_route(route::Route)::Route
+          return route
+      end
+
+      end
+    src/GAP051_Auth.jl: |
+      module Auth
+
+      GAP051_GARBAGE_A = "auth_marker"
+      GAP051_GARBAGE_B = "api_key"
+
+      function authenticate(token::String)::Bool
+          return length(token) > 0
+      end
+
+      end
+    src/GAP051_Notify.jl: |
+      module Notify
+
+      GAP051_GARBAGE_C = "notify_marker"
+      GAP051_GARBAGE_D = "webhook_url"
+
+      function notify(msg::String)
+          println("NOTIFY: $msg")
+      end
+
+      end
+  commit_message: "refactor: add priority field to Route, add segment_distances function"
+fragments:
+- id: route_priority_field
+  selector:
+    path: src/RouteOptimizer.jl
+    anchor: "priority::Int"
+- id: segment_distances_func
+  selector:
+    path: src/RouteOptimizer.jl
+    anchor: "function segment_distances(route::Route)"
+- id: delivery_uses_total_distance
+  selector:
+    path: src/DeliveryPlanner.jl
+    anchor: "sort(routes, by=total_distance)"
+- id: report_uses_total_distance
+  selector:
+    path: src/ReportGenerator.jl
+    anchor: "total_distance(r)"
+- id: no_garbage_a
+  selector:
+    anchor: GAP051_GARBAGE_A
+- id: no_garbage_b
+  selector:
+    anchor: GAP051_GARBAGE_B
+- id: no_garbage_c
+  selector:
+    anchor: GAP051_GARBAGE_C
+- id: no_garbage_d
+  selector:
+    anchor: GAP051_GARBAGE_D
+oracle:
+  required:
+  - route_priority_field
+  - segment_distances_func
+  - delivery_uses_total_distance
+  - report_uses_total_distance
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

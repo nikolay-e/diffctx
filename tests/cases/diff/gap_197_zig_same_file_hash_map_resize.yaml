@@ -1,0 +1,239 @@
+name: gap_197_zig_same_file_hash_map_resize
+tags:
+- lang:zig
+- change:single_file
+- context:same_file
+- difficulty:easy
+- distance:0hop
+repo:
+  initial_files:
+    src/hashmap.zig: |
+      const std = @import("std");
+
+      pub const HashMap = struct {
+          buckets: [64]?Entry,
+          count: usize,
+          capacity: usize,
+
+          pub const Entry = struct {
+              key: u64,
+              value: i64,
+              occupied: bool,
+          };
+
+          pub fn init() HashMap {
+              return HashMap{
+                  .buckets = [_]?Entry{null} ** 64,
+                  .count = 0,
+                  .capacity = 64,
+              };
+          }
+
+          pub fn put(self: *HashMap, key: u64, value: i64) void {
+              const idx = key % self.capacity;
+              self.buckets[idx] = Entry{ .key = key, .value = value, .occupied = true };
+              self.count += 1;
+          }
+
+          pub fn get(self: HashMap, key: u64) ?i64 {
+              const idx = key % self.capacity;
+              if (self.buckets[idx]) |entry| {
+                  if (entry.key == key) return entry.value;
+              }
+              return null;
+          }
+
+          pub fn remove(self: *HashMap, key: u64) bool {
+              const idx = key % self.capacity;
+              if (self.buckets[idx]) |entry| {
+                  if (entry.key == key) {
+                      self.buckets[idx] = null;
+                      self.count -= 1;
+                      return true;
+                  }
+              }
+              return false;
+          }
+      };
+    src/bloom.zig: |
+      const TRAP_GAP_197_BLOOM_MARKER_A: []const u8 = "bloom_noise";
+      const TRAP_GAP_197_BLOOM_FLAG_B: u32 = 1024;
+
+      pub const BloomFilter = struct {
+          bits: [128]u8,
+
+          pub fn add(self: *BloomFilter, hash: u64) void {
+              self.bits[hash % 128] = 1;
+          }
+
+          pub fn mayContain(self: BloomFilter, hash: u64) bool {
+              return self.bits[hash % 128] == 1;
+          }
+      };
+    src/lru.zig: |
+      const TRAP_GAP_197_LRU_MARKER_C: []const u8 = "lru_noise";
+      const TRAP_GAP_197_LRU_FLAG_D: usize = 32;
+
+      pub fn evictOldest() void {}
+
+      pub fn touch(key: u64) void {
+          _ = key;
+      }
+    src/stats.zig: |
+      const TRAP_GAP_197_STATS_MARKER_E: []const u8 = "stats_noise";
+      const TRAP_GAP_197_STATS_FLAG_F: bool = false;
+
+      pub fn mean(values: []const f64) f64 {
+          var sum: f64 = 0.0;
+          for (values) |v| sum += v;
+          return if (values.len > 0) sum / @as(f64, @floatFromInt(values.len)) else 0.0;
+      }
+  changed_files:
+    src/hashmap.zig: |
+      const std = @import("std");
+
+      pub const HashMap = struct {
+          buckets: [64]?Entry,
+          count: usize,
+          capacity: usize,
+
+          pub const Entry = struct {
+              key: u64,
+              value: i64,
+              occupied: bool,
+          };
+
+          pub fn init() HashMap {
+              return HashMap{
+                  .buckets = [_]?Entry{null} ** 64,
+                  .count = 0,
+                  .capacity = 64,
+              };
+          }
+
+          pub fn put(self: *HashMap, key: u64, value: i64) void {
+              const idx = key % self.capacity;
+              self.buckets[idx] = Entry{ .key = key, .value = value, .occupied = true };
+              self.count += 1;
+          }
+
+          pub fn get(self: HashMap, key: u64) ?i64 {
+              const idx = key % self.capacity;
+              if (self.buckets[idx]) |entry| {
+                  if (entry.key == key) return entry.value;
+              }
+              return null;
+          }
+
+          pub fn remove(self: *HashMap, key: u64) bool {
+              const idx = key % self.capacity;
+              if (self.buckets[idx]) |entry| {
+                  if (entry.key == key) {
+                      self.buckets[idx] = null;
+                      self.count -= 1;
+                      return true;
+                  }
+              }
+              return false;
+          }
+
+          pub fn loadFactor(self: HashMap) f64 {
+              return @as(f64, @floatFromInt(self.count)) / @as(f64, @floatFromInt(self.capacity));
+          }
+
+          pub fn contains(self: HashMap, key: u64) bool {
+              return self.get(key) != null;
+          }
+      };
+    src/bloom.zig: |
+      const TRAP_GAP_197_BLOOM_MARKER_A: []const u8 = "bloom_noise";
+      const TRAP_GAP_197_BLOOM_FLAG_B: u32 = 1024;
+
+      pub const BloomFilter = struct {
+          bits: [128]u8,
+
+          pub fn add(self: *BloomFilter, hash: u64) void {
+              self.bits[hash % 128] = 1;
+          }
+
+          pub fn mayContain(self: BloomFilter, hash: u64) bool {
+              return self.bits[hash % 128] == 1;
+          }
+      };
+    src/lru.zig: |
+      const TRAP_GAP_197_LRU_MARKER_C: []const u8 = "lru_noise";
+      const TRAP_GAP_197_LRU_FLAG_D: usize = 32;
+
+      pub fn evictOldest() void {}
+
+      pub fn touch(key: u64) void {
+          _ = key;
+      }
+    src/stats.zig: |
+      const TRAP_GAP_197_STATS_MARKER_E: []const u8 = "stats_noise";
+      const TRAP_GAP_197_STATS_FLAG_F: bool = false;
+
+      pub fn mean(values: []const f64) f64 {
+          var sum: f64 = 0.0;
+          for (values) |v| sum += v;
+          return if (values.len > 0) sum / @as(f64, @floatFromInt(values.len)) else 0.0;
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: load_factor
+  selector:
+    path: src/hashmap.zig
+    anchor: "pub fn loadFactor(self: HashMap) f64"
+- id: contains
+  selector:
+    path: src/hashmap.zig
+    anchor: "pub fn contains(self: HashMap, key: u64) bool"
+- id: hashmap_struct
+  selector:
+    path: src/hashmap.zig
+    anchor: "pub const HashMap = struct"
+- id: no_bloom
+  selector:
+    path: src/bloom.zig
+- id: no_lru
+  selector:
+    path: src/lru.zig
+- id: no_stats
+  selector:
+    path: src/stats.zig
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP_197_BLOOM_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP_197_BLOOM_FLAG_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP_197_LRU_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP_197_LRU_FLAG_D
+- id: no_global_4
+  selector:
+    anchor: TRAP_GAP_197_STATS_MARKER_E
+- id: no_global_5
+  selector:
+    anchor: TRAP_GAP_197_STATS_FLAG_F
+oracle:
+  required:
+  - load_factor
+  - contains
+  - hashmap_struct
+  allowed: []
+  forbidden:
+  - no_bloom
+  - no_lru
+  - no_stats
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

@@ -1,0 +1,177 @@
+name: bal_3hop_016_python_state_machine
+tags:
+- lang:python
+- change:single_file
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    fsm/state.py: |
+      class State:
+          def __init__(self, name: str, is_terminal: bool = False):
+              self.name = name
+              self.is_terminal = is_terminal
+          def __eq__(self, other):
+              return isinstance(other, State) and self.name == other.name
+          def __hash__(self):
+              return hash(self.name)
+    fsm/transition.py: |
+      from fsm.state import State
+      class Transition:
+          def __init__(self, source: State, target: State, trigger: str):
+              self.source = source
+              self.target = target
+              self.trigger = trigger
+          def matches(self, current: State, trigger: str) -> bool:
+              return current == self.source and trigger == self.trigger
+    fsm/machine.py: |
+      from fsm.transition import Transition
+      from fsm.state import State
+      class StateMachine:
+          def __init__(self, initial: State):
+              self.current = initial
+              self.transitions: list[Transition] = []
+          def add_transition(self, t: Transition):
+              self.transitions.append(t)
+          def trigger(self, event: str) -> bool:
+              for t in self.transitions:
+                  if t.matches(self.current, event):
+                      self.current = t.target
+                      return True
+              return False
+    app/workflow.py: |
+      from fsm.machine import StateMachine
+      from fsm.state import State
+      from fsm.transition import Transition
+      class OrderWorkflow:
+          def __init__(self):
+              pending = State("pending")
+              confirmed = State("confirmed")
+              shipped = State("shipped")
+              delivered = State("delivered", is_terminal=True)
+              self.machine = StateMachine(pending)
+              self.machine.add_transition(Transition(pending, confirmed, "confirm"))
+              self.machine.add_transition(Transition(confirmed, shipped, "ship"))
+              self.machine.add_transition(Transition(shipped, delivered, "deliver"))
+          def advance(self, action: str) -> str:
+              self.machine.trigger(action)
+              return self.machine.current.name
+    utils/diagram.py: |
+      def render_fsm(states: list, transitions: list) -> str:
+          lines = []
+          for t in transitions:
+              lines.append(f"{t[0]} -> {t[1]} [{t[2]}]")
+          return "\n".join(lines)
+    db/order_store.py: |
+      class OrderStore:
+          def __init__(self):
+              self.orders: dict[str, str] = {}
+          def save_state(self, order_id: str, state: str):
+              self.orders[order_id] = state
+  changed_files:
+    fsm/state.py: |
+      from typing import Optional, Callable
+      class State:
+          def __init__(self, name: str, is_terminal: bool = False,
+                       on_enter: Optional[Callable] = None):
+              self.name = name
+              self.is_terminal = is_terminal
+              self.on_enter = on_enter
+          def enter(self):
+              if self.on_enter:
+                  self.on_enter()
+          def __eq__(self, other):
+              return isinstance(other, State) and self.name == other.name
+          def __hash__(self):
+              return hash(self.name)
+    fsm/transition.py: |
+      from fsm.state import State
+      class Transition:
+          def __init__(self, source: State, target: State, trigger: str):
+              self.source = source
+              self.target = target
+              self.trigger = trigger
+          def matches(self, current: State, trigger: str) -> bool:
+              return current == self.source and trigger == self.trigger
+    fsm/machine.py: |
+      from fsm.transition import Transition
+      from fsm.state import State
+      class StateMachine:
+          def __init__(self, initial: State):
+              self.current = initial
+              self.transitions: list[Transition] = []
+          def add_transition(self, t: Transition):
+              self.transitions.append(t)
+          def trigger(self, event: str) -> bool:
+              for t in self.transitions:
+                  if t.matches(self.current, event):
+                      self.current = t.target
+                      return True
+              return False
+    app/workflow.py: |
+      from fsm.machine import StateMachine
+      from fsm.state import State
+      from fsm.transition import Transition
+      class OrderWorkflow:
+          def __init__(self):
+              pending = State("pending")
+              confirmed = State("confirmed")
+              shipped = State("shipped")
+              delivered = State("delivered", is_terminal=True)
+              self.machine = StateMachine(pending)
+              self.machine.add_transition(Transition(pending, confirmed, "confirm"))
+              self.machine.add_transition(Transition(confirmed, shipped, "ship"))
+              self.machine.add_transition(Transition(shipped, delivered, "deliver"))
+          def advance(self, action: str) -> str:
+              self.machine.trigger(action)
+              return self.machine.current.name
+    utils/diagram.py: |
+      def render_fsm(states: list, transitions: list) -> str:
+          lines = []
+          for t in transitions:
+              lines.append(f"{t[0]} -> {t[1]} [{t[2]}]")
+          return "\n".join(lines)
+    db/order_store.py: |
+      class OrderStore:
+          def __init__(self):
+              self.orders: dict[str, str] = {}
+          def save_state(self, order_id: str, state: str):
+              self.orders[order_id] = state
+  commit_message: "feat: add on_enter callback to State"
+fragments:
+- id: state_on_enter
+  selector:
+    path: fsm/state.py
+    anchor: "on_enter: Optional[Callable] = None"
+- id: transition_uses_state
+  selector:
+    path: fsm/transition.py
+    anchor: "from fsm.state import State"
+- id: machine_uses_transition
+  selector:
+    path: fsm/machine.py
+    anchor: "from fsm.transition import Transition"
+- id: workflow_uses_machine
+  selector:
+    path: app/workflow.py
+    anchor: "from fsm.machine import StateMachine"
+- id: no_diagram
+  selector:
+    path: utils/diagram.py
+    anchor: "def render_fsm"
+- id: no_order_store
+  selector:
+    path: db/order_store.py
+    anchor: "class OrderStore"
+oracle:
+  required:
+  - state_on_enter
+  - transition_uses_state
+  - machine_uses_transition
+  - workflow_uses_machine
+  allowed: []
+  forbidden:
+  - no_diagram
+  - no_order_store

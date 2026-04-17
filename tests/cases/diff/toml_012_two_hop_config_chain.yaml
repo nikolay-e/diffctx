@@ -1,0 +1,134 @@
+name: toml_012_two_hop_config_chain
+tags:
+- lang:toml
+- lang:rust
+- change:single_file
+- change:config
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    base.toml: |
+      [database]
+      url = "postgres://user:pass@localhost:5432/appdb"
+      pool_size = 5
+      connect_timeout_secs = 10
+
+      [cache]
+      ttl_secs = 60
+    src/config.rs: |
+      use std::fs;
+
+      #[derive(Debug, Clone)]
+      pub struct DatabaseConfig {
+          pub url: String,
+          pub pool_size: u32,
+          pub connect_timeout_secs: u64,
+      }
+
+      #[derive(Debug, Clone)]
+      pub struct AppConfig {
+          pub database: DatabaseConfig,
+      }
+
+      impl AppConfig {
+          pub fn from_toml(path: &str) -> Self {
+              let content = fs::read_to_string(path).expect("config file not found");
+              let value: toml::Value = content.parse().unwrap();
+              let db = &value["database"];
+              AppConfig {
+                  database: DatabaseConfig {
+                      url: db["url"].as_str().unwrap().to_string(),
+                      pool_size: db["pool_size"].as_integer().unwrap() as u32,
+                      connect_timeout_secs: db["connect_timeout_secs"].as_integer().unwrap() as u64,
+                  },
+              }
+          }
+      }
+    src/connection_pool.rs: |
+      use crate::config::AppConfig;
+
+      pub struct ConnectionPool {
+          url: String,
+          size: u32,
+      }
+
+      impl ConnectionPool {
+          pub fn new(config: &AppConfig) -> Self {
+              ConnectionPool {
+                  url: config.database.url.clone(),
+                  size: config.database.pool_size,
+              }
+          }
+
+          pub fn acquire(&self) -> String {
+              format!("conn[{}] -> {}", self.size, self.url)
+          }
+      }
+    src/main.rs: |
+      mod config;
+      mod connection_pool;
+
+      fn main() {
+          let cfg = config::AppConfig::from_toml("base.toml");
+          let pool = connection_pool::ConnectionPool::new(&cfg);
+          println!("{}", pool.acquire());
+      }
+    TOML_NOISE_012_oauth.toml: |
+      [TOML_NOISE_012_oauth2]
+      TOML_NOISE_012_client_id = "abc123"
+      TOML_NOISE_012_client_secret = "s3cr3t"
+      TOML_NOISE_012_token_url = "https://auth.example.com/token"
+
+      [TOML_NOISE_012_scopes]
+      TOML_NOISE_012_default = ["read", "write"]
+    src/toml_noise_012_reporting.rs: |
+      // TOML_NOISE_012_reporting module
+      pub fn toml_noise_012_report_noop() {}
+  changed_files:
+    base.toml: |
+      [database]
+      url = "postgres://appuser:s3cr3t@db.prod.internal:5432/appdb?sslmode=require"
+      pool_size = 20
+      connect_timeout_secs = 5
+
+      [cache]
+      ttl_secs = 60
+  commit_message: "config: scale database pool to 20, reduce connect timeout, use prod host"
+fragments:
+- id: base_toml_pool_size
+  selector:
+    path: base.toml
+    anchor: "pool_size = 20"
+- id: config_rs_app_config
+  selector:
+    path: src/config.rs
+    anchor: pool_size
+- id: connection_pool_rs_new
+  selector:
+    path: src/connection_pool.rs
+    anchor: "fn new"
+- id: no_noise_toml
+  selector:
+    path: TOML_NOISE_012_oauth.toml
+- id: no_reporting_rs
+  selector:
+    path: src/toml_noise_012_reporting.rs
+- id: no_global_0
+  selector:
+    anchor: TOML_NOISE_012_client_id
+- id: no_global_1
+  selector:
+    anchor: toml_noise_012_report_noop
+oracle:
+  required:
+  - base_toml_pool_size
+  - config_rs_app_config
+  - connection_pool_rs_new
+  allowed: []
+  forbidden:
+  - no_noise_toml
+  - no_reporting_rs
+  - no_global_0
+  - no_global_1

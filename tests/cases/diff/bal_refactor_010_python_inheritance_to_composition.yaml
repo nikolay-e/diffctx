@@ -1,0 +1,237 @@
+name: bal_refactor_010_python_inheritance_to_composition
+tags:
+- lang:scala
+- change:multi_file
+- change:new_function
+- context:cross_module
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/medical/Patient.scala: |
+      package medical
+
+      case class Patient(
+        id: String,
+        name: String,
+        age: Int,
+        conditions: List[String]
+      )
+    src/main/scala/medical/PatientRepository.scala: |
+      package medical
+
+      class PatientRepository {
+        private var store: Map[String, Patient] = Map.empty
+
+        def save(p: Patient): Unit = {
+          store = store + (p.id -> p)
+        }
+
+        def find(id: String): Option[Patient] = store.get(id)
+
+        def all(): List[Patient] = store.values.toList
+      }
+    src/main/scala/medical/DiagnosisService.scala: |
+      package medical
+
+      class DiagnosisService(repo: PatientRepository) {
+        def addCondition(id: String, condition: String): Either[String, Patient] = {
+          repo.find(id) match {
+            case None    => Left(s"Patient $id not found")
+            case Some(p) =>
+              val updated = p.copy(conditions = p.conditions :+ condition)
+              repo.save(updated)
+              Right(updated)
+          }
+        }
+      }
+    src/main/scala/medical/api/PatientController.scala: |
+      package medical.api
+
+      import medical.{DiagnosisService, PatientRepository, Patient}
+
+      class PatientController(service: DiagnosisService) {
+        def handleAddCondition(patientId: String, condition: String): String = {
+          service.addCondition(patientId, condition) match {
+            case Right(p) => s"Updated patient ${p.id}: ${p.conditions.mkString(", ")}"
+            case Left(e)  => s"ERROR: $e"
+          }
+        }
+      }
+    src/main/scala/REFACTOR010_Billing.scala: |
+      package billing
+
+      object REFACTOR010_Billing {
+        val REFACTOR010_GARBAGE_A = "billing_marker"
+        val REFACTOR010_GARBAGE_B = "invoice_prefix"
+
+        def generateInvoice(patientId: String): String = s"INV-$patientId"
+      }
+    src/main/scala/REFACTOR010_Scheduler.scala: |
+      package scheduler
+
+      object REFACTOR010_Scheduler {
+        val REFACTOR010_GARBAGE_C = "scheduler_marker"
+        val REFACTOR010_GARBAGE_D = "cron_expr"
+
+        def schedule(task: String): Unit = {}
+      }
+    src/main/scala/REFACTOR010_Notify.scala: |
+      package notify
+
+      object REFACTOR010_Notify {
+        val REFACTOR010_GARBAGE_E = "notify_marker"
+
+        def send(msg: String): Unit = println(msg)
+      }
+  changed_files:
+    src/main/scala/medical/Patient.scala: |
+      package medical
+
+      case class Patient(
+        id: String,
+        name: String,
+        age: Int,
+        conditions: List[String],
+        riskScore: Double
+      )
+    src/main/scala/medical/PatientRepository.scala: |
+      package medical
+
+      class PatientRepository {
+        private var store: Map[String, Patient] = Map.empty
+
+        def save(p: Patient): Unit = {
+          store = store + (p.id -> p)
+        }
+
+        def find(id: String): Option[Patient] = store.get(id)
+
+        def all(): List[Patient] = store.values.toList
+
+        def highRisk(threshold: Double): List[Patient] =
+          store.values.filter(_.riskScore >= threshold).toList
+      }
+    src/main/scala/medical/DiagnosisService.scala: |
+      package medical
+
+      class DiagnosisService(repo: PatientRepository) {
+        def addCondition(id: String, condition: String): Either[String, Patient] = {
+          repo.find(id) match {
+            case None    => Left(s"Patient $id not found")
+            case Some(p) =>
+              val updated = p.copy(conditions = p.conditions :+ condition)
+              repo.save(updated)
+              Right(updated)
+          }
+        }
+
+        def updateRiskScore(id: String, score: Double): Either[String, Patient] = {
+          repo.find(id) match {
+            case None    => Left(s"Patient $id not found")
+            case Some(p) =>
+              val updated = p.copy(riskScore = score)
+              repo.save(updated)
+              Right(updated)
+          }
+        }
+
+        def listHighRisk(threshold: Double): List[Patient] = repo.highRisk(threshold)
+      }
+    src/main/scala/medical/api/PatientController.scala: |
+      package medical.api
+
+      import medical.{DiagnosisService, PatientRepository, Patient}
+
+      class PatientController(service: DiagnosisService) {
+        def handleAddCondition(patientId: String, condition: String): String = {
+          service.addCondition(patientId, condition) match {
+            case Right(p) => s"Updated patient ${p.id}: ${p.conditions.mkString(", ")}"
+            case Left(e)  => s"ERROR: $e"
+          }
+        }
+
+        def handleRiskUpdate(patientId: String, score: Double): String = {
+          service.updateRiskScore(patientId, score) match {
+            case Right(p) => s"Risk score for ${p.id} set to ${p.riskScore}"
+            case Left(e)  => s"ERROR: $e"
+          }
+        }
+      }
+    src/main/scala/REFACTOR010_Billing.scala: |
+      package billing
+
+      object REFACTOR010_Billing {
+        val REFACTOR010_GARBAGE_A = "billing_marker"
+        val REFACTOR010_GARBAGE_B = "invoice_prefix"
+
+        def generateInvoice(patientId: String): String = s"INV-$patientId"
+      }
+    src/main/scala/REFACTOR010_Scheduler.scala: |
+      package scheduler
+
+      object REFACTOR010_Scheduler {
+        val REFACTOR010_GARBAGE_C = "scheduler_marker"
+        val REFACTOR010_GARBAGE_D = "cron_expr"
+
+        def schedule(task: String): Unit = {}
+      }
+    src/main/scala/REFACTOR010_Notify.scala: |
+      package notify
+
+      object REFACTOR010_Notify {
+        val REFACTOR010_GARBAGE_E = "notify_marker"
+
+        def send(msg: String): Unit = println(msg)
+      }
+  commit_message: "feat: add riskScore to Patient, updateRiskScore and listHighRisk to DiagnosisService"
+fragments:
+- id: patient_risk_score
+  selector:
+    path: src/main/scala/medical/Patient.scala
+    anchor: "riskScore: Double"
+- id: repo_high_risk
+  selector:
+    path: src/main/scala/medical/PatientRepository.scala
+    anchor: "def highRisk(threshold: Double)"
+- id: service_update_risk
+  selector:
+    path: src/main/scala/medical/DiagnosisService.scala
+    anchor: "def updateRiskScore(id: String, score: Double)"
+- id: service_list_high_risk
+  selector:
+    path: src/main/scala/medical/DiagnosisService.scala
+    anchor: "def listHighRisk(threshold: Double)"
+- id: controller_risk_update
+  selector:
+    path: src/main/scala/medical/api/PatientController.scala
+    anchor: "def handleRiskUpdate(patientId: String, score: Double)"
+- id: no_garbage_a
+  selector:
+    anchor: REFACTOR010_GARBAGE_A
+- id: no_garbage_b
+  selector:
+    anchor: REFACTOR010_GARBAGE_B
+- id: no_garbage_c
+  selector:
+    anchor: REFACTOR010_GARBAGE_C
+- id: no_garbage_d
+  selector:
+    anchor: REFACTOR010_GARBAGE_D
+- id: no_garbage_e
+  selector:
+    anchor: REFACTOR010_GARBAGE_E
+oracle:
+  required:
+  - patient_risk_score
+  - repo_high_risk
+  - service_update_risk
+  - service_list_high_risk
+  - controller_risk_update
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d
+  - no_garbage_e

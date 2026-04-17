@@ -1,0 +1,106 @@
+name: gap_081_ruby_same_file_trivial_string_sanitizer
+tags:
+- lang:ruby
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+repo:
+  initial_files:
+    lib/sanitizer.rb: |
+      module Sanitizer
+        def self.strip_tags(input)
+          input.gsub(/<[^>]*>/, '')
+        end
+
+        def self.escape_html(input)
+          input.gsub('&', '&amp;')
+               .gsub('<', '&lt;')
+               .gsub('>', '&gt;')
+        end
+
+        def self.normalize_whitespace(input)
+          input.strip.gsub(/\s+/, ' ')
+        end
+      end
+    lib/formatter.rb: |
+      module Formatter
+        def self.titlecase(str)
+          str.split(' ').map(&:capitalize).join(' ')
+        end
+
+        def self.truncate(str, length: 50)
+          return str if str.length <= length
+          str[0...length] + '...'
+        end
+
+        def self.slugify(str)
+          str.downcase.gsub(/[^a-z0-9]+/, '-').gsub(/^-|-$/, '')
+        end
+      end
+    lib/encoder.rb: |
+      require 'base64'
+
+      module Encoder
+        def self.to_base64(data)
+          Base64.strict_encode64(data)
+        end
+
+        def self.from_base64(encoded)
+          Base64.strict_decode64(encoded)
+        end
+
+        def self.hex_encode(data)
+          data.unpack1('H*')
+        end
+      end
+  changed_files:
+    lib/sanitizer.rb: |
+      module Sanitizer
+        def self.strip_tags(input)
+          input.gsub(/<[^>]*>/, '')
+        end
+
+        def self.escape_html(input)
+          input.gsub('&', '&amp;')
+               .gsub('<', '&lt;')
+               .gsub('>', '&gt;')
+               .gsub('"', '&quot;')
+        end
+
+        def self.normalize_whitespace(input)
+          input.strip.gsub(/\s+/, ' ')
+        end
+      end
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: sanitizer_file
+  selector:
+    path: sanitizer.rb
+- id: req_escape_html
+  selector:
+    anchor: def self.escape_html
+- id: req_quot
+  selector:
+    anchor: "&quot;"
+- id: no_formatter
+  selector:
+    path: formatter.rb
+- id: no_encoder
+  selector:
+    path: encoder.rb
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_081_A
+oracle:
+  required:
+  - sanitizer_file
+  - req_escape_html
+  - req_quot
+  allowed: []
+  forbidden:
+  - no_formatter
+  - no_encoder
+  - no_global_0

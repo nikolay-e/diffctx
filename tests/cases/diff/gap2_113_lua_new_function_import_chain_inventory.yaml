@@ -1,0 +1,180 @@
+name: gap2_113_lua_new_function_import_chain_inventory
+tags:
+- change:new_function
+- change:single_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:lua
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    lib/inventory.lua: |
+      local M = {}
+
+      function M.create_item(name, quantity, price)
+          return { name = name, quantity = quantity, price = price }
+      end
+
+      function M.total_value(item)
+          return item.quantity * item.price
+      end
+
+      return M
+    lib/warehouse.lua: |
+      local inventory = require("lib.inventory")
+
+      local M = {}
+
+      function M.add_stock(warehouse, name, qty, price)
+          local item = inventory.create_item(name, qty, price)
+          warehouse[name] = item
+      end
+
+      function M.get_value(warehouse, name)
+          local item = warehouse[name]
+          if not item then return 0 end
+          return inventory.total_value(item)
+      end
+
+      return M
+    app/store.lua: |
+      local warehouse = require("lib.warehouse")
+
+      local M = {}
+
+      function M.init()
+          M.stock = {}
+          warehouse.add_stock(M.stock, "bolts", 500, 0.25)
+          warehouse.add_stock(M.stock, "nuts", 300, 0.15)
+      end
+
+      function M.report()
+          local total = 0
+          for name, _ in pairs(M.stock) do
+              total = total + warehouse.get_value(M.stock, name)
+          end
+          return total
+      end
+
+      return M
+    lib/csv_export.lua: |
+      local TRAP_GAP2_113_CSV_A = "csv_exporter"
+      local TRAP_GAP2_113_DELIM_B = ","
+
+      local M = {}
+
+      function M.to_csv(rows)
+          local lines = {}
+          for _, row in ipairs(rows) do
+              lines[#lines + 1] = table.concat(row, TRAP_GAP2_113_DELIM_B)
+          end
+          return table.concat(lines, "\n")
+      end
+
+      return M
+  changed_files:
+    lib/inventory.lua: |
+      local M = {}
+
+      function M.create_item(name, quantity, price)
+          return { name = name, quantity = quantity, price = price }
+      end
+
+      function M.total_value(item)
+          return item.quantity * item.price
+      end
+
+      function M.apply_discount(item, percent)
+          local factor = 1 - (percent / 100)
+          item.price = item.price * factor
+          return item
+      end
+
+      return M
+    lib/warehouse.lua: |
+      local inventory = require("lib.inventory")
+
+      local M = {}
+
+      function M.add_stock(warehouse, name, qty, price)
+          local item = inventory.create_item(name, qty, price)
+          warehouse[name] = item
+      end
+
+      function M.get_value(warehouse, name)
+          local item = warehouse[name]
+          if not item then return 0 end
+          return inventory.total_value(item)
+      end
+
+      return M
+    app/store.lua: |
+      local warehouse = require("lib.warehouse")
+
+      local M = {}
+
+      function M.init()
+          M.stock = {}
+          warehouse.add_stock(M.stock, "bolts", 500, 0.25)
+          warehouse.add_stock(M.stock, "nuts", 300, 0.15)
+      end
+
+      function M.report()
+          local total = 0
+          for name, _ in pairs(M.stock) do
+              total = total + warehouse.get_value(M.stock, name)
+          end
+          return total
+      end
+
+      return M
+    lib/csv_export.lua: |
+      local TRAP_GAP2_113_CSV_A = "csv_exporter"
+      local TRAP_GAP2_113_DELIM_B = ","
+
+      local M = {}
+
+      function M.to_csv(rows)
+          local lines = {}
+          for _, row in ipairs(rows) do
+              lines[#lines + 1] = table.concat(row, TRAP_GAP2_113_DELIM_B)
+          end
+          return table.concat(lines, "\n")
+      end
+
+      return M
+  commit_message: Update files
+fragments:
+- id: apply_discount
+  selector:
+    path: lib/inventory.lua
+    anchor: function M.apply_discount
+- id: discount_factor
+  selector:
+    path: lib/inventory.lua
+    anchor: "1 - (percent / 100)"
+- id: warehouse_import
+  selector:
+    path: lib/warehouse.lua
+    anchor: require("lib.inventory")
+- id: no_csv
+  selector:
+    path: lib/csv_export.lua
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_113_CSV_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_113_DELIM_B
+oracle:
+  required:
+  - apply_discount
+  - discount_factor
+  - warehouse_import
+  allowed: []
+  forbidden:
+  - no_csv
+  - no_global_0
+  - no_global_1

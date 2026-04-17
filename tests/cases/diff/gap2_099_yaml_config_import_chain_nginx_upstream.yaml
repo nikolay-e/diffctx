@@ -1,0 +1,101 @@
+name: gap2_099_yaml_config_import_chain_nginx_upstream
+tags:
+- change:config
+- change:single_file
+- context:import_chain
+- difficulty:trivial
+- distance:0hop
+- lang:yaml
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    infra/nginx-config.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: nginx-conf
+      data:
+        nginx.conf: |
+          upstream backend {
+              server api-1:8080;
+              server api-2:8080;
+          }
+          server {
+              listen 80;
+              location / {
+                  proxy_pass http://backend;
+              }
+          }
+    infra/ingress.yaml: |
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: main-ingress
+      spec:
+        rules:
+        - host: app.example.com
+          http:
+            paths:
+            - path: /
+              pathType: Prefix
+              backend:
+                service:
+                  name: nginx
+                  port:
+                    number: 80
+    infra/pdb.yaml: |
+      apiVersion: policy/v1
+      kind: PodDisruptionBudget
+      metadata:
+        name: TRAP_GAP2_099_PDB_A
+      spec:
+        minAvailable: TRAP_GAP2_099_PDB_B
+  changed_files:
+    infra/nginx-config.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: nginx-conf
+      data:
+        nginx.conf: |
+          upstream backend {
+              server api-1:8080;
+              server api-2:8080;
+              server api-3:8080;
+              keepalive 32;
+          }
+          server {
+              listen 80;
+              location / {
+                  proxy_pass http://backend;
+                  proxy_connect_timeout 5s;
+              }
+          }
+  commit_message: Update files
+fragments:
+- id: third_server
+  selector:
+    path: infra/nginx-config.yaml
+    anchor: "server api-3:8080"
+- id: keepalive
+  selector:
+    path: infra/nginx-config.yaml
+    anchor: "keepalive 32"
+- id: no_pdb
+  selector:
+    path: infra/pdb.yaml
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_099_PDB_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_099_PDB_B
+oracle:
+  required:
+  - third_server
+  - keepalive
+  forbidden:
+  - no_pdb
+  - no_global_0
+  - no_global_1

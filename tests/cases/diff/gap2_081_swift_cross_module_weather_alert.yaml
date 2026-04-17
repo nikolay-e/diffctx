@@ -1,0 +1,192 @@
+name: gap2_081_swift_cross_module_weather_alert
+tags:
+- lang:cpp
+- change:single_file
+- context:cross_module
+- distance:2hop
+- difficulty:medium
+repo:
+  initial_files:
+    include/geometry/shape.h: |
+      #pragma once
+
+      namespace geometry {
+
+      struct Point {
+          double x;
+          double y;
+      };
+
+      struct BoundingBox {
+          Point min;
+          Point max;
+          double width() const { return max.x - min.x; }
+          double height() const { return max.y - min.y; }
+      };
+
+      class Shape {
+      public:
+          virtual ~Shape() = default;
+          virtual BoundingBox bounding_box() const = 0;
+          virtual double area() const = 0;
+      };
+
+      }
+    src/renderer/canvas.cpp: |
+      #include "geometry/shape.h"
+      #include <vector>
+      #include <memory>
+
+      namespace renderer {
+
+      class Canvas {
+          std::vector<std::shared_ptr<geometry::Shape>> shapes;
+      public:
+          void add(std::shared_ptr<geometry::Shape> shape) {
+              shapes.push_back(shape);
+          }
+
+          void render() {
+              for (auto& s : shapes) {
+                  auto bb = s->bounding_box();
+                  // draw at bb.min with bb.width() x bb.height()
+              }
+          }
+      };
+
+      }
+    src/physics/collision.cpp: |
+      #include "geometry/shape.h"
+
+      namespace physics {
+
+      bool overlaps(const geometry::BoundingBox& a, const geometry::BoundingBox& b) {
+          return a.min.x < b.max.x && a.max.x > b.min.x &&
+                 a.min.y < b.max.y && a.max.y > b.min.y;
+      }
+
+      }
+    garbage/audio.cpp: |
+      // GARBAGE_SW081_AUDIO_A = "audio_marker"
+      void play_sound(int id) {}
+    garbage/network.cpp: |
+      // GARBAGE_SW081_NETWORK_B = "network_marker"
+      void send_packet(const char* data, int len) {}
+    garbage/input.cpp: |
+      // GARBAGE_SW081_INPUT_C = "input_marker"
+      void poll_events() {}
+  changed_files:
+    include/geometry/shape.h: |
+      #pragma once
+
+      namespace geometry {
+
+      struct Point {
+          double x;
+          double y;
+      };
+
+      struct BoundingBox {
+          Point min;
+          Point max;
+          double width() const { return max.x - min.x; }
+          double height() const { return max.y - min.y; }
+          double area() const { return width() * height(); }
+          Point center() const { return {(min.x + max.x) / 2.0, (min.y + max.y) / 2.0}; }
+      };
+
+      class Shape {
+      public:
+          virtual ~Shape() = default;
+          virtual BoundingBox bounding_box() const = 0;
+          virtual double area() const = 0;
+          virtual bool contains(Point p) const = 0;
+      };
+
+      }
+    src/renderer/canvas.cpp: |
+      #include "geometry/shape.h"
+      #include <vector>
+      #include <memory>
+
+      namespace renderer {
+
+      class Canvas {
+          std::vector<std::shared_ptr<geometry::Shape>> shapes;
+      public:
+          void add(std::shared_ptr<geometry::Shape> shape) {
+              shapes.push_back(shape);
+          }
+
+          void render() {
+              for (auto& s : shapes) {
+                  auto bb = s->bounding_box();
+                  // draw at bb.min with bb.width() x bb.height()
+              }
+          }
+      };
+
+      }
+    src/physics/collision.cpp: |
+      #include "geometry/shape.h"
+
+      namespace physics {
+
+      bool overlaps(const geometry::BoundingBox& a, const geometry::BoundingBox& b) {
+          return a.min.x < b.max.x && a.max.x > b.min.x &&
+                 a.min.y < b.max.y && a.max.y > b.min.y;
+      }
+
+      bool point_in_box(geometry::Point p, const geometry::BoundingBox& box) {
+          return p.x >= box.min.x && p.x <= box.max.x &&
+                 p.y >= box.min.y && p.y <= box.max.y;
+      }
+
+      }
+    garbage/audio.cpp: |
+      // GARBAGE_SW081_AUDIO_A = "audio_marker"
+      void play_sound(int id) {}
+    garbage/network.cpp: |
+      // GARBAGE_SW081_NETWORK_B = "network_marker"
+      void send_packet(const char* data, int len) {}
+    garbage/input.cpp: |
+      // GARBAGE_SW081_INPUT_C = "input_marker"
+      void poll_events() {}
+  commit_message: "feat: add contains() to Shape, center/area to BoundingBox"
+fragments:
+- id: bounding_box_new_methods
+  selector:
+    path: include/geometry/shape.h
+    anchor: "Point center() const"
+- id: shape_contains_pure_virtual
+  selector:
+    path: include/geometry/shape.h
+    anchor: "virtual bool contains"
+- id: canvas_uses_bounding_box
+  selector:
+    path: src/renderer/canvas.cpp
+    anchor: "auto bb = s->bounding_box()"
+- id: collision_uses_bounding_box
+  selector:
+    path: src/physics/collision.cpp
+    anchor: "bool overlaps"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_SW081_AUDIO_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_SW081_NETWORK_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_SW081_INPUT_C
+oracle:
+  required:
+  - bounding_box_new_methods
+  - shape_contains_pure_virtual
+  - canvas_uses_bounding_box
+  - collision_uses_bounding_box
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

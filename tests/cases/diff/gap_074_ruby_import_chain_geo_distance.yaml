@@ -1,0 +1,251 @@
+name: gap_074_ruby_import_chain_geo_distance
+tags:
+- change:new_function
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:2hop
+- lang:ruby
+repo:
+  initial_files:
+    lib/geo/coordinate.rb: |
+      module Geo
+        class Coordinate
+          attr_reader :lat, :lng
+
+          def initialize(lat, lng)
+            @lat = lat.to_f
+            @lng = lng.to_f
+          end
+
+          def to_radians
+            [lat * Math::PI / 180.0, lng * Math::PI / 180.0]
+          end
+
+          def to_s
+            "#{lat},#{lng}"
+          end
+        end
+      end
+    lib/geo/calculator.rb: |
+      require_relative 'coordinate'
+
+      module Geo
+        class Calculator
+          EARTH_RADIUS_KM = 6371.0
+
+          def haversine(a, b)
+            lat1, lng1 = a.to_radians
+            lat2, lng2 = b.to_radians
+            dlat = lat2 - lat1
+            dlng = lng2 - lng1
+            h = Math.sin(dlat / 2)**2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dlng / 2)**2
+            2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(h))
+          end
+        end
+      end
+    lib/geo/router.rb: |
+      require_relative 'calculator'
+
+      module Geo
+        class Router
+          def initialize(calculator)
+            @calculator = calculator
+          end
+
+          def total_distance(waypoints)
+            return 0.0 if waypoints.length < 2
+            waypoints.each_cons(2).sum { |a, b| @calculator.haversine(a, b) }
+          end
+        end
+      end
+    lib/geo/formatter.rb: |
+      TRAP_GAP074_FORMATTER_A = "geo_formatter"
+      TRAP_GAP074_PRECISION_B = 6
+
+      module Geo
+        class Formatter
+          def format_distance(km)
+            if km < 1.0
+              "#{(km * 1000).round} m"
+            else
+              "#{km.round(2)} km"
+            end
+          end
+
+          def format_coordinate(lat, lng)
+            "#{lat.round(6)}, #{lng.round(6)}"
+          end
+        end
+      end
+    lib/geo/elevation.rb: |
+      TRAP_GAP074_ELEVATION_C = "elevation_service"
+      TRAP_GAP074_UNIT_D = "meters"
+
+      module Geo
+        class Elevation
+          def initialize
+            @cache = {}
+          end
+
+          def lookup(lat, lng)
+            key = "#{lat.round(4)},#{lng.round(4)}"
+            @cache[key] ||= (lat.abs * 10 + lng.abs * 5).round(1)
+          end
+
+          def total_ascent(elevations)
+            elevations.each_cons(2).sum { |a, b| [b - a, 0].max }
+          end
+        end
+      end
+  changed_files:
+    lib/geo/coordinate.rb: |
+      module Geo
+        class Coordinate
+          attr_reader :lat, :lng
+
+          def initialize(lat, lng)
+            @lat = lat.to_f
+            @lng = lng.to_f
+          end
+
+          def to_radians
+            [lat * Math::PI / 180.0, lng * Math::PI / 180.0]
+          end
+
+          def to_s
+            "#{lat},#{lng}"
+          end
+        end
+      end
+    lib/geo/calculator.rb: |
+      require_relative 'coordinate'
+
+      module Geo
+        class Calculator
+          EARTH_RADIUS_KM = 6371.0
+
+          def haversine(a, b)
+            lat1, lng1 = a.to_radians
+            lat2, lng2 = b.to_radians
+            dlat = lat2 - lat1
+            dlng = lng2 - lng1
+            h = Math.sin(dlat / 2)**2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dlng / 2)**2
+            2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(h))
+          end
+        end
+      end
+    lib/geo/router.rb: |
+      require_relative 'calculator'
+
+      module Geo
+        class Router
+          def initialize(calculator)
+            @calculator = calculator
+          end
+
+          def total_distance(waypoints)
+            return 0.0 if waypoints.length < 2
+            waypoints.each_cons(2).sum { |a, b| @calculator.haversine(a, b) }
+          end
+
+          def fastest_detour(waypoints, detour_point)
+            best_index = 0
+            best_cost = Float::INFINITY
+            waypoints.each_cons(2).with_index do |(a, b), i|
+              cost = @calculator.haversine(a, detour_point) + @calculator.haversine(detour_point, b) - @calculator.haversine(a, b)
+              if cost < best_cost
+                best_cost = cost
+                best_index = i + 1
+              end
+            end
+            { insert_at: best_index, extra_km: best_cost.round(2) }
+          end
+        end
+      end
+    lib/geo/formatter.rb: |
+      TRAP_GAP074_FORMATTER_A = "geo_formatter"
+      TRAP_GAP074_PRECISION_B = 6
+
+      module Geo
+        class Formatter
+          def format_distance(km)
+            if km < 1.0
+              "#{(km * 1000).round} m"
+            else
+              "#{km.round(2)} km"
+            end
+          end
+
+          def format_coordinate(lat, lng)
+            "#{lat.round(6)}, #{lng.round(6)}"
+          end
+        end
+      end
+    lib/geo/elevation.rb: |
+      TRAP_GAP074_ELEVATION_C = "elevation_service"
+      TRAP_GAP074_UNIT_D = "meters"
+
+      module Geo
+        class Elevation
+          def initialize
+            @cache = {}
+          end
+
+          def lookup(lat, lng)
+            key = "#{lat.round(4)},#{lng.round(4)}"
+            @cache[key] ||= (lat.abs * 10 + lng.abs * 5).round(1)
+          end
+
+          def total_ascent(elevations)
+            elevations.each_cons(2).sum { |a, b| [b - a, 0].max }
+          end
+        end
+      end
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: router_detour
+  selector:
+    path: lib/geo/router.rb
+    anchor: 'def fastest_detour(waypoints, detour_point)'
+- id: calculator_haversine
+  selector:
+    path: lib/geo/calculator.rb
+    anchor: 'def haversine(a, b)'
+- id: coordinate_radians
+  selector:
+    path: lib/geo/coordinate.rb
+    anchor: 'def to_radians'
+- id: no_formatter
+  selector:
+    path: lib/geo/formatter.rb
+- id: no_elevation
+  selector:
+    path: lib/geo/elevation.rb
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP074_FORMATTER_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP074_PRECISION_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP074_ELEVATION_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP074_UNIT_D
+oracle:
+  required:
+  - router_detour
+  - calculator_haversine
+  - coordinate_radians
+  allowed: []
+  forbidden:
+  - no_formatter
+  - no_elevation
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

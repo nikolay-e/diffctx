@@ -1,0 +1,85 @@
+name: powershell_006_config_hashtable_changed
+tags:
+- lang:powershell
+- change:single_file
+- change:config
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    app-config.psd1: |
+      @{
+          DatabaseServer   = "db.internal.example.com"
+          DatabaseName     = "AppDb"
+          MaxConnections   = 10
+          RequestTimeoutSec = 30
+      }
+    Start-AppServer.ps1: |
+      $config = Import-PowerShellDataFile ./app-config.psd1
+      Write-Output "Connecting to $($config.DatabaseServer)/$($config.DatabaseName)"
+      Write-Output "Max connections: $($config.MaxConnections)"
+    PS_NOISE_006_BitmapHelpers.psm1: |
+      function PS_NOISE_006_Resize-Bitmap {
+          param([string]$ImagePath, [int]$Width, [int]$Height)
+          $img = [System.Drawing.Image]::FromFile($ImagePath)
+          $bmp = New-Object System.Drawing.Bitmap($Width, $Height)
+          $gfx = [System.Drawing.Graphics]::FromImage($bmp)
+          $gfx.DrawImage($img, 0, 0, $Width, $Height)
+          return $bmp
+      }
+      Export-ModuleMember -Function PS_NOISE_006_Resize-Bitmap
+    PS_NOISE_006_ZipUtils.psm1: |
+      function PS_NOISE_006_Compress-DirectoryToZip {
+          param([string]$SourceDir, [string]$ZipPath)
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          [System.IO.Compression.ZipFile]::CreateFromDirectory($SourceDir, $ZipPath)
+      }
+      Export-ModuleMember -Function PS_NOISE_006_Compress-DirectoryToZip
+  changed_files:
+    app-config.psd1: |
+      @{
+          DatabaseServer    = "db.internal.example.com"
+          DatabaseName      = "AppDb"
+          MaxConnections    = 25
+          RequestTimeoutSec = 30
+          EnableQueryCache  = $true
+          CacheExpiryMinutes = 15
+      }
+  commit_message: "config: increase MaxConnections and add query cache settings"
+fragments:
+- id: config_max_connections
+  selector:
+    path: app-config.psd1
+    anchor: MaxConnections
+- id: config_cache_settings
+  selector:
+    path: app-config.psd1
+    anchor: EnableQueryCache
+- id: start_app_server
+  selector:
+    path: Start-AppServer.ps1
+    anchor: Import-PowerShellDataFile
+- id: no_bitmap_helpers
+  selector:
+    path: PS_NOISE_006_BitmapHelpers.psm1
+- id: no_zip_utils
+  selector:
+    path: PS_NOISE_006_ZipUtils.psm1
+- id: no_global_0
+  selector:
+    anchor: PS_NOISE_006_Resize-Bitmap
+- id: no_global_1
+  selector:
+    anchor: PS_NOISE_006_Compress-DirectoryToZip
+oracle:
+  required:
+  - config_max_connections
+  - config_cache_settings
+  - start_app_server
+  allowed: []
+  forbidden:
+  - no_bitmap_helpers
+  - no_zip_utils
+  - no_global_0
+  - no_global_1

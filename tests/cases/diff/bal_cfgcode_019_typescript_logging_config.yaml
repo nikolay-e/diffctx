@@ -1,0 +1,135 @@
+name: bal_cfgcode_019_typescript_logging_config
+tags:
+- lang:typescript
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    config/logging.json: |
+      {
+        "level": "debug",
+        "format": "text",
+        "output": "stdout",
+        "includeTimestamp": true
+      }
+    src/logger.ts: |
+      import logConfig from '../config/logging.json';
+
+      export const LOG_LEVEL = logConfig.level;
+      export const LOG_FORMAT = logConfig.format;
+
+      export function createLogger(name: string) {
+        return {
+          name,
+          level: logConfig.level,
+          format: logConfig.format,
+          output: logConfig.output,
+        };
+      }
+    src/request-logger.ts: |
+      import { readFileSync } from 'fs';
+
+      const cfg = JSON.parse(readFileSync('config/logging.json', 'utf-8'));
+
+      export function logRequest(method: string, path: string): void {
+        if (cfg.level === 'debug') {
+          console.log(`${method} ${path}`);
+        }
+      }
+    src/crypto.ts: |
+      const GARBAGE_CFGCODE_019_CRYPTO_A = "aes-256";
+      const GARBAGE_CFGCODE_019_CRYPTO_B = 32;
+
+      export function hash(data: string): string {
+        return data;
+      }
+  changed_files:
+    config/logging.json: |
+      {
+        "level": "warn",
+        "format": "json",
+        "output": "file",
+        "includeTimestamp": true,
+        "filePath": "/var/log/app.log",
+        "rotation": {
+          "maxSize": "100mb",
+          "maxFiles": 5
+        }
+      }
+    src/logger.ts: |
+      import logConfig from '../config/logging.json';
+
+      export const LOG_LEVEL = logConfig.level;
+      export const LOG_FORMAT = logConfig.format;
+
+      export function createLogger(name: string) {
+        return {
+          name,
+          level: logConfig.level,
+          format: logConfig.format,
+          output: logConfig.output,
+        };
+      }
+    src/request-logger.ts: |
+      import { readFileSync } from 'fs';
+
+      const cfg = JSON.parse(readFileSync('config/logging.json', 'utf-8'));
+
+      export function logRequest(method: string, path: string): void {
+        if (cfg.level === 'debug') {
+          console.log(`${method} ${path}`);
+        }
+      }
+    src/crypto.ts: |
+      const GARBAGE_CFGCODE_019_CRYPTO_A = "aes-256";
+      const GARBAGE_CFGCODE_019_CRYPTO_B = 32;
+
+      export function hash(data: string): string {
+        return data;
+      }
+  commit_message: "config: production logging with json format and rotation"
+fragments:
+- id: config_level
+  selector:
+    path: config/logging.json
+    anchor: '"level": "warn"'
+- id: config_format
+  selector:
+    path: config/logging.json
+    anchor: '"format": "json"'
+- id: config_rotation
+  selector:
+    path: config/logging.json
+    anchor: "maxSize"
+- id: logger_reads_config
+  selector:
+    path: src/logger.ts
+    anchor: "logConfig.level"
+- id: request_logger_reads
+  selector:
+    path: src/request-logger.ts
+    anchor: "cfg.level"
+- id: no_crypto
+  selector:
+    path: src/crypto.ts
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_019_CRYPTO_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_019_CRYPTO_B
+oracle:
+  required:
+  - config_level
+  - config_format
+  - config_rotation
+  - logger_reads_config
+  - request_logger_reads
+  allowed: []
+  forbidden:
+  - no_crypto
+  - no_global_0
+  - no_global_1

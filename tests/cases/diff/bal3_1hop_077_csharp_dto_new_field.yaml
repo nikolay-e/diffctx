@@ -1,0 +1,338 @@
+name: bal3_1hop_077_csharp_dto_new_field
+tags:
+- lang:csharp
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: csharp-no-tree-sitter
+repo:
+  initial_files:
+    src/Models/CustomerDto.cs: |
+      using System;
+
+      namespace App.Models
+      {
+          public class CustomerDto
+          {
+              public int Id { get; set; }
+              public string Name { get; set; }
+              public string Email { get; set; }
+          }
+      }
+    src/Controllers/CustomerController.cs: |
+      using System;
+      using App.Models;
+
+      namespace App.Controllers
+      {
+          public class CustomerController
+          {
+              public CustomerDto GetCustomer(int id)
+              {
+                  return new CustomerDto { Id = id, Name = "Test", Email = "test@example.com" };
+              }
+
+              public void UpdateCustomer(CustomerDto customer)
+              {
+                  Console.WriteLine($"Updating {customer.Name}");
+              }
+          }
+      }
+    src/Services/CustomerService.cs: |
+      using System;
+      using App.Models;
+
+      namespace App.Services
+      {
+          public class CustomerService
+          {
+              public CustomerDto FindById(int id)
+              {
+                  return new CustomerDto { Id = id, Name = "Found", Email = "found@test.com" };
+              }
+
+              public void Save(CustomerDto customer)
+              {
+                  Console.WriteLine($"Saving customer {customer.Id}");
+              }
+          }
+      }
+    src/Mappers/CustomerMapper.cs: |
+      using System;
+      using App.Models;
+
+      namespace App.Mappers
+      {
+          public class CustomerMapper
+          {
+              public CustomerDto ToDto(string name, string email)
+              {
+                  return new CustomerDto { Name = name, Email = email };
+              }
+
+              public string ToDisplayString(CustomerDto dto)
+              {
+                  return $"{dto.Name} <{dto.Email}>";
+              }
+          }
+      }
+    src/Validators/CustomerValidator.cs: |
+      using System;
+      using App.Models;
+
+      namespace App.Validators
+      {
+          public class CustomerValidator
+          {
+              public bool IsValid(CustomerDto customer)
+              {
+                  return !string.IsNullOrEmpty(customer.Name) && !string.IsNullOrEmpty(customer.Email);
+              }
+          }
+      }
+    src/Caching/RedisClient.cs: |
+      using System;
+      GARBAGE_077_REDIS_HOST_A = "localhost";
+      GARBAGE_077_REDIS_PORT_B = 6379;
+
+      namespace App.Caching
+      {
+          public class RedisClient
+          {
+              public void Set(string key, string value) { }
+              public string Get(string key) { return ""; }
+          }
+      }
+    src/Caching/DistributedLock.cs: |
+      using System;
+      GARBAGE_077_LOCK_TTL_C = 30;
+      GARBAGE_077_LOCK_RETRY_D = 3;
+
+      namespace App.Caching
+      {
+          public class DistributedLock
+          {
+              public bool Acquire(string resource) { return true; }
+              public void Release(string resource) { }
+          }
+      }
+    src/Telemetry/MetricsReporter.cs: |
+      using System;
+      GARBAGE_077_METRICS_ENDPOINT_E = "/metrics";
+      GARBAGE_077_PUSH_INTERVAL_F = 15;
+
+      namespace App.Telemetry
+      {
+          public class MetricsReporter
+          {
+              public void ReportCounter(string name, int value) { }
+          }
+      }
+  changed_files:
+    src/Models/CustomerDto.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Models
+      {
+          public class CustomerDto
+          {
+              public int Id { get; set; }
+              public string Name { get; set; }
+              public string Email { get; set; }
+              public string PhoneNumber { get; set; }
+              public DateTime? DateOfBirth { get; set; }
+              public List<string> Tags { get; set; } = new List<string>();
+              public CustomerTier Tier { get; set; } = CustomerTier.Standard;
+          }
+
+          public enum CustomerTier
+          {
+              Standard,
+              Premium,
+              Enterprise
+          }
+      }
+    src/Controllers/CustomerController.cs: |
+      using System;
+      using App.Models;
+
+      namespace App.Controllers
+      {
+          public class CustomerController
+          {
+              public CustomerDto GetCustomer(int id)
+              {
+                  return new CustomerDto { Id = id, Name = "Test", Email = "test@example.com" };
+              }
+
+              public void UpdateCustomer(CustomerDto customer)
+              {
+                  Console.WriteLine($"Updating {customer.Name}");
+              }
+          }
+      }
+    src/Services/CustomerService.cs: |
+      using System;
+      using App.Models;
+
+      namespace App.Services
+      {
+          public class CustomerService
+          {
+              public CustomerDto FindById(int id)
+              {
+                  return new CustomerDto { Id = id, Name = "Found", Email = "found@test.com" };
+              }
+
+              public void Save(CustomerDto customer)
+              {
+                  Console.WriteLine($"Saving customer {customer.Id}");
+              }
+          }
+      }
+    src/Mappers/CustomerMapper.cs: |
+      using System;
+      using App.Models;
+
+      namespace App.Mappers
+      {
+          public class CustomerMapper
+          {
+              public CustomerDto ToDto(string name, string email)
+              {
+                  return new CustomerDto { Name = name, Email = email };
+              }
+
+              public string ToDisplayString(CustomerDto dto)
+              {
+                  return $"{dto.Name} <{dto.Email}>";
+              }
+          }
+      }
+    src/Validators/CustomerValidator.cs: |
+      using System;
+      using App.Models;
+
+      namespace App.Validators
+      {
+          public class CustomerValidator
+          {
+              public bool IsValid(CustomerDto customer)
+              {
+                  return !string.IsNullOrEmpty(customer.Name) && !string.IsNullOrEmpty(customer.Email);
+              }
+          }
+      }
+    src/Caching/RedisClient.cs: |
+      using System;
+      GARBAGE_077_REDIS_HOST_A = "localhost";
+      GARBAGE_077_REDIS_PORT_B = 6379;
+
+      namespace App.Caching
+      {
+          public class RedisClient
+          {
+              public void Set(string key, string value) { }
+              public string Get(string key) { return ""; }
+          }
+      }
+    src/Caching/DistributedLock.cs: |
+      using System;
+      GARBAGE_077_LOCK_TTL_C = 30;
+      GARBAGE_077_LOCK_RETRY_D = 3;
+
+      namespace App.Caching
+      {
+          public class DistributedLock
+          {
+              public bool Acquire(string resource) { return true; }
+              public void Release(string resource) { }
+          }
+      }
+    src/Telemetry/MetricsReporter.cs: |
+      using System;
+      GARBAGE_077_METRICS_ENDPOINT_E = "/metrics";
+      GARBAGE_077_PUSH_INTERVAL_F = 15;
+
+      namespace App.Telemetry
+      {
+          public class MetricsReporter
+          {
+              public void ReportCounter(string name, int value) { }
+          }
+      }
+  commit_message: "feat: add phone, DOB, tags and tier to CustomerDto"
+fragments:
+- id: controller_using
+  selector:
+    path: src/Controllers/CustomerController.cs
+    anchor: "using App.Models"
+- id: controller_new_dto
+  selector:
+    path: src/Controllers/CustomerController.cs
+    anchor: "new CustomerDto"
+- id: service_using
+  selector:
+    path: src/Services/CustomerService.cs
+    anchor: "using App.Models"
+- id: mapper_using
+  selector:
+    path: src/Mappers/CustomerMapper.cs
+    anchor: "using App.Models"
+- id: mapper_to_dto
+  selector:
+    path: src/Mappers/CustomerMapper.cs
+    anchor: "public CustomerDto ToDto"
+- id: validator_using
+  selector:
+    path: src/Validators/CustomerValidator.cs
+    anchor: "using App.Models"
+- id: no_redis
+  selector:
+    path: src/Caching/RedisClient.cs
+- id: no_lock
+  selector:
+    path: src/Caching/DistributedLock.cs
+- id: no_metrics
+  selector:
+    path: src/Telemetry/MetricsReporter.cs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_077_REDIS_HOST_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_077_REDIS_PORT_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_077_LOCK_TTL_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_077_LOCK_RETRY_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_077_METRICS_ENDPOINT_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_077_PUSH_INTERVAL_F
+oracle:
+  required:
+  - controller_using
+  - controller_new_dto
+  - service_using
+  - mapper_using
+  - mapper_to_dto
+  - validator_using
+  allowed: []
+  forbidden:
+  - no_redis
+  - no_lock
+  - no_metrics
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

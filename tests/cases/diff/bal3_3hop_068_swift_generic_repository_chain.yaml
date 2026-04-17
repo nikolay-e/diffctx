@@ -1,0 +1,228 @@
+name: bal3_3hop_068_swift_generic_repository_chain
+tags:
+- lang:swift
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    Sources/Core/Entity.swift: |
+      import Foundation
+
+      protocol Entity {
+          var id: String { get }
+      }
+    Sources/Core/Repository.swift: |
+      import Foundation
+
+      protocol Repository {
+          associatedtype T: Entity
+          func findById(_ id: String) -> T?
+          func save(_ entity: T)
+      }
+    Sources/Models/Task.swift: |
+      import Foundation
+      import Core
+
+      struct Task: Entity {
+          let id: String
+          let title: String
+          let completed: Bool
+      }
+    Sources/Persistence/TaskRepository.swift: |
+      import Foundation
+      import Core
+      import Models
+
+      class TaskRepository: Repository {
+          typealias T = Task
+          private var storage: [String: Task] = [:]
+          func findById(_ id: String) -> Task? {
+              return storage[id]
+          }
+          func save(_ entity: Task) {
+              storage[entity.id] = entity
+          }
+      }
+    Sources/Services/TaskService.swift: |
+      import Foundation
+      import Persistence
+
+      class TaskService {
+          private let repo: TaskRepository
+          init(repo: TaskRepository) {
+              self.repo = repo
+          }
+          func getTask(id: String) -> Task? {
+              return repo.findById(id)
+          }
+      }
+    Sources/Controllers/TaskController.swift: |
+      import Foundation
+      import Services
+
+      class TaskController {
+          private let service: TaskService
+          init(service: TaskService) {
+              self.service = service
+          }
+          func show(id: String) -> Task? {
+              return service.getTask(id: id)
+          }
+      }
+    Sources/Utils/Serializer.swift: |
+      import Foundation
+      let GARBAGE_068_SERIAL_A = "json"
+      let GARBAGE_068_ENCODE_B = "utf8"
+
+      class Serializer {
+          func encode(_ value: Any) -> Data { return Data() }
+      }
+    Sources/Utils/Validator.swift: |
+      import Foundation
+      let GARBAGE_068_VALID_C = "check"
+      let GARBAGE_068_RULE_D = "required"
+
+      class Validator {
+          func validate(_ value: Any) -> Bool { return true }
+      }
+  changed_files:
+    Sources/Core/Entity.swift: |
+      import Foundation
+
+      protocol Entity {
+          var id: String { get }
+          var createdAt: Date { get }
+      }
+    Sources/Core/Repository.swift: |
+      import Foundation
+
+      protocol Repository {
+          associatedtype T: Entity
+          func findById(_ id: String) -> T?
+          func save(_ entity: T)
+          func findRecent(limit: Int) -> [T]
+      }
+    Sources/Models/Task.swift: |
+      import Foundation
+      import Core
+
+      struct Task: Entity {
+          let id: String
+          let title: String
+          let completed: Bool
+          let createdAt: Date
+      }
+    Sources/Persistence/TaskRepository.swift: |
+      import Foundation
+      import Core
+      import Models
+
+      class TaskRepository: Repository {
+          typealias T = Task
+          private var storage: [String: Task] = [:]
+          func findById(_ id: String) -> Task? {
+              return storage[id]
+          }
+          func save(_ entity: Task) {
+              storage[entity.id] = entity
+          }
+          func findRecent(limit: Int) -> [Task] {
+              return Array(storage.values.sorted { $0.createdAt > $1.createdAt }.prefix(limit))
+          }
+      }
+    Sources/Services/TaskService.swift: |
+      import Foundation
+      import Persistence
+
+      class TaskService {
+          private let repo: TaskRepository
+          init(repo: TaskRepository) {
+              self.repo = repo
+          }
+          func getTask(id: String) -> Task? {
+              return repo.findById(id)
+          }
+          func recentTasks(limit: Int) -> [Task] {
+              return repo.findRecent(limit: limit)
+          }
+      }
+    Sources/Controllers/TaskController.swift: |
+      import Foundation
+      import Services
+
+      class TaskController {
+          private let service: TaskService
+          init(service: TaskService) {
+              self.service = service
+          }
+          func show(id: String) -> Task? {
+              return service.getTask(id: id)
+          }
+          func recent() -> [Task] {
+              return service.recentTasks(limit: 10)
+          }
+      }
+    Sources/Utils/Serializer.swift: |
+      import Foundation
+      let GARBAGE_068_SERIAL_A = "json"
+      let GARBAGE_068_ENCODE_B = "utf8"
+
+      class Serializer {
+          func encode(_ value: Any) -> Data { return Data() }
+      }
+    Sources/Utils/Validator.swift: |
+      import Foundation
+      let GARBAGE_068_VALID_C = "check"
+      let GARBAGE_068_RULE_D = "required"
+
+      class Validator {
+          func validate(_ value: Any) -> Bool { return true }
+      }
+  commit_message: "feat: add createdAt to Entity and findRecent to Repository"
+fragments:
+- id: entity_created_at
+  selector:
+    path: Sources/Core/Entity.swift
+    anchor: "var createdAt: Date"
+- id: repo_find_recent
+  selector:
+    path: Sources/Core/Repository.swift
+    anchor: "func findRecent"
+- id: task_created_at
+  selector:
+    path: Sources/Models/Task.swift
+    anchor: "let createdAt: Date"
+- id: task_repo_find_recent
+  selector:
+    path: Sources/Persistence/TaskRepository.swift
+    anchor: "func findRecent"
+- id: service_recent
+  selector:
+    path: Sources/Services/TaskService.swift
+    anchor: "func recentTasks"
+- id: controller_recent
+  selector:
+    path: Sources/Controllers/TaskController.swift
+    anchor: "func recent()"
+- id: no_serializer
+  selector:
+    path: Sources/Utils/Serializer.swift
+    anchor: "GARBAGE_068_SERIAL_A"
+- id: no_validator
+  selector:
+    path: Sources/Utils/Validator.swift
+    anchor: "GARBAGE_068_VALID_C"
+oracle:
+  required:
+  - entity_created_at
+  - repo_find_recent
+  - task_repo_find_recent
+  - service_recent
+  - controller_recent
+  allowed:
+  - task_created_at
+  forbidden:
+  - no_serializer
+  - no_validator

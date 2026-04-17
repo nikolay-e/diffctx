@@ -1,24 +1,176 @@
 name: internals_021_greek_extract_identifiers
+tags:
+- lang:typescript
+- change:bug_fix
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
 repo:
   initial_files:
-    greek_ident.py: |
-      def placeholder():
-          pass
+    src/utils/number.ts: |
+      export function clamp(value: number, min: number, max: number): number {
+        return Math.min(Math.max(value, min), max);
+      }
+
+      export function lerp(a: number, b: number, t: number): number {
+        return a + (b - a) * t;
+      }
+    src/animation/easing.ts: |
+      import { clamp } from '../utils/number';
+
+      export function easeInOut(t: number): number {
+        const clamped = clamp(t, 0, 1);
+        return clamped < 0.5
+          ? 2 * clamped * clamped
+          : -1 + (4 - 2 * clamped) * clamped;
+      }
+    src/animation/timeline.ts: |
+      import { easeInOut } from './easing';
+
+      export interface Keyframe {
+        time: number;
+        value: number;
+      }
+
+      export function interpolateKeyframes(
+        keyframes: Keyframe[],
+        currentTime: number,
+      ): number {
+        const sorted = [...keyframes].sort((a, b) => a.time - b.time);
+        const i = sorted.findIndex((k) => k.time > currentTime);
+        if (i <= 0) return sorted[0]?.value ?? 0;
+        const prev = sorted[i - 1];
+        const next = sorted[i];
+        const t = (currentTime - prev.time) / (next.time - prev.time);
+        return prev.value + (next.value - prev.value) * easeInOut(t);
+      }
+    src/player/animationPlayer.ts: |
+      import { interpolateKeyframes, Keyframe } from '../animation/timeline';
+
+      export class AnimationPlayer {
+        private keyframes: Keyframe[] = [];
+        private startTime = 0;
+
+        load(keyframes: Keyframe[]): void {
+          this.keyframes = keyframes;
+          this.startTime = performance.now();
+        }
+
+        getValue(): number {
+          const elapsed = (performance.now() - this.startTime) / 1000;
+          return interpolateKeyframes(this.keyframes, elapsed);
+        }
+      }
+    garbage/particles.ts: |
+      const GARBAGE_GRK021_PART_A = "particles_marker";
+      export function spawnParticle(x: number, y: number): void {}
+    garbage/shader.ts: |
+      const GARBAGE_GRK021_SHADER_B = "shader_marker";
+      export function compileShader(src: string): number { return 0; }
+    garbage/texture.ts: |
+      const GARBAGE_GRK021_TEX_C = "texture_marker";
+      export function loadTexture(url: string): Promise<void> { return Promise.resolve(); }
   changed_files:
-    greek_ident.py: |
-      def calculate_Δ(θ, φ):
-          return θ * cos(φ)
-  commit_message: Update files
+    src/utils/number.ts: |
+      export function clamp(value: number, min: number, max: number): number {
+        if (min > max) throw new RangeError(`clamp: min (${min}) > max (${max})`);
+        return Math.min(Math.max(value, min), max);
+      }
+
+      export function lerp(a: number, b: number, t: number): number {
+        return a + (b - a) * t;
+      }
+    src/animation/easing.ts: |
+      import { clamp } from '../utils/number';
+
+      export function easeInOut(t: number): number {
+        const clamped = clamp(t, 0, 1);
+        return clamped < 0.5
+          ? 2 * clamped * clamped
+          : -1 + (4 - 2 * clamped) * clamped;
+      }
+    src/animation/timeline.ts: |
+      import { easeInOut } from './easing';
+
+      export interface Keyframe {
+        time: number;
+        value: number;
+      }
+
+      export function interpolateKeyframes(
+        keyframes: Keyframe[],
+        currentTime: number,
+      ): number {
+        const sorted = [...keyframes].sort((a, b) => a.time - b.time);
+        const i = sorted.findIndex((k) => k.time > currentTime);
+        if (i <= 0) return sorted[0]?.value ?? 0;
+        const prev = sorted[i - 1];
+        const next = sorted[i];
+        const t = (currentTime - prev.time) / (next.time - prev.time);
+        return prev.value + (next.value - prev.value) * easeInOut(t);
+      }
+    src/player/animationPlayer.ts: |
+      import { interpolateKeyframes, Keyframe } from '../animation/timeline';
+
+      export class AnimationPlayer {
+        private keyframes: Keyframe[] = [];
+        private startTime = 0;
+
+        load(keyframes: Keyframe[]): void {
+          this.keyframes = keyframes;
+          this.startTime = performance.now();
+        }
+
+        getValue(): number {
+          const elapsed = (performance.now() - this.startTime) / 1000;
+          return interpolateKeyframes(this.keyframes, elapsed);
+        }
+      }
+    garbage/particles.ts: |
+      const GARBAGE_GRK021_PART_A = "particles_marker";
+      export function spawnParticle(x: number, y: number): void {}
+    garbage/shader.ts: |
+      const GARBAGE_GRK021_SHADER_B = "shader_marker";
+      export function compileShader(src: string): number { return 0; }
+    garbage/texture.ts: |
+      const GARBAGE_GRK021_TEX_C = "texture_marker";
+      export function loadTexture(url: string): Promise<void> { return Promise.resolve(); }
+  commit_message: "fix: throw RangeError in clamp when min > max"
 fragments:
-- id: greek_ident_file
+- id: clamp_range_error
   selector:
-    path: greek_ident.py
-- id: req_global_0
+    path: src/utils/number.ts
+    anchor: "if (min > max) throw new RangeError"
+- id: easing_calls_clamp
   selector:
-    anchor: 'def calculate_Δ(θ, φ):'
+    path: src/animation/easing.ts
+    anchor: "clamp(t, 0, 1)"
+- id: timeline_calls_easing
+  selector:
+    path: src/animation/timeline.ts
+    anchor: "easeInOut(t)"
+- id: player_calls_interpolate
+  selector:
+    path: src/player/animationPlayer.ts
+    anchor: "interpolateKeyframes(this.keyframes"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_GRK021_PART_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_GRK021_SHADER_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_GRK021_TEX_C
 oracle:
   required:
-  - greek_ident_file
-  - req_global_0
+  - clamp_range_error
+  - easing_calls_clamp
+  - timeline_calls_easing
+  - player_calls_interpolate
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

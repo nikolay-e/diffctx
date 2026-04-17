@@ -1,0 +1,162 @@
+name: gap_010_python_event_bus_deadlock_fix
+tags:
+- lang:python
+- change:bug_fix
+- change:single_file
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    events/bus.py: |
+      import threading
+      from typing import Callable
+
+      class EventBus:
+          def __init__(self):
+              self._lock = threading.Lock()
+              self._listeners: dict[str, list[Callable]] = {}
+
+          def subscribe(self, event_type: str, handler: Callable) -> None:
+              with self._lock:
+                  if event_type not in self._listeners:
+                      self._listeners[event_type] = []
+                  self._listeners[event_type].append(handler)
+
+          def publish(self, event_type: str, data: dict) -> None:
+              with self._lock:
+                  handlers = self._listeners.get(event_type, [])
+              for handler in handlers:
+                  handler(data)
+
+          def unsubscribe(self, event_type: str, handler: Callable) -> None:
+              with self._lock:
+                  listeners = self._listeners.get(event_type, [])
+                  self._listeners[event_type] = [h for h in listeners if h != handler]
+    events/replay.py: |
+      from events.bus import EventBus
+
+      class EventReplayer:
+          def __init__(self, bus: EventBus):
+              self._bus = bus
+              self._journal: list[tuple[str, dict]] = []
+
+          def record(self, event_type: str, data: dict) -> None:
+              self._journal.append((event_type, data))
+
+          def replay_all(self) -> int:
+              count = 0
+              for event_type, data in self._journal:
+                  self._bus.publish(event_type, data)
+                  count += 1
+              return count
+    services/order_service.py: |
+      from events.bus import EventBus
+
+      class OrderService:
+          def __init__(self, bus: EventBus):
+              self._bus = bus
+              self._orders: dict[str, dict] = {}
+
+          def create_order(self, order_id: str, items: list[str]) -> None:
+              self._orders[order_id] = {"items": items, "status": "pending"}
+              self._bus.publish("order.created", {"id": order_id, "items": items})
+
+          def cancel_order(self, order_id: str) -> bool:
+              order = self._orders.get(order_id)
+              if not order or order["status"] != "pending":
+                  return False
+              order["status"] = "cancelled"
+              self._bus.publish("order.cancelled", {"id": order_id})
+              return True
+    services/inventory_sync.py: |
+      class InventorySyncService:
+          def __init__(self):
+              self._stock: dict[str, int] = {}
+
+          def set_stock(self, sku: str, qty: int) -> None:
+              self._stock[sku] = qty
+
+          def decrease(self, sku: str, amount: int) -> bool:
+              current = self._stock.get(sku, 0)
+              if current < amount:
+                  return False
+              self._stock[sku] = current - amount
+              return True
+    events/serializer.py: |
+      import json
+
+      class EventSerializer:
+          def to_json(self, event_type: str, data: dict) -> str:
+              return json.dumps({"type": event_type, "payload": data})
+
+          def from_json(self, raw: str) -> tuple[str, dict]:
+              parsed = json.loads(raw)
+              return parsed["type"], parsed["payload"]
+  changed_files:
+    events/bus.py: |
+      import threading
+      from typing import Callable
+
+      class EventBus:
+          def __init__(self):
+              self._lock = threading.RLock()
+              self._listeners: dict[str, list[Callable]] = {}
+              self._dispatching = threading.local()
+
+          def subscribe(self, event_type: str, handler: Callable) -> None:
+              with self._lock:
+                  if event_type not in self._listeners:
+                      self._listeners[event_type] = []
+                  self._listeners[event_type].append(handler)
+
+          def publish(self, event_type: str, data: dict) -> None:
+              with self._lock:
+                  handlers = list(self._listeners.get(event_type, []))
+              depth = getattr(self._dispatching, "depth", 0)
+              if depth > 10:
+                  raise RecursionError(f"Event dispatch depth exceeded for {event_type}")
+              self._dispatching.depth = depth + 1
+              try:
+                  for handler in handlers:
+                      handler(data)
+              finally:
+                  self._dispatching.depth = depth
+
+          def unsubscribe(self, event_type: str, handler: Callable) -> None:
+              with self._lock:
+                  listeners = self._listeners.get(event_type, [])
+                  self._listeners[event_type] = [h for h in listeners if h != handler]
+
+          def clear(self) -> None:
+              with self._lock:
+                  self._listeners.clear()
+fragments:
+- id: bus_publish
+  selector:
+    path: events/bus.py
+    anchor: "def publish"
+- id: replay_all
+  selector:
+    path: events/replay.py
+    anchor: "def replay_all"
+- id: order_create
+  selector:
+    path: services/order_service.py
+    anchor: "def create_order"
+- id: no_inventory_sync
+  selector:
+    path: services/inventory_sync.py
+- id: no_event_serializer
+  selector:
+    path: events/serializer.py
+oracle:
+  required:
+  - bus_publish
+  - replay_all
+  - order_create
+  forbidden:
+  - no_inventory_sync
+  - no_event_serializer

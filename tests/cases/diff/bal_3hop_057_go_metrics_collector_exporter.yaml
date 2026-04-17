@@ -1,0 +1,284 @@
+name: bal_3hop_057_go_metrics_collector_exporter
+tags:
+- lang:go
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    pkg/metrics/types.go: |
+      package metrics
+
+      type MetricType string
+
+      const (
+        Counter   MetricType = "counter"
+        Gauge     MetricType = "gauge"
+      )
+
+      type Metric struct {
+        Name  string
+        Type  MetricType
+        Value float64
+      }
+    pkg/metrics/collector.go: |
+      package metrics
+
+      type Collector struct {
+        metrics map[string]*Metric
+      }
+
+      func NewCollector() *Collector {
+        return &Collector{metrics: make(map[string]*Metric)}
+      }
+
+      func (c *Collector) Inc(name string) {
+        if m, ok := c.metrics[name]; ok {
+          m.Value++
+        } else {
+          c.metrics[name] = &Metric{Name: name, Type: Counter, Value: 1}
+        }
+      }
+
+      func (c *Collector) Set(name string, value float64) {
+        c.metrics[name] = &Metric{Name: name, Type: Gauge, Value: value}
+      }
+
+      func (c *Collector) GetAll() []*Metric {
+        var result []*Metric
+        for _, m := range c.metrics {
+          result = append(result, m)
+        }
+        return result
+      }
+    pkg/metrics/exporter.go: |
+      package metrics
+
+      import "fmt"
+
+      type Exporter struct {
+        collector *Collector
+      }
+
+      func NewExporter(c *Collector) *Exporter {
+        return &Exporter{collector: c}
+      }
+
+      func (e *Exporter) Export() string {
+        var output string
+        for _, m := range e.collector.GetAll() {
+          output += fmt.Sprintf("%s{type=%q} %f\n", m.Name, m.Type, m.Value)
+        }
+        return output
+      }
+    cmd/api/metrics.go: |
+      package main
+
+      import (
+        "net/http"
+        "pkg/metrics"
+      )
+
+      var collector = metrics.NewCollector()
+      var exporter = metrics.NewExporter(collector)
+
+      func metricsHandler(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Content-Type", "text/plain")
+        w.Write([]byte(exporter.Export()))
+      }
+
+      func requestCounter(next http.Handler) http.Handler {
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+          collector.Inc("http_requests_total")
+          next.ServeHTTP(w, r)
+        })
+      }
+    pkg/util/net.go: |
+      package util
+
+      var GARBAGE_057_NET_MARKER_A = "net"
+      var GARBAGE_057_TCP_MARKER_B = true
+
+      func ResolveDNS(host string) string { return host }
+    pkg/util/encode.go: |
+      package util
+
+      var GARBAGE_057_ENCODE_MARKER_C = "encode"
+      var GARBAGE_057_BASE64_MARKER_D = true
+
+      func EncodeBase64(data []byte) string { return "" }
+  changed_files:
+    pkg/metrics/types.go: |
+      package metrics
+
+      type MetricType string
+
+      const (
+        Counter   MetricType = "counter"
+        Gauge     MetricType = "gauge"
+        Histogram MetricType = "histogram"
+      )
+
+      type Metric struct {
+        Name   string
+        Type   MetricType
+        Value  float64
+        Labels map[string]string
+      }
+    pkg/metrics/collector.go: |
+      package metrics
+
+      type Collector struct {
+        metrics map[string]*Metric
+      }
+
+      func NewCollector() *Collector {
+        return &Collector{metrics: make(map[string]*Metric)}
+      }
+
+      func (c *Collector) Inc(name string) {
+        c.IncWithLabels(name, nil)
+      }
+
+      func (c *Collector) IncWithLabels(name string, labels map[string]string) {
+        key := name
+        if m, ok := c.metrics[key]; ok {
+          m.Value++
+        } else {
+          c.metrics[key] = &Metric{Name: name, Type: Counter, Value: 1, Labels: labels}
+        }
+      }
+
+      func (c *Collector) Set(name string, value float64) {
+        c.metrics[name] = &Metric{Name: name, Type: Gauge, Value: value}
+      }
+
+      func (c *Collector) Observe(name string, value float64, labels map[string]string) {
+        c.metrics[name] = &Metric{Name: name, Type: Histogram, Value: value, Labels: labels}
+      }
+
+      func (c *Collector) GetAll() []*Metric {
+        var result []*Metric
+        for _, m := range c.metrics {
+          result = append(result, m)
+        }
+        return result
+      }
+    pkg/metrics/exporter.go: |
+      package metrics
+
+      import (
+        "fmt"
+        "strings"
+      )
+
+      type Exporter struct {
+        collector *Collector
+      }
+
+      func NewExporter(c *Collector) *Exporter {
+        return &Exporter{collector: c}
+      }
+
+      func (e *Exporter) Export() string {
+        var output string
+        for _, m := range e.collector.GetAll() {
+          labels := formatLabels(m.Labels)
+          output += fmt.Sprintf("%s{type=%q%s} %f\n", m.Name, m.Type, labels, m.Value)
+        }
+        return output
+      }
+
+      func formatLabels(labels map[string]string) string {
+        if len(labels) == 0 {
+          return ""
+        }
+        var parts []string
+        for k, v := range labels {
+          parts = append(parts, fmt.Sprintf(",%s=%q", k, v))
+        }
+        return strings.Join(parts, "")
+      }
+    cmd/api/metrics.go: |
+      package main
+
+      import (
+        "net/http"
+        "pkg/metrics"
+      )
+
+      var collector = metrics.NewCollector()
+      var exporter = metrics.NewExporter(collector)
+
+      func metricsHandler(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Content-Type", "text/plain")
+        w.Write([]byte(exporter.Export()))
+      }
+
+      func requestCounter(next http.Handler) http.Handler {
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+          collector.IncWithLabels("http_requests_total", map[string]string{"method": r.Method})
+          next.ServeHTTP(w, r)
+        })
+      }
+    pkg/util/net.go: |
+      package util
+
+      var GARBAGE_057_NET_MARKER_A = "net"
+      var GARBAGE_057_TCP_MARKER_B = true
+
+      func ResolveDNS(host string) string { return host }
+    pkg/util/encode.go: |
+      package util
+
+      var GARBAGE_057_ENCODE_MARKER_C = "encode"
+      var GARBAGE_057_BASE64_MARKER_D = true
+
+      func EncodeBase64(data []byte) string { return "" }
+  commit_message: "feat: add labels and histogram metric type"
+fragments:
+- id: histogram_type
+  selector:
+    path: pkg/metrics/types.go
+    anchor: 'Histogram MetricType = "histogram"'
+- id: metric_labels_field
+  selector:
+    path: pkg/metrics/types.go
+    anchor: "Labels map[string]string"
+- id: collector_observe
+  selector:
+    path: pkg/metrics/collector.go
+    anchor: "func (c *Collector) Observe"
+- id: collector_inc_with_labels
+  selector:
+    path: pkg/metrics/collector.go
+    anchor: "func (c *Collector) IncWithLabels"
+- id: exporter_format_labels
+  selector:
+    path: pkg/metrics/exporter.go
+    anchor: "func formatLabels"
+- id: api_uses_labels
+  selector:
+    path: cmd/api/metrics.go
+    anchor: "IncWithLabels"
+- id: no_net
+  selector:
+    path: pkg/util/net.go
+    anchor: "GARBAGE_057_NET_MARKER_A"
+- id: no_encode
+  selector:
+    path: pkg/util/encode.go
+    anchor: "GARBAGE_057_ENCODE_MARKER_C"
+oracle:
+  required:
+  - histogram_type
+  - metric_labels_field
+  - collector_observe
+  - collector_inc_with_labels
+  - exporter_format_labels
+  - api_uses_labels
+  allowed: []
+  forbidden:
+  - no_net
+  - no_encode

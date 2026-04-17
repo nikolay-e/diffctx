@@ -1,121 +1,175 @@
 name: csharp_014_delegate_event
+tags:
+- lang:julia
+- change:refactor
+- change:single_file
+- context:call_graph
+- distance:1hop
+- difficulty:hard
 repo:
   initial_files:
-    Events/OrderEventArgs.cs: |
-      namespace MyApp.Events;
+    src/Portfolio.jl: |
+      module Portfolio
 
-      public class OrderEventArgs : EventArgs
-      {
-          public int OrderId { get; }
-          public string Status { get; }
+      export Position, total_value, unrealized_pnl
 
-          public OrderEventArgs(int orderId, string status)
-          {
-              OrderId = orderId;
-              Status = status;
-          }
-      }
-    Services/OrderProcessor.cs: |
-      namespace MyApp.Services;
+      struct Position
+          symbol::String
+          quantity::Int
+          avg_cost::Float64
+          current_price::Float64
+      end
 
-      public class OrderProcessor { }
-    Unrelated/CacheInvalidator.cs: |
-      namespace MyApp.Unrelated;
+      function total_value(positions::Vector{Position})::Float64
+          return sum(p.quantity * p.current_price for p in positions)
+      end
 
-      public class CacheInvalidator
-      {
-          private const string GARBAGE_CS_014_CACHE_INVALIDATOR_A = "cache_invalidator_marker";
+      function unrealized_pnl(position::Position)::Float64
+          return position.quantity * (position.current_price - position.avg_cost)
+      end
 
-          public void Invalidate(string key) => _ = GARBAGE_CS_014_CACHE_INVALIDATOR_A + key;
-      }
-    Unrelated/BackgroundScheduler.cs: |
-      namespace MyApp.Unrelated;
+      end
+    src/RiskEngine.jl: |
+      module RiskEngine
 
-      public class BackgroundScheduler
-      {
-          public const string GARBAGE_CS_014_BG_SCHEDULER_B = "background_scheduler_marker";
+      include("Portfolio.jl")
+      using .Portfolio
 
-          public void Schedule(TimeSpan interval) => _ = GARBAGE_CS_014_BG_SCHEDULER_B;
-      }
+      function check_concentration(positions::Vector{Position}, max_pct::Float64)::Vector{String}
+          total = total_value(positions)
+          warnings = String[]
+          for p in positions
+              pct = (p.quantity * p.current_price) / total
+              if pct > max_pct
+                  push!(warnings, "$(p.symbol) exceeds concentration limit: $(round(pct*100, digits=1))%")
+              end
+          end
+          return warnings
+      end
+
+      end
+    src/PnlReport.jl: |
+      module PnlReport
+
+      include("Portfolio.jl")
+      using .Portfolio
+
+      function summarize_pnl(positions::Vector{Position})::Dict{String,Float64}
+          return Dict(p.symbol => unrealized_pnl(p) for p in positions)
+      end
+
+      end
+    src/CS014_Notifications.jl: |
+      module Notifications
+
+      CS014_GARBAGE_A = "email_marker"
+      CS014_GARBAGE_B = "smtp_host"
+
+      function send_alert(msg::String)
+          println("ALERT: $msg")
+      end
+
+      end
+    src/CS014_Storage.jl: |
+      module Storage
+
+      CS014_GARBAGE_C = "db_marker"
+      CS014_GARBAGE_D = "conn_str"
+
+      function persist(data::Dict)
+          println("Storing: $data")
+      end
+
+      end
   changed_files:
-    Events/OrderEventArgs.cs: |
-      namespace MyApp.Events;
+    src/Portfolio.jl: |
+      module Portfolio
 
-      public class OrderEventArgs : EventArgs
-      {
-          public int OrderId { get; }
-          public string Status { get; }
+      export Position, total_value, unrealized_pnl, weighted_avg_price
 
-          public OrderEventArgs(int orderId, string status)
-          {
-              OrderId = orderId;
-              Status = status;
-          }
-      }
-    Services/OrderProcessor.cs: |
-      using MyApp.Events;
+      struct Position
+          symbol::String
+          quantity::Int
+          avg_cost::Float64
+          current_price::Float64
+          sector::String
+      end
 
-      namespace MyApp.Services;
+      function total_value(positions::Vector{Position})::Float64
+          return sum(p.quantity * p.current_price for p in positions)
+      end
 
-      public class OrderProcessor
-      {
-          public event EventHandler<OrderEventArgs>? OrderProcessed;
+      function unrealized_pnl(position::Position)::Float64
+          return position.quantity * (position.current_price - position.avg_cost)
+      end
 
-          public void ProcessOrder(int orderId)
-          {
-              OnOrderProcessed(new OrderEventArgs(orderId, "Completed"));
-          }
+      function weighted_avg_price(positions::Vector{Position})::Float64
+          total_qty = sum(p.quantity for p in positions)
+          return total_qty == 0 ? 0.0 : sum(p.quantity * p.current_price for p in positions) / total_qty
+      end
 
-          protected virtual void OnOrderProcessed(OrderEventArgs e)
-          {
-              OrderProcessed?.Invoke(this, e);
-          }
-      }
-    Unrelated/CacheInvalidator.cs: |
-      namespace MyApp.Unrelated;
+      end
+    src/CS014_Notifications.jl: |
+      module Notifications
 
-      public class CacheInvalidator
-      {
-          private const string GARBAGE_CS_014_CACHE_INVALIDATOR_A = "cache_invalidator_marker";
+      CS014_GARBAGE_A = "email_marker"
+      CS014_GARBAGE_B = "smtp_host"
 
-          public void Invalidate(string key) => _ = GARBAGE_CS_014_CACHE_INVALIDATOR_A + key;
-      }
-    Unrelated/BackgroundScheduler.cs: |
-      namespace MyApp.Unrelated;
+      function send_alert(msg::String)
+          println("ALERT: $msg")
+      end
 
-      public class BackgroundScheduler
-      {
-          public const string GARBAGE_CS_014_BG_SCHEDULER_B = "background_scheduler_marker";
+      end
+    src/CS014_Storage.jl: |
+      module Storage
 
-          public void Schedule(TimeSpan interval) => _ = GARBAGE_CS_014_BG_SCHEDULER_B;
-      }
-  commit_message: Update files
+      CS014_GARBAGE_C = "db_marker"
+      CS014_GARBAGE_D = "conn_str"
+
+      function persist(data::Dict)
+          println("Storing: $data")
+      end
+
+      end
+  commit_message: "refactor: add sector field to Position, add weighted_avg_price function"
 fragments:
-- id: orderprocessor_file
+- id: portfolio_weighted_avg
   selector:
-    path: Services/OrderProcessor.cs
-- id: req_global_0
+    path: src/Portfolio.jl
+    anchor: "function weighted_avg_price(positions::Vector{Position})"
+- id: portfolio_sector_field
   selector:
-    anchor: public class OrderProcessor
-- id: no_global_0
+    path: src/Portfolio.jl
+    anchor: "sector::String"
+- id: risk_uses_total_value
   selector:
-    anchor: GARBAGE_CS_014_BG_SCHEDULER_B
-- id: no_global_1
+    path: src/RiskEngine.jl
+    anchor: "total = total_value(positions)"
+- id: pnl_uses_unrealized_pnl
   selector:
-    anchor: GARBAGE_CS_014_CACHE_INVALIDATOR_A
-- id: no_global_2
+    path: src/PnlReport.jl
+    anchor: "unrealized_pnl(p)"
+- id: no_garbage_a
   selector:
-    anchor: BackgroundScheduler.cs
-- id: no_global_3
+    anchor: CS014_GARBAGE_A
+- id: no_garbage_b
   selector:
-    anchor: CacheInvalidator.cs
+    anchor: CS014_GARBAGE_B
+- id: no_garbage_c
+  selector:
+    anchor: CS014_GARBAGE_C
+- id: no_garbage_d
+  selector:
+    anchor: CS014_GARBAGE_D
 oracle:
   required:
-  - orderprocessor_file
-  - req_global_0
+  - portfolio_weighted_avg
+  - portfolio_sector_field
+  - risk_uses_total_value
+  - pnl_uses_unrealized_pnl
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

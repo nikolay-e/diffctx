@@ -1,0 +1,319 @@
+name: bal_cfgcode_029_go_auth_config
+tags:
+- lang:go
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    config/auth.json: |
+      {
+        "jwt_secret": "dev-secret",
+        "token_ttl_seconds": 3600,
+        "refresh_ttl_seconds": 604800,
+        "issuer": "myapp-dev",
+        "providers": {
+          "google": {
+            "client_id": "google-dev",
+            "enabled": true
+          }
+        }
+      }
+    internal/auth/jwt.go: |
+      package auth
+
+      import (
+        "encoding/json"
+        "os"
+      )
+
+      type AuthConfig struct {
+        JWTSecret       string `json:"jwt_secret"`
+        TokenTTL        int    `json:"token_ttl_seconds"`
+        RefreshTTL      int    `json:"refresh_ttl_seconds"`
+        Issuer          string `json:"issuer"`
+      }
+
+      func LoadAuthConfig() (*AuthConfig, error) {
+        data, err := os.ReadFile("config/auth.json")
+        if err != nil {
+          return nil, err
+        }
+        var cfg AuthConfig
+        json.Unmarshal(data, &cfg)
+        return &cfg, nil
+      }
+
+      func (c *AuthConfig) CreateToken(userID string) string {
+        return c.Issuer + ":" + userID
+      }
+    internal/auth/oauth.go: |
+      package auth
+
+      import (
+        "encoding/json"
+        "os"
+      )
+
+      type oauthConfig struct {
+        Providers map[string]struct {
+          ClientID string `json:"client_id"`
+          Enabled  bool   `json:"enabled"`
+        } `json:"providers"`
+      }
+
+      func GetProvider(name string) (string, bool) {
+        data, _ := os.ReadFile("config/auth.json")
+        var cfg oauthConfig
+        json.Unmarshal(data, &cfg)
+        p, ok := cfg.Providers[name]
+        if !ok || !p.Enabled {
+          return "", false
+        }
+        return p.ClientID, true
+      }
+    internal/auth/session.go: |
+      package auth
+
+      import (
+        "encoding/json"
+        "os"
+      )
+
+      type sessionCfg struct {
+        RefreshTTL int `json:"refresh_ttl_seconds"`
+      }
+
+      func SessionDuration() int {
+        data, _ := os.ReadFile("config/auth.json")
+        var cfg sessionCfg
+        json.Unmarshal(data, &cfg)
+        return cfg.RefreshTTL
+      }
+    internal/cache/store.go: |
+      package cache
+
+      var GARBAGE_CFGCODE_029_CACHE_A = "lru"
+      var GARBAGE_CFGCODE_029_CACHE_B = 1000
+
+      func Get(key string) interface{} {
+        return nil
+      }
+    internal/reporting/report.go: |
+      package reporting
+
+      var GARBAGE_CFGCODE_029_REPORT_C = "csv"
+      var GARBAGE_CFGCODE_029_REPORT_D = "/tmp/reports"
+
+      func Generate(data []byte) error {
+        return nil
+      }
+    garbage_deploy.go: |
+      package main
+
+      var GARBAGE_CFGCODE_029_DEPLOY_E = "k8s"
+      var GARBAGE_CFGCODE_029_DEPLOY_F = "production"
+
+      func deploy() {}
+  changed_files:
+    config/auth.json: |
+      {
+        "jwt_secret": "prod-rotated-2024",
+        "token_ttl_seconds": 900,
+        "refresh_ttl_seconds": 2592000,
+        "issuer": "myapp-prod",
+        "providers": {
+          "google": {
+            "client_id": "google-prod",
+            "enabled": true
+          },
+          "github": {
+            "client_id": "github-prod",
+            "enabled": true
+          }
+        },
+        "mfa": {
+          "enabled": true,
+          "totp_issuer": "MyApp Production"
+        }
+      }
+    internal/auth/jwt.go: |
+      package auth
+
+      import (
+        "encoding/json"
+        "os"
+      )
+
+      type AuthConfig struct {
+        JWTSecret       string `json:"jwt_secret"`
+        TokenTTL        int    `json:"token_ttl_seconds"`
+        RefreshTTL      int    `json:"refresh_ttl_seconds"`
+        Issuer          string `json:"issuer"`
+      }
+
+      func LoadAuthConfig() (*AuthConfig, error) {
+        data, err := os.ReadFile("config/auth.json")
+        if err != nil {
+          return nil, err
+        }
+        var cfg AuthConfig
+        json.Unmarshal(data, &cfg)
+        return &cfg, nil
+      }
+
+      func (c *AuthConfig) CreateToken(userID string) string {
+        return c.Issuer + ":" + userID
+      }
+    internal/auth/oauth.go: |
+      package auth
+
+      import (
+        "encoding/json"
+        "os"
+      )
+
+      type oauthConfig struct {
+        Providers map[string]struct {
+          ClientID string `json:"client_id"`
+          Enabled  bool   `json:"enabled"`
+        } `json:"providers"`
+      }
+
+      func GetProvider(name string) (string, bool) {
+        data, _ := os.ReadFile("config/auth.json")
+        var cfg oauthConfig
+        json.Unmarshal(data, &cfg)
+        p, ok := cfg.Providers[name]
+        if !ok || !p.Enabled {
+          return "", false
+        }
+        return p.ClientID, true
+      }
+    internal/auth/session.go: |
+      package auth
+
+      import (
+        "encoding/json"
+        "os"
+      )
+
+      type sessionCfg struct {
+        RefreshTTL int `json:"refresh_ttl_seconds"`
+      }
+
+      func SessionDuration() int {
+        data, _ := os.ReadFile("config/auth.json")
+        var cfg sessionCfg
+        json.Unmarshal(data, &cfg)
+        return cfg.RefreshTTL
+      }
+    internal/cache/store.go: |
+      package cache
+
+      var GARBAGE_CFGCODE_029_CACHE_A = "lru"
+      var GARBAGE_CFGCODE_029_CACHE_B = 1000
+
+      func Get(key string) interface{} {
+        return nil
+      }
+    internal/reporting/report.go: |
+      package reporting
+
+      var GARBAGE_CFGCODE_029_REPORT_C = "csv"
+      var GARBAGE_CFGCODE_029_REPORT_D = "/tmp/reports"
+
+      func Generate(data []byte) error {
+        return nil
+      }
+    garbage_deploy.go: |
+      package main
+
+      var GARBAGE_CFGCODE_029_DEPLOY_E = "k8s"
+      var GARBAGE_CFGCODE_029_DEPLOY_F = "production"
+
+      func deploy() {}
+  commit_message: "config: production auth with MFA and GitHub provider"
+fragments:
+- id: config_token_ttl
+  selector:
+    path: config/auth.json
+    anchor: '"token_ttl_seconds": 900'
+- id: config_github
+  selector:
+    path: config/auth.json
+    anchor: "github-prod"
+- id: config_mfa
+  selector:
+    path: config/auth.json
+    anchor: "totp_issuer"
+- id: config_issuer
+  selector:
+    path: config/auth.json
+    anchor: "myapp-prod"
+- id: jwt_reads_config
+  selector:
+    path: internal/auth/jwt.go
+    anchor: 'os.ReadFile("config/auth.json")'
+- id: jwt_uses_issuer
+  selector:
+    path: internal/auth/jwt.go
+    anchor: "c.Issuer"
+- id: oauth_reads_providers
+  selector:
+    path: internal/auth/oauth.go
+    anchor: "cfg.Providers[name]"
+- id: session_reads_ttl
+  selector:
+    path: internal/auth/session.go
+    anchor: "cfg.RefreshTTL"
+- id: no_cache
+  selector:
+    path: internal/cache/store.go
+- id: no_reporting
+  selector:
+    path: internal/reporting/report.go
+- id: no_deploy
+  selector:
+    path: garbage_deploy.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_029_CACHE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_029_CACHE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_029_REPORT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_029_REPORT_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CFGCODE_029_DEPLOY_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CFGCODE_029_DEPLOY_F
+oracle:
+  required:
+  - config_token_ttl
+  - config_github
+  - config_mfa
+  - config_issuer
+  - jwt_reads_config
+  - jwt_uses_issuer
+  - oauth_reads_providers
+  - session_reads_ttl
+  allowed: []
+  forbidden:
+  - no_cache
+  - no_reporting
+  - no_deploy
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

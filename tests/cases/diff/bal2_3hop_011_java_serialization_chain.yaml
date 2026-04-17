@@ -1,0 +1,194 @@
+name: bal2_3hop_011_java_serialization_chain
+tags:
+- lang:java
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/app/dto/UserDto.java: |
+      package com.app.dto;
+
+      public class UserDto {
+          private String id;
+          private String name;
+          public UserDto(String id, String name) {
+              this.id = id;
+              this.name = name;
+          }
+          public String getId() { return id; }
+          public String getName() { return name; }
+      }
+    src/main/java/com/app/mapper/UserMapper.java: |
+      package com.app.mapper;
+
+      import com.app.dto.UserDto;
+
+      public class UserMapper {
+          public UserDto toDto(String id, String name) {
+              return new UserDto(id, name);
+          }
+          public String toJson(UserDto dto) {
+              return "{\"id\":\"" + dto.getId() + "\",\"name\":\"" + dto.getName() + "\"}";
+          }
+      }
+    src/main/java/com/app/service/UserSerializer.java: |
+      package com.app.service;
+
+      import com.app.mapper.UserMapper;
+      import com.app.dto.UserDto;
+
+      public class UserSerializer {
+          private final UserMapper mapper;
+          public UserSerializer(UserMapper mapper) {
+              this.mapper = mapper;
+          }
+          public String serialize(String id, String name) {
+              UserDto dto = mapper.toDto(id, name);
+              return mapper.toJson(dto);
+          }
+      }
+    src/main/java/com/app/handler/ExportHandler.java: |
+      package com.app.handler;
+
+      import com.app.service.UserSerializer;
+
+      public class ExportHandler {
+          private final UserSerializer serializer;
+          public ExportHandler(UserSerializer serializer) {
+              this.serializer = serializer;
+          }
+          public String export(String id, String name) {
+              return serializer.serialize(id, name);
+          }
+      }
+    src/main/java/com/app/util/CsvWriter.java: |
+      package com.app.util;
+
+      public class CsvWriter {
+          public static String toCsv(String... fields) {
+              return String.join(",", fields);
+          }
+      }
+    src/main/java/com/app/util/XmlBuilder.java: |
+      package com.app.util;
+
+      public class XmlBuilder {
+          public static String tag(String name, String value) {
+              return "<" + name + ">" + value + "</" + name + ">";
+          }
+      }
+  changed_files:
+    src/main/java/com/app/dto/UserDto.java: |
+      package com.app.dto;
+
+      public class UserDto {
+          private String id;
+          private String name;
+          private String email;
+          public UserDto(String id, String name, String email) {
+              this.id = id;
+              this.name = name;
+              this.email = email;
+          }
+          public String getId() { return id; }
+          public String getName() { return name; }
+          public String getEmail() { return email; }
+      }
+    src/main/java/com/app/mapper/UserMapper.java: |
+      package com.app.mapper;
+
+      import com.app.dto.UserDto;
+
+      public class UserMapper {
+          public UserDto toDto(String id, String name) {
+              return new UserDto(id, name, null);
+          }
+          public String toJson(UserDto dto) {
+              return "{\"id\":\"" + dto.getId() + "\",\"name\":\"" + dto.getName() + "\",\"email\":\"" + dto.getEmail() + "\"}";
+          }
+      }
+    src/main/java/com/app/service/UserSerializer.java: |
+      package com.app.service;
+
+      import com.app.mapper.UserMapper;
+      import com.app.dto.UserDto;
+
+      public class UserSerializer {
+          private final UserMapper mapper;
+          public UserSerializer(UserMapper mapper) {
+              this.mapper = mapper;
+          }
+          public String serialize(String id, String name) {
+              UserDto dto = mapper.toDto(id, name);
+              return mapper.toJson(dto);
+          }
+      }
+    src/main/java/com/app/handler/ExportHandler.java: |
+      package com.app.handler;
+
+      import com.app.service.UserSerializer;
+
+      public class ExportHandler {
+          private final UserSerializer serializer;
+          public ExportHandler(UserSerializer serializer) {
+              this.serializer = serializer;
+          }
+          public String export(String id, String name) {
+              return serializer.serialize(id, name);
+          }
+      }
+    src/main/java/com/app/util/CsvWriter.java: |
+      package com.app.util;
+
+      public class CsvWriter {
+          public static String toCsv(String... fields) {
+              return String.join(",", fields);
+          }
+      }
+    src/main/java/com/app/util/XmlBuilder.java: |
+      package com.app.util;
+
+      public class XmlBuilder {
+          public static String tag(String name, String value) {
+              return "<" + name + ">" + value + "</" + name + ">";
+          }
+      }
+  commit_message: "feat: add email field to UserDto"
+fragments:
+- id: dto_email
+  selector:
+    path: src/main/java/com/app/dto/UserDto.java
+    anchor: "private String email"
+- id: mapper_imports_dto
+  selector:
+    path: src/main/java/com/app/mapper/UserMapper.java
+    anchor: "import com.app.dto.UserDto"
+- id: serializer_imports_mapper
+  selector:
+    path: src/main/java/com/app/service/UserSerializer.java
+    anchor: "import com.app.mapper.UserMapper"
+- id: handler_imports_serializer
+  selector:
+    path: src/main/java/com/app/handler/ExportHandler.java
+    anchor: "import com.app.service.UserSerializer"
+- id: no_csv_writer
+  selector:
+    path: src/main/java/com/app/util/CsvWriter.java
+    anchor: "class CsvWriter"
+- id: no_xml_builder
+  selector:
+    path: src/main/java/com/app/util/XmlBuilder.java
+    anchor: "class XmlBuilder"
+oracle:
+  required:
+  - dto_email
+  - mapper_imports_dto
+  - serializer_imports_mapper
+  - handler_imports_serializer
+  allowed: []
+  forbidden:
+  - no_csv_writer
+  - no_xml_builder

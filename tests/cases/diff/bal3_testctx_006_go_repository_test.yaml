@@ -1,0 +1,272 @@
+name: bal3_testctx_006_go_repository_test
+tags:
+- lang:go
+- change:single_file
+- change:bug_fix
+- context:test_file
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    repo/user_repo.go: |
+      package repo
+
+      import (
+          "errors"
+          "sync"
+      )
+
+      type User struct {
+          ID    int
+          Name  string
+          Email string
+      }
+
+      type UserRepo struct {
+          mu    sync.RWMutex
+          users map[int]*User
+          seq   int
+      }
+
+      func NewUserRepo() *UserRepo {
+          return &UserRepo{users: make(map[int]*User)}
+      }
+
+      func (r *UserRepo) Create(name, email string) *User {
+          r.mu.Lock()
+          defer r.mu.Unlock()
+          r.seq++
+          u := &User{ID: r.seq, Name: name, Email: email}
+          r.users[u.ID] = u
+          return u
+      }
+
+      func (r *UserRepo) FindByID(id int) (*User, error) {
+          r.mu.RLock()
+          defer r.mu.RUnlock()
+          u, ok := r.users[id]
+          if !ok {
+              return nil, errors.New("user not found")
+          }
+          return u, nil
+      }
+
+      func (r *UserRepo) List() []*User {
+          r.mu.RLock()
+          defer r.mu.RUnlock()
+          result := make([]*User, 0, len(r.users))
+          for _, u := range r.users {
+              result = append(result, u)
+          }
+          return result
+      }
+    repo/user_repo_test.go: |
+      package repo
+
+      import "testing"
+
+      func TestCreate(t *testing.T) {
+          r := NewUserRepo()
+          u := r.Create("alice", "alice@test.com")
+          if u.ID != 1 {
+              t.Errorf("expected id 1, got %d", u.ID)
+          }
+      }
+
+      func TestFindByID_Exists(t *testing.T) {
+          r := NewUserRepo()
+          created := r.Create("bob", "bob@test.com")
+          found, err := r.FindByID(created.ID)
+          if err != nil {
+              t.Fatalf("unexpected error: %v", err)
+          }
+          if found.Name != "bob" {
+              t.Errorf("expected bob, got %s", found.Name)
+          }
+      }
+
+      func TestFindByID_NotFound(t *testing.T) {
+          r := NewUserRepo()
+          _, err := r.FindByID(999)
+          if err == nil {
+              t.Error("expected error for missing user")
+          }
+      }
+
+      func TestList(t *testing.T) {
+          r := NewUserRepo()
+          r.Create("a", "a@test.com")
+          r.Create("b", "b@test.com")
+          users := r.List()
+          if len(users) != 2 {
+              t.Errorf("expected 2 users, got %d", len(users))
+          }
+      }
+    repo/order_repo.go: |
+      package repo
+
+      type Order struct {
+          ID     int
+          UserID int
+          Amount float64
+      }
+
+      type OrderRepo struct {
+          orders map[int]*Order
+      }
+
+      func NewOrderRepo() *OrderRepo {
+          return &OrderRepo{orders: make(map[int]*Order)}
+      }
+    service/notification.go: |
+      package service
+
+      import "fmt"
+
+      func SendEmail(to, subject string) error {
+          fmt.Printf("sending email to %s: %s\n", to, subject)
+          return nil
+      }
+    migrate/schema.go: |
+      package migrate
+
+      func RunMigrations() error {
+          return nil
+      }
+  changed_files:
+    repo/user_repo.go: |
+      package repo
+
+      import (
+          "errors"
+          "sort"
+          "sync"
+      )
+
+      type User struct {
+          ID    int
+          Name  string
+          Email string
+      }
+
+      type UserRepo struct {
+          mu    sync.RWMutex
+          users map[int]*User
+          seq   int
+      }
+
+      func NewUserRepo() *UserRepo {
+          return &UserRepo{users: make(map[int]*User)}
+      }
+
+      func (r *UserRepo) Create(name, email string) (*User, error) {
+          if name == "" {
+              return nil, errors.New("name is required")
+          }
+          r.mu.Lock()
+          defer r.mu.Unlock()
+          r.seq++
+          u := &User{ID: r.seq, Name: name, Email: email}
+          r.users[u.ID] = u
+          return u, nil
+      }
+
+      func (r *UserRepo) FindByID(id int) (*User, error) {
+          r.mu.RLock()
+          defer r.mu.RUnlock()
+          u, ok := r.users[id]
+          if !ok {
+              return nil, errors.New("user not found")
+          }
+          return u, nil
+      }
+
+      func (r *UserRepo) FindByEmail(email string) (*User, error) {
+          r.mu.RLock()
+          defer r.mu.RUnlock()
+          for _, u := range r.users {
+              if u.Email == email {
+                  return u, nil
+              }
+          }
+          return nil, errors.New("user not found")
+      }
+
+      func (r *UserRepo) List() []*User {
+          r.mu.RLock()
+          defer r.mu.RUnlock()
+          result := make([]*User, 0, len(r.users))
+          for _, u := range r.users {
+              result = append(result, u)
+          }
+          sort.Slice(result, func(i, j int) bool {
+              return result[i].ID < result[j].ID
+          })
+          return result
+      }
+
+      func (r *UserRepo) Delete(id int) error {
+          r.mu.Lock()
+          defer r.mu.Unlock()
+          if _, ok := r.users[id]; !ok {
+              return errors.New("user not found")
+          }
+          delete(r.users, id)
+          return nil
+      }
+  commit_message: "fix: add validation to Create, add FindByEmail and Delete"
+fragments:
+- id: create_validation
+  selector:
+    path: repo/user_repo.go
+    anchor: "name is required"
+- id: find_by_email_fn
+  selector:
+    path: repo/user_repo.go
+    anchor: "func (r *UserRepo) FindByEmail(email string)"
+- id: delete_fn
+  selector:
+    path: repo/user_repo.go
+    anchor: "func (r *UserRepo) Delete(id int)"
+- id: list_sorted
+  selector:
+    path: repo/user_repo.go
+    anchor: "result[i].ID < result[j].ID"
+- id: test_create
+  selector:
+    path: repo/user_repo_test.go
+    anchor: "func TestCreate(t *testing.T)"
+- id: test_find_by_id
+  selector:
+    path: repo/user_repo_test.go
+    anchor: "func TestFindByID_Exists(t *testing.T)"
+- id: test_list
+  selector:
+    path: repo/user_repo_test.go
+    anchor: "func TestList(t *testing.T)"
+- id: no_order_repo
+  selector:
+    path: repo/order_repo.go
+    anchor: "type Order struct"
+- id: no_notification
+  selector:
+    path: service/notification.go
+    anchor: "func SendEmail"
+- id: no_migrate
+  selector:
+    path: migrate/schema.go
+    anchor: "func RunMigrations"
+oracle:
+  required:
+  - create_validation
+  - find_by_email_fn
+  - delete_fn
+  - test_create
+  allowed:
+  - list_sorted
+  - test_find_by_id
+  - test_list
+  forbidden:
+  - no_order_repo
+  - no_notification
+  - no_migrate

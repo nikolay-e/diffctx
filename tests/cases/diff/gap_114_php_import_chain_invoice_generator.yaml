@@ -1,0 +1,101 @@
+name: gap_114_php_import_chain_invoice_generator
+tags:
+- lang:kotlin
+- change:bug_fix
+- change:single_file
+- context:same_file
+- distance:0hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/finance/TaxCalculator.kt: |
+      data class TaxBracket(val threshold: Double, val rate: Double)
+
+      class TaxCalculator(private val brackets: List<TaxBracket>) {
+          fun computeTax(income: Double): Double {
+              var remaining = income
+              var tax = 0.0
+              for (bracket in brackets.sortedBy { it.threshold }) {
+                  if (remaining <= 0) break
+                  val taxable = minOf(remaining, bracket.threshold)
+                  tax += taxable * bracket.rate  // BUG: applies rate to cumulative threshold, not segment
+                  remaining -= taxable
+              }
+              return tax
+          }
+
+          fun effectiveRate(income: Double): Double {
+              return if (income == 0.0) 0.0 else computeTax(income) / income
+          }
+      }
+    garbage/PayrollExport.kt: |
+      // GARBAGE_INV_A = "payroll_export_marker"
+    garbage/AuditLog.kt: |
+      // GARBAGE_INV_B = "audit_log_marker"
+    garbage/CurrencyConverter.kt: |
+      // GARBAGE_INV_C = "currency_converter_marker"
+    garbage/ComplianceReport.kt: |
+      // GARBAGE_INV_D = "compliance_report_marker"
+  changed_files:
+    src/finance/TaxCalculator.kt: |
+      data class TaxBracket(val threshold: Double, val rate: Double)
+
+      class TaxCalculator(private val brackets: List<TaxBracket>) {
+          fun computeTax(income: Double): Double {
+              val sorted = brackets.sortedBy { it.threshold }
+              var remaining = income
+              var tax = 0.0
+              var prevThreshold = 0.0
+              for (bracket in sorted) {
+                  if (remaining <= 0) break
+                  val segmentSize = bracket.threshold - prevThreshold
+                  val taxable = minOf(remaining, segmentSize)
+                  tax += taxable * bracket.rate
+                  remaining -= taxable
+                  prevThreshold = bracket.threshold
+              }
+              return tax
+          }
+
+          fun effectiveRate(income: Double): Double {
+              return if (income == 0.0) 0.0 else computeTax(income) / income
+          }
+      }
+    garbage/PayrollExport.kt: |
+      // GARBAGE_INV_A = "payroll_export_marker"
+    garbage/AuditLog.kt: |
+      // GARBAGE_INV_B = "audit_log_marker"
+    garbage/CurrencyConverter.kt: |
+      // GARBAGE_INV_C = "currency_converter_marker"
+    garbage/ComplianceReport.kt: |
+      // GARBAGE_INV_D = "compliance_report_marker"
+  commit_message: "fix: correct progressive tax bracket segment size calculation"
+fragments:
+- id: compute_tax
+  selector:
+    anchor: "fun computeTax(income: Double)"
+- id: effective_rate
+  selector:
+    anchor: "fun effectiveRate(income: Double)"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_INV_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_INV_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_INV_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_INV_D
+oracle:
+  required:
+  - compute_tax
+  allowed:
+  - effective_rate
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

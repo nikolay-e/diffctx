@@ -1,0 +1,128 @@
+name: gap2_049_julia_multifile_same_file_matrix_solver
+tags:
+- lang:python
+- change:bug_fix
+- change:multi_file
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/billing/calculator.py: |
+      from src.billing.rules import apply_discount
+
+      def calculate_invoice(items: list[dict], discount_code: str) -> float:
+          subtotal = sum(item["price"] * item["qty"] for item in items)
+          # BUG: discount applied even when subtotal is 0
+          return apply_discount(subtotal, discount_code)
+
+      def line_item_total(price: float, qty: int) -> float:
+          return price * qty
+    src/billing/rules.py: |
+      DISCOUNT_RATES = {
+          "SAVE10": 0.10,
+          "SAVE20": 0.20,
+      }
+
+      def apply_discount(amount: float, code: str) -> float:
+          rate = DISCOUNT_RATES.get(code, 0.0)
+          return amount * (1 - rate)
+    tests/test_calculator.py: |
+      from src.billing.calculator import calculate_invoice, line_item_total
+
+      def test_basic_invoice():
+          items = [{"price": 10.0, "qty": 2}]
+          assert calculate_invoice(items, "") == 20.0
+
+      def test_discount_applied():
+          items = [{"price": 50.0, "qty": 1}]
+          assert calculate_invoice(items, "SAVE10") == 45.0
+    garbage/emailer.py: |
+      # GARBAGE_JMAT_A = "emailer_marker"
+      def send_receipt(email: str) -> None:
+          pass
+    garbage/exporter.py: |
+      # GARBAGE_JMAT_B = "exporter_marker"
+      def export_pdf(data: dict) -> bytes:
+          return b""
+    garbage/notifier.py: |
+      # GARBAGE_JMAT_C = "notifier_marker"
+      def push_notification(msg: str) -> None:
+          pass
+  changed_files:
+    src/billing/calculator.py: |
+      from src.billing.rules import apply_discount
+
+      def calculate_invoice(items: list[dict], discount_code: str) -> float:
+          subtotal = sum(item["price"] * item["qty"] for item in items)
+          if subtotal <= 0:
+              return 0.0
+          return apply_discount(subtotal, discount_code)
+
+      def line_item_total(price: float, qty: int) -> float:
+          return price * qty
+    src/billing/rules.py: |
+      DISCOUNT_RATES = {
+          "SAVE10": 0.10,
+          "SAVE20": 0.20,
+      }
+
+      def apply_discount(amount: float, code: str) -> float:
+          rate = DISCOUNT_RATES.get(code, 0.0)
+          return amount * (1 - rate)
+    tests/test_calculator.py: |
+      from src.billing.calculator import calculate_invoice, line_item_total
+
+      def test_basic_invoice():
+          items = [{"price": 10.0, "qty": 2}]
+          assert calculate_invoice(items, "") == 20.0
+
+      def test_discount_applied():
+          items = [{"price": 50.0, "qty": 1}]
+          assert calculate_invoice(items, "SAVE10") == 45.0
+
+      def test_zero_subtotal_no_discount():
+          items = [{"price": 0.0, "qty": 5}]
+          assert calculate_invoice(items, "SAVE20") == 0.0
+    garbage/emailer.py: |
+      # GARBAGE_JMAT_A = "emailer_marker"
+      def send_receipt(email: str) -> None:
+          pass
+    garbage/exporter.py: |
+      # GARBAGE_JMAT_B = "exporter_marker"
+      def export_pdf(data: dict) -> bytes:
+          return b""
+    garbage/notifier.py: |
+      # GARBAGE_JMAT_C = "notifier_marker"
+      def push_notification(msg: str) -> None:
+          pass
+  commit_message: "fix: skip discount when subtotal is zero in calculate_invoice"
+fragments:
+- id: calculate_invoice_guard
+  selector:
+    anchor: "if subtotal <= 0"
+- id: test_zero_subtotal
+  selector:
+    anchor: "def test_zero_subtotal_no_discount()"
+- id: apply_discount_func
+  selector:
+    anchor: "def apply_discount(amount: float, code: str) -> float"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_JMAT_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_JMAT_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_JMAT_C
+oracle:
+  required:
+  - calculate_invoice_guard
+  - test_zero_subtotal
+  allowed:
+  - apply_discount_func
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

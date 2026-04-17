@@ -1,0 +1,83 @@
+name: css_010_custom_property_fallback
+tags:
+- lang:css
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    theme.css: |
+      :root {
+        --color-surface: #ffffff;
+        --color-on-surface: #1f2937;
+        --color-primary: #6366f1;
+      }
+    components.css: |
+      @import "theme.css";
+      .card {
+        background: var(--color-surface);
+        color: var(--color-on-surface);
+        border-radius: 8px;
+        padding: 16px;
+      }
+      .btn-primary {
+        background: var(--color-primary);
+        color: #fff;
+      }
+    CSS_NOISE_010_login.css: |
+      .CSS_NOISE_010_login_form { max-width: 400px; margin: 0 auto; }
+      .CSS_NOISE_010_login_logo { text-align: center; margin-bottom: 32px; }
+    CSS_NOISE_010_error.css: |
+      .CSS_NOISE_010_error_page { display: flex; flex-direction: column; align-items: center; }
+      .CSS_NOISE_010_error_code { font-size: 96px; font-weight: 900; }
+  changed_files:
+    components.css: |
+      @import "theme.css";
+      .card {
+        background: var(--color-surface, #ffffff);
+        color: var(--color-on-surface, #1f2937);
+        border-radius: 8px;
+        padding: 16px;
+      }
+      .btn-primary {
+        background: var(--color-primary, #6366f1);
+        color: #fff;
+      }
+  commit_message: "style: add fallback values to var() calls in components"
+fragments:
+- id: card_fallback
+  selector:
+    path: components.css
+    anchor: "color-surface, #ffffff"
+- id: btn_fallback
+  selector:
+    path: components.css
+    anchor: "color-primary, #6366f1"
+- id: theme_imported
+  selector:
+    path: theme.css
+    anchor: color-primary
+- id: no_login
+  selector:
+    path: CSS_NOISE_010_login.css
+- id: no_error
+  selector:
+    path: CSS_NOISE_010_error.css
+- id: no_global_0
+  selector:
+    anchor: CSS_NOISE_010_login_form
+- id: no_global_1
+  selector:
+    anchor: CSS_NOISE_010_error_page
+oracle:
+  required:
+  - card_fallback
+  - btn_fallback
+  - theme_imported
+  allowed: []
+  forbidden:
+  - no_login
+  - no_error
+  - no_global_0
+  - no_global_1

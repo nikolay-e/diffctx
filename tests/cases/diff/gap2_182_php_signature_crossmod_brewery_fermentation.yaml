@@ -1,0 +1,137 @@
+name: gap2_182_php_signature_crossmod_brewery_fermentation
+tags:
+- change:signature
+- change:single_file
+- context:cross_module
+- difficulty:easy
+- distance:0hop
+- lang:php
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/Brewery/FermentationMonitor.php: |
+      <?php
+
+      namespace App\Brewery;
+
+      use App\Brewery\TankSensor;
+
+      class FermentationMonitor
+      {
+          private TankSensor $sensor;
+
+          public function __construct(TankSensor $sensor)
+          {
+              $this->sensor = $sensor;
+          }
+
+          public function checkTemperature(): float
+          {
+              return $this->sensor->readCelsius();
+          }
+
+          public function isInRange(): bool
+          {
+              $temp = $this->checkTemperature();
+              return $temp >= 18.0 && $temp <= 24.0;
+          }
+      }
+    src/Brewery/TankSensor.php: |
+      <?php
+
+      namespace App\Brewery;
+
+      class TankSensor
+      {
+          private string $tankId;
+          private float $currentReading;
+
+          public function __construct(string $tankId, float $currentReading)
+          {
+              $this->tankId = $tankId;
+              $this->currentReading = $currentReading;
+          }
+
+          public function readCelsius(): float
+          {
+              return $this->currentReading;
+          }
+
+          public function tankId(): string
+          {
+              return $this->tankId;
+          }
+      }
+    src/Packaging/BottleLabeler.php: |
+      <?php
+
+      namespace App\Packaging;
+
+      class BottleLabeler
+      {
+          public function printLabel(string $batchId, string $beerName): string
+          {
+              return sprintf("%s - %s", $batchId, $beerName);
+          }
+      }
+  changed_files:
+    src/Brewery/FermentationMonitor.php: |
+      <?php
+
+      namespace App\Brewery;
+
+      use App\Brewery\TankSensor;
+
+      class FermentationMonitor
+      {
+          private TankSensor $sensor;
+
+          public function __construct(TankSensor $sensor)
+          {
+              $this->sensor = $sensor;
+          }
+
+          public function checkTemperature(string $unit = 'celsius'): float
+          {
+              $celsius = $this->sensor->readCelsius();
+              if ($unit === 'fahrenheit') {
+                  return $celsius * 9.0 / 5.0 + 32.0;
+              }
+              return $celsius;
+          }
+
+          public function isInRange(): bool
+          {
+              $temp = $this->checkTemperature();
+              return $temp >= 18.0 && $temp <= 24.0;
+          }
+      }
+  commit_message: "feat: add unit parameter to temperature check"
+fragments:
+- id: check_temp_sig
+  selector:
+    path: src/Brewery/FermentationMonitor.php
+    anchor: "public function checkTemperature"
+- id: fahrenheit_conversion
+  selector:
+    path: src/Brewery/FermentationMonitor.php
+    anchor: "$celsius * 9.0 / 5.0 + 32.0"
+- id: sensor_read
+  selector:
+    path: src/Brewery/TankSensor.php
+    anchor: "public function readCelsius"
+- id: no_packaging
+  selector:
+    path: src/Packaging/BottleLabeler.php
+- id: no_labeler
+  selector:
+    anchor: BottleLabeler
+oracle:
+  required:
+  - check_temp_sig
+  - fahrenheit_conversion
+  - sensor_read
+  forbidden:
+  - no_packaging
+  - no_labeler

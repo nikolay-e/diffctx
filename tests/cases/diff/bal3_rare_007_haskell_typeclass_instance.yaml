@@ -1,0 +1,181 @@
+name: bal3_rare_007_haskell_typeclass_instance
+tags:
+- lang:julia
+- change:refactor
+- change:single_file
+- context:call_graph
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/Pricing.jl: |
+      module Pricing
+
+      export PriceRule, apply_rule, base_price
+
+      struct PriceRule
+          sku::String
+          base::Float64
+          tax_rate::Float64
+      end
+
+      function base_price(rule::PriceRule)::Float64
+          return rule.base
+      end
+
+      function apply_rule(rule::PriceRule, quantity::Int)::Float64
+          subtotal = rule.base * quantity
+          return subtotal + subtotal * rule.tax_rate
+      end
+
+      end
+    src/Checkout.jl: |
+      module Checkout
+
+      include("Pricing.jl")
+      using .Pricing
+
+      function checkout_total(rules::Vector{PriceRule}, quantities::Vector{Int})::Float64
+          total = 0.0
+          for (rule, qty) in zip(rules, quantities)
+              total += apply_rule(rule, qty)
+          end
+          return total
+      end
+
+      function receipt_lines(rules::Vector{PriceRule}, quantities::Vector{Int})::Vector{String}
+          return ["$(r.sku): $(apply_rule(r, q))" for (r, q) in zip(rules, quantities)]
+      end
+
+      end
+    src/Reporting.jl: |
+      module Reporting
+
+      include("Pricing.jl")
+      using .Pricing
+
+      function price_summary(rules::Vector{PriceRule})::Dict{String,Float64}
+          return Dict(r.sku => base_price(r) for r in rules)
+      end
+
+      end
+    src/RARE007_Audit.jl: |
+      module Audit
+
+      RARE007_GARBAGE_A = "audit_marker"
+      RARE007_GARBAGE_B = "log_path"
+
+      function record_event(event::String)
+          println("AUDIT: $event")
+      end
+
+      end
+    src/RARE007_Cache.jl: |
+      module Cache
+
+      RARE007_GARBAGE_C = "cache_marker"
+      RARE007_GARBAGE_D = "ttl_seconds"
+
+      function get_cached(key::String)
+          return nothing
+      end
+
+      end
+  changed_files:
+    src/Pricing.jl: |
+      module Pricing
+
+      export PriceRule, apply_rule, base_price, apply_discount
+
+      struct PriceRule
+          sku::String
+          base::Float64
+          tax_rate::Float64
+          discount::Float64
+      end
+
+      function base_price(rule::PriceRule)::Float64
+          return rule.base * (1.0 - rule.discount)
+      end
+
+      function apply_rule(rule::PriceRule, quantity::Int)::Float64
+          discounted = base_price(rule)
+          subtotal = discounted * quantity
+          return subtotal + subtotal * rule.tax_rate
+      end
+
+      function apply_discount(rule::PriceRule, extra_pct::Float64)::PriceRule
+          new_discount = min(1.0, rule.discount + extra_pct)
+          return PriceRule(rule.sku, rule.base, rule.tax_rate, new_discount)
+      end
+
+      end
+    src/RARE007_Audit.jl: |
+      module Audit
+
+      RARE007_GARBAGE_A = "audit_marker"
+      RARE007_GARBAGE_B = "log_path"
+
+      function record_event(event::String)
+          println("AUDIT: $event")
+      end
+
+      end
+    src/RARE007_Cache.jl: |
+      module Cache
+
+      RARE007_GARBAGE_C = "cache_marker"
+      RARE007_GARBAGE_D = "ttl_seconds"
+
+      function get_cached(key::String)
+          return nothing
+      end
+
+      end
+  commit_message: "refactor: add discount field to PriceRule, update base_price and apply_rule"
+fragments:
+- id: pricing_apply_rule
+  selector:
+    path: src/Pricing.jl
+    anchor: "function apply_rule(rule::PriceRule, quantity::Int)"
+- id: pricing_base_price
+  selector:
+    path: src/Pricing.jl
+    anchor: "function base_price(rule::PriceRule)"
+- id: checkout_uses_apply_rule
+  selector:
+    path: src/Checkout.jl
+    anchor: "total += apply_rule(rule, qty)"
+- id: checkout_uses_apply_rule2
+  selector:
+    path: src/Checkout.jl
+    anchor: "$(r.sku): $(apply_rule(r, q))"
+- id: reporting_uses_base_price
+  selector:
+    path: src/Reporting.jl
+    anchor: "base_price(r)"
+- id: no_garbage_a
+  selector:
+    anchor: RARE007_GARBAGE_A
+- id: no_garbage_b
+  selector:
+    anchor: RARE007_GARBAGE_B
+- id: no_garbage_c
+  selector:
+    anchor: RARE007_GARBAGE_C
+- id: no_garbage_d
+  selector:
+    anchor: RARE007_GARBAGE_D
+oracle:
+  required:
+  - pricing_apply_rule
+  - pricing_base_price
+  - checkout_uses_apply_rule
+  - reporting_uses_base_price
+  allowed:
+  - checkout_uses_apply_rule2
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

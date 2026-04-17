@@ -1,0 +1,80 @@
+name: bal4_testctx_012_ruby_slug_generator_spec
+tags:
+- lang:ruby
+- change:single_file
+- change:signature
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    lib/slug.rb: |
+      class Slug
+        def self.generate(title)
+          title.downcase.gsub(/\s+/, '-').gsub(/[^a-z0-9\-]/, '')
+        end
+      end
+    spec/slug_spec.rb: |
+      require_relative '../lib/slug'
+
+      RSpec.describe Slug do
+        describe '.generate' do
+          it 'converts title to slug' do
+            expect(Slug.generate('Hello World')).to eq('hello-world')
+          end
+
+          it 'strips special chars' do
+            expect(Slug.generate('Foo & Bar!')).to eq('foo--bar')
+          end
+        end
+      end
+    lib/permalink.rb: |
+      class Permalink
+        def self.build(base, id)
+          "#{base}/#{id}"
+        end
+      end
+    lib/sanitizer.rb: |
+      class Sanitizer
+        def self.clean(input)
+          input.gsub(/<[^>]+>/, '')
+        end
+      end
+  changed_files:
+    lib/slug.rb: |
+      class Slug
+        def self.generate(title, separator: '-')
+          title.downcase.gsub(/\s+/, separator).gsub(/[^a-z0-9#{Regexp.escape(separator)}]/, '')
+        end
+      end
+  commit_message: "refactor: configurable separator for slug generation"
+fragments:
+- id: generate_method
+  selector:
+    path: lib/slug.rb
+    anchor: "def self.generate(title, separator:"
+- id: spec_generate
+  selector:
+    path: spec/slug_spec.rb
+    anchor: "describe '.generate'"
+- id: spec_require
+  selector:
+    path: spec/slug_spec.rb
+    anchor: "require_relative '../lib/slug'"
+- id: no_permalink
+  selector:
+    path: lib/permalink.rb
+    anchor: "class Permalink"
+- id: no_sanitizer
+  selector:
+    path: lib/sanitizer.rb
+    anchor: "class Sanitizer"
+oracle:
+  required:
+  - generate_method
+  - spec_generate
+  - spec_require
+  allowed: []
+  forbidden:
+  - no_permalink
+  - no_sanitizer

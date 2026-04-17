@@ -1,0 +1,109 @@
+name: r_lang_014_tidyr_pivot_wider
+tags:
+- lang:r
+- change:single_file
+- change:refactor
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    R/reshape.R: |
+      library(tidyr)
+      library(dplyr)
+
+      pivot_metrics_wide <- function(long_data) {
+        long_data |>
+          pivot_wider(
+            id_cols = c(account_id, period),
+            names_from = metric_name,
+            values_from = metric_value,
+            values_fill = 0
+          )
+      }
+    R/visualize.R: |
+      source("R/reshape.R")
+      library(ggplot2)
+
+      plot_metric_comparison <- function(long_data, x_metric, y_metric) {
+        wide <- pivot_metrics_wide(long_data)
+        ggplot(wide, aes_string(x = x_metric, y = y_metric)) +
+          geom_point(alpha = 0.6) +
+          geom_smooth(method = "lm", se = FALSE) +
+          labs(
+            x = x_metric,
+            y = y_metric,
+            title = paste(y_metric, "vs", x_metric)
+          )
+      }
+
+      plot_time_series <- function(long_data, metric) {
+        wide <- pivot_metrics_wide(long_data)
+        ggplot(wide, aes(x = period, y = .data[[metric]])) +
+          geom_line() +
+          labs(title = paste("Trend:", metric))
+      }
+    R/R_NOISE_014_http_utils.R: |
+      R_NOISE_014_is_success_status <- function(code) {
+        code >= 200 && code < 300
+      }
+      R_NOISE_014_make_headers <- function(token, content_type = "application/json") {
+        list(
+          Authorization = paste("Bearer", token),
+          `Content-Type` = content_type
+        )
+      }
+    R/R_NOISE_014_sample_utils.R: |
+      R_NOISE_014_stratified_sample <- function(df, group_col, n_per_group) {
+        df |>
+          dplyr::group_by(.data[[group_col]]) |>
+          dplyr::slice_sample(n = n_per_group) |>
+          dplyr::ungroup()
+      }
+  changed_files:
+    R/reshape.R: |
+      library(tidyr)
+      library(dplyr)
+
+      pivot_metrics_wide <- function(long_data) {
+        long_data |>
+          pivot_wider(
+            id_cols = c(account_id, period),
+            names_from = metric_key,
+            values_from = metric_value,
+            values_fill = 0,
+            names_prefix = "m_"
+          )
+      }
+  commit_message: "Update files"
+fragments:
+- id: reshape_pivot_changed
+  selector:
+    path: R/reshape.R
+    anchor: metric_key
+- id: visualize_uses_wide
+  selector:
+    path: R/visualize.R
+    anchor: pivot_metrics_wide
+- id: no_http_utils
+  selector:
+    path: R/R_NOISE_014_http_utils.R
+- id: no_sample_utils
+  selector:
+    path: R/R_NOISE_014_sample_utils.R
+- id: no_global_0
+  selector:
+    anchor: R_NOISE_014_is_success_status
+- id: no_global_1
+  selector:
+    anchor: R_NOISE_014_stratified_sample
+oracle:
+  required:
+  - reshape_pivot_changed
+  - visualize_uses_wide
+  allowed: []
+  forbidden:
+  - no_http_utils
+  - no_sample_utils
+  - no_global_0
+  - no_global_1

@@ -1,0 +1,178 @@
+name: gap_064_pyts_multifile_shipment_tracker
+tags:
+- lang:erlang
+- change:refactor
+- change:single_file
+- context:call_graph
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/inventory_server.erl: |
+      -module(inventory_server).
+      -behaviour(gen_server).
+      -export([start_link/0, reserve/2, release/2, stock/1]).
+      -export([init/1, handle_call/3, handle_cast/2]).
+
+      start_link() ->
+          gen_server:start_link({local, ?MODULE}, ?MODULE, #{}, []).
+
+      reserve(ProductId, Qty) ->
+          gen_server:call(?MODULE, {reserve, ProductId, Qty}).
+
+      release(ProductId, Qty) ->
+          gen_server:cast(?MODULE, {release, ProductId, Qty}).
+
+      stock(ProductId) ->
+          gen_server:call(?MODULE, {stock, ProductId}).
+
+      init(_Args) ->
+          {ok, #{}}.
+
+      handle_call({reserve, ProductId, Qty}, _From, State) ->
+          Current = maps:get(ProductId, State, 0),
+          if
+              Current >= Qty ->
+                  {reply, ok, maps:put(ProductId, Current - Qty, State)};
+              true ->
+                  {reply, {error, insufficient_stock}, State}
+          end;
+      handle_call({stock, ProductId}, _From, State) ->
+          {reply, maps:get(ProductId, State, 0), State}.
+
+      handle_cast({release, ProductId, Qty}, State) ->
+          Current = maps:get(ProductId, State, 0),
+          {noreply, maps:put(ProductId, Current + Qty, State)}.
+    src/order_handler.erl: |
+      -module(order_handler).
+      -export([place_order/2]).
+
+      place_order(ProductId, Qty) ->
+          case inventory_server:reserve(ProductId, Qty) of
+              ok -> {ok, order_placed};
+              {error, Reason} -> {error, Reason}
+          end.
+    garbage/payment_processor.erl: |
+      -module(payment_processor).
+      %% GARBAGE_GAP064_A = "payment_processor_marker"
+      -export([charge/2]).
+
+      charge(UserId, Amount) -> {ok, UserId, Amount}.
+    garbage/email_notifier.erl: |
+      -module(email_notifier).
+      %% GARBAGE_GAP064_B = "email_notifier_marker"
+      -export([notify/2]).
+
+      notify(To, Msg) -> {sent, To, Msg}.
+    garbage/iot_sensor_agent.erl: |
+      -module(iot_sensor_agent).
+      %% GARBAGE_GAP064_C = "iot_sensor_agent_marker"
+      -export([read/1]).
+
+      read(SensorId) -> {ok, SensorId, 42}.
+  changed_files:
+    src/inventory_server.erl: |
+      -module(inventory_server).
+      -behaviour(gen_server).
+      -export([start_link/0, reserve/2, release/2, stock/1, restock/2]).
+      -export([init/1, handle_call/3, handle_cast/2]).
+
+      start_link() ->
+          gen_server:start_link({local, ?MODULE}, ?MODULE, #{}, []).
+
+      reserve(ProductId, Qty) ->
+          gen_server:call(?MODULE, {reserve, ProductId, Qty}).
+
+      release(ProductId, Qty) ->
+          gen_server:cast(?MODULE, {release, ProductId, Qty}).
+
+      stock(ProductId) ->
+          gen_server:call(?MODULE, {stock, ProductId}).
+
+      restock(ProductId, Qty) ->
+          gen_server:cast(?MODULE, {restock, ProductId, Qty}).
+
+      init(_Args) ->
+          {ok, #{}}.
+
+      handle_call({reserve, ProductId, Qty}, _From, State) ->
+          Current = maps:get(ProductId, State, 0),
+          if
+              Current >= Qty ->
+                  {reply, ok, maps:put(ProductId, Current - Qty, State)};
+              true ->
+                  {reply, {error, insufficient_stock}, State}
+          end;
+      handle_call({stock, ProductId}, _From, State) ->
+          {reply, maps:get(ProductId, State, 0), State}.
+
+      handle_cast({release, ProductId, Qty}, State) ->
+          Current = maps:get(ProductId, State, 0),
+          {noreply, maps:put(ProductId, Current + Qty, State)};
+      handle_cast({restock, ProductId, Qty}, State) ->
+          Current = maps:get(ProductId, State, 0),
+          {noreply, maps:put(ProductId, Current + Qty, State)}.
+    src/order_handler.erl: |
+      -module(order_handler).
+      -export([place_order/2, cancel_order/2]).
+
+      place_order(ProductId, Qty) ->
+          case inventory_server:reserve(ProductId, Qty) of
+              ok -> {ok, order_placed};
+              {error, Reason} -> {error, Reason}
+          end.
+
+      cancel_order(ProductId, Qty) ->
+          inventory_server:restock(ProductId, Qty),
+          {ok, order_cancelled}.
+    garbage/payment_processor.erl: |
+      -module(payment_processor).
+      %% GARBAGE_GAP064_A = "payment_processor_marker"
+      -export([charge/2]).
+
+      charge(UserId, Amount) -> {ok, UserId, Amount}.
+    garbage/email_notifier.erl: |
+      -module(email_notifier).
+      %% GARBAGE_GAP064_B = "email_notifier_marker"
+      -export([notify/2]).
+
+      notify(To, Msg) -> {sent, To, Msg}.
+    garbage/iot_sensor_agent.erl: |
+      -module(iot_sensor_agent).
+      %% GARBAGE_GAP064_C = "iot_sensor_agent_marker"
+      -export([read/1]).
+
+      read(SensorId) -> {ok, SensorId, 42}.
+  commit_message: "refactor: add restock/2 gen_server handler, expose cancel_order in order_handler"
+fragments:
+- id: restock_export
+  selector:
+    path: src/inventory_server.erl
+    anchor: "restock(ProductId, Qty) ->"
+- id: handle_cast_restock
+  selector:
+    path: src/inventory_server.erl
+    anchor: "handle_cast({restock, ProductId, Qty}, State) ->"
+- id: cancel_order_fn
+  selector:
+    path: src/order_handler.erl
+    anchor: "cancel_order(ProductId, Qty) ->"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_GAP064_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_GAP064_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_GAP064_C
+oracle:
+  required:
+  - restock_export
+  - handle_cast_restock
+  - cancel_order_fn
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

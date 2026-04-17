@@ -6,7 +6,7 @@ from pathlib import Path
 
 from ...config.weights import EDGE_WEIGHTS
 from ...types import Fragment, FragmentId
-from ..base import EdgeBuilder, EdgeDict, discover_files_by_refs
+from ..base import EdgeBuilder, EdgeDict, read_cached
 
 _PHP_EXTS = {".php", ".phtml", ".php3", ".php4", ".php5", ".php7", ".phps"}
 
@@ -101,6 +101,9 @@ class _PHPIndex:
         self.fqn_to_frags = defaultdict(list)
 
 
+_DISCOVERY_MAX_DEPTH = 2
+
+
 class PHPEdgeBuilder(EdgeBuilder):
     weight = 0.70
     use_weight = EDGE_WEIGHTS["php_use"].forward
@@ -121,18 +124,68 @@ class PHPEdgeBuilder(EdgeBuilder):
         if not php_changed:
             return []
 
-        refs: set[str] = set()
-        for f in php_changed:
-            try:
-                content = f.read_text(encoding="utf-8")
-                for req in _extract_requires(content):
-                    refs.add(req.split("/")[-1])
-                for use in _extract_uses(content):
-                    refs.add(use.split("\\")[-1])
-            except (OSError, UnicodeDecodeError):
-                continue
+        fc = kwargs.get("file_cache")
+        cache: dict[Path, str] | None = fc if isinstance(fc, dict) else None
 
-        return discover_files_by_refs(refs, changed_files, all_candidate_files, repo_root)
+        php_candidates = [f for f in all_candidate_files if _is_php_file(f)]
+        file_classes: dict[Path, set[str]] = {}
+        file_uses: dict[Path, set[str]] = {}
+
+        for candidate in php_candidates:
+            content = read_cached(candidate, cache)
+            if content is None:
+                continue
+            classes, interfaces, traits, enums = _extract_definitions(content)
+            file_classes[candidate] = {c.lower() for c in classes | interfaces | traits | enums}
+            file_uses[candidate] = {u.split("\\")[-1].lower() for u in _extract_uses(content)}
+
+        changed_set = set(changed_files)
+        discovered: set[Path] = set()
+        frontier = set(php_changed)
+
+        for _depth in range(_DISCOVERY_MAX_DEPTH):
+            frontier_classes = self._collect_frontier_classes(frontier, cache)
+            frontier = self._discover_one_hop(php_candidates, changed_set | discovered, frontier_classes, file_uses, cache)
+            discovered.update(frontier)
+            if not frontier:
+                break
+
+        return list(discovered)
+
+    @staticmethod
+    def _collect_frontier_classes(frontier: set[Path], cache: dict[Path, str] | None) -> set[str]:
+        result: set[str] = set()
+        for f in frontier:
+            content = read_cached(f, cache)
+            if content is None:
+                continue
+            classes, interfaces, traits, enums = _extract_definitions(content)
+            result.update(c.lower() for c in classes | interfaces | traits | enums)
+            result.add(f.stem.lower())
+        return result
+
+    @staticmethod
+    def _discover_one_hop(
+        candidates: list[Path],
+        skip: set[Path],
+        frontier_classes: set[str],
+        file_uses: dict[Path, set[str]],
+        cache: dict[Path, str] | None,
+    ) -> set[Path]:
+        found: set[Path] = set()
+        for candidate in candidates:
+            if candidate in skip:
+                continue
+            if file_uses.get(candidate, set()) & frontier_classes:
+                found.add(candidate)
+                continue
+            cand_content = read_cached(candidate, cache)
+            if cand_content:
+                refs = {t.lower() for t in _extract_type_refs(cand_content)}
+                refs.update(i.lower() for i in _extract_inheritance(cand_content))
+                if refs & frontier_classes:
+                    found.add(candidate)
+        return found
 
     def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:
         php_frags = [f for f in fragments if _is_php_file(f.path)]

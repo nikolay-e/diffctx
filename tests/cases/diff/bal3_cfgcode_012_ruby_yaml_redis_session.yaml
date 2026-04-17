@@ -1,0 +1,258 @@
+name: bal3_cfgcode_012_ruby_yaml_redis_session
+tags:
+- lang:go
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:easy
+repo:
+  initial_files:
+    pkg/pool/connection_pool.go: |
+      package pool
+
+      import "sync"
+
+      type Pool struct {
+          mu      sync.Mutex
+          conns   []string
+          maxSize int
+      }
+
+      func New(maxSize int) *Pool {
+          return &Pool{maxSize: maxSize}
+      }
+
+      func (p *Pool) Acquire() (string, bool) {
+          p.mu.Lock()
+          defer p.mu.Unlock()
+          if len(p.conns) == 0 {
+              return "", false
+          }
+          conn := p.conns[0]
+          p.conns = p.conns[1:]  // BUG: leaves capacity referencing old backing array
+          return conn, true
+      }
+
+      func (p *Pool) Release(conn string) {
+          p.mu.Lock()
+          defer p.mu.Unlock()
+          if len(p.conns) < p.maxSize {
+              p.conns = append(p.conns, conn)
+          }
+      }
+    pkg/db/client.go: |
+      package db
+
+      import "pkg/pool"
+
+      type Client struct {
+          pool *pool.Pool
+      }
+
+      func NewClient(p *pool.Pool) *Client {
+          return &Client{pool: p}
+      }
+
+      func (c *Client) Exec(query string) error {
+          conn, ok := c.pool.Acquire()
+          if !ok {
+              return nil
+          }
+          defer c.pool.Release(conn)
+          _ = query
+          return nil
+      }
+    internal/repo/user_repo.go: |
+      package repo
+
+      import "pkg/db"
+
+      type UserRepo struct {
+          db *db.Client
+      }
+
+      func NewUserRepo(db *db.Client) *UserRepo {
+          return &UserRepo{db: db}
+      }
+
+      func (r *UserRepo) Create(userID string) error {
+          return r.db.Exec("INSERT INTO users VALUES ($1)")
+      }
+    internal/service/user_service.go: |
+      package service
+
+      import "internal/repo"
+
+      type UserService struct {
+          repo *repo.UserRepo
+      }
+
+      func NewUserService(r *repo.UserRepo) *UserService {
+          return &UserService{repo: r}
+      }
+
+      func (s *UserService) Register(userID string) error {
+          return s.repo.Create(userID)
+      }
+    garbage/AnalyticsPipeline.go: |
+      package garbage
+
+      // GARBAGE_BAL3CFG012_A = "analytics_pipeline_marker"
+
+      type AnalyticsPipeline struct{ Stage string }
+    garbage/NotificationQueue.go: |
+      package garbage
+
+      // GARBAGE_BAL3CFG012_B = "notification_queue_marker"
+
+      type NotificationQueue struct{ Size int }
+    garbage/GameMatchmaker.go: |
+      package garbage
+
+      // GARBAGE_BAL3CFG012_C = "game_matchmaker_marker"
+
+      type GameMatchmaker struct{ Region string }
+  changed_files:
+    pkg/pool/connection_pool.go: |
+      package pool
+
+      import "sync"
+
+      type Pool struct {
+          mu      sync.Mutex
+          conns   []string
+          maxSize int
+      }
+
+      func New(maxSize int) *Pool {
+          return &Pool{maxSize: maxSize}
+      }
+
+      func (p *Pool) Acquire() (string, bool) {
+          p.mu.Lock()
+          defer p.mu.Unlock()
+          if len(p.conns) == 0 {
+              return "", false
+          }
+          conn := p.conns[0]
+          p.conns = p.conns[1:len(p.conns):len(p.conns)]
+          return conn, true
+      }
+
+      func (p *Pool) Release(conn string) {
+          p.mu.Lock()
+          defer p.mu.Unlock()
+          if len(p.conns) < p.maxSize {
+              p.conns = append(p.conns, conn)
+          }
+      }
+    pkg/db/client.go: |
+      package db
+
+      import "pkg/pool"
+
+      type Client struct {
+          pool *pool.Pool
+      }
+
+      func NewClient(p *pool.Pool) *Client {
+          return &Client{pool: p}
+      }
+
+      func (c *Client) Exec(query string) error {
+          conn, ok := c.pool.Acquire()
+          if !ok {
+              return nil
+          }
+          defer c.pool.Release(conn)
+          _ = query
+          return nil
+      }
+    internal/repo/user_repo.go: |
+      package repo
+
+      import "pkg/db"
+
+      type UserRepo struct {
+          db *db.Client
+      }
+
+      func NewUserRepo(db *db.Client) *UserRepo {
+          return &UserRepo{db: db}
+      }
+
+      func (r *UserRepo) Create(userID string) error {
+          return r.db.Exec("INSERT INTO users VALUES ($1)")
+      }
+    internal/service/user_service.go: |
+      package service
+
+      import "internal/repo"
+
+      type UserService struct {
+          repo *repo.UserRepo
+      }
+
+      func NewUserService(r *repo.UserRepo) *UserService {
+          return &UserService{repo: r}
+      }
+
+      func (s *UserService) Register(userID string) error {
+          return s.repo.Create(userID)
+      }
+    garbage/AnalyticsPipeline.go: |
+      package garbage
+
+      // GARBAGE_BAL3CFG012_A = "analytics_pipeline_marker"
+
+      type AnalyticsPipeline struct{ Stage string }
+    garbage/NotificationQueue.go: |
+      package garbage
+
+      // GARBAGE_BAL3CFG012_B = "notification_queue_marker"
+
+      type NotificationQueue struct{ Size int }
+    garbage/GameMatchmaker.go: |
+      package garbage
+
+      // GARBAGE_BAL3CFG012_C = "game_matchmaker_marker"
+
+      type GameMatchmaker struct{ Region string }
+  commit_message: "fix: use three-index slice in Acquire to avoid backing array memory leak"
+fragments:
+- id: acquire_three_index
+  selector:
+    path: pkg/pool/connection_pool.go
+    anchor: "p.conns = p.conns[1:len(p.conns):len(p.conns)]"
+- id: db_exec_acquire
+  selector:
+    path: pkg/db/client.go
+    anchor: "conn, ok := c.pool.Acquire()"
+- id: repo_create
+  selector:
+    path: internal/repo/user_repo.go
+    anchor: "func (r *UserRepo) Create"
+- id: service_register
+  selector:
+    path: internal/service/user_service.go
+    anchor: "func (s *UserService) Register"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_BAL3CFG012_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_BAL3CFG012_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_BAL3CFG012_C
+oracle:
+  required:
+  - acquire_three_index
+  - db_exec_acquire
+  allowed:
+  - repo_create
+  - service_register
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

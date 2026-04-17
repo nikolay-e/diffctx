@@ -1,0 +1,156 @@
+name: bal_3hop_012_python_plugin_registry
+tags:
+- lang:python
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    plugins/base.py: |
+      from abc import ABC, abstractmethod
+      class Plugin(ABC):
+          def __init__(self, name: str):
+              self.name = name
+              self.enabled = True
+          @abstractmethod
+          def execute(self, data: dict) -> dict:
+              pass
+    plugins/registry.py: |
+      from plugins.base import Plugin
+      class PluginRegistry:
+          def __init__(self):
+              self._plugins: dict[str, Plugin] = {}
+          def register(self, plugin: Plugin):
+              self._plugins[plugin.name] = plugin
+          def get(self, name: str) -> Plugin:
+              return self._plugins[name]
+          def all_plugins(self) -> list[Plugin]:
+              return list(self._plugins.values())
+    plugins/pipeline.py: |
+      from plugins.registry import PluginRegistry
+      class PluginPipeline:
+          def __init__(self, registry: PluginRegistry):
+              self.registry = registry
+          def run(self, data: dict) -> dict:
+              result = data
+              for plugin in self.registry.all_plugins():
+                  if plugin.enabled:
+                      result = plugin.execute(result)
+              return result
+    app/processor.py: |
+      from plugins.pipeline import PluginPipeline
+      from plugins.registry import PluginRegistry
+      class DataProcessor:
+          def __init__(self):
+              self.registry = PluginRegistry()
+              self.pipeline = PluginPipeline(self.registry)
+          def process(self, data: dict) -> dict:
+              return self.pipeline.run(data)
+    utils/timer.py: |
+      import time
+      class Timer:
+          def __init__(self):
+              self.start_time = None
+          def start(self):
+              self.start_time = time.time()
+          def elapsed(self) -> float:
+              return time.time() - self.start_time if self.start_time else 0.0
+    config/plugin_config.py: |
+      ENABLED_PLUGINS = ["transform", "validate", "enrich"]
+      PLUGIN_TIMEOUT = 5.0
+  changed_files:
+    plugins/base.py: |
+      from abc import ABC, abstractmethod
+      from typing import Optional
+      class Plugin(ABC):
+          def __init__(self, name: str, version: str = "1.0.0"):
+              self.name = name
+              self.version = version
+              self.enabled = True
+              self.priority: int = 0
+          @abstractmethod
+          def execute(self, data: dict) -> dict:
+              pass
+          def info(self) -> dict:
+              return {"name": self.name, "version": self.version, "priority": self.priority}
+    plugins/registry.py: |
+      from plugins.base import Plugin
+      class PluginRegistry:
+          def __init__(self):
+              self._plugins: dict[str, Plugin] = {}
+          def register(self, plugin: Plugin):
+              self._plugins[plugin.name] = plugin
+          def get(self, name: str) -> Plugin:
+              return self._plugins[name]
+          def all_plugins(self) -> list[Plugin]:
+              return list(self._plugins.values())
+    plugins/pipeline.py: |
+      from plugins.registry import PluginRegistry
+      class PluginPipeline:
+          def __init__(self, registry: PluginRegistry):
+              self.registry = registry
+          def run(self, data: dict) -> dict:
+              result = data
+              for plugin in self.registry.all_plugins():
+                  if plugin.enabled:
+                      result = plugin.execute(result)
+              return result
+    app/processor.py: |
+      from plugins.pipeline import PluginPipeline
+      from plugins.registry import PluginRegistry
+      class DataProcessor:
+          def __init__(self):
+              self.registry = PluginRegistry()
+              self.pipeline = PluginPipeline(self.registry)
+          def process(self, data: dict) -> dict:
+              return self.pipeline.run(data)
+    utils/timer.py: |
+      import time
+      class Timer:
+          def __init__(self):
+              self.start_time = None
+          def start(self):
+              self.start_time = time.time()
+          def elapsed(self) -> float:
+              return time.time() - self.start_time if self.start_time else 0.0
+    config/plugin_config.py: |
+      ENABLED_PLUGINS = ["transform", "validate", "enrich"]
+      PLUGIN_TIMEOUT = 5.0
+  commit_message: "feat: add version, priority, and info method to Plugin base"
+fragments:
+- id: plugin_version_priority
+  selector:
+    path: plugins/base.py
+    anchor: "def __init__(self, name: str, version: str = \"1.0.0\")"
+- id: registry_uses_plugin
+  selector:
+    path: plugins/registry.py
+    anchor: "from plugins.base import Plugin"
+- id: pipeline_uses_registry
+  selector:
+    path: plugins/pipeline.py
+    anchor: "from plugins.registry import PluginRegistry"
+- id: processor_uses_pipeline
+  selector:
+    path: app/processor.py
+    anchor: "from plugins.pipeline import PluginPipeline"
+- id: no_timer
+  selector:
+    path: utils/timer.py
+    anchor: "class Timer"
+- id: no_plugin_config
+  selector:
+    path: config/plugin_config.py
+    anchor: "ENABLED_PLUGINS"
+oracle:
+  required:
+  - plugin_version_priority
+  - registry_uses_plugin
+  - pipeline_uses_registry
+  - processor_uses_pipeline
+  allowed: []
+  forbidden:
+  - no_timer
+  - no_plugin_config

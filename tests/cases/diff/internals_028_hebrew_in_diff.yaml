@@ -1,25 +1,88 @@
 name: internals_028_hebrew_in_diff
+tags:
+- lang:julia
+- change:single_file
+- context:same_file
+- distance:0hop
+- difficulty:trivial
 repo:
   initial_files:
-    hebrew_diff.py: |
-      def placeholder():
-          pass
+    src/Glucose.jl: |
+      module Glucose
+
+      export GlucoseReading, in_range
+
+      struct GlucoseReading
+          value_mgdl::Float64
+          timestamp::Int
+      end
+
+      function in_range(r::GlucoseReading)::Bool
+          return 70.0 <= r.value_mgdl <= 180.0
+      end
+
+      end
+    garbage/INT028_alerts.jl: |
+      # INT028_GARBAGE_A = "alerts_marker"
+    garbage/INT028_history.jl: |
+      # INT028_GARBAGE_B = "history_marker"
+    garbage/INT028_export.jl: |
+      # INT028_GARBAGE_C = "export_marker"
   changed_files:
-    hebrew_diff.py: |
-      def foo():
-          """תיעוד בעברית"""
-          return process_value(x)
-  commit_message: Update files
+    src/Glucose.jl: |
+      module Glucose
+
+      export GlucoseReading, in_range, classify_level
+
+      struct GlucoseReading
+          value_mgdl::Float64
+          timestamp::Int
+      end
+
+      function in_range(r::GlucoseReading)::Bool
+          return 70.0 <= r.value_mgdl <= 180.0
+      end
+
+      function classify_level(r::GlucoseReading)::String
+          if r.value_mgdl < 70.0
+              return "hypoglycemia"
+          elseif r.value_mgdl <= 180.0
+              return "normal"
+          else
+              return "hyperglycemia"
+          end
+      end
+
+      end
+    garbage/INT028_alerts.jl: |
+      # INT028_GARBAGE_A = "alerts_marker"
+    garbage/INT028_history.jl: |
+      # INT028_GARBAGE_B = "history_marker"
+    garbage/INT028_export.jl: |
+      # INT028_GARBAGE_C = "export_marker"
+  commit_message: "feat: add classify_level function to Glucose module"
 fragments:
-- id: hebrew_diff_file
+- id: classify_level_func
   selector:
-    path: hebrew_diff.py
-- id: req_global_0
+    anchor: "function classify_level(r::GlucoseReading)"
+- id: in_range_func
   selector:
-    anchor: '"""תיעוד בעברית"""'
+    anchor: "function in_range(r::GlucoseReading)"
+- id: no_garbage_a
+  selector:
+    anchor: INT028_GARBAGE_A
+- id: no_garbage_b
+  selector:
+    anchor: INT028_GARBAGE_B
+- id: no_garbage_c
+  selector:
+    anchor: INT028_GARBAGE_C
 oracle:
   required:
-  - hebrew_diff_file
-  - req_global_0
-  allowed: []
-  forbidden: []
+  - classify_level_func
+  allowed:
+  - in_range_func
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

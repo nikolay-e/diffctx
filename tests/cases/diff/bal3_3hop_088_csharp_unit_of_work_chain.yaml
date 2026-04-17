@@ -1,0 +1,292 @@
+name: bal3_3hop_088_csharp_unit_of_work_chain
+tags:
+- lang:csharp
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/Data/IUnitOfWork.cs: |
+      using System;
+
+      namespace App.Data
+      {
+          public interface IUnitOfWork
+          {
+              void Commit();
+              void Rollback();
+          }
+      }
+    src/Data/SqlUnitOfWork.cs: |
+      using System;
+      using App.Data;
+
+      namespace App.Data
+      {
+          public class SqlUnitOfWork : IUnitOfWork
+          {
+              private bool _committed = false;
+              public void Commit()
+              {
+                  _committed = true;
+              }
+              public void Rollback()
+              {
+                  _committed = false;
+              }
+          }
+      }
+    src/Repositories/InvoiceRepository.cs: |
+      using System;
+      using App.Data;
+
+      namespace App.Repositories
+      {
+          public class InvoiceRepository
+          {
+              private readonly IUnitOfWork _uow;
+              public InvoiceRepository(IUnitOfWork uow)
+              {
+                  _uow = uow;
+              }
+              public void Save(Invoice invoice)
+              {
+                  _uow.Commit();
+              }
+          }
+      }
+    src/Services/InvoiceService.cs: |
+      using System;
+      using App.Repositories;
+
+      namespace App.Services
+      {
+          public class InvoiceService
+          {
+              private readonly InvoiceRepository _repo;
+              public InvoiceService(InvoiceRepository repo)
+              {
+                  _repo = repo;
+              }
+              public void CreateInvoice(Invoice invoice)
+              {
+                  _repo.Save(invoice);
+              }
+          }
+      }
+    src/Controllers/InvoiceController.cs: |
+      using System;
+      using App.Services;
+
+      namespace App.Controllers
+      {
+          public class InvoiceController
+          {
+              private readonly InvoiceService _service;
+              public InvoiceController(InvoiceService service)
+              {
+                  _service = service;
+              }
+              public string Create(Invoice invoice)
+              {
+                  _service.CreateInvoice(invoice);
+                  return "Created";
+              }
+          }
+      }
+    src/Auditing/AuditTrail.cs: |
+      using System;
+      // GARBAGE_088_AUDIT_A = "trail"
+      // GARBAGE_088_ACTION_B = "create"
+
+      namespace App.Auditing
+      {
+          public class AuditTrail
+          {
+              public void Record(string action) { }
+          }
+      }
+    src/Auditing/ChangeLog.cs: |
+      using System;
+      // GARBAGE_088_CHANGE_C = "log"
+      // GARBAGE_088_ENTITY_D = "invoice"
+
+      namespace App.Auditing
+      {
+          public class ChangeLog
+          {
+              public void Log(string entity, string change) { }
+          }
+      }
+  changed_files:
+    src/Data/IUnitOfWork.cs: |
+      using System;
+      using System.Threading.Tasks;
+
+      namespace App.Data
+      {
+          public interface IUnitOfWork
+          {
+              void Commit();
+              void Rollback();
+              Task CommitAsync();
+              bool HasPendingChanges { get; }
+          }
+      }
+    src/Data/SqlUnitOfWork.cs: |
+      using System;
+      using System.Threading.Tasks;
+      using App.Data;
+
+      namespace App.Data
+      {
+          public class SqlUnitOfWork : IUnitOfWork
+          {
+              private bool _committed = false;
+              private int _pendingCount = 0;
+              public bool HasPendingChanges => _pendingCount > 0;
+              public void Commit()
+              {
+                  _committed = true;
+                  _pendingCount = 0;
+              }
+              public void Rollback()
+              {
+                  _committed = false;
+                  _pendingCount = 0;
+              }
+              public async Task CommitAsync()
+              {
+                  await Task.Run(() => Commit());
+              }
+          }
+      }
+    src/Repositories/InvoiceRepository.cs: |
+      using System;
+      using App.Data;
+
+      namespace App.Repositories
+      {
+          public class InvoiceRepository
+          {
+              private readonly IUnitOfWork _uow;
+              public InvoiceRepository(IUnitOfWork uow)
+              {
+                  _uow = uow;
+              }
+              public void Save(Invoice invoice)
+              {
+                  _uow.Commit();
+              }
+          }
+      }
+    src/Services/InvoiceService.cs: |
+      using System;
+      using App.Repositories;
+
+      namespace App.Services
+      {
+          public class InvoiceService
+          {
+              private readonly InvoiceRepository _repo;
+              public InvoiceService(InvoiceRepository repo)
+              {
+                  _repo = repo;
+              }
+              public void CreateInvoice(Invoice invoice)
+              {
+                  _repo.Save(invoice);
+              }
+          }
+      }
+    src/Controllers/InvoiceController.cs: |
+      using System;
+      using App.Services;
+
+      namespace App.Controllers
+      {
+          public class InvoiceController
+          {
+              private readonly InvoiceService _service;
+              public InvoiceController(InvoiceService service)
+              {
+                  _service = service;
+              }
+              public string Create(Invoice invoice)
+              {
+                  _service.CreateInvoice(invoice);
+                  return "Created";
+              }
+          }
+      }
+    src/Auditing/AuditTrail.cs: |
+      using System;
+      // GARBAGE_088_AUDIT_A = "trail"
+      // GARBAGE_088_ACTION_B = "create"
+
+      namespace App.Auditing
+      {
+          public class AuditTrail
+          {
+              public void Record(string action) { }
+          }
+      }
+    src/Auditing/ChangeLog.cs: |
+      using System;
+      // GARBAGE_088_CHANGE_C = "log"
+      // GARBAGE_088_ENTITY_D = "invoice"
+
+      namespace App.Auditing
+      {
+          public class ChangeLog
+          {
+              public void Log(string entity, string change) { }
+          }
+      }
+  commit_message: "feat: add async commit and pending changes tracking to UnitOfWork"
+fragments:
+- id: uow_commit_async
+  selector:
+    path: src/Data/IUnitOfWork.cs
+    anchor: "CommitAsync()"
+- id: uow_has_pending
+  selector:
+    path: src/Data/IUnitOfWork.cs
+    anchor: "HasPendingChanges"
+- id: sql_uow_async_impl
+  selector:
+    path: src/Data/SqlUnitOfWork.cs
+    anchor: "async Task CommitAsync"
+- id: repo_uses_uow
+  selector:
+    path: src/Repositories/InvoiceRepository.cs
+    anchor: "using App.Data"
+- id: service_uses_repo
+  selector:
+    path: src/Services/InvoiceService.cs
+    anchor: "using App.Repositories"
+- id: controller_uses_service
+  selector:
+    path: src/Controllers/InvoiceController.cs
+    anchor: "using App.Services"
+- id: no_audit_trail
+  selector:
+    path: src/Auditing/AuditTrail.cs
+    anchor: "GARBAGE_088_AUDIT_A"
+- id: no_change_log
+  selector:
+    path: src/Auditing/ChangeLog.cs
+    anchor: "GARBAGE_088_CHANGE_C"
+oracle:
+  required:
+  - uow_commit_async
+  - sql_uow_async_impl
+  - repo_uses_uow
+  - service_uses_repo
+  - controller_uses_service
+  allowed:
+  - uow_has_pending
+  forbidden:
+  - no_audit_trail
+  - no_change_log

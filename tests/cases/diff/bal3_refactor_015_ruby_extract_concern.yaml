@@ -1,0 +1,211 @@
+name: bal3_refactor_015_ruby_extract_concern
+tags:
+- lang:ruby
+- change:multi_file
+- change:refactor
+- context:cross_module
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    app/models/user.rb: |
+      class User
+        attr_accessor :name, :email, :created_at, :updated_at
+
+        def initialize(name, email)
+          @name = name
+          @email = email
+          @created_at = Time.now
+          @updated_at = Time.now
+        end
+
+        def touch
+          @updated_at = Time.now
+        end
+
+        def time_since_creation
+          Time.now - @created_at
+        end
+      end
+    app/models/post.rb: |
+      class Post
+        attr_accessor :title, :body, :created_at, :updated_at
+
+        def initialize(title, body)
+          @title = title
+          @body = body
+          @created_at = Time.now
+          @updated_at = Time.now
+        end
+
+        def touch
+          @updated_at = Time.now
+        end
+
+        def time_since_creation
+          Time.now - @created_at
+        end
+      end
+    app/models/comment.rb: |
+      class Comment
+        attr_accessor :text, :author, :created_at, :updated_at
+
+        def initialize(text, author)
+          @text = text
+          @author = author
+          @created_at = Time.now
+          @updated_at = Time.now
+        end
+
+        def touch
+          @updated_at = Time.now
+        end
+
+        def time_since_creation
+          Time.now - @created_at
+        end
+      end
+    lib/tasks/cleanup.rb: |
+      GARBAGE_R015_CLEANUP_A = "cleanup"
+
+      class CleanupTask
+        def run
+        end
+      end
+    lib/tasks/backup.rb: |
+      GARBAGE_R015_BACKUP_B = "backup"
+
+      class BackupTask
+        def run
+        end
+      end
+    lib/tasks/seed.rb: |
+      GARBAGE_R015_SEED_C = "seed"
+
+      class SeedTask
+        def run
+        end
+      end
+  changed_files:
+    app/concerns/timestampable.rb: |
+      module Timestampable
+        def self.included(base)
+          base.attr_accessor :created_at, :updated_at
+        end
+
+        def initialize_timestamps
+          @created_at = Time.now
+          @updated_at = Time.now
+        end
+
+        def touch
+          @updated_at = Time.now
+        end
+
+        def time_since_creation
+          Time.now - @created_at
+        end
+      end
+    app/models/user.rb: |
+      require_relative '../concerns/timestampable'
+
+      class User
+        include Timestampable
+        attr_accessor :name, :email
+
+        def initialize(name, email)
+          @name = name
+          @email = email
+          initialize_timestamps
+        end
+      end
+    app/models/post.rb: |
+      require_relative '../concerns/timestampable'
+
+      class Post
+        include Timestampable
+        attr_accessor :title, :body
+
+        def initialize(title, body)
+          @title = title
+          @body = body
+          initialize_timestamps
+        end
+      end
+    app/models/comment.rb: |
+      require_relative '../concerns/timestampable'
+
+      class Comment
+        include Timestampable
+        attr_accessor :text, :author
+
+        def initialize(text, author)
+          @text = text
+          @author = author
+          initialize_timestamps
+        end
+      end
+    lib/tasks/cleanup.rb: |
+      GARBAGE_R015_CLEANUP_A = "cleanup"
+
+      class CleanupTask
+        def run
+        end
+      end
+    lib/tasks/backup.rb: |
+      GARBAGE_R015_BACKUP_B = "backup"
+
+      class BackupTask
+        def run
+        end
+      end
+    lib/tasks/seed.rb: |
+      GARBAGE_R015_SEED_C = "seed"
+
+      class SeedTask
+        def run
+        end
+      end
+  commit_message: "refactor: extract duplicated timestamp logic into Timestampable concern"
+fragments:
+- id: timestampable_module
+  selector:
+    path: app/concerns/timestampable.rb
+    anchor: "module Timestampable"
+- id: touch_method
+  selector:
+    path: app/concerns/timestampable.rb
+    anchor: "def touch"
+- id: user_includes
+  selector:
+    path: app/models/user.rb
+    anchor: "include Timestampable"
+- id: post_includes
+  selector:
+    path: app/models/post.rb
+    anchor: "include Timestampable"
+- id: comment_includes
+  selector:
+    path: app/models/comment.rb
+    anchor: "include Timestampable"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_R015_CLEANUP_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_R015_BACKUP_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_R015_SEED_C
+oracle:
+  required:
+  - timestampable_module
+  - touch_method
+  - user_includes
+  - post_includes
+  - comment_includes
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

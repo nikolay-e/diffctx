@@ -1,0 +1,115 @@
+name: gap_082_ruby_same_file_trivial_price_calculator
+tags:
+- lang:ruby
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+repo:
+  initial_files:
+    app/pricing.rb: |
+      class Pricing
+        TAX_RATE = 0.08
+
+        def initialize(base_price)
+          @base_price = base_price
+        end
+
+        def with_tax
+          @base_price * (1 + TAX_RATE)
+        end
+
+        def discounted(percent)
+          @base_price * (1 - percent / 100.0)
+        end
+
+        def formatted
+          sprintf('$%.2f', @base_price)
+        end
+      end
+    app/inventory.rb: |
+      class Inventory
+        def initialize
+          @items = {}
+        end
+
+        def add(sku, quantity)
+          @items[sku] = (@items[sku] || 0) + quantity
+        end
+
+        def remove(sku, quantity)
+          return false unless @items[sku] && @items[sku] >= quantity
+          @items[sku] -= quantity
+          true
+        end
+
+        def stock(sku)
+          @items[sku] || 0
+        end
+      end
+    app/shipping.rb: |
+      module Shipping
+        RATES = { standard: 5.99, express: 12.99, overnight: 24.99 }
+
+        def self.calculate(method, weight)
+          base = RATES.fetch(method, RATES[:standard])
+          base + (weight * 0.5)
+        end
+
+        def self.available_methods
+          RATES.keys
+        end
+      end
+  changed_files:
+    app/pricing.rb: |
+      class Pricing
+        TAX_RATE = 0.10
+
+        def initialize(base_price)
+          @base_price = base_price
+        end
+
+        def with_tax
+          @base_price * (1 + TAX_RATE)
+        end
+
+        def discounted(percent)
+          @base_price * (1 - percent / 100.0)
+        end
+
+        def formatted
+          sprintf('$%.2f', @base_price)
+        end
+      end
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: pricing_file
+  selector:
+    path: pricing.rb
+- id: req_tax_rate
+  selector:
+    anchor: TAX_RATE = 0.10
+- id: req_with_tax
+  selector:
+    anchor: def with_tax
+- id: no_inventory
+  selector:
+    path: inventory.rb
+- id: no_shipping
+  selector:
+    path: shipping.rb
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_082_A
+oracle:
+  required:
+  - pricing_file
+  - req_tax_rate
+  - req_with_tax
+  allowed: []
+  forbidden:
+  - no_inventory
+  - no_shipping
+  - no_global_0

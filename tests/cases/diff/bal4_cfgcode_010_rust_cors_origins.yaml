@@ -1,0 +1,154 @@
+name: bal4_cfgcode_010_rust_cors_origins
+tags:
+- lang:rust
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    config.toml: |
+      [cors]
+      allowed_origins = ["http://localhost:3000"]
+      allow_credentials = false
+      max_age_secs = 3600
+    src/cors.rs: |
+      use std::fs;
+      use toml::Value;
+
+      pub struct CorsConfig {
+          pub origins: Vec<String>,
+          pub credentials: bool,
+          pub max_age: u64,
+      }
+
+      impl CorsConfig {
+          pub fn load() -> Self {
+              let raw = fs::read_to_string("config.toml").unwrap();
+              let cfg: Value = raw.parse().unwrap();
+              let cors = &cfg["cors"];
+              let origins = cors["allowed_origins"]
+                  .as_array().unwrap()
+                  .iter().map(|v| v.as_str().unwrap().to_string())
+                  .collect();
+              CorsConfig {
+                  origins,
+                  credentials: cors["allow_credentials"].as_bool().unwrap(),
+                  max_age: cors["max_age_secs"].as_integer().unwrap() as u64,
+              }
+          }
+      }
+    src/middleware/cors_layer.rs: |
+      use crate::cors::CorsConfig;
+
+      pub struct CorsLayer {
+          config: CorsConfig,
+      }
+
+      impl CorsLayer {
+          pub fn new() -> Self {
+              CorsLayer { config: CorsConfig::load() }
+          }
+          pub fn is_origin_allowed(&self, origin: &str) -> bool {
+              self.config.origins.contains(&origin.to_string())
+          }
+      }
+    garbage_db.rs: |
+      const GARBAGE_CFGCODE_010_DB_A: &str = "sqlite";
+      const GARBAGE_CFGCODE_010_DB_B: u32 = 10;
+      pub struct DbConn {
+          pub path: String,
+      }
+      const GARBAGE_CFGCODE_010_DB_C: &str = "wal";
+      const GARBAGE_CFGCODE_010_DB_D: bool = true;
+    garbage_session.rs: |
+      const GARBAGE_CFGCODE_010_SESS_E: &str = "cookie";
+      const GARBAGE_CFGCODE_010_SESS_F: u64 = 7200;
+      pub struct SessionStore {
+          pub ttl: u64,
+      }
+      const GARBAGE_CFGCODE_010_SESS_G: bool = true;
+      const GARBAGE_CFGCODE_010_SESS_H: &str = "secure";
+    garbage_template.rs: |
+      const GARBAGE_CFGCODE_010_TMPL_I: &str = "tera";
+      const GARBAGE_CFGCODE_010_TMPL_J: bool = false;
+  changed_files:
+    config.toml: |
+      [cors]
+      allowed_origins = ["https://myapp.com", "https://staging.myapp.com"]
+      allow_credentials = true
+      max_age_secs = 86400
+  commit_message: "restrict cors to production origins"
+fragments:
+- id: cors_config
+  selector:
+    path: config.toml
+    anchor: "https://myapp.com"
+- id: cors_loader
+  selector:
+    path: src/cors.rs
+    anchor: "allowed_origins"
+- id: cors_layer
+  selector:
+    path: src/middleware/cors_layer.rs
+    anchor: "is_origin_allowed"
+- id: no_db
+  selector:
+    path: garbage_db.rs
+- id: no_session
+  selector:
+    path: garbage_session.rs
+- id: no_template
+  selector:
+    path: garbage_template.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_010_DB_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_010_DB_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_010_SESS_E
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_010_SESS_F
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CFGCODE_010_TMPL_I
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CFGCODE_010_TMPL_J
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_CFGCODE_010_DB_C
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_CFGCODE_010_DB_D
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_CFGCODE_010_SESS_G
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_CFGCODE_010_SESS_H
+oracle:
+  required:
+  - cors_config
+  - cors_loader
+  - cors_layer
+  allowed: []
+  forbidden:
+  - no_db
+  - no_session
+  - no_template
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

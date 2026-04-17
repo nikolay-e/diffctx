@@ -1,0 +1,98 @@
+name: bal3_bugfix_019_scala_race_condition
+tags:
+- lang:scala
+- change:single_file
+- change:bug_fix
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/counter/SharedCounter.scala: |
+      package counter
+
+      class SharedCounter {
+        private var count: Int = 0
+
+        def increment(): Unit = {
+          count += 1
+        }
+
+        def get(): Int = count
+
+        def reset(): Unit = {
+          count = 0
+        }
+      }
+    src/main/scala/worker/Task.scala: |
+      package worker
+
+      import counter.SharedCounter
+
+      class Task(counter: SharedCounter) {
+        def execute(): Unit = {
+          counter.increment()
+        }
+      }
+    src/main/scala/scheduler/Pool.scala: |
+      package scheduler
+
+      import worker.Task
+
+      class Pool {
+        def runAll(tasks: List[Task]): Unit = {
+          tasks.foreach(_.execute())
+        }
+      }
+    src/main/scala/config/AppConfig.scala: |
+      package config
+
+      object AppConfig {
+        val maxWorkers: Int = 8
+        val timeout: Int = 5000
+      }
+  changed_files:
+    src/main/scala/counter/SharedCounter.scala: |
+      package counter
+
+      import java.util.concurrent.atomic.AtomicInteger
+
+      class SharedCounter {
+        private val count = new AtomicInteger(0)
+
+        def increment(): Unit = {
+          count.incrementAndGet()
+        }
+
+        def get(): Int = count.get()
+
+        def reset(): Unit = {
+          count.set(0)
+        }
+      }
+  commit_message: "fix: use AtomicInteger to prevent race condition on counter"
+fragments:
+- id: atomic_fix
+  selector:
+    path: counter/SharedCounter.scala
+    anchor: "new AtomicInteger(0)"
+- id: task_calls_increment
+  selector:
+    path: worker/Task.scala
+    anchor: "counter.increment()"
+- id: pool_runs_tasks
+  selector:
+    path: scheduler/Pool.scala
+    anchor: "tasks.foreach(_.execute())"
+- id: no_config
+  selector:
+    path: config/AppConfig.scala
+    anchor: "object AppConfig"
+oracle:
+  required:
+  - atomic_fix
+  - task_calls_increment
+  - pool_runs_tasks
+  allowed: []
+  forbidden:
+  - no_config

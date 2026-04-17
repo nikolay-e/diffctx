@@ -1,0 +1,92 @@
+name: c_family_003_struct_field_added
+tags:
+- lang:c
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    point.h: |
+      #ifndef POINT_H
+      #define POINT_H
+      typedef struct { int x; int y; } Point;
+      Point point_new(int x, int y);
+      #endif
+    point.c: |
+      #include "point.h"
+      Point point_new(int x, int y) { return (Point){x, y}; }
+    renderer.c: |
+      #include "point.h"
+      void render(Point p) { /* draw at p.x, p.y */ }
+    C_NOISE_003_audio.h: |
+      #ifndef C_NOISE_003_AUDIO_H
+      #define C_NOISE_003_AUDIO_H
+      void C_NOISE_003_play(const char *file);
+      void C_NOISE_003_stop(void);
+      #endif
+    C_NOISE_003_audio.c: |
+      #include "C_NOISE_003_audio.h"
+      void C_NOISE_003_play(const char *file) {}
+      void C_NOISE_003_stop(void) {}
+  changed_files:
+    point.h: |
+      #ifndef POINT_H
+      #define POINT_H
+      typedef struct { int x; int y; float z; } Point;
+      Point point_new(int x, int y, float z);
+      #endif
+    point.c: |
+      #include "point.h"
+      Point point_new(int x, int y, float z) { return (Point){x, y, z}; }
+    renderer.c: |
+      #include "point.h"
+      void render(Point p) { /* draw at p.x, p.y */ }
+    C_NOISE_003_audio.h: |
+      #ifndef C_NOISE_003_AUDIO_H
+      #define C_NOISE_003_AUDIO_H
+      void C_NOISE_003_play(const char *file);
+      void C_NOISE_003_stop(void);
+      #endif
+    C_NOISE_003_audio.c: |
+      #include "C_NOISE_003_audio.h"
+      void C_NOISE_003_play(const char *file) {}
+      void C_NOISE_003_stop(void) {}
+  commit_message: "feat: add z field to Point struct and update point_new signature"
+fragments:
+- id: point_h
+  selector:
+    path: point.h
+    anchor: "float z"
+- id: point_c
+  selector:
+    path: point.c
+    anchor: point_new
+- id: renderer_c
+  selector:
+    path: renderer.c
+    anchor: render
+- id: no_audio_h
+  selector:
+    path: C_NOISE_003_audio.h
+- id: no_audio_c
+  selector:
+    path: C_NOISE_003_audio.c
+- id: no_global_0
+  selector:
+    anchor: C_NOISE_003_play
+- id: no_global_1
+  selector:
+    anchor: C_NOISE_003_stop
+oracle:
+  required:
+  - point_h
+  - point_c
+  - renderer_c
+  allowed: []
+  forbidden:
+  - no_audio_h
+  - no_audio_c
+  - no_global_0
+  - no_global_1

@@ -1,0 +1,169 @@
+name: bal_refactor_001_python_extract_validator
+tags:
+- lang:python
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/service.py: |
+      class UserService:
+          def create_user(self, name, email):
+              if not name or len(name) < 2:
+                  raise ValueError("invalid name")
+              if "@" not in email:
+                  raise ValueError("invalid email")
+              return {"name": name, "email": email}
+    src/api.py: |
+      from src.service import UserService
+
+      svc = UserService()
+
+      def handle_create(data):
+          return svc.create_user(data["name"], data["email"])
+    src/utils.py: |
+      GARBAGE_REFACTOR_001_UTIL_MARKER_A = "utils"
+
+      def format_date(dt):
+          return dt.strftime("%Y-%m-%d")
+
+      GARBAGE_REFACTOR_001_HELPER_MARKER_B = True
+    garbage_logging.py: |
+      GARBAGE_REFACTOR_001_LOG_MARKER_C = "logging"
+      GARBAGE_REFACTOR_001_LEVEL_MARKER_D = "INFO"
+
+      class Logger:
+          GARBAGE_REFACTOR_001_LOGGER_CLASS_E = True
+
+          def log(self, msg):
+              pass
+    garbage_cache.py: |
+      GARBAGE_REFACTOR_001_CACHE_MARKER_F = "cache"
+      GARBAGE_REFACTOR_001_TTL_MARKER_G = 300
+
+      class Cache:
+          GARBAGE_REFACTOR_001_CACHE_CLASS_H = True
+
+          def get(self, key):
+              return None
+  changed_files:
+    src/service.py: |
+      from src.validators import validate_name, validate_email
+
+      class UserService:
+          def create_user(self, name, email):
+              validate_name(name)
+              validate_email(email)
+              return {"name": name, "email": email}
+    src/validators.py: |
+      def validate_name(name):
+          if not name or len(name) < 2:
+              raise ValueError("invalid name")
+
+      def validate_email(email):
+          if "@" not in email:
+              raise ValueError("invalid email")
+    src/api.py: |
+      from src.service import UserService
+
+      svc = UserService()
+
+      def handle_create(data):
+          return svc.create_user(data["name"], data["email"])
+    src/utils.py: |
+      GARBAGE_REFACTOR_001_UTIL_MARKER_A = "utils"
+
+      def format_date(dt):
+          return dt.strftime("%Y-%m-%d")
+
+      GARBAGE_REFACTOR_001_HELPER_MARKER_B = True
+    garbage_logging.py: |
+      GARBAGE_REFACTOR_001_LOG_MARKER_C = "logging"
+      GARBAGE_REFACTOR_001_LEVEL_MARKER_D = "INFO"
+
+      class Logger:
+          GARBAGE_REFACTOR_001_LOGGER_CLASS_E = True
+
+          def log(self, msg):
+              pass
+    garbage_cache.py: |
+      GARBAGE_REFACTOR_001_CACHE_MARKER_F = "cache"
+      GARBAGE_REFACTOR_001_TTL_MARKER_G = 300
+
+      class Cache:
+          GARBAGE_REFACTOR_001_CACHE_CLASS_H = True
+
+          def get(self, key):
+              return None
+  commit_message: "refactor: extract validation into separate module"
+fragments:
+- id: service_imports_validators
+  selector:
+    path: src/service.py
+    anchor: "from src.validators import validate_name"
+- id: new_validate_name
+  selector:
+    path: src/validators.py
+    anchor: "def validate_name(name)"
+- id: new_validate_email
+  selector:
+    path: src/validators.py
+    anchor: "def validate_email(email)"
+- id: api_uses_service
+  selector:
+    path: src/api.py
+    anchor: "from src.service import UserService"
+- id: no_utils
+  selector:
+    path: src/utils.py
+- id: no_garbage_logging
+  selector:
+    path: garbage_logging.py
+- id: no_garbage_cache
+  selector:
+    path: garbage_cache.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_REFACTOR_001_UTIL_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_REFACTOR_001_HELPER_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_REFACTOR_001_LOG_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_REFACTOR_001_LEVEL_MARKER_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_REFACTOR_001_LOGGER_CLASS_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_REFACTOR_001_CACHE_MARKER_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_REFACTOR_001_TTL_MARKER_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_REFACTOR_001_CACHE_CLASS_H
+oracle:
+  required:
+  - service_imports_validators
+  - new_validate_name
+  - new_validate_email
+  - api_uses_service
+  allowed: []
+  forbidden:
+  - no_utils
+  - no_garbage_logging
+  - no_garbage_cache
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

@@ -1,0 +1,146 @@
+name: bal3_cfgcode_005_go_yaml_logging_config
+tags:
+- lang:go
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    config/logging.yaml: |
+      logging:
+        level: info
+        format: json
+        output: stdout
+        max_size_mb: 100
+    internal/logging/setup.go: |
+      package logging
+
+      import (
+          "os"
+          "gopkg.in/yaml.v3"
+      )
+
+      type LoggingConfig struct {
+          Level     string `yaml:"level"`
+          Format    string `yaml:"format"`
+          Output    string `yaml:"output"`
+          MaxSizeMB int    `yaml:"max_size_mb"`
+      }
+
+      func LoadLoggingConfig(path string) (*LoggingConfig, error) {
+          data, err := os.ReadFile(path)
+          if err != nil {
+              return nil, err
+          }
+          var wrapper struct {
+              Logging LoggingConfig `yaml:"logging"`
+          }
+          if err := yaml.Unmarshal(data, &wrapper); err != nil {
+              return nil, err
+          }
+          return &wrapper.Logging, nil
+      }
+
+      func InitLogger(cfg *LoggingConfig) {
+          if cfg.Output == "file" {
+              setupFileOutput(cfg.MaxSizeMB)
+          }
+      }
+
+      func setupFileOutput(maxSizeMB int) {}
+    internal/tracing/tracer.go: |
+      package tracing
+
+      GARBAGE_CFGCODE_005_TRACER_A = "jaeger"
+      GARBAGE_CFGCODE_005_SPAN_B = "root"
+
+      func InitTracer(endpoint string) {}
+    internal/db/connection.go: |
+      package db
+
+      GARBAGE_CFGCODE_005_DB_C = "postgres"
+      GARBAGE_CFGCODE_005_POOL_D = 10
+
+      func Connect(dsn string) {}
+    internal/email/sender.go: |
+      package email
+
+      GARBAGE_CFGCODE_005_SMTP_E = "smtp"
+      GARBAGE_CFGCODE_005_PORT_F = 587
+
+      func SendEmail(to string, body string) {}
+  changed_files:
+    config/logging.yaml: |
+      logging:
+        level: debug
+        format: text
+        output: file
+        max_size_mb: 500
+        rotation_days: 7
+  commit_message: "switch to file logging with rotation"
+fragments:
+- id: logging_struct
+  selector:
+    path: internal/logging/setup.go
+    anchor: "type LoggingConfig struct"
+- id: load_logging
+  selector:
+    path: internal/logging/setup.go
+    anchor: "func LoadLoggingConfig"
+- id: init_logger
+  selector:
+    path: internal/logging/setup.go
+    anchor: "func InitLogger"
+- id: file_output
+  selector:
+    path: internal/logging/setup.go
+    anchor: "setupFileOutput"
+- id: no_tracer
+  selector:
+    path: internal/tracing/tracer.go
+    anchor: "InitTracer"
+- id: no_db
+  selector:
+    path: internal/db/connection.go
+    anchor: "Connect"
+- id: no_email
+  selector:
+    path: internal/email/sender.go
+    anchor: "SendEmail"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_005_TRACER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_005_SPAN_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_005_DB_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_005_POOL_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CFGCODE_005_SMTP_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CFGCODE_005_PORT_F
+oracle:
+  required:
+  - logging_struct
+  - load_logging
+  - init_logger
+  - file_output
+  allowed: []
+  forbidden:
+  - no_tracer
+  - no_db
+  - no_email
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

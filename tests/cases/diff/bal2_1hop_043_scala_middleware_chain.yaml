@@ -1,0 +1,169 @@
+name: bal2_1hop_043_scala_middleware_chain
+tags:
+- lang:scala
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/http/Request.scala: |
+      package http
+
+      case class Request(method: String, path: String, headers: Map[String, String], body: String)
+    src/main/scala/http/Response.scala: |
+      package http
+
+      case class Response(status: Int, headers: Map[String, String], body: String)
+    src/main/scala/middleware/Middleware.scala: |
+      package middleware
+
+      import http.{Request, Response}
+
+      trait Middleware {
+        def handle(req: Request, next: Request => Response): Response
+      }
+    src/main/scala/middleware/AuthMiddleware.scala: |
+      package middleware
+
+      import http.{Request, Response}
+
+      class AuthMiddleware(secret: String) extends Middleware {
+        def handle(req: Request, next: Request => Response): Response = {
+          req.headers.get("Authorization") match {
+            case Some(token) if token == secret => next(req)
+            case _ => Response(401, Map.empty, "Unauthorized")
+          }
+        }
+      }
+    src/main/scala/middleware/LoggingMiddleware.scala: |
+      package middleware
+
+      import http.{Request, Response}
+
+      class LoggingMiddleware extends Middleware {
+        def handle(req: Request, next: Request => Response): Response = {
+          println(s"${req.method} ${req.path}")
+          val resp = next(req)
+          println(s"-> ${resp.status}")
+          resp
+        }
+      }
+    src/main/scala/server/Router.scala: |
+      package server
+
+      import http.{Request, Response}
+      import middleware.Middleware
+
+      class Router(middlewares: List[Middleware]) {
+        def dispatch(req: Request): Response = {
+          val handler: Request => Response = _ => Response(200, Map.empty, "OK")
+          middlewares.foldRight(handler) { (mw, next) =>
+            r => mw.handle(r, next)
+          }(req)
+        }
+      }
+    src/main/scala/static/FileServer.scala: |
+      package static
+
+      GARBAGE_043_FILE_SERVER_A = "static"
+
+      class FileServer(root: String) {
+        def serve(path: String): Array[Byte] = Array.empty
+      }
+    src/main/scala/websocket/WsHandler.scala: |
+      package websocket
+
+      GARBAGE_043_WS_HANDLER_B = "ws"
+
+      class WsHandler {
+        def onMessage(msg: String): String = msg
+      }
+    src/main/scala/ssl/CertManager.scala: |
+      package ssl
+
+      GARBAGE_043_CERT_MANAGER_C = "cert"
+
+      class CertManager(certPath: String) {
+        def loadCert(): Array[Byte] = Array.empty
+      }
+  changed_files:
+    src/main/scala/middleware/Middleware.scala: |
+      package middleware
+
+      import http.{Request, Response}
+
+      trait Middleware {
+        def handle(req: Request, next: Request => Response): Response
+        def priority: Int = 0
+        def name: String = getClass.getSimpleName
+      }
+
+      object Middleware {
+        def chain(middlewares: List[Middleware]): List[Middleware] = {
+          middlewares.sortBy(_.priority)
+        }
+      }
+  commit_message: "feat: add priority ordering and name to Middleware"
+fragments:
+- id: middleware_priority
+  selector:
+    path: src/main/scala/middleware/Middleware.scala
+    anchor: "def priority: Int"
+- id: middleware_name
+  selector:
+    path: src/main/scala/middleware/Middleware.scala
+    anchor: "def name: String"
+- id: middleware_chain
+  selector:
+    path: src/main/scala/middleware/Middleware.scala
+    anchor: "def chain(middlewares: List[Middleware])"
+- id: auth_extends_middleware
+  selector:
+    path: src/main/scala/middleware/AuthMiddleware.scala
+    anchor: "extends Middleware"
+- id: logging_extends_middleware
+  selector:
+    path: src/main/scala/middleware/LoggingMiddleware.scala
+    anchor: "extends Middleware"
+- id: router_uses_middleware
+  selector:
+    path: src/main/scala/server/Router.scala
+    anchor: "middlewares: List[Middleware]"
+- id: unrelated_file_server
+  selector:
+    path: src/main/scala/static/FileServer.scala
+    anchor: "class FileServer"
+- id: unrelated_ws
+  selector:
+    path: src/main/scala/websocket/WsHandler.scala
+    anchor: "class WsHandler"
+- id: unrelated_cert
+  selector:
+    path: src/main/scala/ssl/CertManager.scala
+    anchor: "class CertManager"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_043_FILE_SERVER_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_043_WS_HANDLER_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_043_CERT_MANAGER_C
+oracle:
+  required:
+  - middleware_priority
+  - middleware_name
+  - middleware_chain
+  - auth_extends_middleware
+  allowed:
+  - logging_extends_middleware
+  - router_uses_middleware
+  forbidden:
+  - unrelated_file_server
+  - unrelated_ws
+  - unrelated_cert
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

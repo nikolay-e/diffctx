@@ -1,0 +1,187 @@
+name: bal3_3hop_017_rust_api_usecase_storage_codec
+tags:
+- lang:rust
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/codec/json_codec.rs: |
+      use serde::{Serialize, Deserialize};
+      use serde_json;
+
+      pub struct JsonCodec;
+
+      impl JsonCodec {
+          pub fn encode<T: Serialize>(value: &T) -> Result<String, String> {
+              serde_json::to_string(value).map_err(|e| e.to_string())
+          }
+
+          pub fn decode<T: for<'de> Deserialize<'de>>(data: &str) -> Result<T, String> {
+              serde_json::from_str(data).map_err(|e| e.to_string())
+          }
+      }
+    src/codec/mod.rs: |
+      pub mod json_codec;
+    src/storage/kv_store.rs: |
+      use crate::codec::json_codec::JsonCodec;
+      use std::collections::HashMap;
+
+      pub struct KvStore {
+          data: HashMap<String, String>,
+      }
+
+      impl KvStore {
+          pub fn new() -> Self {
+              Self { data: HashMap::new() }
+          }
+
+          pub fn set<T: serde::Serialize>(&mut self, key: &str, value: &T) -> Result<(), String> {
+              let encoded = JsonCodec::encode(value)?;
+              self.data.insert(key.to_string(), encoded);
+              Ok(())
+          }
+
+          pub fn get<T: for<'de> serde::Deserialize<'de>>(&self, key: &str) -> Result<Option<T>, String> {
+              match self.data.get(key) {
+                  Some(data) => Ok(Some(JsonCodec::decode(data)?)),
+                  None => Ok(None),
+              }
+          }
+      }
+    src/storage/mod.rs: |
+      pub mod kv_store;
+    src/usecase/item_usecase.rs: |
+      use crate::storage::kv_store::KvStore;
+
+      pub struct ItemUsecase {
+          store: KvStore,
+      }
+
+      impl ItemUsecase {
+          pub fn new(store: KvStore) -> Self {
+              Self { store }
+          }
+
+          pub fn save_item(&mut self, id: &str, name: &str) -> Result<(), String> {
+              self.store.set(id, &name.to_string())
+          }
+
+          pub fn load_item(&self, id: &str) -> Result<Option<String>, String> {
+              self.store.get::<String>(id)
+          }
+      }
+    src/usecase/mod.rs: |
+      pub mod item_usecase;
+    src/api/item_api.rs: |
+      use crate::usecase::item_usecase::ItemUsecase;
+
+      pub struct ItemApi {
+          usecase: ItemUsecase,
+      }
+
+      impl ItemApi {
+          pub fn new(usecase: ItemUsecase) -> Self {
+              Self { usecase }
+          }
+
+          pub fn create(&mut self, id: &str, name: &str) -> Result<(), String> {
+              self.usecase.save_item(id, name)
+          }
+
+          pub fn read(&self, id: &str) -> Result<Option<String>, String> {
+              self.usecase.load_item(id)
+          }
+      }
+    src/api/mod.rs: |
+      pub mod item_api;
+    src/logging/logger.rs: |
+      pub static GARBAGE_BAL3_017_LOGGER_MARKER_A: &str = "logger";
+      pub static GARBAGE_BAL3_017_LEVEL_MARKER_B: &str = "info";
+
+      pub fn log(msg: &str) {
+          println!("{}", msg);
+      }
+    src/logging/mod.rs: |
+      pub mod logger;
+    src/lib.rs: |
+      pub mod codec;
+      pub mod storage;
+      pub mod usecase;
+      pub mod api;
+      pub mod logging;
+  changed_files:
+    src/codec/json_codec.rs: |
+      use serde::{Serialize, Deserialize};
+      use serde_json;
+
+      pub struct JsonCodec {
+          pretty: bool,
+      }
+
+      impl JsonCodec {
+          pub fn new(pretty: bool) -> Self {
+              Self { pretty }
+          }
+
+          pub fn encode<T: Serialize>(&self, value: &T) -> Result<String, String> {
+              if self.pretty {
+                  serde_json::to_string_pretty(value).map_err(|e| e.to_string())
+              } else {
+                  serde_json::to_string(value).map_err(|e| e.to_string())
+              }
+          }
+
+          pub fn decode<T: for<'de> Deserialize<'de>>(&self, data: &str) -> Result<T, String> {
+              serde_json::from_str(data).map_err(|e| e.to_string())
+          }
+      }
+  commit_message: "Make JsonCodec stateful with pretty-print option"
+fragments:
+- id: codec_pretty
+  selector:
+    path: src/codec/json_codec.rs
+    anchor: "pretty: bool"
+- id: codec_new
+  selector:
+    path: src/codec/json_codec.rs
+    anchor: "pub fn new(pretty: bool)"
+- id: codec_encode
+  selector:
+    path: src/codec/json_codec.rs
+    anchor: "to_string_pretty"
+- id: storage_set
+  selector:
+    path: src/storage/kv_store.rs
+    anchor: "pub fn set"
+- id: usecase_save
+  selector:
+    path: src/usecase/item_usecase.rs
+    anchor: "pub fn save_item"
+- id: api_create
+  selector:
+    path: src/api/item_api.rs
+    anchor: "pub fn create"
+- id: no_logger
+  selector:
+    path: src/logging/logger.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_017_LOGGER_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_017_LEVEL_MARKER_B
+oracle:
+  required:
+  - codec_pretty
+  - codec_new
+  - codec_encode
+  - storage_set
+  - usecase_save
+  - api_create
+  allowed: []
+  forbidden:
+  - no_logger
+  - no_global_0
+  - no_global_1

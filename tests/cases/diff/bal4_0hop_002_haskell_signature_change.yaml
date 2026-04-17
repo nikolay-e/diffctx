@@ -1,0 +1,90 @@
+name: bal4_0hop_002_haskell_signature_change
+tags:
+- lang:haskell
+- change:single_file
+- change:signature
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/Calc.hs: |
+      module Calc where
+
+      sumList :: [Int] -> Int
+      sumList [] = 0
+      sumList (x:xs) = x + sumList xs
+    src/garbage_io.hs: |
+      module GarbageIO where
+
+      GARBAGE_B4H002_IO_A = "io"
+      GARBAGE_B4H002_IO_B = False
+
+      garbageRead :: String -> String
+      garbageRead s = s
+    src/garbage_fmt.hs: |
+      module GarbageFmt where
+
+      GARBAGE_B4H002_FMT_C = "fmt"
+      GARBAGE_B4H002_FMT_D = 99
+
+      garbageFmt :: Int -> String
+      garbageFmt n = show n
+  changed_files:
+    src/Calc.hs: |
+      module Calc where
+
+      sumList :: Num a => [a] -> a
+      sumList [] = 0
+      sumList (x:xs) = x + sumList xs
+    src/garbage_io.hs: |
+      module GarbageIO where
+
+      GARBAGE_B4H002_IO_A = "io"
+      GARBAGE_B4H002_IO_B = False
+
+      garbageRead :: String -> String
+      garbageRead s = s
+    src/garbage_fmt.hs: |
+      module GarbageFmt where
+
+      GARBAGE_B4H002_FMT_C = "fmt"
+      GARBAGE_B4H002_FMT_D = 99
+
+      garbageFmt :: Int -> String
+      garbageFmt n = show n
+  commit_message: "feat: generalize sumList to Num constraint"
+fragments:
+- id: new_sig
+  selector:
+    path: src/Calc.hs
+    anchor: "sumList :: Num a => [a] -> a"
+- id: no_garbage_io
+  selector:
+    path: src/garbage_io.hs
+- id: no_garbage_fmt
+  selector:
+    path: src/garbage_fmt.hs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_B4H002_IO_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_B4H002_IO_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_B4H002_FMT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_B4H002_FMT_D
+oracle:
+  required:
+  - new_sig
+  allowed: []
+  forbidden:
+  - no_garbage_io
+  - no_garbage_fmt
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

@@ -1,0 +1,169 @@
+name: bal2_1hop_039_scala_spark_schema
+tags:
+- lang:scala
+- change:multi_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/schema/ClickEvent.scala: |
+      package schema
+
+      case class ClickEvent(userId: String, url: String, timestamp: Long)
+
+      object ClickEvent {
+        val columns: List[String] = List("userId", "url", "timestamp")
+      }
+    src/main/scala/ingestion/ClickIngester.scala: |
+      package ingestion
+
+      import schema.ClickEvent
+
+      class ClickIngester {
+        def parse(line: String): ClickEvent = {
+          val parts = line.split(",")
+          ClickEvent(parts(0), parts(1), parts(2).toLong)
+        }
+
+        def ingest(lines: List[String]): List[ClickEvent] = lines.map(parse)
+      }
+    src/main/scala/aggregation/ClickAggregator.scala: |
+      package aggregation
+
+      import schema.ClickEvent
+
+      class ClickAggregator {
+        def countByUser(events: List[ClickEvent]): Map[String, Int] = {
+          events.groupBy(_.userId).map { case (uid, evts) => uid -> evts.size }
+        }
+      }
+    src/main/scala/output/ClickWriter.scala: |
+      package output
+
+      import schema.ClickEvent
+
+      class ClickWriter(outputPath: String) {
+        def write(events: List[ClickEvent]): Unit = {
+          events.foreach(e => println(s"${e.userId},${e.url},${e.timestamp}"))
+        }
+      }
+    src/main/scala/config/SparkConfig.scala: |
+      package config
+
+      GARBAGE_039_SPARK_CONFIG_A = "spark"
+
+      case class SparkConfig(master: String, appName: String) {
+        def toMap: Map[String, String] = Map("master" -> master, "appName" -> appName)
+      }
+    src/main/scala/util/Partitioner.scala: |
+      package util
+
+      GARBAGE_039_PARTITIONER_B = "partition"
+
+      class Partitioner(numPartitions: Int) {
+        def partition(key: String): Int = math.abs(key.hashCode) % numPartitions
+      }
+    src/main/scala/checkpoint/StateStore.scala: |
+      package checkpoint
+
+      GARBAGE_039_STATE_STORE_C = "state"
+
+      class StateStore(dir: String) {
+        def save(state: Map[String, Any]): Unit = ()
+        def load(): Map[String, Any] = Map.empty
+      }
+  changed_files:
+    src/main/scala/schema/ClickEvent.scala: |
+      package schema
+
+      case class ClickEvent(
+        userId: String,
+        url: String,
+        timestamp: Long,
+        sessionId: String,
+        deviceType: String
+      )
+
+      object ClickEvent {
+        val columns: List[String] = List("userId", "url", "timestamp", "sessionId", "deviceType")
+
+        def fromMap(m: Map[String, String]): ClickEvent = {
+          ClickEvent(
+            m("userId"), m("url"), m("timestamp").toLong,
+            m.getOrElse("sessionId", "unknown"),
+            m.getOrElse("deviceType", "desktop")
+          )
+        }
+      }
+    src/main/scala/ingestion/ClickIngester.scala: |
+      package ingestion
+
+      import schema.ClickEvent
+
+      class ClickIngester {
+        def parse(line: String): ClickEvent = {
+          val parts = line.split(",")
+          ClickEvent(parts(0), parts(1), parts(2).toLong, parts(3), parts(4))
+        }
+
+        def ingest(lines: List[String]): List[ClickEvent] = lines.map(parse)
+      }
+  commit_message: "feat: add sessionId and deviceType to ClickEvent schema"
+fragments:
+- id: click_event_new_fields
+  selector:
+    path: src/main/scala/schema/ClickEvent.scala
+    anchor: "sessionId: String"
+- id: click_event_from_map
+  selector:
+    path: src/main/scala/schema/ClickEvent.scala
+    anchor: "def fromMap"
+- id: ingester_parse_updated
+  selector:
+    path: src/main/scala/ingestion/ClickIngester.scala
+    anchor: "ClickEvent(parts(0), parts(1), parts(2).toLong, parts(3), parts(4))"
+- id: aggregator_uses_click
+  selector:
+    path: src/main/scala/aggregation/ClickAggregator.scala
+    anchor: "events: List[ClickEvent]"
+- id: writer_uses_click
+  selector:
+    path: src/main/scala/output/ClickWriter.scala
+    anchor: "events: List[ClickEvent]"
+- id: unrelated_spark_config
+  selector:
+    path: src/main/scala/config/SparkConfig.scala
+    anchor: "case class SparkConfig"
+- id: unrelated_partitioner
+  selector:
+    path: src/main/scala/util/Partitioner.scala
+    anchor: "class Partitioner"
+- id: unrelated_state_store
+  selector:
+    path: src/main/scala/checkpoint/StateStore.scala
+    anchor: "class StateStore"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_039_SPARK_CONFIG_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_039_PARTITIONER_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_039_STATE_STORE_C
+oracle:
+  required:
+  - click_event_new_fields
+  - click_event_from_map
+  - ingester_parse_updated
+  - aggregator_uses_click
+  allowed:
+  - writer_uses_click
+  forbidden:
+  - unrelated_spark_config
+  - unrelated_partitioner
+  - unrelated_state_store
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

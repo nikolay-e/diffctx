@@ -1,0 +1,173 @@
+name: xml_014_xsd_element_added
+tags:
+- lang:xml
+- lang:java
+- change:multi_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    schema/product.xsd: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                 targetNamespace="http://example.com/product"
+                 xmlns:tns="http://example.com/product"
+                 elementFormDefault="qualified">
+        <xs:element name="product">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="id" type="xs:long"/>
+              <xs:element name="name" type="xs:string"/>
+              <xs:element name="price" type="xs:decimal"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:schema>
+    data/sample-product.xml: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <product xmlns="http://example.com/product">
+        <id>1001</id>
+        <name>Widget Pro</name>
+        <price>49.99</price>
+      </product>
+    src/main/java/com/example/product/ProductValidator.java: |
+      package com.example.product;
+      import javax.xml.validation.Schema;
+      import javax.xml.validation.SchemaFactory;
+      import javax.xml.validation.Validator;
+      import javax.xml.transform.stream.StreamSource;
+      import java.io.File;
+      public class ProductValidator {
+          private final Validator validator;
+          public ProductValidator(File schemaFile) throws Exception {
+              SchemaFactory factory = SchemaFactory.newInstance(
+                  javax.xml.XMLConstants.W3C_XML_SCHEMA_NS_URI);
+              Schema schema = factory.newSchema(schemaFile);
+              this.validator = schema.newValidator();
+          }
+          public boolean validate(File xmlFile) {
+              try {
+                  validator.validate(new StreamSource(xmlFile));
+                  return true;
+              } catch (Exception e) {
+                  return false;
+              }
+          }
+      }
+    src/main/java/com/example/product/Product.java: |
+      package com.example.product;
+      import java.math.BigDecimal;
+      public class Product {
+          private long id;
+          private String name;
+          private BigDecimal price;
+          public long getId() { return id; }
+          public void setId(long id) { this.id = id; }
+          public String getName() { return name; }
+          public void setName(String name) { this.name = name; }
+          public BigDecimal getPrice() { return price; }
+          public void setPrice(BigDecimal price) { this.price = price; }
+      }
+    XML_NOISE_014_address.xsd: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+        <!-- XML_NOISE_014_ADDRESS_SCHEMA -->
+        <xs:element name="XML_NOISE_014_address">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="street" type="xs:string"/>
+              <xs:element name="city" type="xs:string"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:schema>
+    garbage/OrderXmlMapper.java: |
+      // XML_NOISE_014_OrderXmlMapper = "jaxb_order_mapper_marker"
+    garbage/InvoiceParser.java: |
+      // XML_NOISE_014_InvoiceParser = "invoice_xml_parser_marker"
+  changed_files:
+    schema/product.xsd: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                 targetNamespace="http://example.com/product"
+                 xmlns:tns="http://example.com/product"
+                 elementFormDefault="qualified">
+        <xs:element name="product">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="id" type="xs:long"/>
+              <xs:element name="name" type="xs:string"/>
+              <xs:element name="price" type="xs:decimal"/>
+              <xs:element name="sku" type="xs:string" minOccurs="0"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:schema>
+    data/sample-product.xml: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <product xmlns="http://example.com/product">
+        <id>1001</id>
+        <name>Widget Pro</name>
+        <price>49.99</price>
+        <sku>WGT-PRO-001</sku>
+      </product>
+    src/main/java/com/example/product/Product.java: |
+      package com.example.product;
+      import java.math.BigDecimal;
+      public class Product {
+          private long id;
+          private String name;
+          private BigDecimal price;
+          private String sku;
+          public long getId() { return id; }
+          public void setId(long id) { this.id = id; }
+          public String getName() { return name; }
+          public void setName(String name) { this.name = name; }
+          public BigDecimal getPrice() { return price; }
+          public void setPrice(BigDecimal price) { this.price = price; }
+          public String getSku() { return sku; }
+          public void setSku(String sku) { this.sku = sku; }
+      }
+  commit_message: "feat: add optional sku element to product XSD schema and entity"
+fragments:
+- id: xsd_sku_element
+  selector:
+    path: schema/product.xsd
+    anchor: sku
+- id: sample_xml_sku
+  selector:
+    path: data/sample-product.xml
+    anchor: WGT-PRO-001
+- id: product_sku_field
+  selector:
+    path: src/main/java/com/example/product/Product.java
+    anchor: getSku
+- id: no_address_xsd
+  selector:
+    path: XML_NOISE_014_address.xsd
+- id: no_order_mapper
+  selector:
+    path: garbage/OrderXmlMapper.java
+- id: no_global_0
+  selector:
+    anchor: XML_NOISE_014_ADDRESS_SCHEMA
+- id: no_global_1
+  selector:
+    anchor: XML_NOISE_014_address
+- id: no_global_2
+  selector:
+    anchor: XML_NOISE_014_OrderXmlMapper
+oracle:
+  required:
+  - xsd_sku_element
+  - sample_xml_sku
+  - product_sku_field
+  allowed: []
+  forbidden:
+  - no_address_xsd
+  - no_order_mapper
+  - no_global_0
+  - no_global_1
+  - no_global_2

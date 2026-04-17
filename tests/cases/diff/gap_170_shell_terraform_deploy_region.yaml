@@ -1,0 +1,86 @@
+name: gap_170_shell_terraform_deploy_region
+tags:
+- change:config
+- change:single_file
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:shell
+- lang:terraform
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    deploy/run.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      AWS_REGION="us-east-1"
+      CLUSTER_NAME="web-prod"
+      IMAGE_TAG="${1:-latest}"
+
+      aws ecs update-service \
+        --region "$AWS_REGION" \
+        --cluster "$CLUSTER_NAME" \
+        --service "frontend" \
+        --force-new-deployment
+
+      echo "Deployed $IMAGE_TAG to $CLUSTER_NAME in $AWS_REGION"
+    deploy/provider.tf: |
+      provider "aws" {
+        region = "us-east-1"
+      }
+
+      terraform {
+        required_version = ">= 1.5"
+
+        backend "s3" {
+          bucket = "tf-state-web-prod"
+          key    = "web/terraform.tfstate"
+          region = "us-east-1"
+        }
+      }
+    deploy/cleanup.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      docker image prune -af --filter "until=168h"
+      echo "Pruned old images"
+  changed_files:
+    deploy/run.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      AWS_REGION="eu-central-1"
+      CLUSTER_NAME="web-prod"
+      IMAGE_TAG="${1:-latest}"
+
+      aws ecs update-service \
+        --region "$AWS_REGION" \
+        --cluster "$CLUSTER_NAME" \
+        --service "frontend" \
+        --force-new-deployment
+
+      echo "Deployed $IMAGE_TAG to $CLUSTER_NAME in $AWS_REGION"
+fragments:
+- id: region_change
+  selector:
+    path: deploy/run.sh
+    anchor: eu-central-1
+- id: ecs_update
+  selector:
+    path: deploy/run.sh
+    anchor: aws ecs update-service
+- id: no_cleanup
+  selector:
+    path: deploy/cleanup.sh
+- id: no_provider
+  selector:
+    path: deploy/provider.tf
+oracle:
+  required:
+  - region_change
+  - ecs_update
+  forbidden:
+  - no_cleanup
+  - no_provider

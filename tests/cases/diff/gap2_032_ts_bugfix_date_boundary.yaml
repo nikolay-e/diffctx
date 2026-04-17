@@ -1,0 +1,198 @@
+name: gap2_032_ts_bugfix_date_boundary
+tags:
+- lang:clojure
+- change:multi_file
+- context:import_chain
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/payments/ledger.clj: |
+      (ns payments.ledger)
+
+      (defprotocol Ledger
+        (debit! [this account amount])
+        (credit! [this account amount])
+        (balance [this account]))
+
+      (defrecord InMemoryLedger [entries]
+        Ledger
+        (debit! [this account amount]
+          (swap! entries update account (fnil - 0) amount)
+          this)
+        (credit! [this account amount]
+          (swap! entries update account (fnil + 0) amount)
+          this)
+        (balance [this account]
+          (get @entries account 0)))
+
+      (defn create-ledger []
+        (->InMemoryLedger (atom {})))
+    src/payments/transfer.clj: |
+      (ns payments.transfer
+        (:require [payments.ledger :as l]))
+
+      (defn transfer! [ledger from to amount]
+        (when (neg? (- (l/balance ledger from) amount))
+          (throw (ex-info "Insufficient funds" {:from from :amount amount})))
+        (l/debit! ledger from amount)
+        (l/credit! ledger to amount)
+        {:from from :to to :amount amount})
+    src/api/payment_handler.clj: |
+      (ns api.payment-handler
+        (:require [payments.transfer :as tr]))
+
+      (defn handle-transfer [ledger req]
+        (try
+          {:status 200 :body (tr/transfer! ledger (:from req) (:to req) (:amount req))}
+          (catch clojure.lang.ExceptionInfo e
+            {:status 400 :body {:error (ex-message e)}})))
+    garbage/notify.clj: |
+      (ns garbage.notify)
+
+      (def ^:const GARBAGE_GAP2032_A "sms_marker")
+      (def ^:const GARBAGE_GAP2032_B "email_marker")
+
+      (defn send-notification [to message]
+        GARBAGE_GAP2032_A)
+    garbage/audit.clj: |
+      (ns garbage.audit)
+
+      (def ^:const GARBAGE_GAP2032_C "audit_marker")
+      (def ^:const GARBAGE_GAP2032_D "trail_marker")
+
+      (defn record-event [event]
+        GARBAGE_GAP2032_C)
+    garbage/fraud.clj: |
+      (ns garbage.fraud)
+
+      (def ^:const GARBAGE_GAP2032_E "fraud_marker")
+
+      (defn score [transaction]
+        GARBAGE_GAP2032_E)
+  changed_files:
+    src/payments/ledger.clj: |
+      (ns payments.ledger)
+
+      (defprotocol Ledger
+        (debit! [this account amount])
+        (credit! [this account amount])
+        (balance [this account])
+        (history [this account]))
+
+      (defrecord InMemoryLedger [entries log]
+        Ledger
+        (debit! [this account amount]
+          (swap! entries update account (fnil - 0) amount)
+          (swap! log conj {:type :debit :account account :amount amount})
+          this)
+        (credit! [this account amount]
+          (swap! entries update account (fnil + 0) amount)
+          (swap! log conj {:type :credit :account account :amount amount})
+          this)
+        (balance [this account]
+          (get @entries account 0))
+        (history [this account]
+          (filter #(= account (:account %)) @log)))
+
+      (defn create-ledger []
+        (->InMemoryLedger (atom {}) (atom [])))
+    src/payments/transfer.clj: |
+      (ns payments.transfer
+        (:require [payments.ledger :as l]))
+
+      (defn transfer! [ledger from to amount]
+        (when (neg? (- (l/balance ledger from) amount))
+          (throw (ex-info "Insufficient funds" {:from from :amount amount})))
+        (l/debit! ledger from amount)
+        (l/credit! ledger to amount)
+        {:from from :to to :amount amount})
+
+      (defn transfer-history [ledger account]
+        (l/history ledger account))
+    src/api/payment_handler.clj: |
+      (ns api.payment-handler
+        (:require [payments.transfer :as tr]))
+
+      (defn handle-transfer [ledger req]
+        (try
+          {:status 200 :body (tr/transfer! ledger (:from req) (:to req) (:amount req))}
+          (catch clojure.lang.ExceptionInfo e
+            {:status 400 :body {:error (ex-message e)}})))
+
+      (defn handle-history [ledger req]
+        {:status 200 :body (tr/transfer-history ledger (:account req))})
+    garbage/notify.clj: |
+      (ns garbage.notify)
+
+      (def ^:const GARBAGE_GAP2032_A "sms_marker")
+      (def ^:const GARBAGE_GAP2032_B "email_marker")
+
+      (defn send-notification [to message]
+        GARBAGE_GAP2032_A)
+    garbage/audit.clj: |
+      (ns garbage.audit)
+
+      (def ^:const GARBAGE_GAP2032_C "audit_marker")
+      (def ^:const GARBAGE_GAP2032_D "trail_marker")
+
+      (defn record-event [event]
+        GARBAGE_GAP2032_C)
+    garbage/fraud.clj: |
+      (ns garbage.fraud)
+
+      (def ^:const GARBAGE_GAP2032_E "fraud_marker")
+
+      (defn score [transaction]
+        GARBAGE_GAP2032_E)
+  commit_message: "feat: add transaction history to Ledger protocol and transfer module"
+fragments:
+- id: ledger_history_protocol
+  selector:
+    path: src/payments/ledger.clj
+    anchor: "(history [this account])"
+- id: ledger_log_field
+  selector:
+    path: src/payments/ledger.clj
+    anchor: "(defrecord InMemoryLedger [entries log]"
+- id: ledger_history_impl
+  selector:
+    path: src/payments/ledger.clj
+    anchor: "(filter #(= account (:account %)) @log)"
+- id: transfer_history_fn
+  selector:
+    path: src/payments/transfer.clj
+    anchor: "(defn transfer-history"
+- id: handler_history
+  selector:
+    path: src/api/payment_handler.clj
+    anchor: "(defn handle-history"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_GAP2032_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_GAP2032_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_GAP2032_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_GAP2032_D
+- id: no_garbage_e
+  selector:
+    anchor: GARBAGE_GAP2032_E
+oracle:
+  required:
+  - ledger_history_protocol
+  - ledger_log_field
+  - ledger_history_impl
+  - transfer_history_fn
+  - handler_history
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d
+  - no_garbage_e

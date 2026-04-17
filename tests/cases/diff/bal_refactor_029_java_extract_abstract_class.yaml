@@ -1,0 +1,306 @@
+name: bal_refactor_029_java_extract_abstract_class
+tags:
+- lang:java
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/app/export/CsvExporter.java: |
+      package com.app.export;
+
+      import java.util.List;
+      import java.util.Map;
+
+      public class CsvExporter {
+          public String export(List<Map<String, String>> records, List<String> columns) {
+              StringBuilder sb = new StringBuilder();
+              sb.append(String.join(",", columns)).append("\n");
+              for (Map<String, String> record : records) {
+                  for (int i = 0; i < columns.size(); i++) {
+                      if (i > 0) sb.append(",");
+                      String val = record.getOrDefault(columns.get(i), "");
+                      sb.append(sanitize(val));
+                  }
+                  sb.append("\n");
+              }
+              return sb.toString();
+          }
+
+          private String sanitize(String val) {
+              if (val.contains(",") || val.contains("\"")) {
+                  return "\"" + val.replace("\"", "\"\"") + "\"";
+              }
+              return val;
+          }
+      }
+    src/main/java/com/app/export/TsvExporter.java: |
+      package com.app.export;
+
+      import java.util.List;
+      import java.util.Map;
+
+      public class TsvExporter {
+          public String export(List<Map<String, String>> records, List<String> columns) {
+              StringBuilder sb = new StringBuilder();
+              sb.append(String.join("\t", columns)).append("\n");
+              for (Map<String, String> record : records) {
+                  for (int i = 0; i < columns.size(); i++) {
+                      if (i > 0) sb.append("\t");
+                      String val = record.getOrDefault(columns.get(i), "");
+                      sb.append(sanitize(val));
+                  }
+                  sb.append("\n");
+              }
+              return sb.toString();
+          }
+
+          private String sanitize(String val) {
+              return val.replace("\t", " ").replace("\n", " ");
+          }
+      }
+    src/main/java/com/app/service/ReportService.java: |
+      package com.app.service;
+
+      import com.app.export.CsvExporter;
+      import java.util.List;
+      import java.util.Map;
+
+      public class ReportService {
+          private final CsvExporter exporter;
+
+          public ReportService(CsvExporter exporter) {
+              this.exporter = exporter;
+          }
+
+          public String generateReport(List<Map<String, String>> data, List<String> columns) {
+              return exporter.export(data, columns);
+          }
+      }
+    src/main/java/com/app/controller/ExportController.java: |
+      package com.app.controller;
+
+      import com.app.service.ReportService;
+      import java.util.List;
+      import java.util.Map;
+
+      public class ExportController {
+          private final ReportService reportService;
+
+          public ExportController(ReportService reportService) {
+              this.reportService = reportService;
+          }
+
+          public String handleExport(List<Map<String, String>> data, List<String> columns) {
+              return reportService.generateReport(data, columns);
+          }
+      }
+    src/main/java/com/app/GarbageFeatureFlag.java: |
+      package com.app;
+
+      public class GarbageFeatureFlag {
+          public static final String GARBAGE_REFACTOR_029_FLAG_A = "feature_flag";
+          public static final boolean GARBAGE_REFACTOR_029_ENABLED_B = false;
+          public static final int GARBAGE_REFACTOR_029_ROLLOUT_C = 50;
+
+          public boolean isEnabled(String flag) { return false; }
+      }
+    src/main/java/com/app/GarbageRateLimit.java: |
+      package com.app;
+
+      public class GarbageRateLimit {
+          public static final String GARBAGE_REFACTOR_029_RATE_D = "rate_limit";
+          public static final boolean GARBAGE_REFACTOR_029_ENABLED_E = true;
+
+          public boolean allow(String key) { return true; }
+      }
+  changed_files:
+    src/main/java/com/app/export/TabularExporter.java: |
+      package com.app.export;
+
+      import java.util.List;
+      import java.util.Map;
+
+      public abstract class TabularExporter {
+          private final String delimiter;
+
+          protected TabularExporter(String delimiter) {
+              this.delimiter = delimiter;
+          }
+
+          public String export(List<Map<String, String>> records, List<String> columns) {
+              StringBuilder sb = new StringBuilder();
+              sb.append(String.join(delimiter, columns)).append("\n");
+              for (Map<String, String> record : records) {
+                  for (int i = 0; i < columns.size(); i++) {
+                      if (i > 0) sb.append(delimiter);
+                      String val = record.getOrDefault(columns.get(i), "");
+                      sb.append(sanitize(val));
+                  }
+                  sb.append("\n");
+              }
+              return sb.toString();
+          }
+
+          protected abstract String sanitize(String val);
+      }
+    src/main/java/com/app/export/CsvExporter.java: |
+      package com.app.export;
+
+      public class CsvExporter extends TabularExporter {
+          public CsvExporter() {
+              super(",");
+          }
+
+          @Override
+          protected String sanitize(String val) {
+              if (val.contains(",") || val.contains("\"")) {
+                  return "\"" + val.replace("\"", "\"\"") + "\"";
+              }
+              return val;
+          }
+      }
+    src/main/java/com/app/export/TsvExporter.java: |
+      package com.app.export;
+
+      public class TsvExporter extends TabularExporter {
+          public TsvExporter() {
+              super("\t");
+          }
+
+          @Override
+          protected String sanitize(String val) {
+              return val.replace("\t", " ").replace("\n", " ");
+          }
+      }
+    src/main/java/com/app/service/ReportService.java: |
+      package com.app.service;
+
+      import com.app.export.TabularExporter;
+      import java.util.List;
+      import java.util.Map;
+
+      public class ReportService {
+          private final TabularExporter exporter;
+
+          public ReportService(TabularExporter exporter) {
+              this.exporter = exporter;
+          }
+
+          public String generateReport(List<Map<String, String>> data, List<String> columns) {
+              return exporter.export(data, columns);
+          }
+      }
+    src/main/java/com/app/controller/ExportController.java: |
+      package com.app.controller;
+
+      import com.app.service.ReportService;
+      import java.util.List;
+      import java.util.Map;
+
+      public class ExportController {
+          private final ReportService reportService;
+
+          public ExportController(ReportService reportService) {
+              this.reportService = reportService;
+          }
+
+          public String handleExport(List<Map<String, String>> data, List<String> columns) {
+              return reportService.generateReport(data, columns);
+          }
+      }
+    src/main/java/com/app/GarbageFeatureFlag.java: |
+      package com.app;
+
+      public class GarbageFeatureFlag {
+          public static final String GARBAGE_REFACTOR_029_FLAG_A = "feature_flag";
+          public static final boolean GARBAGE_REFACTOR_029_ENABLED_B = false;
+          public static final int GARBAGE_REFACTOR_029_ROLLOUT_C = 50;
+
+          public boolean isEnabled(String flag) { return false; }
+      }
+    src/main/java/com/app/GarbageRateLimit.java: |
+      package com.app;
+
+      public class GarbageRateLimit {
+          public static final String GARBAGE_REFACTOR_029_RATE_D = "rate_limit";
+          public static final boolean GARBAGE_REFACTOR_029_ENABLED_E = true;
+
+          public boolean allow(String key) { return true; }
+      }
+  commit_message: "refactor: extract TabularExporter abstract base for CSV/TSV"
+fragments:
+- id: new_abstract_class
+  selector:
+    path: src/main/java/com/app/export/TabularExporter.java
+    anchor: "public abstract class TabularExporter"
+- id: abstract_export_method
+  selector:
+    path: src/main/java/com/app/export/TabularExporter.java
+    anchor: "public String export"
+- id: abstract_sanitize
+  selector:
+    path: src/main/java/com/app/export/TabularExporter.java
+    anchor: "protected abstract String sanitize"
+- id: csv_extends
+  selector:
+    path: src/main/java/com/app/export/CsvExporter.java
+    anchor: "extends TabularExporter"
+- id: tsv_extends
+  selector:
+    path: src/main/java/com/app/export/TsvExporter.java
+    anchor: "extends TabularExporter"
+- id: report_uses_abstract
+  selector:
+    path: src/main/java/com/app/service/ReportService.java
+    anchor: "import com.app.export.TabularExporter"
+- id: report_field_type
+  selector:
+    path: src/main/java/com/app/service/ReportService.java
+    anchor: "private final TabularExporter exporter"
+- id: controller_uses_report
+  selector:
+    path: src/main/java/com/app/controller/ExportController.java
+    anchor: "import com.app.service.ReportService"
+- id: no_garbage_feature_flag
+  selector:
+    path: src/main/java/com/app/GarbageFeatureFlag.java
+- id: no_garbage_rate_limit
+  selector:
+    path: src/main/java/com/app/GarbageRateLimit.java
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_REFACTOR_029_FLAG_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_REFACTOR_029_ENABLED_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_REFACTOR_029_ROLLOUT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_REFACTOR_029_RATE_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_REFACTOR_029_ENABLED_E
+oracle:
+  required:
+  - new_abstract_class
+  - abstract_export_method
+  - abstract_sanitize
+  - csv_extends
+  - tsv_extends
+  - report_uses_abstract
+  - report_field_type
+  - controller_uses_report
+  allowed: []
+  forbidden:
+  - no_garbage_feature_flag
+  - no_garbage_rate_limit
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

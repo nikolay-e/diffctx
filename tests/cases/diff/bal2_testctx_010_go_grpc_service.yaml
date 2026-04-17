@@ -1,0 +1,223 @@
+name: bal2_testctx_010_go_grpc_service
+tags:
+- lang:go
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    service/greeter.go: |
+      package service
+
+      import "fmt"
+
+      type GreeterService struct {
+          prefix string
+      }
+
+      func NewGreeterService(prefix string) *GreeterService {
+          return &GreeterService{prefix: prefix}
+      }
+
+      func (s *GreeterService) Greet(name string) string {
+          return fmt.Sprintf("%s, %s!", s.prefix, name)
+      }
+    service/greeter_test.go: |
+      package service
+
+      import "testing"
+
+      func TestGreet(t *testing.T) {
+          svc := NewGreeterService("Hello")
+          got := svc.Greet("World")
+          if got != "Hello, World!" {
+              t.Fatalf("expected 'Hello, World!', got '%s'", got)
+          }
+      }
+    service/echo.go: |
+      package service
+
+      GARBAGE_BAL2_010_ECHO_A = "echo"
+      GARBAGE_BAL2_010_ECHO_MARKER_B = true
+
+      type EchoService struct{}
+
+      func (e *EchoService) Echo(msg string) string {
+          return msg
+      }
+    service/echo_test.go: |
+      package service
+
+      GARBAGE_BAL2_010_ECHO_TEST_C = "echo_test"
+
+      import "testing"
+
+      func TestEcho(t *testing.T) {
+          svc := &EchoService{}
+          if svc.Echo("hi") != "hi" {
+              t.Fatal("echo failed")
+          }
+      }
+    proto/greeter.go: |
+      package proto
+
+      GARBAGE_BAL2_010_PROTO_D = "proto"
+      GARBAGE_BAL2_010_PROTO_MARKER_E = true
+
+      type GreetRequest struct {
+          Name string
+      }
+
+      type GreetResponse struct {
+          Message string
+      }
+  changed_files:
+    service/greeter.go: |
+      package service
+
+      import "fmt"
+
+      type GreeterService struct {
+          prefix string
+      }
+
+      func NewGreeterService(prefix string) *GreeterService {
+          return &GreeterService{prefix: prefix}
+      }
+
+      func (s *GreeterService) Greet(name string) string {
+          return fmt.Sprintf("%s, %s!", s.prefix, name)
+      }
+
+      func (s *GreeterService) GreetAll(names []string) []string {
+          results := make([]string, len(names))
+          for i, name := range names {
+              results[i] = s.Greet(name)
+          }
+          return results
+      }
+    service/greeter_test.go: |
+      package service
+
+      import "testing"
+
+      func TestGreet(t *testing.T) {
+          svc := NewGreeterService("Hello")
+          got := svc.Greet("World")
+          if got != "Hello, World!" {
+              t.Fatalf("expected 'Hello, World!', got '%s'", got)
+          }
+      }
+
+      func TestGreetAll(t *testing.T) {
+          svc := NewGreeterService("Hi")
+          results := svc.GreetAll([]string{"Alice", "Bob"})
+          if len(results) != 2 {
+              t.Fatalf("expected 2 results, got %d", len(results))
+          }
+          if results[0] != "Hi, Alice!" {
+              t.Fatalf("expected 'Hi, Alice!', got '%s'", results[0])
+          }
+          if results[1] != "Hi, Bob!" {
+              t.Fatalf("expected 'Hi, Bob!', got '%s'", results[1])
+          }
+      }
+
+      func TestGreetAllEmpty(t *testing.T) {
+          svc := NewGreeterService("Hey")
+          results := svc.GreetAll([]string{})
+          if len(results) != 0 {
+              t.Fatalf("expected empty results, got %d", len(results))
+          }
+      }
+    service/echo.go: |
+      package service
+
+      GARBAGE_BAL2_010_ECHO_A = "echo"
+      GARBAGE_BAL2_010_ECHO_MARKER_B = true
+
+      type EchoService struct{}
+
+      func (e *EchoService) Echo(msg string) string {
+          return msg
+      }
+    service/echo_test.go: |
+      package service
+
+      GARBAGE_BAL2_010_ECHO_TEST_C = "echo_test"
+
+      import "testing"
+
+      func TestEcho(t *testing.T) {
+          svc := &EchoService{}
+          if svc.Echo("hi") != "hi" {
+              t.Fatal("echo failed")
+          }
+      }
+    proto/greeter.go: |
+      package proto
+
+      GARBAGE_BAL2_010_PROTO_D = "proto"
+      GARBAGE_BAL2_010_PROTO_MARKER_E = true
+
+      type GreetRequest struct {
+          Name string
+      }
+
+      type GreetResponse struct {
+          Message string
+      }
+  commit_message: "Add GreetAll batch method to GreeterService"
+fragments:
+- id: greet_all
+  selector:
+    path: service/greeter.go
+    anchor: "func (s *GreeterService) GreetAll(names []string)"
+- id: test_greet_all
+  selector:
+    path: service/greeter_test.go
+    anchor: "func TestGreetAll"
+- id: test_greet_all_empty
+  selector:
+    path: service/greeter_test.go
+    anchor: "func TestGreetAllEmpty"
+- id: no_echo
+  selector:
+    path: service/echo.go
+- id: no_echo_test
+  selector:
+    path: service/echo_test.go
+- id: no_proto
+  selector:
+    path: proto/greeter.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL2_010_ECHO_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL2_010_ECHO_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL2_010_ECHO_TEST_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL2_010_PROTO_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL2_010_PROTO_MARKER_E
+oracle:
+  required:
+  - greet_all
+  - test_greet_all
+  - test_greet_all_empty
+  allowed: []
+  forbidden:
+  - no_echo
+  - no_echo_test
+  - no_proto
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

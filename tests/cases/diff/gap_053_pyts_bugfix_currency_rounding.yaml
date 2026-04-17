@@ -1,0 +1,224 @@
+name: gap_053_pyts_bugfix_currency_rounding
+tags:
+- lang:java
+- change:multi_file
+- change:refactor
+- context:cross_module
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/main/java/com/fintech/TransactionProcessor.java: |
+      package com.fintech;
+
+      import java.math.BigDecimal;
+
+      public class TransactionProcessor {
+          private final AccountRepository accounts;
+
+          public TransactionProcessor(AccountRepository accounts) {
+              this.accounts = accounts;
+          }
+
+          public void transfer(String fromId, String toId, BigDecimal amount) {
+              if (fromId == null || fromId.isBlank()) {
+                  throw new IllegalArgumentException("Source account ID required");
+              }
+              if (toId == null || toId.isBlank()) {
+                  throw new IllegalArgumentException("Destination account ID required");
+              }
+              if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+                  throw new IllegalArgumentException("Amount must be positive");
+              }
+              Account from = accounts.findById(fromId);
+              Account to = accounts.findById(toId);
+              if (from == null) throw new IllegalStateException("Account not found: " + fromId);
+              if (to == null) throw new IllegalStateException("Account not found: " + toId);
+              from.debit(amount);
+              to.credit(amount);
+          }
+      }
+    src/main/java/com/fintech/PaymentService.java: |
+      package com.fintech;
+
+      import java.math.BigDecimal;
+
+      public class PaymentService {
+          private final AccountRepository accounts;
+
+          public PaymentService(AccountRepository accounts) {
+              this.accounts = accounts;
+          }
+
+          public void pay(String accountId, BigDecimal amount, String description) {
+              if (accountId == null || accountId.isBlank()) {
+                  throw new IllegalArgumentException("Account ID required");
+              }
+              if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+                  throw new IllegalArgumentException("Amount must be positive");
+              }
+              Account account = accounts.findById(accountId);
+              if (account == null) throw new IllegalStateException("Account not found: " + accountId);
+              account.debit(amount);
+              System.out.println("Payment: " + description + " = " + amount);
+          }
+      }
+    src/main/java/com/fintech/AccountRepository.java: |
+      package com.fintech;
+
+      public interface AccountRepository {
+          Account findById(String accountId);
+      }
+    garbage/FraudDetector.java: |
+      // GARBAGE_GAP053_FRAUD_A = "fraud_detector_marker"
+    garbage/ComplianceReporter.java: |
+      // GARBAGE_GAP053_COMPL_B = "compliance_reporter_marker"
+    garbage/CurrencyConverter.java: |
+      // GARBAGE_GAP053_CURR_C = "currency_converter_marker"
+  changed_files:
+    src/main/java/com/fintech/TransactionProcessor.java: |
+      package com.fintech;
+
+      import com.fintech.validation.PaymentValidator;
+      import java.math.BigDecimal;
+
+      public class TransactionProcessor {
+          private final AccountRepository accounts;
+          private final PaymentValidator validator;
+
+          public TransactionProcessor(AccountRepository accounts, PaymentValidator validator) {
+              this.accounts = accounts;
+              this.validator = validator;
+          }
+
+          public void transfer(String fromId, String toId, BigDecimal amount) {
+              validator.requireAccountId(fromId, "source");
+              validator.requireAccountId(toId, "destination");
+              validator.requirePositiveAmount(amount);
+              Account from = accounts.findById(fromId);
+              Account to = accounts.findById(toId);
+              validator.requireAccountExists(from, fromId);
+              validator.requireAccountExists(to, toId);
+              from.debit(amount);
+              to.credit(amount);
+          }
+      }
+    src/main/java/com/fintech/PaymentService.java: |
+      package com.fintech;
+
+      import com.fintech.validation.PaymentValidator;
+      import java.math.BigDecimal;
+
+      public class PaymentService {
+          private final AccountRepository accounts;
+          private final PaymentValidator validator;
+
+          public PaymentService(AccountRepository accounts, PaymentValidator validator) {
+              this.accounts = accounts;
+              this.validator = validator;
+          }
+
+          public void pay(String accountId, BigDecimal amount, String description) {
+              validator.requireAccountId(accountId, "payment");
+              validator.requirePositiveAmount(amount);
+              Account account = accounts.findById(accountId);
+              validator.requireAccountExists(account, accountId);
+              account.debit(amount);
+              System.out.println("Payment: " + description + " = " + amount);
+          }
+      }
+    src/main/java/com/fintech/validation/PaymentValidator.java: |
+      package com.fintech.validation;
+
+      import com.fintech.Account;
+      import java.math.BigDecimal;
+
+      public class PaymentValidator {
+          public void requireAccountId(String accountId, String role) {
+              if (accountId == null || accountId.isBlank()) {
+                  throw new IllegalArgumentException(capitalize(role) + " account ID required");
+              }
+          }
+
+          public void requirePositiveAmount(BigDecimal amount) {
+              if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+                  throw new IllegalArgumentException("Amount must be positive");
+              }
+          }
+
+          public void requireAccountExists(Account account, String accountId) {
+              if (account == null) {
+                  throw new IllegalStateException("Account not found: " + accountId);
+              }
+          }
+
+          private String capitalize(String s) {
+              if (s == null || s.isEmpty()) return s;
+              return Character.toUpperCase(s.charAt(0)) + s.substring(1);
+          }
+      }
+    src/main/java/com/fintech/AccountRepository.java: |
+      package com.fintech;
+
+      public interface AccountRepository {
+          Account findById(String accountId);
+      }
+    garbage/FraudDetector.java: |
+      // GARBAGE_GAP053_FRAUD_A = "fraud_detector_marker"
+    garbage/ComplianceReporter.java: |
+      // GARBAGE_GAP053_COMPL_B = "compliance_reporter_marker"
+    garbage/CurrencyConverter.java: |
+      // GARBAGE_GAP053_CURR_C = "currency_converter_marker"
+  commit_message: "refactor: extract PaymentValidator shared by TransactionProcessor and PaymentService"
+fragments:
+- id: transaction_uses_validator
+  selector:
+    path: src/main/java/com/fintech/TransactionProcessor.java
+    anchor: "private final PaymentValidator validator;"
+- id: transaction_validate_calls
+  selector:
+    path: src/main/java/com/fintech/TransactionProcessor.java
+    anchor: "validator.requireAccountId(fromId, \"source\");"
+- id: payment_uses_validator
+  selector:
+    path: src/main/java/com/fintech/PaymentService.java
+    anchor: "import com.fintech.validation.PaymentValidator;"
+- id: validator_class
+  selector:
+    path: src/main/java/com/fintech/validation/PaymentValidator.java
+    anchor: "public class PaymentValidator {"
+- id: validator_require_account_id
+  selector:
+    path: src/main/java/com/fintech/validation/PaymentValidator.java
+    anchor: "public void requireAccountId(String accountId, String role) {"
+- id: validator_require_positive
+  selector:
+    path: src/main/java/com/fintech/validation/PaymentValidator.java
+    anchor: "public void requirePositiveAmount(BigDecimal amount) {"
+- id: unrelated_repo
+  selector:
+    path: src/main/java/com/fintech/AccountRepository.java
+    anchor: "Account findById(String accountId);"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_GAP053_FRAUD_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_GAP053_COMPL_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_GAP053_CURR_C
+oracle:
+  required:
+  - transaction_uses_validator
+  - transaction_validate_calls
+  - validator_class
+  - validator_require_account_id
+  allowed:
+  - payment_uses_validator
+  - validator_require_positive
+  forbidden:
+  - unrelated_repo
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

@@ -1,0 +1,238 @@
+name: gap2_070_xml_yaml_same_file_docker_compose_port
+tags:
+- lang:typescript
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/i18n/translator.ts: |
+      import { LocaleProvider } from './locale_provider';
+      import { TranslationMap } from './types';
+
+      export class Translator {
+          private translations: TranslationMap = {};
+
+          constructor(private provider: LocaleProvider) {}
+
+          async load(locale: string): Promise<void> {
+              this.translations = await this.provider.fetch(locale);
+          }
+
+          t(key: string, params?: Record<string, string>): string {
+              let text = this.translations[key] ?? key;
+              if (params) {
+                  Object.entries(params).forEach(([k, v]) => {
+                      text = text.replace(`{{${k}}}`, v);
+                  });
+              }
+              return text;
+          }
+      }
+    src/i18n/locale_provider.ts: |
+      import { TranslationMap } from './types';
+
+      export interface LocaleProvider {
+          fetch(locale: string): Promise<TranslationMap>;
+      }
+
+      export class JsonFileLocaleProvider implements LocaleProvider {
+          constructor(private basePath: string) {}
+
+          async fetch(locale: string): Promise<TranslationMap> {
+              const response = await fetch(`${this.basePath}/${locale}.json`);
+              return response.json() as Promise<TranslationMap>;
+          }
+      }
+    src/i18n/types.ts: |
+      export type TranslationMap = Record<string, string>;
+    src/components/header.ts: |
+      import { Translator } from '../i18n/translator';
+      import { LocaleProvider } from '../i18n/locale_provider';
+
+      export class Header {
+          private translator: Translator;
+
+          constructor(provider: LocaleProvider) {
+              this.translator = new Translator(provider);
+          }
+
+          async render(locale: string): Promise<string> {
+              await this.translator.load(locale);
+              return `<header>${this.translator.t('nav.home')}</header>`;
+          }
+      }
+    src/analytics/pixel.ts: |
+      export const GARBAGE_GAP070_A = 'analytics_pixel_id';
+
+      export class AnalyticsPixel {
+          fire(event: string): void { console.log(event); }
+      }
+    src/theme/colors.ts: |
+      export const GARBAGE_GAP070_B = 'primary_color_blue';
+      export const GARBAGE_GAP070_C = '#0066cc';
+
+      export const defaultTheme = { primary: '#0066cc', secondary: '#444' };
+    src/utils/sanitizer.ts: |
+      export const GARBAGE_GAP070_D = 'sanitizer_strict_mode';
+
+      export function sanitize(html: string): string {
+          return html.replace(/<[^>]*>/g, '');
+      }
+  changed_files:
+    src/i18n/translator.ts: |
+      import { LocaleProvider } from './locale_provider';
+      import { TranslationMap, PluralRules } from './types';
+
+      export class Translator {
+          private translations: TranslationMap = {};
+          private pluralRules: PluralRules = {};
+
+          constructor(private provider: LocaleProvider) {}
+
+          async load(locale: string): Promise<void> {
+              const bundle = await this.provider.fetchBundle(locale);
+              this.translations = bundle.translations;
+              this.pluralRules = bundle.pluralRules ?? {};
+          }
+
+          t(key: string, params?: Record<string, string | number>): string {
+              let text = this.translations[key] ?? key;
+              if (params) {
+                  Object.entries(params).forEach(([k, v]) => {
+                      text = text.replace(`{{${k}}}`, String(v));
+                  });
+              }
+              return text;
+          }
+
+          plural(key: string, count: number): string {
+              const rule = this.pluralRules[key];
+              if (!rule) return this.t(key, { count });
+              const form = count === 1 ? rule.one : rule.other;
+              return (this.translations[form] ?? form).replace('{{count}}', String(count));
+          }
+      }
+    src/i18n/locale_provider.ts: |
+      import { TranslationMap, LocaleBundle, PluralRules } from './types';
+
+      export interface LocaleProvider {
+          fetchBundle(locale: string): Promise<LocaleBundle>;
+      }
+
+      export class JsonFileLocaleProvider implements LocaleProvider {
+          constructor(private basePath: string) {}
+
+          async fetchBundle(locale: string): Promise<LocaleBundle> {
+              const response = await fetch(`${this.basePath}/${locale}.json`);
+              return response.json() as Promise<LocaleBundle>;
+          }
+      }
+    src/i18n/types.ts: |
+      export type TranslationMap = Record<string, string>;
+
+      export interface PluralRule {
+          one: string;
+          other: string;
+      }
+
+      export type PluralRules = Record<string, PluralRule>;
+
+      export interface LocaleBundle {
+          translations: TranslationMap;
+          pluralRules?: PluralRules;
+      }
+    src/components/header.ts: |
+      import { Translator } from '../i18n/translator';
+      import { LocaleProvider } from '../i18n/locale_provider';
+
+      export class Header {
+          private translator: Translator;
+
+          constructor(provider: LocaleProvider) {
+              this.translator = new Translator(provider);
+          }
+
+          async render(locale: string): Promise<string> {
+              await this.translator.load(locale);
+              return `<header>${this.translator.t('nav.home')}</header>`;
+          }
+      }
+    src/analytics/pixel.ts: |
+      export const GARBAGE_GAP070_A = 'analytics_pixel_id';
+
+      export class AnalyticsPixel {
+          fire(event: string): void { console.log(event); }
+      }
+    src/theme/colors.ts: |
+      export const GARBAGE_GAP070_B = 'primary_color_blue';
+      export const GARBAGE_GAP070_C = '#0066cc';
+
+      export const defaultTheme = { primary: '#0066cc', secondary: '#444' };
+    src/utils/sanitizer.ts: |
+      export const GARBAGE_GAP070_D = 'sanitizer_strict_mode';
+
+      export function sanitize(html: string): string {
+          return html.replace(/<[^>]*>/g, '');
+      }
+  commit_message: "refactor: add plural rules and LocaleBundle to i18n system"
+fragments:
+- id: locale_bundle_type
+  selector:
+    path: src/i18n/types.ts
+    anchor: "export interface LocaleBundle"
+- id: plural_rules_type
+  selector:
+    path: src/i18n/types.ts
+    anchor: "export interface PluralRule"
+- id: locale_provider_fetch_bundle
+  selector:
+    path: src/i18n/locale_provider.ts
+    anchor: "fetchBundle(locale: string)"
+- id: translator_plural
+  selector:
+    path: src/i18n/translator.ts
+    anchor: "plural(key: string, count: number)"
+- id: header_render
+  selector:
+    path: src/components/header.ts
+    anchor: "async render(locale: string)"
+- id: no_pixel
+  selector:
+    path: src/analytics/pixel.ts
+- id: no_theme
+  selector:
+    path: src/theme/colors.ts
+- id: no_sanitizer
+  selector:
+    path: src/utils/sanitizer.ts
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP070_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GAP070_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GAP070_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GAP070_D
+oracle:
+  required:
+  - locale_bundle_type
+  - plural_rules_type
+  - locale_provider_fetch_bundle
+  - translator_plural
+  - header_render
+  allowed: []
+  forbidden:
+  - no_pixel
+  - no_theme
+  - no_sanitizer
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

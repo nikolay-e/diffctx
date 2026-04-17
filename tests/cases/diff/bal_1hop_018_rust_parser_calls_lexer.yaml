@@ -1,0 +1,255 @@
+name: bal_1hop_018_rust_parser_calls_lexer
+tags:
+- lang:rust
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/lexer/token.rs: |
+      #[derive(Debug, Clone, PartialEq)]
+      pub enum Token {
+          Number(f64),
+          Plus,
+          Minus,
+          Star,
+          Slash,
+          LParen,
+          RParen,
+          EOF,
+      }
+
+      pub struct Lexer {
+          input: Vec<char>,
+          pos: usize,
+      }
+
+      impl Lexer {
+          pub fn new(input: &str) -> Self {
+              Lexer {
+                  input: input.chars().collect(),
+                  pos: 0,
+              }
+          }
+
+          pub fn next_token(&mut self) -> Token {
+              self.skip_whitespace();
+              if self.pos >= self.input.len() {
+                  return Token::EOF;
+              }
+              let ch = self.input[self.pos];
+              self.pos += 1;
+              match ch {
+                  '+' => Token::Plus,
+                  '-' => Token::Minus,
+                  '*' => Token::Star,
+                  '/' => Token::Slash,
+                  '(' => Token::LParen,
+                  ')' => Token::RParen,
+                  c if c.is_ascii_digit() => self.read_number(c),
+                  _ => Token::EOF,
+              }
+          }
+
+          fn skip_whitespace(&mut self) {
+              while self.pos < self.input.len() && self.input[self.pos].is_whitespace() {
+                  self.pos += 1;
+              }
+          }
+
+          fn read_number(&mut self, first: char) -> Token {
+              let mut s = String::from(first);
+              while self.pos < self.input.len() && (self.input[self.pos].is_ascii_digit() || self.input[self.pos] == '.') {
+                  s.push(self.input[self.pos]);
+                  self.pos += 1;
+              }
+              Token::Number(s.parse().unwrap_or(0.0))
+          }
+      }
+    src/parser/expr.rs: |
+      use crate::lexer::token::{Lexer, Token};
+
+      pub enum Expr {
+          Num(f64),
+          BinOp {
+              op: Token,
+              left: Box<Expr>,
+              right: Box<Expr>,
+          },
+      }
+
+      pub struct Parser {
+          lexer: Lexer,
+          current: Token,
+      }
+
+      impl Parser {
+          pub fn new(mut lexer: Lexer) -> Self {
+              let current = lexer.next_token();
+              Parser { lexer, current }
+          }
+
+          pub fn parse_expr(&mut self) -> Expr {
+              let left = self.parse_primary();
+              self.parse_binop(left, 0)
+          }
+
+          fn parse_primary(&mut self) -> Expr {
+              match &self.current {
+                  Token::Number(n) => {
+                      let val = *n;
+                      self.current = self.lexer.next_token();
+                      Expr::Num(val)
+                  }
+                  _ => Expr::Num(0.0),
+              }
+          }
+
+          fn parse_binop(&mut self, left: Expr, _prec: u8) -> Expr {
+              match &self.current {
+                  Token::Plus | Token::Minus | Token::Star | Token::Slash => {
+                      let op = self.current.clone();
+                      self.current = self.lexer.next_token();
+                      let right = self.parse_primary();
+                      Expr::BinOp {
+                          op,
+                          left: Box::new(left),
+                          right: Box::new(right),
+                      }
+                  }
+                  _ => left,
+              }
+          }
+      }
+    src/eval/evaluator.rs: |
+      pub fn eval_simple(expr: &str) -> f64 {
+          expr.parse().unwrap_or(0.0)
+      }
+    src/repl/prompt.rs: |
+      use std::io::{self, Write};
+
+      pub fn read_line() -> String {
+          print!("> ");
+          io::stdout().flush().unwrap();
+          let mut line = String::new();
+          io::stdin().read_line(&mut line).unwrap();
+          line.trim().to_string()
+      }
+  changed_files:
+    src/lexer/token.rs: |
+      #[derive(Debug, Clone, PartialEq)]
+      pub enum Token {
+          Number(f64),
+          Ident(String),
+          Plus,
+          Minus,
+          Star,
+          Slash,
+          Percent,
+          LParen,
+          RParen,
+          Assign,
+          EOF,
+      }
+
+      pub struct Lexer {
+          input: Vec<char>,
+          pos: usize,
+      }
+
+      impl Lexer {
+          pub fn new(input: &str) -> Self {
+              Lexer {
+                  input: input.chars().collect(),
+                  pos: 0,
+              }
+          }
+
+          pub fn next_token(&mut self) -> Token {
+              self.skip_whitespace();
+              if self.pos >= self.input.len() {
+                  return Token::EOF;
+              }
+              let ch = self.input[self.pos];
+              self.pos += 1;
+              match ch {
+                  '+' => Token::Plus,
+                  '-' => Token::Minus,
+                  '*' => Token::Star,
+                  '/' => Token::Slash,
+                  '%' => Token::Percent,
+                  '(' => Token::LParen,
+                  ')' => Token::RParen,
+                  '=' => Token::Assign,
+                  c if c.is_ascii_digit() => self.read_number(c),
+                  c if c.is_alphabetic() || c == '_' => self.read_ident(c),
+                  _ => Token::EOF,
+              }
+          }
+
+          fn skip_whitespace(&mut self) {
+              while self.pos < self.input.len() && self.input[self.pos].is_whitespace() {
+                  self.pos += 1;
+              }
+          }
+
+          fn read_number(&mut self, first: char) -> Token {
+              let mut s = String::from(first);
+              while self.pos < self.input.len() && (self.input[self.pos].is_ascii_digit() || self.input[self.pos] == '.') {
+                  s.push(self.input[self.pos]);
+                  self.pos += 1;
+              }
+              Token::Number(s.parse().unwrap_or(0.0))
+          }
+
+          fn read_ident(&mut self, first: char) -> Token {
+              let mut s = String::from(first);
+              while self.pos < self.input.len() && (self.input[self.pos].is_alphanumeric() || self.input[self.pos] == '_') {
+                  s.push(self.input[self.pos]);
+                  self.pos += 1;
+              }
+              Token::Ident(s)
+          }
+      }
+  commit_message: "feat: add identifier, modulo and assignment tokens to lexer"
+fragments:
+- id: token_ident_variant
+  selector:
+    path: src/lexer/token.rs
+    anchor: "Ident(String)"
+- id: token_percent
+  selector:
+    path: src/lexer/token.rs
+    anchor: "Percent"
+- id: read_ident_method
+  selector:
+    path: src/lexer/token.rs
+    anchor: "fn read_ident"
+- id: parser_uses_token
+  selector:
+    path: src/parser/expr.rs
+    anchor: "Token::Number(n)"
+- id: parser_uses_lexer
+  selector:
+    path: src/parser/expr.rs
+    anchor: "lexer.next_token()"
+- id: unrelated_eval
+  selector:
+    path: src/eval/evaluator.rs
+    anchor: "pub fn eval_simple"
+- id: unrelated_repl
+  selector:
+    path: src/repl/prompt.rs
+    anchor: "pub fn read_line"
+oracle:
+  required:
+  - token_ident_variant
+  - read_ident_method
+  - parser_uses_token
+  allowed:
+  - token_percent
+  - parser_uses_lexer
+  forbidden:
+  - unrelated_eval
+  - unrelated_repl

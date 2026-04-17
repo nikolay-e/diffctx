@@ -1,0 +1,133 @@
+name: gap2_022_java_refactor_move_pricing_to_module
+tags:
+- lang:elixir
+- change:new_function
+- change:single_file
+- context:import_chain
+- distance:2hop
+- difficulty:medium
+repo:
+  initial_files:
+    lib/logistics/shipment.ex: |
+      defmodule Logistics.Shipment do
+        alias Logistics.Carrier
+
+        defstruct [:id, :origin, :destination, :weight_kg, :carrier_code]
+
+        def estimate_cost(%__MODULE__{weight_kg: w, carrier_code: code}) do
+          rate = Carrier.rate_per_kg(code)
+          w * rate
+        end
+      end
+    lib/logistics/carrier.ex: |
+      defmodule Logistics.Carrier do
+        @rates %{
+          "express" => 12.5,
+          "standard" => 4.0,
+          "economy" => 1.8
+        }
+
+        def rate_per_kg(code), do: Map.get(@rates, code, 5.0)
+
+        def available_codes, do: Map.keys(@rates)
+      end
+    lib/logistics/dispatch.ex: |
+      defmodule Logistics.Dispatch do
+        alias Logistics.Shipment
+
+        def dispatch_shipment(shipment) do
+          cost = Shipment.estimate_cost(shipment)
+          {:ok, %{shipment_id: shipment.id, cost: cost, status: "dispatched"}}
+        end
+      end
+    garbage/Warehouse.ex: |
+      # GARBAGE_LOG_A = "warehouse_marker"
+    garbage/Tracking.ex: |
+      # GARBAGE_LOG_B = "tracking_marker"
+    garbage/Invoicing.ex: |
+      # GARBAGE_LOG_C = "invoicing_marker"
+    garbage/Customs.ex: |
+      # GARBAGE_LOG_D = "customs_marker"
+  changed_files:
+    lib/logistics/shipment.ex: |
+      defmodule Logistics.Shipment do
+        alias Logistics.Carrier
+
+        defstruct [:id, :origin, :destination, :weight_kg, :carrier_code, :insurance_value]
+
+        def estimate_cost(%__MODULE__{weight_kg: w, carrier_code: code}) do
+          rate = Carrier.rate_per_kg(code)
+          w * rate
+        end
+
+        def estimate_cost_with_insurance(%__MODULE__{} = shipment) do
+          base = estimate_cost(shipment)
+          insurance = (shipment.insurance_value || 0) * 0.01
+          base + insurance
+        end
+      end
+    lib/logistics/carrier.ex: |
+      defmodule Logistics.Carrier do
+        @rates %{
+          "express" => 12.5,
+          "standard" => 4.0,
+          "economy" => 1.8
+        }
+
+        def rate_per_kg(code), do: Map.get(@rates, code, 5.0)
+
+        def available_codes, do: Map.keys(@rates)
+      end
+    lib/logistics/dispatch.ex: |
+      defmodule Logistics.Dispatch do
+        alias Logistics.Shipment
+
+        def dispatch_shipment(shipment) do
+          cost = Shipment.estimate_cost(shipment)
+          {:ok, %{shipment_id: shipment.id, cost: cost, status: "dispatched"}}
+        end
+      end
+    garbage/Warehouse.ex: |
+      # GARBAGE_LOG_A = "warehouse_marker"
+    garbage/Tracking.ex: |
+      # GARBAGE_LOG_B = "tracking_marker"
+    garbage/Invoicing.ex: |
+      # GARBAGE_LOG_C = "invoicing_marker"
+    garbage/Customs.ex: |
+      # GARBAGE_LOG_D = "customs_marker"
+  commit_message: "feat: add estimate_cost_with_insurance to Logistics.Shipment"
+fragments:
+- id: estimate_with_insurance
+  selector:
+    anchor: "def estimate_cost_with_insurance"
+- id: dispatch_uses_cost
+  selector:
+    path: lib/logistics/dispatch.ex
+    anchor: "Shipment.estimate_cost(shipment)"
+- id: carrier_rate
+  selector:
+    path: lib/logistics/carrier.ex
+    anchor: "def rate_per_kg"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_LOG_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_LOG_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_LOG_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_LOG_D
+oracle:
+  required:
+  - estimate_with_insurance
+  allowed:
+  - dispatch_uses_cost
+  - carrier_rate
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

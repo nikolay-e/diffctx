@@ -1,29 +1,88 @@
 name: internals_027_hebrew_docstring_function
+tags:
+- lang:lua
+- change:bug_fix
+- change:single_file
+- context:same_file
+- distance:0hop
+- difficulty:trivial
 repo:
   initial_files:
-    hebrew_docs.py: |
-      def placeholder():
-          pass
-  changed_files:
-    hebrew_docs.py: |
-      def foo():
-          """תיעוד בעברית"""
-          return 42
+    src/spawn.lua: |
+      local M = {}
 
-      def bar(x, y):
-          """עוד תיעוד"""
-          return x + y
-  commit_message: Update files
+      function M.spawn_enemy(wave, enemy_type)
+          local count = wave * 2
+          for i = 1, count do
+              M.create(enemy_type, i)
+          end
+      end
+
+      function M.create(enemy_type, index)
+          return {type = enemy_type, id = index, hp = 100}
+      end
+
+      return M
+    garbage/INT027_loot.lua: |
+      -- INT027_GARBAGE_A = "loot_marker"
+    garbage/INT027_effects.lua: |
+      -- INT027_GARBAGE_B = "effects_marker"
+    garbage/INT027_scene.lua: |
+      -- INT027_GARBAGE_C = "scene_marker"
+  changed_files:
+    src/spawn.lua: |
+      local M = {}
+
+      local MAX_ENEMIES_PER_WAVE = 50
+
+      function M.spawn_enemy(wave, enemy_type)
+          if wave < 1 then
+              return 0
+          end
+          local count = math.min(wave * 2, MAX_ENEMIES_PER_WAVE)
+          for i = 1, count do
+              M.create(enemy_type, i)
+          end
+          return count
+      end
+
+      function M.create(enemy_type, index)
+          if not enemy_type or enemy_type == "" then
+              return nil
+          end
+          return {type = enemy_type, id = index, hp = 100}
+      end
+
+      return M
+    garbage/INT027_loot.lua: |
+      -- INT027_GARBAGE_A = "loot_marker"
+    garbage/INT027_effects.lua: |
+      -- INT027_GARBAGE_B = "effects_marker"
+    garbage/INT027_scene.lua: |
+      -- INT027_GARBAGE_C = "scene_marker"
+  commit_message: "fix: clamp enemy count, validate wave number, guard create against empty type"
 fragments:
-- id: hebrew_docs_file
+- id: spawn_enemy_func
   selector:
-    path: hebrew_docs.py
-- id: req_global_0
+    anchor: "function M.spawn_enemy"
+- id: max_enemies_cap
   selector:
-    anchor: '"""תיעוד בעברית"""'
+    anchor: "MAX_ENEMIES_PER_WAVE"
+- id: no_garbage_a
+  selector:
+    anchor: INT027_GARBAGE_A
+- id: no_garbage_b
+  selector:
+    anchor: INT027_GARBAGE_B
+- id: no_garbage_c
+  selector:
+    anchor: INT027_GARBAGE_C
 oracle:
   required:
-  - hebrew_docs_file
-  - req_global_0
+  - spawn_enemy_func
+  - max_enemies_cap
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

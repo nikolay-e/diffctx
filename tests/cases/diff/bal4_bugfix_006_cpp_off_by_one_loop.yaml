@@ -1,0 +1,141 @@
+name: bal4_bugfix_006_cpp_off_by_one_loop
+tags:
+- lang:cpp
+- change:single_file
+- change:bug_fix
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/buffer.cpp: |
+      #include <vector>
+      #include <string>
+
+      class RingBuffer {
+      public:
+          explicit RingBuffer(int capacity) : data_(capacity), head_(0), size_(0) {}
+
+          void push(int value) {
+              data_[head_] = value;
+              head_ = (head_ + 1) % data_.size();
+              if (size_ < data_.size()) size_++;
+          }
+
+          int sum() const {
+              int total = 0;
+              for (int i = 0; i <= size_; i++) {
+                  total += data_[i];
+              }
+              return total;
+          }
+
+      private:
+          std::vector<int> data_;
+          int head_;
+          int size_;
+      };
+    garbage_bal4_006_pool.cpp: |
+      // GARBAGE_BAL4_006_POOL_A = "thread_pool"
+      // GARBAGE_BAL4_006_THREADS_B = 8
+      class ThreadPool {
+          // GARBAGE_BAL4_006_QUEUE_C = "bounded"
+          void submit() {}
+      };
+    garbage_bal4_006_timer.cpp: |
+      // GARBAGE_BAL4_006_TIMER_D = "monotonic"
+      // GARBAGE_BAL4_006_RES_E = 1000
+      class Timer {
+          // GARBAGE_BAL4_006_TICK_F = 16
+          void start() {}
+      };
+  changed_files:
+    src/buffer.cpp: |
+      #include <vector>
+      #include <string>
+
+      class RingBuffer {
+      public:
+          explicit RingBuffer(int capacity) : data_(capacity), head_(0), size_(0) {}
+
+          void push(int value) {
+              data_[head_] = value;
+              head_ = (head_ + 1) % data_.size();
+              if (size_ < data_.size()) size_++;
+          }
+
+          int sum() const {
+              int total = 0;
+              for (int i = 0; i < size_; i++) {
+                  total += data_[i];
+              }
+              return total;
+          }
+
+      private:
+          std::vector<int> data_;
+          int head_;
+          int size_;
+      };
+    garbage_bal4_006_pool.cpp: |
+      // GARBAGE_BAL4_006_POOL_A = "thread_pool"
+      // GARBAGE_BAL4_006_THREADS_B = 8
+      class ThreadPool {
+          // GARBAGE_BAL4_006_QUEUE_C = "bounded"
+          void submit() {}
+      };
+    garbage_bal4_006_timer.cpp: |
+      // GARBAGE_BAL4_006_TIMER_D = "monotonic"
+      // GARBAGE_BAL4_006_RES_E = 1000
+      class Timer {
+          // GARBAGE_BAL4_006_TICK_F = 16
+          void start() {}
+      };
+  commit_message: "fix: off-by-one in ring buffer sum loop"
+fragments:
+- id: sum_func
+  selector:
+    path: src/buffer.cpp
+    anchor: "int sum() const"
+- id: loop_fix
+  selector:
+    path: src/buffer.cpp
+    anchor: "i < size_"
+- id: no_garbage_pool
+  selector:
+    path: garbage_bal4_006_pool.cpp
+- id: no_garbage_timer
+  selector:
+    path: garbage_bal4_006_timer.cpp
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL4_006_POOL_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL4_006_THREADS_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL4_006_QUEUE_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL4_006_TIMER_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL4_006_RES_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL4_006_TICK_F
+oracle:
+  required:
+  - sum_func
+  - loop_fix
+  allowed: []
+  forbidden:
+  - no_garbage_pool
+  - no_garbage_timer
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

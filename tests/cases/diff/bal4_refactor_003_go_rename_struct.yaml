@@ -1,0 +1,121 @@
+name: bal4_refactor_003_go_rename_struct
+tags:
+- lang:go
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:1hop
+- difficulty:trivial
+repo:
+  initial_files:
+    pkg/model/item.go: |
+      package model
+
+      type Item struct {
+          Name  string
+          Price float64
+      }
+    pkg/cart/cart.go: |
+      package cart
+
+      import "app/pkg/model"
+
+      func Total(items []model.Item) float64 {
+          sum := 0.0
+          for _, it := range items {
+              sum += it.Price
+          }
+          return sum
+      }
+    garbage_db.go: |
+      package garbage
+
+      GARBAGE_BAL4R003_DB_A = "database"
+      GARBAGE_BAL4R003_POOL_B = 10
+
+      type Pool struct {
+          GARBAGE_BAL4R003_POOL_C bool
+      }
+    garbage_queue.go: |
+      package garbage
+
+      GARBAGE_BAL4R003_QUEUE_D = "queue"
+      GARBAGE_BAL4R003_SIZE_E = 100
+  changed_files:
+    pkg/model/item.go: |
+      package model
+
+      type Product struct {
+          Name  string
+          Price float64
+      }
+    pkg/cart/cart.go: |
+      package cart
+
+      import "app/pkg/model"
+
+      func Total(items []model.Product) float64 {
+          sum := 0.0
+          for _, it := range items {
+              sum += it.Price
+          }
+          return sum
+      }
+    garbage_db.go: |
+      package garbage
+
+      GARBAGE_BAL4R003_DB_A = "database"
+      GARBAGE_BAL4R003_POOL_B = 10
+
+      type Pool struct {
+          GARBAGE_BAL4R003_POOL_C bool
+      }
+    garbage_queue.go: |
+      package garbage
+
+      GARBAGE_BAL4R003_QUEUE_D = "queue"
+      GARBAGE_BAL4R003_SIZE_E = 100
+  commit_message: "refactor: rename Item to Product"
+fragments:
+- id: renamed_struct
+  selector:
+    path: pkg/model/item.go
+    anchor: "type Product struct"
+- id: cart_uses_product
+  selector:
+    path: pkg/cart/cart.go
+    anchor: "[]model.Product"
+- id: no_garbage_db
+  selector:
+    path: garbage_db.go
+- id: no_garbage_queue
+  selector:
+    path: garbage_queue.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL4R003_DB_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL4R003_POOL_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL4R003_POOL_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL4R003_QUEUE_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL4R003_SIZE_E
+oracle:
+  required:
+  - renamed_struct
+  - cart_uses_product
+  allowed: []
+  forbidden:
+  - no_garbage_db
+  - no_garbage_queue
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

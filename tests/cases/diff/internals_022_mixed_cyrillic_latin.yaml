@@ -1,25 +1,132 @@
 name: internals_022_mixed_cyrillic_latin
+tags:
+- lang:typescript
+- change:bug_fix
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
 repo:
   initial_files:
-    mixed_script.py: |
-      def placeholder():
-          pass
+    src/utils/sanitize.ts: |
+      export function stripHtml(input: string): string {
+        return input.replace(/<[^>]*>/g, '');
+      }
+
+      export function truncate(s: string, max: number): string {
+        return s.length > max ? s.slice(0, max) + '...' : s;
+      }
+    src/content/markdown.ts: |
+      import { stripHtml } from '../utils/sanitize';
+
+      export function markdownToPlainText(md: string): string {
+        const noHeaders = md.replace(/^#+\s+/gm, '');
+        return stripHtml(noHeaders);
+      }
+    src/feed/builder.ts: |
+      import { markdownToPlainText } from '../content/markdown';
+
+      export interface FeedItem {
+        title: string;
+        body: string;
+      }
+
+      export function buildFeedEntry(item: FeedItem): string {
+        return `${item.title}\n${markdownToPlainText(item.body)}`;
+      }
+    src/api/feedEndpoint.ts: |
+      import { buildFeedEntry, FeedItem } from '../feed/builder';
+
+      export function renderFeed(items: FeedItem[]): string[] {
+        return items.map(buildFeedEntry);
+      }
+    garbage/rate.ts: |
+      const GARBAGE_MIX022_RATE_A = "rate_marker";
+      export function rateLimit(key: string): boolean { return true; }
+    garbage/queue.ts: |
+      const GARBAGE_MIX022_QUEUE_B = "queue_marker";
+      export function enqueue(task: () => void): void {}
+    garbage/compress.ts: |
+      const GARBAGE_MIX022_COMPRESS_C = "compress_marker";
+      export function gzip(data: string): Uint8Array { return new Uint8Array(); }
   changed_files:
-    mixed_script.py: |
-      # This has mixed а (cyrillic) and a (latin)
-      def process(а, a):
-          return а + a
-  commit_message: Update files
+    src/utils/sanitize.ts: |
+      export function stripHtml(input: string): string {
+        if (typeof input !== 'string') return '';
+        return input.replace(/<[^>]*>/g, '');
+      }
+
+      export function truncate(s: string, max: number): string {
+        return s.length > max ? s.slice(0, max) + '...' : s;
+      }
+    src/content/markdown.ts: |
+      import { stripHtml } from '../utils/sanitize';
+
+      export function markdownToPlainText(md: string): string {
+        const noHeaders = md.replace(/^#+\s+/gm, '');
+        return stripHtml(noHeaders);
+      }
+    src/feed/builder.ts: |
+      import { markdownToPlainText } from '../content/markdown';
+
+      export interface FeedItem {
+        title: string;
+        body: string;
+      }
+
+      export function buildFeedEntry(item: FeedItem): string {
+        return `${item.title}\n${markdownToPlainText(item.body)}`;
+      }
+    src/api/feedEndpoint.ts: |
+      import { buildFeedEntry, FeedItem } from '../feed/builder';
+
+      export function renderFeed(items: FeedItem[]): string[] {
+        return items.map(buildFeedEntry);
+      }
+    garbage/rate.ts: |
+      const GARBAGE_MIX022_RATE_A = "rate_marker";
+      export function rateLimit(key: string): boolean { return true; }
+    garbage/queue.ts: |
+      const GARBAGE_MIX022_QUEUE_B = "queue_marker";
+      export function enqueue(task: () => void): void {}
+    garbage/compress.ts: |
+      const GARBAGE_MIX022_COMPRESS_C = "compress_marker";
+      export function gzip(data: string): Uint8Array { return new Uint8Array(); }
+  commit_message: "fix: guard stripHtml against non-string input"
 fragments:
-- id: mixed_script_file
+- id: strip_html_type_guard
   selector:
-    path: mixed_script.py
-- id: req_global_0
+    path: src/utils/sanitize.ts
+    anchor: "if (typeof input !== 'string')"
+- id: markdown_calls_strip
   selector:
-    anchor: 'def process(а, a):'
+    path: src/content/markdown.ts
+    anchor: "stripHtml(noHeaders)"
+- id: feed_builder_calls_markdown
+  selector:
+    path: src/feed/builder.ts
+    anchor: "markdownToPlainText(item.body)"
+- id: endpoint_calls_builder
+  selector:
+    path: src/api/feedEndpoint.ts
+    anchor: "items.map(buildFeedEntry)"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_MIX022_RATE_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_MIX022_QUEUE_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_MIX022_COMPRESS_C
 oracle:
   required:
-  - mixed_script_file
-  - req_global_0
+  - strip_html_type_guard
+  - markdown_calls_strip
+  - feed_builder_calls_markdown
+  - endpoint_calls_builder
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

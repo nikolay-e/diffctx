@@ -1,0 +1,73 @@
+name: bal3_bugfix_016_scala_option_get
+tags:
+- lang:scala
+- change:single_file
+- change:bug_fix
+- context:same_file
+- distance:0hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/main/scala/repo/UserRepo.scala: |
+      package repo
+
+      case class User(id: String, name: String)
+
+      class UserRepo {
+        private var users: Map[String, User] = Map.empty
+
+        def add(user: User): Unit = {
+          users = users + (user.id -> user)
+        }
+
+        def find(id: String): User = {
+          users.get(id).get
+        }
+
+        def all(): List[User] = users.values.toList
+      }
+    src/main/scala/util/IdGen.scala: |
+      package util
+
+      object IdGen {
+        private var counter = 0
+        def next(): String = {
+          counter += 1
+          s"id-$counter"
+        }
+      }
+  changed_files:
+    src/main/scala/repo/UserRepo.scala: |
+      package repo
+
+      case class User(id: String, name: String)
+
+      class UserRepo {
+        private var users: Map[String, User] = Map.empty
+
+        def add(user: User): Unit = {
+          users = users + (user.id -> user)
+        }
+
+        def find(id: String): Option[User] = {
+          users.get(id)
+        }
+
+        def all(): List[User] = users.values.toList
+      }
+  commit_message: "fix: return Option instead of calling .get to prevent NoSuchElementException"
+fragments:
+- id: option_fix
+  selector:
+    path: UserRepo.scala
+    anchor: "def find(id: String): Option[User]"
+- id: no_idgen
+  selector:
+    path: util/IdGen.scala
+    anchor: "object IdGen"
+oracle:
+  required:
+  - option_fix
+  allowed: []
+  forbidden:
+  - no_idgen

@@ -1,0 +1,109 @@
+name: r_lang_010_statistical_function_fix
+tags:
+- lang:r
+- change:single_file
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    R/stats.R: |
+      weighted_quantile <- function(x, w, probs = 0.5) {
+        ord <- order(x)
+        x_sorted <- x[ord]
+        w_sorted <- w[ord]
+        cum_w <- cumsum(w_sorted) / sum(w_sorted)
+        sapply(probs, function(p) {
+          idx <- which(cum_w >= p)[1]
+          x_sorted[idx]
+        })
+      }
+
+      iqr_robust <- function(x) {
+        weighted_quantile(x, rep(1, length(x)), probs = c(0.25, 0.75))
+      }
+    R/test_stats.R: |
+      source("R/stats.R")
+
+      test_weighted_quantile_median <- function() {
+        x <- c(1, 2, 3, 4, 5)
+        w <- c(1, 1, 1, 1, 1)
+        result <- weighted_quantile(x, w, probs = 0.5)
+        stopifnot(result == 3)
+        cat("PASS: test_weighted_quantile_median\n")
+      }
+
+      test_weighted_quantile_skewed <- function() {
+        x <- c(1, 2, 3)
+        w <- c(10, 1, 1)
+        result <- weighted_quantile(x, w, probs = 0.5)
+        stopifnot(result == 1)
+        cat("PASS: test_weighted_quantile_skewed\n")
+      }
+
+      test_weighted_quantile_median()
+      test_weighted_quantile_skewed()
+    R/R_NOISE_010_string_padding.R: |
+      R_NOISE_010_pad_left <- function(s, width, char = " ") {
+        formatC(s, width = width, flag = " ")
+      }
+      R_NOISE_010_pad_right <- function(s, width, char = " ") {
+        formatC(s, width = -width, flag = " ")
+      }
+    R/R_NOISE_010_list_utils.R: |
+      R_NOISE_010_flatten_list <- function(lst) {
+        unlist(lst, recursive = TRUE, use.names = FALSE)
+      }
+      R_NOISE_010_partition <- function(lst, pred) {
+        list(yes = Filter(pred, lst), no = Filter(Negate(pred), lst))
+      }
+  changed_files:
+    R/stats.R: |
+      weighted_quantile <- function(x, w, probs = 0.5) {
+        ord <- order(x)
+        x_sorted <- x[ord]
+        w_sorted <- w[ord]
+        cum_w <- cumsum(w_sorted) / sum(w_sorted)
+        sapply(probs, function(p) {
+          idx <- which(cum_w >= p)[1]
+          if (is.na(idx)) idx <- length(x_sorted)
+          x_sorted[idx]
+        })
+      }
+
+      iqr_robust <- function(x) {
+        weighted_quantile(x, rep(1, length(x)), probs = c(0.25, 0.75))
+      }
+  commit_message: "Update files"
+fragments:
+- id: stats_quantile_fixed
+  selector:
+    path: R/stats.R
+    anchor: is.na(idx)
+- id: test_stats_calls_function
+  selector:
+    path: R/test_stats.R
+    anchor: weighted_quantile
+- id: no_string_padding
+  selector:
+    path: R/R_NOISE_010_string_padding.R
+- id: no_list_utils
+  selector:
+    path: R/R_NOISE_010_list_utils.R
+- id: no_global_0
+  selector:
+    anchor: R_NOISE_010_pad_left
+- id: no_global_1
+  selector:
+    anchor: R_NOISE_010_flatten_list
+oracle:
+  required:
+  - stats_quantile_fixed
+  - test_stats_calls_function
+  allowed: []
+  forbidden:
+  - no_string_padding
+  - no_list_utils
+  - no_global_0
+  - no_global_1

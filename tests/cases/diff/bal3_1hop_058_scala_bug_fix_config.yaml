@@ -1,0 +1,191 @@
+name: bal3_1hop_058_scala_bug_fix_config
+tags:
+- lang:scala
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: scala-no-tree-sitter
+repo:
+  initial_files:
+    src/main/scala/config/ConfigLoader.scala: |
+      package config
+
+      object ConfigLoader {
+        def parse(content: String): Map[String, String] = {
+          content.split("\n").map { line =>
+            val parts = line.split("=")
+            parts(0) -> parts(1)
+          }.toMap
+        }
+
+        def get(config: Map[String, String], key: String): String = {
+          config(key)
+        }
+      }
+    src/main/scala/bootstrap/AppBootstrap.scala: |
+      package bootstrap
+
+      import config.ConfigLoader
+
+      class AppBootstrap {
+        def loadConfig(content: String): Map[String, String] = {
+          ConfigLoader.parse(content)
+        }
+
+        def getAppName(config: Map[String, String]): String = {
+          ConfigLoader.get(config, "app_name")
+        }
+      }
+    src/main/scala/bootstrap/DbBootstrap.scala: |
+      package bootstrap
+
+      import config.ConfigLoader
+
+      class DbBootstrap {
+        def getDsn(content: String): String = {
+          val config = ConfigLoader.parse(content)
+          val host = ConfigLoader.get(config, "db_host")
+          val port = ConfigLoader.get(config, "db_port")
+          s"jdbc:postgresql://$host:$port"
+        }
+      }
+    src/main/scala/bootstrap/CacheBootstrap.scala: |
+      package bootstrap
+
+      import config.ConfigLoader
+
+      class CacheBootstrap {
+        def getRedisUrl(content: String): String = {
+          val config = ConfigLoader.parse(content)
+          val host = ConfigLoader.get(config, "redis_host")
+          s"redis://$host"
+        }
+      }
+    src/main/scala/bootstrap/MailBootstrap.scala: |
+      package bootstrap
+
+      import config.ConfigLoader
+
+      class MailBootstrap {
+        def getSmtpHost(content: String): String = {
+          val config = ConfigLoader.parse(content)
+          ConfigLoader.get(config, "smtp_host")
+        }
+      }
+    src/main/scala/transform/JsonTransformer.scala: |
+      package transform
+
+      object JsonTransformer {
+        val GARBAGE_BAL3_058_JSON_A = "json"
+        val GARBAGE_BAL3_058_PRETTY_B = false
+
+        def transform(input: String): String = input
+      }
+    src/main/scala/transform/XmlTransformer.scala: |
+      package transform
+
+      object XmlTransformer {
+        val GARBAGE_BAL3_058_XML_C = "xml"
+        val GARBAGE_BAL3_058_NS_D = true
+
+        def transform(input: String): String = input
+      }
+    src/main/scala/transform/CsvTransformer.scala: |
+      package transform
+
+      object CsvTransformer {
+        val GARBAGE_BAL3_058_CSV_E = "csv"
+        val GARBAGE_BAL3_058_HEADER_F = true
+
+        def transform(input: String): List[List[String]] = Nil
+      }
+  changed_files:
+    src/main/scala/config/ConfigLoader.scala: |
+      package config
+
+      object ConfigLoader {
+        def parse(content: String): Map[String, String] = {
+          content.split("\n").flatMap { line =>
+            val trimmed = line.trim
+            if (trimmed.isEmpty || trimmed.startsWith("#")) None
+            else {
+              val pos = trimmed.indexOf('=')
+              if (pos < 0) None
+              else Some(trimmed.substring(0, pos).trim -> trimmed.substring(pos + 1).trim)
+            }
+          }.toMap
+        }
+
+        def get(config: Map[String, String], key: String, default: String = ""): String = {
+          config.getOrElse(key, default)
+        }
+      }
+  commit_message: "Fix config parser to handle comments, empty lines, missing keys"
+fragments:
+- id: app_bootstrap
+  selector:
+    path: src/main/scala/bootstrap/AppBootstrap.scala
+    anchor: "import config.ConfigLoader"
+- id: app_parse
+  selector:
+    path: src/main/scala/bootstrap/AppBootstrap.scala
+    anchor: "ConfigLoader.parse"
+- id: db_bootstrap
+  selector:
+    path: src/main/scala/bootstrap/DbBootstrap.scala
+    anchor: "import config.ConfigLoader"
+- id: cache_bootstrap
+  selector:
+    path: src/main/scala/bootstrap/CacheBootstrap.scala
+    anchor: "import config.ConfigLoader"
+- id: mail_bootstrap
+  selector:
+    path: src/main/scala/bootstrap/MailBootstrap.scala
+    anchor: "import config.ConfigLoader"
+- id: no_json
+  selector:
+    path: src/main/scala/transform/JsonTransformer.scala
+- id: no_xml
+  selector:
+    path: src/main/scala/transform/XmlTransformer.scala
+- id: no_csv
+  selector:
+    path: src/main/scala/transform/CsvTransformer.scala
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_058_JSON_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_058_PRETTY_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_058_XML_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_058_NS_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL3_058_CSV_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL3_058_HEADER_F
+oracle:
+  required:
+  - app_bootstrap
+  - app_parse
+  - db_bootstrap
+  - cache_bootstrap
+  - mail_bootstrap
+  allowed: []
+  forbidden:
+  - no_json
+  - no_xml
+  - no_csv
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

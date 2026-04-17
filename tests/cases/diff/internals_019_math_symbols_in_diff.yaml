@@ -1,24 +1,233 @@
 name: internals_019_math_symbols_in_diff
+tags:
+- lang:python
+- change:bug_fix
+- change:multi_file
+- context:test_file
+- distance:1hop
+- difficulty:medium
 repo:
   initial_files:
-    math_diff.py: |
-      x = 1
+    src/inventory/stock.py: |
+      from dataclasses import dataclass, field
+      from typing import Dict
+
+      @dataclass
+      class StockLevel:
+          product_id: str
+          quantity: int
+          reserved: int = 0
+
+          def available(self) -> int:
+              return self.quantity - self.reserved
+
+      class StockRepository:
+          def __init__(self):
+              self._levels: Dict[str, StockLevel] = {}
+
+          def get(self, product_id: str) -> StockLevel:
+              if product_id not in self._levels:
+                  raise KeyError(f"product not found: {product_id}")
+              return self._levels[product_id]
+
+          def set(self, level: StockLevel) -> None:
+              self._levels[level.product_id] = level
+
+          def reserve(self, product_id: str, qty: int) -> None:
+              level = self.get(product_id)
+              if qty > level.available():
+                  raise ValueError("insufficient stock")
+              level.reserved += qty
+
+          def release(self, product_id: str, qty: int) -> None:
+              level = self.get(product_id)
+              level.reserved = max(0, level.reserved - qty)
+    src/inventory/service.py: |
+      from src.inventory.stock import StockRepository
+
+      class InventoryService:
+          def __init__(self, repo: StockRepository):
+              self.repo = repo
+
+          def check_availability(self, product_id: str, qty: int) -> bool:
+              try:
+                  level = self.repo.get(product_id)
+                  return level.available() >= qty
+              except KeyError:
+                  return False
+
+          def fulfill(self, product_id: str, qty: int) -> None:
+              self.repo.reserve(product_id, qty)
+    tests/test_inventory.py: |
+      import pytest
+      from src.inventory.stock import StockLevel, StockRepository
+      from src.inventory.service import InventoryService
+
+      def make_service():
+          repo = StockRepository()
+          repo.set(StockLevel("prod-1", quantity=100, reserved=10))
+          return InventoryService(repo), repo
+
+      def test_check_availability_sufficient_stock():
+          svc, _ = make_service()
+          assert svc.check_availability("prod-1", 50) is True
+
+      def test_check_availability_insufficient_stock():
+          svc, _ = make_service()
+          assert svc.check_availability("prod-1", 95) is False
+
+      def test_fulfill_reduces_available():
+          svc, repo = make_service()
+          svc.fulfill("prod-1", 20)
+          assert repo.get("prod-1").available() == 70
+    src/shipping/calculator.py: |
+      # GARBAGE_INT19_A = "shipping_calc_unrelated"
+      def calculate_shipping(weight: float, zone: str) -> float:
+          return weight * 2.5
+    src/pricing/rules.py: |
+      # GARBAGE_INT19_B = "pricing_rules_unrelated"
+      def apply_markup(cost: float, margin: float) -> float:
+          return cost * (1 + margin)
+    src/reporting/sales.py: |
+      # GARBAGE_INT19_C = "sales_reporting_unrelated"
+      def generate_sales_report(from_date: str, to_date: str) -> list:
+          return []
   changed_files:
-    math_diff.py: |
-      ∑ = sum
-      ∏ = prod
-      result = calculate(α, β)
-  commit_message: Update files
+    src/inventory/stock.py: |
+      from dataclasses import dataclass, field
+      from typing import Dict
+
+      @dataclass
+      class StockLevel:
+          product_id: str
+          quantity: int
+          reserved: int = 0
+
+          def available(self) -> int:
+              return self.quantity - self.reserved
+
+      class StockRepository:
+          def __init__(self):
+              self._levels: Dict[str, StockLevel] = {}
+
+          def get(self, product_id: str) -> StockLevel:
+              if product_id not in self._levels:
+                  raise KeyError(f"product not found: {product_id}")
+              return self._levels[product_id]
+
+          def set(self, level: StockLevel) -> None:
+              self._levels[level.product_id] = level
+
+          def reserve(self, product_id: str, qty: int) -> None:
+              level = self.get(product_id)
+              if qty <= 0:
+                  raise ValueError("reserve quantity must be positive")
+              if qty > level.available():
+                  raise ValueError("insufficient stock")
+              level.reserved += qty
+
+          def release(self, product_id: str, qty: int) -> None:
+              level = self.get(product_id)
+              if qty <= 0:
+                  raise ValueError("release quantity must be positive")
+              level.reserved = max(0, level.reserved - qty)
+    src/inventory/service.py: |
+      from src.inventory.stock import StockRepository
+
+      class InventoryService:
+          def __init__(self, repo: StockRepository):
+              self.repo = repo
+
+          def check_availability(self, product_id: str, qty: int) -> bool:
+              if qty <= 0:
+                  raise ValueError("quantity must be positive")
+              try:
+                  level = self.repo.get(product_id)
+                  return level.available() >= qty
+              except KeyError:
+                  return False
+
+          def fulfill(self, product_id: str, qty: int) -> None:
+              self.repo.reserve(product_id, qty)
+    tests/test_inventory.py: |
+      import pytest
+      from src.inventory.stock import StockLevel, StockRepository
+      from src.inventory.service import InventoryService
+
+      def make_service():
+          repo = StockRepository()
+          repo.set(StockLevel("prod-1", quantity=100, reserved=10))
+          return InventoryService(repo), repo
+
+      def test_check_availability_sufficient_stock():
+          svc, _ = make_service()
+          assert svc.check_availability("prod-1", 50) is True
+
+      def test_check_availability_insufficient_stock():
+          svc, _ = make_service()
+          assert svc.check_availability("prod-1", 95) is False
+
+      def test_fulfill_reduces_available():
+          svc, repo = make_service()
+          svc.fulfill("prod-1", 20)
+          assert repo.get("prod-1").available() == 70
+
+      def test_reserve_zero_quantity_raises():
+          _, repo = make_service()
+          with pytest.raises(ValueError, match="positive"):
+              repo.reserve("prod-1", 0)
+
+      def test_check_availability_zero_quantity_raises():
+          svc, _ = make_service()
+          with pytest.raises(ValueError, match="positive"):
+              svc.check_availability("prod-1", 0)
+    src/shipping/calculator.py: |
+      # GARBAGE_INT19_A = "shipping_calc_unrelated"
+      def calculate_shipping(weight: float, zone: str) -> float:
+          return weight * 2.5
+    src/pricing/rules.py: |
+      # GARBAGE_INT19_B = "pricing_rules_unrelated"
+      def apply_markup(cost: float, margin: float) -> float:
+          return cost * (1 + margin)
+    src/reporting/sales.py: |
+      # GARBAGE_INT19_C = "sales_reporting_unrelated"
+      def generate_sales_report(from_date: str, to_date: str) -> list:
+          return []
+  commit_message: "fix: guard reserve and check_availability against non-positive quantities"
 fragments:
-- id: math_diff_file
+- id: reserve_positive_guard
   selector:
-    path: math_diff.py
-- id: req_global_0
+    path: src/inventory/stock.py
+    anchor: "reserve quantity must be positive"
+- id: check_availability_guard
   selector:
-    anchor: result = calculate(α, β)
+    path: src/inventory/service.py
+    anchor: "quantity must be positive"
+- id: test_reserve_zero
+  selector:
+    path: tests/test_inventory.py
+    anchor: "test_reserve_zero_quantity_raises"
+- id: test_check_zero
+  selector:
+    path: tests/test_inventory.py
+    anchor: "test_check_availability_zero_quantity_raises"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_INT19_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_INT19_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_INT19_C
 oracle:
   required:
-  - math_diff_file
-  - req_global_0
-  allowed: []
-  forbidden: []
+  - reserve_positive_guard
+  - check_availability_guard
+  - test_reserve_zero
+  allowed:
+  - test_check_zero
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

@@ -1,0 +1,111 @@
+name: gap2_141_python_multifile_new_func_weather_station
+tags:
+- change:multi_file
+- change:new_function
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:python
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    weather/station.py: |
+      from weather.sensors import read_temperature
+
+      class WeatherStation:
+          def __init__(self, station_id: str):
+              self.station_id = station_id
+              self._readings: list[float] = []
+
+          def record_temperature(self) -> float:
+              temp = read_temperature(self.station_id)
+              self._readings.append(temp)
+              return temp
+
+          def average_temperature(self) -> float:
+              if not self._readings:
+                  return 0.0
+              return sum(self._readings) / len(self._readings)
+    weather/sensors.py: |
+      import random
+
+      def read_temperature(station_id: str) -> float:
+          return round(random.uniform(-30.0, 50.0), 1)
+
+      def read_humidity(station_id: str) -> float:
+          return round(random.uniform(0.0, 100.0), 1)
+    weather/alerts.py: |
+      ALERT_THRESHOLD_HIGH = 45.0
+      ALERT_THRESHOLD_LOW = -25.0
+
+      class AlertManager:
+          def __init__(self):
+              self._subscribers: list[str] = []
+
+          def subscribe(self, email: str) -> None:
+              self._subscribers.append(email)
+
+          def check_threshold(self, temp: float) -> bool:
+              return temp > ALERT_THRESHOLD_HIGH or temp < ALERT_THRESHOLD_LOW
+  changed_files:
+    weather/station.py: |
+      from weather.sensors import read_temperature, read_humidity
+
+      class WeatherStation:
+          def __init__(self, station_id: str):
+              self.station_id = station_id
+              self._readings: list[float] = []
+
+          def record_temperature(self) -> float:
+              temp = read_temperature(self.station_id)
+              self._readings.append(temp)
+              return temp
+
+          def average_temperature(self) -> float:
+              if not self._readings:
+                  return 0.0
+              return sum(self._readings) / len(self._readings)
+
+          def record_humidity(self) -> float:
+              return read_humidity(self.station_id)
+    weather/sensors.py: |
+      import random
+
+      def read_temperature(station_id: str) -> float:
+          return round(random.uniform(-30.0, 50.0), 1)
+
+      def read_humidity(station_id: str) -> float:
+          return round(random.uniform(0.0, 100.0), 1)
+
+      def read_wind_speed(station_id: str) -> float:
+          return round(random.uniform(0.0, 120.0), 1)
+  commit_message: "feat: add humidity recording and wind speed sensor"
+fragments:
+- id: station_record_humidity
+  selector:
+    path: weather/station.py
+    anchor: "def record_humidity(self) -> float:"
+- id: station_import_humidity
+  selector:
+    path: weather/station.py
+    anchor: "from weather.sensors import read_temperature, read_humidity"
+- id: sensor_wind_speed
+  selector:
+    path: weather/sensors.py
+    anchor: "def read_wind_speed(station_id: str) -> float:"
+- id: no_alerts
+  selector:
+    path: weather/alerts.py
+- id: no_alert_threshold
+  selector:
+    anchor: ALERT_THRESHOLD_HIGH
+oracle:
+  required:
+  - station_record_humidity
+  - station_import_humidity
+  - sensor_wind_speed
+  allowed: []
+  forbidden:
+  - no_alerts
+  - no_alert_threshold

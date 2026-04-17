@@ -1,0 +1,197 @@
+name: bal_1hop_045_java_rule_engine_to_workflow
+tags:
+- lang:java
+- change:new_function
+- change:multi_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/workflow/rules/RuleEngine.java: |
+      package com.workflow.rules;
+      import java.util.ArrayList;
+      import java.util.List;
+      import java.util.Map;
+      import java.util.function.Predicate;
+      public class RuleEngine {
+          private final List<Rule> rules = new ArrayList<>();
+          public void addRule(String name, Predicate<Map<String, Object>> condition, String action) {
+              rules.add(new Rule(name, condition, action));
+          }
+          public List<String> evaluate(Map<String, Object> context) {
+              List<String> actions = new ArrayList<>();
+              for (Rule rule : rules) {
+                  if (rule.condition.test(context)) {
+                      actions.add(rule.action);
+                  }
+              }
+              return actions;
+          }
+          private static class Rule {
+              final String name;
+              final Predicate<Map<String, Object>> condition;
+              final String action;
+              Rule(String name, Predicate<Map<String, Object>> condition, String action) {
+                  this.name = name;
+                  this.condition = condition;
+                  this.action = action;
+              }
+          }
+      }
+    src/main/java/com/workflow/executor/WorkflowExecutor.java: |
+      package com.workflow.executor;
+      import com.workflow.rules.RuleEngine;
+      import java.util.List;
+      import java.util.Map;
+      public class WorkflowExecutor {
+          private final RuleEngine engine;
+          public WorkflowExecutor(RuleEngine engine) { this.engine = engine; }
+          public void execute(Map<String, Object> context) {
+              List<String> actions = engine.evaluate(context);
+              for (String action : actions) {
+                  System.out.println("Executing action: " + action);
+              }
+          }
+      }
+    src/main/java/com/workflow/model/WorkflowState.java: |
+      package com.workflow.model;
+      public enum WorkflowState {
+          PENDING, RUNNING, COMPLETED, FAILED, CANCELLED
+      }
+    src/main/java/com/workflow/history/ExecutionHistory.java: |
+      package com.workflow.history;
+      import java.util.ArrayList;
+      import java.util.List;
+      public class ExecutionHistory {
+          private final List<String> entries = new ArrayList<>();
+          public void record(String entry) { entries.add(entry); }
+          public List<String> getAll() { return new ArrayList<>(entries); }
+      }
+    src/main/java/com/workflow/template/WorkflowTemplate.java: |
+      package com.workflow.template;
+      public class WorkflowTemplate {
+          private final String name;
+          private final String description;
+          public WorkflowTemplate(String name, String description) {
+              this.name = name;
+              this.description = description;
+          }
+          public String getName() { return name; }
+          public String getDescription() { return description; }
+      }
+    src/main/java/com/workflow/timer/ScheduleManager.java: |
+      package com.workflow.timer;
+      public class ScheduleManager {
+          public long nextRunTime(long intervalMs) {
+              return System.currentTimeMillis() + intervalMs;
+          }
+      }
+    src/main/java/com/workflow/audit/WorkflowAuditor.java: |
+      package com.workflow.audit;
+      public class WorkflowAuditor {
+          public void auditStart(String workflowId) {
+              System.out.println("Workflow started: " + workflowId);
+          }
+          public void auditEnd(String workflowId, boolean success) {
+              System.out.println("Workflow ended: " + workflowId + " success=" + success);
+          }
+      }
+  changed_files:
+    src/main/java/com/workflow/rules/RuleEngine.java: |
+      package com.workflow.rules;
+      import java.util.ArrayList;
+      import java.util.List;
+      import java.util.Map;
+      import java.util.function.Predicate;
+      public class RuleEngine {
+          private final List<Rule> rules = new ArrayList<>();
+          public void addRule(String name, Predicate<Map<String, Object>> condition, String action) {
+              rules.add(new Rule(name, condition, action, 0));
+          }
+          public void addRule(String name, Predicate<Map<String, Object>> condition, String action, int priority) {
+              rules.add(new Rule(name, condition, action, priority));
+          }
+          public List<String> evaluate(Map<String, Object> context) {
+              List<String> actions = new ArrayList<>();
+              rules.stream()
+                  .sorted((a, b) -> Integer.compare(b.priority, a.priority))
+                  .filter(r -> r.condition.test(context))
+                  .forEach(r -> actions.add(r.action));
+              return actions;
+          }
+          public List<String> evaluateFirstMatch(Map<String, Object> context) {
+              return rules.stream()
+                  .sorted((a, b) -> Integer.compare(b.priority, a.priority))
+                  .filter(r -> r.condition.test(context))
+                  .findFirst()
+                  .map(r -> List.of(r.action))
+                  .orElse(List.of());
+          }
+          public int ruleCount() {
+              return rules.size();
+          }
+          private static class Rule {
+              final String name;
+              final Predicate<Map<String, Object>> condition;
+              final String action;
+              final int priority;
+              Rule(String name, Predicate<Map<String, Object>> condition, String action, int priority) {
+                  this.name = name;
+                  this.condition = condition;
+                  this.action = action;
+                  this.priority = priority;
+              }
+          }
+      }
+  commit_message: "feat: add priority-based rule evaluation and first-match mode"
+fragments:
+- id: rule_priority
+  selector:
+    path: RuleEngine.java
+    anchor: "priority"
+- id: rule_evaluate_first
+  selector:
+    path: RuleEngine.java
+    anchor: "evaluateFirstMatch"
+- id: rule_count
+  selector:
+    path: RuleEngine.java
+    anchor: "ruleCount"
+- id: executor_uses_engine
+  selector:
+    path: WorkflowExecutor.java
+    anchor: "engine.evaluate"
+- id: no_workflow_state
+  selector:
+    path: WorkflowState.java
+    anchor: "WorkflowState"
+- id: no_execution_history
+  selector:
+    path: ExecutionHistory.java
+    anchor: "ExecutionHistory"
+- id: no_template
+  selector:
+    path: WorkflowTemplate.java
+    anchor: "WorkflowTemplate"
+- id: no_schedule
+  selector:
+    path: ScheduleManager.java
+    anchor: "ScheduleManager"
+- id: no_auditor
+  selector:
+    path: WorkflowAuditor.java
+    anchor: "WorkflowAuditor"
+oracle:
+  required:
+  - rule_priority
+  - rule_evaluate_first
+  - executor_uses_engine
+  allowed:
+  - rule_count
+  forbidden:
+  - no_workflow_state
+  - no_execution_history
+  - no_template
+  - no_schedule
+  - no_auditor

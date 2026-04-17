@@ -1,0 +1,268 @@
+name: bal3_3hop_085_csharp_specification_pattern_chain
+tags:
+- lang:csharp
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/Specifications/ISpecification.cs: |
+      using System;
+
+      namespace App.Specifications
+      {
+          public interface ISpecification<T>
+          {
+              bool IsSatisfiedBy(T entity);
+          }
+      }
+    src/Specifications/ActiveUserSpec.cs: |
+      using System;
+      using App.Specifications;
+
+      namespace App.Specifications
+      {
+          public class ActiveUserSpec : ISpecification<User>
+          {
+              public bool IsSatisfiedBy(User entity)
+              {
+                  return entity.IsActive;
+              }
+          }
+      }
+    src/Repositories/UserRepository.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Linq;
+      using App.Specifications;
+
+      namespace App.Repositories
+      {
+          public class UserRepository
+          {
+              private readonly List<User> _users = new();
+              public IEnumerable<User> FindBySpec(ISpecification<User> spec)
+              {
+                  return _users.Where(u => spec.IsSatisfiedBy(u));
+              }
+          }
+      }
+    src/Services/UserQueryService.cs: |
+      using System;
+      using System.Collections.Generic;
+      using App.Repositories;
+      using App.Specifications;
+
+      namespace App.Services
+      {
+          public class UserQueryService
+          {
+              private readonly UserRepository _repo;
+              public UserQueryService(UserRepository repo)
+              {
+                  _repo = repo;
+              }
+              public IEnumerable<User> GetActiveUsers()
+              {
+                  return _repo.FindBySpec(new ActiveUserSpec());
+              }
+          }
+      }
+    src/Controllers/AdminController.cs: |
+      using System;
+      using System.Collections.Generic;
+      using App.Services;
+
+      namespace App.Controllers
+      {
+          public class AdminController
+          {
+              private readonly UserQueryService _queryService;
+              public AdminController(UserQueryService queryService)
+              {
+                  _queryService = queryService;
+              }
+              public IEnumerable<User> ActiveUsers()
+              {
+                  return _queryService.GetActiveUsers();
+              }
+          }
+      }
+    src/Notifications/EmailSender.cs: |
+      using System;
+      // GARBAGE_085_EMAIL_A = "sender"
+      // GARBAGE_085_SMTP_B = "smtp"
+
+      namespace App.Notifications
+      {
+          public class EmailSender
+          {
+              public void Send(string to, string body) { }
+          }
+      }
+    src/Notifications/SmsSender.cs: |
+      using System;
+      // GARBAGE_085_SMS_C = "sender"
+      // GARBAGE_085_PROVIDER_D = "twilio"
+
+      namespace App.Notifications
+      {
+          public class SmsSender
+          {
+              public void Send(string to, string body) { }
+          }
+      }
+  changed_files:
+    src/Specifications/ISpecification.cs: |
+      using System;
+
+      namespace App.Specifications
+      {
+          public interface ISpecification<T>
+          {
+              bool IsSatisfiedBy(T entity);
+              ISpecification<T> And(ISpecification<T> other);
+          }
+      }
+    src/Specifications/ActiveUserSpec.cs: |
+      using System;
+      using App.Specifications;
+
+      namespace App.Specifications
+      {
+          public class ActiveUserSpec : ISpecification<User>
+          {
+              public bool IsSatisfiedBy(User entity)
+              {
+                  return entity.IsActive && !entity.IsDeleted;
+              }
+              public ISpecification<User> And(ISpecification<User> other)
+              {
+                  return new CompositeSpec<User>(this, other);
+              }
+          }
+      }
+    src/Repositories/UserRepository.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Linq;
+      using App.Specifications;
+
+      namespace App.Repositories
+      {
+          public class UserRepository
+          {
+              private readonly List<User> _users = new();
+              public IEnumerable<User> FindBySpec(ISpecification<User> spec)
+              {
+                  return _users.Where(u => spec.IsSatisfiedBy(u));
+              }
+          }
+      }
+    src/Services/UserQueryService.cs: |
+      using System;
+      using System.Collections.Generic;
+      using App.Repositories;
+      using App.Specifications;
+
+      namespace App.Services
+      {
+          public class UserQueryService
+          {
+              private readonly UserRepository _repo;
+              public UserQueryService(UserRepository repo)
+              {
+                  _repo = repo;
+              }
+              public IEnumerable<User> GetActiveUsers()
+              {
+                  return _repo.FindBySpec(new ActiveUserSpec());
+              }
+          }
+      }
+    src/Controllers/AdminController.cs: |
+      using System;
+      using System.Collections.Generic;
+      using App.Services;
+
+      namespace App.Controllers
+      {
+          public class AdminController
+          {
+              private readonly UserQueryService _queryService;
+              public AdminController(UserQueryService queryService)
+              {
+                  _queryService = queryService;
+              }
+              public IEnumerable<User> ActiveUsers()
+              {
+                  return _queryService.GetActiveUsers();
+              }
+          }
+      }
+    src/Notifications/EmailSender.cs: |
+      using System;
+      // GARBAGE_085_EMAIL_A = "sender"
+      // GARBAGE_085_SMTP_B = "smtp"
+
+      namespace App.Notifications
+      {
+          public class EmailSender
+          {
+              public void Send(string to, string body) { }
+          }
+      }
+    src/Notifications/SmsSender.cs: |
+      using System;
+      // GARBAGE_085_SMS_C = "sender"
+      // GARBAGE_085_PROVIDER_D = "twilio"
+
+      namespace App.Notifications
+      {
+          public class SmsSender
+          {
+              public void Send(string to, string body) { }
+          }
+      }
+  commit_message: "fix: exclude deleted users and add composite spec support"
+fragments:
+- id: spec_and_method
+  selector:
+    path: src/Specifications/ISpecification.cs
+    anchor: "And(ISpecification"
+- id: active_not_deleted
+  selector:
+    path: src/Specifications/ActiveUserSpec.cs
+    anchor: "!entity.IsDeleted"
+- id: repo_uses_spec
+  selector:
+    path: src/Repositories/UserRepository.cs
+    anchor: "using App.Specifications"
+- id: service_uses_repo
+  selector:
+    path: src/Services/UserQueryService.cs
+    anchor: "using App.Repositories"
+- id: controller_uses_service
+  selector:
+    path: src/Controllers/AdminController.cs
+    anchor: "using App.Services"
+- id: no_email
+  selector:
+    path: src/Notifications/EmailSender.cs
+    anchor: "GARBAGE_085_EMAIL_A"
+- id: no_sms
+  selector:
+    path: src/Notifications/SmsSender.cs
+    anchor: "GARBAGE_085_SMS_C"
+oracle:
+  required:
+  - spec_and_method
+  - active_not_deleted
+  - repo_uses_spec
+  - service_uses_repo
+  - controller_uses_service
+  allowed: []
+  forbidden:
+  - no_email
+  - no_sms

@@ -1,0 +1,383 @@
+name: bal3_1hop_068_swift_generic_constraint
+tags:
+- lang:swift
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    Sources/Storage/Store.swift: |
+      import Foundation
+
+      protocol Storable {
+          var id: String { get }
+      }
+
+      class Store<T: Storable> {
+          private var items: [String: T] = [:]
+
+          func save(_ item: T) {
+              items[item.id] = item
+          }
+
+          func find(id: String) -> T? {
+              return items[id]
+          }
+
+          func all() -> [T] {
+              return Array(items.values)
+          }
+      }
+    Sources/Repositories/UserRepository.swift: |
+      import Foundation
+      import Storage
+
+      struct UserEntity: Storable {
+          let id: String
+          let name: String
+          let email: String
+      }
+
+      class UserRepository {
+          private let store: Store<UserEntity>
+
+          init(store: Store<UserEntity>) {
+              self.store = store
+          }
+
+          func saveUser(_ user: UserEntity) {
+              store.save(user)
+          }
+
+          func findUser(id: String) -> UserEntity? {
+              return store.find(id: id)
+          }
+
+          func allUsers() -> [UserEntity] {
+              return store.all()
+          }
+      }
+    Sources/Repositories/DocumentRepository.swift: |
+      import Foundation
+      import Storage
+
+      struct DocumentEntity: Storable {
+          let id: String
+          let title: String
+          let content: String
+      }
+
+      class DocumentRepository {
+          private let store: Store<DocumentEntity>
+
+          init(store: Store<DocumentEntity>) {
+              self.store = store
+          }
+
+          func saveDocument(_ doc: DocumentEntity) {
+              store.save(doc)
+          }
+
+          func allDocuments() -> [DocumentEntity] {
+              return store.all()
+          }
+      }
+    Sources/Repositories/EventRepository.swift: |
+      import Foundation
+      import Storage
+
+      struct EventEntity: Storable {
+          let id: String
+          let name: String
+          let date: Date
+      }
+
+      class EventRepository {
+          private let store: Store<EventEntity>
+
+          init(store: Store<EventEntity>) {
+              self.store = store
+          }
+
+          func saveEvent(_ event: EventEntity) {
+              store.save(event)
+          }
+
+          func findEvent(id: String) -> EventEntity? {
+              return store.find(id: id)
+          }
+      }
+    Sources/Repositories/SettingsRepository.swift: |
+      import Foundation
+      import Storage
+
+      struct SettingsEntity: Storable {
+          let id: String
+          let key: String
+          let value: String
+      }
+
+      class SettingsRepository {
+          private let store: Store<SettingsEntity>
+
+          init(store: Store<SettingsEntity>) {
+              self.store = store
+          }
+
+          func saveSetting(_ setting: SettingsEntity) {
+              store.save(setting)
+          }
+      }
+    Sources/Migrations/SchemaMigrator.swift: |
+      import Foundation
+      GARBAGE_068_SCHEMA_VER_A = 1
+      GARBAGE_068_MIGRATION_DIR_B = "migrations/"
+
+      class SchemaMigrator {
+          func migrate(toVersion: Int) {}
+      }
+    Sources/Export/CSVExporter.swift: |
+      import Foundation
+      GARBAGE_068_CSV_SEP_C = ","
+      GARBAGE_068_CSV_QUOTE_D = "\""
+
+      class CSVExporter {
+          func export(rows: [[String]]) -> String { return "" }
+      }
+    Sources/Import/JSONImporter.swift: |
+      import Foundation
+      GARBAGE_068_JSON_MAX_DEPTH_E = 10
+      GARBAGE_068_JSON_STRICT_F = true
+
+      class JSONImporter {
+          func importData(from url: URL) {}
+      }
+  changed_files:
+    Sources/Storage/Store.swift: |
+      import Foundation
+
+      protocol Storable: Codable {
+          var id: String { get }
+          var createdAt: Date { get }
+      }
+
+      class Store<T: Storable> {
+          private var items: [String: T] = [:]
+
+          func save(_ item: T) {
+              items[item.id] = item
+          }
+
+          func find(id: String) -> T? {
+              return items[id]
+          }
+
+          func all() -> [T] {
+              return Array(items.values)
+          }
+
+          func remove(id: String) -> T? {
+              return items.removeValue(forKey: id)
+          }
+
+          func filter(predicate: (T) -> Bool) -> [T] {
+              return items.values.filter(predicate)
+          }
+      }
+    Sources/Repositories/UserRepository.swift: |
+      import Foundation
+      import Storage
+
+      struct UserEntity: Storable {
+          let id: String
+          let name: String
+          let email: String
+      }
+
+      class UserRepository {
+          private let store: Store<UserEntity>
+
+          init(store: Store<UserEntity>) {
+              self.store = store
+          }
+
+          func saveUser(_ user: UserEntity) {
+              store.save(user)
+          }
+
+          func findUser(id: String) -> UserEntity? {
+              return store.find(id: id)
+          }
+
+          func allUsers() -> [UserEntity] {
+              return store.all()
+          }
+      }
+    Sources/Repositories/DocumentRepository.swift: |
+      import Foundation
+      import Storage
+
+      struct DocumentEntity: Storable {
+          let id: String
+          let title: String
+          let content: String
+      }
+
+      class DocumentRepository {
+          private let store: Store<DocumentEntity>
+
+          init(store: Store<DocumentEntity>) {
+              self.store = store
+          }
+
+          func saveDocument(_ doc: DocumentEntity) {
+              store.save(doc)
+          }
+
+          func allDocuments() -> [DocumentEntity] {
+              return store.all()
+          }
+      }
+    Sources/Repositories/EventRepository.swift: |
+      import Foundation
+      import Storage
+
+      struct EventEntity: Storable {
+          let id: String
+          let name: String
+          let date: Date
+      }
+
+      class EventRepository {
+          private let store: Store<EventEntity>
+
+          init(store: Store<EventEntity>) {
+              self.store = store
+          }
+
+          func saveEvent(_ event: EventEntity) {
+              store.save(event)
+          }
+
+          func findEvent(id: String) -> EventEntity? {
+              return store.find(id: id)
+          }
+      }
+    Sources/Repositories/SettingsRepository.swift: |
+      import Foundation
+      import Storage
+
+      struct SettingsEntity: Storable {
+          let id: String
+          let key: String
+          let value: String
+      }
+
+      class SettingsRepository {
+          private let store: Store<SettingsEntity>
+
+          init(store: Store<SettingsEntity>) {
+              self.store = store
+          }
+
+          func saveSetting(_ setting: SettingsEntity) {
+              store.save(setting)
+          }
+      }
+    Sources/Migrations/SchemaMigrator.swift: |
+      import Foundation
+      GARBAGE_068_SCHEMA_VER_A = 1
+      GARBAGE_068_MIGRATION_DIR_B = "migrations/"
+
+      class SchemaMigrator {
+          func migrate(toVersion: Int) {}
+      }
+    Sources/Export/CSVExporter.swift: |
+      import Foundation
+      GARBAGE_068_CSV_SEP_C = ","
+      GARBAGE_068_CSV_QUOTE_D = "\""
+
+      class CSVExporter {
+          func export(rows: [[String]]) -> String { return "" }
+      }
+    Sources/Import/JSONImporter.swift: |
+      import Foundation
+      GARBAGE_068_JSON_MAX_DEPTH_E = 10
+      GARBAGE_068_JSON_STRICT_F = true
+
+      class JSONImporter {
+          func importData(from url: URL) {}
+      }
+  commit_message: "feat: add Codable constraint, createdAt, remove and filter to Store"
+fragments:
+- id: user_repo_imports
+  selector:
+    path: Sources/Repositories/UserRepository.swift
+    anchor: "import Storage"
+- id: user_repo_storable
+  selector:
+    path: Sources/Repositories/UserRepository.swift
+    anchor: "struct UserEntity: Storable"
+- id: doc_repo_imports
+  selector:
+    path: Sources/Repositories/DocumentRepository.swift
+    anchor: "import Storage"
+- id: doc_repo_storable
+  selector:
+    path: Sources/Repositories/DocumentRepository.swift
+    anchor: "struct DocumentEntity: Storable"
+- id: event_repo_imports
+  selector:
+    path: Sources/Repositories/EventRepository.swift
+    anchor: "import Storage"
+- id: settings_repo_imports
+  selector:
+    path: Sources/Repositories/SettingsRepository.swift
+    anchor: "import Storage"
+- id: no_migrator
+  selector:
+    path: Sources/Migrations/SchemaMigrator.swift
+- id: no_csv
+  selector:
+    path: Sources/Export/CSVExporter.swift
+- id: no_json_import
+  selector:
+    path: Sources/Import/JSONImporter.swift
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_068_SCHEMA_VER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_068_MIGRATION_DIR_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_068_CSV_SEP_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_068_CSV_QUOTE_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_068_JSON_MAX_DEPTH_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_068_JSON_STRICT_F
+oracle:
+  required:
+  - user_repo_imports
+  - user_repo_storable
+  - doc_repo_imports
+  - doc_repo_storable
+  - event_repo_imports
+  - settings_repo_imports
+  allowed: []
+  forbidden:
+  - no_migrator
+  - no_csv
+  - no_json_import
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

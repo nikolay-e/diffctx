@@ -1,0 +1,145 @@
+name: xml_008_hibernate_mapping_column
+tags:
+- lang:xml
+- lang:java
+- change:multi_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/main/resources/com/example/domain/User.hbm.xml: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <!DOCTYPE hibernate-mapping PUBLIC
+          "-//Hibernate/Hibernate Mapping DTD 3.0//EN"
+          "http://hibernate.sourceforge.net/hibernate-mapping-3.0.dtd">
+      <hibernate-mapping>
+        <class name="com.example.domain.User" table="users">
+          <id name="id" column="id" type="long">
+            <generator class="identity"/>
+          </id>
+          <property name="username" column="username" type="string" not-null="true"/>
+          <property name="email" column="email" type="string" not-null="true"/>
+          <property name="createdAt" column="created_at" type="timestamp"/>
+        </class>
+      </hibernate-mapping>
+    src/main/java/com/example/domain/User.java: |
+      package com.example.domain;
+      import java.time.LocalDateTime;
+      public class User {
+          private Long id;
+          private String username;
+          private String email;
+          private LocalDateTime createdAt;
+          public Long getId() { return id; }
+          public void setId(Long id) { this.id = id; }
+          public String getUsername() { return username; }
+          public void setUsername(String username) { this.username = username; }
+          public String getEmail() { return email; }
+          public void setEmail(String email) { this.email = email; }
+          public LocalDateTime getCreatedAt() { return createdAt; }
+          public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+      }
+    src/main/java/com/example/dao/UserDao.java: |
+      package com.example.dao;
+      import com.example.domain.User;
+      import org.hibernate.Session;
+      public class UserDao {
+          private final Session session;
+          public UserDao(Session session) { this.session = session; }
+          public User findById(long id) {
+              return session.get(User.class, id);
+          }
+          public void save(User user) {
+              session.persist(user);
+          }
+      }
+    XML_NOISE_008_orm-report.hbm.xml: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <hibernate-mapping>
+        <!-- XML_NOISE_008_REPORT_MAPPING -->
+        <class name="com.example.report.XML_NOISE_008_ReportEntity" table="reports">
+          <id name="id" column="id" type="long">
+            <generator class="identity"/>
+          </id>
+          <property name="title" column="title" type="string"/>
+        </class>
+      </hibernate-mapping>
+    garbage/AuditEvent.java: |
+      // XML_NOISE_008_AuditEvent = "audit_event_entity_marker"
+    garbage/SessionFactory.java: |
+      // XML_NOISE_008_SessionFactory = "session_factory_config_marker"
+  changed_files:
+    src/main/resources/com/example/domain/User.hbm.xml: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <!DOCTYPE hibernate-mapping PUBLIC
+          "-//Hibernate/Hibernate Mapping DTD 3.0//EN"
+          "http://hibernate.sourceforge.net/hibernate-mapping-3.0.dtd">
+      <hibernate-mapping>
+        <class name="com.example.domain.User" table="users">
+          <id name="id" column="id" type="long">
+            <generator class="identity"/>
+          </id>
+          <property name="username" column="username" type="string" not-null="true"/>
+          <property name="email" column="email" type="string" not-null="true"/>
+          <property name="createdAt" column="created_at" type="timestamp"/>
+          <property name="phoneNumber" column="phone_number" type="string"/>
+        </class>
+      </hibernate-mapping>
+    src/main/java/com/example/domain/User.java: |
+      package com.example.domain;
+      import java.time.LocalDateTime;
+      public class User {
+          private Long id;
+          private String username;
+          private String email;
+          private LocalDateTime createdAt;
+          private String phoneNumber;
+          public Long getId() { return id; }
+          public void setId(Long id) { this.id = id; }
+          public String getUsername() { return username; }
+          public void setUsername(String username) { this.username = username; }
+          public String getEmail() { return email; }
+          public void setEmail(String email) { this.email = email; }
+          public LocalDateTime getCreatedAt() { return createdAt; }
+          public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+          public String getPhoneNumber() { return phoneNumber; }
+          public void setPhoneNumber(String phoneNumber) { this.phoneNumber = phoneNumber; }
+      }
+  commit_message: "feat: add phoneNumber field to User entity and Hibernate mapping"
+fragments:
+- id: hbm_phone_column
+  selector:
+    path: src/main/resources/com/example/domain/User.hbm.xml
+    anchor: phone_number
+- id: user_phone_field
+  selector:
+    path: src/main/java/com/example/domain/User.java
+    anchor: phoneNumber
+- id: no_report_mapping
+  selector:
+    path: XML_NOISE_008_orm-report.hbm.xml
+- id: no_audit_event
+  selector:
+    path: garbage/AuditEvent.java
+- id: no_global_0
+  selector:
+    anchor: XML_NOISE_008_REPORT_MAPPING
+- id: no_global_1
+  selector:
+    anchor: XML_NOISE_008_ReportEntity
+- id: no_global_2
+  selector:
+    anchor: XML_NOISE_008_AuditEvent
+oracle:
+  required:
+  - hbm_phone_column
+  - user_phone_field
+  allowed: []
+  forbidden:
+  - no_report_mapping
+  - no_audit_event
+  - no_global_0
+  - no_global_1
+  - no_global_2

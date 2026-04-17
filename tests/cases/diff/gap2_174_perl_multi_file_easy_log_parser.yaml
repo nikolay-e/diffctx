@@ -1,0 +1,118 @@
+name: gap2_174_perl_multi_file_easy_log_parser
+tags:
+- change:multi_file
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:perl
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    lib/LogParser.pm: |
+      package LogParser;
+      use strict;
+      use warnings;
+
+      sub new {
+          my ($class) = @_;
+          return bless { entries => [] }, $class;
+      }
+
+      sub parse_line {
+          my ($self, $line) = @_;
+          if ($line =~ /^\[(\d{4}-\d{2}-\d{2})\]\s+(\w+)\s+(.*)$/) {
+              push @{$self->{entries}}, { date => $1, level => $2, message => $3 };
+          }
+      }
+
+      sub count { return scalar @{$_[0]->{entries}}; }
+
+      1;
+    lib/LogFormatter.pm: |
+      package LogFormatter;
+      use strict;
+      use warnings;
+
+      sub format_entry {
+          my ($entry) = @_;
+          return "[$entry->{date}] $entry->{level}: $entry->{message}";
+      }
+
+      1;
+    lib/LogRotator.pm: |
+      package LogRotator;
+      use strict;
+      use warnings;
+
+      sub new {
+          my ($class, $max_size) = @_;
+          return bless { max_size => $max_size }, $class;
+      }
+
+      sub should_rotate {
+          my ($self, $file_size) = @_;
+          return $file_size > $self->{max_size};
+      }
+
+      1;
+  changed_files:
+    lib/LogParser.pm: |
+      package LogParser;
+      use strict;
+      use warnings;
+
+      sub new {
+          my ($class) = @_;
+          return bless { entries => [] }, $class;
+      }
+
+      sub parse_line {
+          my ($self, $line) = @_;
+          if ($line =~ /^\[(\d{4}-\d{2}-\d{2})\]\s+(\w+)\s+(.*)$/) {
+              push @{$self->{entries}}, { date => $1, level => $2, message => $3 };
+          }
+      }
+
+      sub count { return scalar @{$_[0]->{entries}}; }
+
+      sub filter_by_level {
+          my ($self, $level) = @_;
+          return grep { $_->{level} eq $level } @{$self->{entries}};
+      }
+
+      1;
+    lib/LogFormatter.pm: |
+      package LogFormatter;
+      use strict;
+      use warnings;
+
+      sub format_entry {
+          my ($entry) = @_;
+          return "[$entry->{date}] $entry->{level}: $entry->{message}";
+      }
+
+      sub format_json {
+          my ($entry) = @_;
+          return qq({"date":"$entry->{date}","level":"$entry->{level}","msg":"$entry->{message}"});
+      }
+
+      1;
+fragments:
+- id: filter_by_level
+  selector:
+    path: lib/LogParser.pm
+    anchor: sub filter_by_level
+- id: format_json
+  selector:
+    path: lib/LogFormatter.pm
+    anchor: sub format_json
+- id: no_rotator
+  selector:
+    path: lib/LogRotator.pm
+oracle:
+  required:
+  - filter_by_level
+  - format_json
+  forbidden:
+  - no_rotator

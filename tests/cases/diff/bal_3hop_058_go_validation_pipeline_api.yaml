@@ -1,0 +1,310 @@
+name: bal_3hop_058_go_validation_pipeline_api
+tags:
+- lang:go
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    pkg/validation/rule.go: |
+      package validation
+
+      type Rule struct {
+        Name    string
+        Check   func(value string) bool
+        Message string
+      }
+
+      func Required() Rule {
+        return Rule{
+          Name: "required",
+          Check: func(v string) bool { return len(v) > 0 },
+          Message: "field is required",
+        }
+      }
+
+      func MinLength(n int) Rule {
+        return Rule{
+          Name: "min_length",
+          Check: func(v string) bool { return len(v) >= n },
+          Message: "too short",
+        }
+      }
+    pkg/validation/validator.go: |
+      package validation
+
+      type FieldError struct {
+        Field   string
+        Message string
+      }
+
+      type Validator struct {
+        rules map[string][]Rule
+      }
+
+      func NewValidator() *Validator {
+        return &Validator{rules: make(map[string][]Rule)}
+      }
+
+      func (v *Validator) AddRule(field string, rule Rule) {
+        v.rules[field] = append(v.rules[field], rule)
+      }
+
+      func (v *Validator) Validate(data map[string]string) []FieldError {
+        var errors []FieldError
+        for field, rules := range v.rules {
+          value := data[field]
+          for _, r := range rules {
+            if !r.Check(value) {
+              errors = append(errors, FieldError{Field: field, Message: r.Message})
+            }
+          }
+        }
+        return errors
+      }
+    pkg/service/registration.go: |
+      package service
+
+      import "pkg/validation"
+
+      type RegistrationService struct {
+        validator *validation.Validator
+      }
+
+      func NewRegistrationService() *RegistrationService {
+        v := validation.NewValidator()
+        v.AddRule("username", validation.Required())
+        v.AddRule("username", validation.MinLength(3))
+        v.AddRule("email", validation.Required())
+        return &RegistrationService{validator: v}
+      }
+
+      func (s *RegistrationService) Register(data map[string]string) (bool, []validation.FieldError) {
+        errors := s.validator.Validate(data)
+        return len(errors) == 0, errors
+      }
+    cmd/api/register.go: |
+      package main
+
+      import (
+        "encoding/json"
+        "net/http"
+        "pkg/service"
+      )
+
+      var regService = service.NewRegistrationService()
+
+      func registerHandler(w http.ResponseWriter, r *http.Request) {
+        data := map[string]string{
+          "username": r.FormValue("username"),
+          "email":    r.FormValue("email"),
+        }
+        ok, errors := regService.Register(data)
+        if !ok {
+          w.WriteHeader(400)
+          json.NewEncoder(w).Encode(errors)
+          return
+        }
+        w.WriteHeader(201)
+        w.Write([]byte("registered"))
+      }
+    pkg/util/sanitize.go: |
+      package util
+
+      var GARBAGE_058_SANITIZE_MARKER_A = "sanitize"
+      var GARBAGE_058_XSS_MARKER_B = true
+
+      func SanitizeInput(s string) string { return s }
+    pkg/util/slug.go: |
+      package util
+
+      var GARBAGE_058_SLUG_MARKER_C = "slug"
+      var GARBAGE_058_KEBAB_MARKER_D = true
+
+      func Slugify(s string) string { return s }
+  changed_files:
+    pkg/validation/rule.go: |
+      package validation
+
+      import "regexp"
+
+      type Rule struct {
+        Name    string
+        Check   func(value string) bool
+        Message string
+      }
+
+      func Required() Rule {
+        return Rule{
+          Name: "required",
+          Check: func(v string) bool { return len(v) > 0 },
+          Message: "field is required",
+        }
+      }
+
+      func MinLength(n int) Rule {
+        return Rule{
+          Name: "min_length",
+          Check: func(v string) bool { return len(v) >= n },
+          Message: "too short",
+        }
+      }
+
+      func MaxLength(n int) Rule {
+        return Rule{
+          Name: "max_length",
+          Check: func(v string) bool { return len(v) <= n },
+          Message: "too long",
+        }
+      }
+
+      func MatchesPattern(pattern string) Rule {
+        re := regexp.MustCompile(pattern)
+        return Rule{
+          Name: "pattern",
+          Check: func(v string) bool { return re.MatchString(v) },
+          Message: "invalid format",
+        }
+      }
+    pkg/validation/validator.go: |
+      package validation
+
+      type FieldError struct {
+        Field   string
+        Rule    string
+        Message string
+      }
+
+      type Validator struct {
+        rules map[string][]Rule
+      }
+
+      func NewValidator() *Validator {
+        return &Validator{rules: make(map[string][]Rule)}
+      }
+
+      func (v *Validator) AddRule(field string, rule Rule) {
+        v.rules[field] = append(v.rules[field], rule)
+      }
+
+      func (v *Validator) Validate(data map[string]string) []FieldError {
+        var errors []FieldError
+        for field, rules := range v.rules {
+          value := data[field]
+          for _, r := range rules {
+            if !r.Check(value) {
+              errors = append(errors, FieldError{Field: field, Rule: r.Name, Message: r.Message})
+            }
+          }
+        }
+        return errors
+      }
+    pkg/service/registration.go: |
+      package service
+
+      import "pkg/validation"
+
+      type RegistrationService struct {
+        validator *validation.Validator
+      }
+
+      func NewRegistrationService() *RegistrationService {
+        v := validation.NewValidator()
+        v.AddRule("username", validation.Required())
+        v.AddRule("username", validation.MinLength(3))
+        v.AddRule("username", validation.MaxLength(50))
+        v.AddRule("email", validation.Required())
+        v.AddRule("email", validation.MatchesPattern(`^[^\s@]+@[^\s@]+\.[^\s@]+$`))
+        return &RegistrationService{validator: v}
+      }
+
+      func (s *RegistrationService) Register(data map[string]string) (bool, []validation.FieldError) {
+        errors := s.validator.Validate(data)
+        return len(errors) == 0, errors
+      }
+    cmd/api/register.go: |
+      package main
+
+      import (
+        "encoding/json"
+        "net/http"
+        "pkg/service"
+      )
+
+      var regService = service.NewRegistrationService()
+
+      func registerHandler(w http.ResponseWriter, r *http.Request) {
+        data := map[string]string{
+          "username": r.FormValue("username"),
+          "email":    r.FormValue("email"),
+        }
+        ok, errors := regService.Register(data)
+        if !ok {
+          w.WriteHeader(400)
+          json.NewEncoder(w).Encode(errors)
+          return
+        }
+        w.WriteHeader(201)
+        w.Write([]byte("registered"))
+      }
+    pkg/util/sanitize.go: |
+      package util
+
+      var GARBAGE_058_SANITIZE_MARKER_A = "sanitize"
+      var GARBAGE_058_XSS_MARKER_B = true
+
+      func SanitizeInput(s string) string { return s }
+    pkg/util/slug.go: |
+      package util
+
+      var GARBAGE_058_SLUG_MARKER_C = "slug"
+      var GARBAGE_058_KEBAB_MARKER_D = true
+
+      func Slugify(s string) string { return s }
+  commit_message: "fix: add max length, pattern rules, and rule names to field errors"
+fragments:
+- id: max_length_rule
+  selector:
+    path: pkg/validation/rule.go
+    anchor: "func MaxLength(n int) Rule"
+- id: matches_pattern_rule
+  selector:
+    path: pkg/validation/rule.go
+    anchor: "func MatchesPattern(pattern string) Rule"
+- id: field_error_rule_name
+  selector:
+    path: pkg/validation/validator.go
+    anchor: "Rule    string"
+- id: service_uses_max_length
+  selector:
+    path: pkg/service/registration.go
+    anchor: "validation.MaxLength(50)"
+- id: service_uses_pattern
+  selector:
+    path: pkg/service/registration.go
+    anchor: "validation.MatchesPattern"
+- id: api_imports_service
+  selector:
+    path: cmd/api/register.go
+    anchor: "pkg/service"
+- id: no_sanitize
+  selector:
+    path: pkg/util/sanitize.go
+    anchor: "GARBAGE_058_SANITIZE_MARKER_A"
+- id: no_slug
+  selector:
+    path: pkg/util/slug.go
+    anchor: "GARBAGE_058_SLUG_MARKER_C"
+oracle:
+  required:
+  - max_length_rule
+  - matches_pattern_rule
+  - field_error_rule_name
+  - service_uses_max_length
+  - service_uses_pattern
+  - api_imports_service
+  allowed: []
+  forbidden:
+  - no_sanitize
+  - no_slug

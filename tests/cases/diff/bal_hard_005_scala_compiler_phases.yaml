@@ -1,0 +1,167 @@
+name: bal_hard_005_scala_compiler_phases
+tags:
+- lang:scala
+- change:multi_file
+- change:signature
+- context:cross_module
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/ast/Node.scala: |
+      package ast
+      sealed trait Node
+      case class NumberLit(value: Int) extends Node
+      case class BinOp(op: String, left: Node, right: Node) extends Node
+      case class Ident(name: String) extends Node
+    src/main/scala/parser/Lexer.scala: |
+      package parser
+      object Lexer {
+        def tokenize(input: String): List[String] = {
+          input.split("\\s+").toList
+        }
+      }
+    src/main/scala/parser/Parser.scala: |
+      package parser
+      import ast._
+      class Parser {
+        def parse(tokens: List[String]): Node = {
+          tokens match {
+            case num :: Nil if num.forall(_.isDigit) => NumberLit(num.toInt)
+            case name :: Nil => Ident(name)
+            case left :: op :: right :: Nil => BinOp(op, parse(List(left)), parse(List(right)))
+            case _ => throw new RuntimeException("Parse error")
+          }
+        }
+      }
+    src/main/scala/transform/Optimizer.scala: |
+      package transform
+      import ast._
+      class Optimizer {
+        def optimize(node: Node): Node = node match {
+          case BinOp("+", NumberLit(0), r) => optimize(r)
+          case BinOp("+", l, NumberLit(0)) => optimize(l)
+          case BinOp("*", NumberLit(1), r) => optimize(r)
+          case BinOp("*", l, NumberLit(1)) => optimize(l)
+          case BinOp(op, l, r) => BinOp(op, optimize(l), optimize(r))
+          case other => other
+        }
+      }
+    src/main/scala/codegen/Emitter.scala: |
+      package codegen
+      import ast._
+      class Emitter {
+        def emit(node: Node): String = node match {
+          case NumberLit(v) => v.toString
+          case Ident(n) => n
+          case BinOp(op, l, r) => s"(${emit(l)} $op ${emit(r)})"
+        }
+      }
+    src/main/scala/driver/Compiler.scala: |
+      package driver
+      import parser.{Lexer, Parser}
+      import transform.Optimizer
+      import codegen.Emitter
+      class Compiler {
+        private val parser = new Parser()
+        private val optimizer = new Optimizer()
+        private val emitter = new Emitter()
+        def compile(source: String): String = {
+          val tokens = Lexer.tokenize(source)
+          val ast = parser.parse(tokens)
+          val optimized = optimizer.optimize(ast)
+          emitter.emit(optimized)
+        }
+      }
+    src/main/scala/util/Diagnostics.scala: |
+      package util
+      object Diagnostics {
+        def warn(msg: String): Unit = System.err.println(s"WARN: $msg")
+        def error(msg: String): Unit = System.err.println(s"ERROR: $msg")
+      }
+    src/main/scala/util/SourcePos.scala: |
+      package util
+      case class SourcePos(line: Int, col: Int) {
+        override def toString: String = s"$line:$col"
+      }
+  changed_files:
+    src/main/scala/ast/Node.scala: |
+      package ast
+      sealed trait Node
+      case class NumberLit(value: Int) extends Node
+      case class StringLit(value: String) extends Node
+      case class BinOp(op: String, left: Node, right: Node) extends Node
+      case class Ident(name: String) extends Node
+    src/main/scala/parser/Parser.scala: |
+      package parser
+      import ast._
+      class Parser {
+        def parse(tokens: List[String]): Node = {
+          tokens match {
+            case num :: Nil if num.forall(_.isDigit) => NumberLit(num.toInt)
+            case str :: Nil if str.startsWith("\"") => StringLit(str.stripPrefix("\"").stripSuffix("\""))
+            case name :: Nil => Ident(name)
+            case left :: op :: right :: Nil => BinOp(op, parse(List(left)), parse(List(right)))
+            case _ => throw new RuntimeException("Parse error")
+          }
+        }
+      }
+    src/main/scala/codegen/Emitter.scala: |
+      package codegen
+      import ast._
+      class Emitter {
+        def emit(node: Node): String = node match {
+          case NumberLit(v) => v.toString
+          case StringLit(v) => s""""$v""""
+          case Ident(n) => n
+          case BinOp(op, l, r) => s"(${emit(l)} $op ${emit(r)})"
+        }
+      }
+  commit_message: "feat: add StringLit node to compiler"
+fragments:
+- id: string_lit_node
+  selector:
+    path: Node.scala
+    anchor: "case class StringLit(value: String)"
+- id: parser_handles_string
+  selector:
+    path: Parser.scala
+    anchor: "StringLit(str.stripPrefix"
+- id: emitter_handles_string
+  selector:
+    path: Emitter.scala
+    anchor: "case StringLit(v)"
+- id: optimizer_uses_node
+  selector:
+    path: Optimizer.scala
+    anchor: "def optimize(node: Node)"
+- id: compiler_orchestrates
+  selector:
+    path: Compiler.scala
+    anchor: "parser.parse(tokens)"
+- id: lexer_tokenize
+  selector:
+    path: Lexer.scala
+    anchor: "def tokenize"
+- id: no_diagnostics
+  selector:
+    path: util/Diagnostics.scala
+- id: no_source_pos
+  selector:
+    path: util/SourcePos.scala
+- id: no_warn
+  selector:
+    anchor: "def warn(msg: String)"
+oracle:
+  required:
+  - string_lit_node
+  - parser_handles_string
+  - emitter_handles_string
+  - optimizer_uses_node
+  - compiler_orchestrates
+  allowed:
+  - lexer_tokenize
+  forbidden:
+  - no_diagnostics
+  - no_source_pos
+  - no_warn

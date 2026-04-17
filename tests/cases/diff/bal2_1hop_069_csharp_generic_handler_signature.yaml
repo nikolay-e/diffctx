@@ -1,0 +1,214 @@
+name: bal2_1hop_069_csharp_generic_handler_signature
+tags:
+- lang:csharp
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/CQRS/ICommandHandler.cs: |
+      using System;
+      using System.Threading.Tasks;
+
+      namespace App.CQRS
+      {
+          public interface ICommandHandler<TCommand>
+          {
+              Task Execute(TCommand command);
+          }
+      }
+    src/Commands/CreateUserCommand.cs: |
+      using System;
+
+      namespace App.Commands
+      {
+          public class CreateUserCommand
+          {
+              public string Name { get; set; }
+              public string Email { get; set; }
+          }
+      }
+    src/Handlers/CreateUserHandler.cs: |
+      using System;
+      using System.Threading.Tasks;
+      using App.CQRS;
+      using App.Commands;
+
+      namespace App.Handlers
+      {
+          public class CreateUserHandler : ICommandHandler<CreateUserCommand>
+          {
+              public async Task Execute(CreateUserCommand command)
+              {
+                  Console.WriteLine($"Creating user {command.Name}");
+                  await Task.CompletedTask;
+              }
+          }
+      }
+    src/Commands/DeleteUserCommand.cs: |
+      using System;
+
+      namespace App.Commands
+      {
+          public class DeleteUserCommand
+          {
+              public int UserId { get; set; }
+          }
+      }
+    src/Handlers/DeleteUserHandler.cs: |
+      using System;
+      using System.Threading.Tasks;
+      using App.CQRS;
+      using App.Commands;
+
+      namespace App.Handlers
+      {
+          public class DeleteUserHandler : ICommandHandler<DeleteUserCommand>
+          {
+              public async Task Execute(DeleteUserCommand command)
+              {
+                  Console.WriteLine($"Deleting user {command.UserId}");
+                  await Task.CompletedTask;
+              }
+          }
+      }
+    src/Dispatchers/CommandDispatcher.cs: |
+      using System;
+      using System.Threading.Tasks;
+      using App.CQRS;
+
+      namespace App.Dispatchers
+      {
+          public class CommandDispatcher
+          {
+              private readonly IServiceProvider _provider;
+
+              public CommandDispatcher(IServiceProvider provider)
+              {
+                  _provider = provider;
+              }
+
+              public async Task Dispatch<TCommand>(TCommand command)
+              {
+                  var handler = (ICommandHandler<TCommand>)_provider.GetService(typeof(ICommandHandler<TCommand>));
+                  if (handler == null) throw new InvalidOperationException($"No handler for {typeof(TCommand).Name}");
+                  await handler.Execute(command);
+              }
+          }
+      }
+    garbage/Caching/DistributedCache.cs: |
+      using System;
+      GARBAGE_069_DIST_CACHE_A = "redis";
+      GARBAGE_069_CLUSTER_B = "default";
+
+      namespace App.Caching
+      {
+          public class DistributedCache
+          {
+              GARBAGE_069_EXPIRY_C = 600;
+
+              public void Invalidate(string key) { }
+          }
+      }
+    garbage/Health/HealthChecker.cs: |
+      using System;
+      GARBAGE_069_HEALTH_D = "liveness";
+      GARBAGE_069_PROBE_E = "/health";
+
+      namespace App.Health
+      {
+          public class HealthChecker
+          {
+              GARBAGE_069_INTERVAL_F = 30;
+
+              public bool Check() { return true; }
+          }
+      }
+    garbage/Mapping/AutoMapperProfile.cs: |
+      using System;
+      GARBAGE_069_PROFILE_G = "default";
+      GARBAGE_069_STRICT_H = true;
+
+      namespace App.Mapping
+      {
+          public class AutoMapperProfile
+          {
+              GARBAGE_069_VALIDATE_I = true;
+              GARBAGE_069_FLATTEN_J = false;
+
+              public void Configure() { }
+          }
+      }
+  changed_files:
+    src/CQRS/ICommandHandler.cs: |
+      using System;
+      using System.Threading;
+      using System.Threading.Tasks;
+
+      namespace App.CQRS
+      {
+          public interface ICommandHandler<TCommand, TResult>
+          {
+              Task<TResult> Execute(TCommand command, CancellationToken cancellationToken = default);
+          }
+
+          public interface ICommandHandler<TCommand> : ICommandHandler<TCommand, Unit>
+          {
+          }
+
+          public struct Unit
+          {
+              public static readonly Unit Value = new Unit();
+          }
+      }
+  commit_message: "Add result type and cancellation token to command handler"
+fragments:
+- id: create_handler_execute
+  selector:
+    path: src/Handlers/CreateUserHandler.cs
+    anchor: "public async Task Execute(CreateUserCommand command)"
+- id: delete_handler_execute
+  selector:
+    path: src/Handlers/DeleteUserHandler.cs
+    anchor: "public async Task Execute(DeleteUserCommand command)"
+- id: dispatcher_dispatch
+  selector:
+    path: src/Dispatchers/CommandDispatcher.cs
+    anchor: "await handler.Execute(command)"
+- id: dispatcher_resolve
+  selector:
+    path: src/Dispatchers/CommandDispatcher.cs
+    anchor: "(ICommandHandler<TCommand>)_provider.GetService"
+- id: no_dist_cache
+  selector:
+    path: garbage/Caching/DistributedCache.cs
+- id: no_health_checker
+  selector:
+    path: garbage/Health/HealthChecker.cs
+- id: no_automapper
+  selector:
+    path: garbage/Mapping/AutoMapperProfile.cs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_069_DIST_CACHE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_069_HEALTH_D
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_069_PROFILE_G
+oracle:
+  required:
+  - create_handler_execute
+  - delete_handler_execute
+  - dispatcher_dispatch
+  - dispatcher_resolve
+  allowed: []
+  forbidden:
+  - no_dist_cache
+  - no_health_checker
+  - no_automapper
+  - no_global_0
+  - no_global_1
+  - no_global_2

@@ -1,0 +1,376 @@
+name: bal3_1hop_081_csharp_multi_file_config
+tags:
+- lang:csharp
+- change:multi_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: csharp-no-tree-sitter
+repo:
+  initial_files:
+    src/Configuration/DatabaseConfig.cs: |
+      using System;
+
+      namespace App.Configuration
+      {
+          public class DatabaseConfig
+          {
+              public string ConnectionString { get; set; }
+              public int MaxPoolSize { get; set; }
+              public int Timeout { get; set; }
+          }
+      }
+    src/Configuration/CacheConfig.cs: |
+      using System;
+
+      namespace App.Configuration
+      {
+          public class CacheConfig
+          {
+              public string Provider { get; set; }
+              public int DefaultTtl { get; set; }
+          }
+      }
+    src/Data/DbConnectionFactory.cs: |
+      using System;
+      using App.Configuration;
+
+      namespace App.Data
+      {
+          public class DbConnectionFactory
+          {
+              private readonly DatabaseConfig _config;
+
+              public DbConnectionFactory(DatabaseConfig config)
+              {
+                  _config = config;
+              }
+
+              public string CreateConnection()
+              {
+                  return $"Connected: {_config.ConnectionString} (pool={_config.MaxPoolSize})";
+              }
+          }
+      }
+    src/Data/MigrationRunner.cs: |
+      using System;
+      using App.Configuration;
+
+      namespace App.Data
+      {
+          public class MigrationRunner
+          {
+              private readonly DatabaseConfig _config;
+
+              public MigrationRunner(DatabaseConfig config)
+              {
+                  _config = config;
+              }
+
+              public void RunMigrations()
+              {
+                  Console.WriteLine($"Migrating {_config.ConnectionString}");
+              }
+          }
+      }
+    src/Cache/CacheManager.cs: |
+      using System;
+      using App.Configuration;
+
+      namespace App.Cache
+      {
+          public class CacheManager
+          {
+              private readonly CacheConfig _config;
+
+              public CacheManager(CacheConfig config)
+              {
+                  _config = config;
+              }
+
+              public string GetProvider()
+              {
+                  return _config.Provider;
+              }
+          }
+      }
+    src/Cache/CacheWarmer.cs: |
+      using System;
+      using App.Configuration;
+
+      namespace App.Cache
+      {
+          public class CacheWarmer
+          {
+              private readonly CacheConfig _config;
+
+              public CacheWarmer(CacheConfig config)
+              {
+                  _config = config;
+              }
+
+              public void Warm()
+              {
+                  Console.WriteLine($"Warming cache with TTL={_config.DefaultTtl}");
+              }
+          }
+      }
+    src/Security/Firewall.cs: |
+      using System;
+      GARBAGE_081_FIREWALL_RULES_A = "default";
+      GARBAGE_081_BLOCK_MODE_B = "deny";
+
+      namespace App.Security
+      {
+          public class Firewall
+          {
+              public bool IsAllowed(string ip) { return true; }
+          }
+      }
+    src/Security/CertManager.cs: |
+      using System;
+      GARBAGE_081_CERT_PATH_C = "/etc/ssl/cert.pem";
+      GARBAGE_081_KEY_PATH_D = "/etc/ssl/key.pem";
+
+      namespace App.Security
+      {
+          public class CertManager
+          {
+              public void RenewCert() { }
+          }
+      }
+    src/Observability/Tracer.cs: |
+      using System;
+      GARBAGE_081_TRACE_SAMPLER_E = 0.1;
+      GARBAGE_081_EXPORTER_F = "jaeger";
+
+      namespace App.Observability
+      {
+          public class Tracer
+          {
+              public void StartSpan(string name) { }
+          }
+      }
+  changed_files:
+    src/Configuration/DatabaseConfig.cs: |
+      using System;
+
+      namespace App.Configuration
+      {
+          public class DatabaseConfig
+          {
+              public string ConnectionString { get; set; }
+              public int MaxPoolSize { get; set; }
+              public int MinPoolSize { get; set; }
+              public int Timeout { get; set; }
+              public bool EnableRetry { get; set; }
+              public string ReadReplicaConnectionString { get; set; }
+          }
+      }
+    src/Configuration/CacheConfig.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Configuration
+      {
+          public class CacheConfig
+          {
+              public string Provider { get; set; }
+              public int DefaultTtl { get; set; }
+              public int MaxEntries { get; set; }
+              public List<string> EvictionPolicies { get; set; } = new List<string>();
+          }
+      }
+    src/Data/DbConnectionFactory.cs: |
+      using System;
+      using App.Configuration;
+
+      namespace App.Data
+      {
+          public class DbConnectionFactory
+          {
+              private readonly DatabaseConfig _config;
+
+              public DbConnectionFactory(DatabaseConfig config)
+              {
+                  _config = config;
+              }
+
+              public string CreateConnection()
+              {
+                  return $"Connected: {_config.ConnectionString} (pool={_config.MaxPoolSize})";
+              }
+          }
+      }
+    src/Data/MigrationRunner.cs: |
+      using System;
+      using App.Configuration;
+
+      namespace App.Data
+      {
+          public class MigrationRunner
+          {
+              private readonly DatabaseConfig _config;
+
+              public MigrationRunner(DatabaseConfig config)
+              {
+                  _config = config;
+              }
+
+              public void RunMigrations()
+              {
+                  Console.WriteLine($"Migrating {_config.ConnectionString}");
+              }
+          }
+      }
+    src/Cache/CacheManager.cs: |
+      using System;
+      using App.Configuration;
+
+      namespace App.Cache
+      {
+          public class CacheManager
+          {
+              private readonly CacheConfig _config;
+
+              public CacheManager(CacheConfig config)
+              {
+                  _config = config;
+              }
+
+              public string GetProvider()
+              {
+                  return _config.Provider;
+              }
+          }
+      }
+    src/Cache/CacheWarmer.cs: |
+      using System;
+      using App.Configuration;
+
+      namespace App.Cache
+      {
+          public class CacheWarmer
+          {
+              private readonly CacheConfig _config;
+
+              public CacheWarmer(CacheConfig config)
+              {
+                  _config = config;
+              }
+
+              public void Warm()
+              {
+                  Console.WriteLine($"Warming cache with TTL={_config.DefaultTtl}");
+              }
+          }
+      }
+    src/Security/Firewall.cs: |
+      using System;
+      GARBAGE_081_FIREWALL_RULES_A = "default";
+      GARBAGE_081_BLOCK_MODE_B = "deny";
+
+      namespace App.Security
+      {
+          public class Firewall
+          {
+              public bool IsAllowed(string ip) { return true; }
+          }
+      }
+    src/Security/CertManager.cs: |
+      using System;
+      GARBAGE_081_CERT_PATH_C = "/etc/ssl/cert.pem";
+      GARBAGE_081_KEY_PATH_D = "/etc/ssl/key.pem";
+
+      namespace App.Security
+      {
+          public class CertManager
+          {
+              public void RenewCert() { }
+          }
+      }
+    src/Observability/Tracer.cs: |
+      using System;
+      GARBAGE_081_TRACE_SAMPLER_E = 0.1;
+      GARBAGE_081_EXPORTER_F = "jaeger";
+
+      namespace App.Observability
+      {
+          public class Tracer
+          {
+              public void StartSpan(string name) { }
+          }
+      }
+  commit_message: "feat: add read replica, retry and eviction to config classes"
+fragments:
+- id: db_factory_using
+  selector:
+    path: src/Data/DbConnectionFactory.cs
+    anchor: "using App.Configuration"
+- id: db_factory_config
+  selector:
+    path: src/Data/DbConnectionFactory.cs
+    anchor: "DatabaseConfig _config"
+- id: migration_using
+  selector:
+    path: src/Data/MigrationRunner.cs
+    anchor: "using App.Configuration"
+- id: cache_mgr_using
+  selector:
+    path: src/Cache/CacheManager.cs
+    anchor: "using App.Configuration"
+- id: cache_mgr_provider
+  selector:
+    path: src/Cache/CacheManager.cs
+    anchor: "_config.Provider"
+- id: cache_warmer_using
+  selector:
+    path: src/Cache/CacheWarmer.cs
+    anchor: "using App.Configuration"
+- id: no_firewall
+  selector:
+    path: src/Security/Firewall.cs
+- id: no_cert
+  selector:
+    path: src/Security/CertManager.cs
+- id: no_tracer
+  selector:
+    path: src/Observability/Tracer.cs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_081_FIREWALL_RULES_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_081_BLOCK_MODE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_081_CERT_PATH_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_081_KEY_PATH_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_081_TRACE_SAMPLER_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_081_EXPORTER_F
+oracle:
+  required:
+  - db_factory_using
+  - db_factory_config
+  - migration_using
+  - cache_mgr_using
+  - cache_mgr_provider
+  - cache_warmer_using
+  allowed: []
+  forbidden:
+  - no_firewall
+  - no_cert
+  - no_tracer
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

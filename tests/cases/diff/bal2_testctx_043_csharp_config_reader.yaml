@@ -1,0 +1,158 @@
+name: bal2_testctx_043_csharp_config_reader
+tags:
+- lang:csharp
+- change:single_file
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/Config/ConfigReader.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Config
+      {
+          public class ConfigReader
+          {
+              private readonly Dictionary<string, string> _values = new();
+
+              public void Load(string content)
+              {
+                  foreach (var line in content.Split('\n'))
+                  {
+                      var parts = line.Split('=', 2);
+                      if (parts.Length == 2)
+                          _values[parts[0].Trim()] = parts[1].Trim();
+                  }
+              }
+
+              public string Get(string key)
+              {
+                  return _values.GetValueOrDefault(key);
+              }
+          }
+      }
+    Tests/ConfigReaderTests.cs: |
+      using Xunit;
+      using App.Config;
+
+      namespace App.Tests
+      {
+          public class ConfigReaderTests
+          {
+              [Fact]
+              public void Load_SinglePair_GetReturnsValue()
+              {
+                  var reader = new ConfigReader();
+                  reader.Load("host=localhost");
+                  Assert.Equal("localhost", reader.Get("host"));
+              }
+
+              [Fact]
+              public void Get_MissingKey_ReturnsNull()
+              {
+                  var reader = new ConfigReader();
+                  reader.Load("");
+                  Assert.Null(reader.Get("missing"));
+              }
+          }
+      }
+    src/Config/FeatureFlags.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Config
+      {
+          public class FeatureFlags
+          {
+              private readonly HashSet<string> _enabled = new();
+
+              public void Enable(string flag)
+              {
+                  _enabled.Add(flag);
+              }
+
+              public bool IsEnabled(string flag)
+              {
+                  return _enabled.Contains(flag);
+              }
+          }
+      }
+  changed_files:
+    src/Config/ConfigReader.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Config
+      {
+          public class ConfigReader
+          {
+              private readonly Dictionary<string, string> _values = new();
+
+              public void Load(string content)
+              {
+                  foreach (var line in content.Split('\n'))
+                  {
+                      if (string.IsNullOrWhiteSpace(line) || line.TrimStart().StartsWith('#'))
+                          continue;
+                      var parts = line.Split('=', 2);
+                      if (parts.Length == 2)
+                          _values[parts[0].Trim()] = parts[1].Trim();
+                  }
+              }
+
+              public string Get(string key)
+              {
+                  return _values.GetValueOrDefault(key);
+              }
+
+              public T Get<T>(string key, T defaultValue) where T : IConvertible
+              {
+                  var raw = Get(key);
+                  if (raw == null) return defaultValue;
+                  return (T)Convert.ChangeType(raw, typeof(T));
+              }
+
+              public IReadOnlyDictionary<string, string> GetAll()
+              {
+                  return _values;
+              }
+          }
+      }
+  commit_message: "feat: add comment skipping, typed getter, and GetAll"
+fragments:
+- id: comment_skip
+  selector:
+    path: src/Config/ConfigReader.cs
+    anchor: "line.TrimStart().StartsWith('#')"
+- id: typed_get
+  selector:
+    path: src/Config/ConfigReader.cs
+    anchor: "public T Get<T>(string key, T defaultValue)"
+- id: get_all
+  selector:
+    path: src/Config/ConfigReader.cs
+    anchor: "public IReadOnlyDictionary<string, string> GetAll()"
+- id: test_imports
+  selector:
+    path: Tests/ConfigReaderTests.cs
+    anchor: "using App.Config"
+- id: test_load
+  selector:
+    path: Tests/ConfigReaderTests.cs
+    anchor: "Load_SinglePair_GetReturnsValue"
+- id: no_feature_flags
+  selector:
+    path: src/Config/FeatureFlags.cs
+    anchor: "class FeatureFlags"
+oracle:
+  required:
+  - typed_get
+  - get_all
+  - test_imports
+  allowed:
+  - comment_skip
+  - test_load
+  forbidden:
+  - no_feature_flags

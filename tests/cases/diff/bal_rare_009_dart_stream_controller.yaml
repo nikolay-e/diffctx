@@ -1,0 +1,227 @@
+name: bal_rare_009_dart_stream_controller
+tags:
+- lang:dart
+- change:multi_file
+- change:signature
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    lib/events/event_bus.dart: |
+      import 'dart:async';
+
+      class EventBus {
+        final _controller = StreamController<String>.broadcast();
+
+        Stream<String> get stream => _controller.stream;
+
+        void emit(String event) {
+          _controller.add(event);
+        }
+
+        void dispose() {
+          _controller.close();
+        }
+      }
+    lib/services/notification_service.dart: |
+      import '../events/event_bus.dart';
+
+      class NotificationService {
+        final EventBus _eventBus;
+
+        NotificationService(this._eventBus) {
+          _eventBus.stream.listen(_onEvent);
+        }
+
+        void _onEvent(String event) {
+          print('Notification: $event');
+        }
+      }
+    lib/services/audit_service.dart: |
+      import '../events/event_bus.dart';
+
+      class AuditService {
+        final EventBus _eventBus;
+        final List<String> _log = [];
+
+        AuditService(this._eventBus) {
+          _eventBus.stream.listen(_onEvent);
+        }
+
+        void _onEvent(String event) {
+          _log.add('[${DateTime.now()}] $event');
+        }
+
+        List<String> getLog() => List.unmodifiable(_log);
+      }
+    lib/main.dart: |
+      import 'events/event_bus.dart';
+      import 'services/notification_service.dart';
+      import 'services/audit_service.dart';
+
+      void main() {
+        final bus = EventBus();
+        NotificationService(bus);
+        AuditService(bus);
+        bus.emit('app_started');
+      }
+    garbage_config.dart: |
+      const GARBAGE_RARE_009_ENV_A = 'production';
+      const GARBAGE_RARE_009_DEBUG_B = false;
+
+      class GarbageConfig {
+        static const GARBAGE_RARE_009_VERSION_C = '1.0.0';
+      }
+    garbage_i18n.dart: |
+      const GARBAGE_RARE_009_LOCALE_D = 'en_US';
+      const GARBAGE_RARE_009_FALLBACK_E = 'en';
+
+      class GarbageI18n {
+        static const GARBAGE_RARE_009_DIR_F = 'ltr';
+      }
+  changed_files:
+    lib/events/event_bus.dart: |
+      import 'dart:async';
+
+      class AppEvent {
+        final String type;
+        final Map<String, dynamic> payload;
+        final DateTime timestamp;
+
+        AppEvent({required this.type, this.payload = const {}, DateTime? timestamp})
+            : timestamp = timestamp ?? DateTime.now();
+      }
+
+      class EventBus {
+        final _controller = StreamController<AppEvent>.broadcast();
+
+        Stream<AppEvent> get stream => _controller.stream;
+
+        void emit(String type, {Map<String, dynamic> payload = const {}}) {
+          _controller.add(AppEvent(type: type, payload: payload));
+        }
+
+        void dispose() {
+          _controller.close();
+        }
+      }
+    lib/services/notification_service.dart: |
+      import '../events/event_bus.dart';
+
+      class NotificationService {
+        final EventBus _eventBus;
+
+        NotificationService(this._eventBus) {
+          _eventBus.stream.listen(_onEvent);
+        }
+
+        void _onEvent(AppEvent event) {
+          print('Notification [${event.type}]: ${event.payload}');
+        }
+      }
+    lib/services/audit_service.dart: |
+      import '../events/event_bus.dart';
+
+      class AuditService {
+        final EventBus _eventBus;
+        final List<AppEvent> _log = [];
+
+        AuditService(this._eventBus) {
+          _eventBus.stream.listen(_onEvent);
+        }
+
+        void _onEvent(AppEvent event) {
+          _log.add(event);
+        }
+
+        List<AppEvent> getLog() => List.unmodifiable(_log);
+      }
+    lib/main.dart: |
+      import 'events/event_bus.dart';
+      import 'services/notification_service.dart';
+      import 'services/audit_service.dart';
+
+      void main() {
+        final bus = EventBus();
+        NotificationService(bus);
+        AuditService(bus);
+        bus.emit('app_started', payload: {'version': '2.0'});
+      }
+    garbage_config.dart: |
+      const GARBAGE_RARE_009_ENV_A = 'production';
+      const GARBAGE_RARE_009_DEBUG_B = false;
+
+      class GarbageConfig {
+        static const GARBAGE_RARE_009_VERSION_C = '1.0.0';
+      }
+    garbage_i18n.dart: |
+      const GARBAGE_RARE_009_LOCALE_D = 'en_US';
+      const GARBAGE_RARE_009_FALLBACK_E = 'en';
+
+      class GarbageI18n {
+        static const GARBAGE_RARE_009_DIR_F = 'ltr';
+      }
+  commit_message: "refactor: replace string events with typed AppEvent class"
+fragments:
+- id: app_event_class
+  selector:
+    path: lib/events/event_bus.dart
+    anchor: "class AppEvent"
+- id: event_bus_emit_typed
+  selector:
+    path: lib/events/event_bus.dart
+    anchor: "void emit(String type, {Map<String, dynamic> payload"
+- id: notification_uses_appevent
+  selector:
+    path: lib/services/notification_service.dart
+    anchor: "void _onEvent(AppEvent event)"
+- id: audit_uses_appevent
+  selector:
+    path: lib/services/audit_service.dart
+    anchor: "List<AppEvent> _log"
+- id: main_uses_payload
+  selector:
+    path: lib/main.dart
+    anchor: "payload: {'version': '2.0'}"
+- id: no_garbage_config
+  selector:
+    path: garbage_config.dart
+- id: no_garbage_i18n
+  selector:
+    path: garbage_i18n.dart
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_RARE_009_ENV_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_RARE_009_DEBUG_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_RARE_009_VERSION_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_RARE_009_LOCALE_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_RARE_009_FALLBACK_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_RARE_009_DIR_F
+oracle:
+  required:
+  - app_event_class
+  - event_bus_emit_typed
+  - notification_uses_appevent
+  - audit_uses_appevent
+  - main_uses_payload
+  allowed: []
+  forbidden:
+  - no_garbage_config
+  - no_garbage_i18n
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

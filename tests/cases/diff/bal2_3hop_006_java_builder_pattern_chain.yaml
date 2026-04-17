@@ -1,0 +1,201 @@
+name: bal2_3hop_006_java_builder_pattern_chain
+tags:
+- lang:java
+- change:single_file
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/app/config/DatabaseConfig.java: |
+      package com.app.config;
+
+      public class DatabaseConfig {
+          private String url;
+          private int poolSize;
+          public DatabaseConfig(String url, int poolSize) {
+              this.url = url;
+              this.poolSize = poolSize;
+          }
+          public String getUrl() { return url; }
+          public int getPoolSize() { return poolSize; }
+      }
+    src/main/java/com/app/config/DatabaseConfigBuilder.java: |
+      package com.app.config;
+
+      import com.app.config.DatabaseConfig;
+
+      public class DatabaseConfigBuilder {
+          private String url = "jdbc:h2:mem:default";
+          private int poolSize = 10;
+          public DatabaseConfigBuilder url(String url) {
+              this.url = url;
+              return this;
+          }
+          public DatabaseConfigBuilder poolSize(int poolSize) {
+              this.poolSize = poolSize;
+              return this;
+          }
+          public DatabaseConfig build() {
+              return new DatabaseConfig(url, poolSize);
+          }
+      }
+    src/main/java/com/app/factory/ConnectionFactory.java: |
+      package com.app.factory;
+
+      import com.app.config.DatabaseConfigBuilder;
+      import com.app.config.DatabaseConfig;
+
+      public class ConnectionFactory {
+          public DatabaseConfig createDefault() {
+              return new DatabaseConfigBuilder().build();
+          }
+          public DatabaseConfig createCustom(String url, int pool) {
+              return new DatabaseConfigBuilder().url(url).poolSize(pool).build();
+          }
+      }
+    src/main/java/com/app/startup/AppBootstrap.java: |
+      package com.app.startup;
+
+      import com.app.factory.ConnectionFactory;
+
+      public class AppBootstrap {
+          private final ConnectionFactory factory;
+          public AppBootstrap(ConnectionFactory factory) {
+              this.factory = factory;
+          }
+          public void initialize() {
+              factory.createDefault();
+          }
+      }
+    src/main/java/com/app/util/FileReader.java: |
+      package com.app.util;
+
+      public class FileReader {
+          public String read(String path) { return ""; }
+      }
+    src/main/java/com/app/util/Encoder.java: |
+      package com.app.util;
+
+      public class Encoder {
+          public static String base64(String input) { return input; }
+      }
+  changed_files:
+    src/main/java/com/app/config/DatabaseConfig.java: |
+      package com.app.config;
+
+      public class DatabaseConfig {
+          private String url;
+          private int poolSize;
+          private int connectionTimeout;
+          public DatabaseConfig(String url, int poolSize, int connectionTimeout) {
+              this.url = url;
+              this.poolSize = poolSize;
+              this.connectionTimeout = connectionTimeout;
+          }
+          public String getUrl() { return url; }
+          public int getPoolSize() { return poolSize; }
+          public int getConnectionTimeout() { return connectionTimeout; }
+      }
+    src/main/java/com/app/config/DatabaseConfigBuilder.java: |
+      package com.app.config;
+
+      import com.app.config.DatabaseConfig;
+
+      public class DatabaseConfigBuilder {
+          private String url = "jdbc:h2:mem:default";
+          private int poolSize = 10;
+          private int connectionTimeout = 30000;
+          public DatabaseConfigBuilder url(String url) {
+              this.url = url;
+              return this;
+          }
+          public DatabaseConfigBuilder poolSize(int poolSize) {
+              this.poolSize = poolSize;
+              return this;
+          }
+          public DatabaseConfigBuilder connectionTimeout(int timeout) {
+              this.connectionTimeout = timeout;
+              return this;
+          }
+          public DatabaseConfig build() {
+              return new DatabaseConfig(url, poolSize, connectionTimeout);
+          }
+      }
+    src/main/java/com/app/factory/ConnectionFactory.java: |
+      package com.app.factory;
+
+      import com.app.config.DatabaseConfigBuilder;
+      import com.app.config.DatabaseConfig;
+
+      public class ConnectionFactory {
+          public DatabaseConfig createDefault() {
+              return new DatabaseConfigBuilder().build();
+          }
+          public DatabaseConfig createCustom(String url, int pool) {
+              return new DatabaseConfigBuilder().url(url).poolSize(pool).build();
+          }
+      }
+    src/main/java/com/app/startup/AppBootstrap.java: |
+      package com.app.startup;
+
+      import com.app.factory.ConnectionFactory;
+
+      public class AppBootstrap {
+          private final ConnectionFactory factory;
+          public AppBootstrap(ConnectionFactory factory) {
+              this.factory = factory;
+          }
+          public void initialize() {
+              factory.createDefault();
+          }
+      }
+    src/main/java/com/app/util/FileReader.java: |
+      package com.app.util;
+
+      public class FileReader {
+          public String read(String path) { return ""; }
+      }
+    src/main/java/com/app/util/Encoder.java: |
+      package com.app.util;
+
+      public class Encoder {
+          public static String base64(String input) { return input; }
+      }
+  commit_message: "feat: add connectionTimeout to DatabaseConfig"
+fragments:
+- id: config_timeout
+  selector:
+    path: src/main/java/com/app/config/DatabaseConfig.java
+    anchor: "private int connectionTimeout"
+- id: builder_imports_config
+  selector:
+    path: src/main/java/com/app/config/DatabaseConfigBuilder.java
+    anchor: "import com.app.config.DatabaseConfig"
+- id: factory_imports_builder
+  selector:
+    path: src/main/java/com/app/factory/ConnectionFactory.java
+    anchor: "import com.app.config.DatabaseConfigBuilder"
+- id: bootstrap_imports_factory
+  selector:
+    path: src/main/java/com/app/startup/AppBootstrap.java
+    anchor: "import com.app.factory.ConnectionFactory"
+- id: no_file_reader
+  selector:
+    path: src/main/java/com/app/util/FileReader.java
+    anchor: "class FileReader"
+- id: no_encoder
+  selector:
+    path: src/main/java/com/app/util/Encoder.java
+    anchor: "class Encoder"
+oracle:
+  required:
+  - config_timeout
+  - builder_imports_config
+  - factory_imports_builder
+  - bootstrap_imports_factory
+  allowed: []
+  forbidden:
+  - no_file_reader
+  - no_encoder

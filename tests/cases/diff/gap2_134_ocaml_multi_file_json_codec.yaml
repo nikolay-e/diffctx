@@ -1,0 +1,145 @@
+name: gap2_134_ocaml_multi_file_json_codec
+tags:
+- change:multi_file
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:ocaml
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    lib/json_value.ml: |
+      type t =
+        | Null
+        | Bool of bool
+        | Int of int
+        | String of string
+        | Array of t list
+        | Object of (string * t) list
+
+      let is_null = function Null -> true | _ -> false
+
+      let to_string = function
+        | String s -> Some s
+        | _ -> None
+
+      let to_int = function
+        | Int n -> Some n
+        | _ -> None
+    lib/json_printer.ml: |
+      open Json_value
+
+      let rec to_json = function
+        | Null -> "null"
+        | Bool b -> string_of_bool b
+        | Int n -> string_of_int n
+        | String s -> Printf.sprintf "\"%s\"" s
+        | Array items ->
+          let elems = List.map to_json items in
+          "[" ^ String.concat ", " elems ^ "]"
+        | Object pairs ->
+          let fields = List.map (fun (k, v) -> Printf.sprintf "\"%s\": %s" k (to_json v)) pairs in
+          "{" ^ String.concat ", " fields ^ "}"
+    lib/xml_printer.ml: |
+      let _GARBAGE_GAP2_134_XML_A = "xml_noise"
+      let _GARBAGE_GAP2_134_XML_B = "tag_noise"
+
+      let escape_xml s =
+        let s = Str.global_replace (Str.regexp "&") "&amp;" s in
+        Str.global_replace (Str.regexp "<") "&lt;" s
+
+      let wrap_tag tag content =
+        Printf.sprintf "<%s>%s</%s>" tag content tag
+    lib/csv_printer.ml: |
+      let _GARBAGE_GAP2_134_CSV_C = "csv_noise"
+      let _GARBAGE_GAP2_134_CSV_D = "delimiter_noise"
+
+      let escape_field s =
+        if String.contains s ',' then Printf.sprintf "\"%s\"" s else s
+
+      let join_fields fields =
+        String.concat "," (List.map escape_field fields)
+  changed_files:
+    lib/json_value.ml: |
+      type t =
+        | Null
+        | Bool of bool
+        | Int of int
+        | Float of float
+        | String of string
+        | Array of t list
+        | Object of (string * t) list
+
+      let is_null = function Null -> true | _ -> false
+
+      let to_string = function
+        | String s -> Some s
+        | _ -> None
+
+      let to_int = function
+        | Int n -> Some n
+        | _ -> None
+
+      let to_float = function
+        | Float f -> Some f
+        | Int n -> Some (float_of_int n)
+        | _ -> None
+    lib/json_printer.ml: |
+      open Json_value
+
+      let rec to_json = function
+        | Null -> "null"
+        | Bool b -> string_of_bool b
+        | Int n -> string_of_int n
+        | Float f -> string_of_float f
+        | String s -> Printf.sprintf "\"%s\"" s
+        | Array items ->
+          let elems = List.map to_json items in
+          "[" ^ String.concat ", " elems ^ "]"
+        | Object pairs ->
+          let fields = List.map (fun (k, v) -> Printf.sprintf "\"%s\": %s" k (to_json v)) pairs in
+          "{" ^ String.concat ", " fields ^ "}"
+fragments:
+- id: float_variant
+  selector:
+    path: lib/json_value.ml
+    anchor: "| Float of float"
+- id: to_float_fn
+  selector:
+    path: lib/json_value.ml
+    anchor: let to_float
+- id: printer_float
+  selector:
+    path: lib/json_printer.ml
+    anchor: "| Float f -> string_of_float f"
+- id: no_xml
+  selector:
+    path: lib/xml_printer.ml
+- id: no_csv
+  selector:
+    path: lib/csv_printer.ml
+- id: no_global_0
+  selector:
+    anchor: _GARBAGE_GAP2_134_XML_A
+- id: no_global_1
+  selector:
+    anchor: _GARBAGE_GAP2_134_XML_B
+- id: no_global_2
+  selector:
+    anchor: _GARBAGE_GAP2_134_CSV_C
+- id: no_global_3
+  selector:
+    anchor: _GARBAGE_GAP2_134_CSV_D
+oracle:
+  required:
+  - float_variant
+  - to_float_fn
+  - printer_float
+  forbidden:
+  - no_xml
+  - no_csv
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

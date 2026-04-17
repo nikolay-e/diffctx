@@ -1,0 +1,211 @@
+name: bal_3hop_030_python_websocket_protocol
+tags:
+- lang:python
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    ws/frame.py: |
+      class Frame:
+          TEXT = 1
+          BINARY = 2
+          CLOSE = 8
+          PING = 9
+          PONG = 10
+          def __init__(self, opcode: int, payload: bytes):
+              self.opcode = opcode
+              self.payload = payload
+          def is_control(self) -> bool:
+              return self.opcode >= self.CLOSE
+          def decode_text(self) -> str:
+              return self.payload.decode("utf-8")
+    ws/connection.py: |
+      from ws.frame import Frame
+      class Connection:
+          def __init__(self, conn_id: str):
+              self.conn_id = conn_id
+              self.open = True
+              self.inbox: list[Frame] = []
+              self.outbox: list[Frame] = []
+          def receive(self, frame: Frame):
+              self.inbox.append(frame)
+          def send(self, frame: Frame):
+              self.outbox.append(frame)
+          def close(self):
+              self.open = False
+    ws/handler.py: |
+      from ws.connection import Connection
+      from ws.frame import Frame
+      class MessageHandler:
+          def __init__(self):
+              self.message_log: list[str] = []
+          def handle(self, conn: Connection):
+              for frame in conn.inbox:
+                  if frame.opcode == Frame.TEXT:
+                      text = frame.decode_text()
+                      self.message_log.append(f"{conn.conn_id}: {text}")
+                      response = Frame(Frame.TEXT, f"echo: {text}".encode())
+                      conn.send(response)
+                  elif frame.opcode == Frame.PING:
+                      conn.send(Frame(Frame.PONG, frame.payload))
+              conn.inbox.clear()
+    server/ws_server.py: |
+      from ws.handler import MessageHandler
+      from ws.connection import Connection
+      from ws.frame import Frame
+      class WebSocketServer:
+          def __init__(self):
+              self.handler = MessageHandler()
+              self.connections: dict[str, Connection] = {}
+          def connect(self, conn_id: str) -> Connection:
+              conn = Connection(conn_id)
+              self.connections[conn_id] = conn
+              return conn
+          def on_message(self, conn_id: str, data: bytes):
+              conn = self.connections.get(conn_id)
+              if conn and conn.open:
+                  frame = Frame(Frame.TEXT, data)
+                  conn.receive(frame)
+                  self.handler.handle(conn)
+          def disconnect(self, conn_id: str):
+              conn = self.connections.pop(conn_id, None)
+              if conn:
+                  conn.close()
+    utils/binary_utils.py: |
+      def encode_length(length: int) -> bytes:
+          if length < 126:
+              return bytes([length])
+          elif length < 65536:
+              return bytes([126]) + length.to_bytes(2, "big")
+          else:
+              return bytes([127]) + length.to_bytes(8, "big")
+    config/ws_config.py: |
+      MAX_MESSAGE_SIZE = 1_048_576
+      PING_INTERVAL = 30
+      CLOSE_TIMEOUT = 5
+  changed_files:
+    ws/frame.py: |
+      from typing import Optional
+      class Frame:
+          TEXT = 1
+          BINARY = 2
+          CLOSE = 8
+          PING = 9
+          PONG = 10
+          def __init__(self, opcode: int, payload: bytes,
+                       mask_key: Optional[bytes] = None, fin: bool = True):
+              self.opcode = opcode
+              self.payload = payload
+              self.mask_key = mask_key
+              self.fin = fin
+          def is_control(self) -> bool:
+              return self.opcode >= self.CLOSE
+          def is_masked(self) -> bool:
+              return self.mask_key is not None
+          def decode_text(self) -> str:
+              return self.payload.decode("utf-8")
+          def payload_length(self) -> int:
+              return len(self.payload)
+    ws/connection.py: |
+      from ws.frame import Frame
+      class Connection:
+          def __init__(self, conn_id: str):
+              self.conn_id = conn_id
+              self.open = True
+              self.inbox: list[Frame] = []
+              self.outbox: list[Frame] = []
+          def receive(self, frame: Frame):
+              self.inbox.append(frame)
+          def send(self, frame: Frame):
+              self.outbox.append(frame)
+          def close(self):
+              self.open = False
+    ws/handler.py: |
+      from ws.connection import Connection
+      from ws.frame import Frame
+      class MessageHandler:
+          def __init__(self):
+              self.message_log: list[str] = []
+          def handle(self, conn: Connection):
+              for frame in conn.inbox:
+                  if frame.opcode == Frame.TEXT:
+                      text = frame.decode_text()
+                      self.message_log.append(f"{conn.conn_id}: {text}")
+                      response = Frame(Frame.TEXT, f"echo: {text}".encode())
+                      conn.send(response)
+                  elif frame.opcode == Frame.PING:
+                      conn.send(Frame(Frame.PONG, frame.payload))
+              conn.inbox.clear()
+    server/ws_server.py: |
+      from ws.handler import MessageHandler
+      from ws.connection import Connection
+      from ws.frame import Frame
+      class WebSocketServer:
+          def __init__(self):
+              self.handler = MessageHandler()
+              self.connections: dict[str, Connection] = {}
+          def connect(self, conn_id: str) -> Connection:
+              conn = Connection(conn_id)
+              self.connections[conn_id] = conn
+              return conn
+          def on_message(self, conn_id: str, data: bytes):
+              conn = self.connections.get(conn_id)
+              if conn and conn.open:
+                  frame = Frame(Frame.TEXT, data)
+                  conn.receive(frame)
+                  self.handler.handle(conn)
+          def disconnect(self, conn_id: str):
+              conn = self.connections.pop(conn_id, None)
+              if conn:
+                  conn.close()
+    utils/binary_utils.py: |
+      def encode_length(length: int) -> bytes:
+          if length < 126:
+              return bytes([length])
+          elif length < 65536:
+              return bytes([126]) + length.to_bytes(2, "big")
+          else:
+              return bytes([127]) + length.to_bytes(8, "big")
+    config/ws_config.py: |
+      MAX_MESSAGE_SIZE = 1_048_576
+      PING_INTERVAL = 30
+      CLOSE_TIMEOUT = 5
+  commit_message: "feat: add mask_key, fin flag, and helpers to Frame"
+fragments:
+- id: frame_mask_fin
+  selector:
+    path: ws/frame.py
+    anchor: "mask_key: Optional[bytes] = None"
+- id: connection_uses_frame
+  selector:
+    path: ws/connection.py
+    anchor: "from ws.frame import Frame"
+- id: handler_uses_connection
+  selector:
+    path: ws/handler.py
+    anchor: "from ws.connection import Connection"
+- id: server_uses_handler
+  selector:
+    path: server/ws_server.py
+    anchor: "from ws.handler import MessageHandler"
+- id: no_binary_utils
+  selector:
+    path: utils/binary_utils.py
+    anchor: "def encode_length"
+- id: no_ws_config
+  selector:
+    path: config/ws_config.py
+    anchor: "MAX_MESSAGE_SIZE"
+oracle:
+  required:
+  - frame_mask_fin
+  - connection_uses_frame
+  - handler_uses_connection
+  - server_uses_handler
+  allowed: []
+  forbidden:
+  - no_binary_utils
+  - no_ws_config

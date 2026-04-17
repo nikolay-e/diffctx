@@ -1,0 +1,265 @@
+name: gap2_072_xml_yaml_same_file_ci_pipeline_stage
+tags:
+- lang:ruby
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:medium
+repo:
+  initial_files:
+    lib/core/command.rb: |
+      module Core
+        module Command
+          def call(context)
+            raise NotImplementedError
+          end
+        end
+      end
+    lib/core/command_bus.rb: |
+      require_relative 'command'
+
+      module Core
+        class CommandBus
+          def initialize
+            @handlers = {}
+          end
+
+          def register(command_class, handler)
+            @handlers[command_class] = handler
+          end
+
+          def dispatch(command)
+            handler = @handlers[command.class]
+            raise "No handler for #{command.class}" unless handler
+            handler.call(command)
+          end
+        end
+      end
+    lib/commands/create_order_command.rb: |
+      module Commands
+        class CreateOrderCommand
+          attr_reader :customer_id, :items
+
+          def initialize(customer_id, items)
+            @customer_id = customer_id
+            @items = items
+          end
+        end
+      end
+    lib/handlers/create_order_handler.rb: |
+      require_relative '../core/command'
+      require_relative '../commands/create_order_command'
+
+      module Handlers
+        class CreateOrderHandler
+          include Core::Command
+
+          def call(command)
+            { order_id: SecureRandom.uuid, customer_id: command.customer_id, items: command.items }
+          end
+        end
+      end
+    lib/app/order_controller.rb: |
+      require_relative '../core/command_bus'
+      require_relative '../commands/create_order_command'
+      require_relative '../handlers/create_order_handler'
+
+      module App
+        class OrderController
+          def initialize(bus)
+            @bus = bus
+            bus.register(Commands::CreateOrderCommand, Handlers::CreateOrderHandler.new)
+          end
+
+          def create(customer_id, items)
+            cmd = Commands::CreateOrderCommand.new(customer_id, items)
+            @bus.dispatch(cmd)
+          end
+        end
+      end
+    lib/utils/uuid_generator.rb: |
+      GARBAGE_GAP072_A = 'uuid_v4_namespace'
+
+      module Utils
+        class UuidGenerator
+          def self.generate
+            SecureRandom.uuid
+          end
+        end
+      end
+    lib/persistence/order_store.rb: |
+      GARBAGE_GAP072_B = 'orders_table'
+      GARBAGE_GAP072_C = 'order_items_table'
+
+      module Persistence
+        class OrderStore
+          def save(order)
+            puts "Saved order #{order[:order_id]}"
+          end
+        end
+      end
+    lib/policies/discount_policy.rb: |
+      GARBAGE_GAP072_D = 'discount_policy_v2'
+
+      module Policies
+        class DiscountPolicy
+          def apply(amount)
+            amount * 0.9
+          end
+        end
+      end
+  changed_files:
+    lib/core/command.rb: |
+      module Core
+        module Command
+          def call(context)
+            raise NotImplementedError
+          end
+        end
+      end
+    lib/core/command_bus.rb: |
+      require_relative 'command'
+
+      module Core
+        class CommandBus
+          def initialize
+            @handlers = {}
+            @middleware = []
+          end
+
+          def register(command_class, handler)
+            @handlers[command_class] = handler
+          end
+
+          def use(middleware_proc)
+            @middleware << middleware_proc
+            self
+          end
+
+          def dispatch(command)
+            handler = @handlers[command.class]
+            raise "No handler for #{command.class}" unless handler
+            chain = @middleware.reduce(-> { handler.call(command) }) do |next_fn, mw|
+              -> { mw.call(command, next_fn) }
+            end
+            chain.call
+          end
+        end
+      end
+    lib/commands/create_order_command.rb: |
+      module Commands
+        class CreateOrderCommand
+          attr_reader :customer_id, :items
+
+          def initialize(customer_id, items)
+            @customer_id = customer_id
+            @items = items
+          end
+        end
+      end
+    lib/handlers/create_order_handler.rb: |
+      require_relative '../core/command'
+      require_relative '../commands/create_order_command'
+
+      module Handlers
+        class CreateOrderHandler
+          include Core::Command
+
+          def call(command)
+            { order_id: SecureRandom.uuid, customer_id: command.customer_id, items: command.items }
+          end
+        end
+      end
+    lib/app/order_controller.rb: |
+      require_relative '../core/command_bus'
+      require_relative '../commands/create_order_command'
+      require_relative '../handlers/create_order_handler'
+
+      module App
+        class OrderController
+          def initialize(bus)
+            @bus = bus
+            bus.register(Commands::CreateOrderCommand, Handlers::CreateOrderHandler.new)
+          end
+
+          def create(customer_id, items)
+            cmd = Commands::CreateOrderCommand.new(customer_id, items)
+            @bus.dispatch(cmd)
+          end
+        end
+      end
+    lib/utils/uuid_generator.rb: |
+      GARBAGE_GAP072_A = 'uuid_v4_namespace'
+
+      module Utils
+        class UuidGenerator
+          def self.generate
+            SecureRandom.uuid
+          end
+        end
+      end
+    lib/persistence/order_store.rb: |
+      GARBAGE_GAP072_B = 'orders_table'
+      GARBAGE_GAP072_C = 'order_items_table'
+
+      module Persistence
+        class OrderStore
+          def save(order)
+            puts "Saved order #{order[:order_id]}"
+          end
+        end
+      end
+    lib/policies/discount_policy.rb: |
+      GARBAGE_GAP072_D = 'discount_policy_v2'
+
+      module Policies
+        class DiscountPolicy
+          def apply(amount)
+            amount * 0.9
+          end
+        end
+      end
+  commit_message: "feat: add middleware stack support to CommandBus#dispatch"
+fragments:
+- id: command_bus_use
+  selector:
+    path: lib/core/command_bus.rb
+    anchor: "def use(middleware_proc)"
+- id: command_bus_dispatch_chain
+  selector:
+    path: lib/core/command_bus.rb
+    anchor: "chain = @middleware.reduce"
+- id: no_uuid_generator
+  selector:
+    path: lib/utils/uuid_generator.rb
+- id: no_order_store
+  selector:
+    path: lib/persistence/order_store.rb
+- id: no_discount_policy
+  selector:
+    path: lib/policies/discount_policy.rb
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP072_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GAP072_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GAP072_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GAP072_D
+oracle:
+  required:
+  - command_bus_use
+  - command_bus_dispatch_chain
+  allowed: []
+  forbidden:
+  - no_uuid_generator
+  - no_order_store
+  - no_discount_policy
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

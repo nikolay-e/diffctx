@@ -1,0 +1,209 @@
+name: gap2_116_lua_new_function_import_chain_tilemap
+tags:
+- change:new_function
+- change:single_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:lua
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    map/tile.lua: |
+      local M = {}
+
+      function M.create(id, walkable)
+          return { id = id, walkable = walkable }
+      end
+
+      function M.is_passable(tile)
+          return tile.walkable
+      end
+
+      return M
+    map/grid.lua: |
+      local tile = require("map.tile")
+
+      local M = {}
+
+      function M.create(width, height, default_id)
+          local grid = { width = width, height = height, cells = {} }
+          for y = 1, height do
+              grid.cells[y] = {}
+              for x = 1, width do
+                  grid.cells[y][x] = tile.create(default_id, true)
+              end
+          end
+          return grid
+      end
+
+      function M.get(grid, x, y)
+          if x < 1 or x > grid.width or y < 1 or y > grid.height then
+              return nil
+          end
+          return grid.cells[y][x]
+      end
+
+      function M.set(grid, x, y, t)
+          if x >= 1 and x <= grid.width and y >= 1 and y <= grid.height then
+              grid.cells[y][x] = t
+          end
+      end
+
+      return M
+    game/level.lua: |
+      local grid = require("map.grid")
+      local tile = require("map.tile")
+
+      local M = {}
+
+      function M.build_arena(w, h)
+          local g = grid.create(w, h, 0)
+          for x = 1, w do
+              grid.set(g, x, 1, tile.create(1, false))
+              grid.set(g, x, h, tile.create(1, false))
+          end
+          return g
+      end
+
+      return M
+    map/render.lua: |
+      local TRAP_GAP2_116_RENDER_A = "tile_renderer"
+      local TRAP_GAP2_116_SCALE_B = 32
+
+      local M = {}
+
+      function M.draw_tile(tile, x, y)
+          return string.format("draw(%d, %d, %d)", tile.id, x, y)
+      end
+
+      function M.draw_grid(grid)
+          local cmds = {}
+          for y = 1, grid.height do
+              for x = 1, grid.width do
+                  cmds[#cmds + 1] = M.draw_tile(grid.cells[y][x], x, y)
+              end
+          end
+          return cmds
+      end
+
+      return M
+  changed_files:
+    map/tile.lua: |
+      local M = {}
+
+      function M.create(id, walkable)
+          return { id = id, walkable = walkable }
+      end
+
+      function M.is_passable(tile)
+          return tile.walkable
+      end
+
+      function M.with_metadata(tile, key, value)
+          tile[key] = value
+          return tile
+      end
+
+      return M
+    map/grid.lua: |
+      local tile = require("map.tile")
+
+      local M = {}
+
+      function M.create(width, height, default_id)
+          local grid = { width = width, height = height, cells = {} }
+          for y = 1, height do
+              grid.cells[y] = {}
+              for x = 1, width do
+                  grid.cells[y][x] = tile.create(default_id, true)
+              end
+          end
+          return grid
+      end
+
+      function M.get(grid, x, y)
+          if x < 1 or x > grid.width or y < 1 or y > grid.height then
+              return nil
+          end
+          return grid.cells[y][x]
+      end
+
+      function M.set(grid, x, y, t)
+          if x >= 1 and x <= grid.width and y >= 1 and y <= grid.height then
+              grid.cells[y][x] = t
+          end
+      end
+
+      return M
+    game/level.lua: |
+      local grid = require("map.grid")
+      local tile = require("map.tile")
+
+      local M = {}
+
+      function M.build_arena(w, h)
+          local g = grid.create(w, h, 0)
+          for x = 1, w do
+              grid.set(g, x, 1, tile.create(1, false))
+              grid.set(g, x, h, tile.create(1, false))
+          end
+          return g
+      end
+
+      return M
+    map/render.lua: |
+      local TRAP_GAP2_116_RENDER_A = "tile_renderer"
+      local TRAP_GAP2_116_SCALE_B = 32
+
+      local M = {}
+
+      function M.draw_tile(tile, x, y)
+          return string.format("draw(%d, %d, %d)", tile.id, x, y)
+      end
+
+      function M.draw_grid(grid)
+          local cmds = {}
+          for y = 1, grid.height do
+              for x = 1, grid.width do
+                  cmds[#cmds + 1] = M.draw_tile(grid.cells[y][x], x, y)
+              end
+          end
+          return cmds
+      end
+
+      return M
+  commit_message: Update files
+fragments:
+- id: tile_with_metadata
+  selector:
+    path: map/tile.lua
+    anchor: function M.with_metadata
+- id: metadata_assign
+  selector:
+    path: map/tile.lua
+    anchor: tile[key] = value
+- id: grid_require
+  selector:
+    path: map/grid.lua
+    anchor: require("map.tile")
+- id: no_render
+  selector:
+    path: map/render.lua
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_116_RENDER_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_116_SCALE_B
+oracle:
+  required:
+  - tile_with_metadata
+  - metadata_assign
+  - grid_require
+  allowed: []
+  forbidden:
+  - no_render
+  - no_global_0
+  - no_global_1

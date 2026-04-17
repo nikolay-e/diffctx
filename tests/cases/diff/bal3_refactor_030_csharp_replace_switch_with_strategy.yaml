@@ -1,0 +1,288 @@
+name: bal3_refactor_030_csharp_replace_switch_with_strategy
+tags:
+- lang:csharp
+- change:multi_file
+- change:refactor
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    Services/NotificationService.cs: |
+      namespace App.Services
+      {
+          public class NotificationService
+          {
+              public void Send(string channel, string recipient, string message)
+              {
+                  switch (channel)
+                  {
+                      case "email":
+                          SendEmail(recipient, message);
+                          break;
+                      case "sms":
+                          SendSms(recipient, message);
+                          break;
+                      case "push":
+                          SendPush(recipient, message);
+                          break;
+                  }
+              }
+
+              private void SendEmail(string to, string body) { }
+              private void SendSms(string phone, string body) { }
+              private void SendPush(string token, string body) { }
+          }
+      }
+    Controllers/AlertController.cs: |
+      using App.Services;
+
+      namespace App.Controllers
+      {
+          public class AlertController
+          {
+              private readonly NotificationService _notifications;
+
+              public AlertController(NotificationService notifications)
+              {
+                  _notifications = notifications;
+              }
+
+              public void TriggerAlert(string channel, string target, string msg)
+              {
+                  _notifications.Send(channel, target, msg);
+              }
+          }
+      }
+    Jobs/ReminderJob.cs: |
+      using App.Services;
+
+      namespace App.Jobs
+      {
+          public class ReminderJob
+          {
+              private readonly NotificationService _notifications;
+
+              public ReminderJob(NotificationService notifications)
+              {
+                  _notifications = notifications;
+              }
+
+              public void Execute(string userChannel, string userId, string reminder)
+              {
+                  _notifications.Send(userChannel, userId, reminder);
+              }
+          }
+      }
+    Monitoring/HealthCheck.cs: |
+      namespace App.Monitoring
+      {
+          // GARBAGE_R030_HEALTH_A
+          public class HealthCheck
+          {
+              public bool IsHealthy() => true;
+          }
+      }
+    Monitoring/MetricsCollector.cs: |
+      namespace App.Monitoring
+      {
+          // GARBAGE_R030_METRICS_B
+          public class MetricsCollector
+          {
+              public void Record(string name, double value) { }
+          }
+      }
+    Monitoring/Tracer.cs: |
+      namespace App.Monitoring
+      {
+          // GARBAGE_R030_TRACER_C
+          public class Tracer
+          {
+              public void Start(string operation) { }
+          }
+      }
+  changed_files:
+    Services/Channels/INotificationChannel.cs: |
+      namespace App.Services.Channels
+      {
+          public interface INotificationChannel
+          {
+              void Send(string recipient, string message);
+          }
+      }
+    Services/Channels/EmailChannel.cs: |
+      namespace App.Services.Channels
+      {
+          public class EmailChannel : INotificationChannel
+          {
+              public void Send(string recipient, string message) { }
+          }
+      }
+    Services/Channels/SmsChannel.cs: |
+      namespace App.Services.Channels
+      {
+          public class SmsChannel : INotificationChannel
+          {
+              public void Send(string recipient, string message) { }
+          }
+      }
+    Services/Channels/PushChannel.cs: |
+      namespace App.Services.Channels
+      {
+          public class PushChannel : INotificationChannel
+          {
+              public void Send(string recipient, string message) { }
+          }
+      }
+    Services/NotificationService.cs: |
+      using System.Collections.Generic;
+      using App.Services.Channels;
+
+      namespace App.Services
+      {
+          public class NotificationService
+          {
+              private readonly Dictionary<string, INotificationChannel> _channels;
+
+              public NotificationService()
+              {
+                  _channels = new Dictionary<string, INotificationChannel>
+                  {
+                      ["email"] = new EmailChannel(),
+                      ["sms"] = new SmsChannel(),
+                      ["push"] = new PushChannel(),
+                  };
+              }
+
+              public void Send(string channel, string recipient, string message)
+              {
+                  if (_channels.TryGetValue(channel, out var ch))
+                      ch.Send(recipient, message);
+              }
+          }
+      }
+    Controllers/AlertController.cs: |
+      using App.Services;
+
+      namespace App.Controllers
+      {
+          public class AlertController
+          {
+              private readonly NotificationService _notifications;
+
+              public AlertController(NotificationService notifications)
+              {
+                  _notifications = notifications;
+              }
+
+              public void TriggerAlert(string channel, string target, string msg)
+              {
+                  _notifications.Send(channel, target, msg);
+              }
+          }
+      }
+    Jobs/ReminderJob.cs: |
+      using App.Services;
+
+      namespace App.Jobs
+      {
+          public class ReminderJob
+          {
+              private readonly NotificationService _notifications;
+
+              public ReminderJob(NotificationService notifications)
+              {
+                  _notifications = notifications;
+              }
+
+              public void Execute(string userChannel, string userId, string reminder)
+              {
+                  _notifications.Send(userChannel, userId, reminder);
+              }
+          }
+      }
+    Monitoring/HealthCheck.cs: |
+      namespace App.Monitoring
+      {
+          // GARBAGE_R030_HEALTH_A
+          public class HealthCheck
+          {
+              public bool IsHealthy() => true;
+          }
+      }
+    Monitoring/MetricsCollector.cs: |
+      namespace App.Monitoring
+      {
+          // GARBAGE_R030_METRICS_B
+          public class MetricsCollector
+          {
+              public void Record(string name, double value) { }
+          }
+      }
+    Monitoring/Tracer.cs: |
+      namespace App.Monitoring
+      {
+          // GARBAGE_R030_TRACER_C
+          public class Tracer
+          {
+              public void Start(string operation) { }
+          }
+      }
+  commit_message: "refactor: replace notification switch with strategy pattern"
+fragments:
+- id: channel_interface
+  selector:
+    path: Services/Channels/INotificationChannel.cs
+    anchor: "public interface INotificationChannel"
+- id: email_channel
+  selector:
+    path: Services/Channels/EmailChannel.cs
+    anchor: "public class EmailChannel : INotificationChannel"
+- id: sms_channel
+  selector:
+    path: Services/Channels/SmsChannel.cs
+    anchor: "public class SmsChannel : INotificationChannel"
+- id: push_channel
+  selector:
+    path: Services/Channels/PushChannel.cs
+    anchor: "public class PushChannel : INotificationChannel"
+- id: service_uses_channels
+  selector:
+    path: Services/NotificationService.cs
+    anchor: "Dictionary<string, INotificationChannel>"
+- id: service_dispatch
+  selector:
+    path: Services/NotificationService.cs
+    anchor: "_channels.TryGetValue(channel, out var ch)"
+- id: alert_controller_context
+  selector:
+    path: Controllers/AlertController.cs
+    anchor: "_notifications.Send(channel, target, msg)"
+- id: reminder_job_context
+  selector:
+    path: Jobs/ReminderJob.cs
+    anchor: "_notifications.Send(userChannel, userId, reminder)"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_R030_HEALTH_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_R030_METRICS_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_R030_TRACER_C
+oracle:
+  required:
+  - channel_interface
+  - email_channel
+  - sms_channel
+  - push_channel
+  - service_uses_channels
+  - service_dispatch
+  allowed:
+  - alert_controller_context
+  - reminder_job_context
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

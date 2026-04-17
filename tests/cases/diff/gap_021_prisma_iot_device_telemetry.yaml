@@ -1,0 +1,218 @@
+name: gap_021_prisma_iot_device_telemetry
+tags:
+- change:multi_file
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:prisma
+- lang:sql
+- lang:typescript
+repo:
+  initial_files:
+    prisma/schema.prisma: |
+      generator client {
+        provider = "prisma-client-js"
+      }
+
+      datasource db {
+        provider = "postgresql"
+        url      = env("DATABASE_URL")
+      }
+
+      model Device {
+        id         Int         @id @default(autoincrement())
+        serial     String      @unique
+        name       String
+        readings   Reading[]
+        createdAt  DateTime    @default(now())
+      }
+
+      model Reading {
+        id         Int      @id @default(autoincrement())
+        value      Float
+        unit       String
+        device     Device   @relation(fields: [deviceId], references: [id])
+        deviceId   Int
+        recordedAt DateTime @default(now())
+
+        @@index([deviceId])
+      }
+    prisma/migrations/20240301_init/migration.sql: |
+      CREATE TABLE "Device" (
+        "id" SERIAL PRIMARY KEY,
+        "serial" TEXT NOT NULL UNIQUE,
+        "name" TEXT NOT NULL,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE "Reading" (
+        "id" SERIAL PRIMARY KEY,
+        "value" DOUBLE PRECISION NOT NULL,
+        "unit" TEXT NOT NULL,
+        "deviceId" INTEGER NOT NULL REFERENCES "Device"("id"),
+        "recordedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    src/ingest/telemetry.ts: |
+      import { PrismaClient } from '@prisma/client';
+
+      const prisma = new PrismaClient();
+
+      export async function ingestReading(deviceSerial: string, value: number, unit: string) {
+        const device = await prisma.device.findUnique({ where: { serial: deviceSerial } });
+        if (!device) throw new Error(`Unknown device: ${deviceSerial}`);
+        return prisma.reading.create({
+          data: { value, unit, deviceId: device.id },
+        });
+      }
+    src/alerts/threshold.ts: |
+      GARBAGE_GAP_021_ALERT_A = "threshold_marker";
+      GARBAGE_GAP_021_NOTIFY_B = true;
+
+      export function checkThreshold(value: number, max: number): boolean {
+        return value > max;
+      }
+
+      export function formatAlert(deviceName: string, value: number): string {
+        return `ALERT: ${deviceName} reading ${value}`;
+      }
+    src/reports/daily.ts: |
+      GARBAGE_GAP_021_REPORT_C = "daily_marker";
+      GARBAGE_GAP_021_EXPORT_D = "csv";
+
+      export function generateDailyReport(readings: number[]): number {
+        return readings.reduce((a, b) => a + b, 0) / readings.length;
+      }
+  changed_files:
+    prisma/schema.prisma: |
+      generator client {
+        provider = "prisma-client-js"
+      }
+
+      datasource db {
+        provider = "postgresql"
+        url      = env("DATABASE_URL")
+      }
+
+      model Device {
+        id         Int         @id @default(autoincrement())
+        serial     String      @unique
+        name       String
+        firmware   String?
+        readings   Reading[]
+        alerts     Alert[]
+        createdAt  DateTime    @default(now())
+      }
+
+      model Reading {
+        id         Int      @id @default(autoincrement())
+        value      Float
+        unit       String
+        device     Device   @relation(fields: [deviceId], references: [id])
+        deviceId   Int
+        recordedAt DateTime @default(now())
+
+        @@index([deviceId])
+      }
+
+      model Alert {
+        id         Int      @id @default(autoincrement())
+        severity   String
+        message    String
+        device     Device   @relation(fields: [deviceId], references: [id])
+        deviceId   Int
+        triggeredAt DateTime @default(now())
+
+        @@index([deviceId])
+      }
+    src/ingest/telemetry.ts: |
+      import { PrismaClient } from '@prisma/client';
+
+      const prisma = new PrismaClient();
+
+      export async function ingestReading(deviceSerial: string, value: number, unit: string) {
+        const device = await prisma.device.findUnique({ where: { serial: deviceSerial } });
+        if (!device) throw new Error(`Unknown device: ${deviceSerial}`);
+        return prisma.reading.create({
+          data: { value, unit, deviceId: device.id },
+        });
+      }
+
+      export async function createAlert(deviceId: number, severity: string, message: string) {
+        return prisma.alert.create({
+          data: { deviceId, severity, message },
+        });
+      }
+    src/alerts/threshold.ts: |
+      GARBAGE_GAP_021_ALERT_A = "threshold_marker";
+      GARBAGE_GAP_021_NOTIFY_B = true;
+
+      export function checkThreshold(value: number, max: number): boolean {
+        return value > max;
+      }
+
+      export function formatAlert(deviceName: string, value: number): string {
+        return `ALERT: ${deviceName} reading ${value}`;
+      }
+    src/reports/daily.ts: |
+      GARBAGE_GAP_021_REPORT_C = "daily_marker";
+      GARBAGE_GAP_021_EXPORT_D = "csv";
+
+      export function generateDailyReport(readings: number[]): number {
+        return readings.reduce((a, b) => a + b, 0) / readings.length;
+      }
+  commit_message: "add Alert model and createAlert function"
+fixtures:
+  auto_garbage: true
+fragments:
+- id: schema_alert_model
+  selector:
+    path: prisma/schema.prisma
+    anchor: model Alert
+- id: schema_device_alerts
+  selector:
+    path: prisma/schema.prisma
+    anchor: "alerts     Alert[]"
+- id: schema_firmware
+  selector:
+    path: prisma/schema.prisma
+    anchor: "firmware   String?"
+- id: telemetry_create_alert
+  selector:
+    path: src/ingest/telemetry.ts
+    anchor: "async function createAlert"
+- id: no_threshold
+  selector:
+    path: src/alerts/threshold.ts
+- id: no_daily
+  selector:
+    path: src/reports/daily.ts
+- id: no_migration
+  selector:
+    path: prisma/migrations/20240301_init/migration.sql
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_021_ALERT_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GAP_021_NOTIFY_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GAP_021_REPORT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GAP_021_EXPORT_D
+oracle:
+  required:
+  - schema_alert_model
+  - schema_device_alerts
+  - telemetry_create_alert
+  allowed:
+  - schema_firmware
+  forbidden:
+  - no_threshold
+  - no_daily
+  - no_migration
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

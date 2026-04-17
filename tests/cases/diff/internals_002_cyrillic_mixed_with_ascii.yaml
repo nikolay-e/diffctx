@@ -1,91 +1,152 @@
 name: internals_002_cyrillic_mixed_with_ascii
+tags:
+- lang:clojure
+- change:single_file
+- context:import_chain
+- distance:2hop
+- difficulty:medium
 repo:
   initial_files:
-    src/i18n/messages.py: |
-      from src.i18n.config import get_locale_config
-      SUPPORTED_LOCALES = ["en", "ru", "de"]
-      def get_message(key: str, locale: str) -> str:
-          config = get_locale_config(locale)
-          return config.get(key, key)
-      def list_available_locales() -> list:
-          return SUPPORTED_LOCALES
-    src/i18n/config.py: |
-      DEFAULT_LOCALE = "en"
-      def get_locale_config(locale: str) -> dict:
-          return {"en": {"welcome": "Welcome"}, "ru": {"welcome": "Добро пожаловать"}}.get(locale, {})
-    garbage_locale_parser.py: |
-      GARBAGE_INT_002_PARSER_MARKER_A = "locale"
-      GARBAGE_INT_002_TOKEN_MARKER_B = "lex"
+    src/data/schema.clj: |
+      (ns data.schema)
 
-      class GarbageLocaleParser:
-          def noop(self):
-              pass
-    garbage_translation_store.py: |
-      GARBAGE_INT_002_STORE_MARKER_C = "persist"
-      GARBAGE_INT_002_PERSIST_MARKER_D = "disk"
+      (def user-schema
+        {:id   :string
+         :name :string
+         :role :keyword})
 
-      class GarbageTranslationStore:
-          def noop(self):
-              pass
+      (defn valid? [entity schema]
+        (every? #(contains? entity %) (keys schema)))
+    src/data/repository.clj: |
+      (ns data.repository
+        (:require [data.schema :as schema]))
+
+      (defn find-user [store user-id]
+        (when-let [user (get @store user-id)]
+          (when (schema/valid? user schema/user-schema)
+            user)))
+
+      (defn save-user [store user]
+        (swap! store assoc (:id user) user))
+    src/api/handler.clj: |
+      (ns api.handler
+        (:require [data.repository :as repo]))
+
+      (defn get-user [store user-id]
+        (if-let [user (repo/find-user store user-id)]
+          {:status 200 :body user}
+          {:status 404 :body {:error "not found"}}))
+
+      (defn create-user [store user]
+        (repo/save-user store user)
+        {:status 201 :body user})
+    garbage/cache.clj: |
+      (ns garbage.cache)
+
+      (def ^:const GARBAGE_INT002_A "redis_marker")
+      (def ^:const GARBAGE_INT002_B "ttl_marker")
+
+      (defn cache-get [k]
+        GARBAGE_INT002_A)
+    garbage/events.clj: |
+      (ns garbage.events)
+
+      (def ^:const GARBAGE_INT002_C "kafka_marker")
+      (def ^:const GARBAGE_INT002_D "topic_marker")
+
+      (defn emit [event]
+        GARBAGE_INT002_C)
+    garbage/jobs.clj: |
+      (ns garbage.jobs)
+
+      (def ^:const GARBAGE_INT002_E "cron_marker")
+
+      (defn schedule [job]
+        GARBAGE_INT002_E)
   changed_files:
-    src/i18n/messages.py: |
-      from src.i18n.config import get_locale_config
-      SUPPORTED_LOCALES = ["en", "ru", "de"]
-      def привет_мир():
-          result = "здравствуй"
-          return result
-      def get_message(key: str, locale: str) -> str:
-          config = get_locale_config(locale)
-          if locale == "ru":
-              greeting = привет_мир()
-          return config.get(key, key)
-      def list_available_locales() -> list:
-          return SUPPORTED_LOCALES
-    src/i18n/config.py: |
-      DEFAULT_LOCALE = "en"
-      def get_locale_config(locale: str) -> dict:
-          return {"en": {"welcome": "Welcome"}, "ru": {"welcome": "Добро пожаловать"}}.get(locale, {})
-    garbage_locale_parser.py: |
-      GARBAGE_INT_002_PARSER_MARKER_A = "locale"
-      GARBAGE_INT_002_TOKEN_MARKER_B = "lex"
+    src/data/repository.clj: |
+      (ns data.repository
+        (:require [data.schema :as schema]))
 
-      class GarbageLocaleParser:
-          def noop(self):
-              pass
-    garbage_translation_store.py: |
-      GARBAGE_INT_002_STORE_MARKER_C = "persist"
-      GARBAGE_INT_002_PERSIST_MARKER_D = "disk"
+      (defn find-user [store user-id]
+        (when-let [user (get @store user-id)]
+          (when (schema/valid? user schema/user-schema)
+            user)))
 
-      class GarbageTranslationStore:
-          def noop(self):
-              pass
-  commit_message: Update files
+      (defn save-user [store user]
+        (swap! store assoc (:id user) user))
+
+      (defn delete-user [store user-id]
+        (swap! store dissoc user-id))
+
+      (defn list-users [store]
+        (vals @store))
+    garbage/cache.clj: |
+      (ns garbage.cache)
+
+      (def ^:const GARBAGE_INT002_A "redis_marker")
+      (def ^:const GARBAGE_INT002_B "ttl_marker")
+
+      (defn cache-get [k]
+        GARBAGE_INT002_A)
+    garbage/events.clj: |
+      (ns garbage.events)
+
+      (def ^:const GARBAGE_INT002_C "kafka_marker")
+      (def ^:const GARBAGE_INT002_D "topic_marker")
+
+      (defn emit [event]
+        GARBAGE_INT002_C)
+    garbage/jobs.clj: |
+      (ns garbage.jobs)
+
+      (def ^:const GARBAGE_INT002_E "cron_marker")
+
+      (defn schedule [job]
+        GARBAGE_INT002_E)
+  commit_message: "feat: add delete-user and list-users to repository"
 fragments:
-- id: messages_file
+- id: repo_delete
   selector:
-    path: src/i18n/messages.py
-- id: req_global_0
+    path: src/data/repository.clj
+    anchor: "(defn delete-user"
+- id: repo_list
   selector:
-    anchor: 'def привет_мир():'
-- id: req_global_1
+    path: src/data/repository.clj
+    anchor: "(defn list-users"
+- id: schema_valid
   selector:
-    anchor: 'if locale == "ru":'
-- id: no_global_0
+    path: src/data/schema.clj
+    anchor: "(defn valid?"
+- id: handler_uses_repo
   selector:
-    anchor: GARBAGE_INT_002_PERSIST_MARKER_D
-- id: no_global_1
+    path: src/api/handler.clj
+    anchor: "(repo/find-user"
+- id: no_garbage_a
   selector:
-    anchor: GARBAGE_INT_002_STORE_MARKER_C
-- id: no_global_2
+    anchor: GARBAGE_INT002_A
+- id: no_garbage_b
   selector:
-    anchor: garbage_translation_store.py
+    anchor: GARBAGE_INT002_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_INT002_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_INT002_D
+- id: no_garbage_e
+  selector:
+    anchor: GARBAGE_INT002_E
 oracle:
   required:
-  - messages_file
-  - req_global_0
-  - req_global_1
-  allowed: []
+  - repo_delete
+  - repo_list
+  - schema_valid
+  allowed:
+  - handler_uses_repo
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d
+  - no_garbage_e

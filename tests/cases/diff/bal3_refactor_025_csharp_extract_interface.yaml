@@ -1,0 +1,238 @@
+name: bal3_refactor_025_csharp_extract_interface
+tags:
+- lang:csharp
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    Services/EmailService.cs: |
+      namespace App.Services
+      {
+          public class EmailService
+          {
+              private readonly string _smtpHost;
+
+              public EmailService(string smtpHost)
+              {
+                  _smtpHost = smtpHost;
+              }
+
+              public void Send(string to, string subject, string body)
+              {
+              }
+
+              public bool Validate(string address)
+              {
+                  return address.Contains("@");
+              }
+          }
+      }
+    Controllers/NotificationController.cs: |
+      using App.Services;
+
+      namespace App.Controllers
+      {
+          public class NotificationController
+          {
+              private readonly EmailService _emailService;
+
+              public NotificationController(EmailService emailService)
+              {
+                  _emailService = emailService;
+              }
+
+              public void NotifyUser(string email, string message)
+              {
+                  if (_emailService.Validate(email))
+                      _emailService.Send(email, "Notification", message);
+              }
+          }
+      }
+    Controllers/ReportController.cs: |
+      using App.Services;
+
+      namespace App.Controllers
+      {
+          public class ReportController
+          {
+              private readonly EmailService _emailService;
+
+              public ReportController(EmailService emailService)
+              {
+                  _emailService = emailService;
+              }
+
+              public void SendReport(string adminEmail, string report)
+              {
+                  _emailService.Send(adminEmail, "Report", report);
+              }
+          }
+      }
+    Infrastructure/CacheProvider.cs: |
+      namespace App.Infrastructure
+      {
+          // GARBAGE_R025_CACHE_A
+          public class CacheProvider
+          {
+              public string Get(string key) => null;
+          }
+      }
+    Infrastructure/QueueProvider.cs: |
+      namespace App.Infrastructure
+      {
+          // GARBAGE_R025_QUEUE_B
+          public class QueueProvider
+          {
+              public void Enqueue(string item) { }
+          }
+      }
+    Infrastructure/FileProvider.cs: |
+      namespace App.Infrastructure
+      {
+          // GARBAGE_R025_FILE_C
+          public class FileProvider
+          {
+              public byte[] Read(string path) => new byte[0];
+          }
+      }
+  changed_files:
+    Services/IEmailService.cs: |
+      namespace App.Services
+      {
+          public interface IEmailService
+          {
+              void Send(string to, string subject, string body);
+              bool Validate(string address);
+          }
+      }
+    Services/EmailService.cs: |
+      namespace App.Services
+      {
+          public class EmailService : IEmailService
+          {
+              private readonly string _smtpHost;
+
+              public EmailService(string smtpHost)
+              {
+                  _smtpHost = smtpHost;
+              }
+
+              public void Send(string to, string subject, string body)
+              {
+              }
+
+              public bool Validate(string address)
+              {
+                  return address.Contains("@");
+              }
+          }
+      }
+    Controllers/NotificationController.cs: |
+      using App.Services;
+
+      namespace App.Controllers
+      {
+          public class NotificationController
+          {
+              private readonly IEmailService _emailService;
+
+              public NotificationController(IEmailService emailService)
+              {
+                  _emailService = emailService;
+              }
+
+              public void NotifyUser(string email, string message)
+              {
+                  if (_emailService.Validate(email))
+                      _emailService.Send(email, "Notification", message);
+              }
+          }
+      }
+    Controllers/ReportController.cs: |
+      using App.Services;
+
+      namespace App.Controllers
+      {
+          public class ReportController
+          {
+              private readonly IEmailService _emailService;
+
+              public ReportController(IEmailService emailService)
+              {
+                  _emailService = emailService;
+              }
+
+              public void SendReport(string adminEmail, string report)
+              {
+                  _emailService.Send(adminEmail, "Report", report);
+              }
+          }
+      }
+    Infrastructure/CacheProvider.cs: |
+      namespace App.Infrastructure
+      {
+          // GARBAGE_R025_CACHE_A
+          public class CacheProvider
+          {
+              public string Get(string key) => null;
+          }
+      }
+    Infrastructure/QueueProvider.cs: |
+      namespace App.Infrastructure
+      {
+          // GARBAGE_R025_QUEUE_B
+          public class QueueProvider
+          {
+              public void Enqueue(string item) { }
+          }
+      }
+    Infrastructure/FileProvider.cs: |
+      namespace App.Infrastructure
+      {
+          // GARBAGE_R025_FILE_C
+          public class FileProvider
+          {
+              public byte[] Read(string path) => new byte[0];
+          }
+      }
+  commit_message: "refactor: extract IEmailService interface from EmailService"
+fragments:
+- id: interface_definition
+  selector:
+    path: Services/IEmailService.cs
+    anchor: "public interface IEmailService"
+- id: class_implements
+  selector:
+    path: Services/EmailService.cs
+    anchor: "public class EmailService : IEmailService"
+- id: notification_uses_interface
+  selector:
+    path: Controllers/NotificationController.cs
+    anchor: "private readonly IEmailService _emailService"
+- id: report_uses_interface
+  selector:
+    path: Controllers/ReportController.cs
+    anchor: "private readonly IEmailService _emailService"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_R025_CACHE_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_R025_QUEUE_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_R025_FILE_C
+oracle:
+  required:
+  - interface_definition
+  - class_implements
+  - notification_uses_interface
+  - report_uses_interface
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

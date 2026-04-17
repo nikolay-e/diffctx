@@ -1,0 +1,143 @@
+name: bal3_3hop_049_scala_http_middleware_chain
+tags:
+- lang:scala
+- change:single_file
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/com/app/http/Request.scala: |
+      package com.app.http
+
+      case class Request(
+        method: String,
+        path: String,
+        headers: Map[String, String]
+      )
+    src/main/scala/com/app/http/Middleware.scala: |
+      package com.app.http
+
+      trait Middleware {
+        def apply(request: Request): Request
+      }
+    src/main/scala/com/app/http/AuthMiddleware.scala: |
+      package com.app.http
+
+      class AuthMiddleware extends Middleware {
+        def apply(request: Request): Request = {
+          val token = request.headers.getOrElse("Authorization", "")
+          if (token.nonEmpty) request
+          else request.copy(headers = request.headers + ("X-Auth" -> "anonymous"))
+        }
+      }
+    src/main/scala/com/app/http/Pipeline.scala: |
+      package com.app.http
+
+      class Pipeline(middlewares: List[Middleware]) {
+        def execute(request: Request): Request = {
+          middlewares.foldLeft(request)((req, mw) => mw.apply(req))
+        }
+      }
+    src/main/scala/com/app/service/HttpService.scala: |
+      package com.app.service
+
+      import com.app.http.{Pipeline, Request}
+
+      class HttpService(pipeline: Pipeline) {
+        def handle(request: Request): Request = {
+          pipeline.execute(request)
+        }
+      }
+    src/main/scala/com/app/api/HttpEndpoint.scala: |
+      package com.app.api
+
+      import com.app.service.HttpService
+      import com.app.http.Request
+
+      class HttpEndpoint(service: HttpService) {
+        def dispatch(method: String, path: String): Request = {
+          service.handle(Request(method, path, Map.empty))
+        }
+      }
+    src/main/scala/com/app/util/RateLimiter.scala: |
+      package com.app.util
+
+      var GARBAGE_049_RATE_MARKER_A = "token_bucket"
+      var GARBAGE_049_LIMIT_MARKER_B = 100
+
+      object RateLimiter {
+        def allow(key: String): Boolean = true
+      }
+    src/main/scala/com/app/util/CircuitBreaker.scala: |
+      package com.app.util
+
+      var GARBAGE_049_CB_MARKER_C = "closed"
+      var GARBAGE_049_THRESH_MARKER_D = 5
+
+      object CircuitBreaker {
+        def isOpen: Boolean = false
+      }
+  changed_files:
+    src/main/scala/com/app/http/Request.scala: |
+      package com.app.http
+
+      case class Request(
+        method: String,
+        path: String,
+        headers: Map[String, String],
+        body: Option[String] = None,
+        queryParams: Map[String, String] = Map.empty
+      )
+  commit_message: "fix: add body and queryParams to HTTP Request model"
+fragments:
+- id: request_body_field
+  selector:
+    path: src/main/scala/com/app/http/Request.scala
+    anchor: "body: Option[String]"
+- id: request_query_params
+  selector:
+    path: src/main/scala/com/app/http/Request.scala
+    anchor: "queryParams: Map[String, String]"
+- id: middleware_uses_request
+  selector:
+    path: src/main/scala/com/app/http/Middleware.scala
+    anchor: "apply(request: Request)"
+- id: auth_extends_middleware
+  selector:
+    path: src/main/scala/com/app/http/AuthMiddleware.scala
+    anchor: "extends Middleware"
+- id: pipeline_uses_middleware
+  selector:
+    path: src/main/scala/com/app/http/Pipeline.scala
+    anchor: "middlewares: List[Middleware]"
+- id: service_imports_pipeline
+  selector:
+    path: src/main/scala/com/app/service/HttpService.scala
+    anchor: "import com.app.http"
+- id: endpoint_imports_service
+  selector:
+    path: src/main/scala/com/app/api/HttpEndpoint.scala
+    anchor: "import com.app.service.HttpService"
+- id: no_rate_limiter
+  selector:
+    path: src/main/scala/com/app/util/RateLimiter.scala
+    anchor: "GARBAGE_049_RATE_MARKER_A"
+- id: no_circuit_breaker
+  selector:
+    path: src/main/scala/com/app/util/CircuitBreaker.scala
+    anchor: "GARBAGE_049_CB_MARKER_C"
+oracle:
+  required:
+  - request_body_field
+  - request_query_params
+  - middleware_uses_request
+  - pipeline_uses_middleware
+  - service_imports_pipeline
+  allowed:
+  - auth_extends_middleware
+  - endpoint_imports_service
+  forbidden:
+  - no_rate_limiter
+  - no_circuit_breaker

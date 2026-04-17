@@ -1,0 +1,205 @@
+name: bal3_refactor_023_scala_move_to_separate_package
+tags:
+- lang:scala
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/app/Application.scala: |
+      package app
+
+      case class AppConfig(dbUrl: String, port: Int, debug: Boolean)
+
+      class HttpServer(config: AppConfig) {
+        def start(): Unit =
+          println(s"Starting on port ${config.port}")
+      }
+
+      class DatabasePool(config: AppConfig) {
+        def connect(): Unit =
+          println(s"Connecting to ${config.dbUrl}")
+      }
+
+      object Application {
+        def main(args: Array[String]): Unit = {
+          val config = AppConfig("jdbc:postgresql://localhost/db", 8080, debug = true)
+          val server = new HttpServer(config)
+          val pool = new DatabasePool(config)
+          pool.connect()
+          server.start()
+        }
+      }
+    src/main/scala/api/Routes.scala: |
+      package api
+
+      import app.HttpServer
+
+      class Routes(server: HttpServer) {
+        def register(): Unit =
+          println("Routes registered")
+      }
+    src/main/scala/jobs/Scheduler.scala: |
+      package jobs
+
+      import app.AppConfig
+
+      class Scheduler(config: AppConfig) {
+        def schedule(): Unit =
+          println(s"Debug mode: ${config.debug}")
+      }
+    src/main/scala/infra/Email.scala: |
+      package infra
+
+      val GARBAGE_R023_EMAIL_A: String = "email"
+
+      class EmailService {
+        def send(to: String, body: String): Unit = ()
+      }
+    src/main/scala/infra/Storage.scala: |
+      package infra
+
+      val GARBAGE_R023_STORAGE_B: String = "storage"
+
+      class StorageService {
+        def save(key: String, data: Array[Byte]): Unit = ()
+      }
+    src/main/scala/infra/Monitor.scala: |
+      package infra
+
+      val GARBAGE_R023_MONITOR_C: String = "monitor"
+
+      class MonitorService {
+        def check(): Boolean = true
+      }
+  changed_files:
+    src/main/scala/config/AppConfig.scala: |
+      package config
+
+      case class AppConfig(dbUrl: String, port: Int, debug: Boolean)
+    src/main/scala/server/HttpServer.scala: |
+      package server
+
+      import config.AppConfig
+
+      class HttpServer(config: AppConfig) {
+        def start(): Unit =
+          println(s"Starting on port ${config.port}")
+      }
+    src/main/scala/db/DatabasePool.scala: |
+      package db
+
+      import config.AppConfig
+
+      class DatabasePool(config: AppConfig) {
+        def connect(): Unit =
+          println(s"Connecting to ${config.dbUrl}")
+      }
+    src/main/scala/app/Application.scala: |
+      package app
+
+      import config.AppConfig
+      import server.HttpServer
+      import db.DatabasePool
+
+      object Application {
+        def main(args: Array[String]): Unit = {
+          val cfg = AppConfig("jdbc:postgresql://localhost/db", 8080, debug = true)
+          val srv = new HttpServer(cfg)
+          val pool = new DatabasePool(cfg)
+          pool.connect()
+          srv.start()
+        }
+      }
+    src/main/scala/api/Routes.scala: |
+      package api
+
+      import server.HttpServer
+
+      class Routes(server: HttpServer) {
+        def register(): Unit =
+          println("Routes registered")
+      }
+    src/main/scala/jobs/Scheduler.scala: |
+      package jobs
+
+      import config.AppConfig
+
+      class Scheduler(config: AppConfig) {
+        def schedule(): Unit =
+          println(s"Debug mode: ${config.debug}")
+      }
+    src/main/scala/infra/Email.scala: |
+      package infra
+
+      val GARBAGE_R023_EMAIL_A: String = "email"
+
+      class EmailService {
+        def send(to: String, body: String): Unit = ()
+      }
+    src/main/scala/infra/Storage.scala: |
+      package infra
+
+      val GARBAGE_R023_STORAGE_B: String = "storage"
+
+      class StorageService {
+        def save(key: String, data: Array[Byte]): Unit = ()
+      }
+    src/main/scala/infra/Monitor.scala: |
+      package infra
+
+      val GARBAGE_R023_MONITOR_C: String = "monitor"
+
+      class MonitorService {
+        def check(): Boolean = true
+      }
+  commit_message: "refactor: move AppConfig, HttpServer, DatabasePool to separate packages"
+fragments:
+- id: config_package
+  selector:
+    path: src/main/scala/config/AppConfig.scala
+    anchor: "case class AppConfig"
+- id: server_package
+  selector:
+    path: src/main/scala/server/HttpServer.scala
+    anchor: "class HttpServer(config: AppConfig)"
+- id: db_package
+  selector:
+    path: src/main/scala/db/DatabasePool.scala
+    anchor: "class DatabasePool(config: AppConfig)"
+- id: app_imports_new
+  selector:
+    path: src/main/scala/app/Application.scala
+    anchor: "import config.AppConfig"
+- id: routes_import_updated
+  selector:
+    path: src/main/scala/api/Routes.scala
+    anchor: "import server.HttpServer"
+- id: scheduler_import_updated
+  selector:
+    path: src/main/scala/jobs/Scheduler.scala
+    anchor: "import config.AppConfig"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_R023_EMAIL_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_R023_STORAGE_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_R023_MONITOR_C
+oracle:
+  required:
+  - config_package
+  - server_package
+  - db_package
+  - app_imports_new
+  allowed:
+  - routes_import_updated
+  - scheduler_import_updated
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

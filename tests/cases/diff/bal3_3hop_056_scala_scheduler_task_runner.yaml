@@ -1,0 +1,146 @@
+name: bal3_3hop_056_scala_scheduler_task_runner
+tags:
+- lang:scala
+- change:single_file
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/com/app/scheduler/Task.scala: |
+      package com.app.scheduler
+
+      case class Task(
+        name: String,
+        action: () => Unit
+      )
+    src/main/scala/com/app/scheduler/TaskQueue.scala: |
+      package com.app.scheduler
+
+      import scala.collection.mutable
+
+      class TaskQueue {
+        private val queue = mutable.Queue.empty[Task]
+        def enqueue(task: Task): Unit = queue.enqueue(task)
+        def dequeue(): Option[Task] = if (queue.nonEmpty) Some(queue.dequeue()) else None
+        def isEmpty: Boolean = queue.isEmpty
+      }
+    src/main/scala/com/app/scheduler/Runner.scala: |
+      package com.app.scheduler
+
+      class Runner(queue: TaskQueue) {
+        def runAll(): Int = {
+          var count = 0
+          while (!queue.isEmpty) {
+            queue.dequeue().foreach { task =>
+              task.action()
+              count += 1
+            }
+          }
+          count
+        }
+      }
+    src/main/scala/com/app/service/SchedulerService.scala: |
+      package com.app.service
+
+      import com.app.scheduler.{Runner, TaskQueue, Task}
+
+      class SchedulerService(runner: Runner, queue: TaskQueue) {
+        def schedule(name: String, action: () => Unit): Unit = {
+          queue.enqueue(Task(name, action))
+        }
+        def execute(): Int = runner.runAll()
+      }
+    src/main/scala/com/app/api/SchedulerEndpoint.scala: |
+      package com.app.api
+
+      import com.app.service.SchedulerService
+
+      class SchedulerEndpoint(service: SchedulerService) {
+        def trigger(): String = {
+          val count = service.execute()
+          s"executed:$count"
+        }
+      }
+    src/main/scala/com/app/util/CronParser.scala: |
+      package com.app.util
+
+      var GARBAGE_056_CRON_MARKER_A = "cron"
+      var GARBAGE_056_EXPR_MARKER_B = "* * * * *"
+
+      object CronParser {
+        def parse(expr: String): Long = 0
+      }
+    src/main/scala/com/app/util/Backoff.scala: |
+      package com.app.util
+
+      var GARBAGE_056_BACKOFF_MARKER_C = "exponential"
+      var GARBAGE_056_BASE_MARKER_D = 100
+
+      object Backoff {
+        def delay(attempt: Int): Long = math.pow(2, attempt).toLong * 100
+      }
+  changed_files:
+    src/main/scala/com/app/scheduler/Task.scala: |
+      package com.app.scheduler
+
+      case class Task(
+        name: String,
+        action: () => Unit,
+        priority: Int = 0,
+        maxRetries: Int = 0
+      ) {
+        def isRetryable: Boolean = maxRetries > 0
+      }
+  commit_message: "feat: add priority and retry support to Task"
+fragments:
+- id: task_priority
+  selector:
+    path: src/main/scala/com/app/scheduler/Task.scala
+    anchor: "priority: Int = 0"
+- id: task_max_retries
+  selector:
+    path: src/main/scala/com/app/scheduler/Task.scala
+    anchor: "maxRetries: Int = 0"
+- id: task_is_retryable
+  selector:
+    path: src/main/scala/com/app/scheduler/Task.scala
+    anchor: "def isRetryable"
+- id: queue_uses_task
+  selector:
+    path: src/main/scala/com/app/scheduler/TaskQueue.scala
+    anchor: "enqueue(task: Task)"
+- id: runner_uses_queue
+  selector:
+    path: src/main/scala/com/app/scheduler/Runner.scala
+    anchor: "queue: TaskQueue"
+- id: service_imports_runner
+  selector:
+    path: src/main/scala/com/app/service/SchedulerService.scala
+    anchor: "import com.app.scheduler"
+- id: endpoint_imports_service
+  selector:
+    path: src/main/scala/com/app/api/SchedulerEndpoint.scala
+    anchor: "import com.app.service.SchedulerService"
+- id: no_cron_parser
+  selector:
+    path: src/main/scala/com/app/util/CronParser.scala
+    anchor: "GARBAGE_056_CRON_MARKER_A"
+- id: no_backoff
+  selector:
+    path: src/main/scala/com/app/util/Backoff.scala
+    anchor: "GARBAGE_056_BACKOFF_MARKER_C"
+oracle:
+  required:
+  - task_priority
+  - task_max_retries
+  - task_is_retryable
+  - queue_uses_task
+  - runner_uses_queue
+  - service_imports_runner
+  allowed:
+  - endpoint_imports_service
+  forbidden:
+  - no_cron_parser
+  - no_backoff

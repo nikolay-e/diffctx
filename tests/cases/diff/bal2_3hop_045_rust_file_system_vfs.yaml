@@ -1,0 +1,193 @@
+name: bal2_3hop_045_rust_file_system_vfs
+tags:
+- lang:rust
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/vfs/inode.rs: |
+      #[derive(Debug, Clone)]
+      pub struct Inode {
+          pub id: u64,
+          pub name: String,
+          pub is_dir: bool,
+          pub size: u64,
+      }
+
+      impl Inode {
+          pub fn file(id: u64, name: &str, size: u64) -> Self {
+              Self { id, name: name.to_string(), is_dir: false, size }
+          }
+
+          pub fn directory(id: u64, name: &str) -> Self {
+              Self { id, name: name.to_string(), is_dir: true, size: 0 }
+          }
+      }
+    src/vfs/directory.rs: |
+      use crate::vfs::inode::Inode;
+
+      pub struct Directory {
+          inode: Inode,
+          children: Vec<Inode>,
+      }
+
+      impl Directory {
+          pub fn new(inode: Inode) -> Self {
+              Self { inode, children: Vec::new() }
+          }
+
+          pub fn add_child(&mut self, child: Inode) {
+              self.children.push(child);
+          }
+
+          pub fn list(&self) -> &[Inode] {
+              &self.children
+          }
+
+          pub fn find(&self, name: &str) -> Option<&Inode> {
+              self.children.iter().find(|c| c.name == name)
+          }
+      }
+    src/vfs/filesystem.rs: |
+      use crate::vfs::directory::Directory;
+      use crate::vfs::inode::Inode;
+
+      pub struct FileSystem {
+          root: Directory,
+          next_id: u64,
+      }
+
+      impl FileSystem {
+          pub fn new() -> Self {
+              let root_inode = Inode::directory(0, "/");
+              Self { root: Directory::new(root_inode), next_id: 1 }
+          }
+
+          pub fn create_file(&mut self, name: &str, size: u64) {
+              let inode = Inode::file(self.next_id, name, size);
+              self.next_id += 1;
+              self.root.add_child(inode);
+          }
+
+          pub fn ls(&self) -> &[Inode] {
+              self.root.list()
+          }
+      }
+    src/shell/commands.rs: |
+      use crate::vfs::filesystem::FileSystem;
+
+      pub struct Shell {
+          fs: FileSystem,
+      }
+
+      impl Shell {
+          pub fn new(fs: FileSystem) -> Self {
+              Self { fs }
+          }
+
+          pub fn execute(&mut self, cmd: &str) -> String {
+              match cmd {
+                  "ls" => {
+                      let entries: Vec<String> = self.fs.ls().iter()
+                          .map(|i| i.name.clone())
+                          .collect();
+                      entries.join("\n")
+                  }
+                  _ => "unknown command".to_string(),
+              }
+          }
+      }
+    src/vfs/permissions.rs: |
+      GARBAGE_045_PERM_MARKER_A = "rwxr-xr-x";
+      GARBAGE_045_UMASK_MARKER_B = 0o022;
+
+      pub struct Permissions {
+          mode: u16,
+      }
+
+      impl Permissions {
+          pub fn new(mode: u16) -> Self {
+              Self { mode }
+          }
+      }
+    src/vfs/symlink.rs: |
+      GARBAGE_045_LINK_MARKER_C = "symbolic_link";
+      GARBAGE_045_TARGET_MARKER_D = "/usr/bin";
+
+      pub struct Symlink {
+          target: String,
+      }
+    src/io/buffered.rs: |
+      GARBAGE_045_BUF_MARKER_E = "buffered_io";
+      GARBAGE_045_SIZE_MARKER_F = 4096;
+
+      pub struct BufferedReader {
+          buf_size: usize,
+      }
+  changed_files:
+    src/vfs/inode.rs: |
+      #[derive(Debug, Clone)]
+      pub struct Inode {
+          pub id: u64,
+          pub name: String,
+          pub is_dir: bool,
+          pub size: u64,
+          pub modified_at: u64,
+      }
+
+      impl Inode {
+          pub fn file(id: u64, name: &str, size: u64) -> Self {
+              Self { id, name: name.to_string(), is_dir: false, size, modified_at: 0 }
+          }
+
+          pub fn directory(id: u64, name: &str) -> Self {
+              Self { id, name: name.to_string(), is_dir: true, size: 0, modified_at: 0 }
+          }
+
+          pub fn touch(&mut self, timestamp: u64) {
+              self.modified_at = timestamp;
+          }
+      }
+  commit_message: "feat: add modified_at timestamp to Inode"
+fragments:
+- id: inode_modified_at
+  selector:
+    path: src/vfs/inode.rs
+    anchor: "pub modified_at: u64"
+- id: directory_add_child
+  selector:
+    path: src/vfs/directory.rs
+    anchor: "pub fn add_child"
+- id: fs_create_file
+  selector:
+    path: src/vfs/filesystem.rs
+    anchor: "pub fn create_file"
+- id: shell_execute
+  selector:
+    path: src/shell/commands.rs
+    anchor: "pub fn execute"
+- id: no_permissions
+  selector:
+    path: src/vfs/permissions.rs
+    anchor: "GARBAGE_045_PERM_MARKER_A"
+- id: no_symlink
+  selector:
+    path: src/vfs/symlink.rs
+    anchor: "GARBAGE_045_LINK_MARKER_C"
+- id: no_buffered
+  selector:
+    path: src/io/buffered.rs
+    anchor: "GARBAGE_045_BUF_MARKER_E"
+oracle:
+  required:
+  - inode_modified_at
+  - directory_add_child
+  - fs_create_file
+  - shell_execute
+  allowed: []
+  forbidden:
+  - no_permissions
+  - no_symlink
+  - no_buffered

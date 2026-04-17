@@ -1,0 +1,137 @@
+name: bal_1hop_019_rust_api_calls_db
+tags:
+- lang:rust
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/db/pool.rs: |
+      pub struct Connection {
+          dsn: String,
+          connected: bool,
+      }
+
+      pub struct Pool {
+          connections: Vec<Connection>,
+          max_size: usize,
+      }
+
+      impl Pool {
+          pub fn new(dsn: &str, max_size: usize) -> Self {
+              Pool {
+                  connections: Vec::new(),
+                  max_size,
+              }
+          }
+
+          pub fn acquire(&mut self) -> Result<&Connection, String> {
+              if self.connections.is_empty() {
+                  return Err("no available connections".to_string());
+              }
+              Ok(&self.connections[0])
+          }
+      }
+    src/api/items.rs: |
+      use crate::db::pool::Pool;
+
+      pub struct ItemsApi {
+          pool: Pool,
+      }
+
+      impl ItemsApi {
+          pub fn new(pool: Pool) -> Self {
+              ItemsApi { pool }
+          }
+
+          pub fn list_items(&mut self) -> Result<Vec<String>, String> {
+              let _conn = self.pool.acquire()?;
+              Ok(vec!["item1".to_string(), "item2".to_string()])
+          }
+      }
+    src/middleware/cors.rs: |
+      pub struct CorsConfig {
+          pub allowed_origins: Vec<String>,
+      }
+
+      impl CorsConfig {
+          pub fn permissive() -> Self {
+              CorsConfig {
+                  allowed_origins: vec!["*".to_string()],
+              }
+          }
+      }
+  changed_files:
+    src/db/pool.rs: |
+      use std::time::Duration;
+
+      pub struct Connection {
+          dsn: String,
+          connected: bool,
+      }
+
+      pub struct Pool {
+          connections: Vec<Connection>,
+          max_size: usize,
+          connect_timeout: Duration,
+      }
+
+      impl Pool {
+          pub fn new(dsn: &str, max_size: usize) -> Self {
+              Pool {
+                  connections: Vec::new(),
+                  max_size,
+                  connect_timeout: Duration::from_secs(5),
+              }
+          }
+
+          pub fn acquire(&mut self) -> Result<&Connection, String> {
+              if self.connections.is_empty() {
+                  return Err("no available connections".to_string());
+              }
+              Ok(&self.connections[0])
+          }
+
+          pub fn health_check(&self) -> bool {
+              !self.connections.is_empty()
+          }
+
+          pub fn stats(&self) -> PoolStats {
+              PoolStats {
+                  total: self.connections.len(),
+                  max: self.max_size,
+              }
+          }
+      }
+
+      pub struct PoolStats {
+          pub total: usize,
+          pub max: usize,
+      }
+  commit_message: "feat: add health_check and stats to connection pool"
+fragments:
+- id: health_check_fn
+  selector:
+    path: src/db/pool.rs
+    anchor: "pub fn health_check"
+- id: pool_stats_fn
+  selector:
+    path: src/db/pool.rs
+    anchor: "pub fn stats"
+- id: api_calls_acquire
+  selector:
+    path: src/api/items.rs
+    anchor: "self.pool.acquire()"
+- id: unrelated_cors
+  selector:
+    path: src/middleware/cors.rs
+    anchor: "pub struct CorsConfig"
+oracle:
+  required:
+  - health_check_fn
+  - api_calls_acquire
+  allowed:
+  - pool_stats_fn
+  forbidden:
+  - unrelated_cors

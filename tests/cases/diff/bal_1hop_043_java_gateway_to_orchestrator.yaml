@@ -1,0 +1,152 @@
+name: bal_1hop_043_java_gateway_to_orchestrator
+tags:
+- lang:java
+- change:new_function
+- change:multi_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/payment/gateway/PaymentGateway.java: |
+      package com.payment.gateway;
+      public class PaymentGateway {
+          public String charge(String accountId, double amount) {
+              return "TXN-" + System.currentTimeMillis();
+          }
+          public boolean refund(String transactionId) {
+              return true;
+          }
+      }
+    src/main/java/com/payment/orchestrator/PaymentOrchestrator.java: |
+      package com.payment.orchestrator;
+      import com.payment.gateway.PaymentGateway;
+      public class PaymentOrchestrator {
+          private final PaymentGateway gateway;
+          public PaymentOrchestrator(PaymentGateway gateway) {
+              this.gateway = gateway;
+          }
+          public String processPayment(String accountId, double amount) {
+              if (amount <= 0) {
+                  throw new IllegalArgumentException("Amount must be positive");
+              }
+              return gateway.charge(accountId, amount);
+          }
+          public boolean cancelPayment(String txnId) {
+              return gateway.refund(txnId);
+          }
+      }
+    src/main/java/com/payment/model/Transaction.java: |
+      package com.payment.model;
+      import java.time.Instant;
+      public class Transaction {
+          private final String id;
+          private final String accountId;
+          private final double amount;
+          private final Instant timestamp;
+          public Transaction(String id, String accountId, double amount) {
+              this.id = id;
+              this.accountId = accountId;
+              this.amount = amount;
+              this.timestamp = Instant.now();
+          }
+          public String getId() { return id; }
+          public String getAccountId() { return accountId; }
+          public double getAmount() { return amount; }
+          public Instant getTimestamp() { return timestamp; }
+      }
+    src/main/java/com/payment/receipt/ReceiptGenerator.java: |
+      package com.payment.receipt;
+      public class ReceiptGenerator {
+          public String generate(String txnId, double amount) {
+              return "Receipt for " + txnId + ": $" + String.format("%.2f", amount);
+          }
+      }
+    src/main/java/com/payment/fraud/FraudDetector.java: |
+      package com.payment.fraud;
+      public class FraudDetector {
+          public boolean isSuspicious(String accountId, double amount) {
+              return amount > 10000;
+          }
+      }
+    src/main/java/com/payment/notification/PaymentNotifier.java: |
+      package com.payment.notification;
+      public class PaymentNotifier {
+          public void notifySuccess(String accountId, String txnId) {
+              System.out.println("Payment " + txnId + " for " + accountId + " succeeded");
+          }
+          public void notifyFailure(String accountId, String reason) {
+              System.out.println("Payment failed for " + accountId + ": " + reason);
+          }
+      }
+  changed_files:
+    src/main/java/com/payment/gateway/PaymentGateway.java: |
+      package com.payment.gateway;
+      public class PaymentGateway {
+          public String charge(String accountId, double amount) {
+              return "TXN-" + System.currentTimeMillis();
+          }
+          public boolean refund(String transactionId) {
+              return true;
+          }
+          public String preAuthorize(String accountId, double amount) {
+              return "AUTH-" + System.currentTimeMillis();
+          }
+          public boolean captureAuthorization(String authorizationId, double amount) {
+              return amount > 0;
+          }
+          public boolean voidAuthorization(String authorizationId) {
+              return true;
+          }
+      }
+  commit_message: "feat: add pre-authorization flow to PaymentGateway"
+fragments:
+- id: gateway_preauth
+  selector:
+    path: PaymentGateway.java
+    anchor: "preAuthorize"
+- id: gateway_capture
+  selector:
+    path: PaymentGateway.java
+    anchor: "captureAuthorization"
+- id: gateway_void
+  selector:
+    path: PaymentGateway.java
+    anchor: "voidAuthorization"
+- id: orchestrator_uses_gateway
+  selector:
+    path: PaymentOrchestrator.java
+    anchor: "gateway.charge"
+- id: orchestrator_cancel
+  selector:
+    path: PaymentOrchestrator.java
+    anchor: "gateway.refund"
+- id: no_transaction_model
+  selector:
+    path: Transaction.java
+    anchor: "Transaction"
+- id: no_receipt
+  selector:
+    path: ReceiptGenerator.java
+    anchor: "ReceiptGenerator"
+- id: no_fraud
+  selector:
+    path: FraudDetector.java
+    anchor: "FraudDetector"
+- id: no_notifier
+  selector:
+    path: PaymentNotifier.java
+    anchor: "PaymentNotifier"
+oracle:
+  required:
+  - gateway_preauth
+  - gateway_capture
+  - orchestrator_uses_gateway
+  allowed:
+  - gateway_void
+  - orchestrator_cancel
+  forbidden:
+  - no_transaction_model
+  - no_receipt
+  - no_fraud
+  - no_notifier

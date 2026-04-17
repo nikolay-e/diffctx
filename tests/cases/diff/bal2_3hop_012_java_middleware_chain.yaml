@@ -1,0 +1,197 @@
+name: bal2_3hop_012_java_middleware_chain
+tags:
+- lang:java
+- change:single_file
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/app/http/Request.java: |
+      package com.app.http;
+
+      import java.util.HashMap;
+      import java.util.Map;
+
+      public class Request {
+          private final String path;
+          private final Map<String, String> headers;
+          public Request(String path) {
+              this.path = path;
+              this.headers = new HashMap<>();
+          }
+          public String getPath() { return path; }
+          public Map<String, String> getHeaders() { return headers; }
+      }
+    src/main/java/com/app/http/RequestParser.java: |
+      package com.app.http;
+
+      import com.app.http.Request;
+
+      public class RequestParser {
+          public Request parse(String raw) {
+              return new Request(raw.split(" ")[1]);
+          }
+      }
+    src/main/java/com/app/middleware/RateLimiter.java: |
+      package com.app.middleware;
+
+      import com.app.http.RequestParser;
+      import com.app.http.Request;
+
+      public class RateLimiter {
+          private final RequestParser parser;
+          private int count = 0;
+          public RateLimiter(RequestParser parser) {
+              this.parser = parser;
+          }
+          public boolean allow(String rawRequest) {
+              Request req = parser.parse(rawRequest);
+              count++;
+              return count < 100;
+          }
+      }
+    src/main/java/com/app/gateway/ApiGateway.java: |
+      package com.app.gateway;
+
+      import com.app.middleware.RateLimiter;
+
+      public class ApiGateway {
+          private final RateLimiter limiter;
+          public ApiGateway(RateLimiter limiter) {
+              this.limiter = limiter;
+          }
+          public String handle(String rawRequest) {
+              if (!limiter.allow(rawRequest)) {
+                  return "429 Too Many Requests";
+              }
+              return "200 OK";
+          }
+      }
+    src/main/java/com/app/util/IpResolver.java: |
+      package com.app.util;
+
+      public class IpResolver {
+          public static String resolve(String hostname) { return "127.0.0.1"; }
+      }
+    src/main/java/com/app/util/UrlEncoder.java: |
+      package com.app.util;
+
+      public class UrlEncoder {
+          public static String encode(String url) { return url; }
+      }
+  changed_files:
+    src/main/java/com/app/http/Request.java: |
+      package com.app.http;
+
+      import java.util.HashMap;
+      import java.util.Map;
+
+      public class Request {
+          private final String path;
+          private final String method;
+          private final Map<String, String> headers;
+          public Request(String path, String method) {
+              this.path = path;
+              this.method = method;
+              this.headers = new HashMap<>();
+          }
+          public String getPath() { return path; }
+          public String getMethod() { return method; }
+          public Map<String, String> getHeaders() { return headers; }
+      }
+    src/main/java/com/app/http/RequestParser.java: |
+      package com.app.http;
+
+      import com.app.http.Request;
+
+      public class RequestParser {
+          public Request parse(String raw) {
+              String[] parts = raw.split(" ");
+              return new Request(parts[1], parts[0]);
+          }
+      }
+    src/main/java/com/app/middleware/RateLimiter.java: |
+      package com.app.middleware;
+
+      import com.app.http.RequestParser;
+      import com.app.http.Request;
+
+      public class RateLimiter {
+          private final RequestParser parser;
+          private int count = 0;
+          public RateLimiter(RequestParser parser) {
+              this.parser = parser;
+          }
+          public boolean allow(String rawRequest) {
+              Request req = parser.parse(rawRequest);
+              count++;
+              return count < 100;
+          }
+      }
+    src/main/java/com/app/gateway/ApiGateway.java: |
+      package com.app.gateway;
+
+      import com.app.middleware.RateLimiter;
+
+      public class ApiGateway {
+          private final RateLimiter limiter;
+          public ApiGateway(RateLimiter limiter) {
+              this.limiter = limiter;
+          }
+          public String handle(String rawRequest) {
+              if (!limiter.allow(rawRequest)) {
+                  return "429 Too Many Requests";
+              }
+              return "200 OK";
+          }
+      }
+    src/main/java/com/app/util/IpResolver.java: |
+      package com.app.util;
+
+      public class IpResolver {
+          public static String resolve(String hostname) { return "127.0.0.1"; }
+      }
+    src/main/java/com/app/util/UrlEncoder.java: |
+      package com.app.util;
+
+      public class UrlEncoder {
+          public static String encode(String url) { return url; }
+      }
+  commit_message: "feat: add HTTP method to Request"
+fragments:
+- id: request_method
+  selector:
+    path: src/main/java/com/app/http/Request.java
+    anchor: "private final String method"
+- id: parser_imports_request
+  selector:
+    path: src/main/java/com/app/http/RequestParser.java
+    anchor: "import com.app.http.Request"
+- id: limiter_imports_parser
+  selector:
+    path: src/main/java/com/app/middleware/RateLimiter.java
+    anchor: "import com.app.http.RequestParser"
+- id: gateway_imports_limiter
+  selector:
+    path: src/main/java/com/app/gateway/ApiGateway.java
+    anchor: "import com.app.middleware.RateLimiter"
+- id: no_ip_resolver
+  selector:
+    path: src/main/java/com/app/util/IpResolver.java
+    anchor: "class IpResolver"
+- id: no_url_encoder
+  selector:
+    path: src/main/java/com/app/util/UrlEncoder.java
+    anchor: "class UrlEncoder"
+oracle:
+  required:
+  - request_method
+  - parser_imports_request
+  - limiter_imports_parser
+  - gateway_imports_limiter
+  allowed: []
+  forbidden:
+  - no_ip_resolver
+  - no_url_encoder

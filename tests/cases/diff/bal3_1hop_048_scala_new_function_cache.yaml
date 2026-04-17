@@ -1,0 +1,217 @@
+name: bal3_1hop_048_scala_new_function_cache
+tags:
+- lang:scala
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: scala-no-tree-sitter
+repo:
+  initial_files:
+    src/main/scala/cache/CacheStore.scala: |
+      package cache
+
+      class CacheStore {
+        private var store: Map[String, Any] = Map.empty
+
+        def get(key: String): Option[Any] = store.get(key)
+
+        def put(key: String, value: Any): Unit = {
+          store = store + (key -> value)
+        }
+
+        def remove(key: String): Unit = {
+          store = store - key
+        }
+      }
+    src/main/scala/service/ProductService.scala: |
+      package service
+
+      import cache.CacheStore
+
+      class ProductService(cache: CacheStore) {
+        def getProduct(id: Int): Option[Any] = {
+          cache.get(s"product_$id")
+        }
+
+        def saveProduct(id: Int, data: Map[String, Any]): Unit = {
+          cache.put(s"product_$id", data)
+        }
+      }
+    src/main/scala/service/SessionService.scala: |
+      package service
+
+      import cache.CacheStore
+
+      class SessionService(cache: CacheStore) {
+        def getSession(token: String): Option[Any] = {
+          cache.get(s"session_$token")
+        }
+
+        def createSession(token: String, userData: Map[String, Any]): Unit = {
+          cache.put(s"session_$token", userData)
+        }
+
+        def destroySession(token: String): Unit = {
+          cache.remove(s"session_$token")
+        }
+      }
+    src/main/scala/service/RateLimiter.scala: |
+      package service
+
+      import cache.CacheStore
+
+      class RateLimiter(cache: CacheStore) {
+        def increment(ip: String): Int = {
+          val count = cache.get(s"rate_$ip").map(_.asInstanceOf[Int]).getOrElse(0) + 1
+          cache.put(s"rate_$ip", count)
+          count
+        }
+      }
+    src/main/scala/service/FeatureToggle.scala: |
+      package service
+
+      import cache.CacheStore
+
+      class FeatureToggle(cache: CacheStore) {
+        def isEnabled(flag: String): Boolean = {
+          cache.get(s"flag_$flag").exists(_.asInstanceOf[Boolean])
+        }
+
+        def toggle(flag: String, enabled: Boolean): Unit = {
+          cache.put(s"flag_$flag", enabled)
+        }
+      }
+    src/main/scala/messaging/Producer.scala: |
+      package messaging
+
+      object Producer {
+        val GARBAGE_BAL3_048_PROD_A = "producer"
+        val GARBAGE_BAL3_048_TOPIC_B = "default"
+
+        def send(topic: String, msg: String): Unit = ()
+      }
+    src/main/scala/messaging/Consumer.scala: |
+      package messaging
+
+      object Consumer {
+        val GARBAGE_BAL3_048_CONS_C = "consumer"
+        val GARBAGE_BAL3_048_GROUP_D = "group1"
+
+        def poll(): Option[String] = None
+      }
+    src/main/scala/messaging/Broker.scala: |
+      package messaging
+
+      object Broker {
+        val GARBAGE_BAL3_048_BROKER_E = "broker"
+        val GARBAGE_BAL3_048_PORT_F = 9092
+
+        def start(): Unit = ()
+      }
+  changed_files:
+    src/main/scala/cache/CacheStore.scala: |
+      package cache
+
+      class CacheStore {
+        private var store: Map[String, Any] = Map.empty
+        private var ttls: Map[String, Long] = Map.empty
+
+        def get(key: String): Option[Any] = {
+          ttls.get(key) match {
+            case Some(expiry) if System.currentTimeMillis() > expiry =>
+              remove(key)
+              None
+            case _ => store.get(key)
+          }
+        }
+
+        def put(key: String, value: Any): Unit = {
+          store = store + (key -> value)
+        }
+
+        def putWithTtl(key: String, value: Any, ttlMillis: Long): Unit = {
+          store = store + (key -> value)
+          ttls = ttls + (key -> (System.currentTimeMillis() + ttlMillis))
+        }
+
+        def remove(key: String): Unit = {
+          store = store - key
+          ttls = ttls - key
+        }
+
+        def clear(): Unit = {
+          store = Map.empty
+          ttls = Map.empty
+        }
+
+        def size: Int = store.size
+      }
+  commit_message: "Add TTL support, clear, and size to CacheStore"
+fragments:
+- id: product_service
+  selector:
+    path: src/main/scala/service/ProductService.scala
+    anchor: "import cache.CacheStore"
+- id: product_get
+  selector:
+    path: src/main/scala/service/ProductService.scala
+    anchor: "cache.get"
+- id: session_service
+  selector:
+    path: src/main/scala/service/SessionService.scala
+    anchor: "import cache.CacheStore"
+- id: rate_limiter
+  selector:
+    path: src/main/scala/service/RateLimiter.scala
+    anchor: "import cache.CacheStore"
+- id: feature_toggle
+  selector:
+    path: src/main/scala/service/FeatureToggle.scala
+    anchor: "import cache.CacheStore"
+- id: no_producer
+  selector:
+    path: src/main/scala/messaging/Producer.scala
+- id: no_consumer
+  selector:
+    path: src/main/scala/messaging/Consumer.scala
+- id: no_broker
+  selector:
+    path: src/main/scala/messaging/Broker.scala
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_048_PROD_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_048_TOPIC_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_048_CONS_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_048_GROUP_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL3_048_BROKER_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL3_048_PORT_F
+oracle:
+  required:
+  - product_service
+  - product_get
+  - session_service
+  - rate_limiter
+  - feature_toggle
+  allowed: []
+  forbidden:
+  - no_producer
+  - no_consumer
+  - no_broker
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

@@ -1,0 +1,277 @@
+name: bal3_testctx_029_rust_task_scheduler_test
+tags:
+- lang:rust
+- change:multi_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/task.rs: |
+      #[derive(Debug, Clone, PartialEq)]
+      pub enum Priority {
+          Low,
+          Medium,
+          High,
+      }
+
+      #[derive(Debug, Clone)]
+      pub struct Task {
+          pub id: u32,
+          pub name: String,
+          pub priority: Priority,
+      }
+
+      impl Task {
+          pub fn new(id: u32, name: &str, priority: Priority) -> Self {
+              Task {
+                  id,
+                  name: name.to_string(),
+                  priority,
+              }
+          }
+      }
+    src/scheduler.rs: |
+      use crate::task::Task;
+
+      pub struct Scheduler {
+          tasks: Vec<Task>,
+      }
+
+      impl Scheduler {
+          pub fn new() -> Self {
+              Scheduler { tasks: Vec::new() }
+          }
+
+          pub fn add(&mut self, task: Task) {
+              self.tasks.push(task);
+          }
+
+          pub fn next(&mut self) -> Option<Task> {
+              if self.tasks.is_empty() {
+                  return None;
+              }
+              Some(self.tasks.remove(0))
+          }
+
+          pub fn pending_count(&self) -> usize {
+              self.tasks.len()
+          }
+      }
+    tests/scheduler_test.rs: |
+      use mylib::task::{Task, Priority};
+      use mylib::scheduler::Scheduler;
+
+      #[test]
+      fn test_add_and_next() {
+          let mut sched = Scheduler::new();
+          sched.add(Task::new(1, "task1", Priority::Medium));
+          let task = sched.next().unwrap();
+          assert_eq!(task.id, 1);
+      }
+
+      #[test]
+      fn test_next_empty() {
+          let mut sched = Scheduler::new();
+          assert!(sched.next().is_none());
+      }
+
+      #[test]
+      fn test_pending_count() {
+          let mut sched = Scheduler::new();
+          sched.add(Task::new(1, "a", Priority::Low));
+          sched.add(Task::new(2, "b", Priority::High));
+          assert_eq!(sched.pending_count(), 2);
+      }
+    src/executor.rs: |
+      pub fn execute(command: &str) -> Result<String, String> {
+          if command.is_empty() {
+              Err("empty command".to_string())
+          } else {
+              Ok(format!("executed: {}", command))
+          }
+      }
+    src/notifier.rs: |
+      pub struct Notifier {
+          messages: Vec<String>,
+      }
+
+      impl Notifier {
+          pub fn new() -> Self {
+              Notifier { messages: Vec::new() }
+          }
+
+          pub fn send(&mut self, msg: &str) {
+              self.messages.push(msg.to_string());
+          }
+
+          pub fn all_messages(&self) -> &[String] {
+              &self.messages
+          }
+      }
+    src/reporter.rs: |
+      pub fn generate_report(title: &str, items: &[&str]) -> String {
+          let mut report = format!("# {}\n\n", title);
+          for item in items {
+              report.push_str(&format!("- {}\n", item));
+          }
+          report
+      }
+  changed_files:
+    src/scheduler.rs: |
+      use crate::task::{Task, Priority};
+
+      pub struct Scheduler {
+          tasks: Vec<Task>,
+          completed: Vec<Task>,
+      }
+
+      impl Scheduler {
+          pub fn new() -> Self {
+              Scheduler {
+                  tasks: Vec::new(),
+                  completed: Vec::new(),
+              }
+          }
+
+          pub fn add(&mut self, task: Task) {
+              self.tasks.push(task);
+              self.tasks.sort_by(|a, b| priority_rank(&b.priority).cmp(&priority_rank(&a.priority)));
+          }
+
+          pub fn next(&mut self) -> Option<Task> {
+              if self.tasks.is_empty() {
+                  return None;
+              }
+              Some(self.tasks.remove(0))
+          }
+
+          pub fn complete(&mut self, task: Task) {
+              self.completed.push(task);
+          }
+
+          pub fn pending_count(&self) -> usize {
+              self.tasks.len()
+          }
+
+          pub fn completed_count(&self) -> usize {
+              self.completed.len()
+          }
+
+          pub fn cancel(&mut self, task_id: u32) -> Option<Task> {
+              if let Some(pos) = self.tasks.iter().position(|t| t.id == task_id) {
+                  Some(self.tasks.remove(pos))
+              } else {
+                  None
+              }
+          }
+      }
+
+      fn priority_rank(p: &Priority) -> u8 {
+          match p {
+              Priority::Low => 0,
+              Priority::Medium => 1,
+              Priority::High => 2,
+          }
+      }
+    src/task.rs: |
+      #[derive(Debug, Clone, PartialEq)]
+      pub enum Priority {
+          Low,
+          Medium,
+          High,
+      }
+
+      #[derive(Debug, Clone, PartialEq)]
+      pub enum Status {
+          Pending,
+          Running,
+          Completed,
+          Cancelled,
+      }
+
+      #[derive(Debug, Clone)]
+      pub struct Task {
+          pub id: u32,
+          pub name: String,
+          pub priority: Priority,
+          pub status: Status,
+      }
+
+      impl Task {
+          pub fn new(id: u32, name: &str, priority: Priority) -> Self {
+              Task {
+                  id,
+                  name: name.to_string(),
+                  priority,
+                  status: Status::Pending,
+              }
+          }
+      }
+  commit_message: "feat: priority sorting, complete, cancel, status tracking"
+fragments:
+- id: priority_sort
+  selector:
+    path: src/scheduler.rs
+    anchor: "priority_rank(&b.priority).cmp"
+- id: complete_method
+  selector:
+    path: src/scheduler.rs
+    anchor: "pub fn complete(&mut self, task: Task)"
+- id: cancel_method
+  selector:
+    path: src/scheduler.rs
+    anchor: "pub fn cancel(&mut self, task_id: u32)"
+- id: priority_rank_fn
+  selector:
+    path: src/scheduler.rs
+    anchor: "fn priority_rank(p: &Priority)"
+- id: status_enum
+  selector:
+    path: src/task.rs
+    anchor: "pub enum Status"
+- id: task_status_field
+  selector:
+    path: src/task.rs
+    anchor: "pub status: Status"
+- id: test_add_next
+  selector:
+    path: tests/scheduler_test.rs
+    anchor: "fn test_add_and_next()"
+- id: test_pending_count
+  selector:
+    path: tests/scheduler_test.rs
+    anchor: "fn test_pending_count()"
+- id: test_next_empty
+  selector:
+    path: tests/scheduler_test.rs
+    anchor: "fn test_next_empty()"
+- id: no_executor
+  selector:
+    path: src/executor.rs
+    anchor: "pub fn execute"
+- id: no_notifier
+  selector:
+    path: src/notifier.rs
+    anchor: "pub struct Notifier"
+- id: no_reporter
+  selector:
+    path: src/reporter.rs
+    anchor: "pub fn generate_report"
+oracle:
+  required:
+  - priority_sort
+  - complete_method
+  - cancel_method
+  - status_enum
+  - test_add_next
+  - test_pending_count
+  allowed:
+  - priority_rank_fn
+  - task_status_field
+  - test_next_empty
+  forbidden:
+  - no_executor
+  - no_notifier
+  - no_reporter

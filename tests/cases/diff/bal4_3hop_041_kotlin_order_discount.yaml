@@ -1,0 +1,223 @@
+name: bal4_3hop_041_kotlin_order_discount
+tags:
+- lang:kotlin
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:medium
+repo:
+  initial_files:
+    src/pricing/DiscountPolicy.kt: |
+      package pricing
+
+      data class Discount(val percent: Double, val label: String)
+
+      class DiscountPolicy {
+          private val tiers = mapOf(
+              100.0 to Discount(5.0, "bronze"),
+              500.0 to Discount(10.0, "silver")
+          )
+
+          fun resolve(total: Double): Discount? =
+              tiers.entries
+                  .filter { total >= it.key }
+                  .maxByOrNull { it.key }
+                  ?.value
+      }
+    src/order/OrderCalculator.kt: |
+      package order
+
+      import pricing.DiscountPolicy
+      import pricing.Discount
+
+      class OrderCalculator(private val policy: DiscountPolicy) {
+          fun finalPrice(subtotal: Double): Double {
+              val discount = policy.resolve(subtotal)
+              return if (discount != null) subtotal * (1 - discount.percent / 100)
+              else subtotal
+          }
+      }
+    src/cart/CartService.kt: |
+      package cart
+
+      import order.OrderCalculator
+
+      data class CartItem(val name: String, val price: Double, val qty: Int)
+
+      class CartService(private val calculator: OrderCalculator) {
+          fun checkout(items: List<CartItem>): Double {
+              val subtotal = items.sumOf { it.price * it.qty }
+              return calculator.finalPrice(subtotal)
+          }
+      }
+    src/api/CartApi.kt: |
+      package api
+
+      import cart.CartService
+      import cart.CartItem
+
+      class CartApi(private val service: CartService) {
+          fun processOrder(items: List<CartItem>): String {
+              val total = service.checkout(items)
+              return "Total: $total"
+          }
+      }
+    src/utils/Coupon.kt: |
+      package utils
+      val GARBAGE_041_COUPON_A = "coupon"
+      val GARBAGE_041_CODE_B = "SAVE10"
+      class CouponValidator {
+          val GARBAGE_041_VALID_E = true
+          fun validate(code: String) = code.isNotEmpty()
+      }
+    src/utils/Tax.kt: |
+      package utils
+      val GARBAGE_041_TAX_C = "tax"
+      val GARBAGE_041_RATE_D = 0.2
+      class TaxCalc {
+          val GARBAGE_041_REGION_F = "US"
+          fun compute(amount: Double) = amount * 0.2
+      }
+  changed_files:
+    src/pricing/DiscountPolicy.kt: |
+      package pricing
+
+      data class Discount(val percent: Double, val label: String)
+
+      class DiscountPolicy {
+          private val tiers = mapOf(
+              100.0 to Discount(5.0, "bronze"),
+              500.0 to Discount(10.0, "silver"),
+              1000.0 to Discount(15.0, "gold")
+          )
+
+          fun resolve(total: Double): Discount? =
+              tiers.entries
+                  .filter { total >= it.key }
+                  .maxByOrNull { it.key }
+                  ?.value
+
+          fun allTiers(): List<Discount> = tiers.values.toList()
+      }
+    src/order/OrderCalculator.kt: |
+      package order
+
+      import pricing.DiscountPolicy
+      import pricing.Discount
+
+      class OrderCalculator(private val policy: DiscountPolicy) {
+          fun finalPrice(subtotal: Double): Double {
+              val discount = policy.resolve(subtotal)
+              return if (discount != null) subtotal * (1 - discount.percent / 100)
+              else subtotal
+          }
+
+          fun appliedDiscount(subtotal: Double): String {
+              val discount = policy.resolve(subtotal)
+              return discount?.label ?: "none"
+          }
+      }
+    src/cart/CartService.kt: |
+      package cart
+
+      import order.OrderCalculator
+
+      data class CartItem(val name: String, val price: Double, val qty: Int)
+
+      class CartService(private val calculator: OrderCalculator) {
+          fun checkout(items: List<CartItem>): Double {
+              val subtotal = items.sumOf { it.price * it.qty }
+              return calculator.finalPrice(subtotal)
+          }
+
+          fun discountSummary(items: List<CartItem>): String {
+              val subtotal = items.sumOf { it.price * it.qty }
+              return calculator.appliedDiscount(subtotal)
+          }
+      }
+    src/api/CartApi.kt: |
+      package api
+
+      import cart.CartService
+      import cart.CartItem
+
+      class CartApi(private val service: CartService) {
+          fun processOrder(items: List<CartItem>): String {
+              val total = service.checkout(items)
+              val tier = service.discountSummary(items)
+              return "Total: $total (tier: $tier)"
+          }
+      }
+    src/utils/Coupon.kt: |
+      package utils
+      val GARBAGE_041_COUPON_A = "coupon"
+      val GARBAGE_041_CODE_B = "SAVE10"
+      class CouponValidator {
+          val GARBAGE_041_VALID_E = true
+          fun validate(code: String) = code.isNotEmpty()
+      }
+    src/utils/Tax.kt: |
+      package utils
+      val GARBAGE_041_TAX_C = "tax"
+      val GARBAGE_041_RATE_D = 0.2
+      class TaxCalc {
+          val GARBAGE_041_REGION_F = "US"
+          fun compute(amount: Double) = amount * 0.2
+      }
+  commit_message: "feat: add gold tier and discount summary across chain"
+fragments:
+- id: policy_gold_tier
+  selector:
+    path: src/pricing/DiscountPolicy.kt
+    anchor: "gold"
+- id: policy_all_tiers
+  selector:
+    path: src/pricing/DiscountPolicy.kt
+    anchor: "fun allTiers()"
+- id: calc_applied
+  selector:
+    path: src/order/OrderCalculator.kt
+    anchor: "fun appliedDiscount"
+- id: cart_summary
+  selector:
+    path: src/cart/CartService.kt
+    anchor: "fun discountSummary"
+- id: api_tier
+  selector:
+    path: src/api/CartApi.kt
+    anchor: "service.discountSummary"
+- id: no_coupon
+  selector:
+    path: src/utils/Coupon.kt
+    anchor: "GARBAGE_041_COUPON_A"
+- id: no_tax
+  selector:
+    path: src/utils/Tax.kt
+    anchor: "GARBAGE_041_TAX_C"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_041_CODE_B
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_041_RATE_D
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_041_VALID_E
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_041_REGION_F
+oracle:
+  required:
+  - policy_gold_tier
+  - policy_all_tiers
+  - calc_applied
+  - cart_summary
+  - api_tier
+  allowed: []
+  forbidden:
+  - no_coupon
+  - no_tax
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

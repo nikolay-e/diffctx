@@ -1,0 +1,201 @@
+name: gap2_073_java_signature_cross_module_serializer
+tags:
+- change:signature
+- change:single_file
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+- lang:java
+repo:
+  initial_files:
+    src/main/java/codec/Serializer.java: |
+      package codec;
+
+      public interface Serializer {
+          byte[] serialize(Object obj);
+          Object deserialize(byte[] data);
+      }
+    src/main/java/codec/JsonSerializer.java: |
+      package codec;
+
+      public class JsonSerializer implements Serializer {
+          public byte[] serialize(Object obj) {
+              return obj.toString().getBytes();
+          }
+
+          public Object deserialize(byte[] data) {
+              return new String(data);
+          }
+      }
+    src/main/java/transport/MessageBus.java: |
+      package transport;
+
+      import codec.Serializer;
+
+      public class MessageBus {
+          private final Serializer serializer;
+
+          public MessageBus(Serializer serializer) {
+              this.serializer = serializer;
+          }
+
+          public byte[] send(Object payload) {
+              return serializer.serialize(payload);
+          }
+
+          public Object receive(byte[] raw) {
+              return serializer.deserialize(raw);
+          }
+      }
+    src/main/java/image/ThumbnailGenerator.java: |
+      package image;
+      static final String TRAP_GAP2_073_THUMB_A = "thumb_noise";
+      static final int TRAP_GAP2_073_THUMB_B = 150;
+
+      public class ThumbnailGenerator {
+          public byte[] generate(byte[] source, int size) { return source; }
+      }
+    src/main/java/crypto/HashUtil.java: |
+      package crypto;
+      static final String TRAP_GAP2_073_HASH_C = "hash_noise";
+      static final boolean TRAP_GAP2_073_HASH_D = true;
+
+      public class HashUtil {
+          public String sha256(String input) { return "hash"; }
+      }
+    src/main/java/locale/DateFormatter.java: |
+      package locale;
+      static final String TRAP_GAP2_073_DATE_E = "date_noise";
+      static final int TRAP_GAP2_073_DATE_F = 1970;
+
+      public class DateFormatter {
+          public String format(long epoch) { return String.valueOf(epoch); }
+      }
+  changed_files:
+    src/main/java/codec/Serializer.java: |
+      package codec;
+
+      public interface Serializer {
+          byte[] serialize(Object obj, String encoding);
+          Object deserialize(byte[] data, String encoding);
+      }
+    src/main/java/codec/JsonSerializer.java: |
+      package codec;
+
+      public class JsonSerializer implements Serializer {
+          public byte[] serialize(Object obj, String encoding) {
+              return obj.toString().getBytes();
+          }
+
+          public Object deserialize(byte[] data, String encoding) {
+              return new String(data);
+          }
+      }
+    src/main/java/transport/MessageBus.java: |
+      package transport;
+
+      import codec.Serializer;
+
+      public class MessageBus {
+          private final Serializer serializer;
+
+          public MessageBus(Serializer serializer) {
+              this.serializer = serializer;
+          }
+
+          public byte[] send(Object payload) {
+              return serializer.serialize(payload);
+          }
+
+          public Object receive(byte[] raw) {
+              return serializer.deserialize(raw);
+          }
+      }
+    src/main/java/image/ThumbnailGenerator.java: |
+      package image;
+      static final String TRAP_GAP2_073_THUMB_A = "thumb_noise";
+      static final int TRAP_GAP2_073_THUMB_B = 150;
+
+      public class ThumbnailGenerator {
+          public byte[] generate(byte[] source, int size) { return source; }
+      }
+    src/main/java/crypto/HashUtil.java: |
+      package crypto;
+      static final String TRAP_GAP2_073_HASH_C = "hash_noise";
+      static final boolean TRAP_GAP2_073_HASH_D = true;
+
+      public class HashUtil {
+          public String sha256(String input) { return "hash"; }
+      }
+    src/main/java/locale/DateFormatter.java: |
+      package locale;
+      static final String TRAP_GAP2_073_DATE_E = "date_noise";
+      static final int TRAP_GAP2_073_DATE_F = 1970;
+
+      public class DateFormatter {
+          public String format(long epoch) { return String.valueOf(epoch); }
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: serialize_encoding
+  selector:
+    path: src/main/java/codec/Serializer.java
+    anchor: "byte[] serialize(Object obj, String encoding)"
+- id: deserialize_encoding
+  selector:
+    path: src/main/java/codec/Serializer.java
+    anchor: "Object deserialize(byte[] data, String encoding)"
+- id: json_implements
+  selector:
+    path: src/main/java/codec/JsonSerializer.java
+    anchor: "public class JsonSerializer implements Serializer"
+- id: bus_uses_serializer
+  selector:
+    path: src/main/java/transport/MessageBus.java
+    anchor: "serializer.serialize(payload)"
+- id: no_thumb
+  selector:
+    path: src/main/java/image/ThumbnailGenerator.java
+- id: no_hash
+  selector:
+    path: src/main/java/crypto/HashUtil.java
+- id: no_date
+  selector:
+    path: src/main/java/locale/DateFormatter.java
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_073_THUMB_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_073_THUMB_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP2_073_HASH_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP2_073_HASH_D
+- id: no_global_4
+  selector:
+    anchor: TRAP_GAP2_073_DATE_E
+- id: no_global_5
+  selector:
+    anchor: TRAP_GAP2_073_DATE_F
+oracle:
+  required:
+  - serialize_encoding
+  - deserialize_encoding
+  - json_implements
+  - bus_uses_serializer
+  allowed: []
+  forbidden:
+  - no_thumb
+  - no_hash
+  - no_date
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

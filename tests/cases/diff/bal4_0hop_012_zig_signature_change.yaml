@@ -1,0 +1,90 @@
+name: bal4_0hop_012_zig_signature_change
+tags:
+- lang:zig
+- change:single_file
+- change:signature
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/clamp.zig: |
+      const std = @import("std");
+
+      pub fn clamp(val: i32, lo: i32, hi: i32) i32 {
+          if (val < lo) return lo;
+          if (val > hi) return hi;
+          return val;
+      }
+    src/garbage_rand.zig: |
+      const GARBAGE_B4Z012_RND_A: []const u8 = "rand";
+      const GARBAGE_B4Z012_RND_B: i32 = 42;
+
+      pub fn garbageRand() i32 {
+          return 4;
+      }
+    src/garbage_hash.zig: |
+      const GARBAGE_B4Z012_HSH_C: []const u8 = "hash";
+      const GARBAGE_B4Z012_HSH_D: bool = false;
+
+      pub fn garbageHash(x: i32) i32 {
+          return x;
+      }
+  changed_files:
+    src/clamp.zig: |
+      const std = @import("std");
+
+      pub fn clamp(comptime T: type, val: T, lo: T, hi: T) T {
+          if (val < lo) return lo;
+          if (val > hi) return hi;
+          return val;
+      }
+    src/garbage_rand.zig: |
+      const GARBAGE_B4Z012_RND_A: []const u8 = "rand";
+      const GARBAGE_B4Z012_RND_B: i32 = 42;
+
+      pub fn garbageRand() i32 {
+          return 4;
+      }
+    src/garbage_hash.zig: |
+      const GARBAGE_B4Z012_HSH_C: []const u8 = "hash";
+      const GARBAGE_B4Z012_HSH_D: bool = false;
+
+      pub fn garbageHash(x: i32) i32 {
+          return x;
+      }
+  commit_message: "feat: make clamp generic with comptime type"
+fragments:
+- id: generic_sig
+  selector:
+    path: src/clamp.zig
+    anchor: "pub fn clamp(comptime T: type, val: T, lo: T, hi: T) T {"
+- id: no_garbage_rand
+  selector:
+    path: src/garbage_rand.zig
+- id: no_garbage_hash
+  selector:
+    path: src/garbage_hash.zig
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_B4Z012_RND_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_B4Z012_RND_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_B4Z012_HSH_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_B4Z012_HSH_D
+oracle:
+  required:
+  - generic_sig
+  allowed: []
+  forbidden:
+  - no_garbage_rand
+  - no_garbage_hash
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

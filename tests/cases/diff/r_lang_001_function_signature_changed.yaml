@@ -1,0 +1,74 @@
+name: r_lang_001_function_signature_changed
+tags:
+- lang:r
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    R/stats_utils.R: |
+      calculate_mean <- function(x) {
+        mean(x, na.rm = TRUE)
+      }
+    R/report_generator.R: |
+      source("R/stats_utils.R")
+
+      generate_summary <- function(data) {
+        list(
+          mean = calculate_mean(data$values),
+          n = nrow(data)
+        )
+      }
+    R/R_NOISE_001_plot_utils.R: |
+      R_NOISE_001_make_histogram <- function(x, bins = 30) {
+        hist(x, breaks = bins, col = "steelblue")
+      }
+      R_NOISE_001_save_plot <- function(filename, width = 8, height = 6) {
+        ggsave(filename, width = width, height = height)
+      }
+    R/R_NOISE_001_string_utils.R: |
+      R_NOISE_001_clean_string <- function(s) {
+        trimws(tolower(s))
+      }
+      R_NOISE_001_truncate <- function(s, n = 50) {
+        substr(s, 1, min(nchar(s), n))
+      }
+  changed_files:
+    R/stats_utils.R: |
+      calculate_mean <- function(x, trim = 0) {
+        mean(x, na.rm = TRUE, trim = trim)
+      }
+  commit_message: "Update files"
+fragments:
+- id: stats_utils
+  selector:
+    path: R/stats_utils.R
+    anchor: trim
+- id: report_generator
+  selector:
+    path: R/report_generator.R
+    anchor: calculate_mean
+- id: no_plot_utils
+  selector:
+    path: R/R_NOISE_001_plot_utils.R
+- id: no_string_utils
+  selector:
+    path: R/R_NOISE_001_string_utils.R
+- id: no_global_0
+  selector:
+    anchor: R_NOISE_001_make_histogram
+- id: no_global_1
+  selector:
+    anchor: R_NOISE_001_clean_string
+oracle:
+  required:
+  - stats_utils
+  - report_generator
+  allowed: []
+  forbidden:
+  - no_plot_utils
+  - no_string_utils
+  - no_global_0
+  - no_global_1

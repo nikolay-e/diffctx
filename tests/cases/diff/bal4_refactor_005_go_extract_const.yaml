@@ -1,0 +1,130 @@
+name: bal4_refactor_005_go_extract_const
+tags:
+- lang:go
+- change:multi_file
+- change:refactor
+- context:cross_module
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    pkg/timeout/timeout.go: |
+      package timeout
+
+      import "time"
+
+      func Wait() {
+          time.Sleep(30 * time.Second)
+      }
+
+      func Retry() {
+          time.Sleep(30 * time.Second)
+      }
+    pkg/client/client.go: |
+      package client
+
+      import "app/pkg/timeout"
+
+      func Fetch(url string) {
+          timeout.Wait()
+      }
+    garbage_auth.go: |
+      package garbage
+
+      GARBAGE_BAL4R005_AUTH_A = "auth"
+      GARBAGE_BAL4R005_TOKEN_B = "bearer"
+
+      type Token struct {
+          GARBAGE_BAL4R005_TOK_C bool
+      }
+    garbage_router.go: |
+      package garbage
+
+      GARBAGE_BAL4R005_ROUTE_D = "router"
+      GARBAGE_BAL4R005_PATH_E = "/api"
+  changed_files:
+    pkg/timeout/timeout.go: |
+      package timeout
+
+      import "time"
+
+      const DefaultTimeout = 30 * time.Second
+
+      func Wait() {
+          time.Sleep(DefaultTimeout)
+      }
+
+      func Retry() {
+          time.Sleep(DefaultTimeout)
+      }
+    pkg/client/client.go: |
+      package client
+
+      import "app/pkg/timeout"
+
+      func Fetch(url string) {
+          timeout.Wait()
+      }
+    garbage_auth.go: |
+      package garbage
+
+      GARBAGE_BAL4R005_AUTH_A = "auth"
+      GARBAGE_BAL4R005_TOKEN_B = "bearer"
+
+      type Token struct {
+          GARBAGE_BAL4R005_TOK_C bool
+      }
+    garbage_router.go: |
+      package garbage
+
+      GARBAGE_BAL4R005_ROUTE_D = "router"
+      GARBAGE_BAL4R005_PATH_E = "/api"
+  commit_message: "refactor: extract magic number to DefaultTimeout const"
+fragments:
+- id: new_const
+  selector:
+    path: pkg/timeout/timeout.go
+    anchor: "const DefaultTimeout"
+- id: wait_uses_const
+  selector:
+    path: pkg/timeout/timeout.go
+    anchor: "time.Sleep(DefaultTimeout)"
+- id: client_calls_wait
+  selector:
+    path: pkg/client/client.go
+    anchor: "timeout.Wait()"
+- id: no_garbage_auth
+  selector:
+    path: garbage_auth.go
+- id: no_garbage_router
+  selector:
+    path: garbage_router.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL4R005_AUTH_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL4R005_TOKEN_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL4R005_TOK_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL4R005_ROUTE_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL4R005_PATH_E
+oracle:
+  required:
+  - new_const
+  - wait_uses_const
+  allowed:
+  - client_calls_wait
+  forbidden:
+  - no_garbage_auth
+  - no_garbage_router
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

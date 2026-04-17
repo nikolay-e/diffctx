@@ -1,0 +1,133 @@
+name: gap2_177_php_signature_import_chain_pdf_generator
+tags:
+- change:signature
+- change:single_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:php
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/Report/ReportBuilder.php: |
+      <?php
+
+      namespace App\Report;
+
+      use App\Report\PdfRenderer;
+
+      class ReportBuilder
+      {
+          private PdfRenderer $renderer;
+
+          public function __construct(PdfRenderer $renderer)
+          {
+              $this->renderer = $renderer;
+          }
+
+          public function generate(array $data): string
+          {
+              return $this->renderer->render($data);
+          }
+      }
+    src/Report/PdfRenderer.php: |
+      <?php
+
+      namespace App\Report;
+
+      class PdfRenderer
+      {
+          private string $orientation;
+
+          public function __construct(string $orientation = 'portrait')
+          {
+              $this->orientation = $orientation;
+          }
+
+          public function render(array $data): string
+          {
+              return implode("\n", array_map(fn($row) => implode(',', $row), $data));
+          }
+      }
+    src/Export/CsvExporter.php: |
+      <?php
+
+      namespace App\Export;
+
+      class CsvExporter
+      {
+          public function export(array $rows): string
+          {
+              $lines = [];
+              foreach ($rows as $row) {
+                  $lines[] = implode(',', $row);
+              }
+              return implode("\n", $lines);
+          }
+      }
+  changed_files:
+    src/Report/PdfRenderer.php: |
+      <?php
+
+      namespace App\Report;
+
+      class PageConfig
+      {
+          public string $orientation;
+          public string $paperSize;
+          public array $margins;
+
+          public function __construct(
+              string $orientation = 'portrait',
+              string $paperSize = 'A4',
+              array $margins = [10, 10, 10, 10]
+          ) {
+              $this->orientation = $orientation;
+              $this->paperSize = $paperSize;
+              $this->margins = $margins;
+          }
+      }
+
+      class PdfRenderer
+      {
+          private PageConfig $config;
+
+          public function __construct(PageConfig $config = null)
+          {
+              $this->config = $config ?? new PageConfig();
+          }
+
+          public function render(array $data, string $title = ''): string
+          {
+              $header = $title ? "# {$title}\n" : '';
+              return $header . implode("\n", array_map(fn($row) => implode(',', $row), $data));
+          }
+      }
+fragments:
+- id: page_config
+  selector:
+    path: src/Report/PdfRenderer.php
+    anchor: "class PageConfig"
+- id: render_sig
+  selector:
+    path: src/Report/PdfRenderer.php
+    anchor: "public function render(array $data, string $title"
+- id: constructor_config
+  selector:
+    path: src/Report/PdfRenderer.php
+    anchor: "public function __construct(PageConfig"
+- id: no_csv
+  selector:
+    path: src/Export/CsvExporter.php
+- id: no_builder
+  selector:
+    path: src/Report/ReportBuilder.php
+    anchor: generate
+oracle:
+  required:
+  - page_config
+  - render_sig
+  - constructor_config
+  forbidden:
+  - no_csv

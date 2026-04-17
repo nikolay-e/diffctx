@@ -1,0 +1,136 @@
+name: bal2_testctx_036_csharp_string_formatter
+tags:
+- lang:csharp
+- change:single_file
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/Formatting/StringFormatter.cs: |
+      using System;
+      using System.Globalization;
+
+      namespace App.Formatting
+      {
+          public static class StringFormatter
+          {
+              public static string ToCamelCase(string input)
+              {
+                  if (string.IsNullOrEmpty(input)) return input;
+                  return char.ToLower(input[0]) + input.Substring(1);
+              }
+
+              public static string ToPascalCase(string input)
+              {
+                  if (string.IsNullOrEmpty(input)) return input;
+                  return char.ToUpper(input[0]) + input.Substring(1);
+              }
+          }
+      }
+    Tests/StringFormatterTests.cs: |
+      using Xunit;
+      using App.Formatting;
+
+      namespace App.Tests
+      {
+          public class StringFormatterTests
+          {
+              [Fact]
+              public void ToCamelCase_PascalInput_LowersFirstChar()
+              {
+                  Assert.Equal("helloWorld", StringFormatter.ToCamelCase("HelloWorld"));
+              }
+
+              [Fact]
+              public void ToPascalCase_CamelInput_UppersFirstChar()
+              {
+                  Assert.Equal("HelloWorld", StringFormatter.ToPascalCase("helloWorld"));
+              }
+
+              [Fact]
+              public void ToCamelCase_Empty_ReturnsEmpty()
+              {
+                  Assert.Equal("", StringFormatter.ToCamelCase(""));
+              }
+          }
+      }
+    src/Formatting/NumberFormatter.cs: |
+      using System;
+
+      namespace App.Formatting
+      {
+          public static class NumberFormatter
+          {
+              public static string FormatCurrency(decimal amount)
+              {
+                  return amount.ToString("C2");
+              }
+          }
+      }
+  changed_files:
+    src/Formatting/StringFormatter.cs: |
+      using System;
+      using System.Globalization;
+      using System.Text.RegularExpressions;
+
+      namespace App.Formatting
+      {
+          public static class StringFormatter
+          {
+              public static string ToCamelCase(string input)
+              {
+                  if (string.IsNullOrEmpty(input)) return input;
+                  return char.ToLower(input[0]) + input.Substring(1);
+              }
+
+              public static string ToPascalCase(string input)
+              {
+                  if (string.IsNullOrEmpty(input)) return input;
+                  return char.ToUpper(input[0]) + input.Substring(1);
+              }
+
+              public static string ToSnakeCase(string input)
+              {
+                  if (string.IsNullOrEmpty(input)) return input;
+                  return Regex.Replace(input, "([a-z])([A-Z])", "$1_$2").ToLowerInvariant();
+              }
+
+              public static string ToKebabCase(string input)
+              {
+                  if (string.IsNullOrEmpty(input)) return input;
+                  return Regex.Replace(input, "([a-z])([A-Z])", "$1-$2").ToLowerInvariant();
+              }
+          }
+      }
+  commit_message: "feat: add snake_case and kebab-case converters"
+fragments:
+- id: to_snake_case
+  selector:
+    path: src/Formatting/StringFormatter.cs
+    anchor: "public static string ToSnakeCase"
+- id: to_kebab_case
+  selector:
+    path: src/Formatting/StringFormatter.cs
+    anchor: "public static string ToKebabCase"
+- id: test_imports
+  selector:
+    path: Tests/StringFormatterTests.cs
+    anchor: "using App.Formatting"
+- id: test_class
+  selector:
+    path: Tests/StringFormatterTests.cs
+    anchor: "public class StringFormatterTests"
+- id: no_number_formatter
+  selector:
+    path: src/Formatting/NumberFormatter.cs
+    anchor: "class NumberFormatter"
+oracle:
+  required:
+  - to_snake_case
+  - to_kebab_case
+  - test_imports
+  allowed:
+  - test_class
+  forbidden:
+  - no_number_formatter

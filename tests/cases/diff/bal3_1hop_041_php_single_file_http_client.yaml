@@ -1,0 +1,284 @@
+name: bal3_1hop_041_php_single_file_http_client
+tags:
+- lang:php
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/Http/HttpClient.php: |
+      <?php
+      namespace App\Http;
+
+      class HttpClient
+      {
+          private string $baseUrl;
+
+          public function __construct(string $baseUrl)
+          {
+              $this->baseUrl = $baseUrl;
+          }
+
+          public function get(string $path): array
+          {
+              return ['method' => 'GET', 'url' => $this->baseUrl . $path];
+          }
+
+          public function post(string $path, array $data): array
+          {
+              return ['method' => 'POST', 'url' => $this->baseUrl . $path, 'body' => $data];
+          }
+      }
+    src/Services/WeatherService.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Http\HttpClient;
+
+      class WeatherService
+      {
+          private HttpClient $client;
+
+          public function __construct(HttpClient $client)
+          {
+              $this->client = $client;
+          }
+
+          public function getForecast(string $city): array
+          {
+              return $this->client->get("/weather/{$city}");
+          }
+      }
+    src/Services/GeocodingService.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Http\HttpClient;
+
+      class GeocodingService
+      {
+          private HttpClient $client;
+
+          public function __construct(HttpClient $client)
+          {
+              $this->client = $client;
+          }
+
+          public function lookup(string $address): array
+          {
+              return $this->client->get("/geocode?q={$address}");
+          }
+      }
+    src/Services/PaymentApiClient.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Http\HttpClient;
+
+      class PaymentApiClient
+      {
+          private HttpClient $client;
+
+          public function __construct(HttpClient $client)
+          {
+              $this->client = $client;
+          }
+
+          public function createCharge(float $amount): array
+          {
+              return $this->client->post('/charges', ['amount' => $amount]);
+          }
+      }
+    src/Services/SlackNotifier.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Http\HttpClient;
+
+      class SlackNotifier
+      {
+          private HttpClient $client;
+
+          public function __construct(HttpClient $client)
+          {
+              $this->client = $client;
+          }
+
+          public function notify(string $channel, string $message): array
+          {
+              return $this->client->post('/chat.postMessage', [
+                  'channel' => $channel,
+                  'text' => $message,
+              ]);
+          }
+      }
+    src/Storage/FileStorage.php: |
+      <?php
+      namespace App\Storage;
+
+      GARBAGE_BAL3_041_STORAGE_A = 'storage';
+      GARBAGE_BAL3_041_DISK_B = 'local';
+
+      class FileStorage
+      {
+          public function store(string $path, string $content): bool
+          {
+              return true;
+          }
+      }
+    src/Storage/S3Storage.php: |
+      <?php
+      namespace App\Storage;
+
+      GARBAGE_BAL3_041_S3_C = 's3';
+      GARBAGE_BAL3_041_BUCKET_D = 'default';
+
+      class S3Storage
+      {
+          public function upload(string $key, string $data): bool
+          {
+              return true;
+          }
+      }
+    src/Storage/CdnManager.php: |
+      <?php
+      namespace App\Storage;
+
+      GARBAGE_BAL3_041_CDN_E = 'cdn';
+      GARBAGE_BAL3_041_EDGE_F = 'us-east';
+
+      class CdnManager
+      {
+          public function purge(string $url): bool
+          {
+              return true;
+          }
+      }
+  changed_files:
+    src/Http/HttpClient.php: |
+      <?php
+      namespace App\Http;
+
+      class HttpClient
+      {
+          private string $baseUrl;
+          private array $defaultHeaders;
+          private int $timeoutSeconds;
+
+          public function __construct(string $baseUrl, array $defaultHeaders = [], int $timeoutSeconds = 30)
+          {
+              $this->baseUrl = $baseUrl;
+              $this->defaultHeaders = $defaultHeaders;
+              $this->timeoutSeconds = $timeoutSeconds;
+          }
+
+          public function get(string $path, array $headers = []): array
+          {
+              return [
+                  'method' => 'GET',
+                  'url' => $this->baseUrl . $path,
+                  'headers' => array_merge($this->defaultHeaders, $headers),
+                  'timeout' => $this->timeoutSeconds,
+              ];
+          }
+
+          public function post(string $path, array $data, array $headers = []): array
+          {
+              return [
+                  'method' => 'POST',
+                  'url' => $this->baseUrl . $path,
+                  'body' => $data,
+                  'headers' => array_merge($this->defaultHeaders, $headers),
+                  'timeout' => $this->timeoutSeconds,
+              ];
+          }
+
+          public function put(string $path, array $data, array $headers = []): array
+          {
+              return [
+                  'method' => 'PUT',
+                  'url' => $this->baseUrl . $path,
+                  'body' => $data,
+                  'headers' => array_merge($this->defaultHeaders, $headers),
+                  'timeout' => $this->timeoutSeconds,
+              ];
+          }
+
+          public function delete(string $path): array
+          {
+              return [
+                  'method' => 'DELETE',
+                  'url' => $this->baseUrl . $path,
+                  'headers' => $this->defaultHeaders,
+                  'timeout' => $this->timeoutSeconds,
+              ];
+          }
+      }
+  commit_message: "Add headers, timeout, PUT and DELETE to HttpClient"
+fragments:
+- id: weather_service
+  selector:
+    path: src/Services/WeatherService.php
+    anchor: "use App\\Http\\HttpClient"
+- id: weather_get
+  selector:
+    path: src/Services/WeatherService.php
+    anchor: "client->get"
+- id: geocoding_service
+  selector:
+    path: src/Services/GeocodingService.php
+    anchor: "use App\\Http\\HttpClient"
+- id: payment_api
+  selector:
+    path: src/Services/PaymentApiClient.php
+    anchor: "use App\\Http\\HttpClient"
+- id: slack_notifier
+  selector:
+    path: src/Services/SlackNotifier.php
+    anchor: "use App\\Http\\HttpClient"
+- id: no_file_storage
+  selector:
+    path: src/Storage/FileStorage.php
+- id: no_s3
+  selector:
+    path: src/Storage/S3Storage.php
+- id: no_cdn
+  selector:
+    path: src/Storage/CdnManager.php
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_041_STORAGE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_041_DISK_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_041_S3_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_041_BUCKET_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL3_041_CDN_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL3_041_EDGE_F
+oracle:
+  required:
+  - weather_service
+  - weather_get
+  - geocoding_service
+  - payment_api
+  - slack_notifier
+  allowed: []
+  forbidden:
+  - no_file_storage
+  - no_s3
+  - no_cdn
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

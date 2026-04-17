@@ -1,0 +1,255 @@
+name: bal3_1hop_032_php_repository_signature
+tags:
+- lang:php
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/Repositories/UserRepository.php: |
+      <?php
+      namespace App\Repositories;
+
+      class UserRepository
+      {
+          public function findById(int $id): ?array
+          {
+              return ['id' => $id, 'name' => 'User'];
+          }
+
+          public function findByEmail(string $email): ?array
+          {
+              return ['email' => $email];
+          }
+
+          public function save(array $data): bool
+          {
+              return true;
+          }
+      }
+    src/Services/AuthService.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Repositories\UserRepository;
+
+      class AuthService
+      {
+          private UserRepository $userRepo;
+
+          public function __construct(UserRepository $userRepo)
+          {
+              $this->userRepo = $userRepo;
+          }
+
+          public function authenticate(string $email, string $password): ?array
+          {
+              $user = $this->userRepo->findByEmail($email);
+              if ($user === null) {
+                  return null;
+              }
+              return $user;
+          }
+      }
+    src/Services/ProfileService.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Repositories\UserRepository;
+
+      class ProfileService
+      {
+          private UserRepository $userRepo;
+
+          public function __construct(UserRepository $userRepo)
+          {
+              $this->userRepo = $userRepo;
+          }
+
+          public function getProfile(int $userId): ?array
+          {
+              return $this->userRepo->findById($userId);
+          }
+
+          public function updateProfile(int $userId, array $data): bool
+          {
+              return $this->userRepo->save($data);
+          }
+      }
+    src/Services/AdminService.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Repositories\UserRepository;
+
+      class AdminService
+      {
+          private UserRepository $userRepo;
+
+          public function __construct(UserRepository $userRepo)
+          {
+              $this->userRepo = $userRepo;
+          }
+
+          public function lookupUser(int $id): ?array
+          {
+              return $this->userRepo->findById($id);
+          }
+      }
+    src/Services/RegistrationService.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Repositories\UserRepository;
+
+      class RegistrationService
+      {
+          private UserRepository $userRepo;
+
+          public function __construct(UserRepository $userRepo)
+          {
+              $this->userRepo = $userRepo;
+          }
+
+          public function register(array $data): bool
+          {
+              return $this->userRepo->save($data);
+          }
+      }
+    src/Helpers/CacheHelper.php: |
+      <?php
+      namespace App\Helpers;
+
+      GARBAGE_BAL3_032_CACHE_A = 'cache';
+      GARBAGE_BAL3_032_TTL_B = 3600;
+
+      class CacheHelper
+      {
+          public function get(string $key): mixed
+          {
+              return null;
+          }
+      }
+    src/Helpers/ValidationHelper.php: |
+      <?php
+      namespace App\Helpers;
+
+      GARBAGE_BAL3_032_VALID_C = 'validate';
+      GARBAGE_BAL3_032_RULES_D = true;
+
+      class ValidationHelper
+      {
+          public function isEmail(string $value): bool
+          {
+              return filter_var($value, FILTER_VALIDATE_EMAIL) !== false;
+          }
+      }
+    src/Helpers/DateHelper.php: |
+      <?php
+      namespace App\Helpers;
+
+      GARBAGE_BAL3_032_DATE_E = 'date';
+      GARBAGE_BAL3_032_FORMAT_F = 'Y-m-d';
+
+      class DateHelper
+      {
+          public function now(): string
+          {
+              return date('Y-m-d H:i:s');
+          }
+      }
+  changed_files:
+    src/Repositories/UserRepository.php: |
+      <?php
+      namespace App\Repositories;
+
+      class UserRepository
+      {
+          public function findById(int $id, bool $includeDeleted = false): ?array
+          {
+              return ['id' => $id, 'name' => 'User', 'include_deleted' => $includeDeleted];
+          }
+
+          public function findByEmail(string $email, bool $includeDeleted = false): ?array
+          {
+              return ['email' => $email, 'include_deleted' => $includeDeleted];
+          }
+
+          public function save(array $data): bool
+          {
+              return true;
+          }
+
+          public function softDelete(int $id): bool
+          {
+              return true;
+          }
+      }
+  commit_message: "Add soft delete support to UserRepository"
+fragments:
+- id: auth_service
+  selector:
+    path: src/Services/AuthService.php
+    anchor: "use App\\Repositories\\UserRepository"
+- id: auth_find_email
+  selector:
+    path: src/Services/AuthService.php
+    anchor: "userRepo->findByEmail"
+- id: profile_service
+  selector:
+    path: src/Services/ProfileService.php
+    anchor: "use App\\Repositories\\UserRepository"
+- id: admin_service
+  selector:
+    path: src/Services/AdminService.php
+    anchor: "use App\\Repositories\\UserRepository"
+- id: registration_service
+  selector:
+    path: src/Services/RegistrationService.php
+    anchor: "use App\\Repositories\\UserRepository"
+- id: no_cache
+  selector:
+    path: src/Helpers/CacheHelper.php
+- id: no_validation
+  selector:
+    path: src/Helpers/ValidationHelper.php
+- id: no_date
+  selector:
+    path: src/Helpers/DateHelper.php
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_032_CACHE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_032_TTL_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_032_VALID_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_032_RULES_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL3_032_DATE_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL3_032_FORMAT_F
+oracle:
+  required:
+  - auth_service
+  - auth_find_email
+  - profile_service
+  - admin_service
+  - registration_service
+  allowed: []
+  forbidden:
+  - no_cache
+  - no_validation
+  - no_date
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

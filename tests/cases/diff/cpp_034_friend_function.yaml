@@ -1,588 +1,237 @@
 name: cpp_034_friend_function
+tags:
+- lang:ruby
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:easy
 repo:
   initial_files:
-    include/math/complex.hpp: |
-      #pragma once
-      #include <cmath>
-      #include <ostream>
-      #include <istream>
-      #include <string>
-      #include <sstream>
+    lib/game/entity.rb: |
+      module Game
+        class Entity
+          attr_reader :id, :position
 
-      namespace app::math {
+          def initialize(id, x, y)
+            @id = id
+            @position = { x: x, y: y }
+          end
 
-      class Complex {
-      public:
-          Complex(double real = 0.0, double imag = 0.0)
-              : real_(real), imag_(imag) {}
+          def move_to(x, y)
+            @position = { x: x, y: y }
+          end
+        end
+      end
+    lib/game/player.rb: |
+      require_relative 'entity'
 
-          double real() const { return real_; }
-          double imag() const { return imag_; }
+      module Game
+        class Player < Entity
+          attr_reader :health, :name
 
-          double magnitude() const {
-              return std::sqrt(real_ * real_ + imag_ * imag_);
-          }
+          def initialize(id, name, x, y)
+            super(id, x, y)
+            @name = name
+            @health = 100
+          end
 
-          double phase() const {
-              return std::atan2(imag_, real_);
-          }
+          def take_damage(amount)
+            @health = [@health - amount, 0].max
+          end
 
-          Complex conjugate() const {
-              return Complex(real_, -imag_);
-          }
+          def alive?
+            @health > 0
+          end
+        end
+      end
+    lib/game/combat_system.rb: |
+      require_relative 'player'
 
-          Complex& operator+=(const Complex& other) {
-              real_ += other.real_;
-              imag_ += other.imag_;
-              return *this;
-          }
+      module Game
+        class CombatSystem
+          def resolve(attacker, defender, weapon)
+            damage = weapon[:damage]
+            defender.take_damage(damage)
+            { attacker: attacker.id, defender: defender.id, damage: damage }
+          end
+        end
+      end
+    lib/game/match_manager.rb: |
+      require_relative 'combat_system'
 
-          Complex& operator-=(const Complex& other) {
-              real_ -= other.real_;
-              imag_ -= other.imag_;
-              return *this;
-          }
+      module Game
+        class MatchManager
+          def initialize
+            @combat = CombatSystem.new
+            @log = []
+          end
 
-          friend Complex operator+(const Complex& a, const Complex& b);
-          friend Complex operator-(const Complex& a, const Complex& b);
-          friend Complex operator*(const Complex& a, const Complex& b);
-          friend Complex operator/(const Complex& a, const Complex& b);
-          friend bool operator==(const Complex& a, const Complex& b);
-          friend bool operator!=(const Complex& a, const Complex& b);
-          friend std::ostream& operator<<(std::ostream& os, const Complex& c);
-          friend std::istream& operator>>(std::istream& is, Complex& c);
-          friend Complex conjugate(const Complex& c);
-          friend double dot(const Complex& a, const Complex& b);
+          def attack(attacker, defender, weapon)
+            result = @combat.resolve(attacker, defender, weapon)
+            @log << result
+            result
+          end
+        end
+      end
+    lib/api/game_controller.rb: |
+      require_relative '../game/match_manager'
 
-      private:
-          double real_;
-          double imag_;
-      };
+      module Api
+        class GameController
+          def initialize
+            @manager = Game::MatchManager.new
+          end
 
-      class Matrix2x2 {
-      public:
-          Matrix2x2(double a = 1, double b = 0, double c = 0, double d = 1)
-              : a_(a), b_(b), c_(c), d_(d) {}
-
-          double determinant() const {
-              return a_ * d_ - b_ * c_;
-          }
-
-          friend Matrix2x2 operator*(const Matrix2x2& m1, const Matrix2x2& m2);
-          friend Matrix2x2 operator*(const Matrix2x2& m, double scalar);
-          friend Complex operator*(const Matrix2x2& m, const Complex& v);
-          friend bool operator==(const Matrix2x2& m1, const Matrix2x2& m2);
-          friend std::ostream& operator<<(std::ostream& os, const Matrix2x2& m);
-          friend Matrix2x2 transpose(const Matrix2x2& m);
-          friend Matrix2x2 inverse(const Matrix2x2& m);
-
-      private:
-          double a_, b_, c_, d_;
-      };
-
-      }
-    include/unrelated/audio_buffer.hpp: |
-      #pragma once
-      // GARBAGE_CPP_AUDIO_277_001
-      #define GARBAGE_CPP_AUDIO_SAMPLE_RATE_277_002 44100
-
-      namespace app::unrelated::audio {
-
-      // GARBAGE_CPP_AUDIO_FORMAT_277_003
-      enum class AudioFormat {
-          PCM_S16, PCM_F32, PCM_S24
-      };
-
-      // GARBAGE_CPP_AUDIO_BUFFER_277_004
-      struct AudioBuffer {
-          float* samples;
-          size_t frameCount;
-          int channels;
-          // GARBAGE_CPP_AUDIO_META_277_005
-      };
-
-      // GARBAGE_CPP_AUDIO_PROCESSOR_277_006
-      class AudioProcessor {
-      public:
-          // GARBAGE_CPP_AUDIO_GAIN_277_007
-          void applyGain(AudioBuffer& buffer, float gain) {
-              // GARBAGE_CPP_AUDIO_GAIN_IMPL_277_008
-          }
-
-          // GARBAGE_CPP_AUDIO_NORMALIZE_277_009
-          void normalize(AudioBuffer& buffer) {
-              // GARBAGE_CPP_AUDIO_NORM_IMPL_277_010
-          }
-
-          // GARBAGE_CPP_AUDIO_MIX_277_011
-          void mix(AudioBuffer& dest, const AudioBuffer& src) {
-              // GARBAGE_CPP_AUDIO_MIX_IMPL_277_012
-          }
-      };
-
-      }
-    src/unrelated/csv_parser.cpp: |
-      // GARBAGE_CPP_CSV_277_013
-      #include <string>
-      #include <vector>
-
-      namespace app::unrelated::data {
-
-      // GARBAGE_CPP_CSV_ROW_277_014
-      struct CSVRow {
-          std::vector<std::string> fields;
-          // GARBAGE_CPP_CSV_ROW_DATA_277_015
-      };
-
-      // GARBAGE_CPP_CSV_PARSER_277_016
-      class CSVParser {
-      public:
-          // GARBAGE_CPP_CSV_PARSE_277_017
-          std::vector<CSVRow> parse(const std::string& content) {
-              // GARBAGE_CPP_CSV_PARSE_IMPL_277_018
-              return {};
-          }
-
-          // GARBAGE_CPP_CSV_READ_277_019
-          std::vector<CSVRow> readFile(const std::string& path) {
-              // GARBAGE_CPP_CSV_READ_IMPL_277_020
-              return {};
-          }
-
-          // GARBAGE_CPP_CSV_WRITE_277_021
-          bool writeFile(const std::string& path, const std::vector<CSVRow>& rows) {
-              // GARBAGE_CPP_CSV_WRITE_IMPL_277_022
-              return false;
-          }
-      };
-
-      }
-    src/math_impl.cpp: |
-      #include <iostream>
-      int main() { return 0; }
+          def handle_attack(attacker, defender, weapon)
+            @manager.attack(attacker, defender, weapon)
+          end
+        end
+      end
+    garbage/leaderboard.rb: |
+      # GARBAGE_GAMECPP_A = "leaderboard_service_marker"
+    garbage/matchmaking.rb: |
+      # GARBAGE_GAMECPP_B = "matchmaking_queue_marker"
+    garbage/replay.rb: |
+      # GARBAGE_GAMECPP_C = "replay_recorder_marker"
   changed_files:
-    include/math/complex.hpp: |
-      #pragma once
-      #include <cmath>
-      #include <ostream>
-      #include <istream>
-      #include <string>
-      #include <sstream>
+    lib/game/entity.rb: |
+      module Game
+        class Entity
+          attr_reader :id, :position, :tags
 
-      namespace app::math {
+          def initialize(id, x, y)
+            @id = id
+            @position = { x: x, y: y }
+            @tags = []
+          end
 
-      class Complex {
-      public:
-          Complex(double real = 0.0, double imag = 0.0)
-              : real_(real), imag_(imag) {}
+          def move_to(x, y)
+            @position = { x: x, y: y }
+          end
 
-          double real() const { return real_; }
-          double imag() const { return imag_; }
+          def add_tag(tag)
+            @tags << tag
+          end
 
-          double magnitude() const {
-              return std::sqrt(real_ * real_ + imag_ * imag_);
-          }
+          def has_tag?(tag)
+            @tags.include?(tag)
+          end
+        end
+      end
+    lib/game/player.rb: |
+      require_relative 'entity'
 
-          double phase() const {
-              return std::atan2(imag_, real_);
-          }
+      module Game
+        class Player < Entity
+          attr_reader :health, :name, :armor
 
-          Complex conjugate() const {
-              return Complex(real_, -imag_);
-          }
+          def initialize(id, name, x, y, armor: 0)
+            super(id, x, y)
+            @name = name
+            @health = 100
+            @armor = armor
+          end
 
-          Complex& operator+=(const Complex& other) {
-              real_ += other.real_;
-              imag_ += other.imag_;
-              return *this;
-          }
+          def take_damage(amount, armor_piercing: false)
+            effective = armor_piercing ? amount : [amount - @armor, 0].max
+            @health = [@health - effective, 0].max
+          end
 
-          Complex& operator-=(const Complex& other) {
-              real_ -= other.real_;
-              imag_ -= other.imag_;
-              return *this;
-          }
+          def alive?
+            @health > 0
+          end
+        end
+      end
+    lib/game/combat_system.rb: |
+      require_relative 'player'
 
-          friend Complex operator+(const Complex& a, const Complex& b);
-          friend Complex operator-(const Complex& a, const Complex& b);
-          friend Complex operator*(const Complex& a, const Complex& b);
-          friend Complex operator/(const Complex& a, const Complex& b);
-          friend bool operator==(const Complex& a, const Complex& b);
-          friend bool operator!=(const Complex& a, const Complex& b);
-          friend std::ostream& operator<<(std::ostream& os, const Complex& c);
-          friend std::istream& operator>>(std::istream& is, Complex& c);
-          friend Complex conjugate(const Complex& c);
-          friend double dot(const Complex& a, const Complex& b);
+      module Game
+        class CombatSystem
+          def resolve(attacker, defender, weapon)
+            damage = weapon[:damage]
+            piercing = weapon.fetch(:armor_piercing, false)
+            defender.take_damage(damage, armor_piercing: piercing)
+            { attacker: attacker.id, defender: defender.id, damage: damage, piercing: piercing }
+          end
+        end
+      end
+    lib/game/match_manager.rb: |
+      require_relative 'combat_system'
 
-      private:
-          double real_;
-          double imag_;
-      };
+      module Game
+        class MatchManager
+          def initialize
+            @combat = CombatSystem.new
+            @log = []
+          end
 
-      class Matrix2x2 {
-      public:
-          Matrix2x2(double a = 1, double b = 0, double c = 0, double d = 1)
-              : a_(a), b_(b), c_(c), d_(d) {}
+          def attack(attacker, defender, weapon)
+            result = @combat.resolve(attacker, defender, weapon)
+            @log << result
+            result
+          end
+        end
+      end
+    lib/api/game_controller.rb: |
+      require_relative '../game/match_manager'
 
-          double determinant() const {
-              return a_ * d_ - b_ * c_;
-          }
+      module Api
+        class GameController
+          def initialize
+            @manager = Game::MatchManager.new
+          end
 
-          friend Matrix2x2 operator*(const Matrix2x2& m1, const Matrix2x2& m2);
-          friend Matrix2x2 operator*(const Matrix2x2& m, double scalar);
-          friend Complex operator*(const Matrix2x2& m, const Complex& v);
-          friend bool operator==(const Matrix2x2& m1, const Matrix2x2& m2);
-          friend std::ostream& operator<<(std::ostream& os, const Matrix2x2& m);
-          friend Matrix2x2 transpose(const Matrix2x2& m);
-          friend Matrix2x2 inverse(const Matrix2x2& m);
-
-      private:
-          double a_, b_, c_, d_;
-      };
-
-      }
-    include/unrelated/audio_buffer.hpp: |
-      #pragma once
-      // GARBAGE_CPP_AUDIO_277_001
-      #define GARBAGE_CPP_AUDIO_SAMPLE_RATE_277_002 44100
-
-      namespace app::unrelated::audio {
-
-      // GARBAGE_CPP_AUDIO_FORMAT_277_003
-      enum class AudioFormat {
-          PCM_S16, PCM_F32, PCM_S24
-      };
-
-      // GARBAGE_CPP_AUDIO_BUFFER_277_004
-      struct AudioBuffer {
-          float* samples;
-          size_t frameCount;
-          int channels;
-          // GARBAGE_CPP_AUDIO_META_277_005
-      };
-
-      // GARBAGE_CPP_AUDIO_PROCESSOR_277_006
-      class AudioProcessor {
-      public:
-          // GARBAGE_CPP_AUDIO_GAIN_277_007
-          void applyGain(AudioBuffer& buffer, float gain) {
-              // GARBAGE_CPP_AUDIO_GAIN_IMPL_277_008
-          }
-
-          // GARBAGE_CPP_AUDIO_NORMALIZE_277_009
-          void normalize(AudioBuffer& buffer) {
-              // GARBAGE_CPP_AUDIO_NORM_IMPL_277_010
-          }
-
-          // GARBAGE_CPP_AUDIO_MIX_277_011
-          void mix(AudioBuffer& dest, const AudioBuffer& src) {
-              // GARBAGE_CPP_AUDIO_MIX_IMPL_277_012
-          }
-      };
-
-      }
-    src/unrelated/csv_parser.cpp: |
-      // GARBAGE_CPP_CSV_277_013
-      #include <string>
-      #include <vector>
-
-      namespace app::unrelated::data {
-
-      // GARBAGE_CPP_CSV_ROW_277_014
-      struct CSVRow {
-          std::vector<std::string> fields;
-          // GARBAGE_CPP_CSV_ROW_DATA_277_015
-      };
-
-      // GARBAGE_CPP_CSV_PARSER_277_016
-      class CSVParser {
-      public:
-          // GARBAGE_CPP_CSV_PARSE_277_017
-          std::vector<CSVRow> parse(const std::string& content) {
-              // GARBAGE_CPP_CSV_PARSE_IMPL_277_018
-              return {};
-          }
-
-          // GARBAGE_CPP_CSV_READ_277_019
-          std::vector<CSVRow> readFile(const std::string& path) {
-              // GARBAGE_CPP_CSV_READ_IMPL_277_020
-              return {};
-          }
-
-          // GARBAGE_CPP_CSV_WRITE_277_021
-          bool writeFile(const std::string& path, const std::vector<CSVRow>& rows) {
-              // GARBAGE_CPP_CSV_WRITE_IMPL_277_022
-              return false;
-          }
-      };
-
-      }
-    src/math_impl.cpp: |
-      #include "math/complex.hpp"
-      #include <iostream>
-      #include <vector>
-      #include <cmath>
-
-      namespace app::math {
-
-      Complex operator+(const Complex& a, const Complex& b) {
-          return Complex(a.real_ + b.real_, a.imag_ + b.imag_);
-      }
-
-      Complex operator-(const Complex& a, const Complex& b) {
-          return Complex(a.real_ - b.real_, a.imag_ - b.imag_);
-      }
-
-      Complex operator*(const Complex& a, const Complex& b) {
-          return Complex(
-              a.real_ * b.real_ - a.imag_ * b.imag_,
-              a.real_ * b.imag_ + a.imag_ * b.real_
-          );
-      }
-
-      Complex operator/(const Complex& a, const Complex& b) {
-          double denom = b.real_ * b.real_ + b.imag_ * b.imag_;
-          return Complex(
-              (a.real_ * b.real_ + a.imag_ * b.imag_) / denom,
-              (a.imag_ * b.real_ - a.real_ * b.imag_) / denom
-          );
-      }
-
-      bool operator==(const Complex& a, const Complex& b) {
-          constexpr double epsilon = 1e-10;
-          return std::abs(a.real_ - b.real_) < epsilon &&
-                 std::abs(a.imag_ - b.imag_) < epsilon;
-      }
-
-      bool operator!=(const Complex& a, const Complex& b) {
-          return !(a == b);
-      }
-
-      std::ostream& operator<<(std::ostream& os, const Complex& c) {
-          os << c.real_;
-          if (c.imag_ >= 0) os << "+";
-          os << c.imag_ << "i";
-          return os;
-      }
-
-      std::istream& operator>>(std::istream& is, Complex& c) {
-          is >> c.real_ >> c.imag_;
-          return is;
-      }
-
-      Complex conjugate(const Complex& c) {
-          return Complex(c.real_, -c.imag_);
-      }
-
-      double dot(const Complex& a, const Complex& b) {
-          return a.real_ * b.real_ + a.imag_ * b.imag_;
-      }
-
-      Matrix2x2 operator*(const Matrix2x2& m1, const Matrix2x2& m2) {
-          return Matrix2x2(
-              m1.a_ * m2.a_ + m1.b_ * m2.c_,
-              m1.a_ * m2.b_ + m1.b_ * m2.d_,
-              m1.c_ * m2.a_ + m1.d_ * m2.c_,
-              m1.c_ * m2.b_ + m1.d_ * m2.d_
-          );
-      }
-
-      Matrix2x2 operator*(const Matrix2x2& m, double scalar) {
-          return Matrix2x2(
-              m.a_ * scalar, m.b_ * scalar,
-              m.c_ * scalar, m.d_ * scalar
-          );
-      }
-
-      Complex operator*(const Matrix2x2& m, const Complex& v) {
-          return Complex(
-              m.a_ * v.real_ + m.b_ * v.imag_,
-              m.c_ * v.real_ + m.d_ * v.imag_
-          );
-      }
-
-      bool operator==(const Matrix2x2& m1, const Matrix2x2& m2) {
-          constexpr double epsilon = 1e-10;
-          return std::abs(m1.a_ - m2.a_) < epsilon &&
-                 std::abs(m1.b_ - m2.b_) < epsilon &&
-                 std::abs(m1.c_ - m2.c_) < epsilon &&
-                 std::abs(m1.d_ - m2.d_) < epsilon;
-      }
-
-      std::ostream& operator<<(std::ostream& os, const Matrix2x2& m) {
-          os << "[[" << m.a_ << ", " << m.b_ << "], ["
-             << m.c_ << ", " << m.d_ << "]]";
-          return os;
-      }
-
-      Matrix2x2 transpose(const Matrix2x2& m) {
-          return Matrix2x2(m.a_, m.c_, m.b_, m.d_);
-      }
-
-      Matrix2x2 inverse(const Matrix2x2& m) {
-          double det = m.determinant();
-          if (std::abs(det) < 1e-10) {
-              throw std::runtime_error("Matrix is singular");
-          }
-          return Matrix2x2(m.d_ / det, -m.b_ / det, -m.c_ / det, m.a_ / det);
-      }
-
-      }
-
-      int main() {
-          using namespace app::math;
-
-          std::cout << "=== Complex Numbers ===\n";
-          Complex a(3, 4);
-          Complex b(1, -2);
-
-          std::cout << "a = " << a << "\n";
-          std::cout << "b = " << b << "\n";
-          std::cout << "a + b = " << (a + b) << "\n";
-          std::cout << "a - b = " << (a - b) << "\n";
-          std::cout << "a * b = " << (a * b) << "\n";
-          std::cout << "a / b = " << (a / b) << "\n";
-          std::cout << "|a| = " << a.magnitude() << "\n";
-          std::cout << "conj(a) = " << conjugate(a) << "\n";
-          std::cout << "dot(a, b) = " << dot(a, b) << "\n";
-          std::cout << "a == a: " << (a == a) << "\n";
-          std::cout << "a != b: " << (a != b) << "\n";
-
-          std::cout << "\n=== Matrix Operations ===\n";
-          Matrix2x2 rotation(std::cos(0.5), -std::sin(0.5),
-                            std::sin(0.5), std::cos(0.5));
-          Matrix2x2 scale(2, 0, 0, 2);
-
-          std::cout << "Rotation: " << rotation << "\n";
-          std::cout << "Scale: " << scale << "\n";
-          std::cout << "Combined: " << (rotation * scale) << "\n";
-          std::cout << "Transpose: " << transpose(rotation) << "\n";
-          std::cout << "Det: " << rotation.determinant() << "\n";
-
-          Complex point(1, 0);
-          std::cout << "\nRotating point " << point << "\n";
-          std::cout << "Result: " << (rotation * point) << "\n";
-
-          std::cout << "\n=== Inverse ===\n";
-          Matrix2x2 m(4, 7, 2, 6);
-          Matrix2x2 inv = inverse(m);
-          std::cout << "M: " << m << "\n";
-          std::cout << "M^-1: " << inv << "\n";
-          std::cout << "M * M^-1: " << (m * inv) << "\n";
-
-          return 0;
-      }
-  commit_message: Update files
+          def handle_attack(attacker, defender, weapon)
+            @manager.attack(attacker, defender, weapon)
+          end
+        end
+      end
+    garbage/leaderboard.rb: |
+      # GARBAGE_GAMECPP_A = "leaderboard_service_marker"
+    garbage/matchmaking.rb: |
+      # GARBAGE_GAMECPP_B = "matchmaking_queue_marker"
+    garbage/replay.rb: |
+      # GARBAGE_GAMECPP_C = "replay_recorder_marker"
+  commit_message: "feat: add armor_piercing to take_damage and weapon hash"
 fragments:
-- id: math_impl_file
+- id: take_damage_new_sig
   selector:
-    path: src/math_impl.cpp
-- id: req_global_0
+    path: lib/game/player.rb
+    anchor: "def take_damage(amount, armor_piercing: false)"
+- id: armor_field_added
   selector:
-    anchor: namespace app::math {
-- id: req_global_1
+    path: lib/game/player.rb
+    anchor: "attr_reader :health, :name, :armor"
+- id: combat_uses_piercing
   selector:
-    anchor: double denom = b.real_ * b.real_ + b.imag_ * b.imag_;
-- id: no_global_0
+    path: lib/game/combat_system.rb
+    anchor: "armor_piercing: piercing"
+- id: match_manager_context
   selector:
-    anchor: GARBAGE_CPP_AUDIO_277_001
-- id: no_global_1
+    path: lib/game/match_manager.rb
+    anchor: "@combat.resolve(attacker, defender, weapon)"
+- id: controller_context
   selector:
-    anchor: GARBAGE_CPP_AUDIO_BUFFER_277_004
-- id: no_global_2
+    path: lib/api/game_controller.rb
+    anchor: "@manager.attack(attacker, defender, weapon)"
+- id: no_garbage_a
   selector:
-    anchor: GARBAGE_CPP_AUDIO_FORMAT_277_003
-- id: no_global_3
+    anchor: GARBAGE_GAMECPP_A
+- id: no_garbage_b
   selector:
-    anchor: GARBAGE_CPP_AUDIO_GAIN_277_007
-- id: no_global_4
+    anchor: GARBAGE_GAMECPP_B
+- id: no_garbage_c
   selector:
-    anchor: GARBAGE_CPP_AUDIO_GAIN_IMPL_277_008
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_CPP_AUDIO_META_277_005
-- id: no_global_6
-  selector:
-    anchor: GARBAGE_CPP_AUDIO_MIX_277_011
-- id: no_global_7
-  selector:
-    anchor: GARBAGE_CPP_AUDIO_MIX_IMPL_277_012
-- id: no_global_8
-  selector:
-    anchor: GARBAGE_CPP_AUDIO_NORMALIZE_277_009
-- id: no_global_9
-  selector:
-    anchor: GARBAGE_CPP_AUDIO_NORM_IMPL_277_010
-- id: no_global_10
-  selector:
-    anchor: GARBAGE_CPP_AUDIO_PROCESSOR_277_006
-- id: no_global_11
-  selector:
-    anchor: GARBAGE_CPP_AUDIO_SAMPLE_RATE_277_002
-- id: no_global_12
-  selector:
-    anchor: GARBAGE_CPP_CSV_277_013
-- id: no_global_13
-  selector:
-    anchor: GARBAGE_CPP_CSV_PARSER_277_016
-- id: no_global_14
-  selector:
-    anchor: GARBAGE_CPP_CSV_PARSE_277_017
-- id: no_global_15
-  selector:
-    anchor: GARBAGE_CPP_CSV_PARSE_IMPL_277_018
-- id: no_global_16
-  selector:
-    anchor: GARBAGE_CPP_CSV_READ_277_019
-- id: no_global_17
-  selector:
-    anchor: GARBAGE_CPP_CSV_READ_IMPL_277_020
-- id: no_global_18
-  selector:
-    anchor: GARBAGE_CPP_CSV_ROW_277_014
-- id: no_global_19
-  selector:
-    anchor: GARBAGE_CPP_CSV_ROW_DATA_277_015
-- id: no_global_20
-  selector:
-    anchor: GARBAGE_CPP_CSV_WRITE_277_021
-- id: no_global_21
-  selector:
-    anchor: GARBAGE_CPP_CSV_WRITE_IMPL_277_022
-- id: no_global_22
-  selector:
-    anchor: audio_buffer.hpp
-- id: no_global_23
-  selector:
-    anchor: csv_parser.cpp
+    anchor: GARBAGE_GAMECPP_C
 oracle:
   required:
-  - math_impl_file
-  - req_global_0
-  - req_global_1
-  allowed: []
+  - take_damage_new_sig
+  - armor_field_added
+  - combat_uses_piercing
+  - match_manager_context
+  allowed:
+  - controller_context
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
-  - no_global_8
-  - no_global_9
-  - no_global_10
-  - no_global_11
-  - no_global_12
-  - no_global_13
-  - no_global_14
-  - no_global_15
-  - no_global_16
-  - no_global_17
-  - no_global_18
-  - no_global_19
-  - no_global_20
-  - no_global_21
-  - no_global_22
-  - no_global_23
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

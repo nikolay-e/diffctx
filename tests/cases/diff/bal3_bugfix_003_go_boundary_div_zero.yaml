@@ -1,0 +1,94 @@
+name: bal3_bugfix_003_go_boundary_div_zero
+tags:
+- lang:go
+- change:single_file
+- change:bug_fix
+- context:cross_module
+- distance:2hop
+- difficulty:medium
+repo:
+  initial_files:
+    pkg/stats/average.go: |
+      package stats
+
+      func Average(values []float64) float64 {
+          sum := 0.0
+          for _, v := range values {
+              sum += v
+          }
+          return sum / float64(len(values))
+      }
+    pkg/report/builder.go: |
+      package report
+
+      import "myapp/pkg/stats"
+
+      type Builder struct{}
+
+      func (b *Builder) Build(data []float64) float64 {
+          return stats.Average(data)
+      }
+    cmd/cli/main.go: |
+      package main
+
+      import (
+          "fmt"
+          "myapp/pkg/report"
+      )
+
+      func main() {
+          rb := &report.Builder{}
+          result := rb.Build(nil)
+          fmt.Println(result)
+      }
+    pkg/format/table.go: |
+      package format
+
+      type Table struct {
+          Headers []string
+          Rows    [][]string
+      }
+
+      func NewTable(headers []string) *Table {
+          return &Table{Headers: headers}
+      }
+  changed_files:
+    pkg/stats/average.go: |
+      package stats
+
+      func Average(values []float64) float64 {
+          if len(values) == 0 {
+              return 0
+          }
+          sum := 0.0
+          for _, v := range values {
+              sum += v
+          }
+          return sum / float64(len(values))
+      }
+  commit_message: "fix: guard against division by zero in Average"
+fragments:
+- id: div_zero_guard
+  selector:
+    path: pkg/stats/average.go
+    anchor: "if len(values) == 0"
+- id: builder_calls_avg
+  selector:
+    path: pkg/report/builder.go
+    anchor: "stats.Average(data)"
+- id: cli_calls_build
+  selector:
+    path: cmd/cli/main.go
+    anchor: "rb.Build(nil)"
+- id: no_table
+  selector:
+    path: pkg/format/table.go
+    anchor: "func NewTable"
+oracle:
+  required:
+  - div_zero_guard
+  - builder_calls_avg
+  - cli_calls_build
+  allowed: []
+  forbidden:
+  - no_table

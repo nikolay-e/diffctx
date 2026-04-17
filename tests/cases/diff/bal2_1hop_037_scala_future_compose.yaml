@@ -1,0 +1,179 @@
+name: bal2_1hop_037_scala_future_compose
+tags:
+- lang:scala
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/client/HttpClient.scala: |
+      package client
+
+      import scala.concurrent.Future
+      import scala.concurrent.ExecutionContext.Implicits.global
+
+      case class HttpResponse(status: Int, body: String)
+
+      class HttpClient(baseUrl: String) {
+        def get(path: String): Future[HttpResponse] = {
+          Future.successful(HttpResponse(200, s"GET $baseUrl$path"))
+        }
+
+        def post(path: String, payload: String): Future[HttpResponse] = {
+          Future.successful(HttpResponse(201, s"POST $baseUrl$path $payload"))
+        }
+      }
+    src/main/scala/service/UserFetcher.scala: |
+      package service
+
+      import client.{HttpClient, HttpResponse}
+      import scala.concurrent.Future
+      import scala.concurrent.ExecutionContext.Implicits.global
+
+      class UserFetcher(client: HttpClient) {
+        def fetchUser(id: String): Future[String] = {
+          client.get(s"/users/$id").map(_.body)
+        }
+
+        def fetchUsers(): Future[List[String]] = {
+          client.get("/users").map(r => r.body.split(",").toList)
+        }
+      }
+    src/main/scala/service/OrderFetcher.scala: |
+      package service
+
+      import client.{HttpClient, HttpResponse}
+      import scala.concurrent.Future
+      import scala.concurrent.ExecutionContext.Implicits.global
+
+      class OrderFetcher(client: HttpClient) {
+        def fetchOrder(id: String): Future[String] = {
+          client.get(s"/orders/$id").map(_.body)
+        }
+      }
+    src/main/scala/controller/DashboardController.scala: |
+      package controller
+
+      import service.{UserFetcher, OrderFetcher}
+      import scala.concurrent.Future
+      import scala.concurrent.ExecutionContext.Implicits.global
+
+      class DashboardController(userFetcher: UserFetcher, orderFetcher: OrderFetcher) {
+        def overview(userId: String): Future[String] = {
+          for {
+            user <- userFetcher.fetchUser(userId)
+            orders <- orderFetcher.fetchOrder(userId)
+          } yield s"$user: $orders"
+        }
+      }
+    src/main/scala/db/MigrationRunner.scala: |
+      package db
+
+      GARBAGE_037_MIGRATION_A = "migration"
+
+      class MigrationRunner {
+        def migrate(): Unit = println("migrating")
+        def rollback(): Unit = println("rolling back")
+      }
+    src/main/scala/email/Template.scala: |
+      package email
+
+      GARBAGE_037_TEMPLATE_B = "template"
+
+      class Template(name: String) {
+        def render(vars: Map[String, String]): String = name
+      }
+    src/main/scala/audit/AuditLog.scala: |
+      package audit
+
+      GARBAGE_037_AUDIT_C = "audit"
+
+      class AuditLog {
+        def record(action: String, userId: String): Unit = ()
+      }
+  changed_files:
+    src/main/scala/client/HttpClient.scala: |
+      package client
+
+      import scala.concurrent.Future
+      import scala.concurrent.ExecutionContext.Implicits.global
+
+      case class HttpResponse(status: Int, body: String)
+
+      class HttpClient(baseUrl: String) {
+        def get(path: String): Future[HttpResponse] = {
+          Future.successful(HttpResponse(200, s"GET $baseUrl$path"))
+        }
+
+        def post(path: String, payload: String): Future[HttpResponse] = {
+          Future.successful(HttpResponse(201, s"POST $baseUrl$path $payload"))
+        }
+
+        def getWithRetry(path: String, maxRetries: Int = 3): Future[HttpResponse] = {
+          def attempt(remaining: Int): Future[HttpResponse] = {
+            get(path).recoverWith {
+              case _ if remaining > 0 => attempt(remaining - 1)
+            }
+          }
+          attempt(maxRetries)
+        }
+      }
+  commit_message: "fix: add retry logic to HttpClient for transient failures"
+fragments:
+- id: get_with_retry
+  selector:
+    path: src/main/scala/client/HttpClient.scala
+    anchor: "def getWithRetry"
+- id: retry_attempt
+  selector:
+    path: src/main/scala/client/HttpClient.scala
+    anchor: "def attempt(remaining: Int)"
+- id: user_fetcher_calls_get
+  selector:
+    path: src/main/scala/service/UserFetcher.scala
+    anchor: "client.get(s\"/users/$id\")"
+- id: order_fetcher_calls_get
+  selector:
+    path: src/main/scala/service/OrderFetcher.scala
+    anchor: "client.get(s\"/orders/$id\")"
+- id: dashboard_uses_fetchers
+  selector:
+    path: src/main/scala/controller/DashboardController.scala
+    anchor: "userFetcher: UserFetcher, orderFetcher: OrderFetcher"
+- id: unrelated_migration
+  selector:
+    path: src/main/scala/db/MigrationRunner.scala
+    anchor: "class MigrationRunner"
+- id: unrelated_template
+  selector:
+    path: src/main/scala/email/Template.scala
+    anchor: "class Template"
+- id: unrelated_audit
+  selector:
+    path: src/main/scala/audit/AuditLog.scala
+    anchor: "class AuditLog"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_037_MIGRATION_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_037_TEMPLATE_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_037_AUDIT_C
+oracle:
+  required:
+  - get_with_retry
+  - retry_attempt
+  - user_fetcher_calls_get
+  - order_fetcher_calls_get
+  allowed:
+  - dashboard_uses_fetchers
+  forbidden:
+  - unrelated_migration
+  - unrelated_template
+  - unrelated_audit
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

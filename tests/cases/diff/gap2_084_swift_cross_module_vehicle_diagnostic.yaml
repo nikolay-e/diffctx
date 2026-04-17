@@ -1,0 +1,233 @@
+name: gap2_084_swift_cross_module_vehicle_diagnostic
+tags:
+- lang:typescript
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/search/index.ts: |
+      import { SearchAdapter } from './adapter';
+      import { SearchQuery, SearchResult } from './types';
+
+      export class SearchIndex {
+          constructor(private adapter: SearchAdapter) {}
+
+          async search(query: SearchQuery): Promise<SearchResult[]> {
+              return this.adapter.query(query);
+          }
+
+          async index(docId: string, content: Record<string, unknown>): Promise<void> {
+              await this.adapter.put(docId, content);
+          }
+      }
+    src/search/adapter.ts: |
+      import { SearchQuery, SearchResult } from './types';
+
+      export interface SearchAdapter {
+          query(q: SearchQuery): Promise<SearchResult[]>;
+          put(id: string, doc: Record<string, unknown>): Promise<void>;
+      }
+
+      export class ElasticAdapter implements SearchAdapter {
+          constructor(private baseUrl: string) {}
+
+          async query(q: SearchQuery): Promise<SearchResult[]> {
+              const resp = await fetch(`${this.baseUrl}/search?q=${q.term}`);
+              return resp.json() as Promise<SearchResult[]>;
+          }
+
+          async put(id: string, doc: Record<string, unknown>): Promise<void> {
+              await fetch(`${this.baseUrl}/docs/${id}`, {
+                  method: 'PUT',
+                  body: JSON.stringify(doc),
+              });
+          }
+      }
+    src/search/types.ts: |
+      export interface SearchQuery {
+          term: string;
+      }
+
+      export interface SearchResult {
+          id: string;
+          score: number;
+          content: Record<string, unknown>;
+      }
+    src/catalog/product_search.ts: |
+      import { SearchIndex } from '../search/index';
+      import { SearchQuery } from '../search/types';
+
+      export class ProductSearch {
+          constructor(private index: SearchIndex) {}
+
+          async findProducts(term: string) {
+              const query: SearchQuery = { term };
+              return this.index.search(query);
+          }
+      }
+    src/warehouse/stock.ts: |
+      export const GARBAGE_GAP084_A = 'stock_service_v1';
+
+      export class StockService {
+          available(sku: string): number { return 0; }
+      }
+    src/pricing/price_engine.ts: |
+      export const GARBAGE_GAP084_B = 'price_engine_v2';
+      export const GARBAGE_GAP084_C = 0.2;
+
+      export class PriceEngine {
+          calculate(base: number, tax: number): number { return base * (1 + tax); }
+      }
+    src/recommendations/engine.ts: |
+      export const GARBAGE_GAP084_D = 'recommendation_engine';
+
+      export class RecommendationEngine {
+          suggest(userId: string): string[] { return []; }
+      }
+  changed_files:
+    src/search/index.ts: |
+      import { SearchAdapter } from './adapter';
+      import { SearchQuery, SearchResult, SearchOptions } from './types';
+
+      export class SearchIndex {
+          constructor(private adapter: SearchAdapter) {}
+
+          async search(query: SearchQuery, options?: SearchOptions): Promise<SearchResult[]> {
+              const results = await this.adapter.query(query, options);
+              if (options?.sortBy === 'score') {
+                  return results.sort((a, b) => b.score - a.score);
+              }
+              return results;
+          }
+
+          async index(docId: string, content: Record<string, unknown>): Promise<void> {
+              await this.adapter.put(docId, content);
+          }
+      }
+    src/search/adapter.ts: |
+      import { SearchQuery, SearchResult, SearchOptions } from './types';
+
+      export interface SearchAdapter {
+          query(q: SearchQuery, options?: SearchOptions): Promise<SearchResult[]>;
+          put(id: string, doc: Record<string, unknown>): Promise<void>;
+      }
+
+      export class ElasticAdapter implements SearchAdapter {
+          constructor(private baseUrl: string) {}
+
+          async query(q: SearchQuery, options?: SearchOptions): Promise<SearchResult[]> {
+              const limit = options?.limit ?? 10;
+              const resp = await fetch(`${this.baseUrl}/search?q=${q.term}&size=${limit}`);
+              return resp.json() as Promise<SearchResult[]>;
+          }
+
+          async put(id: string, doc: Record<string, unknown>): Promise<void> {
+              await fetch(`${this.baseUrl}/docs/${id}`, {
+                  method: 'PUT',
+                  body: JSON.stringify(doc),
+              });
+          }
+      }
+    src/search/types.ts: |
+      export interface SearchQuery {
+          term: string;
+      }
+
+      export interface SearchOptions {
+          limit?: number;
+          sortBy?: 'score' | 'date';
+      }
+
+      export interface SearchResult {
+          id: string;
+          score: number;
+          content: Record<string, unknown>;
+      }
+    src/catalog/product_search.ts: |
+      import { SearchIndex } from '../search/index';
+      import { SearchQuery, SearchOptions } from '../search/types';
+
+      export class ProductSearch {
+          constructor(private index: SearchIndex) {}
+
+          async findProducts(term: string, options?: SearchOptions) {
+              const query: SearchQuery = { term };
+              return this.index.search(query, options);
+          }
+      }
+    src/warehouse/stock.ts: |
+      export const GARBAGE_GAP084_A = 'stock_service_v1';
+
+      export class StockService {
+          available(sku: string): number { return 0; }
+      }
+    src/pricing/price_engine.ts: |
+      export const GARBAGE_GAP084_B = 'price_engine_v2';
+      export const GARBAGE_GAP084_C = 0.2;
+
+      export class PriceEngine {
+          calculate(base: number, tax: number): number { return base * (1 + tax); }
+      }
+    src/recommendations/engine.ts: |
+      export const GARBAGE_GAP084_D = 'recommendation_engine';
+
+      export class RecommendationEngine {
+          suggest(userId: string): string[] { return []; }
+      }
+  commit_message: "refactor: add SearchOptions parameter to search pipeline"
+fragments:
+- id: search_options_type
+  selector:
+    path: src/search/types.ts
+    anchor: "export interface SearchOptions"
+- id: adapter_query_signature
+  selector:
+    path: src/search/adapter.ts
+    anchor: "query(q: SearchQuery, options?: SearchOptions)"
+- id: index_search_options
+  selector:
+    path: src/search/index.ts
+    anchor: "async search(query: SearchQuery, options?: SearchOptions)"
+- id: product_search_options
+  selector:
+    path: src/catalog/product_search.ts
+    anchor: "async findProducts(term: string, options?: SearchOptions)"
+- id: no_stock
+  selector:
+    path: src/warehouse/stock.ts
+- id: no_price_engine
+  selector:
+    path: src/pricing/price_engine.ts
+- id: no_recommendations
+  selector:
+    path: src/recommendations/engine.ts
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP084_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GAP084_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GAP084_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GAP084_D
+oracle:
+  required:
+  - search_options_type
+  - adapter_query_signature
+  - index_search_options
+  - product_search_options
+  allowed: []
+  forbidden:
+  - no_stock
+  - no_price_engine
+  - no_recommendations
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

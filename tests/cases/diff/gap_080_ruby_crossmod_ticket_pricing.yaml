@@ -1,0 +1,323 @@
+name: gap_080_ruby_crossmod_ticket_pricing
+tags:
+- change:new_function
+- change:single_file
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+- lang:ruby
+repo:
+  initial_files:
+    lib/tickets/venue.rb: |
+      module Tickets
+        class Venue
+          attr_reader :name, :capacity
+
+          def initialize(name, capacity)
+            @name = name
+            @capacity = capacity
+            @sections = {}
+          end
+
+          def add_section(name, seats)
+            @sections[name] = seats
+          end
+
+          def section_seats(name)
+            @sections[name] || 0
+          end
+
+          def total_seats
+            @sections.values.sum
+          end
+
+          def sections
+            @sections.keys
+          end
+        end
+      end
+    lib/tickets/event.rb: |
+      require_relative 'venue'
+
+      module Tickets
+        class Event
+          attr_reader :title, :venue, :base_price
+
+          def initialize(title, venue, base_price)
+            @title = title
+            @venue = venue
+            @base_price = base_price
+            @sold = Hash.new(0)
+          end
+
+          def sell(section, count = 1)
+            @sold[section] += count
+          end
+
+          def sold_count(section)
+            @sold[section]
+          end
+
+          def remaining(section)
+            @venue.section_seats(section) - @sold[section]
+          end
+
+          def total_sold
+            @sold.values.sum
+          end
+        end
+      end
+    lib/tickets/pricer.rb: |
+      require_relative 'event'
+
+      module Tickets
+        class Pricer
+          SECTION_MULTIPLIERS = { 'vip' => 3.0, 'floor' => 2.0, 'balcony' => 1.0 }
+
+          def initialize(event)
+            @event = event
+          end
+
+          def price_for(section)
+            multiplier = SECTION_MULTIPLIERS.fetch(section, 1.0)
+            @event.base_price * multiplier
+          end
+        end
+      end
+    lib/tickets/receipt.rb: |
+      TRAP_GAP080_RECEIPT_A = "ticket_receipt"
+      TRAP_GAP080_CURRENCY_B = "USD"
+
+      module Tickets
+        class Receipt
+          def initialize(event_title, section, quantity, unit_price)
+            @event_title = event_title
+            @section = section
+            @quantity = quantity
+            @unit_price = unit_price
+          end
+
+          def total
+            @quantity * @unit_price
+          end
+
+          def to_s
+            "#{@event_title} - #{@section} x#{@quantity} = $#{'%.2f' % total}"
+          end
+        end
+      end
+    lib/tickets/scanner.rb: |
+      TRAP_GAP080_SCANNER_C = "barcode_scanner"
+      TRAP_GAP080_FORMAT_D = "qr"
+
+      module Tickets
+        class Scanner
+          def initialize
+            @scanned = []
+          end
+
+          def scan(barcode)
+            @scanned << barcode
+            barcode.length > 0
+          end
+
+          def history
+            @scanned.dup
+          end
+
+          def scan_count
+            @scanned.length
+          end
+        end
+      end
+  changed_files:
+    lib/tickets/venue.rb: |
+      module Tickets
+        class Venue
+          attr_reader :name, :capacity
+
+          def initialize(name, capacity)
+            @name = name
+            @capacity = capacity
+            @sections = {}
+          end
+
+          def add_section(name, seats)
+            @sections[name] = seats
+          end
+
+          def section_seats(name)
+            @sections[name] || 0
+          end
+
+          def total_seats
+            @sections.values.sum
+          end
+
+          def sections
+            @sections.keys
+          end
+        end
+      end
+    lib/tickets/event.rb: |
+      require_relative 'venue'
+
+      module Tickets
+        class Event
+          attr_reader :title, :venue, :base_price
+
+          def initialize(title, venue, base_price)
+            @title = title
+            @venue = venue
+            @base_price = base_price
+            @sold = Hash.new(0)
+          end
+
+          def sell(section, count = 1)
+            @sold[section] += count
+          end
+
+          def sold_count(section)
+            @sold[section]
+          end
+
+          def remaining(section)
+            @venue.section_seats(section) - @sold[section]
+          end
+
+          def total_sold
+            @sold.values.sum
+          end
+        end
+      end
+    lib/tickets/pricer.rb: |
+      require_relative 'event'
+
+      module Tickets
+        class Pricer
+          SECTION_MULTIPLIERS = { 'vip' => 3.0, 'floor' => 2.0, 'balcony' => 1.0 }
+          SURGE_THRESHOLD = 0.8
+
+          def initialize(event)
+            @event = event
+          end
+
+          def price_for(section)
+            multiplier = SECTION_MULTIPLIERS.fetch(section, 1.0)
+            @event.base_price * multiplier
+          end
+
+          def dynamic_price(section)
+            base = price_for(section)
+            capacity = @event.venue.section_seats(section)
+            return base if capacity == 0
+            fill_ratio = @event.sold_count(section).to_f / capacity
+            fill_ratio >= SURGE_THRESHOLD ? base * 1.5 : base
+          end
+
+          def revenue_estimate
+            @event.venue.sections.sum do |section|
+              seats = @event.venue.section_seats(section)
+              price_for(section) * seats
+            end
+          end
+        end
+      end
+    lib/tickets/receipt.rb: |
+      TRAP_GAP080_RECEIPT_A = "ticket_receipt"
+      TRAP_GAP080_CURRENCY_B = "USD"
+
+      module Tickets
+        class Receipt
+          def initialize(event_title, section, quantity, unit_price)
+            @event_title = event_title
+            @section = section
+            @quantity = quantity
+            @unit_price = unit_price
+          end
+
+          def total
+            @quantity * @unit_price
+          end
+
+          def to_s
+            "#{@event_title} - #{@section} x#{@quantity} = $#{'%.2f' % total}"
+          end
+        end
+      end
+    lib/tickets/scanner.rb: |
+      TRAP_GAP080_SCANNER_C = "barcode_scanner"
+      TRAP_GAP080_FORMAT_D = "qr"
+
+      module Tickets
+        class Scanner
+          def initialize
+            @scanned = []
+          end
+
+          def scan(barcode)
+            @scanned << barcode
+            barcode.length > 0
+          end
+
+          def history
+            @scanned.dup
+          end
+
+          def scan_count
+            @scanned.length
+          end
+        end
+      end
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: pricer_dynamic
+  selector:
+    path: lib/tickets/pricer.rb
+    anchor: 'def dynamic_price(section)'
+- id: pricer_revenue
+  selector:
+    path: lib/tickets/pricer.rb
+    anchor: 'def revenue_estimate'
+- id: event_sold_count
+  selector:
+    path: lib/tickets/event.rb
+    anchor: 'def sold_count(section)'
+- id: venue_section_seats
+  selector:
+    path: lib/tickets/venue.rb
+    anchor: 'def section_seats(name)'
+- id: no_receipt
+  selector:
+    path: lib/tickets/receipt.rb
+- id: no_scanner
+  selector:
+    path: lib/tickets/scanner.rb
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP080_RECEIPT_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP080_CURRENCY_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP080_SCANNER_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP080_FORMAT_D
+oracle:
+  required:
+  - pricer_dynamic
+  - pricer_revenue
+  - event_sold_count
+  - venue_section_seats
+  allowed: []
+  forbidden:
+  - no_receipt
+  - no_scanner
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

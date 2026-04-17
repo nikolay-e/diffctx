@@ -1,0 +1,96 @@
+name: gap2_145_jspy_multifile_new_func_recipe_converter
+tags:
+- change:multi_file
+- change:new_function
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:javascript
+- lang:python
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    backend/converter.py: |
+      class UnitConverter:
+          GRAM_PER_OZ = 28.3495
+
+          def oz_to_grams(self, oz: float) -> float:
+              return round(oz * self.GRAM_PER_OZ, 1)
+
+          def grams_to_oz(self, grams: float) -> float:
+              return round(grams / self.GRAM_PER_OZ, 2)
+    frontend/recipe.js: |
+      function scaleIngredient(amount, factor) {
+        return Math.round(amount * factor * 100) / 100;
+      }
+
+      function formatIngredient(name, amount, unit) {
+        return `${amount} ${unit} ${name}`;
+      }
+    backend/nutrition.py: |
+      CALORIES_PER_GRAM_FAT = 9
+      CALORIES_PER_GRAM_CARB = 4
+
+      class NutritionCalculator:
+          def total_calories(self, fat_g: float, carb_g: float, protein_g: float) -> float:
+              return fat_g * CALORIES_PER_GRAM_FAT + (carb_g + protein_g) * CALORIES_PER_GRAM_CARB
+  changed_files:
+    backend/converter.py: |
+      class UnitConverter:
+          GRAM_PER_OZ = 28.3495
+          ML_PER_CUP = 236.588
+
+          def oz_to_grams(self, oz: float) -> float:
+              return round(oz * self.GRAM_PER_OZ, 1)
+
+          def grams_to_oz(self, grams: float) -> float:
+              return round(grams / self.GRAM_PER_OZ, 2)
+
+          def cups_to_ml(self, cups: float) -> float:
+              return round(cups * self.ML_PER_CUP, 1)
+    frontend/recipe.js: |
+      function scaleIngredient(amount, factor) {
+        return Math.round(amount * factor * 100) / 100;
+      }
+
+      function formatIngredient(name, amount, unit) {
+        return `${amount} ${unit} ${name}`;
+      }
+
+      function convertServings(ingredients, originalServings, targetServings) {
+        const factor = targetServings / originalServings;
+        return ingredients.map((ing) => ({
+          ...ing,
+          amount: scaleIngredient(ing.amount, factor),
+        }));
+      }
+  commit_message: "feat: add volume conversion and serving scaler"
+fragments:
+- id: converter_cups_to_ml
+  selector:
+    path: backend/converter.py
+    anchor: "def cups_to_ml(self, cups: float) -> float:"
+- id: converter_ml_const
+  selector:
+    path: backend/converter.py
+    anchor: "ML_PER_CUP = 236.588"
+- id: recipe_convert_servings
+  selector:
+    path: frontend/recipe.js
+    anchor: "function convertServings"
+- id: no_nutrition
+  selector:
+    path: backend/nutrition.py
+- id: no_calories_fat
+  selector:
+    anchor: CALORIES_PER_GRAM_FAT
+oracle:
+  required:
+  - converter_cups_to_ml
+  - converter_ml_const
+  - recipe_convert_servings
+  allowed: []
+  forbidden:
+  - no_nutrition
+  - no_calories_fat

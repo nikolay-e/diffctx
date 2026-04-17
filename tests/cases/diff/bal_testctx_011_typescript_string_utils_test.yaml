@@ -1,0 +1,90 @@
+name: bal_testctx_011_typescript_string_utils_test
+tags:
+- lang:typescript
+- change:single_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/stringUtils.ts: |
+      export function capitalize(str: string): string {
+        return str.charAt(0).toUpperCase() + str.slice(1);
+      }
+
+      export function truncate(str: string, maxLen: number): string {
+        if (str.length <= maxLen) return str;
+        return str.slice(0, maxLen) + '...';
+      }
+    __tests__/stringUtils.test.ts: |
+      import { capitalize, truncate } from '../src/stringUtils';
+
+      describe('stringUtils', () => {
+        test('capitalize uppercases first letter', () => {
+          expect(capitalize('hello')).toBe('Hello');
+        });
+
+        test('truncate shortens long strings', () => {
+          expect(truncate('hello world', 5)).toBe('hello...');
+        });
+
+        test('truncate keeps short strings intact', () => {
+          expect(truncate('hi', 10)).toBe('hi');
+        });
+      });
+    src/arrayUtils.ts: |
+      export function unique<T>(items: T[]): T[] {
+        return [...new Set(items)];
+      }
+
+      export function chunk<T>(items: T[], size: number): T[][] {
+        const result: T[][] = [];
+        for (let i = 0; i < items.length; i += size) {
+          result.push(items.slice(i, i + size));
+        }
+        return result;
+      }
+  changed_files:
+    src/stringUtils.ts: |
+      export function capitalize(str: string): string {
+        return str.charAt(0).toUpperCase() + str.slice(1);
+      }
+
+      export function truncate(str: string, maxLen: number): string {
+        if (str.length <= maxLen) return str;
+        return str.slice(0, maxLen) + '...';
+      }
+
+      export function slugify(str: string): string {
+        return str
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '');
+      }
+  commit_message: "feat: add slugify function to string utils"
+fragments:
+- id: slugify_fn
+  selector:
+    path: src/stringUtils.ts
+    anchor: "export function slugify"
+- id: test_imports_string
+  selector:
+    path: __tests__/stringUtils.test.ts
+    anchor: "import { capitalize, truncate } from"
+- id: test_capitalize
+  selector:
+    path: __tests__/stringUtils.test.ts
+    anchor: "test('capitalize uppercases first letter'"
+- id: no_array_utils
+  selector:
+    path: src/arrayUtils.ts
+    anchor: "export function unique"
+oracle:
+  required:
+  - slugify_fn
+  - test_imports_string
+  allowed:
+  - test_capitalize
+  forbidden:
+  - no_array_utils

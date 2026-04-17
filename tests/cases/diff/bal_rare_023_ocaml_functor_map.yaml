@@ -1,0 +1,209 @@
+name: bal_rare_023_ocaml_functor_map
+tags:
+- lang:ocaml
+- change:multi_file
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    lib/ordered.ml: |
+      module type ORDERED = sig
+        type t
+        val compare : t -> t -> int
+      end
+
+      module IntOrd : ORDERED with type t = int = struct
+        type t = int
+        let compare = compare
+      end
+
+      module StringOrd : ORDERED with type t = string = struct
+        type t = string
+        let compare = String.compare
+      end
+    lib/sorted_set.ml: |
+      open Ordered
+
+      module Make (Ord : ORDERED) = struct
+        type t = Ord.t list
+
+        let empty = []
+
+        let rec insert x = function
+          | [] -> [x]
+          | h :: t as l ->
+            let c = Ord.compare x h in
+            if c < 0 then x :: l
+            else if c = 0 then l
+            else h :: insert x t
+
+        let mem x l =
+          List.exists (fun e -> Ord.compare x e = 0) l
+
+        let to_list s = s
+      end
+    lib/main.ml: |
+      open Ordered
+      open Sorted_set
+
+      module IntSet = Make(IntOrd)
+
+      let () =
+        let s = IntSet.empty in
+        let s = IntSet.insert 3 s in
+        let s = IntSet.insert 1 s in
+        let s = IntSet.insert 2 s in
+        List.iter (Printf.printf "%d ") (IntSet.to_list s);
+        print_newline ()
+    garbage_json.ml: |
+      let garbage_rare_023_null_a = "null"
+      let garbage_rare_023_indent_b = 2
+
+      let garbage_parse_json () =
+        garbage_rare_023_null_a
+
+      let garbage_rare_023_escape_c = true
+    garbage_csv.ml: |
+      let garbage_rare_023_delim_d = ","
+      let garbage_rare_023_quote_e = "\""
+
+      let garbage_parse_csv () =
+        garbage_rare_023_delim_d
+
+      let garbage_rare_023_header_f = true
+  changed_files:
+    lib/ordered.ml: |
+      module type ORDERED = sig
+        type t
+        val compare : t -> t -> int
+        val to_string : t -> string
+      end
+
+      module IntOrd : ORDERED with type t = int = struct
+        type t = int
+        let compare = compare
+        let to_string = string_of_int
+      end
+
+      module StringOrd : ORDERED with type t = string = struct
+        type t = string
+        let compare = String.compare
+        let to_string s = "\"" ^ s ^ "\""
+      end
+    lib/sorted_set.ml: |
+      open Ordered
+
+      module Make (Ord : ORDERED) = struct
+        type t = Ord.t list
+
+        let empty = []
+
+        let rec insert x = function
+          | [] -> [x]
+          | h :: t as l ->
+            let c = Ord.compare x h in
+            if c < 0 then x :: l
+            else if c = 0 then l
+            else h :: insert x t
+
+        let mem x l =
+          List.exists (fun e -> Ord.compare x e = 0) l
+
+        let to_list s = s
+
+        let to_string_list s =
+          List.map Ord.to_string s
+      end
+    lib/main.ml: |
+      open Ordered
+      open Sorted_set
+
+      module IntSet = Make(IntOrd)
+
+      let () =
+        let s = IntSet.empty in
+        let s = IntSet.insert 3 s in
+        let s = IntSet.insert 1 s in
+        let s = IntSet.insert 2 s in
+        List.iter (Printf.printf "%d ") (IntSet.to_list s);
+        print_newline ()
+    garbage_json.ml: |
+      let garbage_rare_023_null_a = "null"
+      let garbage_rare_023_indent_b = 2
+
+      let garbage_parse_json () =
+        garbage_rare_023_null_a
+
+      let garbage_rare_023_escape_c = true
+    garbage_csv.ml: |
+      let garbage_rare_023_delim_d = ","
+      let garbage_rare_023_quote_e = "\""
+
+      let garbage_parse_csv () =
+        garbage_rare_023_delim_d
+
+      let garbage_rare_023_header_f = true
+  commit_message: "feat: add to_string to ORDERED signature and sorted set"
+fragments:
+- id: ordered_to_string_sig
+  selector:
+    path: lib/ordered.ml
+    anchor: "val to_string : t -> string"
+- id: int_to_string_impl
+  selector:
+    path: lib/ordered.ml
+    anchor: "let to_string = string_of_int"
+- id: string_to_string_impl
+  selector:
+    path: lib/ordered.ml
+    anchor: 'let to_string s = "\\"" ^ s'
+- id: set_to_string_list
+  selector:
+    path: lib/sorted_set.ml
+    anchor: "let to_string_list"
+- id: no_main
+  selector:
+    path: lib/main.ml
+- id: no_garbage_json
+  selector:
+    path: garbage_json.ml
+- id: no_garbage_csv
+  selector:
+    path: garbage_csv.ml
+- id: no_global_0
+  selector:
+    anchor: garbage_rare_023_null_a
+- id: no_global_1
+  selector:
+    anchor: garbage_rare_023_indent_b
+- id: no_global_2
+  selector:
+    anchor: garbage_rare_023_escape_c
+- id: no_global_3
+  selector:
+    anchor: garbage_rare_023_delim_d
+- id: no_global_4
+  selector:
+    anchor: garbage_rare_023_quote_e
+- id: no_global_5
+  selector:
+    anchor: garbage_rare_023_header_f
+oracle:
+  required:
+  - ordered_to_string_sig
+  - int_to_string_impl
+  - string_to_string_impl
+  - set_to_string_list
+  allowed: []
+  forbidden:
+  - no_main
+  - no_garbage_json
+  - no_garbage_csv
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

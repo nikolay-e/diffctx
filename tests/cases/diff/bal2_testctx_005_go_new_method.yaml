@@ -1,0 +1,181 @@
+name: bal2_testctx_005_go_new_method
+tags:
+- lang:go
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    pkg/stack/stack.go: |
+      package stack
+
+      type Stack struct {
+          items []int
+      }
+
+      func NewStack() *Stack {
+          return &Stack{}
+      }
+
+      func (s *Stack) Push(val int) {
+          s.items = append(s.items, val)
+      }
+
+      func (s *Stack) Pop() (int, bool) {
+          if len(s.items) == 0 {
+              return 0, false
+          }
+          val := s.items[len(s.items)-1]
+          s.items = s.items[:len(s.items)-1]
+          return val, true
+      }
+    pkg/stack/stack_test.go: |
+      package stack
+
+      import "testing"
+
+      func TestPushPop(t *testing.T) {
+          s := NewStack()
+          s.Push(42)
+          val, ok := s.Pop()
+          if !ok || val != 42 {
+              t.Fatal("expected 42")
+          }
+      }
+    pkg/queue/queue.go: |
+      package queue
+
+      GARBAGE_BAL2_005_QUEUE_A = "queue"
+      GARBAGE_BAL2_005_QUEUE_MARKER_B = true
+
+      type Queue struct {
+          items []int
+      }
+
+      func (q *Queue) Enqueue(val int) {
+          q.items = append(q.items, val)
+      }
+    pkg/linkedlist/list.go: |
+      package linkedlist
+
+      GARBAGE_BAL2_005_LIST_C = "linkedlist"
+
+      type Node struct {
+          Val  int
+          Next *Node
+      }
+  changed_files:
+    pkg/stack/stack.go: |
+      package stack
+
+      type Stack struct {
+          items []int
+      }
+
+      func NewStack() *Stack {
+          return &Stack{}
+      }
+
+      func (s *Stack) Push(val int) {
+          s.items = append(s.items, val)
+      }
+
+      func (s *Stack) Pop() (int, bool) {
+          if len(s.items) == 0 {
+              return 0, false
+          }
+          val := s.items[len(s.items)-1]
+          s.items = s.items[:len(s.items)-1]
+          return val, true
+      }
+
+      func (s *Stack) Peek() (int, bool) {
+          if len(s.items) == 0 {
+              return 0, false
+          }
+          return s.items[len(s.items)-1], true
+      }
+    pkg/stack/stack_test.go: |
+      package stack
+
+      import "testing"
+
+      func TestPushPop(t *testing.T) {
+          s := NewStack()
+          s.Push(42)
+          val, ok := s.Pop()
+          if !ok || val != 42 {
+              t.Fatal("expected 42")
+          }
+      }
+
+      func TestPeek(t *testing.T) {
+          s := NewStack()
+          s.Push(10)
+          val, ok := s.Peek()
+          if !ok || val != 10 {
+              t.Fatal("expected 10")
+          }
+          if len(s.items) != 1 {
+              t.Fatal("peek should not remove element")
+          }
+      }
+    pkg/queue/queue.go: |
+      package queue
+
+      GARBAGE_BAL2_005_QUEUE_A = "queue"
+      GARBAGE_BAL2_005_QUEUE_MARKER_B = true
+
+      type Queue struct {
+          items []int
+      }
+
+      func (q *Queue) Enqueue(val int) {
+          q.items = append(q.items, val)
+      }
+    pkg/linkedlist/list.go: |
+      package linkedlist
+
+      GARBAGE_BAL2_005_LIST_C = "linkedlist"
+
+      type Node struct {
+          Val  int
+          Next *Node
+      }
+  commit_message: "Add Peek method to Stack"
+fragments:
+- id: stack_peek
+  selector:
+    path: pkg/stack/stack.go
+    anchor: "func (s *Stack) Peek()"
+- id: stack_test_peek
+  selector:
+    path: pkg/stack/stack_test.go
+    anchor: "func TestPeek"
+- id: no_queue
+  selector:
+    path: pkg/queue/queue.go
+- id: no_linkedlist
+  selector:
+    path: pkg/linkedlist/list.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL2_005_QUEUE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL2_005_QUEUE_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL2_005_LIST_C
+oracle:
+  required:
+  - stack_peek
+  - stack_test_peek
+  allowed: []
+  forbidden:
+  - no_queue
+  - no_linkedlist
+  - no_global_0
+  - no_global_1
+  - no_global_2

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import random
+import statistics
 import subprocess
 import sys
 import time
@@ -23,6 +24,7 @@ from common import (
     warm_cache,
     worker_dir,
 )
+from stats import bootstrap_ci
 
 REPOS_DIR = repos_dir("CB_REPOS_DIR", suffix_var="CONTEXTBENCH_REPOS_SUFFIX")
 
@@ -103,6 +105,79 @@ def run_baseline_patch_files(repo_dir: Path, budget: int = 8000) -> dict | None:
     return _pack_files_to_fragments(repo_dir, r.stdout.strip().splitlines(), budget)
 
 
+def run_baseline_bm25(repo_dir: Path, budget: int = 8000) -> dict | None:
+    import re
+
+    try:
+        from rank_bm25 import BM25Okapi
+    except ImportError:
+        print("ERROR: rank_bm25 not installed. Run: pip install rank-bm25", file=sys.stderr)
+        sys.exit(1)
+
+    ls_result = subprocess.run(
+        ["git", "-C", str(repo_dir), "ls-files"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    all_files = [f for f in ls_result.stdout.strip().splitlines() if f]
+    if not all_files:
+        return _pack_files_to_fragments(repo_dir, [], budget)
+
+    diff_result = subprocess.run(
+        ["git", "-C", str(repo_dir), "diff", "HEAD~1..HEAD"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    added_lines = []
+    for line in diff_result.stdout.splitlines():
+        if line.startswith("+") and not line.startswith("+++"):
+            added_lines.append(line[1:])
+
+    query_tokens = re.findall(r"[A-Za-z_]\w+", " ".join(added_lines).lower())
+    if not query_tokens:
+        return _pack_files_to_fragments(repo_dir, [], budget)
+
+    corpus_tokens: list[list[str]] = []
+    valid_files: list[str] = []
+    for rel_path in all_files:
+        full = repo_dir / rel_path
+        if not full.is_file():
+            continue
+        try:
+            text = full.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        tokens = re.findall(r"[A-Za-z_]\w+", text.lower())
+        if not tokens:
+            continue
+        corpus_tokens.append(tokens)
+        valid_files.append(rel_path)
+
+    if not corpus_tokens:
+        return _pack_files_to_fragments(repo_dir, [], budget)
+
+    bm25 = BM25Okapi(corpus_tokens)
+    scores = bm25.get_scores(query_tokens)
+    ranked_indices = sorted(range(len(valid_files)), key=lambda i: scores[i], reverse=True)
+    ranked_files = [valid_files[i] for i in ranked_indices if scores[i] > 0]
+
+    return _pack_files_to_fragments(repo_dir, ranked_files, budget)
+
+
+def _get_diffctx_config() -> dict:
+    from treemapper.diffctx.config.limits import UTILITY as _UTILITY
+    from treemapper.diffctx.filtering import _LOW_RELEVANCE_THRESHOLD, _MAX_CONTEXT_FRAGMENTS_PER_FILE
+
+    return {
+        "low_relevance_threshold": _LOW_RELEVANCE_THRESHOLD,
+        "proximity_decay": _UTILITY.proximity_decay,
+        "peripheral_cap": _UTILITY.peripheral_cap,
+        "max_context_frags_per_file": _MAX_CONTEXT_FRAGMENTS_PER_FILE,
+    }
+
+
 def extract_selected_files(output: dict) -> set[str]:
     return {f["path"] for f in output.get("fragments", [])}
 
@@ -177,6 +252,8 @@ def evaluate_instance(
         t0 = time.time()
         if baseline == "patch_files":
             output = run_baseline_patch_files(repo_dir, budget)
+        elif baseline == "bm25":
+            output = run_baseline_bm25(repo_dir, budget)
         else:
             output = run_diffctx(repo_dir, budget, scoring_mode)
         elapsed = time.time() - t0
@@ -197,10 +274,6 @@ def evaluate_instance(
     lo_all = line_overlap(gold, sel_ranges)
     lo_nontrivial = line_overlap(gold, sel_ranges, exclude_files=pf)
 
-    from metrics.def_coverage import def_coverage
-
-    ext_def_cov = def_coverage(inst["patch"], output.get("fragments", []))
-
     result = {
         "id": iid,
         "status": "ok",
@@ -218,8 +291,12 @@ def evaluate_instance(
         "line_recall_nontrivial": round(lo_nontrivial["line_recall"], 3),
         "gold_lines": lo_all["gold_lines"],
         "covered_lines": lo_all["covered_lines"],
-        "def_coverage": round(ext_def_cov, 3),
         "latency": output.get("latency"),
+        "config": {
+            "scoring_mode": scoring_mode,
+            "budget": budget,
+            **_get_diffctx_config(),
+        },
     }
 
     diagnostics = []
@@ -264,12 +341,19 @@ def aggregate(results: list[dict]) -> None:
     print(f"AGGREGATE ({len(ok)} instances)")
     print(f"{'='*60}")
 
-    for metric in ["file_recall", "nontrivial_file_recall", "line_recall", "line_recall_nontrivial", "def_coverage"]:
+    for metric in ["file_recall", "nontrivial_file_recall", "line_recall", "line_recall_nontrivial"]:
         vals = [r[metric] for r in ok if metric in r]
         if not vals:
             continue
-        avg = sum(vals) / len(vals)
-        print(f"  {metric:30s}: {avg:.3f} (min={min(vals):.3f}, max={max(vals):.3f})")
+        mean, lo, hi = bootstrap_ci(vals)
+        print(f"  {metric:30s}: {mean:.3f} [{lo:.3f}, {hi:.3f}] (min={min(vals):.3f}, max={max(vals):.3f})")
+
+    latencies = [r["elapsed_s"] for r in ok]
+    p95_idx = int(0.95 * len(latencies))
+    print(
+        f"  {'latency':30s}: median={statistics.median(latencies):.1f}s "
+        f"p95={sorted(latencies)[p95_idx]:.1f}s max={max(latencies):.1f}s"
+    )
 
     by_lang: dict[str, list[dict]] = defaultdict(list)
     for r in ok:
@@ -322,6 +406,32 @@ def _run_one(args: tuple[int, dict, int, str, str]) -> dict | None:
         return {"id": inst["instance_id"], "status": "error"}
 
 
+def _print_cross_seed_summary(all_seed_results: dict[int, list[dict]]) -> None:
+    metrics = ["file_recall", "nontrivial_file_recall", "line_recall", "line_recall_nontrivial"]
+
+    print(f"\n{'='*60}")
+    print(f"CROSS-SEED SUMMARY ({len(all_seed_results)} seeds: {sorted(all_seed_results)})")
+    print(f"{'='*60}")
+
+    seed_avgs: dict[str, list[float]] = defaultdict(list)
+    for _seed, results in sorted(all_seed_results.items()):
+        ok = [r for r in results if r.get("status") == "ok"]
+        if not ok:
+            continue
+        for m in metrics:
+            vals = [r[m] for r in ok if m in r]
+            if vals:
+                seed_avgs[m].append(sum(vals) / len(vals))
+
+    for m in metrics:
+        vals = seed_avgs.get(m, [])
+        if not vals:
+            continue
+        mean = statistics.mean(vals)
+        std = statistics.stdev(vals) if len(vals) > 1 else 0.0
+        print(f"  {m:30s}: {mean:.3f} \u00b1 {std:.3f}")
+
+
 def main():
     import argparse
 
@@ -331,14 +441,16 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=3)
-    parser.add_argument("--budget", type=int, default=8000)
+    parser.add_argument("--budget", type=int, default=16000)
     parser.add_argument("--lang", type=str, default=None)
     parser.add_argument("--nontrivial-only", action="store_true", default=True)
-    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--seeds", type=str, default="42")
     parser.add_argument("--no-shuffle", action="store_true")
     parser.add_argument("--scoring", type=str, default="hybrid", choices=["hybrid", "ppr", "ego"])
-    parser.add_argument("--baseline", type=str, default="treemapper", choices=["treemapper", "patch_files"])
+    parser.add_argument("--baseline", type=str, default="treemapper", choices=["treemapper", "patch_files", "bm25"])
     args = parser.parse_args()
+
+    seeds = [int(s) for s in args.seeds.split(",")]
 
     from datasets import load_dataset
 
@@ -346,37 +458,53 @@ def main():
     ds = load_dataset("Contextbench/ContextBench", "contextbench_verified", split="train")
     print(f"Loaded {len(ds)} instances")
 
-    instances = list(ds)
+    all_instances = list(ds)
     if args.lang:
-        instances = [i for i in instances if i["language"] == args.lang]
-        print(f"Filtered to {len(instances)} {args.lang} instances")
+        all_instances = [i for i in all_instances if i["language"] == args.lang]
+        print(f"Filtered to {len(all_instances)} {args.lang} instances")
 
     if args.nontrivial_only:
-        instances = [i for i in instances if is_nontrivial(parse_gold_context(i["gold_context"]), i["patch"])]
-        print(f"Nontrivial instances: {len(instances)}")
+        all_instances = [i for i in all_instances if is_nontrivial(parse_gold_context(i["gold_context"]), i["patch"])]
+        print(f"Nontrivial instances: {len(all_instances)}")
 
-    if not args.no_shuffle:
-        rng = random.Random(args.seed)  # NOSONAR — deterministic shuffle for benchmark reproducibility, not crypto
-        rng.shuffle(instances)
-        print(f"Shuffled with seed={args.seed}")
+    warm_cache(all_instances)
 
-    instances = instances[: args.limit]
-    print(f"Evaluating {len(instances)} instances (budget={args.budget}, workers={WORKERS}, scoring={args.scoring})")
+    all_seed_results: dict[int, list[dict]] = {}
 
-    warm_cache(instances)
+    for seed in seeds:
+        print(f"\n{'#'*60}")
+        print(f"SEED {seed}")
+        print(f"{'#'*60}")
 
-    t0 = time.time()
-    run_args = [(i, inst, args.budget, args.scoring, args.baseline) for i, inst in enumerate(instances, 1)]
-    results = run_parallel(_run_one, run_args, WORKERS)
-    elapsed = time.time() - t0
-    print(f"\nTotal wall time: {elapsed:.0f}s")
+        instances = list(all_instances)
+        if not args.no_shuffle:
+            rng = random.Random(seed)  # NOSONAR — deterministic shuffle for benchmark reproducibility, not crypto
+            rng.shuffle(instances)
+            print(f"Shuffled with seed={seed}")
 
-    aggregate(results)
+        instances = instances[: args.limit]
+        print(f"Evaluating {len(instances)} instances (budget={args.budget}, workers={WORKERS}, scoring={args.scoring})")
 
-    tag = f"cb_{args.scoring}_n{args.limit}_b{args.budget}"
-    if args.baseline != "treemapper":
-        tag = f"cb_baseline_{args.baseline}"
-    save_results(results, tag)
+        t0 = time.time()
+        run_args = [(i, inst, args.budget, args.scoring, args.baseline) for i, inst in enumerate(instances, 1)]
+        results = run_parallel(_run_one, run_args, WORKERS)
+        elapsed = time.time() - t0
+        print(f"\nTotal wall time: {elapsed:.0f}s")
+
+        aggregate(results)
+
+        if len(seeds) == 1:
+            tag = f"cb_{args.scoring}_n{args.limit}_b{args.budget}"
+        else:
+            tag = f"cb_{args.scoring}_n{args.limit}_b{args.budget}_s{seed}"
+        if args.baseline != "treemapper":
+            tag = f"cb_baseline_{args.baseline}" if len(seeds) == 1 else f"cb_baseline_{args.baseline}_s{seed}"
+        save_results(results, tag, seed=seed, budget=args.budget, scoring=args.scoring, baseline=args.baseline)
+
+        all_seed_results[seed] = results
+
+    if len(seeds) > 1:
+        _print_cross_seed_summary(all_seed_results)
 
 
 if __name__ == "__main__":

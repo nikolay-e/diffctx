@@ -1,0 +1,159 @@
+name: gap2_138_ocaml_same_file_stack_machine
+tags:
+- change:single_file
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:ocaml
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    lib/stack_vm.ml: |
+      type instruction =
+        | Push of int
+        | Pop
+        | Add
+        | Mul
+
+      type t = { mutable stack : int list }
+
+      let create () = { stack = [] }
+
+      let push vm n = vm.stack <- n :: vm.stack
+
+      let pop vm =
+        match vm.stack with
+        | [] -> failwith "stack underflow"
+        | hd :: tl -> vm.stack <- tl; hd
+
+      let execute vm = function
+        | Push n -> push vm n
+        | Pop -> ignore (pop vm)
+        | Add ->
+          let b = pop vm in
+          let a = pop vm in
+          push vm (a + b)
+        | Mul ->
+          let b = pop vm in
+          let a = pop vm in
+          push vm (a * b)
+
+      let run vm program =
+        List.iter (execute vm) program
+
+      let peek vm =
+        match vm.stack with
+        | [] -> None
+        | hd :: _ -> Some hd
+    lib/register_vm.ml: |
+      let _GARBAGE_GAP2_138_REG_A = "register_noise"
+      let _GARBAGE_GAP2_138_REG_B = "opcode_noise"
+
+      type reg = R0 | R1 | R2 | R3
+
+      let registers = Array.make 4 0
+
+      let load reg value = registers.(Obj.magic reg) <- value
+
+      let read reg = registers.(Obj.magic reg)
+    lib/assembler.ml: |
+      let _GARBAGE_GAP2_138_ASM_C = "assembler_noise"
+      let _GARBAGE_GAP2_138_ASM_D = "parse_noise"
+
+      let tokenize s = String.split_on_char ' ' s
+
+      let assemble _tokens = []
+  changed_files:
+    lib/stack_vm.ml: |
+      type instruction =
+        | Push of int
+        | Pop
+        | Add
+        | Mul
+        | Sub
+        | Dup
+
+      type t = { mutable stack : int list }
+
+      let create () = { stack = [] }
+
+      let push vm n = vm.stack <- n :: vm.stack
+
+      let pop vm =
+        match vm.stack with
+        | [] -> failwith "stack underflow"
+        | hd :: tl -> vm.stack <- tl; hd
+
+      let execute vm = function
+        | Push n -> push vm n
+        | Pop -> ignore (pop vm)
+        | Add ->
+          let b = pop vm in
+          let a = pop vm in
+          push vm (a + b)
+        | Mul ->
+          let b = pop vm in
+          let a = pop vm in
+          push vm (a * b)
+        | Sub ->
+          let b = pop vm in
+          let a = pop vm in
+          push vm (a - b)
+        | Dup ->
+          let top = pop vm in
+          push vm top;
+          push vm top
+
+      let run vm program =
+        List.iter (execute vm) program
+
+      let peek vm =
+        match vm.stack with
+        | [] -> None
+        | hd :: _ -> Some hd
+
+      let depth vm = List.length vm.stack
+fragments:
+- id: sub_instruction
+  selector:
+    path: lib/stack_vm.ml
+    anchor: "| Sub"
+- id: dup_instruction
+  selector:
+    path: lib/stack_vm.ml
+    anchor: "| Dup"
+- id: depth_fn
+  selector:
+    path: lib/stack_vm.ml
+    anchor: let depth vm
+- id: no_register_vm
+  selector:
+    path: lib/register_vm.ml
+- id: no_assembler
+  selector:
+    path: lib/assembler.ml
+- id: no_global_0
+  selector:
+    anchor: _GARBAGE_GAP2_138_REG_A
+- id: no_global_1
+  selector:
+    anchor: _GARBAGE_GAP2_138_REG_B
+- id: no_global_2
+  selector:
+    anchor: _GARBAGE_GAP2_138_ASM_C
+- id: no_global_3
+  selector:
+    anchor: _GARBAGE_GAP2_138_ASM_D
+oracle:
+  required:
+  - sub_instruction
+  - dup_instruction
+  - depth_fn
+  forbidden:
+  - no_register_vm
+  - no_assembler
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

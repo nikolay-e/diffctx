@@ -1,0 +1,222 @@
+name: bal3_3hop_079_php_template_engine_chain
+tags:
+- lang:php
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/Template/Engine.php: |
+      <?php
+      namespace App\Template;
+
+      class Engine {
+          private string $basePath;
+          public function __construct(string $basePath) {
+              $this->basePath = $basePath;
+          }
+          public function render(string $template, array $data): string {
+              $content = file_get_contents($this->basePath . '/' . $template);
+              foreach ($data as $key => $value) {
+                  $content = str_replace('{{ ' . $key . ' }}', $value, $content);
+              }
+              return $content;
+          }
+      }
+    src/Template/TemplateCache.php: |
+      <?php
+      namespace App\Template;
+
+      use App\Template\Engine;
+
+      class TemplateCache {
+          private Engine $engine;
+          private array $cache = [];
+          public function __construct(Engine $engine) {
+              $this->engine = $engine;
+          }
+          public function get(string $template, array $data): string {
+              $key = md5($template . serialize($data));
+              if (!isset($this->cache[$key])) {
+                  $this->cache[$key] = $this->engine->render($template, $data);
+              }
+              return $this->cache[$key];
+          }
+      }
+    src/View/ViewFactory.php: |
+      <?php
+      namespace App\View;
+
+      use App\Template\TemplateCache;
+
+      class ViewFactory {
+          private TemplateCache $cache;
+          public function __construct(TemplateCache $cache) {
+              $this->cache = $cache;
+          }
+          public function make(string $view, array $data = []): string {
+              return $this->cache->get($view . '.html', $data);
+          }
+      }
+    src/Controllers/PageController.php: |
+      <?php
+      namespace App\Controllers;
+
+      use App\View\ViewFactory;
+
+      class PageController {
+          private ViewFactory $view;
+          public function __construct(ViewFactory $view) {
+              $this->view = $view;
+          }
+          public function home(): string {
+              return $this->view->make('home', ['title' => 'Home']);
+          }
+          public function about(): string {
+              return $this->view->make('about', ['title' => 'About']);
+          }
+      }
+    src/Assets/AssetManager.php: |
+      <?php
+      namespace App\Assets;
+      define('GARBAGE_079_ASSET_A', 'manager');
+      define('GARBAGE_079_CDN_B', 'local');
+
+      class AssetManager {
+          public function url(string $path): string { return '/assets/' . $path; }
+      }
+    src/Assets/Minifier.php: |
+      <?php
+      namespace App\Assets;
+      define('GARBAGE_079_MINIFY_C', 'css');
+      define('GARBAGE_079_COMPRESS_D', true);
+
+      class Minifier {
+          public function minify(string $content): string { return $content; }
+      }
+  changed_files:
+    src/Template/Engine.php: |
+      <?php
+      namespace App\Template;
+
+      class Engine {
+          private string $basePath;
+          public function __construct(string $basePath) {
+              $this->basePath = $basePath;
+          }
+          public function render(string $template, array $data): string {
+              $content = file_get_contents($this->basePath . '/' . $template);
+              foreach ($data as $key => $value) {
+                  $content = str_replace('{{ ' . $key . ' }}', htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8'), $content);
+              }
+              return $content;
+          }
+      }
+    src/Template/TemplateCache.php: |
+      <?php
+      namespace App\Template;
+
+      use App\Template\Engine;
+
+      class TemplateCache {
+          private Engine $engine;
+          private array $cache = [];
+          public function __construct(Engine $engine) {
+              $this->engine = $engine;
+          }
+          public function get(string $template, array $data): string {
+              $key = md5($template . serialize($data));
+              if (!isset($this->cache[$key])) {
+                  $this->cache[$key] = $this->engine->render($template, $data);
+              }
+              return $this->cache[$key];
+          }
+      }
+    src/View/ViewFactory.php: |
+      <?php
+      namespace App\View;
+
+      use App\Template\TemplateCache;
+
+      class ViewFactory {
+          private TemplateCache $cache;
+          public function __construct(TemplateCache $cache) {
+              $this->cache = $cache;
+          }
+          public function make(string $view, array $data = []): string {
+              return $this->cache->get($view . '.html', $data);
+          }
+      }
+    src/Controllers/PageController.php: |
+      <?php
+      namespace App\Controllers;
+
+      use App\View\ViewFactory;
+
+      class PageController {
+          private ViewFactory $view;
+          public function __construct(ViewFactory $view) {
+              $this->view = $view;
+          }
+          public function home(): string {
+              return $this->view->make('home', ['title' => 'Home']);
+          }
+          public function about(): string {
+              return $this->view->make('about', ['title' => 'About']);
+          }
+      }
+    src/Assets/AssetManager.php: |
+      <?php
+      namespace App\Assets;
+      define('GARBAGE_079_ASSET_A', 'manager');
+      define('GARBAGE_079_CDN_B', 'local');
+
+      class AssetManager {
+          public function url(string $path): string { return '/assets/' . $path; }
+      }
+    src/Assets/Minifier.php: |
+      <?php
+      namespace App\Assets;
+      define('GARBAGE_079_MINIFY_C', 'css');
+      define('GARBAGE_079_COMPRESS_D', true);
+
+      class Minifier {
+          public function minify(string $content): string { return $content; }
+      }
+  commit_message: "fix: escape HTML entities in template engine to prevent XSS"
+fragments:
+- id: engine_escape
+  selector:
+    path: src/Template/Engine.php
+    anchor: "htmlspecialchars"
+- id: cache_uses_engine
+  selector:
+    path: src/Template/TemplateCache.php
+    anchor: "use App\\Template\\Engine"
+- id: view_uses_cache
+  selector:
+    path: src/View/ViewFactory.php
+    anchor: "use App\\Template\\TemplateCache"
+- id: controller_uses_view
+  selector:
+    path: src/Controllers/PageController.php
+    anchor: "use App\\View\\ViewFactory"
+- id: no_asset_manager
+  selector:
+    path: src/Assets/AssetManager.php
+    anchor: "GARBAGE_079_ASSET_A"
+- id: no_minifier
+  selector:
+    path: src/Assets/Minifier.php
+    anchor: "GARBAGE_079_MINIFY_C"
+oracle:
+  required:
+  - engine_escape
+  - cache_uses_engine
+  - view_uses_cache
+  - controller_uses_view
+  allowed: []
+  forbidden:
+  - no_asset_manager
+  - no_minifier

@@ -1,0 +1,202 @@
+name: bal_hard_017_php_middleware_pipeline
+tags:
+- lang:php
+- change:multi_file
+- change:new_function
+- context:cross_module
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/Http/Request.php: |
+      <?php
+      namespace App\Http;
+      class Request {
+          public string $method;
+          public string $path;
+          public array $headers;
+          public string $body;
+          public function __construct(string $method, string $path, array $headers = [], string $body = '') {
+              $this->method = $method;
+              $this->path = $path;
+              $this->headers = $headers;
+              $this->body = $body;
+          }
+      }
+    src/Http/Response.php: |
+      <?php
+      namespace App\Http;
+      class Response {
+          public int $statusCode;
+          public string $body;
+          public array $headers;
+          public function __construct(int $statusCode, string $body, array $headers = []) {
+              $this->statusCode = $statusCode;
+              $this->body = $body;
+              $this->headers = $headers;
+          }
+      }
+    src/Middleware/MiddlewareInterface.php: |
+      <?php
+      namespace App\Middleware;
+      use App\Http\Request;
+      use App\Http\Response;
+      interface MiddlewareInterface {
+          public function handle(Request $request, callable $next): Response;
+      }
+    src/Middleware/CorsMiddleware.php: |
+      <?php
+      namespace App\Middleware;
+      use App\Http\Request;
+      use App\Http\Response;
+      class CorsMiddleware implements MiddlewareInterface {
+          public function handle(Request $request, callable $next): Response {
+              $response = $next($request);
+              $response->headers['Access-Control-Allow-Origin'] = '*';
+              return $response;
+          }
+      }
+    src/Middleware/Pipeline.php: |
+      <?php
+      namespace App\Middleware;
+      use App\Http\Request;
+      use App\Http\Response;
+      class Pipeline {
+          private array $middlewares = [];
+          public function pipe(MiddlewareInterface $middleware): self {
+              $this->middlewares[] = $middleware;
+              return $this;
+          }
+          public function process(Request $request, callable $handler): Response {
+              $pipeline = array_reduce(
+                  array_reverse($this->middlewares),
+                  fn(callable $next, MiddlewareInterface $mw) => fn(Request $req) => $mw->handle($req, $next),
+                  $handler
+              );
+              return $pipeline($request);
+          }
+      }
+    src/Handler/HomeHandler.php: |
+      <?php
+      namespace App\Handler;
+      use App\Http\Request;
+      use App\Http\Response;
+      class HomeHandler {
+          public function __invoke(Request $request): Response {
+              return new Response(200, 'Welcome to ' . $request->path);
+          }
+      }
+    src/App/Kernel.php: |
+      <?php
+      namespace App\App;
+      use App\Middleware\Pipeline;
+      use App\Middleware\CorsMiddleware;
+      use App\Handler\HomeHandler;
+      use App\Http\Request;
+      class Kernel {
+          public function handle(Request $request) {
+              $pipeline = new Pipeline();
+              $pipeline->pipe(new CorsMiddleware());
+              return $pipeline->process($request, new HomeHandler());
+          }
+      }
+    src/Helpers/ArrayHelper.php: |
+      <?php
+      namespace App\Helpers;
+      class ArrayHelper {
+          public static function flatten(array $arr): array {
+              return array_merge(...$arr);
+          }
+      }
+  changed_files:
+    src/Middleware/RateLimitMiddleware.php: |
+      <?php
+      namespace App\Middleware;
+      use App\Http\Request;
+      use App\Http\Response;
+      class RateLimitMiddleware implements MiddlewareInterface {
+          private array $requestCounts = [];
+          private int $maxRequests;
+          public function __construct(int $maxRequests = 100) {
+              $this->maxRequests = $maxRequests;
+          }
+          public function handle(Request $request, callable $next): Response {
+              $ip = $request->headers['X-Forwarded-For'] ?? 'unknown';
+              $this->requestCounts[$ip] = ($this->requestCounts[$ip] ?? 0) + 1;
+              if ($this->requestCounts[$ip] > $this->maxRequests) {
+                  return new Response(429, 'Too Many Requests');
+              }
+              return $next($request);
+          }
+      }
+    src/App/Kernel.php: |
+      <?php
+      namespace App\App;
+      use App\Middleware\Pipeline;
+      use App\Middleware\CorsMiddleware;
+      use App\Middleware\RateLimitMiddleware;
+      use App\Handler\HomeHandler;
+      use App\Http\Request;
+      class Kernel {
+          public function handle(Request $request) {
+              $pipeline = new Pipeline();
+              $pipeline->pipe(new RateLimitMiddleware(50));
+              $pipeline->pipe(new CorsMiddleware());
+              return $pipeline->process($request, new HomeHandler());
+          }
+      }
+  commit_message: "feat: add rate limiting middleware"
+fragments:
+- id: rate_limit_class
+  selector:
+    path: RateLimitMiddleware.php
+    anchor: "class RateLimitMiddleware"
+- id: rate_limit_check
+  selector:
+    path: RateLimitMiddleware.php
+    anchor: "$this->requestCounts[$ip] > $this->maxRequests"
+- id: kernel_uses_rate_limit
+  selector:
+    path: Kernel.php
+    anchor: "new RateLimitMiddleware(50)"
+- id: middleware_interface
+  selector:
+    path: MiddlewareInterface.php
+    anchor: "interface MiddlewareInterface"
+- id: pipeline_process
+  selector:
+    path: Pipeline.php
+    anchor: "public function process"
+- id: request_class
+  selector:
+    path: Request.php
+    anchor: "class Request"
+- id: response_class
+  selector:
+    path: Response.php
+    anchor: "class Response"
+- id: no_array_helper
+  selector:
+    path: Helpers/ArrayHelper.php
+- id: no_cors_body
+  selector:
+    path: CorsMiddleware.php
+    anchor: "Access-Control-Allow-Origin"
+- id: no_home_handler_body
+  selector:
+    path: HomeHandler.php
+    anchor: "Welcome to"
+oracle:
+  required:
+  - rate_limit_class
+  - rate_limit_check
+  - kernel_uses_rate_limit
+  - middleware_interface
+  - pipeline_process
+  - request_class
+  - response_class
+  allowed: []
+  forbidden:
+  - no_array_helper
+  - no_cors_body
+  - no_home_handler_body

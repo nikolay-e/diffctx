@@ -1,0 +1,180 @@
+name: gap2_041_ts_bugfix_import_chain_null_guard_api_client
+tags:
+- lang:clojure
+- change:multi_file
+- context:import_chain
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/model/product.clj: |
+      (ns model.product)
+
+      (defrecord Product [id sku name price stock])
+
+      (defn create [id sku name price]
+        (->Product id sku name price 0))
+
+      (defn in-stock? [product]
+        (pos? (:stock product)))
+    src/catalog/service.clj: |
+      (ns catalog.service
+        (:require [model.product :as p]))
+
+      (defn find-product [catalog sku]
+        (first (filter #(= sku (:sku %)) catalog)))
+
+      (defn available-products [catalog]
+        (filter p/in-stock? catalog))
+
+      (defn add-to-catalog [catalog product]
+        (conj catalog product))
+    src/api/catalog_handler.clj: |
+      (ns api.catalog-handler
+        (:require [catalog.service :as svc]))
+
+      (defn get-available [catalog]
+        {:status 200 :body (svc/available-products catalog)})
+
+      (defn get-product [catalog sku]
+        (if-let [product (svc/find-product catalog sku)]
+          {:status 200 :body product}
+          {:status 404 :body {:error "not found"}}))
+    garbage/pricing.clj: |
+      (ns garbage.pricing)
+
+      (def ^:const GARBAGE_GAP2041_A "discount_marker")
+      (def ^:const GARBAGE_GAP2041_B "tax_marker")
+
+      (defn apply-tax [price rate]
+        (* price (+ 1 rate)))
+    garbage/shipping.clj: |
+      (ns garbage.shipping)
+
+      (def ^:const GARBAGE_GAP2041_C "carrier_marker")
+      (def ^:const GARBAGE_GAP2041_D "rate_marker")
+
+      (defn estimate [weight zone]
+        GARBAGE_GAP2041_C)
+    garbage/promo.clj: |
+      (ns garbage.promo)
+
+      (def ^:const GARBAGE_GAP2041_E "voucher_marker")
+
+      (defn apply-promo [price code]
+        GARBAGE_GAP2041_E)
+  changed_files:
+    src/model/product.clj: |
+      (ns model.product)
+
+      (defrecord Product [id sku name price stock category])
+
+      (defn create [id sku name price]
+        (->Product id sku name price 0 :general))
+
+      (defn create-with-category [id sku name price category]
+        (->Product id sku name price 0 category))
+
+      (defn in-stock? [product]
+        (pos? (:stock product)))
+
+      (defn by-category [catalog category]
+        (filter #(= category (:category %)) catalog))
+    src/catalog/service.clj: |
+      (ns catalog.service
+        (:require [model.product :as p]))
+
+      (defn find-product [catalog sku]
+        (first (filter #(= sku (:sku %)) catalog)))
+
+      (defn available-products [catalog]
+        (filter p/in-stock? catalog))
+
+      (defn add-to-catalog [catalog product]
+        (conj catalog product))
+
+      (defn products-by-category [catalog category]
+        (p/by-category catalog category))
+    src/api/catalog_handler.clj: |
+      (ns api.catalog-handler
+        (:require [catalog.service :as svc]))
+
+      (defn get-available [catalog]
+        {:status 200 :body (svc/available-products catalog)})
+
+      (defn get-product [catalog sku]
+        (if-let [product (svc/find-product catalog sku)]
+          {:status 200 :body product}
+          {:status 404 :body {:error "not found"}}))
+
+      (defn get-by-category [catalog category]
+        {:status 200 :body (svc/products-by-category catalog category)})
+    garbage/pricing.clj: |
+      (ns garbage.pricing)
+
+      (def ^:const GARBAGE_GAP2041_A "discount_marker")
+      (def ^:const GARBAGE_GAP2041_B "tax_marker")
+
+      (defn apply-tax [price rate]
+        (* price (+ 1 rate)))
+    garbage/shipping.clj: |
+      (ns garbage.shipping)
+
+      (def ^:const GARBAGE_GAP2041_C "carrier_marker")
+      (def ^:const GARBAGE_GAP2041_D "rate_marker")
+
+      (defn estimate [weight zone]
+        GARBAGE_GAP2041_C)
+    garbage/promo.clj: |
+      (ns garbage.promo)
+
+      (def ^:const GARBAGE_GAP2041_E "voucher_marker")
+
+      (defn apply-promo [price code]
+        GARBAGE_GAP2041_E)
+  commit_message: "feat: add category field to Product and category-based catalog queries"
+fragments:
+- id: product_category_field
+  selector:
+    path: src/model/product.clj
+    anchor: "(defrecord Product [id sku name price stock category])"
+- id: product_by_category
+  selector:
+    path: src/model/product.clj
+    anchor: "(defn by-category"
+- id: service_products_by_category
+  selector:
+    path: src/catalog/service.clj
+    anchor: "(defn products-by-category"
+- id: handler_get_by_category
+  selector:
+    path: src/api/catalog_handler.clj
+    anchor: "(defn get-by-category"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_GAP2041_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_GAP2041_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_GAP2041_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_GAP2041_D
+- id: no_garbage_e
+  selector:
+    anchor: GARBAGE_GAP2041_E
+oracle:
+  required:
+  - product_category_field
+  - product_by_category
+  - service_products_by_category
+  - handler_get_by_category
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d
+  - no_garbage_e

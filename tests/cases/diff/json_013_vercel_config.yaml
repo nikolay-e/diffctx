@@ -1,148 +1,124 @@
 name: json_013_vercel_config
+tags:
+- lang:python
+- lang:protobuf
+- change:multi_file
+- context:same_file
+- distance:0hop
+- difficulty:easy
 repo:
   initial_files:
-    vercel.json: |
-      {
-        "version": 2,
-        "builds": [
-          {"src": "api/*.js", "use": "@vercel/node"}
-        ],
-        "routes": [
-          {"src": "/api/(.*)", "dest": "/api/$1"},
-          {"src": "/(.*)", "dest": "/public/$1"}
-        ],
-        "env": {
-          "NODE_ENV": "production"
-        }
+    proto/notification.proto: |
+      syntax = "proto3";
+
+      message Notification {
+        string recipient = 1;
+        string subject = 2;
+        string body = 3;
       }
-    api/hello.js: |
-      module.exports = (req, res) => {
-          const name = req.query.name || 'World';
-          res.json({ message: `Hello, ${name}!` });
-      };
-    api/users.js: |
-      const { getUsers, createUser } = require('../lib/userService');
+    service/notification_service.py: |
+      from proto import notification_pb2
 
-      module.exports = async (req, res) => {
-          if (req.method === 'GET') {
-              const users = await getUsers();
-              return res.json({ users, count: users.length });
-          }
+      class NotificationService:
+          def send(self, recipient: str, subject: str, body: str) -> notification_pb2.Notification:
+              return notification_pb2.Notification(recipient=recipient, subject=subject, body=body)
+    garbage/billing.py: |
+      GARBAGE_JSON013_A = "billing_marker"
 
-          if (req.method === 'POST') {
-              const user = await createUser(req.body);
-              return res.status(201).json({ user });
-          }
+      def noop():
+          pass
+    garbage/audit.py: |
+      GARBAGE_JSON013_B = "audit_marker"
 
-          res.status(405).json({ error: 'Method not allowed' });
-      };
-    lib/userService.js: |
-      const users = [];
+      def noop():
+          pass
+    garbage/analytics.py: |
+      GARBAGE_JSON013_C = "analytics_marker"
 
-      async function getUsers() {
-          return [...users];
-      }
+      def noop():
+          pass
+    garbage/cron.py: |
+      GARBAGE_JSON013_D = "cron_marker"
 
-      async function createUser(data) {
-          const user = {
-              id: users.length + 1,
-              name: data.name,
-              email: data.email,
-              createdAt: new Date().toISOString(),
-          };
-          users.push(user);
-          return user;
-      }
-
-      module.exports = { getUsers, createUser };
-    package.json: |
-      {
-        "name": "vercel-app",
-        "version": "1.0.0",
-        "scripts": {
-          "dev": "vercel dev",
-          "build": "vercel build"
-        },
-        "dependencies": {
-          "express": "^4.18.0"
-        }
-      }
-    tsconfig.json: |
-      {
-        "compilerOptions": {
-          "target": "ES2020",
-          "module": "commonjs",
-          "outDir": "dist",
-          "strict": true,
-          "esModuleInterop": true
-        },
-        "include": ["api/**/*.ts", "lib/**/*.ts"]
-      }
+      def noop():
+          pass
   changed_files:
-    vercel.json: |
-      {
-        "version": 2,
-        "builds": [
-          {"src": "api/**/*.ts", "use": "@vercel/node"}
-        ],
-        "routes": [
-          {"src": "/api/(.*)", "dest": "/api/$1"},
-          {"src": "/(.*)", "dest": "/public/$1"}
-        ],
-        "regions": ["sfo1", "iad1"],
-        "env": {
-          "NODE_ENV": "production"
-        }
+    proto/notification.proto: |
+      syntax = "proto3";
+
+      message Notification {
+        string recipient = 1;
+        string subject = 2;
+        string body = 3;
+        string channel = 4;
+        bool urgent = 5;
       }
-  commit_message: Update files
+    service/notification_service.py: |
+      from proto import notification_pb2
+
+      class NotificationService:
+          def send(
+              self,
+              recipient: str,
+              subject: str,
+              body: str,
+              channel: str = "email",
+              urgent: bool = False,
+          ) -> notification_pb2.Notification:
+              return notification_pb2.Notification(
+                  recipient=recipient,
+                  subject=subject,
+                  body=body,
+                  channel=channel,
+                  urgent=urgent,
+              )
+    garbage/billing.py: |
+      GARBAGE_JSON013_A = "billing_marker"
+
+      def noop():
+          pass
+    garbage/audit.py: |
+      GARBAGE_JSON013_B = "audit_marker"
+
+      def noop():
+          pass
+    garbage/analytics.py: |
+      GARBAGE_JSON013_C = "analytics_marker"
+
+      def noop():
+          pass
+    garbage/cron.py: |
+      GARBAGE_JSON013_D = "cron_marker"
+
+      def noop():
+          pass
+  commit_message: "feat: add channel and urgent fields to Notification proto and service"
 fragments:
-- id: vercel
+- id: proto_file
   selector:
-    path: vercel.json
-    anchor: '"src": "api/**/*.ts"'
-- id: vercel_1
+    path: proto/notification.proto
+- id: service_file
   selector:
-    path: vercel.json
-    anchor: '"regions": ["sfo1", "iad1"]'
-- id: no_userservice
+    path: service/notification_service.py
+- id: no_garbage_a
   selector:
-    path: lib/userService.js
-- id: no_package
+    anchor: GARBAGE_JSON013_A
+- id: no_garbage_b
   selector:
-    path: package.json
-- id: no_tsconfig
+    anchor: GARBAGE_JSON013_B
+- id: no_garbage_c
   selector:
-    path: tsconfig.json
-- id: no_global_0
+    anchor: GARBAGE_JSON013_C
+- id: no_garbage_d
   selector:
-    anchor: getUsers
-- id: no_global_1
-  selector:
-    anchor: createUser
-- id: no_global_2
-  selector:
-    anchor: users.length + 1
-- id: no_global_3
-  selector:
-    anchor: vercel dev
-- id: no_global_4
-  selector:
-    anchor: vercel build
-- id: no_global_5
-  selector:
-    anchor: esModuleInterop
+    anchor: GARBAGE_JSON013_D
 oracle:
   required:
-  - vercel
-  - vercel_1
+  - proto_file
+  - service_file
   allowed: []
   forbidden:
-  - no_userservice
-  - no_package
-  - no_tsconfig
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

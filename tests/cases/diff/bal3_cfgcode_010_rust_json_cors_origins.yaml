@@ -1,0 +1,288 @@
+name: bal3_cfgcode_010_rust_json_cors_origins
+tags:
+- lang:go
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:easy
+repo:
+  initial_files:
+    pkg/cache/lru.go: |
+      package cache
+
+      type entry struct {
+          key   string
+          value interface{}
+      }
+
+      type LRU struct {
+          cap   int
+          items []entry
+      }
+
+      func NewLRU(capacity int) *LRU {
+          return &LRU{cap: capacity}
+      }
+
+      func (c *LRU) Get(key string) (interface{}, bool) {
+          for i, e := range c.items {
+              if e.key == key {
+                  c.items = append(c.items[:i], c.items[i+1:]...)
+                  c.items = append(c.items, e)
+                  return e.value, true
+              }
+          }
+          return nil, false
+      }
+
+      func (c *LRU) Set(key string, value interface{}) {
+          for i, e := range c.items {
+              if e.key == key {
+                  c.items[i].value = value
+                  return
+              }
+          }
+          if len(c.items) >= c.cap {
+              c.items = c.items[1:]  // BUG: evicts oldest, not LRU (last-accessed)
+          }
+          c.items = append(c.items, entry{key, value})
+      }
+    pkg/session/store.go: |
+      package session
+
+      import "pkg/cache"
+
+      type Store struct {
+          lru *cache.LRU
+      }
+
+      func NewStore(capacity int) *Store {
+          return &Store{lru: cache.NewLRU(capacity)}
+      }
+
+      func (s *Store) Get(sid string) (interface{}, bool) {
+          return s.lru.Get(sid)
+      }
+
+      func (s *Store) Set(sid string, data interface{}) {
+          s.lru.Set(sid, data)
+      }
+    internal/middleware/session_mw.go: |
+      package middleware
+
+      import "pkg/session"
+
+      type SessionMiddleware struct {
+          store *session.Store
+      }
+
+      func NewSessionMiddleware(capacity int) *SessionMiddleware {
+          return &SessionMiddleware{store: session.NewStore(capacity)}
+      }
+
+      func (m *SessionMiddleware) Load(sid string) (interface{}, bool) {
+          return m.store.Get(sid)
+      }
+
+      func (m *SessionMiddleware) Save(sid string, data interface{}) {
+          m.store.Set(sid, data)
+      }
+    internal/api/user_api.go: |
+      package api
+
+      import "internal/middleware"
+
+      type UserAPI struct {
+          session *middleware.SessionMiddleware
+      }
+
+      func NewUserAPI(s *middleware.SessionMiddleware) *UserAPI {
+          return &UserAPI{session: s}
+      }
+
+      func (u *UserAPI) GetSession(sid string) (interface{}, bool) {
+          return u.session.Load(sid)
+      }
+    garbage/GameItemStore.go: |
+      package garbage
+
+      // GARBAGE_BAL3CFG010_A = "game_item_store_marker"
+
+      type GameItemStore struct{ Items []string }
+    garbage/PaymentVault.go: |
+      package garbage
+
+      // GARBAGE_BAL3CFG010_B = "payment_vault_marker"
+
+      type PaymentVault struct{ Keys []string }
+    garbage/StreamingPlaylist.go: |
+      package garbage
+
+      // GARBAGE_BAL3CFG010_C = "streaming_playlist_marker"
+
+      type StreamingPlaylist struct{ URLs []string }
+    garbage/IoTDeviceRegistry.go: |
+      package garbage
+
+      // GARBAGE_BAL3CFG010_D = "iot_device_registry_marker"
+
+      type IoTDeviceRegistry struct{ Devices map[string]bool }
+  changed_files:
+    pkg/cache/lru.go: |
+      package cache
+
+      type entry struct {
+          key   string
+          value interface{}
+      }
+
+      type LRU struct {
+          cap   int
+          items []entry
+      }
+
+      func NewLRU(capacity int) *LRU {
+          return &LRU{cap: capacity}
+      }
+
+      func (c *LRU) Get(key string) (interface{}, bool) {
+          for i, e := range c.items {
+              if e.key == key {
+                  c.items = append(c.items[:i], c.items[i+1:]...)
+                  c.items = append(c.items, e)
+                  return e.value, true
+              }
+          }
+          return nil, false
+      }
+
+      func (c *LRU) Set(key string, value interface{}) {
+          for i, e := range c.items {
+              if e.key == key {
+                  c.items = append(c.items[:i], c.items[i+1:]...)
+                  c.items = append(c.items, entry{key, value})
+                  return
+              }
+          }
+          if len(c.items) >= c.cap {
+              c.items = c.items[1:]
+          }
+          c.items = append(c.items, entry{key, value})
+      }
+    pkg/session/store.go: |
+      package session
+
+      import "pkg/cache"
+
+      type Store struct {
+          lru *cache.LRU
+      }
+
+      func NewStore(capacity int) *Store {
+          return &Store{lru: cache.NewLRU(capacity)}
+      }
+
+      func (s *Store) Get(sid string) (interface{}, bool) {
+          return s.lru.Get(sid)
+      }
+
+      func (s *Store) Set(sid string, data interface{}) {
+          s.lru.Set(sid, data)
+      }
+    internal/middleware/session_mw.go: |
+      package middleware
+
+      import "pkg/session"
+
+      type SessionMiddleware struct {
+          store *session.Store
+      }
+
+      func NewSessionMiddleware(capacity int) *SessionMiddleware {
+          return &SessionMiddleware{store: session.NewStore(capacity)}
+      }
+
+      func (m *SessionMiddleware) Load(sid string) (interface{}, bool) {
+          return m.store.Get(sid)
+      }
+
+      func (m *SessionMiddleware) Save(sid string, data interface{}) {
+          m.store.Set(sid, data)
+      }
+    internal/api/user_api.go: |
+      package api
+
+      import "internal/middleware"
+
+      type UserAPI struct {
+          session *middleware.SessionMiddleware
+      }
+
+      func NewUserAPI(s *middleware.SessionMiddleware) *UserAPI {
+          return &UserAPI{session: s}
+      }
+
+      func (u *UserAPI) GetSession(sid string) (interface{}, bool) {
+          return u.session.Load(sid)
+      }
+    garbage/GameItemStore.go: |
+      package garbage
+
+      // GARBAGE_BAL3CFG010_A = "game_item_store_marker"
+
+      type GameItemStore struct{ Items []string }
+    garbage/PaymentVault.go: |
+      package garbage
+
+      // GARBAGE_BAL3CFG010_B = "payment_vault_marker"
+
+      type PaymentVault struct{ Keys []string }
+    garbage/StreamingPlaylist.go: |
+      package garbage
+
+      // GARBAGE_BAL3CFG010_C = "streaming_playlist_marker"
+
+      type StreamingPlaylist struct{ URLs []string }
+    garbage/IoTDeviceRegistry.go: |
+      package garbage
+
+      // GARBAGE_BAL3CFG010_D = "iot_device_registry_marker"
+
+      type IoTDeviceRegistry struct{ Devices map[string]bool }
+  commit_message: "fix: promote existing key to end-of-list in LRU.Set for correct eviction order"
+fragments:
+- id: lru_set_promote
+  selector:
+    path: pkg/cache/lru.go
+    anchor: "c.items = append(c.items[:i], c.items[i+1:]...)"
+- id: session_store_set
+  selector:
+    path: pkg/session/store.go
+    anchor: "func (s *Store) Set"
+- id: session_mw_save
+  selector:
+    path: internal/middleware/session_mw.go
+    anchor: "func (m *SessionMiddleware) Save"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_BAL3CFG010_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_BAL3CFG010_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_BAL3CFG010_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_BAL3CFG010_D
+oracle:
+  required:
+  - lru_set_promote
+  - session_store_set
+  allowed:
+  - session_mw_save
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

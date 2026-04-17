@@ -1,0 +1,174 @@
+name: bal_refactor_008_python_class_to_functions
+tags:
+- lang:rust
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/beacon.rs: |
+      #[derive(Debug, Clone)]
+      pub struct Beacon {
+          pub id: String,
+          pub major: u16,
+          pub minor: u16,
+          pub rssi: i16,
+      }
+
+      impl Beacon {
+          pub fn new(id: &str, major: u16, minor: u16, rssi: i16) -> Self {
+              Self {
+                  id: id.to_string(),
+                  major,
+                  minor,
+                  rssi,
+              }
+          }
+
+          pub fn estimated_distance_m(&self) -> f32 {
+              let ratio = self.rssi as f32 / -59.0;
+              if ratio < 1.0 { ratio.powf(10.0) } else { 0.89976 * ratio.powf(7.7095) + 0.111 }
+          }
+      }
+    src/scanner.rs: |
+      use crate::beacon::Beacon;
+
+      pub struct Scanner {
+          beacons: Vec<Beacon>,
+      }
+
+      impl Scanner {
+          pub fn new() -> Self {
+              Self { beacons: Vec::new() }
+          }
+
+          pub fn ingest(&mut self, b: Beacon) {
+              self.beacons.push(b);
+          }
+
+          pub fn nearest(&self) -> Option<&Beacon> {
+              self.beacons.iter().min_by(|a, b| {
+                  a.estimated_distance_m().partial_cmp(&b.estimated_distance_m()).unwrap()
+              })
+          }
+      }
+    src/BAL008_wifi.rs: |
+      // BAL008_GARBAGE_A = "wifi_marker"
+      pub fn scan_networks() -> Vec<String> { vec![] }
+    src/BAL008_power.rs: |
+      // BAL008_GARBAGE_B = "power_marker"
+      pub fn battery_percent() -> u8 { 100 }
+    src/BAL008_display.rs: |
+      // BAL008_GARBAGE_C = "display_marker"
+      pub fn render_text(_text: &str) {}
+  changed_files:
+    src/beacon.rs: |
+      #[derive(Debug, Clone)]
+      pub struct Beacon {
+          pub id: String,
+          pub major: u16,
+          pub minor: u16,
+          pub rssi: i16,
+          pub floor: Option<u8>,
+      }
+
+      impl Beacon {
+          pub fn new(id: &str, major: u16, minor: u16, rssi: i16) -> Self {
+              Self {
+                  id: id.to_string(),
+                  major,
+                  minor,
+                  rssi,
+                  floor: None,
+              }
+          }
+
+          pub fn estimated_distance_m(&self) -> f32 {
+              let ratio = self.rssi as f32 / -59.0;
+              if ratio < 1.0 { ratio.powf(10.0) } else { 0.89976 * ratio.powf(7.7095) + 0.111 }
+          }
+
+          pub fn signal_strength_category(&self) -> &'static str {
+              match self.rssi {
+                  -50..=0   => "strong",
+                  -70..=-51 => "moderate",
+                  _         => "weak",
+              }
+          }
+      }
+    src/scanner.rs: |
+      use crate::beacon::Beacon;
+
+      pub struct Scanner {
+          beacons: Vec<Beacon>,
+      }
+
+      impl Scanner {
+          pub fn new() -> Self {
+              Self { beacons: Vec::new() }
+          }
+
+          pub fn ingest(&mut self, b: Beacon) {
+              self.beacons.push(b);
+          }
+
+          pub fn nearest(&self) -> Option<&Beacon> {
+              self.beacons.iter().min_by(|a, b| {
+                  a.estimated_distance_m().partial_cmp(&b.estimated_distance_m()).unwrap()
+              })
+          }
+
+          pub fn strong_signals(&self) -> Vec<&Beacon> {
+              self.beacons.iter()
+                  .filter(|b| b.signal_strength_category() == "strong")
+                  .collect()
+          }
+      }
+    src/BAL008_wifi.rs: |
+      // BAL008_GARBAGE_A = "wifi_marker"
+      pub fn scan_networks() -> Vec<String> { vec![] }
+    src/BAL008_power.rs: |
+      // BAL008_GARBAGE_B = "power_marker"
+      pub fn battery_percent() -> u8 { 100 }
+    src/BAL008_display.rs: |
+      // BAL008_GARBAGE_C = "display_marker"
+      pub fn render_text(_text: &str) {}
+  commit_message: "feat: add floor field to Beacon, signal_strength_category, strong_signals to Scanner"
+fragments:
+- id: beacon_floor_field
+  selector:
+    path: src/beacon.rs
+    anchor: "pub floor: Option<u8>"
+- id: beacon_signal_strength
+  selector:
+    path: src/beacon.rs
+    anchor: "pub fn signal_strength_category(&self)"
+- id: scanner_strong_signals
+  selector:
+    path: src/scanner.rs
+    anchor: "pub fn strong_signals(&self)"
+- id: scanner_uses_signal_strength
+  selector:
+    path: src/scanner.rs
+    anchor: "signal_strength_category() == \"strong\""
+- id: no_garbage_a
+  selector:
+    anchor: BAL008_GARBAGE_A
+- id: no_garbage_b
+  selector:
+    anchor: BAL008_GARBAGE_B
+- id: no_garbage_c
+  selector:
+    anchor: BAL008_GARBAGE_C
+oracle:
+  required:
+  - beacon_floor_field
+  - beacon_signal_strength
+  - scanner_strong_signals
+  - scanner_uses_signal_strength
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

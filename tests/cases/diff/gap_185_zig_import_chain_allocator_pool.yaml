@@ -1,0 +1,229 @@
+name: gap_185_zig_import_chain_allocator_pool
+tags:
+- lang:zig
+- change:single_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+repo:
+  initial_files:
+    src/pool.zig: |
+      const std = @import("std");
+      const alloc = @import("alloc.zig");
+
+      pub const Pool = struct {
+          backing: std.mem.Allocator,
+          size: usize,
+
+          pub fn init(capacity: usize) Pool {
+              return Pool{
+                  .backing = alloc.getPageAllocator(),
+                  .size = capacity,
+              };
+          }
+
+          pub fn acquire(self: *Pool) ?*anyopaque {
+              if (self.size == 0) return null;
+              self.size -= 1;
+              return self.backing.alloc(u8, 4096) catch null;
+          }
+
+          pub fn release(self: *Pool) void {
+              self.size += 1;
+          }
+      };
+    src/alloc.zig: |
+      const std = @import("std");
+      const slab = @import("slab.zig");
+
+      pub fn getPageAllocator() std.mem.Allocator {
+          return std.heap.page_allocator;
+      }
+
+      pub fn getSlabAllocator(block_size: usize) std.mem.Allocator {
+          _ = block_size;
+          return slab.createSlab();
+      }
+    src/slab.zig: |
+      const std = @import("std");
+
+      const slab_block_size: usize = 256;
+      const max_slabs: usize = 1024;
+
+      pub fn createSlab() std.mem.Allocator {
+          return std.heap.page_allocator;
+      }
+
+      pub fn destroySlab() void {}
+    src/server.zig: |
+      const std = @import("std");
+      const pool_mod = @import("pool.zig");
+
+      pub fn startServer(port: u16) !void {
+          var p = pool_mod.Pool.init(64);
+          const conn = p.acquire();
+          _ = conn;
+          _ = port;
+      }
+    src/codec.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_185_CODEC_MARKER_A: []const u8 = "codec_noise";
+      const TRAP_GAP_185_CODEC_FLAG_B: bool = true;
+
+      pub fn encode(data: []const u8) []const u8 {
+          return data;
+      }
+
+      pub fn decode(data: []const u8) []const u8 {
+          return data;
+      }
+    src/timer.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_185_TIMER_MARKER_C: []const u8 = "timer_noise";
+      const TRAP_GAP_185_TIMER_FLAG_D: u64 = 1000;
+
+      pub fn millis() u64 {
+          return 0;
+      }
+
+      pub fn sleep(ms: u64) void {
+          _ = ms;
+      }
+  changed_files:
+    src/pool.zig: |
+      const std = @import("std");
+      const alloc = @import("alloc.zig");
+
+      pub const Pool = struct {
+          backing: std.mem.Allocator,
+          size: usize,
+
+          pub fn init(capacity: usize) Pool {
+              return Pool{
+                  .backing = alloc.getSlabAllocator(512),
+                  .size = capacity,
+              };
+          }
+
+          pub fn acquire(self: *Pool) ?*anyopaque {
+              if (self.size == 0) return null;
+              self.size -= 1;
+              return self.backing.alloc(u8, 4096) catch null;
+          }
+
+          pub fn release(self: *Pool) void {
+              self.size += 1;
+          }
+      };
+    src/alloc.zig: |
+      const std = @import("std");
+      const slab = @import("slab.zig");
+
+      pub fn getPageAllocator() std.mem.Allocator {
+          return std.heap.page_allocator;
+      }
+
+      pub fn getSlabAllocator(block_size: usize) std.mem.Allocator {
+          _ = block_size;
+          return slab.createSlab();
+      }
+    src/slab.zig: |
+      const std = @import("std");
+
+      const slab_block_size: usize = 256;
+      const max_slabs: usize = 1024;
+
+      pub fn createSlab() std.mem.Allocator {
+          return std.heap.page_allocator;
+      }
+
+      pub fn destroySlab() void {}
+    src/server.zig: |
+      const std = @import("std");
+      const pool_mod = @import("pool.zig");
+
+      pub fn startServer(port: u16) !void {
+          var p = pool_mod.Pool.init(64);
+          const conn = p.acquire();
+          _ = conn;
+          _ = port;
+      }
+    src/codec.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_185_CODEC_MARKER_A: []const u8 = "codec_noise";
+      const TRAP_GAP_185_CODEC_FLAG_B: bool = true;
+
+      pub fn encode(data: []const u8) []const u8 {
+          return data;
+      }
+
+      pub fn decode(data: []const u8) []const u8 {
+          return data;
+      }
+    src/timer.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_185_TIMER_MARKER_C: []const u8 = "timer_noise";
+      const TRAP_GAP_185_TIMER_FLAG_D: u64 = 1000;
+
+      pub fn millis() u64 {
+          return 0;
+      }
+
+      pub fn sleep(ms: u64) void {
+          _ = ms;
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: pool_change
+  selector:
+    path: src/pool.zig
+    anchor: alloc.getSlabAllocator(512)
+- id: alloc_slab_fn
+  selector:
+    path: src/alloc.zig
+    anchor: "pub fn getSlabAllocator(block_size: usize) std.mem.Allocator"
+- id: slab_create
+  selector:
+    path: src/slab.zig
+    anchor: "pub fn createSlab() std.mem.Allocator"
+- id: no_server
+  selector:
+    path: src/server.zig
+- id: no_codec
+  selector:
+    path: src/codec.zig
+- id: no_timer
+  selector:
+    path: src/timer.zig
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP_185_CODEC_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP_185_CODEC_FLAG_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP_185_TIMER_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP_185_TIMER_FLAG_D
+oracle:
+  required:
+  - pool_change
+  - alloc_slab_fn
+  - slab_create
+  allowed: []
+  forbidden:
+  - no_server
+  - no_codec
+  - no_timer
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

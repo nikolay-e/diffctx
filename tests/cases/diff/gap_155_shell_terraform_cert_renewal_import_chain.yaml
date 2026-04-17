@@ -1,0 +1,159 @@
+name: gap_155_shell_terraform_cert_renewal_import_chain
+tags:
+- change:config
+- change:multi_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:shell
+- lang:terraform
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    certs/renew.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      source certs/domains.sh
+
+      CERT_DIR="/etc/letsencrypt/live"
+      RENEWAL_THRESHOLD_DAYS=30
+
+      for domain in "${DOMAINS[@]}"; do
+        cert_file="${CERT_DIR}/${domain}/fullchain.pem"
+        if [[ ! -f "${cert_file}" ]]; then
+          certbot certonly --dns-route53 -d "${domain}" --non-interactive --agree-tos
+          continue
+        fi
+        expiry=$(openssl x509 -enddate -noout -in "${cert_file}" | cut -d= -f2)
+        expiry_epoch=$(date -d "${expiry}" +%s)
+        now_epoch=$(date +%s)
+        days_left=$(( (expiry_epoch - now_epoch) / 86400 ))
+        if [[ ${days_left} -lt ${RENEWAL_THRESHOLD_DAYS} ]]; then
+          certbot renew --cert-name "${domain}" --non-interactive
+        fi
+      done
+    certs/domains.sh: |
+      #!/usr/bin/env bash
+
+      DOMAINS=(
+        "api.stockpile.io"
+        "app.stockpile.io"
+        "cdn.stockpile.io"
+      )
+    terraform/acm.tf: |
+      resource "aws_acm_certificate" "main" {
+        domain_name       = "stockpile.io"
+        validation_method = "DNS"
+
+        subject_alternative_names = [
+          "*.stockpile.io"
+        ]
+
+        lifecycle {
+          create_before_destroy = true
+        }
+      }
+
+      resource "aws_acm_certificate_validation" "main" {
+        certificate_arn = aws_acm_certificate.main.arn
+      }
+
+      output "certificate_arn" {
+        value = aws_acm_certificate.main.arn
+      }
+    terraform/ses.tf: |
+      resource "aws_ses_domain_identity" "main" {
+        domain = "stockpile.io"
+      }
+
+      resource "aws_ses_domain_dkim" "main" {
+        domain = aws_ses_domain_identity.main.domain
+      }
+  changed_files:
+    certs/renew.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      source certs/domains.sh
+
+      CERT_DIR="/etc/letsencrypt/live"
+      RENEWAL_THRESHOLD_DAYS=30
+      NOTIFY_EMAIL="${NOTIFY_EMAIL:-ops@stockpile.io}"
+
+      for domain in "${DOMAINS[@]}"; do
+        cert_file="${CERT_DIR}/${domain}/fullchain.pem"
+        if [[ ! -f "${cert_file}" ]]; then
+          certbot certonly --dns-route53 -d "${domain}" -d "*.${domain}" --non-interactive --agree-tos
+          continue
+        fi
+        expiry=$(openssl x509 -enddate -noout -in "${cert_file}" | cut -d= -f2)
+        expiry_epoch=$(date -d "${expiry}" +%s)
+        now_epoch=$(date +%s)
+        days_left=$(( (expiry_epoch - now_epoch) / 86400 ))
+        if [[ ${days_left} -lt ${RENEWAL_THRESHOLD_DAYS} ]]; then
+          certbot renew --cert-name "${domain}" --non-interactive
+        fi
+      done
+    certs/domains.sh: |
+      #!/usr/bin/env bash
+
+      DOMAINS=(
+        "api.stockpile.io"
+        "app.stockpile.io"
+        "cdn.stockpile.io"
+        "admin.stockpile.io"
+      )
+    terraform/acm.tf: |
+      resource "aws_acm_certificate" "main" {
+        domain_name       = "stockpile.io"
+        validation_method = "DNS"
+
+        subject_alternative_names = [
+          "*.stockpile.io"
+        ]
+
+        lifecycle {
+          create_before_destroy = true
+        }
+
+        tags = {
+          ManagedBy = "terraform"
+        }
+      }
+
+      resource "aws_acm_certificate_validation" "main" {
+        certificate_arn = aws_acm_certificate.main.arn
+      }
+
+      output "certificate_arn" {
+        value = aws_acm_certificate.main.arn
+      }
+fragments:
+- id: renew_wildcard
+  selector:
+    path: certs/renew.sh
+    anchor: "*.${domain}"
+- id: domains_admin
+  selector:
+    path: certs/domains.sh
+    anchor: admin.stockpile.io
+- id: acm_tags
+  selector:
+    path: terraform/acm.tf
+    anchor: ManagedBy
+- id: no_ses
+  selector:
+    path: terraform/ses.tf
+- id: no_dkim
+  selector:
+    anchor: aws_ses_domain_dkim
+oracle:
+  required:
+  - renew_wildcard
+  - domains_admin
+  - acm_tags
+  forbidden:
+  - no_ses
+  - no_dkim

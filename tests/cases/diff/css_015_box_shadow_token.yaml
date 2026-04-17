@@ -1,0 +1,81 @@
+name: css_015_box_shadow_token
+tags:
+- lang:css
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    shadows.css: |
+      :root {
+        --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+        --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+        --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.15);
+      }
+    card.css: |
+      @import "shadows.css";
+      .card {
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: var(--shadow-md);
+        padding: 20px;
+      }
+    panel.css: |
+      @import "shadows.css";
+      .panel {
+        background: #fff;
+        border-radius: 4px;
+        box-shadow: var(--shadow-md);
+        border: 1px solid #e5e7eb;
+      }
+    CSS_NOISE_015_stepper.css: |
+      .CSS_NOISE_015_stepper_track { display: flex; align-items: center; }
+      .CSS_NOISE_015_stepper_step { flex: 1; text-align: center; }
+    CSS_NOISE_015_chip.css: |
+      .CSS_NOISE_015_chip_base { display: inline-flex; border-radius: 999px; }
+      .CSS_NOISE_015_chip_delete { margin-left: 4px; cursor: pointer; }
+  changed_files:
+    shadows.css: |
+      :root {
+        --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+        --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.12);
+        --shadow-lg: 0 10px 24px rgba(0, 0, 0, 0.18);
+      }
+  commit_message: "style: increase shadow spread and opacity for --shadow-md and --shadow-lg"
+fragments:
+- id: shadow_md_changed
+  selector:
+    path: shadows.css
+    anchor: "0 4px 12px"
+- id: card_uses_shadow
+  selector:
+    path: card.css
+    anchor: shadows.css
+- id: panel_uses_shadow
+  selector:
+    path: panel.css
+    anchor: shadows.css
+- id: no_stepper
+  selector:
+    path: CSS_NOISE_015_stepper.css
+- id: no_chip
+  selector:
+    path: CSS_NOISE_015_chip.css
+- id: no_global_0
+  selector:
+    anchor: CSS_NOISE_015_stepper_track
+- id: no_global_1
+  selector:
+    anchor: CSS_NOISE_015_chip_base
+oracle:
+  required:
+  - shadow_md_changed
+  - card_uses_shadow
+  - panel_uses_shadow
+  allowed: []
+  forbidden:
+  - no_stepper
+  - no_chip
+  - no_global_0
+  - no_global_1

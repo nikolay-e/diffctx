@@ -1,0 +1,168 @@
+name: bal2_3hop_040_rust_auth_rbac_middleware
+tags:
+- lang:rust
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/auth/role.rs: |
+      #[derive(Debug, Clone, PartialEq)]
+      pub enum Role {
+          Admin,
+          Editor,
+          Viewer,
+      }
+
+      impl Role {
+          pub fn can_write(&self) -> bool {
+              matches!(self, Role::Admin | Role::Editor)
+          }
+
+          pub fn can_admin(&self) -> bool {
+              matches!(self, Role::Admin)
+          }
+      }
+    src/auth/token.rs: |
+      use crate::auth::role::Role;
+
+      pub struct Token {
+          pub user_id: String,
+          pub role: Role,
+          pub expires_at: u64,
+      }
+
+      impl Token {
+          pub fn new(user_id: &str, role: Role, expires_at: u64) -> Self {
+              Self { user_id: user_id.to_string(), role, expires_at }
+          }
+
+          pub fn is_valid(&self, now: u64) -> bool {
+              self.expires_at > now
+          }
+      }
+    src/middleware/auth_guard.rs: |
+      use crate::auth::token::Token;
+      use crate::auth::role::Role;
+
+      pub struct AuthGuard {
+          required_role: Role,
+      }
+
+      impl AuthGuard {
+          pub fn new(required_role: Role) -> Self {
+              Self { required_role }
+          }
+
+          pub fn check(&self, token: &Token, now: u64) -> bool {
+              token.is_valid(now) && token.role == self.required_role
+          }
+      }
+    src/api/handler.rs: |
+      use crate::middleware::auth_guard::AuthGuard;
+      use crate::auth::token::Token;
+
+      pub struct ApiHandler {
+          guard: AuthGuard,
+      }
+
+      impl ApiHandler {
+          pub fn new(guard: AuthGuard) -> Self {
+              Self { guard }
+          }
+
+          pub fn handle_request(&self, token: &Token) -> &str {
+              if self.guard.check(token, 0) {
+                  "authorized"
+              } else {
+                  "forbidden"
+              }
+          }
+      }
+    src/auth/oauth.rs: |
+      GARBAGE_040_OAUTH_MARKER_A = "oauth_provider";
+      GARBAGE_040_CLIENT_MARKER_B = "client_id_123";
+
+      pub struct OAuthProvider {
+          client_id: String,
+      }
+    src/session/store.rs: |
+      GARBAGE_040_SESSION_MARKER_C = "session_store";
+      GARBAGE_040_EXPIRY_MARKER_D = 3600;
+
+      pub struct SessionStore {
+          ttl: u64,
+      }
+    src/rate_limit/bucket.rs: |
+      GARBAGE_040_BUCKET_MARKER_E = "token_bucket";
+      GARBAGE_040_RATE_MARKER_F = 100;
+
+      pub struct TokenBucket {
+          capacity: u32,
+          tokens: u32,
+      }
+  changed_files:
+    src/auth/role.rs: |
+      #[derive(Debug, Clone, PartialEq)]
+      pub enum Role {
+          Admin,
+          Editor,
+          Viewer,
+          Moderator,
+      }
+
+      impl Role {
+          pub fn can_write(&self) -> bool {
+              matches!(self, Role::Admin | Role::Editor | Role::Moderator)
+          }
+
+          pub fn can_admin(&self) -> bool {
+              matches!(self, Role::Admin)
+          }
+
+          pub fn can_moderate(&self) -> bool {
+              matches!(self, Role::Admin | Role::Moderator)
+          }
+      }
+  commit_message: "feat: add Moderator role with moderation permissions"
+fragments:
+- id: role_moderator
+  selector:
+    path: src/auth/role.rs
+    anchor: "Moderator"
+- id: token_role
+  selector:
+    path: src/auth/token.rs
+    anchor: "pub role: Role"
+- id: guard_check
+  selector:
+    path: src/middleware/auth_guard.rs
+    anchor: "pub fn check"
+- id: handler_request
+  selector:
+    path: src/api/handler.rs
+    anchor: "pub fn handle_request"
+- id: no_oauth
+  selector:
+    path: src/auth/oauth.rs
+    anchor: "GARBAGE_040_OAUTH_MARKER_A"
+- id: no_session
+  selector:
+    path: src/session/store.rs
+    anchor: "GARBAGE_040_SESSION_MARKER_C"
+- id: no_bucket
+  selector:
+    path: src/rate_limit/bucket.rs
+    anchor: "GARBAGE_040_BUCKET_MARKER_E"
+oracle:
+  required:
+  - role_moderator
+  - token_role
+  - guard_check
+  - handler_request
+  allowed: []
+  forbidden:
+  - no_oauth
+  - no_session
+  - no_bucket

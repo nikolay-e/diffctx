@@ -1,0 +1,90 @@
+name: html_006_script_src_path
+tags:
+- lang:html
+- lang:javascript
+- change:multi_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+xfail:
+  category: html-trivial-inline-change
+repo:
+  initial_files:
+    index.html: |
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <title>App</title>
+      </head>
+      <body>
+        <div id="root"></div>
+        <script src="/dist/bundle.v1.js"></script>
+      </body>
+      </html>
+    dist/bundle.v1.js: |
+      // HTML_NOISE_006_old_bundle_marker
+      (function(){ console.log('bundle v1'); })();
+    dist/bundle.v2.js: |
+      (function(){
+        'use strict';
+        const root = document.getElementById('root');
+        root.innerHTML = '<h1>App v2</h1>';
+      })();
+    HTML_NOISE_006_iframe.html: |
+      <!-- HTML_NOISE_006_iframe_embed -->
+      <div class="HTML_NOISE_006_iframe_wrapper">
+        <iframe src="https://example.com"></iframe>
+      </div>
+    HTML_NOISE_006_redirect.html: |
+      <!-- HTML_NOISE_006_redirect_page -->
+      <meta http-equiv="refresh" content="0;url=/new-path" class="HTML_NOISE_006_meta_redirect">
+  changed_files:
+    index.html: |
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <title>App</title>
+      </head>
+      <body>
+        <div id="root"></div>
+        <script src="/dist/bundle.v2.js"></script>
+      </body>
+      </html>
+  commit_message: "chore: point index.html to bundle.v2.js"
+fragments:
+- id: script_src_updated
+  selector:
+    path: index.html
+    anchor: bundle.v2.js
+- id: new_bundle_content
+  selector:
+    path: dist/bundle.v2.js
+    anchor: "App v2"
+- id: no_old_bundle
+  selector:
+    path: dist/bundle.v1.js
+- id: no_iframe
+  selector:
+    path: HTML_NOISE_006_iframe.html
+- id: no_redirect
+  selector:
+    path: HTML_NOISE_006_redirect.html
+- id: no_global_0
+  selector:
+    anchor: HTML_NOISE_006_old_bundle_marker
+- id: no_global_1
+  selector:
+    anchor: HTML_NOISE_006_iframe_wrapper
+oracle:
+  required:
+  - script_src_updated
+  - new_bundle_content
+  allowed: []
+  forbidden:
+  - no_old_bundle
+  - no_iframe
+  - no_redirect
+  - no_global_0
+  - no_global_1

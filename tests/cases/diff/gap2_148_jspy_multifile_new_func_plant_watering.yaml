@@ -1,0 +1,111 @@
+name: gap2_148_jspy_multifile_new_func_plant_watering
+tags:
+- change:multi_file
+- change:new_function
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:javascript
+- lang:python
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    garden/scheduler.py: |
+      from datetime import datetime, timedelta
+
+      class WateringScheduler:
+          def __init__(self):
+              self._schedule: dict[str, datetime] = {}
+
+          def water_plant(self, plant_id: str) -> None:
+              self._schedule[plant_id] = datetime.now()
+
+          def next_watering(self, plant_id: str, interval_days: int) -> datetime:
+              last = self._schedule.get(plant_id, datetime.now())
+              return last + timedelta(days=interval_days)
+    app/plants.js: |
+      function daysUntilWatering(nextDate) {
+        const now = new Date();
+        const diff = nextDate - now;
+        return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+      }
+
+      function plantStatusIcon(daysLeft) {
+        if (daysLeft === 0) return "💧";
+        if (daysLeft <= 2) return "🌱";
+        return "🌿";
+      }
+    garden/soil.py: |
+      IDEAL_MOISTURE_PCT = 60
+
+      class SoilSensor:
+          def __init__(self):
+              self._readings: dict[str, float] = {}
+
+          def read_moisture(self, zone_id: str) -> float:
+              return self._readings.get(zone_id, 0.0)
+
+          def is_dry(self, zone_id: str) -> bool:
+              return self.read_moisture(zone_id) < IDEAL_MOISTURE_PCT
+  changed_files:
+    garden/scheduler.py: |
+      from datetime import datetime, timedelta
+
+      class WateringScheduler:
+          def __init__(self):
+              self._schedule: dict[str, datetime] = {}
+
+          def water_plant(self, plant_id: str) -> None:
+              self._schedule[plant_id] = datetime.now()
+
+          def next_watering(self, plant_id: str, interval_days: int) -> datetime:
+              last = self._schedule.get(plant_id, datetime.now())
+              return last + timedelta(days=interval_days)
+
+          def overdue_plants(self, interval_days: int) -> list[str]:
+              now = datetime.now()
+              threshold = timedelta(days=interval_days)
+              return [pid for pid, last in self._schedule.items() if now - last > threshold]
+    app/plants.js: |
+      function daysUntilWatering(nextDate) {
+        const now = new Date();
+        const diff = nextDate - now;
+        return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+      }
+
+      function plantStatusIcon(daysLeft) {
+        if (daysLeft === 0) return "💧";
+        if (daysLeft <= 2) return "🌱";
+        return "🌿";
+      }
+
+      function renderOverdueList(plantIds) {
+        if (plantIds.length === 0) return "<p>All plants watered!</p>";
+        const items = plantIds.map((id) => `<li>${id}</li>`).join("");
+        return `<ul class="overdue">${items}</ul>`;
+      }
+  commit_message: "feat: add overdue plant detection and overdue list UI"
+fragments:
+- id: scheduler_overdue
+  selector:
+    path: garden/scheduler.py
+    anchor: "def overdue_plants(self, interval_days: int) -> list[str]:"
+- id: app_render_overdue
+  selector:
+    path: app/plants.js
+    anchor: "function renderOverdueList"
+- id: no_soil
+  selector:
+    path: garden/soil.py
+- id: no_ideal_moisture
+  selector:
+    anchor: IDEAL_MOISTURE_PCT
+oracle:
+  required:
+  - scheduler_overdue
+  - app_render_overdue
+  allowed: []
+  forbidden:
+  - no_soil
+  - no_ideal_moisture

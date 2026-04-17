@@ -1,0 +1,264 @@
+name: bal3_1hop_043_php_bug_fix_config_parser
+tags:
+- lang:php
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: php-no-tree-sitter
+repo:
+  initial_files:
+    src/Config/ConfigParser.php: |
+      <?php
+      namespace App\Config;
+
+      class ConfigParser
+      {
+          public function parse(string $content): array
+          {
+              $lines = explode("\n", $content);
+              $result = [];
+              foreach ($lines as $line) {
+                  $parts = explode('=', $line);
+                  $result[$parts[0]] = $parts[1];
+              }
+              return $result;
+          }
+
+          public function get(array $config, string $key): mixed
+          {
+              return $config[$key];
+          }
+      }
+    src/Services/AppBootstrap.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Config\ConfigParser;
+
+      class AppBootstrap
+      {
+          private ConfigParser $parser;
+
+          public function __construct(ConfigParser $parser)
+          {
+              $this->parser = $parser;
+          }
+
+          public function loadConfig(string $content): array
+          {
+              return $this->parser->parse($content);
+          }
+
+          public function getAppName(array $config): mixed
+          {
+              return $this->parser->get($config, 'app_name');
+          }
+      }
+    src/Services/DatabaseBootstrap.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Config\ConfigParser;
+
+      class DatabaseBootstrap
+      {
+          private ConfigParser $parser;
+
+          public function __construct(ConfigParser $parser)
+          {
+              $this->parser = $parser;
+          }
+
+          public function getDsn(string $configContent): string
+          {
+              $config = $this->parser->parse($configContent);
+              $host = $this->parser->get($config, 'db_host');
+              $port = $this->parser->get($config, 'db_port');
+              return "mysql:host={$host};port={$port}";
+          }
+      }
+    src/Services/MailerBootstrap.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Config\ConfigParser;
+
+      class MailerBootstrap
+      {
+          private ConfigParser $parser;
+
+          public function __construct(ConfigParser $parser)
+          {
+              $this->parser = $parser;
+          }
+
+          public function getSmtpHost(string $content): mixed
+          {
+              $config = $this->parser->parse($content);
+              return $this->parser->get($config, 'smtp_host');
+          }
+      }
+    src/Services/CacheBootstrap.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Config\ConfigParser;
+
+      class CacheBootstrap
+      {
+          private ConfigParser $parser;
+
+          public function __construct(ConfigParser $parser)
+          {
+              $this->parser = $parser;
+          }
+
+          public function getDriver(string $content): mixed
+          {
+              $config = $this->parser->parse($content);
+              return $this->parser->get($config, 'cache_driver');
+          }
+      }
+    src/Transformer/XmlTransformer.php: |
+      <?php
+      namespace App\Transformer;
+
+      GARBAGE_BAL3_043_XML_A = 'xml';
+      GARBAGE_BAL3_043_SCHEMA_B = 'default';
+
+      class XmlTransformer
+      {
+          public function transform(string $xml): array
+          {
+              return [];
+          }
+      }
+    src/Transformer/CsvTransformer.php: |
+      <?php
+      namespace App\Transformer;
+
+      GARBAGE_BAL3_043_CSV_C = 'csv';
+      GARBAGE_BAL3_043_DELIM_D = ',';
+
+      class CsvTransformer
+      {
+          public function transform(string $csv): array
+          {
+              return [];
+          }
+      }
+    src/Transformer/YamlTransformer.php: |
+      <?php
+      namespace App\Transformer;
+
+      GARBAGE_BAL3_043_YAML_E = 'yaml';
+      GARBAGE_BAL3_043_INDENT_F = 2;
+
+      class YamlTransformer
+      {
+          public function transform(string $yaml): array
+          {
+              return [];
+          }
+      }
+  changed_files:
+    src/Config/ConfigParser.php: |
+      <?php
+      namespace App\Config;
+
+      class ConfigParser
+      {
+          public function parse(string $content): array
+          {
+              $lines = explode("\n", $content);
+              $result = [];
+              foreach ($lines as $line) {
+                  $line = trim($line);
+                  if (empty($line) || str_starts_with($line, '#')) {
+                      continue;
+                  }
+                  $pos = strpos($line, '=');
+                  if ($pos === false) {
+                      continue;
+                  }
+                  $key = trim(substr($line, 0, $pos));
+                  $value = trim(substr($line, $pos + 1));
+                  $result[$key] = $value;
+              }
+              return $result;
+          }
+
+          public function get(array $config, string $key, mixed $default = null): mixed
+          {
+              return $config[$key] ?? $default;
+          }
+      }
+  commit_message: "Fix config parser to handle comments, empty lines, and defaults"
+fragments:
+- id: app_bootstrap
+  selector:
+    path: src/Services/AppBootstrap.php
+    anchor: "use App\\Config\\ConfigParser"
+- id: app_parse
+  selector:
+    path: src/Services/AppBootstrap.php
+    anchor: "parser->parse"
+- id: db_bootstrap
+  selector:
+    path: src/Services/DatabaseBootstrap.php
+    anchor: "use App\\Config\\ConfigParser"
+- id: mailer_bootstrap
+  selector:
+    path: src/Services/MailerBootstrap.php
+    anchor: "use App\\Config\\ConfigParser"
+- id: cache_bootstrap
+  selector:
+    path: src/Services/CacheBootstrap.php
+    anchor: "use App\\Config\\ConfigParser"
+- id: no_xml
+  selector:
+    path: src/Transformer/XmlTransformer.php
+- id: no_csv
+  selector:
+    path: src/Transformer/CsvTransformer.php
+- id: no_yaml
+  selector:
+    path: src/Transformer/YamlTransformer.php
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_043_XML_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_043_SCHEMA_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_043_CSV_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_043_DELIM_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL3_043_YAML_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL3_043_INDENT_F
+oracle:
+  required:
+  - app_bootstrap
+  - app_parse
+  - db_bootstrap
+  - mailer_bootstrap
+  - cache_bootstrap
+  allowed: []
+  forbidden:
+  - no_xml
+  - no_csv
+  - no_yaml
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

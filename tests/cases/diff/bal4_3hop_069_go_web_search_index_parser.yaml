@@ -1,0 +1,123 @@
+name: bal4_3hop_069_go_web_search_index_parser
+tags:
+- lang:go
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:trivial
+repo:
+  initial_files:
+    pkg/parser/tokenizer.go: |
+      package parser
+
+      func Tokenize(text string) []string {
+          return []string{text}
+      }
+    pkg/index/builder.go: |
+      package index
+
+      import "myapp/pkg/parser"
+
+      func Build(text string) int {
+          toks := parser.Tokenize(text)
+          return len(toks)
+      }
+    pkg/search/engine.go: |
+      package search
+
+      import "myapp/pkg/index"
+
+      func Query(q string) int {
+          return index.Build(q)
+      }
+    pkg/web/search_handler.go: |
+      package web
+
+      import "myapp/pkg/search"
+
+      func SearchPage(q string) int {
+          return search.Query(q)
+      }
+    pkg/garbage/misc.go: |
+      package garbage
+
+      var GARBAGE_069_MISC_A = 42
+      var GARBAGE_069_MISC_B = "misc"
+
+      func GarbageMisc() {}
+  changed_files:
+    pkg/parser/tokenizer.go: |
+      package parser
+
+      type Token struct {
+          Val string
+      }
+
+      func Tokenize(text string) []string {
+          return []string{text}
+      }
+    pkg/index/builder.go: |
+      package index
+
+      import "myapp/pkg/parser"
+
+      func Build(text string) int {
+          toks := parser.Tokenize(text)
+          return len(toks)
+      }
+    pkg/search/engine.go: |
+      package search
+
+      import "myapp/pkg/index"
+
+      func Query(q string) int {
+          return index.Build(q)
+      }
+    pkg/web/search_handler.go: |
+      package web
+
+      import "myapp/pkg/search"
+
+      func SearchPage(q string) int {
+          return search.Query(q)
+      }
+    pkg/garbage/misc.go: |
+      package garbage
+
+      var GARBAGE_069_MISC_A = 42
+      var GARBAGE_069_MISC_B = "misc"
+
+      func GarbageMisc() {}
+  commit_message: "add Token struct to parser"
+fragments:
+- id: token_struct
+  selector:
+    path: pkg/parser/tokenizer.go
+    anchor: "type Token struct"
+- id: tokenize
+  selector:
+    path: pkg/parser/tokenizer.go
+    anchor: "func Tokenize"
+- id: build
+  selector:
+    path: pkg/index/builder.go
+    anchor: "func Build"
+- id: no_garbage_misc
+  selector:
+    path: pkg/garbage/misc.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_069_MISC_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_069_MISC_B
+oracle:
+  required:
+  - token_struct
+  - tokenize
+  - build
+  allowed: []
+  forbidden:
+  - no_garbage_misc
+  - no_global_0
+  - no_global_1

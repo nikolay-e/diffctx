@@ -1,0 +1,265 @@
+name: gap_194_zig_same_file_ring_buffer_capacity
+tags:
+- lang:zig
+- change:multi_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+repo:
+  initial_files:
+    src/ring.zig: |
+      pub const RingBuffer = struct {
+          buf: [256]u8,
+          head: usize,
+          tail: usize,
+          count: usize,
+
+          pub fn init() RingBuffer {
+              return RingBuffer{
+                  .buf = undefined,
+                  .head = 0,
+                  .tail = 0,
+                  .count = 0,
+              };
+          }
+
+          pub fn push(self: *RingBuffer, byte: u8) bool {
+              if (self.count == 256) return false;
+              self.buf[self.tail] = byte;
+              self.tail = (self.tail + 1) % 256;
+              self.count += 1;
+              return true;
+          }
+
+          pub fn pop(self: *RingBuffer) ?u8 {
+              if (self.count == 0) return null;
+              const val = self.buf[self.head];
+              self.head = (self.head + 1) % 256;
+              self.count -= 1;
+              return val;
+          }
+
+          pub fn isEmpty(self: RingBuffer) bool {
+              return self.count == 0;
+          }
+      };
+    src/queue.zig: |
+      pub const PriorityQueue = struct {
+          items: [64]i32,
+          len: usize,
+
+          pub fn init() PriorityQueue {
+              return PriorityQueue{ .items = undefined, .len = 0 };
+          }
+
+          pub fn insert(self: *PriorityQueue, value: i32) void {
+              self.items[self.len] = value;
+              self.len += 1;
+          }
+
+          pub fn extractMin(self: *PriorityQueue) ?i32 {
+              if (self.len == 0) return null;
+              var min_idx: usize = 0;
+              var i: usize = 1;
+              while (i < self.len) : (i += 1) {
+                  if (self.items[i] < self.items[min_idx]) min_idx = i;
+              }
+              const val = self.items[min_idx];
+              self.items[min_idx] = self.items[self.len - 1];
+              self.len -= 1;
+              return val;
+          }
+      };
+    src/bitset.zig: |
+      const TRAP_GAP_194_BITSET_MARKER_A: []const u8 = "bitset_noise";
+      const TRAP_GAP_194_BITSET_FLAG_B: u32 = 64;
+
+      pub const BitSet = struct {
+          bits: u64,
+
+          pub fn set(self: *BitSet, pos: u6) void {
+              self.bits |= @as(u64, 1) << pos;
+          }
+
+          pub fn clear(self: *BitSet, pos: u6) void {
+              self.bits &= ~(@as(u64, 1) << pos);
+          }
+      };
+    src/stack.zig: |
+      const TRAP_GAP_194_STACK_MARKER_C: []const u8 = "stack_noise";
+      const TRAP_GAP_194_STACK_FLAG_D: usize = 128;
+
+      pub const Stack = struct {
+          items: [128]i32,
+          top: usize,
+
+          pub fn push(self: *Stack, val: i32) void {
+              self.items[self.top] = val;
+              self.top += 1;
+          }
+
+          pub fn pop(self: *Stack) ?i32 {
+              if (self.top == 0) return null;
+              self.top -= 1;
+              return self.items[self.top];
+          }
+      };
+  changed_files:
+    src/ring.zig: |
+      pub const RingBuffer = struct {
+          buf: [256]u8,
+          head: usize,
+          tail: usize,
+          count: usize,
+
+          pub fn init() RingBuffer {
+              return RingBuffer{
+                  .buf = undefined,
+                  .head = 0,
+                  .tail = 0,
+                  .count = 0,
+              };
+          }
+
+          pub fn push(self: *RingBuffer, byte: u8) bool {
+              if (self.count == 256) return false;
+              self.buf[self.tail] = byte;
+              self.tail = (self.tail + 1) % 256;
+              self.count += 1;
+              return true;
+          }
+
+          pub fn pop(self: *RingBuffer) ?u8 {
+              if (self.count == 0) return null;
+              const val = self.buf[self.head];
+              self.head = (self.head + 1) % 256;
+              self.count -= 1;
+              return val;
+          }
+
+          pub fn isEmpty(self: RingBuffer) bool {
+              return self.count == 0;
+          }
+
+          pub fn isFull(self: RingBuffer) bool {
+              return self.count == 256;
+          }
+      };
+    src/queue.zig: |
+      pub const PriorityQueue = struct {
+          items: [64]i32,
+          len: usize,
+
+          pub fn init() PriorityQueue {
+              return PriorityQueue{ .items = undefined, .len = 0 };
+          }
+
+          pub fn insert(self: *PriorityQueue, value: i32) void {
+              self.items[self.len] = value;
+              self.len += 1;
+          }
+
+          pub fn extractMin(self: *PriorityQueue) ?i32 {
+              if (self.len == 0) return null;
+              var min_idx: usize = 0;
+              var i: usize = 1;
+              while (i < self.len) : (i += 1) {
+                  if (self.items[i] < self.items[min_idx]) min_idx = i;
+              }
+              const val = self.items[min_idx];
+              self.items[min_idx] = self.items[self.len - 1];
+              self.len -= 1;
+              return val;
+          }
+
+          pub fn peek(self: PriorityQueue) ?i32 {
+              if (self.len == 0) return null;
+              var min_idx: usize = 0;
+              var i: usize = 1;
+              while (i < self.len) : (i += 1) {
+                  if (self.items[i] < self.items[min_idx]) min_idx = i;
+              }
+              return self.items[min_idx];
+          }
+      };
+    src/bitset.zig: |
+      const TRAP_GAP_194_BITSET_MARKER_A: []const u8 = "bitset_noise";
+      const TRAP_GAP_194_BITSET_FLAG_B: u32 = 64;
+
+      pub const BitSet = struct {
+          bits: u64,
+
+          pub fn set(self: *BitSet, pos: u6) void {
+              self.bits |= @as(u64, 1) << pos;
+          }
+
+          pub fn clear(self: *BitSet, pos: u6) void {
+              self.bits &= ~(@as(u64, 1) << pos);
+          }
+      };
+    src/stack.zig: |
+      const TRAP_GAP_194_STACK_MARKER_C: []const u8 = "stack_noise";
+      const TRAP_GAP_194_STACK_FLAG_D: usize = 128;
+
+      pub const Stack = struct {
+          items: [128]i32,
+          top: usize,
+
+          pub fn push(self: *Stack, val: i32) void {
+              self.items[self.top] = val;
+              self.top += 1;
+          }
+
+          pub fn pop(self: *Stack) ?i32 {
+              if (self.top == 0) return null;
+              self.top -= 1;
+              return self.items[self.top];
+          }
+      };
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: ring_is_full
+  selector:
+    path: src/ring.zig
+    anchor: "pub fn isFull(self: RingBuffer) bool"
+- id: ring_struct
+  selector:
+    path: src/ring.zig
+    anchor: "pub const RingBuffer = struct"
+- id: queue_peek
+  selector:
+    path: src/queue.zig
+    anchor: "pub fn peek(self: PriorityQueue) ?i32"
+- id: no_bitset
+  selector:
+    path: src/bitset.zig
+- id: no_stack
+  selector:
+    path: src/stack.zig
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP_194_BITSET_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP_194_BITSET_FLAG_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP_194_STACK_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP_194_STACK_FLAG_D
+oracle:
+  required:
+  - ring_is_full
+  - ring_struct
+  - queue_peek
+  allowed: []
+  forbidden:
+  - no_bitset
+  - no_stack
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

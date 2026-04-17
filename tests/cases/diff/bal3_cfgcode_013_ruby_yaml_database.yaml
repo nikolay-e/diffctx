@@ -1,0 +1,165 @@
+name: bal3_cfgcode_013_ruby_yaml_database
+tags:
+- lang:ruby
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    config/database.yml: |
+      production:
+        adapter: postgresql
+        host: localhost
+        port: 5432
+        database: myapp_production
+        pool: 5
+        timeout: 5000
+    lib/db/connection.rb: |
+      require 'yaml'
+
+      module DB
+        class Connection
+          attr_reader :adapter, :host, :port, :database, :pool, :timeout
+
+          def initialize(config_path, env = 'production')
+            data = YAML.load_file(config_path)
+            cfg = data[env]
+            @adapter = cfg['adapter']
+            @host = cfg['host']
+            @port = cfg['port']
+            @database = cfg['database']
+            @pool = cfg['pool']
+            @timeout = cfg['timeout']
+          end
+
+          def connection_url
+            "#{@adapter}://#{@host}:#{@port}/#{@database}"
+          end
+
+          def pool_config
+            { size: @pool, timeout: @timeout }
+          end
+        end
+      end
+    lib/db/migrator.rb: |
+      module DB
+        class Migrator
+          def initialize(connection)
+            @connection = connection
+          end
+
+          def run_pending
+            url = @connection.connection_url
+            { migrated: true, url: url }
+          end
+        end
+      end
+    lib/db/seed.rb: |
+      GARBAGE_CFGCODE_013_SEED_A = "seed"
+      GARBAGE_CFGCODE_013_COUNT_B = 100
+
+      module DB
+        def self.seed_data
+        end
+      end
+    lib/api/base.rb: |
+      GARBAGE_CFGCODE_013_API_C = "v2"
+      GARBAGE_CFGCODE_013_PREFIX_D = "/api"
+
+      module API
+        class Base
+          def call(env); end
+        end
+      end
+    lib/workers/background.rb: |
+      GARBAGE_CFGCODE_013_WORKER_E = "sidekiq"
+      GARBAGE_CFGCODE_013_QUEUE_F = "default"
+
+      module Workers
+        class Background
+          def perform; end
+        end
+      end
+  changed_files:
+    config/database.yml: |
+      production:
+        adapter: postgresql
+        host: db-primary.internal
+        port: 5432
+        database: myapp_production
+        pool: 25
+        timeout: 10000
+        replica_host: db-replica.internal
+        ssl: true
+  commit_message: "production DB: increase pool, add replica and SSL"
+fragments:
+- id: connection_class
+  selector:
+    path: lib/db/connection.rb
+    anchor: "class Connection"
+- id: pool_read
+  selector:
+    path: lib/db/connection.rb
+    anchor: "@pool = cfg['pool']"
+- id: connection_url
+  selector:
+    path: lib/db/connection.rb
+    anchor: "def connection_url"
+- id: pool_config
+  selector:
+    path: lib/db/connection.rb
+    anchor: "def pool_config"
+- id: migrator_uses_url
+  selector:
+    path: lib/db/migrator.rb
+    anchor: "@connection.connection_url"
+- id: no_seed
+  selector:
+    path: lib/db/seed.rb
+    anchor: "seed_data"
+- id: no_api
+  selector:
+    path: lib/api/base.rb
+    anchor: "class Base"
+- id: no_worker
+  selector:
+    path: lib/workers/background.rb
+    anchor: "class Background"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_013_SEED_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_013_COUNT_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_013_API_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_013_PREFIX_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CFGCODE_013_WORKER_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CFGCODE_013_QUEUE_F
+oracle:
+  required:
+  - connection_class
+  - pool_read
+  - connection_url
+  - pool_config
+  allowed:
+  - migrator_uses_url
+  forbidden:
+  - no_seed
+  - no_api
+  - no_worker
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

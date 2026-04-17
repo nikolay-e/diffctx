@@ -1,0 +1,171 @@
+name: gap_008_python_jwt_audience_validation_fix
+tags:
+- lang:python
+- change:bug_fix
+- change:single_file
+- context:import_chain
+- difficulty:hard
+- distance:1hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    identity/jwt_validator.py: |
+      import hmac
+      import hashlib
+      import json
+      import base64
+      from identity.keys import get_signing_key, KeyAlgorithm
+
+      class JwtValidator:
+          def __init__(self, issuer: str):
+              self._issuer = issuer
+
+          def validate(self, token: str) -> dict:
+              header_b64, payload_b64, signature_b64 = token.split(".")
+              header = self._decode_segment(header_b64)
+              payload = self._decode_segment(payload_b64)
+              algo = KeyAlgorithm(header.get("alg", "HS256"))
+              key = get_signing_key(algo)
+              expected_sig = self._compute_signature(
+                  f"{header_b64}.{payload_b64}", key
+              )
+              if not hmac.compare_digest(signature_b64, expected_sig):
+                  raise ValueError("Invalid signature")
+              if payload.get("iss") != self._issuer:
+                  raise ValueError("Invalid issuer")
+              return payload
+
+          def _decode_segment(self, segment: str) -> dict:
+              padded = segment + "=" * (4 - len(segment) % 4)
+              return json.loads(base64.urlsafe_b64decode(padded))
+
+          def _compute_signature(self, data: str, key: bytes) -> str:
+              sig = hmac.new(key, data.encode(), hashlib.sha256).digest()
+              return base64.urlsafe_b64encode(sig).rstrip(b"=").decode()
+    identity/keys.py: |
+      from enum import Enum
+
+      class KeyAlgorithm(Enum):
+          HS256 = "HS256"
+          HS384 = "HS384"
+          HS512 = "HS512"
+
+      _KEY_STORE: dict[KeyAlgorithm, bytes] = {}
+
+      def register_key(algo: KeyAlgorithm, key: bytes) -> None:
+          _KEY_STORE[algo] = key
+
+      def get_signing_key(algo: KeyAlgorithm) -> bytes:
+          if algo not in _KEY_STORE:
+              raise KeyError(f"No key registered for {algo.value}")
+          return _KEY_STORE[algo]
+    identity/session.py: |
+      import secrets
+      from datetime import datetime, timedelta
+
+      class SessionManager:
+          def __init__(self, ttl_hours: int = 24):
+              self._sessions: dict[str, dict] = {}
+              self._ttl_hours = ttl_hours
+
+          def create(self, user_id: str) -> str:
+              token = secrets.token_urlsafe(32)
+              self._sessions[token] = {
+                  "user_id": user_id,
+                  "expires": datetime.utcnow() + timedelta(hours=self._ttl_hours),
+              }
+              return token
+
+          def validate(self, token: str) -> str | None:
+              sess = self._sessions.get(token)
+              if sess and sess["expires"] > datetime.utcnow():
+                  return sess["user_id"]
+              return None
+    identity/oauth.py: |
+      class OAuthProvider:
+          def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
+              self.client_id = client_id
+              self.client_secret = client_secret
+              self.redirect_uri = redirect_uri
+
+          def authorize_url(self, state: str) -> str:
+              return (
+                  f"https://auth.example.com/authorize?"
+                  f"client_id={self.client_id}&state={state}"
+                  f"&redirect_uri={self.redirect_uri}"
+              )
+
+          def exchange_code(self, code: str) -> dict:
+              return {"access_token": "mock", "token_type": "bearer"}
+  changed_files:
+    identity/jwt_validator.py: |
+      import hmac
+      import hashlib
+      import json
+      import base64
+      import time
+      from identity.keys import get_signing_key, KeyAlgorithm
+
+      class JwtValidator:
+          def __init__(self, issuer: str, audience: str | None = None):
+              self._issuer = issuer
+              self._audience = audience
+
+          def validate(self, token: str) -> dict:
+              parts = token.split(".")
+              if len(parts) != 3:
+                  raise ValueError("Malformed token")
+              header_b64, payload_b64, signature_b64 = parts
+              header = self._decode_segment(header_b64)
+              payload = self._decode_segment(payload_b64)
+              algo = KeyAlgorithm(header.get("alg", "HS256"))
+              key = get_signing_key(algo)
+              expected_sig = self._compute_signature(
+                  f"{header_b64}.{payload_b64}", key
+              )
+              if not hmac.compare_digest(signature_b64, expected_sig):
+                  raise ValueError("Invalid signature")
+              if payload.get("iss") != self._issuer:
+                  raise ValueError("Invalid issuer")
+              if self._audience and payload.get("aud") != self._audience:
+                  raise ValueError("Invalid audience")
+              exp = payload.get("exp")
+              if exp is not None and time.time() > exp:
+                  raise ValueError("Token expired")
+              return payload
+
+          def _decode_segment(self, segment: str) -> dict:
+              padded = segment + "=" * (4 - len(segment) % 4)
+              return json.loads(base64.urlsafe_b64decode(padded))
+
+          def _compute_signature(self, data: str, key: bytes) -> str:
+              sig = hmac.new(key, data.encode(), hashlib.sha256).digest()
+              return base64.urlsafe_b64encode(sig).rstrip(b"=").decode()
+fragments:
+- id: jwt_validate
+  selector:
+    path: identity/jwt_validator.py
+    anchor: "def validate"
+- id: keys_get
+  selector:
+    path: identity/keys.py
+    anchor: "def get_signing_key"
+- id: key_algorithm
+  selector:
+    path: identity/keys.py
+    anchor: "class KeyAlgorithm"
+- id: no_session
+  selector:
+    path: identity/session.py
+- id: no_oauth
+  selector:
+    path: identity/oauth.py
+oracle:
+  required:
+  - jwt_validate
+  - keys_get
+  - key_algorithm
+  forbidden:
+  - no_session
+  - no_oauth

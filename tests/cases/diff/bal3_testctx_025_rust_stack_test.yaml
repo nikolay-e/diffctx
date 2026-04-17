@@ -1,0 +1,137 @@
+name: bal3_testctx_025_rust_stack_test
+tags:
+- lang:rust
+- change:single_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/stack.rs: |
+      pub struct Stack<T> {
+          elements: Vec<T>,
+      }
+
+      impl<T> Stack<T> {
+          pub fn new() -> Self {
+              Stack { elements: Vec::new() }
+          }
+
+          pub fn push(&mut self, item: T) {
+              self.elements.push(item);
+          }
+
+          pub fn pop(&mut self) -> Option<T> {
+              self.elements.pop()
+          }
+
+          pub fn is_empty(&self) -> bool {
+              self.elements.is_empty()
+          }
+      }
+    tests/stack_test.rs: |
+      use mylib::stack::Stack;
+
+      #[test]
+      fn test_push_and_pop() {
+          let mut s = Stack::new();
+          s.push(42);
+          assert_eq!(s.pop(), Some(42));
+      }
+
+      #[test]
+      fn test_empty_pop() {
+          let mut s: Stack<i32> = Stack::new();
+          assert_eq!(s.pop(), None);
+      }
+
+      #[test]
+      fn test_is_empty() {
+          let s: Stack<i32> = Stack::new();
+          assert!(s.is_empty());
+      }
+    src/queue.rs: |
+      pub struct Queue<T> {
+          elements: Vec<T>,
+      }
+
+      impl<T> Queue<T> {
+          pub fn new() -> Self {
+              Queue { elements: Vec::new() }
+          }
+
+          pub fn enqueue(&mut self, item: T) {
+              self.elements.push(item);
+          }
+
+          pub fn dequeue(&mut self) -> Option<T> {
+              if self.elements.is_empty() {
+                  None
+              } else {
+                  Some(self.elements.remove(0))
+              }
+          }
+      }
+  changed_files:
+    src/stack.rs: |
+      pub struct Stack<T> {
+          elements: Vec<T>,
+      }
+
+      impl<T> Stack<T> {
+          pub fn new() -> Self {
+              Stack { elements: Vec::new() }
+          }
+
+          pub fn push(&mut self, item: T) {
+              self.elements.push(item);
+          }
+
+          pub fn pop(&mut self) -> Option<T> {
+              self.elements.pop()
+          }
+
+          pub fn peek(&self) -> Option<&T> {
+              self.elements.last()
+          }
+
+          pub fn len(&self) -> usize {
+              self.elements.len()
+          }
+
+          pub fn is_empty(&self) -> bool {
+              self.elements.is_empty()
+          }
+      }
+  commit_message: "feat: add peek and len to Stack"
+fragments:
+- id: peek_method
+  selector:
+    path: src/stack.rs
+    anchor: "pub fn peek(&self) -> Option<&T>"
+- id: len_method
+  selector:
+    path: src/stack.rs
+    anchor: "pub fn len(&self) -> usize"
+- id: test_push_pop
+  selector:
+    path: tests/stack_test.rs
+    anchor: "fn test_push_and_pop()"
+- id: test_is_empty
+  selector:
+    path: tests/stack_test.rs
+    anchor: "fn test_is_empty()"
+- id: no_queue
+  selector:
+    path: src/queue.rs
+    anchor: "pub struct Queue"
+oracle:
+  required:
+  - peek_method
+  - len_method
+  - test_push_pop
+  allowed:
+  - test_is_empty
+  forbidden:
+  - no_queue

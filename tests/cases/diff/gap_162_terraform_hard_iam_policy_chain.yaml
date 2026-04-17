@@ -1,0 +1,154 @@
+name: gap_162_terraform_hard_iam_policy_chain
+tags:
+- change:config
+- change:multi_file
+- context:import_chain
+- difficulty:hard
+- distance:2hop
+- lang:terraform
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    deploy/stacks/api/main.tf: |
+      module "lambda_role" {
+        source      = "../../modules/iam-role"
+        role_name   = "api-lambda-role"
+        policy_arns = [module.policy.arn]
+      }
+
+      module "policy" {
+        source    = "../../modules/iam-policy"
+        s3_bucket = var.artifact_bucket
+      }
+    deploy/stacks/api/variables.tf: |
+      variable "artifact_bucket" {
+        type    = string
+        default = "api-artifacts-prod"
+      }
+
+      variable "lambda_timeout" {
+        type    = number
+        default = 30
+      }
+    deploy/modules/iam-role/main.tf: |
+      resource "aws_iam_role" "this" {
+        name = var.role_name
+
+        assume_role_policy = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Action    = "sts:AssumeRole"
+            Effect    = "Allow"
+            Principal = { Service = "lambda.amazonaws.com" }
+          }]
+        })
+      }
+
+      resource "aws_iam_role_policy_attachment" "this" {
+        count      = length(var.policy_arns)
+        role       = aws_iam_role.this.name
+        policy_arn = var.policy_arns[count.index]
+      }
+    deploy/modules/iam-role/variables.tf: |
+      variable "role_name" {
+        type = string
+      }
+
+      variable "policy_arns" {
+        type = list(string)
+      }
+    deploy/modules/iam-policy/main.tf: |
+      resource "aws_iam_policy" "s3_access" {
+        name = "s3-read-access"
+
+        policy = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect   = "Allow"
+            Action   = ["s3:GetObject"]
+            Resource = "arn:aws:s3:::${var.s3_bucket}/*"
+          }]
+        })
+      }
+    deploy/modules/iam-policy/variables.tf: |
+      variable "s3_bucket" {
+        type = string
+      }
+    deploy/modules/iam-policy/outputs.tf: |
+      output "arn" {
+        value = aws_iam_policy.s3_access.arn
+      }
+    deploy/modules/cloudwatch/main.tf: |
+      resource "aws_cloudwatch_log_group" "app" {
+        name              = "/app/logs"
+        retention_in_days = 14
+      }
+  changed_files:
+    deploy/stacks/api/main.tf: |
+      module "lambda_role" {
+        source      = "../../modules/iam-role"
+        role_name   = "api-lambda-role"
+        policy_arns = [module.policy.arn]
+      }
+
+      module "policy" {
+        source    = "../../modules/iam-policy"
+        s3_bucket = var.artifact_bucket
+        allow_put = true
+      }
+    deploy/modules/iam-policy/main.tf: |
+      locals {
+        read_actions  = ["s3:GetObject", "s3:ListBucket"]
+        write_actions = var.allow_put ? ["s3:PutObject"] : []
+        all_actions   = concat(local.read_actions, local.write_actions)
+      }
+
+      resource "aws_iam_policy" "s3_access" {
+        name = "s3-read-access"
+
+        policy = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect   = "Allow"
+            Action   = local.all_actions
+            Resource = "arn:aws:s3:::${var.s3_bucket}/*"
+          }]
+        })
+      }
+    deploy/modules/iam-policy/variables.tf: |
+      variable "s3_bucket" {
+        type = string
+      }
+
+      variable "allow_put" {
+        type    = bool
+        default = false
+      }
+fragments:
+- id: api_stack_policy
+  selector:
+    path: deploy/stacks/api/main.tf
+    anchor: allow_put
+- id: policy_locals
+  selector:
+    path: deploy/modules/iam-policy/main.tf
+    anchor: all_actions
+- id: policy_var
+  selector:
+    path: deploy/modules/iam-policy/variables.tf
+    anchor: allow_put
+- id: no_cloudwatch
+  selector:
+    path: deploy/modules/cloudwatch/main.tf
+- id: no_role_module
+  selector:
+    path: deploy/modules/iam-role/main.tf
+oracle:
+  required:
+  - api_stack_policy
+  - policy_locals
+  - policy_var
+  forbidden:
+  - no_cloudwatch
+  - no_role_module

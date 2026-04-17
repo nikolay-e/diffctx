@@ -1,0 +1,127 @@
+name: gap2_006_kotlin_python_inventory_sync_fix
+tags:
+- lang:kotlin
+- lang:python
+- change:bug_fix
+- change:multi_file
+- context:same_file
+- distance:0hop
+- difficulty:easy
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    warehouse/src/main/kotlin/inventory/StockManager.kt: |
+      package inventory
+
+      class StockManager {
+          private val levels = mutableMapOf<String, Int>()
+
+          fun restock(sku: String, quantity: Int) {
+              levels[sku] = (levels[sku] ?: 0) + quantity
+          }
+
+          fun reserve(sku: String, quantity: Int): Boolean {
+              val current = levels[sku] ?: 0
+              if (current < quantity) return false
+              levels[sku] = current - quantity
+              return true
+          }
+
+          fun currentLevel(sku: String): Int {
+              return levels[sku] ?: -1
+          }
+      }
+    tools/sync_report.py: |
+      from datetime import datetime
+
+      def generate_sync_report(warehouse: dict[str, int], storefront: dict[str, int]) -> list[dict]:
+          discrepancies = []
+          all_skus = set(warehouse.keys()) | set(storefront.keys())
+          for sku in all_skus:
+              w = warehouse.get(sku, 0)
+              s = storefront.get(sku, 0)
+              if w != s:
+                  discrepancies.append({"sku": sku, "warehouse": w, "storefront": s})
+          return discrepancies
+
+      def format_timestamp(dt: datetime) -> str:
+          return dt.strftime("%Y-%m-%d %H:%M")
+    warehouse/src/main/kotlin/inventory/ShippingCalculator.kt: |
+      package inventory
+
+      data class Parcel(val weightKg: Double, val lengthCm: Int, val widthCm: Int, val heightCm: Int)
+
+      class ShippingCalculator {
+          fun estimateCost(parcel: Parcel): Double {
+              val volumetricWeight = (parcel.lengthCm * parcel.widthCm * parcel.heightCm) / 5000.0
+              val billableWeight = maxOf(parcel.weightKg, volumetricWeight)
+              return billableWeight * 2.5
+          }
+      }
+  changed_files:
+    warehouse/src/main/kotlin/inventory/StockManager.kt: |
+      package inventory
+
+      class StockManager {
+          private val levels = mutableMapOf<String, Int>()
+
+          fun restock(sku: String, quantity: Int) {
+              levels[sku] = (levels[sku] ?: 0) + quantity
+          }
+
+          fun reserve(sku: String, quantity: Int): Boolean {
+              val current = levels[sku] ?: 0
+              if (current < quantity) return false
+              levels[sku] = current - quantity
+              return true
+          }
+
+          fun currentLevel(sku: String): Int {
+              return levels[sku] ?: 0
+          }
+      }
+    tools/sync_report.py: |
+      from datetime import datetime
+
+      def generate_sync_report(warehouse: dict[str, int], storefront: dict[str, int]) -> list[dict]:
+          discrepancies = []
+          all_skus = sorted(set(warehouse.keys()) | set(storefront.keys()))
+          for sku in all_skus:
+              w = warehouse.get(sku, 0)
+              s = storefront.get(sku, 0)
+              if w != s:
+                  discrepancies.append({"sku": sku, "warehouse": w, "storefront": s})
+          return discrepancies
+
+      def format_timestamp(dt: datetime) -> str:
+          return dt.strftime("%Y-%m-%d %H:%M")
+  commit_message: "fix: return 0 for unknown SKU and sort sync report"
+fragments:
+- id: stock_level_fix
+  selector:
+    path: warehouse/src/main/kotlin/inventory/StockManager.kt
+    anchor: "fun currentLevel"
+- id: reserve_method
+  selector:
+    path: warehouse/src/main/kotlin/inventory/StockManager.kt
+    anchor: "fun reserve"
+- id: sync_sorted_fix
+  selector:
+    path: tools/sync_report.py
+    anchor: "sorted(set(warehouse"
+- id: no_shipping
+  selector:
+    path: warehouse/src/main/kotlin/inventory/ShippingCalculator.kt
+- id: no_shipping_class
+  selector:
+    anchor: ShippingCalculator
+oracle:
+  required:
+  - stock_level_fix
+  - reserve_method
+  - sync_sorted_fix
+  allowed: []
+  forbidden:
+  - no_shipping
+  - no_shipping_class

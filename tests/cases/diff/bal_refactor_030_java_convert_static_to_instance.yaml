@@ -1,0 +1,277 @@
+name: bal_refactor_030_java_convert_static_to_instance
+tags:
+- lang:java
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/app/security/PasswordHelper.java: |
+      package com.app.security;
+
+      import java.security.MessageDigest;
+      import java.util.Base64;
+
+      public class PasswordHelper {
+          private static final String SALT = "default_salt";
+
+          public static String hash(String password) {
+              try {
+                  MessageDigest md = MessageDigest.getInstance("SHA-256");
+                  md.update((SALT + password).getBytes());
+                  return Base64.getEncoder().encodeToString(md.digest());
+              } catch (Exception e) {
+                  throw new RuntimeException(e);
+              }
+          }
+
+          public static boolean verify(String password, String hashed) {
+              return hash(password).equals(hashed);
+          }
+      }
+    src/main/java/com/app/service/AuthService.java: |
+      package com.app.service;
+
+      import com.app.security.PasswordHelper;
+
+      public class AuthService {
+          public String register(String username, String password) {
+              String hashed = PasswordHelper.hash(password);
+              return "registered:" + username + ":" + hashed;
+          }
+
+          public boolean login(String password, String storedHash) {
+              return PasswordHelper.verify(password, storedHash);
+          }
+      }
+    src/main/java/com/app/service/UserAdminService.java: |
+      package com.app.service;
+
+      import com.app.security.PasswordHelper;
+
+      public class UserAdminService {
+          public String resetPassword(String userId, String newPassword) {
+              String hashed = PasswordHelper.hash(newPassword);
+              return "reset:" + userId + ":" + hashed;
+          }
+      }
+    src/main/java/com/app/controller/AuthController.java: |
+      package com.app.controller;
+
+      import com.app.service.AuthService;
+
+      public class AuthController {
+          private final AuthService authService;
+
+          public AuthController(AuthService authService) {
+              this.authService = authService;
+          }
+
+          public String handleRegister(String username, String password) {
+              return authService.register(username, password);
+          }
+
+          public boolean handleLogin(String password, String storedHash) {
+              return authService.login(password, storedHash);
+          }
+      }
+    src/main/java/com/app/GarbageThrottler.java: |
+      package com.app;
+
+      public class GarbageThrottler {
+          public static final String GARBAGE_REFACTOR_030_THROTTLE_A = "throttle";
+          public static final int GARBAGE_REFACTOR_030_MAX_B = 100;
+          public static final boolean GARBAGE_REFACTOR_030_ENABLED_C = true;
+
+          public boolean allow() { return true; }
+      }
+    src/main/java/com/app/GarbageCircuitBreaker.java: |
+      package com.app;
+
+      public class GarbageCircuitBreaker {
+          public static final String GARBAGE_REFACTOR_030_CB_D = "circuit_breaker";
+          public static final boolean GARBAGE_REFACTOR_030_OPEN_E = false;
+
+          public boolean isOpen() { return false; }
+      }
+  changed_files:
+    src/main/java/com/app/security/PasswordHasher.java: |
+      package com.app.security;
+
+      import java.security.MessageDigest;
+      import java.util.Base64;
+
+      public class PasswordHasher {
+          private final String salt;
+
+          public PasswordHasher(String salt) {
+              this.salt = salt;
+          }
+
+          public String hash(String password) {
+              try {
+                  MessageDigest md = MessageDigest.getInstance("SHA-256");
+                  md.update((salt + password).getBytes());
+                  return Base64.getEncoder().encodeToString(md.digest());
+              } catch (Exception e) {
+                  throw new RuntimeException(e);
+              }
+          }
+
+          public boolean verify(String password, String hashed) {
+              return hash(password).equals(hashed);
+          }
+      }
+    src/main/java/com/app/service/AuthService.java: |
+      package com.app.service;
+
+      import com.app.security.PasswordHasher;
+
+      public class AuthService {
+          private final PasswordHasher hasher;
+
+          public AuthService(PasswordHasher hasher) {
+              this.hasher = hasher;
+          }
+
+          public String register(String username, String password) {
+              String hashed = hasher.hash(password);
+              return "registered:" + username + ":" + hashed;
+          }
+
+          public boolean login(String password, String storedHash) {
+              return hasher.verify(password, storedHash);
+          }
+      }
+    src/main/java/com/app/service/UserAdminService.java: |
+      package com.app.service;
+
+      import com.app.security.PasswordHasher;
+
+      public class UserAdminService {
+          private final PasswordHasher hasher;
+
+          public UserAdminService(PasswordHasher hasher) {
+              this.hasher = hasher;
+          }
+
+          public String resetPassword(String userId, String newPassword) {
+              String hashed = hasher.hash(newPassword);
+              return "reset:" + userId + ":" + hashed;
+          }
+      }
+    src/main/java/com/app/controller/AuthController.java: |
+      package com.app.controller;
+
+      import com.app.service.AuthService;
+
+      public class AuthController {
+          private final AuthService authService;
+
+          public AuthController(AuthService authService) {
+              this.authService = authService;
+          }
+
+          public String handleRegister(String username, String password) {
+              return authService.register(username, password);
+          }
+
+          public boolean handleLogin(String password, String storedHash) {
+              return authService.login(password, storedHash);
+          }
+      }
+    src/main/java/com/app/GarbageThrottler.java: |
+      package com.app;
+
+      public class GarbageThrottler {
+          public static final String GARBAGE_REFACTOR_030_THROTTLE_A = "throttle";
+          public static final int GARBAGE_REFACTOR_030_MAX_B = 100;
+          public static final boolean GARBAGE_REFACTOR_030_ENABLED_C = true;
+
+          public boolean allow() { return true; }
+      }
+    src/main/java/com/app/GarbageCircuitBreaker.java: |
+      package com.app;
+
+      public class GarbageCircuitBreaker {
+          public static final String GARBAGE_REFACTOR_030_CB_D = "circuit_breaker";
+          public static final boolean GARBAGE_REFACTOR_030_OPEN_E = false;
+
+          public boolean isOpen() { return false; }
+      }
+  commit_message: "refactor: convert static PasswordHelper to injectable PasswordHasher"
+fragments:
+- id: new_hasher_class
+  selector:
+    path: src/main/java/com/app/security/PasswordHasher.java
+    anchor: "public class PasswordHasher"
+- id: hasher_constructor
+  selector:
+    path: src/main/java/com/app/security/PasswordHasher.java
+    anchor: "public PasswordHasher(String salt)"
+- id: hasher_hash_method
+  selector:
+    path: src/main/java/com/app/security/PasswordHasher.java
+    anchor: "public String hash(String password)"
+- id: auth_imports_hasher
+  selector:
+    path: src/main/java/com/app/service/AuthService.java
+    anchor: "import com.app.security.PasswordHasher"
+- id: auth_field_hasher
+  selector:
+    path: src/main/java/com/app/service/AuthService.java
+    anchor: "private final PasswordHasher hasher"
+- id: admin_imports_hasher
+  selector:
+    path: src/main/java/com/app/service/UserAdminService.java
+    anchor: "import com.app.security.PasswordHasher"
+- id: admin_field_hasher
+  selector:
+    path: src/main/java/com/app/service/UserAdminService.java
+    anchor: "private final PasswordHasher hasher"
+- id: controller_uses_auth
+  selector:
+    path: src/main/java/com/app/controller/AuthController.java
+    anchor: "import com.app.service.AuthService"
+- id: no_garbage_throttler
+  selector:
+    path: src/main/java/com/app/GarbageThrottler.java
+- id: no_garbage_cb
+  selector:
+    path: src/main/java/com/app/GarbageCircuitBreaker.java
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_REFACTOR_030_THROTTLE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_REFACTOR_030_MAX_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_REFACTOR_030_ENABLED_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_REFACTOR_030_CB_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_REFACTOR_030_OPEN_E
+oracle:
+  required:
+  - new_hasher_class
+  - hasher_constructor
+  - hasher_hash_method
+  - auth_imports_hasher
+  - auth_field_hasher
+  - admin_imports_hasher
+  - admin_field_hasher
+  - controller_uses_auth
+  allowed: []
+  forbidden:
+  - no_garbage_throttler
+  - no_garbage_cb
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

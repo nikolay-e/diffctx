@@ -1,0 +1,325 @@
+name: bal_crossmod_014_cpp_network_to_protocol
+tags:
+- lang:cpp
+- change:multi_file
+- change:new_function
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/network/tcp_socket.hpp: |
+      #pragma once
+      #include <string>
+      #include <cstdint>
+
+      namespace network {
+
+      class TcpSocket {
+      public:
+          TcpSocket(const std::string& host, uint16_t port);
+          bool connect();
+          int send(const char* data, size_t len);
+          int recv(char* buffer, size_t max_len);
+          void close();
+      private:
+          std::string host_;
+          uint16_t port_;
+          int fd_;
+      };
+
+      }
+    src/network/tcp_socket.cpp: |
+      #include "tcp_socket.hpp"
+
+      namespace network {
+
+      TcpSocket::TcpSocket(const std::string& host, uint16_t port)
+          : host_(host), port_(port), fd_(-1) {}
+
+      bool TcpSocket::connect() {
+          fd_ = 42;
+          return fd_ >= 0;
+      }
+
+      int TcpSocket::send(const char* data, size_t len) {
+          return static_cast<int>(len);
+      }
+
+      int TcpSocket::recv(char* buffer, size_t max_len) {
+          return 0;
+      }
+
+      void TcpSocket::close() {
+          fd_ = -1;
+      }
+
+      }
+    src/protocol/message_codec.hpp: |
+      #pragma once
+      #include <string>
+      #include <vector>
+
+      namespace protocol {
+
+      struct Message {
+          uint32_t type;
+          std::vector<char> payload;
+      };
+
+      class MessageCodec {
+      public:
+          std::vector<char> encode(const Message& msg);
+          Message decode(const std::vector<char>& data);
+      };
+
+      }
+    src/protocol/message_codec.cpp: |
+      #include "message_codec.hpp"
+
+      namespace protocol {
+
+      std::vector<char> MessageCodec::encode(const Message& msg) {
+          std::vector<char> result;
+          result.push_back(static_cast<char>(msg.type));
+          result.insert(result.end(), msg.payload.begin(), msg.payload.end());
+          return result;
+      }
+
+      Message MessageCodec::decode(const std::vector<char>& data) {
+          Message msg;
+          msg.type = static_cast<uint32_t>(data[0]);
+          msg.payload.assign(data.begin() + 1, data.end());
+          return msg;
+      }
+
+      }
+    src/protocol/session.hpp: |
+      #pragma once
+      #include "../network/tcp_socket.hpp"
+      #include "message_codec.hpp"
+
+      namespace protocol {
+
+      class Session {
+      public:
+          Session(network::TcpSocket& socket);
+          bool send_message(const Message& msg);
+          Message receive_message();
+      private:
+          network::TcpSocket& socket_;
+          MessageCodec codec_;
+      };
+
+      }
+    src/protocol/session.cpp: |
+      #include "session.hpp"
+
+      namespace protocol {
+
+      Session::Session(network::TcpSocket& socket)
+          : socket_(socket) {}
+
+      bool Session::send_message(const Message& msg) {
+          auto data = codec_.encode(msg);
+          return socket_.send(data.data(), data.size()) > 0;
+      }
+
+      Message Session::receive_message() {
+          char buffer[4096];
+          int n = socket_.recv(buffer, sizeof(buffer));
+          std::vector<char> data(buffer, buffer + n);
+          return codec_.decode(data);
+      }
+
+      }
+    src/config/network_config.hpp: |
+      #pragma once
+      #include <string>
+      #include <cstdint>
+
+      namespace config {
+
+      struct NetworkConfig {
+          std::string host;
+          uint16_t port;
+          int timeout_ms;
+      };
+
+      }
+  changed_files:
+    src/network/tcp_socket.hpp: |
+      #pragma once
+      #include <string>
+      #include <cstdint>
+
+      namespace network {
+
+      class TcpSocket {
+      public:
+          TcpSocket(const std::string& host, uint16_t port);
+          bool connect();
+          int send(const char* data, size_t len);
+          int recv(char* buffer, size_t max_len);
+          int recv(char* buffer, size_t max_len, int timeout_ms);
+          void close();
+      private:
+          std::string host_;
+          uint16_t port_;
+          int fd_;
+      };
+
+      }
+    src/network/tcp_socket.cpp: |
+      #include "tcp_socket.hpp"
+
+      namespace network {
+
+      TcpSocket::TcpSocket(const std::string& host, uint16_t port)
+          : host_(host), port_(port), fd_(-1) {}
+
+      bool TcpSocket::connect() {
+          fd_ = 42;
+          return fd_ >= 0;
+      }
+
+      int TcpSocket::send(const char* data, size_t len) {
+          return static_cast<int>(len);
+      }
+
+      int TcpSocket::recv(char* buffer, size_t max_len) {
+          return 0;
+      }
+
+      int TcpSocket::recv(char* buffer, size_t max_len, int timeout_ms) {
+          return 0;
+      }
+
+      void TcpSocket::close() {
+          fd_ = -1;
+      }
+
+      }
+    src/protocol/message_codec.hpp: |
+      #pragma once
+      #include <string>
+      #include <vector>
+
+      namespace protocol {
+
+      struct Message {
+          uint32_t type;
+          std::vector<char> payload;
+      };
+
+      class MessageCodec {
+      public:
+          std::vector<char> encode(const Message& msg);
+          Message decode(const std::vector<char>& data);
+      };
+
+      }
+    src/protocol/message_codec.cpp: |
+      #include "message_codec.hpp"
+
+      namespace protocol {
+
+      std::vector<char> MessageCodec::encode(const Message& msg) {
+          std::vector<char> result;
+          result.push_back(static_cast<char>(msg.type));
+          result.insert(result.end(), msg.payload.begin(), msg.payload.end());
+          return result;
+      }
+
+      Message MessageCodec::decode(const std::vector<char>& data) {
+          Message msg;
+          msg.type = static_cast<uint32_t>(data[0]);
+          msg.payload.assign(data.begin() + 1, data.end());
+          return msg;
+      }
+
+      }
+    src/protocol/session.hpp: |
+      #pragma once
+      #include "../network/tcp_socket.hpp"
+      #include "message_codec.hpp"
+
+      namespace protocol {
+
+      class Session {
+      public:
+          Session(network::TcpSocket& socket);
+          bool send_message(const Message& msg);
+          Message receive_message();
+      private:
+          network::TcpSocket& socket_;
+          MessageCodec codec_;
+      };
+
+      }
+    src/protocol/session.cpp: |
+      #include "session.hpp"
+
+      namespace protocol {
+
+      Session::Session(network::TcpSocket& socket)
+          : socket_(socket) {}
+
+      bool Session::send_message(const Message& msg) {
+          auto data = codec_.encode(msg);
+          return socket_.send(data.data(), data.size()) > 0;
+      }
+
+      Message Session::receive_message() {
+          char buffer[4096];
+          int n = socket_.recv(buffer, sizeof(buffer));
+          std::vector<char> data(buffer, buffer + n);
+          return codec_.decode(data);
+      }
+
+      }
+    src/config/network_config.hpp: |
+      #pragma once
+      #include <string>
+      #include <cstdint>
+
+      namespace config {
+
+      struct NetworkConfig {
+          std::string host;
+          uint16_t port;
+          int timeout_ms;
+      };
+
+      }
+  commit_message: "feat: add recv overload with timeout"
+fragments:
+- id: recv_timeout_decl
+  selector:
+    path: src/network/tcp_socket.hpp
+    anchor: "int recv(char* buffer, size_t max_len, int timeout_ms)"
+- id: recv_timeout_impl
+  selector:
+    path: src/network/tcp_socket.cpp
+    anchor: "TcpSocket::recv(char* buffer, size_t max_len, int timeout_ms)"
+- id: session_calls_recv
+  selector:
+    path: src/protocol/session.cpp
+    anchor: "socket_.recv(buffer"
+- id: session_uses_socket
+  selector:
+    path: src/protocol/session.hpp
+    anchor: "network::TcpSocket& socket_"
+- id: no_network_config
+  selector:
+    path: src/config/network_config.hpp
+    anchor: "struct NetworkConfig"
+oracle:
+  required:
+  - recv_timeout_decl
+  - session_calls_recv
+  - session_uses_socket
+  allowed:
+  - recv_timeout_impl
+  forbidden:
+  - no_network_config

@@ -1,0 +1,139 @@
+name: bal3_3hop_036_java_user_role_permission
+tags:
+- lang:java
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/app/auth/Permission.java: |
+      package com.app.auth;
+
+      public class Permission {
+          private String name;
+          public Permission(String name) {
+              this.name = name;
+          }
+          public String getName() { return name; }
+      }
+    src/main/java/com/app/auth/Role.java: |
+      package com.app.auth;
+
+      import java.util.List;
+
+      public class Role {
+          private String roleName;
+          private List<Permission> permissions;
+          public Role(String roleName, List<Permission> permissions) {
+              this.roleName = roleName;
+              this.permissions = permissions;
+          }
+          public String getRoleName() { return roleName; }
+          public boolean hasPermission(String perm) {
+              return permissions.stream().anyMatch(p -> p.getName().equals(perm));
+          }
+      }
+    src/main/java/com/app/service/AuthorizationService.java: |
+      package com.app.service;
+
+      import com.app.auth.Role;
+
+      public class AuthorizationService {
+          private final Role role;
+          public AuthorizationService(Role role) {
+              this.role = role;
+          }
+          public boolean canAccess(String resource) {
+              return role.hasPermission("read:" + resource);
+          }
+      }
+    src/main/java/com/app/web/AdminController.java: |
+      package com.app.web;
+
+      import com.app.service.AuthorizationService;
+
+      public class AdminController {
+          private final AuthorizationService authz;
+          public AdminController(AuthorizationService authz) {
+              this.authz = authz;
+          }
+          public String dashboard() {
+              if (authz.canAccess("admin")) {
+                  return "dashboard";
+              }
+              return "forbidden";
+          }
+      }
+    src/main/java/com/app/util/CryptoHelper.java: |
+      package com.app.util;
+
+      public class CryptoHelper {
+          public static String GARBAGE_036_CRYPTO_MARKER_A = "aes";
+          public static int GARBAGE_036_KEY_MARKER_B = 256;
+          public static String encrypt(String data) { return data; }
+      }
+    src/main/java/com/app/util/TokenHelper.java: |
+      package com.app.util;
+
+      public class TokenHelper {
+          public static String GARBAGE_036_TOKEN_MARKER_C = "jwt";
+          public static boolean GARBAGE_036_VERIFY_MARKER_D = false;
+          public static String generate(String sub) { return "tok-" + sub; }
+      }
+  changed_files:
+    src/main/java/com/app/auth/Permission.java: |
+      package com.app.auth;
+
+      public class Permission {
+          private String name;
+          private boolean readOnly;
+          public Permission(String name, boolean readOnly) {
+              this.name = name;
+              this.readOnly = readOnly;
+          }
+          public String getName() { return name; }
+          public boolean isReadOnly() { return readOnly; }
+      }
+  commit_message: "feat: add readOnly flag to Permission"
+fragments:
+- id: permission_readonly_field
+  selector:
+    path: src/main/java/com/app/auth/Permission.java
+    anchor: "private boolean readOnly"
+- id: permission_is_readonly
+  selector:
+    path: src/main/java/com/app/auth/Permission.java
+    anchor: "isReadOnly"
+- id: role_imports_permission
+  selector:
+    path: src/main/java/com/app/auth/Role.java
+    anchor: "List<Permission> permissions"
+- id: authz_imports_role
+  selector:
+    path: src/main/java/com/app/service/AuthorizationService.java
+    anchor: "import com.app.auth.Role"
+- id: admin_imports_authz
+  selector:
+    path: src/main/java/com/app/web/AdminController.java
+    anchor: "import com.app.service.AuthorizationService"
+- id: no_crypto_helper
+  selector:
+    path: src/main/java/com/app/util/CryptoHelper.java
+    anchor: "GARBAGE_036_CRYPTO_MARKER_A"
+- id: no_token_helper
+  selector:
+    path: src/main/java/com/app/util/TokenHelper.java
+    anchor: "GARBAGE_036_TOKEN_MARKER_C"
+oracle:
+  required:
+  - permission_readonly_field
+  - permission_is_readonly
+  - role_imports_permission
+  - authz_imports_role
+  - admin_imports_authz
+  allowed: []
+  forbidden:
+  - no_crypto_helper
+  - no_token_helper

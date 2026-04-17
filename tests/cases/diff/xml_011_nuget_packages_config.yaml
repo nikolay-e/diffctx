@@ -1,0 +1,111 @@
+name: xml_011_nuget_packages_config
+tags:
+- lang:xml
+- lang:csharp
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    packages.config: |
+      <?xml version="1.0" encoding="utf-8"?>
+      <packages>
+        <package id="Newtonsoft.Json" version="13.0.3" targetFramework="net48"/>
+        <package id="NLog" version="5.2.0" targetFramework="net48"/>
+      </packages>
+    Services/UserService.cs: |
+      using Newtonsoft.Json;
+      using System.IO;
+      namespace Services;
+      public class UserService
+      {
+          public User LoadFromFile(string path)
+          {
+              string json = File.ReadAllText(path);
+              return JsonConvert.DeserializeObject<User>(json);
+          }
+          public void SaveToFile(User user, string path)
+          {
+              string json = JsonConvert.SerializeObject(user, Formatting.Indented);
+              File.WriteAllText(path, json);
+          }
+      }
+    Services/CsvImporter.cs: |
+      using CsvHelper;
+      using CsvHelper.Configuration;
+      using System.Collections.Generic;
+      using System.Globalization;
+      using System.IO;
+      namespace Services;
+      public class CsvImporter
+      {
+          public IEnumerable<T> Import<T>(string filePath)
+          {
+              using var reader = new StreamReader(filePath);
+              var config = new CsvConfiguration(CultureInfo.InvariantCulture)
+              {
+                  HasHeaderRecord = true,
+              };
+              using var csv = new CsvReader(reader, config);
+              return csv.GetRecords<T>();
+          }
+      }
+    XML_NOISE_011_app.config: |
+      <?xml version="1.0" encoding="utf-8"?>
+      <configuration>
+        <!-- XML_NOISE_011_APP_SETTINGS -->
+        <appSettings>
+          <add key="XML_NOISE_011_MaxRetries" value="3"/>
+          <add key="XML_NOISE_011_TimeoutSeconds" value="30"/>
+        </appSettings>
+      </configuration>
+    garbage/PdfRenderer.cs: |
+      // XML_NOISE_011_PdfRenderer = "itext_pdf_renderer_marker"
+    garbage/ExcelWriter.cs: |
+      // XML_NOISE_011_ExcelWriter = "epplus_excel_writer_marker"
+  changed_files:
+    packages.config: |
+      <?xml version="1.0" encoding="utf-8"?>
+      <packages>
+        <package id="Newtonsoft.Json" version="13.0.3" targetFramework="net48"/>
+        <package id="NLog" version="5.2.0" targetFramework="net48"/>
+        <package id="CsvHelper" version="30.0.1" targetFramework="net48"/>
+      </packages>
+  commit_message: "feat: add CsvHelper package to packages.config"
+fragments:
+- id: packages_csvhelper
+  selector:
+    path: packages.config
+    anchor: CsvHelper
+- id: csv_importer
+  selector:
+    path: Services/CsvImporter.cs
+    anchor: CsvHelper
+- id: no_app_config
+  selector:
+    path: XML_NOISE_011_app.config
+- id: no_pdf_renderer
+  selector:
+    path: garbage/PdfRenderer.cs
+- id: no_global_0
+  selector:
+    anchor: XML_NOISE_011_APP_SETTINGS
+- id: no_global_1
+  selector:
+    anchor: XML_NOISE_011_MaxRetries
+- id: no_global_2
+  selector:
+    anchor: XML_NOISE_011_PdfRenderer
+oracle:
+  required:
+  - packages_csvhelper
+  - csv_importer
+  allowed: []
+  forbidden:
+  - no_app_config
+  - no_pdf_renderer
+  - no_global_0
+  - no_global_1
+  - no_global_2

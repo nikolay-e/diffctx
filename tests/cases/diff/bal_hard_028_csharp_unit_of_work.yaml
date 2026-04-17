@@ -1,0 +1,229 @@
+name: bal_hard_028_csharp_unit_of_work
+tags:
+- lang:csharp
+- change:multi_file
+- change:new_function
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/Data/IRepository.cs: |
+      namespace App.Data
+      {
+          using System.Collections.Generic;
+          public interface IRepository<T> where T : class
+          {
+              T GetById(string id);
+              List<T> GetAll();
+              void Add(T entity);
+              void Update(T entity);
+          }
+      }
+    src/Data/IUnitOfWork.cs: |
+      namespace App.Data
+      {
+          public interface IUnitOfWork
+          {
+              void Commit();
+          }
+      }
+    src/Data/InMemoryRepository.cs: |
+      namespace App.Data
+      {
+          using System.Collections.Generic;
+          using System.Linq;
+          public class InMemoryRepository<T> : IRepository<T> where T : class
+          {
+              protected readonly List<T> _store = new();
+              protected readonly Func<T, string> _idSelector;
+              public InMemoryRepository(Func<T, string> idSelector) { _idSelector = idSelector; }
+              public T GetById(string id) => _store.FirstOrDefault(e => _idSelector(e) == id);
+              public List<T> GetAll() => _store.ToList();
+              public void Add(T entity) => _store.Add(entity);
+              public void Update(T entity)
+              {
+                  var idx = _store.FindIndex(e => _idSelector(e) == _idSelector(entity));
+                  if (idx >= 0) _store[idx] = entity;
+              }
+          }
+      }
+    src/Models/Customer.cs: |
+      namespace App.Models
+      {
+          public class Customer
+          {
+              public string Id { get; set; }
+              public string Name { get; set; }
+              public string Email { get; set; }
+          }
+      }
+    src/Models/OrderItem.cs: |
+      namespace App.Models
+      {
+          public class OrderItem
+          {
+              public string Id { get; set; }
+              public string CustomerId { get; set; }
+              public string Product { get; set; }
+              public decimal Amount { get; set; }
+          }
+      }
+    src/Service/CustomerService.cs: |
+      namespace App.Service
+      {
+          using App.Data;
+          using App.Models;
+          public class CustomerService
+          {
+              private readonly IRepository<Customer> _customerRepo;
+              private readonly IRepository<OrderItem> _orderRepo;
+              public CustomerService(IRepository<Customer> customerRepo, IRepository<OrderItem> orderRepo)
+              {
+                  _customerRepo = customerRepo;
+                  _orderRepo = orderRepo;
+              }
+              public void CreateCustomerWithOrder(Customer customer, OrderItem order)
+              {
+                  _customerRepo.Add(customer);
+                  _orderRepo.Add(order);
+              }
+          }
+      }
+    src/Controllers/CustomerController.cs: |
+      namespace App.Controllers
+      {
+          using App.Service;
+          using App.Models;
+          public class CustomerController
+          {
+              private readonly CustomerService _service;
+              public CustomerController(CustomerService service) { _service = service; }
+              public string Create(string name, string email, string product, decimal amount)
+              {
+                  var customer = new Customer { Id = "c1", Name = name, Email = email };
+                  var order = new OrderItem { Id = "o1", CustomerId = "c1", Product = product, Amount = amount };
+                  _service.CreateCustomerWithOrder(customer, order);
+                  return "Created";
+              }
+          }
+      }
+    src/Helpers/EmailValidator.cs: |
+      namespace App.Helpers
+      {
+          public static class EmailValidator
+          {
+              public static bool IsValid(string email) => email.Contains("@") && email.Contains(".");
+          }
+      }
+  changed_files:
+    src/Data/IUnitOfWork.cs: |
+      namespace App.Data
+      {
+          using System;
+          public interface IUnitOfWork : IDisposable
+          {
+              IRepository<T> Repository<T>() where T : class;
+              void Commit();
+              void Rollback();
+          }
+      }
+    src/Data/InMemoryUnitOfWork.cs: |
+      namespace App.Data
+      {
+          using System;
+          using System.Collections.Generic;
+          using App.Models;
+          public class InMemoryUnitOfWork : IUnitOfWork
+          {
+              private readonly Dictionary<Type, object> _repos = new();
+              private readonly List<Action> _rollbackActions = new();
+              public InMemoryUnitOfWork()
+              {
+                  _repos[typeof(Customer)] = new InMemoryRepository<Customer>(c => c.Id);
+                  _repos[typeof(OrderItem)] = new InMemoryRepository<OrderItem>(o => o.Id);
+              }
+              public IRepository<T> Repository<T>() where T : class
+              {
+                  return (IRepository<T>)_repos[typeof(T)];
+              }
+              public void Commit() { _rollbackActions.Clear(); }
+              public void Rollback() { foreach (var action in _rollbackActions) action(); }
+              public void Dispose() { }
+          }
+      }
+    src/Service/CustomerService.cs: |
+      namespace App.Service
+      {
+          using App.Data;
+          using App.Models;
+          public class CustomerService
+          {
+              private readonly IUnitOfWork _uow;
+              public CustomerService(IUnitOfWork uow)
+              {
+                  _uow = uow;
+              }
+              public void CreateCustomerWithOrder(Customer customer, OrderItem order)
+              {
+                  _uow.Repository<Customer>().Add(customer);
+                  _uow.Repository<OrderItem>().Add(order);
+                  _uow.Commit();
+              }
+          }
+      }
+  commit_message: "feat: add unit of work pattern with rollback"
+fragments:
+- id: uow_interface
+  selector:
+    path: IUnitOfWork.cs
+    anchor: "public interface IUnitOfWork"
+- id: uow_rollback
+  selector:
+    path: IUnitOfWork.cs
+    anchor: "void Rollback()"
+- id: uow_repository_method
+  selector:
+    path: IUnitOfWork.cs
+    anchor: "IRepository<T> Repository<T>()"
+- id: inmemory_uow
+  selector:
+    path: InMemoryUnitOfWork.cs
+    anchor: "class InMemoryUnitOfWork"
+- id: service_uses_uow
+  selector:
+    path: CustomerService.cs
+    anchor: "_uow.Repository<Customer>()"
+- id: service_commits
+  selector:
+    path: CustomerService.cs
+    anchor: "_uow.Commit()"
+- id: irepository_interface
+  selector:
+    path: IRepository.cs
+    anchor: "public interface IRepository"
+- id: customer_model
+  selector:
+    path: Customer.cs
+    anchor: "public class Customer"
+- id: no_email_validator
+  selector:
+    path: Helpers/EmailValidator.cs
+- id: no_controller_body
+  selector:
+    path: CustomerController.cs
+    anchor: "_service.CreateCustomerWithOrder"
+oracle:
+  required:
+  - uow_interface
+  - uow_rollback
+  - uow_repository_method
+  - inmemory_uow
+  - service_uses_uow
+  - service_commits
+  - irepository_interface
+  allowed:
+  - customer_model
+  forbidden:
+  - no_email_validator
+  - no_controller_body

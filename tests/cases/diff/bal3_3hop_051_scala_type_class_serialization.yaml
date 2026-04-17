@@ -1,0 +1,119 @@
+name: bal3_3hop_051_scala_type_class_serialization
+tags:
+- lang:scala
+- change:single_file
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/com/app/codec/Encoder.scala: |
+      package com.app.codec
+
+      trait Encoder[A] {
+        def encode(value: A): String
+      }
+    src/main/scala/com/app/codec/JsonEncoder.scala: |
+      package com.app.codec
+
+      object JsonEncoder {
+        implicit val stringEncoder: Encoder[String] = (value: String) => s""""$value""""
+        implicit val intEncoder: Encoder[Int] = (value: Int) => value.toString
+      }
+    src/main/scala/com/app/codec/Serializer.scala: |
+      package com.app.codec
+
+      class Serializer {
+        def serialize[A](value: A)(implicit encoder: Encoder[A]): String = {
+          encoder.encode(value)
+        }
+      }
+    src/main/scala/com/app/service/DataExporter.scala: |
+      package com.app.service
+
+      import com.app.codec.Serializer
+
+      class DataExporter(serializer: Serializer) {
+        def export(data: String): String = {
+          import com.app.codec.JsonEncoder._
+          serializer.serialize(data)
+        }
+      }
+    src/main/scala/com/app/api/ExportEndpoint.scala: |
+      package com.app.api
+
+      import com.app.service.DataExporter
+
+      class ExportEndpoint(exporter: DataExporter) {
+        def run(data: String): String = exporter.export(data)
+      }
+    src/main/scala/com/app/util/Compressor.scala: |
+      package com.app.util
+
+      var GARBAGE_051_COMP_MARKER_A = "gzip"
+      var GARBAGE_051_LEVEL_MARKER_B = 6
+
+      object Compressor {
+        def compress(data: Array[Byte]): Array[Byte] = data
+      }
+    src/main/scala/com/app/util/Base64Util.scala: |
+      package com.app.util
+
+      var GARBAGE_051_B64_MARKER_C = "base64"
+      var GARBAGE_051_PAD_MARKER_D = true
+
+      object Base64Util {
+        def encode(data: Array[Byte]): String = ""
+      }
+  changed_files:
+    src/main/scala/com/app/codec/Encoder.scala: |
+      package com.app.codec
+
+      trait Encoder[A] {
+        def encode(value: A): String
+        def encodeList(values: List[A]): String = {
+          "[" + values.map(encode).mkString(",") + "]"
+        }
+      }
+  commit_message: "feat: add encodeList default method to Encoder trait"
+fragments:
+- id: encoder_encode_list
+  selector:
+    path: src/main/scala/com/app/codec/Encoder.scala
+    anchor: "def encodeList"
+- id: json_encoder_impls
+  selector:
+    path: src/main/scala/com/app/codec/JsonEncoder.scala
+    anchor: "implicit val stringEncoder"
+- id: serializer_uses_encoder
+  selector:
+    path: src/main/scala/com/app/codec/Serializer.scala
+    anchor: "implicit encoder: Encoder[A]"
+- id: exporter_imports_serializer
+  selector:
+    path: src/main/scala/com/app/service/DataExporter.scala
+    anchor: "import com.app.codec.Serializer"
+- id: endpoint_imports_exporter
+  selector:
+    path: src/main/scala/com/app/api/ExportEndpoint.scala
+    anchor: "import com.app.service.DataExporter"
+- id: no_compressor
+  selector:
+    path: src/main/scala/com/app/util/Compressor.scala
+    anchor: "GARBAGE_051_COMP_MARKER_A"
+- id: no_base64
+  selector:
+    path: src/main/scala/com/app/util/Base64Util.scala
+    anchor: "GARBAGE_051_B64_MARKER_C"
+oracle:
+  required:
+  - encoder_encode_list
+  - json_encoder_impls
+  - serializer_uses_encoder
+  - exporter_imports_serializer
+  allowed:
+  - endpoint_imports_exporter
+  forbidden:
+  - no_compressor
+  - no_base64

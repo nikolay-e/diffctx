@@ -1,0 +1,408 @@
+name: bal3_1hop_085_csharp_bug_fix_disposal
+tags:
+- lang:csharp
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: csharp-no-tree-sitter
+repo:
+  initial_files:
+    src/IO/FileProcessor.cs: |
+      using System;
+      using System.IO;
+
+      namespace App.IO
+      {
+          public class FileProcessor
+          {
+              public string ReadAll(string path)
+              {
+                  var reader = new StreamReader(path);
+                  return reader.ReadToEnd();
+              }
+
+              public void WriteAll(string path, string content)
+              {
+                  var writer = new StreamWriter(path);
+                  writer.Write(content);
+              }
+          }
+      }
+    src/Services/LogFileService.cs: |
+      using System;
+      using App.IO;
+
+      namespace App.Services
+      {
+          public class LogFileService
+          {
+              private readonly FileProcessor _processor;
+
+              public LogFileService(FileProcessor processor)
+              {
+                  _processor = processor;
+              }
+
+              public string ReadLog(string logPath)
+              {
+                  return _processor.ReadAll(logPath);
+              }
+
+              public void WriteLog(string logPath, string entry)
+              {
+                  _processor.WriteAll(logPath, entry);
+              }
+          }
+      }
+    src/Services/ConfigFileService.cs: |
+      using System;
+      using App.IO;
+
+      namespace App.Services
+      {
+          public class ConfigFileService
+          {
+              private readonly FileProcessor _processor;
+
+              public ConfigFileService(FileProcessor processor)
+              {
+                  _processor = processor;
+              }
+
+              public string LoadConfig(string path)
+              {
+                  return _processor.ReadAll(path);
+              }
+
+              public void SaveConfig(string path, string json)
+              {
+                  _processor.WriteAll(path, json);
+              }
+          }
+      }
+    src/Services/TemplateService.cs: |
+      using System;
+      using App.IO;
+
+      namespace App.Services
+      {
+          public class TemplateService
+          {
+              private readonly FileProcessor _processor;
+
+              public TemplateService(FileProcessor processor)
+              {
+                  _processor = processor;
+              }
+
+              public string LoadTemplate(string templatePath)
+              {
+                  return _processor.ReadAll(templatePath);
+              }
+          }
+      }
+    src/Services/BackupService.cs: |
+      using System;
+      using App.IO;
+
+      namespace App.Services
+      {
+          public class BackupService
+          {
+              private readonly FileProcessor _processor;
+
+              public BackupService(FileProcessor processor)
+              {
+                  _processor = processor;
+              }
+
+              public void CreateBackup(string sourcePath, string destPath)
+              {
+                  var content = _processor.ReadAll(sourcePath);
+                  _processor.WriteAll(destPath, content);
+              }
+          }
+      }
+    src/Network/SocketHandler.cs: |
+      using System;
+      GARBAGE_085_SOCKET_TIMEOUT_A = 30000;
+      GARBAGE_085_BUFFER_SIZE_B = 1024;
+
+      namespace App.Network
+      {
+          public class SocketHandler
+          {
+              public void Connect(string host, int port) { }
+          }
+      }
+    src/Network/HttpPipeline.cs: |
+      using System;
+      GARBAGE_085_MAX_CONNS_C = 100;
+      GARBAGE_085_KEEP_ALIVE_D = 120;
+
+      namespace App.Network
+      {
+          public class HttpPipeline
+          {
+              public void Execute() { }
+          }
+      }
+    src/Tasks/Scheduler.cs: |
+      using System;
+      GARBAGE_085_TICK_MS_E = 1000;
+      GARBAGE_085_MAX_TASKS_F = 50;
+
+      namespace App.Tasks
+      {
+          public class Scheduler
+          {
+              public void Schedule(Action task) { }
+          }
+      }
+  changed_files:
+    src/IO/FileProcessor.cs: |
+      using System;
+      using System.IO;
+
+      namespace App.IO
+      {
+          public class FileProcessor : IDisposable
+          {
+              private bool _disposed;
+
+              public string ReadAll(string path)
+              {
+                  using (var reader = new StreamReader(path))
+                  {
+                      return reader.ReadToEnd();
+                  }
+              }
+
+              public void WriteAll(string path, string content)
+              {
+                  using (var writer = new StreamWriter(path))
+                  {
+                      writer.Write(content);
+                      writer.Flush();
+                  }
+              }
+
+              public bool Exists(string path)
+              {
+                  return File.Exists(path);
+              }
+
+              public void Dispose()
+              {
+                  if (!_disposed)
+                  {
+                      _disposed = true;
+                  }
+              }
+          }
+      }
+    src/Services/LogFileService.cs: |
+      using System;
+      using App.IO;
+
+      namespace App.Services
+      {
+          public class LogFileService
+          {
+              private readonly FileProcessor _processor;
+
+              public LogFileService(FileProcessor processor)
+              {
+                  _processor = processor;
+              }
+
+              public string ReadLog(string logPath)
+              {
+                  return _processor.ReadAll(logPath);
+              }
+
+              public void WriteLog(string logPath, string entry)
+              {
+                  _processor.WriteAll(logPath, entry);
+              }
+          }
+      }
+    src/Services/ConfigFileService.cs: |
+      using System;
+      using App.IO;
+
+      namespace App.Services
+      {
+          public class ConfigFileService
+          {
+              private readonly FileProcessor _processor;
+
+              public ConfigFileService(FileProcessor processor)
+              {
+                  _processor = processor;
+              }
+
+              public string LoadConfig(string path)
+              {
+                  return _processor.ReadAll(path);
+              }
+
+              public void SaveConfig(string path, string json)
+              {
+                  _processor.WriteAll(path, json);
+              }
+          }
+      }
+    src/Services/TemplateService.cs: |
+      using System;
+      using App.IO;
+
+      namespace App.Services
+      {
+          public class TemplateService
+          {
+              private readonly FileProcessor _processor;
+
+              public TemplateService(FileProcessor processor)
+              {
+                  _processor = processor;
+              }
+
+              public string LoadTemplate(string templatePath)
+              {
+                  return _processor.ReadAll(templatePath);
+              }
+          }
+      }
+    src/Services/BackupService.cs: |
+      using System;
+      using App.IO;
+
+      namespace App.Services
+      {
+          public class BackupService
+          {
+              private readonly FileProcessor _processor;
+
+              public BackupService(FileProcessor processor)
+              {
+                  _processor = processor;
+              }
+
+              public void CreateBackup(string sourcePath, string destPath)
+              {
+                  var content = _processor.ReadAll(sourcePath);
+                  _processor.WriteAll(destPath, content);
+              }
+          }
+      }
+    src/Network/SocketHandler.cs: |
+      using System;
+      GARBAGE_085_SOCKET_TIMEOUT_A = 30000;
+      GARBAGE_085_BUFFER_SIZE_B = 1024;
+
+      namespace App.Network
+      {
+          public class SocketHandler
+          {
+              public void Connect(string host, int port) { }
+          }
+      }
+    src/Network/HttpPipeline.cs: |
+      using System;
+      GARBAGE_085_MAX_CONNS_C = 100;
+      GARBAGE_085_KEEP_ALIVE_D = 120;
+
+      namespace App.Network
+      {
+          public class HttpPipeline
+          {
+              public void Execute() { }
+          }
+      }
+    src/Tasks/Scheduler.cs: |
+      using System;
+      GARBAGE_085_TICK_MS_E = 1000;
+      GARBAGE_085_MAX_TASKS_F = 50;
+
+      namespace App.Tasks
+      {
+          public class Scheduler
+          {
+              public void Schedule(Action task) { }
+          }
+      }
+  commit_message: "fix: add proper IDisposable and using statements to FileProcessor"
+fragments:
+- id: log_svc_using
+  selector:
+    path: src/Services/LogFileService.cs
+    anchor: "using App.IO"
+- id: log_svc_read
+  selector:
+    path: src/Services/LogFileService.cs
+    anchor: "_processor.ReadAll(logPath)"
+- id: config_svc_using
+  selector:
+    path: src/Services/ConfigFileService.cs
+    anchor: "using App.IO"
+- id: template_svc_using
+  selector:
+    path: src/Services/TemplateService.cs
+    anchor: "using App.IO"
+- id: backup_svc_using
+  selector:
+    path: src/Services/BackupService.cs
+    anchor: "using App.IO"
+- id: backup_svc_read
+  selector:
+    path: src/Services/BackupService.cs
+    anchor: "_processor.ReadAll(sourcePath)"
+- id: no_socket
+  selector:
+    path: src/Network/SocketHandler.cs
+- id: no_pipeline
+  selector:
+    path: src/Network/HttpPipeline.cs
+- id: no_scheduler
+  selector:
+    path: src/Tasks/Scheduler.cs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_085_SOCKET_TIMEOUT_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_085_BUFFER_SIZE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_085_MAX_CONNS_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_085_KEEP_ALIVE_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_085_TICK_MS_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_085_MAX_TASKS_F
+oracle:
+  required:
+  - log_svc_using
+  - log_svc_read
+  - config_svc_using
+  - template_svc_using
+  - backup_svc_using
+  - backup_svc_read
+  allowed: []
+  forbidden:
+  - no_socket
+  - no_pipeline
+  - no_scheduler
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

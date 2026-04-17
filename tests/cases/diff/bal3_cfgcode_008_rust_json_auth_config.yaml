@@ -1,0 +1,212 @@
+name: bal3_cfgcode_008_rust_json_auth_config
+tags:
+- lang:csharp
+- change:bug_fix
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/Payments/CurrencyConverter.cs: |
+      namespace Payments;
+
+      public class CurrencyConverter
+      {
+          private readonly Dictionary<string, decimal> _rates;
+
+          public CurrencyConverter(Dictionary<string, decimal> rates)
+          {
+              _rates = rates;
+          }
+
+          public decimal Convert(decimal amount, string fromCurrency, string toCurrency)
+          {
+              if (fromCurrency == toCurrency) return amount;
+              var inUsd = amount / _rates[fromCurrency];
+              return inUsd * _rates[toCurrency];
+          }
+
+          public bool SupportsCurrency(string currency)
+          {
+              return _rates.ContainsKey(currency);
+          }
+      }
+    tests/Payments/CurrencyConverterTests.cs: |
+      using Xunit;
+      using Payments;
+
+      public class CurrencyConverterTests
+      {
+          private static readonly Dictionary<string, decimal> Rates = new()
+          {
+              ["USD"] = 1.0m,
+              ["EUR"] = 0.92m,
+              ["GBP"] = 0.79m,
+          };
+
+          private readonly CurrencyConverter _converter = new(Rates);
+
+          [Fact]
+          public void Convert_SameCurrency_ReturnsSameAmount()
+          {
+              var result = _converter.Convert(100m, "USD", "USD");
+              Assert.Equal(100m, result);
+          }
+
+          [Fact]
+          public void Convert_UsdToEur_ReturnsCorrectAmount()
+          {
+              var result = _converter.Convert(100m, "USD", "EUR");
+              Assert.Equal(92m, result);
+          }
+      }
+    garbage/Fx.cs: |
+      namespace Garbage;
+
+      public static class FxGarbage
+      {
+          public const string GARBAGE_BAL3CFG008_A = "forex_marker";
+          public const string GARBAGE_BAL3CFG008_B = "spot_marker";
+      }
+    garbage/Hedge.cs: |
+      namespace Garbage;
+
+      public static class HedgeGarbage
+      {
+          public const string GARBAGE_BAL3CFG008_C = "hedge_marker";
+      }
+    garbage/Risk.cs: |
+      namespace Garbage;
+
+      public static class RiskGarbage
+      {
+          public const string GARBAGE_BAL3CFG008_D = "risk_marker";
+          public const string GARBAGE_BAL3CFG008_E = "var_marker";
+      }
+  changed_files:
+    src/Payments/CurrencyConverter.cs: |
+      namespace Payments;
+
+      public class CurrencyConverter
+      {
+          private readonly Dictionary<string, decimal> _rates;
+
+          public CurrencyConverter(Dictionary<string, decimal> rates)
+          {
+              _rates = rates;
+          }
+
+          public decimal Convert(decimal amount, string fromCurrency, string toCurrency)
+          {
+              if (fromCurrency == toCurrency) return amount;
+              if (!_rates.ContainsKey(fromCurrency))
+                  throw new ArgumentException($"Unsupported currency: {fromCurrency}");
+              if (!_rates.ContainsKey(toCurrency))
+                  throw new ArgumentException($"Unsupported currency: {toCurrency}");
+              var inUsd = amount / _rates[fromCurrency];
+              return Math.Round(inUsd * _rates[toCurrency], 4);
+          }
+
+          public bool SupportsCurrency(string currency)
+          {
+              return _rates.ContainsKey(currency);
+          }
+      }
+    tests/Payments/CurrencyConverterTests.cs: |
+      using Xunit;
+      using Payments;
+
+      public class CurrencyConverterTests
+      {
+          private static readonly Dictionary<string, decimal> Rates = new()
+          {
+              ["USD"] = 1.0m,
+              ["EUR"] = 0.92m,
+              ["GBP"] = 0.79m,
+          };
+
+          private readonly CurrencyConverter _converter = new(Rates);
+
+          [Fact]
+          public void Convert_SameCurrency_ReturnsSameAmount()
+          {
+              var result = _converter.Convert(100m, "USD", "USD");
+              Assert.Equal(100m, result);
+          }
+
+          [Fact]
+          public void Convert_UsdToEur_ReturnsCorrectAmount()
+          {
+              var result = _converter.Convert(100m, "USD", "EUR");
+              Assert.Equal(92m, result);
+          }
+
+          [Fact]
+          public void Convert_UnsupportedCurrency_ThrowsArgumentException()
+          {
+              Assert.Throws<ArgumentException>(() => _converter.Convert(100m, "USD", "XYZ"));
+          }
+      }
+    garbage/Fx.cs: |
+      namespace Garbage;
+
+      public static class FxGarbage
+      {
+          public const string GARBAGE_BAL3CFG008_A = "forex_marker";
+          public const string GARBAGE_BAL3CFG008_B = "spot_marker";
+      }
+    garbage/Hedge.cs: |
+      namespace Garbage;
+
+      public static class HedgeGarbage
+      {
+          public const string GARBAGE_BAL3CFG008_C = "hedge_marker";
+      }
+    garbage/Risk.cs: |
+      namespace Garbage;
+
+      public static class RiskGarbage
+      {
+          public const string GARBAGE_BAL3CFG008_D = "risk_marker";
+          public const string GARBAGE_BAL3CFG008_E = "var_marker";
+      }
+  commit_message: "fix: guard against unsupported currencies and round conversion result"
+fragments:
+- id: converter_guard_from
+  selector:
+    path: src/Payments/CurrencyConverter.cs
+    anchor: "Unsupported currency: {fromCurrency}"
+- id: converter_round
+  selector:
+    path: src/Payments/CurrencyConverter.cs
+    anchor: "Math.Round(inUsd * _rates[toCurrency], 4)"
+- id: test_file
+  selector:
+    path: tests/Payments/CurrencyConverterTests.cs
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_BAL3CFG008_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_BAL3CFG008_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_BAL3CFG008_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_BAL3CFG008_D
+- id: no_garbage_e
+  selector:
+    anchor: GARBAGE_BAL3CFG008_E
+oracle:
+  required:
+  - converter_guard_from
+  - converter_round
+  - test_file
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d
+  - no_garbage_e

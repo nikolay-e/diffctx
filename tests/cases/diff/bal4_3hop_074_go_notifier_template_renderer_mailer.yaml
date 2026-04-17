@@ -1,0 +1,159 @@
+name: bal4_3hop_074_go_notifier_template_renderer_mailer
+tags:
+- lang:go
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:easy
+repo:
+  initial_files:
+    pkg/mailer/smtp.go: |
+      package mailer
+
+      type Config struct {
+          Host string
+          Port int
+      }
+
+      func Send(cfg Config, to string, body string) bool {
+          return true
+      }
+    pkg/renderer/html.go: |
+      package renderer
+
+      import "myapp/pkg/mailer"
+
+      func RenderAndSend(cfg mailer.Config, to string, tpl string) bool {
+          body := "<html>" + tpl + "</html>"
+          return mailer.Send(cfg, to, body)
+      }
+    pkg/template/loader.go: |
+      package template
+
+      import "myapp/pkg/renderer"
+      import "myapp/pkg/mailer"
+
+      func LoadAndRender(cfg mailer.Config, to string, name string) bool {
+          tpl := "Hello " + name
+          return renderer.RenderAndSend(cfg, to, tpl)
+      }
+    pkg/notifier/email.go: |
+      package notifier
+
+      import (
+          "myapp/pkg/template"
+          "myapp/pkg/mailer"
+      )
+
+      func NotifyUser(to string, name string) bool {
+          cfg := mailer.Config{Host: "smtp.local", Port: 25}
+          return template.LoadAndRender(cfg, to, name)
+      }
+    pkg/garbage/log_noise.go: |
+      package garbage
+
+      var GARBAGE_074_LOG_A = "log"
+      var GARBAGE_074_LOG_B = "debug"
+
+      type GarbageLogger struct {
+          GARBAGE_074_LOG_C string
+      }
+
+      func GarbageLog() {}
+  changed_files:
+    pkg/mailer/smtp.go: |
+      package mailer
+
+      type Config struct {
+          Host string
+          Port int
+          TLS  bool
+      }
+
+      func Send(cfg Config, to string, body string) bool {
+          return true
+      }
+    pkg/renderer/html.go: |
+      package renderer
+
+      import "myapp/pkg/mailer"
+
+      func RenderAndSend(cfg mailer.Config, to string, tpl string) bool {
+          body := "<html>" + tpl + "</html>"
+          return mailer.Send(cfg, to, body)
+      }
+    pkg/template/loader.go: |
+      package template
+
+      import "myapp/pkg/renderer"
+      import "myapp/pkg/mailer"
+
+      func LoadAndRender(cfg mailer.Config, to string, name string) bool {
+          tpl := "Hello " + name
+          return renderer.RenderAndSend(cfg, to, tpl)
+      }
+    pkg/notifier/email.go: |
+      package notifier
+
+      import (
+          "myapp/pkg/template"
+          "myapp/pkg/mailer"
+      )
+
+      func NotifyUser(to string, name string) bool {
+          cfg := mailer.Config{Host: "smtp.local", Port: 25}
+          return template.LoadAndRender(cfg, to, name)
+      }
+    pkg/garbage/log_noise.go: |
+      package garbage
+
+      var GARBAGE_074_LOG_A = "log"
+      var GARBAGE_074_LOG_B = "debug"
+
+      type GarbageLogger struct {
+          GARBAGE_074_LOG_C string
+      }
+
+      func GarbageLog() {}
+  commit_message: "add TLS field to mailer Config"
+fragments:
+- id: config_struct
+  selector:
+    path: pkg/mailer/smtp.go
+    anchor: "type Config struct"
+- id: send_fn
+  selector:
+    path: pkg/mailer/smtp.go
+    anchor: "func Send"
+- id: render_and_send
+  selector:
+    path: pkg/renderer/html.go
+    anchor: "func RenderAndSend"
+- id: load_and_render
+  selector:
+    path: pkg/template/loader.go
+    anchor: "func LoadAndRender"
+- id: no_garbage_log
+  selector:
+    path: pkg/garbage/log_noise.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_074_LOG_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_074_LOG_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_074_LOG_C
+oracle:
+  required:
+  - config_struct
+  - send_fn
+  - render_and_send
+  - load_and_render
+  allowed: []
+  forbidden:
+  - no_garbage_log
+  - no_global_0
+  - no_global_1
+  - no_global_2

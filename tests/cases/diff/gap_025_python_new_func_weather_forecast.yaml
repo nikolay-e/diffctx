@@ -1,0 +1,129 @@
+name: gap_025_python_new_func_weather_forecast
+tags:
+- change:new_function
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:1hop
+- lang:python
+repo:
+  initial_files:
+    weather/models.py: |
+      from dataclasses import dataclass
+      from datetime import date
+
+      @dataclass
+      class Forecast:
+          location: str
+          date: date
+          temp_high: float
+          temp_low: float
+          condition: str
+
+      @dataclass
+      class WeatherAlert:
+          location: str
+          severity: str
+          message: str
+    weather/api.py: |
+      from weather.models import Forecast
+      from datetime import date
+
+      def get_current_forecast(location: str) -> Forecast:
+          return Forecast(
+              location=location,
+              date=date.today(),
+              temp_high=75.0,
+              temp_low=55.0,
+              condition="sunny",
+          )
+    weather/display.py: |
+      GARBAGE_GAP_025_DISPLAY_A = "render_marker"
+      GARBAGE_GAP_025_FORMAT_B = "ascii"
+
+      def render_ascii_chart(values: list) -> str:
+          return "\n".join("*" * int(v) for v in values)
+    weather/cache.py: |
+      GARBAGE_GAP_025_CACHE_C = "lru_marker"
+      GARBAGE_GAP_025_TTL_D = 3600
+
+      class ForecastCache:
+          def __init__(self):
+              self.store = {}
+
+          def get(self, key: str):
+              return self.store.get(key)
+
+          def set(self, key: str, value):
+              self.store[key] = value
+  changed_files:
+    weather/api.py: |
+      from weather.models import Forecast, WeatherAlert
+      from datetime import date
+
+      def get_current_forecast(location: str) -> Forecast:
+          return Forecast(
+              location=location,
+              date=date.today(),
+              temp_high=75.0,
+              temp_low=55.0,
+              condition="sunny",
+          )
+
+      def check_severe_weather(location: str, threshold: float = 100.0) -> list[WeatherAlert]:
+          forecast = get_current_forecast(location)
+          alerts = []
+          if forecast.temp_high > threshold:
+              alerts.append(WeatherAlert(
+                  location=location,
+                  severity="warning",
+                  message=f"Extreme heat: {forecast.temp_high}F",
+              ))
+          return alerts
+  commit_message: "add severe weather check function"
+fixtures:
+  auto_garbage: true
+fragments:
+- id: api_check_severe
+  selector:
+    path: weather/api.py
+    anchor: "def check_severe_weather"
+- id: models_alert
+  selector:
+    path: weather/models.py
+    anchor: "class WeatherAlert"
+- id: models_forecast
+  selector:
+    path: weather/models.py
+    anchor: "class Forecast"
+- id: no_display
+  selector:
+    path: weather/display.py
+- id: no_cache
+  selector:
+    path: weather/cache.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_025_DISPLAY_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GAP_025_FORMAT_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GAP_025_CACHE_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GAP_025_TTL_D
+oracle:
+  required:
+  - api_check_severe
+  - models_alert
+  allowed:
+  - models_forecast
+  forbidden:
+  - no_display
+  - no_cache
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

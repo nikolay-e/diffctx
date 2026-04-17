@@ -1,24 +1,93 @@
 name: internals_026_korean_in_diff
+tags:
+- lang:lua
+- change:bug_fix
+- change:single_file
+- context:same_file
+- distance:0hop
+- difficulty:trivial
 repo:
   initial_files:
-    korean_diff.py: |
-      x = 0
+    src/sensor_hub.lua: |
+      local M = {}
+
+      M.sensors = {}
+
+      function M.register(id, sensor)
+          M.sensors[id] = sensor
+      end
+
+      function M.read_all()
+          local readings = {}
+          for id, sensor in pairs(M.sensors) do
+              readings[id] = sensor.read()
+          end
+          return readings
+      end
+
+      return M
+    garbage/INT026_network.lua: |
+      -- INT026_GARBAGE_A = "network_marker"
+    garbage/INT026_display.lua: |
+      -- INT026_GARBAGE_B = "display_marker"
+    garbage/INT026_storage.lua: |
+      -- INT026_GARBAGE_C = "storage_marker"
   changed_files:
-    korean_diff.py: |
-      # 한국어 주석
-      message = "안녕하세요"
-      result = process_data(value)
-  commit_message: Update files
+    src/sensor_hub.lua: |
+      local M = {}
+
+      M.sensors = {}
+
+      function M.register(id, sensor)
+          if not id or id == "" then
+              return false, "invalid id"
+          end
+          if not sensor or type(sensor.read) ~= "function" then
+              return false, "invalid sensor"
+          end
+          M.sensors[id] = sensor
+          return true
+      end
+
+      function M.read_all()
+          local readings = {}
+          for id, sensor in pairs(M.sensors) do
+              local ok, val = pcall(sensor.read)
+              readings[id] = ok and val or nil
+          end
+          return readings
+      end
+
+      return M
+    garbage/INT026_network.lua: |
+      -- INT026_GARBAGE_A = "network_marker"
+    garbage/INT026_display.lua: |
+      -- INT026_GARBAGE_B = "display_marker"
+    garbage/INT026_storage.lua: |
+      -- INT026_GARBAGE_C = "storage_marker"
+  commit_message: "fix: validate id and sensor in register, wrap read() in pcall to handle errors"
 fragments:
-- id: korean_diff_file
+- id: register_func
   selector:
-    path: korean_diff.py
-- id: req_global_0
+    anchor: "function M.register"
+- id: read_all_func
   selector:
-    anchor: message = "안녕하세요"
+    anchor: "function M.read_all"
+- id: no_garbage_a
+  selector:
+    anchor: INT026_GARBAGE_A
+- id: no_garbage_b
+  selector:
+    anchor: INT026_GARBAGE_B
+- id: no_garbage_c
+  selector:
+    anchor: INT026_GARBAGE_C
 oracle:
   required:
-  - korean_diff_file
-  - req_global_0
+  - register_func
+  - read_all_func
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

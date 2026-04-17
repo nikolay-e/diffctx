@@ -1,0 +1,215 @@
+name: bal_rare_008_dart_repository_pattern
+tags:
+- lang:dart
+- change:multi_file
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    lib/models/task.dart: |
+      class Task {
+        final String id;
+        final String title;
+        final bool completed;
+
+        Task({required this.id, required this.title, this.completed = false});
+
+        Task copyWith({String? id, String? title, bool? completed}) {
+          return Task(
+            id: id ?? this.id,
+            title: title ?? this.title,
+            completed: completed ?? this.completed,
+          );
+        }
+      }
+    lib/repositories/task_repository.dart: |
+      import '../models/task.dart';
+
+      class TaskRepository {
+        final List<Task> _tasks = [];
+
+        List<Task> getAll() => List.unmodifiable(_tasks);
+
+        void add(Task task) {
+          _tasks.add(task);
+        }
+
+        void remove(String id) {
+          _tasks.removeWhere((t) => t.id == id);
+        }
+      }
+    lib/services/task_service.dart: |
+      import '../repositories/task_repository.dart';
+      import '../models/task.dart';
+
+      class TaskService {
+        final TaskRepository _repository;
+
+        TaskService(this._repository);
+
+        List<Task> listTasks() => _repository.getAll();
+
+        void createTask(String title) {
+          final task = Task(
+            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            title: title,
+          );
+          _repository.add(task);
+        }
+      }
+    garbage_logger.dart: |
+      const GARBAGE_RARE_008_LEVEL_A = 'debug';
+      const GARBAGE_RARE_008_OUTPUT_B = 'console';
+
+      class GarbageLogger {
+        static const GARBAGE_RARE_008_FORMAT_C = 'json';
+      }
+    garbage_storage.dart: |
+      const GARBAGE_RARE_008_PATH_D = '/tmp/data';
+      const GARBAGE_RARE_008_MAX_SIZE_E = 1048576;
+
+      class GarbageStorage {
+        static const GARBAGE_RARE_008_ENCRYPT_F = false;
+      }
+  changed_files:
+    lib/models/task.dart: |
+      enum Priority { low, medium, high }
+
+      class Task {
+        final String id;
+        final String title;
+        final bool completed;
+        final Priority priority;
+
+        Task({
+          required this.id,
+          required this.title,
+          this.completed = false,
+          this.priority = Priority.medium,
+        });
+
+        Task copyWith({String? id, String? title, bool? completed, Priority? priority}) {
+          return Task(
+            id: id ?? this.id,
+            title: title ?? this.title,
+            completed: completed ?? this.completed,
+            priority: priority ?? this.priority,
+          );
+        }
+      }
+    lib/repositories/task_repository.dart: |
+      import '../models/task.dart';
+
+      class TaskRepository {
+        final List<Task> _tasks = [];
+
+        List<Task> getAll() => List.unmodifiable(_tasks);
+
+        List<Task> getByPriority(Priority priority) {
+          return _tasks.where((t) => t.priority == priority).toList();
+        }
+
+        void add(Task task) {
+          _tasks.add(task);
+        }
+
+        void remove(String id) {
+          _tasks.removeWhere((t) => t.id == id);
+        }
+      }
+    lib/services/task_service.dart: |
+      import '../repositories/task_repository.dart';
+      import '../models/task.dart';
+
+      class TaskService {
+        final TaskRepository _repository;
+
+        TaskService(this._repository);
+
+        List<Task> listTasks() => _repository.getAll();
+
+        List<Task> listHighPriority() => _repository.getByPriority(Priority.high);
+
+        void createTask(String title, {Priority priority = Priority.medium}) {
+          final task = Task(
+            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            title: title,
+            priority: priority,
+          );
+          _repository.add(task);
+        }
+      }
+    garbage_logger.dart: |
+      const GARBAGE_RARE_008_LEVEL_A = 'debug';
+      const GARBAGE_RARE_008_OUTPUT_B = 'console';
+
+      class GarbageLogger {
+        static const GARBAGE_RARE_008_FORMAT_C = 'json';
+      }
+    garbage_storage.dart: |
+      const GARBAGE_RARE_008_PATH_D = '/tmp/data';
+      const GARBAGE_RARE_008_MAX_SIZE_E = 1048576;
+
+      class GarbageStorage {
+        static const GARBAGE_RARE_008_ENCRYPT_F = false;
+      }
+  commit_message: "feat: add priority field to tasks with filtering"
+fragments:
+- id: priority_enum
+  selector:
+    path: lib/models/task.dart
+    anchor: "enum Priority"
+- id: task_priority_field
+  selector:
+    path: lib/models/task.dart
+    anchor: "final Priority priority"
+- id: repo_get_by_priority
+  selector:
+    path: lib/repositories/task_repository.dart
+    anchor: "getByPriority(Priority priority)"
+- id: service_high_priority
+  selector:
+    path: lib/services/task_service.dart
+    anchor: "listHighPriority()"
+- id: no_garbage_logger
+  selector:
+    path: garbage_logger.dart
+- id: no_garbage_storage
+  selector:
+    path: garbage_storage.dart
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_RARE_008_LEVEL_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_RARE_008_OUTPUT_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_RARE_008_FORMAT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_RARE_008_PATH_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_RARE_008_MAX_SIZE_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_RARE_008_ENCRYPT_F
+oracle:
+  required:
+  - priority_enum
+  - task_priority_field
+  - repo_get_by_priority
+  - service_high_priority
+  allowed: []
+  forbidden:
+  - no_garbage_logger
+  - no_garbage_storage
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

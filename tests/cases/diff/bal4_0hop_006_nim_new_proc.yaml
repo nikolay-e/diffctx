@@ -1,0 +1,90 @@
+name: bal4_0hop_006_nim_new_proc
+tags:
+- lang:nim
+- change:single_file
+- change:new_function
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/mathutils.nim: |
+      proc square(x: int): int =
+        x * x
+
+      proc double(x: int): int =
+        x * 2
+    src/garbage_strings.nim: |
+      const GARBAGE_B4N006_STR_A = "strings"
+      const GARBAGE_B4N006_STR_B = true
+
+      proc garbageConcat(a, b: string): string =
+        a & b
+    src/garbage_arrays.nim: |
+      const GARBAGE_B4N006_ARR_C = "arrays"
+      const GARBAGE_B4N006_ARR_D = 10
+
+      proc garbageLen(s: seq[int]): int =
+        s.len
+  changed_files:
+    src/mathutils.nim: |
+      proc square(x: int): int =
+        x * x
+
+      proc double(x: int): int =
+        x * 2
+
+      proc cube(x: int): int =
+        x * x * x
+    src/garbage_strings.nim: |
+      const GARBAGE_B4N006_STR_A = "strings"
+      const GARBAGE_B4N006_STR_B = true
+
+      proc garbageConcat(a, b: string): string =
+        a & b
+    src/garbage_arrays.nim: |
+      const GARBAGE_B4N006_ARR_C = "arrays"
+      const GARBAGE_B4N006_ARR_D = 10
+
+      proc garbageLen(s: seq[int]): int =
+        s.len
+  commit_message: "feat: add cube proc"
+fragments:
+- id: new_cube
+  selector:
+    path: src/mathutils.nim
+    anchor: "proc cube(x: int): int ="
+- id: cube_body
+  selector:
+    path: src/mathutils.nim
+    anchor: "x * x * x"
+- id: no_garbage_strings
+  selector:
+    path: src/garbage_strings.nim
+- id: no_garbage_arrays
+  selector:
+    path: src/garbage_arrays.nim
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_B4N006_STR_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_B4N006_STR_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_B4N006_ARR_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_B4N006_ARR_D
+oracle:
+  required:
+  - new_cube
+  - cube_body
+  allowed: []
+  forbidden:
+  - no_garbage_strings
+  - no_garbage_arrays
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

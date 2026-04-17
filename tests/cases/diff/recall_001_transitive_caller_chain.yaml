@@ -1,4 +1,11 @@
 name: recall_001_transitive_caller_chain
+tags:
+- lang:go
+- change:multi_file
+- change:new_function
+- context:cross_module
+- distance:2hop
+- difficulty:medium
 repo:
   initial_files:
     pkg/billing/calculator.go: |

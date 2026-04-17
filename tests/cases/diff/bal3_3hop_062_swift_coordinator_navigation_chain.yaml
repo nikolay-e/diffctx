@@ -1,0 +1,177 @@
+name: bal3_3hop_062_swift_coordinator_navigation_chain
+tags:
+- lang:swift
+- change:multi_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    Sources/Models/Route.swift: |
+      import Foundation
+
+      enum Route {
+          case home
+          case profile(userId: String)
+          case settings
+      }
+    Sources/Navigation/Router.swift: |
+      import Foundation
+      import Models
+
+      class Router {
+          var currentRoute: Route = .home
+          func navigate(to route: Route) {
+              currentRoute = route
+          }
+      }
+    Sources/Coordinators/AppCoordinator.swift: |
+      import Foundation
+      import Navigation
+
+      class AppCoordinator {
+          private let router: Router
+          init(router: Router) {
+              self.router = router
+          }
+          func start() {
+              router.navigate(to: .home)
+          }
+      }
+    Sources/Views/MainView.swift: |
+      import SwiftUI
+      import Coordinators
+
+      struct MainView: View {
+          let coordinator: AppCoordinator
+          var body: some View {
+              Text("Main")
+          }
+      }
+    Sources/Utils/ColorPalette.swift: |
+      import SwiftUI
+      let GARBAGE_062_COLOR_A = "palette"
+      let GARBAGE_062_THEME_B = "dark"
+
+      struct ColorPalette {
+          static let primary = Color.blue
+          static let secondary = Color.gray
+      }
+    Sources/Utils/FontStyles.swift: |
+      import SwiftUI
+      let GARBAGE_062_FONT_C = "styles"
+      let GARBAGE_062_SIZE_D = 14
+
+      struct FontStyles {
+          static let title = Font.system(size: 24)
+          static let body = Font.system(size: 16)
+      }
+  changed_files:
+    Sources/Models/Route.swift: |
+      import Foundation
+
+      enum Route: Hashable {
+          case home
+          case profile(userId: String)
+          case settings
+          case notifications
+      }
+    Sources/Navigation/Router.swift: |
+      import Foundation
+      import Models
+
+      class Router {
+          var currentRoute: Route = .home
+          var history: [Route] = []
+          func navigate(to route: Route) {
+              history.append(currentRoute)
+              currentRoute = route
+          }
+          func goBack() {
+              if let previous = history.popLast() {
+                  currentRoute = previous
+              }
+          }
+      }
+    Sources/Coordinators/AppCoordinator.swift: |
+      import Foundation
+      import Navigation
+
+      class AppCoordinator {
+          private let router: Router
+          init(router: Router) {
+              self.router = router
+          }
+          func start() {
+              router.navigate(to: .home)
+          }
+      }
+    Sources/Views/MainView.swift: |
+      import SwiftUI
+      import Coordinators
+
+      struct MainView: View {
+          let coordinator: AppCoordinator
+          var body: some View {
+              Text("Main")
+          }
+      }
+    Sources/Utils/ColorPalette.swift: |
+      import SwiftUI
+      let GARBAGE_062_COLOR_A = "palette"
+      let GARBAGE_062_THEME_B = "dark"
+
+      struct ColorPalette {
+          static let primary = Color.blue
+          static let secondary = Color.gray
+      }
+    Sources/Utils/FontStyles.swift: |
+      import SwiftUI
+      let GARBAGE_062_FONT_C = "styles"
+      let GARBAGE_062_SIZE_D = 14
+
+      struct FontStyles {
+          static let title = Font.system(size: 24)
+          static let body = Font.system(size: 16)
+      }
+  commit_message: "feat: add navigation history and notifications route"
+fragments:
+- id: route_notifications
+  selector:
+    path: Sources/Models/Route.swift
+    anchor: "case notifications"
+- id: router_history
+  selector:
+    path: Sources/Navigation/Router.swift
+    anchor: "var history: [Route]"
+- id: router_go_back
+  selector:
+    path: Sources/Navigation/Router.swift
+    anchor: "func goBack()"
+- id: coordinator_imports_navigation
+  selector:
+    path: Sources/Coordinators/AppCoordinator.swift
+    anchor: "import Navigation"
+- id: view_imports_coordinators
+  selector:
+    path: Sources/Views/MainView.swift
+    anchor: "import Coordinators"
+- id: no_color_palette
+  selector:
+    path: Sources/Utils/ColorPalette.swift
+    anchor: "GARBAGE_062_COLOR_A"
+- id: no_font_styles
+  selector:
+    path: Sources/Utils/FontStyles.swift
+    anchor: "GARBAGE_062_FONT_C"
+oracle:
+  required:
+  - route_notifications
+  - router_history
+  - coordinator_imports_navigation
+  - view_imports_coordinators
+  allowed:
+  - router_go_back
+  forbidden:
+  - no_color_palette
+  - no_font_styles

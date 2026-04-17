@@ -1,0 +1,196 @@
+name: bal_testctx_030_rust_permission_checker_test
+tags:
+- lang:rust
+- change:multi_file
+- change:bug_fix
+- context:test_file
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/permissions.rs: |
+      use std::collections::HashSet;
+
+      #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+      pub enum Permission {
+          Read,
+          Write,
+          Delete,
+          Admin,
+      }
+
+      pub struct PermissionSet {
+          permissions: HashSet<Permission>,
+      }
+
+      impl PermissionSet {
+          pub fn new() -> Self {
+              PermissionSet { permissions: HashSet::new() }
+          }
+
+          pub fn grant(&mut self, perm: Permission) {
+              self.permissions.insert(perm);
+          }
+
+          pub fn has(&self, perm: &Permission) -> bool {
+              self.permissions.contains(perm)
+          }
+
+          pub fn revoke(&mut self, perm: &Permission) {
+              self.permissions.remove(perm);
+          }
+      }
+    src/role.rs: |
+      use crate::permissions::{Permission, PermissionSet};
+
+      pub struct Role {
+          pub name: String,
+          pub permissions: PermissionSet,
+      }
+
+      impl Role {
+          pub fn new(name: &str) -> Self {
+              Role {
+                  name: name.to_string(),
+                  permissions: PermissionSet::new(),
+              }
+          }
+
+          pub fn with_permission(mut self, perm: Permission) -> Self {
+              self.permissions.grant(perm);
+              self
+          }
+      }
+    tests/test_permissions.rs: |
+      use crate::permissions::{Permission, PermissionSet};
+
+      #[test]
+      fn test_grant_and_check() {
+          let mut perms = PermissionSet::new();
+          perms.grant(Permission::Read);
+          assert!(perms.has(&Permission::Read));
+          assert!(!perms.has(&Permission::Write));
+      }
+
+      #[test]
+      fn test_revoke() {
+          let mut perms = PermissionSet::new();
+          perms.grant(Permission::Write);
+          perms.revoke(&Permission::Write);
+          assert!(!perms.has(&Permission::Write));
+      }
+    src/audit_log.rs: |
+      pub struct AuditEntry {
+          pub action: String,
+          pub user_id: String,
+          pub timestamp: u64,
+      }
+
+      pub struct AuditLog {
+          entries: Vec<AuditEntry>,
+      }
+
+      impl AuditLog {
+          pub fn new() -> Self {
+              AuditLog { entries: Vec::new() }
+          }
+
+          pub fn record(&mut self, action: &str, user_id: &str, timestamp: u64) {
+              self.entries.push(AuditEntry {
+                  action: action.to_string(),
+                  user_id: user_id.to_string(),
+                  timestamp,
+              });
+          }
+      }
+  changed_files:
+    src/permissions.rs: |
+      use std::collections::HashSet;
+
+      #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+      pub enum Permission {
+          Read,
+          Write,
+          Delete,
+          Admin,
+      }
+
+      pub struct PermissionSet {
+          permissions: HashSet<Permission>,
+      }
+
+      impl PermissionSet {
+          pub fn new() -> Self {
+              PermissionSet { permissions: HashSet::new() }
+          }
+
+          pub fn grant(&mut self, perm: Permission) {
+              self.permissions.insert(perm);
+          }
+
+          pub fn has(&self, perm: &Permission) -> bool {
+              if self.permissions.contains(&Permission::Admin) {
+                  return true;
+              }
+              self.permissions.contains(perm)
+          }
+
+          pub fn revoke(&mut self, perm: &Permission) {
+              self.permissions.remove(perm);
+          }
+
+          pub fn list(&self) -> Vec<&Permission> {
+              self.permissions.iter().collect()
+          }
+
+          pub fn merge(&mut self, other: &PermissionSet) {
+              for perm in &other.permissions {
+                  self.permissions.insert(perm.clone());
+              }
+          }
+
+          pub fn count(&self) -> usize {
+              self.permissions.len()
+          }
+      }
+  commit_message: "fix: Admin implies all permissions, add list/merge/count"
+fragments:
+- id: has_admin_check
+  selector:
+    path: src/permissions.rs
+    anchor: "pub fn has(&self, perm: &Permission)"
+- id: merge_fn
+  selector:
+    path: src/permissions.rs
+    anchor: "pub fn merge(&mut self, other"
+- id: list_fn
+  selector:
+    path: src/permissions.rs
+    anchor: "pub fn list"
+- id: test_imports_perms
+  selector:
+    path: tests/test_permissions.rs
+    anchor: "use crate::permissions"
+- id: test_grant_check
+  selector:
+    path: tests/test_permissions.rs
+    anchor: "fn test_grant_and_check"
+- id: role_imports_perms
+  selector:
+    path: src/role.rs
+    anchor: "use crate::permissions"
+- id: no_audit_log
+  selector:
+    path: src/audit_log.rs
+    anchor: "pub struct AuditLog"
+oracle:
+  required:
+  - has_admin_check
+  - merge_fn
+  - test_imports_perms
+  allowed:
+  - list_fn
+  - test_grant_check
+  - role_imports_perms
+  forbidden:
+  - no_audit_log

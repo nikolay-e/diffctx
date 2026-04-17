@@ -1,0 +1,257 @@
+name: bal3_3hop_072_php_event_dispatcher_chain
+tags:
+- lang:php
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/Events/Event.php: |
+      <?php
+      namespace App\Events;
+
+      abstract class Event {
+          private string $name;
+          public function __construct(string $name) {
+              $this->name = $name;
+          }
+          public function getName(): string {
+              return $this->name;
+          }
+      }
+    src/Events/OrderPlacedEvent.php: |
+      <?php
+      namespace App\Events;
+
+      use App\Events\Event;
+
+      class OrderPlacedEvent extends Event {
+          private int $orderId;
+          public function __construct(int $orderId) {
+              parent::__construct('order.placed');
+              $this->orderId = $orderId;
+          }
+          public function getOrderId(): int {
+              return $this->orderId;
+          }
+      }
+    src/Listeners/EventDispatcher.php: |
+      <?php
+      namespace App\Listeners;
+
+      use App\Events\Event;
+
+      class EventDispatcher {
+          private array $listeners = [];
+          public function listen(string $eventName, callable $handler): void {
+              $this->listeners[$eventName][] = $handler;
+          }
+          public function dispatch(Event $event): void {
+              foreach ($this->listeners[$event->getName()] ?? [] as $handler) {
+                  $handler($event);
+              }
+          }
+      }
+    src/Services/OrderService.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Listeners\EventDispatcher;
+      use App\Events\OrderPlacedEvent;
+
+      class OrderService {
+          private EventDispatcher $dispatcher;
+          public function __construct(EventDispatcher $dispatcher) {
+              $this->dispatcher = $dispatcher;
+          }
+          public function placeOrder(array $items): int {
+              $orderId = rand(1, 1000);
+              $this->dispatcher->dispatch(new OrderPlacedEvent($orderId));
+              return $orderId;
+          }
+      }
+    src/Controllers/OrderController.php: |
+      <?php
+      namespace App\Controllers;
+
+      use App\Services\OrderService;
+
+      class OrderController {
+          private OrderService $service;
+          public function __construct(OrderService $service) {
+              $this->service = $service;
+          }
+          public function store(array $request): array {
+              $orderId = $this->service->placeOrder($request['items']);
+              return ['order_id' => $orderId];
+          }
+      }
+    src/Mail/Mailer.php: |
+      <?php
+      namespace App\Mail;
+      define('GARBAGE_072_MAILER_A', 'smtp');
+      define('GARBAGE_072_PORT_B', 587);
+
+      class Mailer {
+          public function send(string $to, string $subject): void {}
+      }
+    src/Logging/FileLogger.php: |
+      <?php
+      namespace App\Logging;
+      define('GARBAGE_072_LOGGER_C', 'file');
+      define('GARBAGE_072_PATH_D', '/tmp/log');
+
+      class FileLogger {
+          public function log(string $message): void {}
+      }
+  changed_files:
+    src/Events/Event.php: |
+      <?php
+      namespace App\Events;
+
+      abstract class Event {
+          private string $name;
+          private \DateTimeImmutable $occurredAt;
+          public function __construct(string $name) {
+              $this->name = $name;
+              $this->occurredAt = new \DateTimeImmutable();
+          }
+          public function getName(): string {
+              return $this->name;
+          }
+          public function getOccurredAt(): \DateTimeImmutable {
+              return $this->occurredAt;
+          }
+      }
+    src/Events/OrderPlacedEvent.php: |
+      <?php
+      namespace App\Events;
+
+      use App\Events\Event;
+
+      class OrderPlacedEvent extends Event {
+          private int $orderId;
+          public function __construct(int $orderId) {
+              parent::__construct('order.placed');
+              $this->orderId = $orderId;
+          }
+          public function getOrderId(): int {
+              return $this->orderId;
+          }
+      }
+    src/Listeners/EventDispatcher.php: |
+      <?php
+      namespace App\Listeners;
+
+      use App\Events\Event;
+
+      class EventDispatcher {
+          private array $listeners = [];
+          public function listen(string $eventName, callable $handler): void {
+              $this->listeners[$eventName][] = $handler;
+          }
+          public function dispatch(Event $event): void {
+              foreach ($this->listeners[$event->getName()] ?? [] as $handler) {
+                  $handler($event);
+              }
+          }
+      }
+    src/Services/OrderService.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Listeners\EventDispatcher;
+      use App\Events\OrderPlacedEvent;
+
+      class OrderService {
+          private EventDispatcher $dispatcher;
+          public function __construct(EventDispatcher $dispatcher) {
+              $this->dispatcher = $dispatcher;
+          }
+          public function placeOrder(array $items): int {
+              $orderId = rand(1, 1000);
+              $this->dispatcher->dispatch(new OrderPlacedEvent($orderId));
+              return $orderId;
+          }
+      }
+    src/Controllers/OrderController.php: |
+      <?php
+      namespace App\Controllers;
+
+      use App\Services\OrderService;
+
+      class OrderController {
+          private OrderService $service;
+          public function __construct(OrderService $service) {
+              $this->service = $service;
+          }
+          public function store(array $request): array {
+              $orderId = $this->service->placeOrder($request['items']);
+              return ['order_id' => $orderId];
+          }
+      }
+    src/Mail/Mailer.php: |
+      <?php
+      namespace App\Mail;
+      define('GARBAGE_072_MAILER_A', 'smtp');
+      define('GARBAGE_072_PORT_B', 587);
+
+      class Mailer {
+          public function send(string $to, string $subject): void {}
+      }
+    src/Logging/FileLogger.php: |
+      <?php
+      namespace App\Logging;
+      define('GARBAGE_072_LOGGER_C', 'file');
+      define('GARBAGE_072_PATH_D', '/tmp/log');
+
+      class FileLogger {
+          public function log(string $message): void {}
+      }
+  commit_message: "feat: add timestamp tracking to base Event class"
+fragments:
+- id: event_occurred_at
+  selector:
+    path: src/Events/Event.php
+    anchor: "private \\DateTimeImmutable $occurredAt"
+- id: event_get_occurred
+  selector:
+    path: src/Events/Event.php
+    anchor: "function getOccurredAt"
+- id: order_event_extends
+  selector:
+    path: src/Events/OrderPlacedEvent.php
+    anchor: "use App\\Events\\Event"
+- id: dispatcher_uses_event
+  selector:
+    path: src/Listeners/EventDispatcher.php
+    anchor: "use App\\Events\\Event"
+- id: service_uses_dispatcher
+  selector:
+    path: src/Services/OrderService.php
+    anchor: "use App\\Listeners\\EventDispatcher"
+- id: controller_uses_service
+  selector:
+    path: src/Controllers/OrderController.php
+    anchor: "use App\\Services\\OrderService"
+- id: no_mailer
+  selector:
+    path: src/Mail/Mailer.php
+    anchor: "GARBAGE_072_MAILER_A"
+- id: no_logger
+  selector:
+    path: src/Logging/FileLogger.php
+    anchor: "GARBAGE_072_LOGGER_C"
+oracle:
+  required:
+  - event_occurred_at
+  - order_event_extends
+  - dispatcher_uses_event
+  - service_uses_dispatcher
+  - controller_uses_service
+  allowed:
+  - event_get_occurred
+  forbidden:
+  - no_mailer
+  - no_logger

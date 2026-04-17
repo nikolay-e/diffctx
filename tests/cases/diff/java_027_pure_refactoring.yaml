@@ -1,0 +1,222 @@
+name: java_027_pure_refactoring
+tags:
+- lang:java
+- change:multi_file
+- change:refactor
+- context:cross_module
+- distance:2hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/main/java/com/app/service/UserService.java: |
+      package com.app.service;
+
+      import com.app.model.User;
+      import com.app.repository.UserRepository;
+      import java.util.Optional;
+
+      public class UserService {
+          private final UserRepository repo;
+
+          public UserService(UserRepository repo) {
+              this.repo = repo;
+          }
+
+          public Optional<User> findUser(String id) {
+              User user = repo.findById(id);
+              if (user != null && user.isActive()) {
+                  return Optional.of(user);
+              }
+              return Optional.empty();
+          }
+
+          public void deactivateUser(String id) {
+              User user = repo.findById(id);
+              if (user != null) {
+                  user.setActive(false);
+                  repo.save(user);
+              }
+          }
+      }
+    src/main/java/com/app/model/User.java: |
+      package com.app.model;
+
+      public class User {
+          private String id;
+          private String name;
+          private boolean active;
+
+          public User(String id, String name) {
+              this.id = id;
+              this.name = name;
+              this.active = true;
+          }
+
+          public String getId() { return id; }
+          public String getName() { return name; }
+          public boolean isActive() { return active; }
+          public void setActive(boolean active) { this.active = active; }
+      }
+    src/main/java/com/app/repository/UserRepository.java: |
+      package com.app.repository;
+
+      import com.app.model.User;
+
+      public interface UserRepository {
+          User findById(String id);
+          void save(User user);
+          void delete(String id);
+      }
+    src/main/java/com/app/controller/AdminController.java: |
+      package com.app.controller;
+
+      import com.app.service.UserService;
+
+      public class AdminController {
+          private final UserService userService;
+
+          public AdminController(UserService userService) {
+              this.userService = userService;
+          }
+
+          public String handleDeactivate(String userId) {
+              userService.deactivateUser(userId);
+              return "ok";
+          }
+      }
+    src/main/java/com/app/analytics/Reporter.java: |
+      package com.app.analytics;
+
+      import java.util.List;
+
+      public class Reporter {
+          public String generateReport(List<String> events) {
+              StringBuilder sb = new StringBuilder();
+              for (String event : events) {
+                  sb.append(event).append("\n");
+              }
+              return sb.toString();
+          }
+      }
+  changed_files:
+    src/main/java/com/app/service/UserService.java: |
+      package com.app.service;
+
+      import com.app.model.User;
+      import com.app.repository.UserRepository;
+      import java.util.Optional;
+
+      public class UserService {
+          private final UserRepository repo;
+
+          public UserService(UserRepository repo) {
+              this.repo = repo;
+          }
+
+          public Optional<User> findActiveUser(String id) {
+              return repo.findById(id)
+                  .filter(User::isActive);
+          }
+
+          public void deactivateUser(String id) {
+              repo.findById(id).ifPresent(user -> {
+                  user.setActive(false);
+                  repo.save(user);
+              });
+          }
+      }
+    src/main/java/com/app/model/User.java: |
+      package com.app.model;
+
+      public class User {
+          private String id;
+          private String name;
+          private boolean active;
+
+          public User(String id, String name) {
+              this.id = id;
+              this.name = name;
+              this.active = true;
+          }
+
+          public String getId() { return id; }
+          public String getName() { return name; }
+          public boolean isActive() { return active; }
+          public void setActive(boolean active) { this.active = active; }
+      }
+    src/main/java/com/app/repository/UserRepository.java: |
+      package com.app.repository;
+
+      import com.app.model.User;
+      import java.util.Optional;
+
+      public interface UserRepository {
+          Optional<User> findById(String id);
+          void save(User user);
+          void delete(String id);
+      }
+    src/main/java/com/app/controller/AdminController.java: |
+      package com.app.controller;
+
+      import com.app.service.UserService;
+
+      public class AdminController {
+          private final UserService userService;
+
+          public AdminController(UserService userService) {
+              this.userService = userService;
+          }
+
+          public String handleDeactivate(String userId) {
+              userService.deactivateUser(userId);
+              return "ok";
+          }
+      }
+    src/main/java/com/app/analytics/Reporter.java: |
+      package com.app.analytics;
+
+      import java.util.List;
+
+      public class Reporter {
+          public String generateReport(List<String> events) {
+              StringBuilder sb = new StringBuilder();
+              for (String event : events) {
+                  sb.append(event).append("\n");
+              }
+              return sb.toString();
+          }
+      }
+  commit_message: "refactor: use Optional in UserRepository and UserService"
+fragments:
+- id: service_find_active
+  selector:
+    path: UserService.java
+    anchor: "public Optional<User> findActiveUser(String id)"
+- id: service_deactivate_optional
+  selector:
+    path: UserService.java
+    anchor: "repo.findById(id).ifPresent"
+- id: repo_optional_return
+  selector:
+    path: UserRepository.java
+    anchor: "Optional<User> findById(String id)"
+- id: controller_calls_service
+  selector:
+    path: AdminController.java
+    anchor: "userService.deactivateUser(userId)"
+- id: no_reporter
+  selector:
+    path: Reporter.java
+- id: no_generate_report
+  selector:
+    anchor: "generateReport"
+oracle:
+  required:
+  - service_find_active
+  - service_deactivate_optional
+  - repo_optional_return
+  - controller_calls_service
+  allowed: []
+  forbidden:
+  - no_reporter
+  - no_generate_report

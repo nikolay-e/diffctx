@@ -1,0 +1,118 @@
+name: c_family_011_signal_handler_registration
+tags:
+- lang:c
+- change:multi_file
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    signal_handler.h: |
+      #ifndef SIGNAL_HANDLER_H
+      #define SIGNAL_HANDLER_H
+      void register_signals(void);
+      #endif
+    signal_handler.c: |
+      #include "signal_handler.h"
+      #include <signal.h>
+      #include <stdio.h>
+      static void on_sigint(int sig) { printf("caught SIGINT\n"); }
+      void register_signals(void) {
+          signal(SIGINT, on_sigint);
+      }
+    main.c: |
+      #include "signal_handler.h"
+      int main(void) {
+          register_signals();
+          /* run application */
+          return 0;
+      }
+    C_NOISE_011_bluetooth.h: |
+      #ifndef C_NOISE_011_BLUETOOTH_H
+      #define C_NOISE_011_BLUETOOTH_H
+      int C_NOISE_011_bt_scan(void);
+      void C_NOISE_011_bt_connect(const char *addr);
+      #endif
+    C_NOISE_011_bluetooth.c: |
+      #include "C_NOISE_011_bluetooth.h"
+      int C_NOISE_011_bt_scan(void) { return 0; }
+      void C_NOISE_011_bt_connect(const char *addr) {}
+  changed_files:
+    signal_handler.h: |
+      #ifndef SIGNAL_HANDLER_H
+      #define SIGNAL_HANDLER_H
+      void register_signals(void);
+      void unregister_signals(void);
+      #endif
+    signal_handler.c: |
+      #include "signal_handler.h"
+      #include <signal.h>
+      #include <stdio.h>
+      static volatile int g_shutdown = 0;
+      static void on_sigint(int sig) { printf("caught SIGINT\n"); g_shutdown = 1; }
+      static void on_sigterm(int sig) { printf("caught SIGTERM\n"); g_shutdown = 1; }
+      void register_signals(void) {
+          signal(SIGINT, on_sigint);
+          signal(SIGTERM, on_sigterm);
+      }
+      void unregister_signals(void) {
+          signal(SIGINT, SIG_DFL);
+          signal(SIGTERM, SIG_DFL);
+      }
+    main.c: |
+      #include "signal_handler.h"
+      int main(void) {
+          register_signals();
+          /* run application */
+          unregister_signals();
+          return 0;
+      }
+    C_NOISE_011_bluetooth.h: |
+      #ifndef C_NOISE_011_BLUETOOTH_H
+      #define C_NOISE_011_BLUETOOTH_H
+      int C_NOISE_011_bt_scan(void);
+      void C_NOISE_011_bt_connect(const char *addr);
+      #endif
+    C_NOISE_011_bluetooth.c: |
+      #include "C_NOISE_011_bluetooth.h"
+      int C_NOISE_011_bt_scan(void) { return 0; }
+      void C_NOISE_011_bt_connect(const char *addr) {}
+  commit_message: "feat: add SIGTERM handler and unregister_signals; update main.c"
+fragments:
+- id: signal_handler_h
+  selector:
+    path: signal_handler.h
+    anchor: unregister_signals
+- id: signal_handler_c_sigterm
+  selector:
+    path: signal_handler.c
+    anchor: on_sigterm
+- id: signal_handler_c_unregister
+  selector:
+    path: signal_handler.c
+    anchor: unregister_signals
+- id: main_c
+  selector:
+    path: main.c
+    anchor: unregister_signals
+- id: no_bt_h
+  selector:
+    anchor: C_NOISE_011_bt_scan
+- id: no_bt_c
+  selector:
+    path: C_NOISE_011_bluetooth.c
+- id: no_global_connect
+  selector:
+    anchor: C_NOISE_011_bt_connect
+oracle:
+  required:
+  - signal_handler_h
+  - signal_handler_c_sigterm
+  - signal_handler_c_unregister
+  - main_c
+  allowed: []
+  forbidden:
+  - no_bt_h
+  - no_bt_c
+  - no_global_connect

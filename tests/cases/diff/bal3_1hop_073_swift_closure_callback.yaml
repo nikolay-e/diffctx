@@ -1,0 +1,313 @@
+name: bal3_1hop_073_swift_closure_callback
+tags:
+- lang:swift
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    Sources/Events/EventBus.swift: |
+      import Foundation
+
+      typealias EventHandler = (String, Any?) -> Void
+
+      class EventBus {
+          private var handlers: [String: [EventHandler]] = [:]
+
+          func on(_ event: String, handler: @escaping EventHandler) {
+              handlers[event, default: []].append(handler)
+          }
+
+          func emit(_ event: String, data: Any? = nil) {
+              handlers[event]?.forEach { $0(event, data) }
+          }
+
+          func removeAll(for event: String) {
+              handlers[event] = nil
+          }
+      }
+    Sources/Modules/CartModule.swift: |
+      import Foundation
+      import Events
+
+      class CartModule {
+          private let bus: EventBus
+
+          init(bus: EventBus) {
+              self.bus = bus
+              self.bus.on("item_added") { event, data in
+                  self.handleItemAdded(data: data)
+              }
+          }
+
+          func handleItemAdded(data: Any?) {}
+      }
+    Sources/Modules/InventoryModule.swift: |
+      import Foundation
+      import Events
+
+      class InventoryModule {
+          private let bus: EventBus
+
+          init(bus: EventBus) {
+              self.bus = bus
+              self.bus.on("item_added") { event, data in
+                  self.updateStock(data: data)
+              }
+          }
+
+          func updateStock(data: Any?) {}
+      }
+    Sources/Modules/AnalyticsModule.swift: |
+      import Foundation
+      import Events
+
+      class AnalyticsModule {
+          private let bus: EventBus
+
+          init(bus: EventBus) {
+              self.bus = bus
+              self.bus.on("item_added") { event, data in
+                  self.trackEvent(name: event, data: data)
+              }
+          }
+
+          func trackEvent(name: String, data: Any?) {}
+      }
+    Sources/Modules/NotificationModule.swift: |
+      import Foundation
+      import Events
+
+      class NotificationModule {
+          private let bus: EventBus
+
+          init(bus: EventBus) {
+              self.bus = bus
+              self.bus.on("order_completed") { event, data in
+                  self.sendNotification(data: data)
+              }
+          }
+
+          func sendNotification(data: Any?) {}
+      }
+    Sources/Payments/StripeGateway.swift: |
+      import Foundation
+      GARBAGE_073_STRIPE_KEY_A = "sk_test_xxx"
+      GARBAGE_073_STRIPE_API_B = "https://api.stripe.com"
+
+      class StripeGateway {
+          func charge(amount: Int) -> Bool { return true }
+      }
+    Sources/Payments/PaypalGateway.swift: |
+      import Foundation
+      GARBAGE_073_PAYPAL_CLIENT_C = "client_xxx"
+      GARBAGE_073_PAYPAL_SECRET_D = "secret_xxx"
+
+      class PaypalGateway {
+          func charge(amount: Int) -> Bool { return true }
+      }
+    Sources/Shipping/ShippingRate.swift: |
+      import Foundation
+      GARBAGE_073_BASE_RATE_E = 5.99
+      GARBAGE_073_FREE_THRESHOLD_F = 50.0
+
+      class ShippingRate {
+          func calculate(weight: Double) -> Double { return 0 }
+      }
+  changed_files:
+    Sources/Events/EventBus.swift: |
+      import Foundation
+
+      struct EventPayload {
+          let name: String
+          let data: Any?
+          let timestamp: Date
+      }
+
+      typealias EventHandler = (EventPayload) -> Void
+
+      class EventBus {
+          private var handlers: [String: [EventHandler]] = [:]
+
+          func on(_ event: String, handler: @escaping EventHandler) {
+              handlers[event, default: []].append(handler)
+          }
+
+          func emit(_ event: String, data: Any? = nil) {
+              let payload = EventPayload(name: event, data: data, timestamp: Date())
+              handlers[event]?.forEach { $0(payload) }
+          }
+
+          func once(_ event: String, handler: @escaping EventHandler) {
+              var token: Int?
+              let wrapper: EventHandler = { payload in
+                  handler(payload)
+              }
+              handlers[event, default: []].append(wrapper)
+          }
+
+          func removeAll(for event: String) {
+              handlers[event] = nil
+          }
+      }
+    Sources/Modules/CartModule.swift: |
+      import Foundation
+      import Events
+
+      class CartModule {
+          private let bus: EventBus
+
+          init(bus: EventBus) {
+              self.bus = bus
+              self.bus.on("item_added") { event, data in
+                  self.handleItemAdded(data: data)
+              }
+          }
+
+          func handleItemAdded(data: Any?) {}
+      }
+    Sources/Modules/InventoryModule.swift: |
+      import Foundation
+      import Events
+
+      class InventoryModule {
+          private let bus: EventBus
+
+          init(bus: EventBus) {
+              self.bus = bus
+              self.bus.on("item_added") { event, data in
+                  self.updateStock(data: data)
+              }
+          }
+
+          func updateStock(data: Any?) {}
+      }
+    Sources/Modules/AnalyticsModule.swift: |
+      import Foundation
+      import Events
+
+      class AnalyticsModule {
+          private let bus: EventBus
+
+          init(bus: EventBus) {
+              self.bus = bus
+              self.bus.on("item_added") { event, data in
+                  self.trackEvent(name: event, data: data)
+              }
+          }
+
+          func trackEvent(name: String, data: Any?) {}
+      }
+    Sources/Modules/NotificationModule.swift: |
+      import Foundation
+      import Events
+
+      class NotificationModule {
+          private let bus: EventBus
+
+          init(bus: EventBus) {
+              self.bus = bus
+              self.bus.on("order_completed") { event, data in
+                  self.sendNotification(data: data)
+              }
+          }
+
+          func sendNotification(data: Any?) {}
+      }
+    Sources/Payments/StripeGateway.swift: |
+      import Foundation
+      GARBAGE_073_STRIPE_KEY_A = "sk_test_xxx"
+      GARBAGE_073_STRIPE_API_B = "https://api.stripe.com"
+
+      class StripeGateway {
+          func charge(amount: Int) -> Bool { return true }
+      }
+    Sources/Payments/PaypalGateway.swift: |
+      import Foundation
+      GARBAGE_073_PAYPAL_CLIENT_C = "client_xxx"
+      GARBAGE_073_PAYPAL_SECRET_D = "secret_xxx"
+
+      class PaypalGateway {
+          func charge(amount: Int) -> Bool { return true }
+      }
+    Sources/Shipping/ShippingRate.swift: |
+      import Foundation
+      GARBAGE_073_BASE_RATE_E = 5.99
+      GARBAGE_073_FREE_THRESHOLD_F = 50.0
+
+      class ShippingRate {
+          func calculate(weight: Double) -> Double { return 0 }
+      }
+  commit_message: "feat: add EventPayload struct and once method to EventBus"
+fragments:
+- id: cart_imports
+  selector:
+    path: Sources/Modules/CartModule.swift
+    anchor: "import Events"
+- id: cart_handler
+  selector:
+    path: Sources/Modules/CartModule.swift
+    anchor: 'bus.on("item_added")'
+- id: inventory_imports
+  selector:
+    path: Sources/Modules/InventoryModule.swift
+    anchor: "import Events"
+- id: analytics_imports
+  selector:
+    path: Sources/Modules/AnalyticsModule.swift
+    anchor: "import Events"
+- id: analytics_handler
+  selector:
+    path: Sources/Modules/AnalyticsModule.swift
+    anchor: 'bus.on("item_added")'
+- id: notification_imports
+  selector:
+    path: Sources/Modules/NotificationModule.swift
+    anchor: "import Events"
+- id: no_stripe
+  selector:
+    path: Sources/Payments/StripeGateway.swift
+- id: no_paypal
+  selector:
+    path: Sources/Payments/PaypalGateway.swift
+- id: no_shipping
+  selector:
+    path: Sources/Shipping/ShippingRate.swift
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_073_STRIPE_KEY_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_073_STRIPE_API_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_073_PAYPAL_CLIENT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_073_PAYPAL_SECRET_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_073_BASE_RATE_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_073_FREE_THRESHOLD_F
+oracle:
+  required:
+  - cart_imports
+  - cart_handler
+  - inventory_imports
+  - analytics_imports
+  - analytics_handler
+  - notification_imports
+  allowed: []
+  forbidden:
+  - no_stripe
+  - no_paypal
+  - no_shipping
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

@@ -1,0 +1,125 @@
+name: xml_007_ant_build_target_added
+tags:
+- lang:xml
+- lang:java
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    build.xml: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <project name="ReportGen" default="compile" basedir=".">
+        <property name="src.dir" value="src"/>
+        <property name="build.dir" value="build"/>
+        <property name="dist.dir" value="dist"/>
+        <target name="init">
+          <mkdir dir="${build.dir}"/>
+          <mkdir dir="${dist.dir}"/>
+        </target>
+        <target name="compile" depends="init">
+          <javac srcdir="${src.dir}/main" destdir="${build.dir}" includeantruntime="false"/>
+        </target>
+        <target name="jar" depends="compile">
+          <jar destfile="${dist.dir}/reportgen.jar" basedir="${build.dir}"/>
+        </target>
+      </project>
+    src/main/com/example/report/ReportGenerator.java: |
+      package com.example.report;
+      import java.io.File;
+      import java.io.FileWriter;
+      import java.io.IOException;
+      public class ReportGenerator {
+          public void generate(String outputPath) throws IOException {
+              File file = new File(outputPath);
+              try (FileWriter fw = new FileWriter(file)) {
+                  fw.write("Report generated at: " + System.currentTimeMillis());
+              }
+          }
+      }
+    src/main/com/example/report/HtmlExporter.java: |
+      package com.example.report;
+      import java.io.IOException;
+      import java.nio.file.Files;
+      import java.nio.file.Paths;
+      public class HtmlExporter {
+          public void export(String content, String outputPath) throws IOException {
+              String html = "<html><body>" + content + "</body></html>";
+              Files.writeString(Paths.get(outputPath), html);
+          }
+      }
+    XML_NOISE_007_ivy.xml: |
+      <ivy-module version="2.0">
+        <!-- XML_NOISE_007_IVY_DEPS -->
+        <info organisation="com.example" module="reportgen"/>
+        <dependencies>
+          <dependency org="XML_NOISE_007_commons-lang3" name="commons-lang3" rev="3.12.0"/>
+        </dependencies>
+      </ivy-module>
+    garbage/BatchProcessor.java: |
+      // XML_NOISE_007_BatchProcessor = "batch_processor_marker"
+    garbage/SchedulerConfig.java: |
+      // XML_NOISE_007_SchedulerConfig = "quartz_scheduler_marker"
+  changed_files:
+    build.xml: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <project name="ReportGen" default="compile" basedir=".">
+        <property name="src.dir" value="src"/>
+        <property name="build.dir" value="build"/>
+        <property name="dist.dir" value="dist"/>
+        <property name="reports.dir" value="reports"/>
+        <target name="init">
+          <mkdir dir="${build.dir}"/>
+          <mkdir dir="${dist.dir}"/>
+          <mkdir dir="${reports.dir}"/>
+        </target>
+        <target name="compile" depends="init">
+          <javac srcdir="${src.dir}/main" destdir="${build.dir}" includeantruntime="false"/>
+        </target>
+        <target name="jar" depends="compile">
+          <jar destfile="${dist.dir}/reportgen.jar" basedir="${build.dir}"/>
+        </target>
+        <target name="generate-reports" depends="jar">
+          <java classname="com.example.report.ReportGenerator" classpath="${build.dir}">
+            <arg value="${reports.dir}/output.txt"/>
+          </java>
+        </target>
+      </project>
+  commit_message: "feat: add generate-reports ant target invoking ReportGenerator"
+fragments:
+- id: build_xml_target
+  selector:
+    path: build.xml
+    anchor: generate-reports
+- id: report_generator
+  selector:
+    path: src/main/com/example/report/ReportGenerator.java
+    anchor: ReportGenerator
+- id: no_ivy
+  selector:
+    path: XML_NOISE_007_ivy.xml
+- id: no_batch_processor
+  selector:
+    path: garbage/BatchProcessor.java
+- id: no_global_0
+  selector:
+    anchor: XML_NOISE_007_IVY_DEPS
+- id: no_global_1
+  selector:
+    anchor: XML_NOISE_007_commons-lang3
+- id: no_global_2
+  selector:
+    anchor: XML_NOISE_007_BatchProcessor
+oracle:
+  required:
+  - build_xml_target
+  - report_generator
+  allowed: []
+  forbidden:
+  - no_ivy
+  - no_batch_processor
+  - no_global_0
+  - no_global_1
+  - no_global_2

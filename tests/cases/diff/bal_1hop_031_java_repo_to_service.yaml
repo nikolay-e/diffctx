@@ -1,0 +1,68 @@
+name: bal_1hop_031_java_repo_to_service
+tags:
+- lang:java
+- change:signature
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/main/java/com/app/repo/OrderRepo.java: |
+      package com.app.repo;
+      import java.util.Optional;
+      public class OrderRepo {
+          public Optional<String> findById(String id) {
+              return Optional.of("order-" + id);
+          }
+      }
+    src/main/java/com/app/service/OrderService.java: |
+      package com.app.service;
+      import com.app.repo.OrderRepo;
+      public class OrderService {
+          private final OrderRepo repo;
+          public OrderService(OrderRepo repo) { this.repo = repo; }
+          public String getOrder(String id) {
+              return repo.findById(id).orElse("unknown");
+          }
+      }
+    src/main/java/com/app/util/StringUtils.java: |
+      package com.app.util;
+      public class StringUtils {
+          public static String capitalize(String s) {
+              return s.substring(0, 1).toUpperCase() + s.substring(1);
+          }
+      }
+  changed_files:
+    src/main/java/com/app/repo/OrderRepo.java: |
+      package com.app.repo;
+      import java.util.Optional;
+      public class OrderRepo {
+          public Optional<String> findById(String id) {
+              return Optional.of("order-" + id);
+          }
+          public boolean exists(String id) {
+              return id != null && !id.isEmpty();
+          }
+      }
+  commit_message: "feat: add exists method to OrderRepo"
+fragments:
+- id: repo_exists
+  selector:
+    path: OrderRepo.java
+    anchor: "public boolean exists(String id)"
+- id: service_uses_repo
+  selector:
+    path: OrderService.java
+    anchor: "repo.findById(id)"
+- id: no_string_utils
+  selector:
+    path: StringUtils.java
+    anchor: "capitalize"
+oracle:
+  required:
+  - repo_exists
+  - service_uses_repo
+  allowed: []
+  forbidden:
+  - no_string_utils

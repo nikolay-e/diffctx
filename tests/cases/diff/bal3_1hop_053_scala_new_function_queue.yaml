@@ -1,0 +1,213 @@
+name: bal3_1hop_053_scala_new_function_queue
+tags:
+- lang:scala
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: scala-no-tree-sitter
+repo:
+  initial_files:
+    src/main/scala/queue/TaskQueue.scala: |
+      package queue
+
+      class TaskQueue {
+        private var tasks: List[Map[String, Any]] = Nil
+
+        def enqueue(channel: String, task: Map[String, Any]): Unit = {
+          tasks = tasks :+ (task + ("channel" -> channel))
+        }
+
+        def dequeue(channel: String): Option[Map[String, Any]] = {
+          tasks.find(_("channel") == channel) match {
+            case Some(t) =>
+              tasks = tasks.filterNot(_ eq t)
+              Some(t)
+            case None => None
+          }
+        }
+      }
+    src/main/scala/worker/EmailWorker.scala: |
+      package worker
+
+      import queue.TaskQueue
+
+      class EmailWorker(queue: TaskQueue) {
+        def process(): Option[Map[String, Any]] = {
+          queue.dequeue("email")
+        }
+
+        def submit(to: String, subject: String): Unit = {
+          queue.enqueue("email", Map("to" -> to, "subject" -> subject))
+        }
+      }
+    src/main/scala/worker/SmsWorker.scala: |
+      package worker
+
+      import queue.TaskQueue
+
+      class SmsWorker(queue: TaskQueue) {
+        def process(): Option[Map[String, Any]] = {
+          queue.dequeue("sms")
+        }
+
+        def submit(phone: String, body: String): Unit = {
+          queue.enqueue("sms", Map("phone" -> phone, "body" -> body))
+        }
+      }
+    src/main/scala/worker/PushWorker.scala: |
+      package worker
+
+      import queue.TaskQueue
+
+      class PushWorker(queue: TaskQueue) {
+        def process(): Option[Map[String, Any]] = {
+          queue.dequeue("push")
+        }
+      }
+    src/main/scala/worker/WebhookWorker.scala: |
+      package worker
+
+      import queue.TaskQueue
+
+      class WebhookWorker(queue: TaskQueue) {
+        def process(): Option[Map[String, Any]] = {
+          queue.dequeue("webhook")
+        }
+
+        def submit(url: String, payload: Map[String, Any]): Unit = {
+          queue.enqueue("webhook", Map("url" -> url, "payload" -> payload))
+        }
+      }
+    src/main/scala/storage/BlobStore.scala: |
+      package storage
+
+      object BlobStore {
+        val GARBAGE_BAL3_053_BLOB_A = "blob"
+        val GARBAGE_BAL3_053_BUCKET_B = "default"
+
+        def store(key: String, data: Array[Byte]): Unit = ()
+      }
+    src/main/scala/storage/MetadataStore.scala: |
+      package storage
+
+      object MetadataStore {
+        val GARBAGE_BAL3_053_META_C = "metadata"
+        val GARBAGE_BAL3_053_INDEX_D = true
+
+        def get(key: String): Option[String] = None
+      }
+    src/main/scala/storage/ArchiveStore.scala: |
+      package storage
+
+      object ArchiveStore {
+        val GARBAGE_BAL3_053_ARCHIVE_E = "archive"
+        val GARBAGE_BAL3_053_COMPRESS_F = true
+
+        def archive(key: String): Unit = ()
+      }
+  changed_files:
+    src/main/scala/queue/TaskQueue.scala: |
+      package queue
+
+      class TaskQueue {
+        private var tasks: List[Map[String, Any]] = Nil
+        private var deadLetters: List[Map[String, Any]] = Nil
+
+        def enqueue(channel: String, task: Map[String, Any]): Unit = {
+          tasks = tasks :+ (task + ("channel" -> channel))
+        }
+
+        def dequeue(channel: String): Option[Map[String, Any]] = {
+          tasks.find(_("channel") == channel) match {
+            case Some(t) =>
+              tasks = tasks.filterNot(_ eq t)
+              Some(t)
+            case None => None
+          }
+        }
+
+        def sendToDeadLetter(channel: String, task: Map[String, Any], reason: String): Unit = {
+          deadLetters = deadLetters :+ (task + ("channel" -> channel, "reason" -> reason))
+        }
+
+        def getDeadLetters(channel: String): List[Map[String, Any]] = {
+          deadLetters.filter(_("channel") == channel)
+        }
+
+        def size(channel: String): Int = {
+          tasks.count(_("channel") == channel)
+        }
+
+        def purge(channel: String): Unit = {
+          tasks = tasks.filterNot(_("channel") == channel)
+        }
+      }
+  commit_message: "Add dead letter queue, size, and purge to TaskQueue"
+fragments:
+- id: email_worker
+  selector:
+    path: src/main/scala/worker/EmailWorker.scala
+    anchor: "import queue.TaskQueue"
+- id: email_dequeue
+  selector:
+    path: src/main/scala/worker/EmailWorker.scala
+    anchor: "queue.dequeue"
+- id: sms_worker
+  selector:
+    path: src/main/scala/worker/SmsWorker.scala
+    anchor: "import queue.TaskQueue"
+- id: push_worker
+  selector:
+    path: src/main/scala/worker/PushWorker.scala
+    anchor: "import queue.TaskQueue"
+- id: webhook_worker
+  selector:
+    path: src/main/scala/worker/WebhookWorker.scala
+    anchor: "import queue.TaskQueue"
+- id: no_blob
+  selector:
+    path: src/main/scala/storage/BlobStore.scala
+- id: no_metadata
+  selector:
+    path: src/main/scala/storage/MetadataStore.scala
+- id: no_archive
+  selector:
+    path: src/main/scala/storage/ArchiveStore.scala
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_053_BLOB_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_053_BUCKET_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_053_META_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_053_INDEX_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL3_053_ARCHIVE_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL3_053_COMPRESS_F
+oracle:
+  required:
+  - email_worker
+  - email_dequeue
+  - sms_worker
+  - push_worker
+  - webhook_worker
+  allowed: []
+  forbidden:
+  - no_blob
+  - no_metadata
+  - no_archive
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

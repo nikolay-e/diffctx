@@ -1,0 +1,159 @@
+name: bal_hard_011_swift_dependency_injection
+tags:
+- lang:swift
+- change:multi_file
+- change:signature
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    Sources/DI/Container.swift: |
+      class Container {
+          private var factories: [String: () -> Any] = [:]
+          func register<T>(_ type: T.Type, factory: @escaping () -> T) {
+              factories[String(describing: type)] = factory
+          }
+          func resolve<T>(_ type: T.Type) -> T {
+              let key = String(describing: type)
+              return factories[key]!() as! T
+          }
+      }
+    Sources/Database/DatabaseProtocol.swift: |
+      protocol DatabaseProtocol {
+          func query(_ sql: String) -> [[String: String]]
+          func execute(_ sql: String)
+      }
+    Sources/Database/SQLiteDatabase.swift: |
+      class SQLiteDatabase: DatabaseProtocol {
+          private let path: String
+          init(path: String) {
+              self.path = path
+          }
+          func query(_ sql: String) -> [[String: String]] {
+              return [["result": "mock"]]
+          }
+          func execute(_ sql: String) {
+              print("Executing: \(sql)")
+          }
+      }
+    Sources/Repository/UserRepository.swift: |
+      class UserRepository {
+          private let db: DatabaseProtocol
+          init(db: DatabaseProtocol) {
+              self.db = db
+          }
+          func findUser(id: String) -> [String: String]? {
+              let results = db.query("SELECT * FROM users WHERE id = '\(id)'")
+              return results.first
+          }
+      }
+    Sources/Service/AuthService.swift: |
+      class AuthService {
+          private let userRepo: UserRepository
+          init(userRepo: UserRepository) {
+              self.userRepo = userRepo
+          }
+          func authenticate(userId: String, password: String) -> Bool {
+              guard let user = userRepo.findUser(id: userId) else { return false }
+              return user["password"] == password
+          }
+      }
+    Sources/App/AppSetup.swift: |
+      class AppSetup {
+          static func configure(container: Container) {
+              container.register(DatabaseProtocol.self) { SQLiteDatabase(path: "app.db") }
+              container.register(UserRepository.self) { UserRepository(db: container.resolve(DatabaseProtocol.self)) }
+              container.register(AuthService.self) { AuthService(userRepo: container.resolve(UserRepository.self)) }
+          }
+      }
+    Sources/Helpers/Logger.swift: |
+      struct Logger {
+          static func log(_ message: String) {
+              print("[LOG] \(message)")
+          }
+      }
+    Sources/Helpers/CryptoHelper.swift: |
+      import Foundation
+      struct CryptoHelper {
+          static func hash(_ input: String) -> String {
+              return String(input.hashValue)
+          }
+      }
+  changed_files:
+    Sources/DI/Container.swift: |
+      class Container {
+          private var factories: [String: () -> Any] = [:]
+          private var singletons: [String: Any] = [:]
+          func register<T>(_ type: T.Type, factory: @escaping () -> T) {
+              factories[String(describing: type)] = factory
+          }
+          func registerSingleton<T>(_ type: T.Type, factory: @escaping () -> T) {
+              let key = String(describing: type)
+              factories[key] = factory
+              singletons[key] = factory()
+          }
+          func resolve<T>(_ type: T.Type) -> T {
+              let key = String(describing: type)
+              if let singleton = singletons[key] {
+                  return singleton as! T
+              }
+              return factories[key]!() as! T
+          }
+      }
+    Sources/App/AppSetup.swift: |
+      class AppSetup {
+          static func configure(container: Container) {
+              container.registerSingleton(DatabaseProtocol.self) { SQLiteDatabase(path: "app.db") }
+              container.register(UserRepository.self) { UserRepository(db: container.resolve(DatabaseProtocol.self)) }
+              container.register(AuthService.self) { AuthService(userRepo: container.resolve(UserRepository.self)) }
+          }
+      }
+  commit_message: "feat: add singleton registration to DI container"
+fragments:
+- id: register_singleton
+  selector:
+    path: Container.swift
+    anchor: "func registerSingleton"
+- id: singletons_dict
+  selector:
+    path: Container.swift
+    anchor: "private var singletons"
+- id: resolve_checks_singleton
+  selector:
+    path: Container.swift
+    anchor: "if let singleton = singletons[key]"
+- id: app_uses_singleton
+  selector:
+    path: AppSetup.swift
+    anchor: "container.registerSingleton"
+- id: db_protocol
+  selector:
+    path: DatabaseProtocol.swift
+    anchor: "protocol DatabaseProtocol"
+- id: user_repo_uses_db
+  selector:
+    path: UserRepository.swift
+    anchor: "private let db: DatabaseProtocol"
+- id: no_logger
+  selector:
+    path: Helpers/Logger.swift
+- id: no_crypto
+  selector:
+    path: Helpers/CryptoHelper.swift
+- id: no_hash_method
+  selector:
+    anchor: "static func hash"
+oracle:
+  required:
+  - register_singleton
+  - singletons_dict
+  - resolve_checks_singleton
+  - app_uses_singleton
+  - db_protocol
+  - user_repo_uses_db
+  allowed: []
+  forbidden:
+  - no_logger
+  - no_crypto
+  - no_hash_method

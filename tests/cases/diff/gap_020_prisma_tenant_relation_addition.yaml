@@ -1,0 +1,165 @@
+name: gap_020_prisma_tenant_relation_addition
+tags:
+- lang:prisma
+- lang:sql
+- lang:typescript
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    prisma/schema.prisma: |
+      generator client {
+        provider = "prisma-client-js"
+      }
+
+      datasource db {
+        provider = "postgresql"
+        url      = env("DATABASE_URL")
+      }
+
+      model Tenant {
+        id        Int      @id @default(autoincrement())
+        slug      String   @unique
+        name      String
+        plan      String   @default("free")
+        createdAt DateTime @default(now())
+      }
+
+      model Workspace {
+        id          Int      @id @default(autoincrement())
+        name        String
+        description String?
+        createdAt   DateTime @default(now())
+      }
+
+      model Member {
+        id        Int      @id @default(autoincrement())
+        email     String
+        role      String   @default("viewer")
+        joinedAt  DateTime @default(now())
+      }
+    migrations/001_tenants.sql: |
+      CREATE TABLE "Tenant" (
+        "id" SERIAL PRIMARY KEY,
+        "slug" TEXT NOT NULL UNIQUE,
+        "name" TEXT NOT NULL,
+        "plan" TEXT NOT NULL DEFAULT 'free',
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE "Workspace" (
+        "id" SERIAL PRIMARY KEY,
+        "name" TEXT NOT NULL,
+        "description" TEXT,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE "Member" (
+        "id" SERIAL PRIMARY KEY,
+        "email" TEXT NOT NULL,
+        "role" TEXT NOT NULL DEFAULT 'viewer',
+        "joinedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    src/middleware/auth.ts: |
+      export interface AuthContext {
+        tenantId: number;
+        userId: number;
+        role: string;
+      }
+
+      export function extractAuth(headers: Record<string, string>): AuthContext | null {
+        const token = headers['authorization']?.replace('Bearer ', '');
+        if (!token) return null;
+        const parts = token.split('.');
+        if (parts.length < 2) return null;
+        const payload = JSON.parse(atob(parts[1]));
+        return {
+          tenantId: payload.tid,
+          userId: payload.uid,
+          role: payload.role,
+        };
+      }
+    src/utils/slugify.ts: |
+      export function slugify(text: string): string {
+        return text
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '');
+      }
+
+      export function isValidSlug(slug: string): boolean {
+        return /^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug);
+      }
+  changed_files:
+    prisma/schema.prisma: |
+      generator client {
+        provider = "prisma-client-js"
+      }
+
+      datasource db {
+        provider = "postgresql"
+        url      = env("DATABASE_URL")
+      }
+
+      model Tenant {
+        id         Int         @id @default(autoincrement())
+        slug       String      @unique
+        name       String
+        plan       String      @default("free")
+        createdAt  DateTime    @default(now())
+        workspaces Workspace[]
+        members    Member[]
+      }
+
+      model Workspace {
+        id          Int      @id @default(autoincrement())
+        name        String
+        description String?
+        tenantId    Int
+        tenant      Tenant   @relation(fields: [tenantId], references: [id])
+        createdAt   DateTime @default(now())
+
+        @@unique([tenantId, name])
+      }
+
+      model Member {
+        id        Int      @id @default(autoincrement())
+        email     String
+        role      String   @default("viewer")
+        tenantId  Int
+        tenant    Tenant   @relation(fields: [tenantId], references: [id])
+        joinedAt  DateTime @default(now())
+
+        @@unique([tenantId, email])
+      }
+fragments:
+- id: tenant_model
+  selector:
+    path: prisma/schema.prisma
+    anchor: "model Tenant"
+- id: workspace_model
+  selector:
+    path: prisma/schema.prisma
+    anchor: "model Workspace"
+- id: member_model
+  selector:
+    path: prisma/schema.prisma
+    anchor: "model Member"
+- id: no_auth
+  selector:
+    path: src/middleware/auth.ts
+- id: no_slugify
+  selector:
+    path: src/utils/slugify.ts
+oracle:
+  required:
+  - tenant_model
+  - workspace_model
+  - member_model
+  forbidden:
+  - no_auth
+  - no_slugify

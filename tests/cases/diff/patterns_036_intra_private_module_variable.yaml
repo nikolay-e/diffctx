@@ -1,172 +1,164 @@
 name: patterns_036_intra_private_module_variable
+tags:
+- lang:cpp
+- change:new_function
+- change:single_file
+- context:cross_module
+- distance:1hop
+- difficulty:easy
 repo:
   initial_files:
-    registry.py: |
-      _handlers = {}
-      _initialized = False
+    include/cloud/health_checker.hpp: |
+      #pragma once
+      #include <string>
+      #include <chrono>
+      #include <vector>
 
-      def register(name, handler):
-          global _initialized
-          if not _initialized:
-              _initialize()
-          _handlers[name] = handler
+      namespace cloud {
 
-      def get_handler(name):
-          return _handlers.get(name)
+      struct HealthCheckResult {
+          std::string service;
+          bool healthy;
+          std::chrono::milliseconds latency_ms;
+      };
 
-      def _initialize():
-          global _initialized
-          _handlers.clear()
-          _initialized = True
+      class HealthChecker {
+      public:
+          explicit HealthChecker(const std::string& service_name);
 
-      def list_handlers():
-          return list(_handlers.keys())
-    dispatcher.py: |
-      _listeners = {}
-      _default_listener = None
+          HealthCheckResult check() const;
+          bool is_healthy() const;
 
-      def on(event, listener):
-          if event not in _listeners:
-              _listeners[event] = []
-          _listeners[event].append(listener)
+      private:
+          std::string service_name_;
+          std::string endpoint_;
+      };
 
-      def emit(event, data=None):
-          handlers = _listeners.get(event, [])
-          if not handlers and _default_listener:
-              return _default_listener(event, data)
-          for handler in handlers:
-              handler(data)
+      } // namespace cloud
+    src/cloud/readiness_probe.cpp: |
+      #include "cloud/health_checker.hpp"
+      #include <vector>
+      #include <string>
 
-      def set_default_listener(listener):
-          global _default_listener
-          _default_listener = listener
-    plugin_loader.py: |
-      _plugins = {}
+      namespace cloud {
 
-      def register_plugin(name, plugin):
-          _plugins[name] = plugin
+      class ReadinessProbe {
+      public:
+          void add_checker(HealthChecker checker) {
+              checkers_.push_back(std::move(checker));
+          }
 
-      def get_plugin(name):
-          return _plugins.get(name)
+          bool all_healthy() const {
+              for (const auto& c : checkers_) {
+                  if (!c.is_healthy()) return false;
+              }
+              return true;
+          }
 
-      def list_plugins():
-          return list(_plugins.keys())
+      private:
+          std::vector<HealthChecker> checkers_;
+      };
 
-      def unload_plugin(name):
-          return _plugins.pop(name, None)
+      } // namespace cloud
+    garbage/load_shedder.cpp: |
+      // GARBAGE_PROBE_A = "load_shedder_marker"
+    garbage/rollout_controller.cpp: |
+      // GARBAGE_PROBE_B = "rollout_controller_marker"
+    garbage/dns_resolver.cpp: |
+      // GARBAGE_PROBE_C = "dns_resolver_marker"
   changed_files:
-    registry.py: |
-      _handlers = {}
-      _initialized = False
-      _default_handler = None
+    include/cloud/health_checker.hpp: |
+      #pragma once
+      #include <string>
+      #include <chrono>
+      #include <vector>
 
-      def register(name, handler):
-          global _initialized
-          if not _initialized:
-              _initialize()
-          _handlers[name] = handler
+      namespace cloud {
 
-      def get_handler(name):
-          return _handlers.get(name, _default_handler)
+      struct HealthCheckResult {
+          std::string service;
+          bool healthy;
+          std::chrono::milliseconds latency_ms;
+      };
 
-      def _initialize():
-          global _initialized
-          _handlers.clear()
-          _initialized = True
+      class HealthChecker {
+      public:
+          explicit HealthChecker(const std::string& service_name);
 
-      def list_handlers():
-          return list(_handlers.keys())
+          HealthCheckResult check() const;
+          bool is_healthy() const;
+          std::string service_name() const { return service_name_; }
 
-      def set_default(handler):
-          global _default_handler
-          _default_handler = handler
-    dispatcher.py: |
-      _listeners = {}
-      _default_listener = None
+      private:
+          std::string service_name_;
+          std::string endpoint_;
+      };
 
-      def on(event, listener):
-          if event not in _listeners:
-              _listeners[event] = []
-          _listeners[event].append(listener)
+      } // namespace cloud
+    src/cloud/readiness_probe.cpp: |
+      #include "cloud/health_checker.hpp"
+      #include <vector>
+      #include <string>
 
-      def emit(event, data=None):
-          handlers = _listeners.get(event, [])
-          if not handlers and _default_listener:
-              return _default_listener(event, data)
-          for handler in handlers:
-              handler(data)
+      namespace cloud {
 
-      def set_default_listener(listener):
-          global _default_listener
-          _default_listener = listener
-    plugin_loader.py: |
-      _plugins = {}
+      class ReadinessProbe {
+      public:
+          void add_checker(HealthChecker checker) {
+              checkers_.push_back(std::move(checker));
+          }
 
-      def register_plugin(name, plugin):
-          _plugins[name] = plugin
+          bool all_healthy() const {
+              for (const auto& c : checkers_) {
+                  if (!c.is_healthy()) return false;
+              }
+              return true;
+          }
 
-      def get_plugin(name):
-          return _plugins.get(name)
+          std::vector<std::string> unhealthy_services() const {
+              std::vector<std::string> result;
+              for (const auto& c : checkers_) {
+                  if (!c.is_healthy()) result.push_back(c.service_name());
+              }
+              return result;
+          }
 
-      def list_plugins():
-          return list(_plugins.keys())
+      private:
+          std::vector<HealthChecker> checkers_;
+      };
 
-      def unload_plugin(name):
-          return _plugins.pop(name, None)
-  commit_message: Update files
+      } // namespace cloud
+    garbage/load_shedder.cpp: |
+      // GARBAGE_PROBE_A = "load_shedder_marker"
+    garbage/rollout_controller.cpp: |
+      // GARBAGE_PROBE_B = "rollout_controller_marker"
+    garbage/dns_resolver.cpp: |
+      // GARBAGE_PROBE_C = "dns_resolver_marker"
+  commit_message: "feat: add service_name accessor to HealthChecker"
 fragments:
-- id: registry
+- id: service_name_accessor
   selector:
-    path: registry.py
-    anchor: _default_handler = None
-- id: registry_1
+    path: include/cloud/health_checker.hpp
+    anchor: "std::string service_name() const"
+- id: unhealthy_services
   selector:
-    path: registry.py
-    anchor: return _handlers.get(name, _default_handler)
-- id: registry_2
+    path: src/cloud/readiness_probe.cpp
+    anchor: "std::vector<std::string> unhealthy_services"
+- id: no_garbage_a
   selector:
-    path: registry.py
-    anchor: 'def set_default(handler):'
-- id: no_dispatcher
+    anchor: GARBAGE_PROBE_A
+- id: no_garbage_b
   selector:
-    path: dispatcher.py
-- id: no_plugin_loader
+    anchor: GARBAGE_PROBE_B
+- id: no_garbage_c
   selector:
-    path: plugin_loader.py
-- id: no_global_0
-  selector:
-    anchor: _listeners
-- id: no_global_1
-  selector:
-    anchor: _default_listener
-- id: no_global_2
-  selector:
-    anchor: set_default_listener
-- id: no_global_3
-  selector:
-    anchor: def emit
-- id: no_global_4
-  selector:
-    anchor: register_plugin
-- id: no_global_5
-  selector:
-    anchor: get_plugin
-- id: no_global_6
-  selector:
-    anchor: unload_plugin
+    anchor: GARBAGE_PROBE_C
 oracle:
   required:
-  - registry
-  - registry_1
-  - registry_2
-  allowed: []
+  - service_name_accessor
+  allowed:
+  - unhealthy_services
   forbidden:
-  - no_dispatcher
-  - no_plugin_loader
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

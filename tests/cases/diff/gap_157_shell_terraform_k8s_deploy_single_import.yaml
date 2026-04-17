@@ -1,0 +1,135 @@
+name: gap_157_shell_terraform_k8s_deploy_single_import
+tags:
+- change:config
+- change:single_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:shell
+- lang:terraform
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    deploy/rollout.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      source deploy/cluster_vars.sh
+
+      NAMESPACE="${NAMESPACE:-production}"
+      DEPLOYMENT="${DEPLOYMENT:-analytics-api}"
+      TIMEOUT=120
+
+      kubectl config use-context "${CLUSTER_CONTEXT}"
+      kubectl -n "${NAMESPACE}" set image "deployment/${DEPLOYMENT}" \
+        "${DEPLOYMENT}=${IMAGE_REGISTRY}/${DEPLOYMENT}:${IMAGE_TAG}"
+      kubectl -n "${NAMESPACE}" rollout status "deployment/${DEPLOYMENT}" --timeout="${TIMEOUT}s"
+    deploy/cluster_vars.sh: |
+      #!/usr/bin/env bash
+
+      export CLUSTER_CONTEXT="${CLUSTER_CONTEXT:-arn:aws:eks:us-west-2:123456:cluster/analytics}"
+      export IMAGE_REGISTRY="${IMAGE_REGISTRY:-123456.dkr.ecr.us-west-2.amazonaws.com}"
+      export IMAGE_TAG="${IMAGE_TAG:-latest}"
+      export KUBECONFIG="${KUBECONFIG:-${HOME}/.kube/config}"
+    terraform/eks.tf: |
+      resource "aws_eks_cluster" "analytics" {
+        name     = "analytics"
+        role_arn = aws_iam_role.eks.arn
+        version  = "1.28"
+
+        vpc_config {
+          subnet_ids = var.private_subnet_ids
+        }
+      }
+
+      resource "aws_iam_role" "eks" {
+        name = "analytics-eks-role"
+        assume_role_policy = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Action = "sts:AssumeRole"
+            Effect = "Allow"
+            Principal = { Service = "eks.amazonaws.com" }
+          }]
+        })
+      }
+    terraform/vpc.tf: |
+      resource "aws_vpc" "analytics" {
+        cidr_block           = "10.50.0.0/16"
+        enable_dns_hostnames = true
+        enable_dns_support   = true
+      }
+
+      variable "private_subnet_ids" {
+        type = list(string)
+      }
+
+      resource "aws_subnet" "private_a" {
+        vpc_id            = aws_vpc.analytics.id
+        cidr_block        = "10.50.1.0/24"
+        availability_zone = "us-west-2a"
+      }
+
+      resource "aws_subnet" "private_b" {
+        vpc_id            = aws_vpc.analytics.id
+        cidr_block        = "10.50.2.0/24"
+        availability_zone = "us-west-2b"
+      }
+  changed_files:
+    deploy/rollout.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      source deploy/cluster_vars.sh
+
+      NAMESPACE="${NAMESPACE:-production}"
+      DEPLOYMENT="${DEPLOYMENT:-analytics-api}"
+      TIMEOUT=300
+      MAX_SURGE="25%"
+      MAX_UNAVAILABLE="0"
+
+      kubectl config use-context "${CLUSTER_CONTEXT}"
+
+      kubectl -n "${NAMESPACE}" patch "deployment/${DEPLOYMENT}" -p \
+        "{\"spec\":{\"strategy\":{\"rollingUpdate\":{\"maxSurge\":\"${MAX_SURGE}\",\"maxUnavailable\":\"${MAX_UNAVAILABLE}\"}}}}"
+
+      kubectl -n "${NAMESPACE}" set image "deployment/${DEPLOYMENT}" \
+        "${DEPLOYMENT}=${IMAGE_REGISTRY}/${DEPLOYMENT}:${IMAGE_TAG}"
+
+      if ! kubectl -n "${NAMESPACE}" rollout status "deployment/${DEPLOYMENT}" --timeout="${TIMEOUT}s"; then
+        kubectl -n "${NAMESPACE}" rollout undo "deployment/${DEPLOYMENT}"
+        exit 1
+      fi
+fragments:
+- id: rollout_strategy
+  selector:
+    path: deploy/rollout.sh
+    anchor: MAX_SURGE
+- id: rollout_undo
+  selector:
+    path: deploy/rollout.sh
+    anchor: rollout undo
+- id: cluster_context
+  selector:
+    path: deploy/cluster_vars.sh
+    anchor: CLUSTER_CONTEXT
+- id: eks_cluster
+  selector:
+    path: terraform/eks.tf
+    anchor: aws_eks_cluster
+- id: no_vpc
+  selector:
+    path: terraform/vpc.tf
+    anchor: aws_vpc.analytics
+- id: no_subnets
+  selector:
+    anchor: aws_subnet.private_a
+oracle:
+  required:
+  - rollout_strategy
+  - rollout_undo
+  - cluster_context
+  forbidden:
+  - no_vpc
+  - no_subnets

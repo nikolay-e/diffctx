@@ -1,0 +1,151 @@
+name: gap2_015_java_test_file_chess_move_validator
+tags:
+- lang:java
+- change:single_file
+- context:test_file
+- distance:2hop
+- difficulty:easy
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/main/java/com/chess/engine/MoveValidator.java: |
+      package com.chess.engine;
+
+      public class MoveValidator {
+          public boolean isValidPawnMove(int fromRow, int toRow, int fromCol, int toCol, boolean isWhite) {
+              int direction = isWhite ? -1 : 1;
+              if (fromCol == toCol && toRow == fromRow + direction) return true;
+              return false;
+          }
+
+          public boolean isValidKnightMove(int fromRow, int toRow, int fromCol, int toCol) {
+              int dr = Math.abs(toRow - fromRow);
+              int dc = Math.abs(toCol - fromCol);
+              return (dr == 2 && dc == 1) || (dr == 1 && dc == 2);
+          }
+
+          public boolean isInBounds(int row, int col) {
+              return row >= 0 && row < 8 && col >= 0 && col < 8;
+          }
+      }
+    src/main/java/com/chess/model/Board.java: |
+      package com.chess.model;
+
+      public class Board {
+          private final String[][] squares = new String[8][8];
+
+          public void place(String piece, int row, int col) {
+              squares[row][col] = piece;
+          }
+
+          public String at(int row, int col) {
+              return squares[row][col];
+          }
+
+          public void clear() {
+              for (int r = 0; r < 8; r++) {
+                  for (int c = 0; c < 8; c++) {
+                      squares[r][c] = null;
+                  }
+              }
+          }
+      }
+    src/test/java/com/chess/engine/MoveValidatorTest.java: |
+      package com.chess.engine;
+
+      import org.junit.jupiter.api.Test;
+      import static org.junit.jupiter.api.Assertions.*;
+
+      class MoveValidatorTest {
+          private final MoveValidator validator = new MoveValidator();
+
+          @Test
+          void knightLShapeIsValid() {
+              assertTrue(validator.isValidKnightMove(0, 2, 0, 1));
+          }
+
+          @Test
+          void knightStraightIsInvalid() {
+              assertFalse(validator.isValidKnightMove(0, 2, 0, 0));
+          }
+
+          @Test
+          void pawnForwardIsValid() {
+              assertTrue(validator.isValidPawnMove(6, 5, 3, 3, true));
+          }
+      }
+    src/main/java/com/chess/ui/ConsoleRenderer.java: |
+      package com.chess.ui;
+
+      import com.chess.model.Board;
+
+      public class ConsoleRenderer {
+          public String render(Board board) {
+              StringBuilder sb = new StringBuilder();
+              for (int r = 0; r < 8; r++) {
+                  for (int c = 0; c < 8; c++) {
+                      String piece = board.at(r, c);
+                      sb.append(piece != null ? piece : ".");
+                      sb.append(" ");
+                  }
+                  sb.append("\n");
+              }
+              return sb.toString();
+          }
+      }
+  changed_files:
+    src/main/java/com/chess/engine/MoveValidator.java: |
+      package com.chess.engine;
+
+      public class MoveValidator {
+          public boolean isValidPawnMove(int fromRow, int toRow, int fromCol, int toCol, boolean isWhite) {
+              int direction = isWhite ? -1 : 1;
+              if (fromCol == toCol && toRow == fromRow + direction) return true;
+              if (fromCol == toCol && toRow == fromRow + 2 * direction && isStartingRow(fromRow, isWhite)) return true;
+              return false;
+          }
+
+          public boolean isValidKnightMove(int fromRow, int toRow, int fromCol, int toCol) {
+              int dr = Math.abs(toRow - fromRow);
+              int dc = Math.abs(toCol - fromCol);
+              return (dr == 2 && dc == 1) || (dr == 1 && dc == 2);
+          }
+
+          public boolean isInBounds(int row, int col) {
+              return row >= 0 && row < 8 && col >= 0 && col < 8;
+          }
+
+          private boolean isStartingRow(int row, boolean isWhite) {
+              return isWhite ? row == 6 : row == 1;
+          }
+      }
+  commit_message: "feat: allow pawn double move from starting row"
+fragments:
+- id: pawn_double_move
+  selector:
+    path: src/main/java/com/chess/engine/MoveValidator.java
+    anchor: "isStartingRow(fromRow, isWhite)"
+- id: starting_row_method
+  selector:
+    path: src/main/java/com/chess/engine/MoveValidator.java
+    anchor: "private boolean isStartingRow"
+- id: test_uses_validator
+  selector:
+    path: src/test/java/com/chess/engine/MoveValidatorTest.java
+    anchor: "new MoveValidator()"
+- id: no_renderer
+  selector:
+    path: src/main/java/com/chess/ui/ConsoleRenderer.java
+- id: no_renderer_class
+  selector:
+    anchor: ConsoleRenderer
+oracle:
+  required:
+  - pawn_double_move
+  - starting_row_method
+  - test_uses_validator
+  allowed: []
+  forbidden:
+  - no_renderer
+  - no_renderer_class

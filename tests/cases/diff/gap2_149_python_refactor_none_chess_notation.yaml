@@ -1,0 +1,86 @@
+name: gap2_149_python_refactor_none_chess_notation
+tags:
+- change:refactor
+- context:none
+- difficulty:trivial
+- distance:0hop
+- lang:python
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    chess/notation.py: |
+      def square_to_index(square: str) -> tuple[int, int]:
+          col = ord(square[0]) - ord('a')
+          row = int(square[1]) - 1
+          return (row, col)
+
+      def index_to_square(row: int, col: int) -> str:
+          return chr(col + ord('a')) + str(row + 1)
+
+      def is_valid_square(square: str) -> bool:
+          if len(square) != 2:
+              return False
+          return 'a' <= square[0] <= 'h' and '1' <= square[1] <= '8'
+    chess/engine.py: |
+      PIECE_VALUES = {"P": 1, "N": 3, "B": 3, "R": 5, "Q": 9, "K": 0}
+
+      class ChessEngine:
+          def __init__(self):
+              self._board: list[list[str]] = [[""] * 8 for _ in range(8)]
+
+          def evaluate_material(self) -> int:
+              total = 0
+              for row in self._board:
+                  for piece in row:
+                      total += PIECE_VALUES.get(piece.upper(), 0)
+              return total
+    chess/clock.py: |
+      DEFAULT_TIME_SEC = 600
+
+      class ChessClock:
+          def __init__(self, time_sec: int = DEFAULT_TIME_SEC):
+              self.white_time = time_sec
+              self.black_time = time_sec
+
+          def tick(self, color: str, elapsed: int) -> None:
+              if color == "white":
+                  self.white_time -= elapsed
+              else:
+                  self.black_time -= elapsed
+  changed_files:
+    chess/notation.py: |
+      def square_to_index(square: str) -> tuple[int, int]:
+          col = ord(square[0]) - ord('a')
+          row = int(square[1]) - 1
+          return row, col
+
+      def index_to_square(row: int, col: int) -> str:
+          return f"{chr(col + ord('a'))}{row + 1}"
+
+      def is_valid_square(square: str) -> bool:
+          if len(square) != 2:
+              return False
+          return 'a' <= square[0] <= 'h' and '1' <= square[1] <= '8'
+  commit_message: "refactor: simplify notation formatting"
+fragments:
+- id: no_engine
+  selector:
+    path: chess/engine.py
+- id: no_clock
+  selector:
+    path: chess/clock.py
+- id: no_piece_values
+  selector:
+    anchor: PIECE_VALUES
+- id: no_default_time
+  selector:
+    anchor: DEFAULT_TIME_SEC
+oracle:
+  required: []
+  allowed: []
+  forbidden:
+  - no_engine
+  - no_clock
+  - no_piece_values
+  - no_default_time

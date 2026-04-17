@@ -1,0 +1,237 @@
+name: bal_refactor_009_python_extract_protocol
+tags:
+- lang:python
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    storage/file_store.py: |
+      import os
+
+      class FileStore:
+          def __init__(self, base_path):
+              self.base_path = base_path
+
+          def save(self, key, data):
+              path = os.path.join(self.base_path, key)
+              with open(path, "w") as f:
+                  f.write(data)
+
+          def load(self, key):
+              path = os.path.join(self.base_path, key)
+              with open(path, "r") as f:
+                  return f.read()
+
+          def delete(self, key):
+              path = os.path.join(self.base_path, key)
+              os.remove(path)
+    storage/memory_store.py: |
+      class MemoryStore:
+          def __init__(self):
+              self.data = {}
+
+          def save(self, key, data):
+              self.data[key] = data
+
+          def load(self, key):
+              return self.data.get(key)
+
+          def delete(self, key):
+              self.data.pop(key, None)
+    services/document_service.py: |
+      from storage.file_store import FileStore
+
+      class DocumentService:
+          def __init__(self, store: FileStore):
+              self.store = store
+
+          def save_document(self, doc_id, content):
+              self.store.save(f"doc_{doc_id}", content)
+
+          def get_document(self, doc_id):
+              return self.store.load(f"doc_{doc_id}")
+    api/documents.py: |
+      from services.document_service import DocumentService
+      from storage.file_store import FileStore
+
+      store = FileStore("/var/data")
+      doc_svc = DocumentService(store)
+
+      def handle_save(doc_id, content):
+          doc_svc.save_document(doc_id, content)
+          return {"status": "saved"}
+    garbage_telemetry.py: |
+      GARBAGE_REFACTOR_009_TELEM_MARKER_A = "telemetry"
+      GARBAGE_REFACTOR_009_SPAN_MARKER_B = "trace"
+
+      class Telemetry:
+          GARBAGE_REFACTOR_009_TELEM_CLASS_C = True
+
+          def record(self, name, duration):
+              pass
+    garbage_rate_limit.py: |
+      GARBAGE_REFACTOR_009_RATE_MARKER_D = "rate_limit"
+      GARBAGE_REFACTOR_009_WINDOW_MARKER_E = 60
+
+      class RateLimiter:
+          GARBAGE_REFACTOR_009_LIMITER_F = True
+
+          def allow(self, key):
+              return True
+  changed_files:
+    storage/base.py: |
+      from typing import Protocol
+
+      class Store(Protocol):
+          def save(self, key: str, data: str) -> None: ...
+          def load(self, key: str) -> str: ...
+          def delete(self, key: str) -> None: ...
+    storage/file_store.py: |
+      import os
+
+      class FileStore:
+          def __init__(self, base_path):
+              self.base_path = base_path
+
+          def save(self, key, data):
+              path = os.path.join(self.base_path, key)
+              with open(path, "w") as f:
+                  f.write(data)
+
+          def load(self, key):
+              path = os.path.join(self.base_path, key)
+              with open(path, "r") as f:
+                  return f.read()
+
+          def delete(self, key):
+              path = os.path.join(self.base_path, key)
+              os.remove(path)
+    storage/memory_store.py: |
+      class MemoryStore:
+          def __init__(self):
+              self.data = {}
+
+          def save(self, key, data):
+              self.data[key] = data
+
+          def load(self, key):
+              return self.data.get(key)
+
+          def delete(self, key):
+              self.data.pop(key, None)
+    services/document_service.py: |
+      from storage.base import Store
+
+      class DocumentService:
+          def __init__(self, store: Store):
+              self.store = store
+
+          def save_document(self, doc_id, content):
+              self.store.save(f"doc_{doc_id}", content)
+
+          def get_document(self, doc_id):
+              return self.store.load(f"doc_{doc_id}")
+    api/documents.py: |
+      from services.document_service import DocumentService
+      from storage.file_store import FileStore
+
+      store = FileStore("/var/data")
+      doc_svc = DocumentService(store)
+
+      def handle_save(doc_id, content):
+          doc_svc.save_document(doc_id, content)
+          return {"status": "saved"}
+    garbage_telemetry.py: |
+      GARBAGE_REFACTOR_009_TELEM_MARKER_A = "telemetry"
+      GARBAGE_REFACTOR_009_SPAN_MARKER_B = "trace"
+
+      class Telemetry:
+          GARBAGE_REFACTOR_009_TELEM_CLASS_C = True
+
+          def record(self, name, duration):
+              pass
+    garbage_rate_limit.py: |
+      GARBAGE_REFACTOR_009_RATE_MARKER_D = "rate_limit"
+      GARBAGE_REFACTOR_009_WINDOW_MARKER_E = 60
+
+      class RateLimiter:
+          GARBAGE_REFACTOR_009_LIMITER_F = True
+
+          def allow(self, key):
+              return True
+  commit_message: "refactor: extract Store protocol for dependency inversion"
+fragments:
+- id: new_protocol
+  selector:
+    path: storage/base.py
+    anchor: "class Store(Protocol)"
+- id: protocol_save
+  selector:
+    path: storage/base.py
+    anchor: "def save(self, key: str, data: str)"
+- id: service_imports_protocol
+  selector:
+    path: services/document_service.py
+    anchor: "from storage.base import Store"
+- id: service_uses_protocol_type
+  selector:
+    path: services/document_service.py
+    anchor: "def __init__(self, store: Store)"
+- id: file_store_impl
+  selector:
+    path: storage/file_store.py
+    anchor: "class FileStore"
+- id: memory_store_impl
+  selector:
+    path: storage/memory_store.py
+    anchor: "class MemoryStore"
+- id: api_creates_store
+  selector:
+    path: api/documents.py
+    anchor: "store = FileStore"
+- id: no_garbage_telemetry
+  selector:
+    path: garbage_telemetry.py
+- id: no_garbage_rate_limit
+  selector:
+    path: garbage_rate_limit.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_REFACTOR_009_TELEM_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_REFACTOR_009_SPAN_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_REFACTOR_009_TELEM_CLASS_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_REFACTOR_009_RATE_MARKER_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_REFACTOR_009_WINDOW_MARKER_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_REFACTOR_009_LIMITER_F
+oracle:
+  required:
+  - new_protocol
+  - protocol_save
+  - service_imports_protocol
+  - service_uses_protocol_type
+  - file_store_impl
+  - memory_store_impl
+  - api_creates_store
+  allowed: []
+  forbidden:
+  - no_garbage_telemetry
+  - no_garbage_rate_limit
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

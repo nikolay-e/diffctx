@@ -1,0 +1,206 @@
+name: bal3_refactor_012_rust_replace_string_with_newtype
+tags:
+- lang:rust
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/auth/session.rs: |
+      pub struct Session {
+          pub token: String,
+          pub user_id: String,
+      }
+
+      impl Session {
+          pub fn new(token: String, user_id: String) -> Self {
+              Self { token, user_id }
+          }
+
+          pub fn is_valid(&self) -> bool {
+              !self.token.is_empty()
+          }
+      }
+    src/handlers/login.rs: |
+      use crate::auth::session::Session;
+
+      pub fn login(username: &str, password: &str) -> Option<Session> {
+          if username == "admin" && password == "secret" {
+              Some(Session::new("tok_abc".into(), "usr_1".into()))
+          } else {
+              None
+          }
+      }
+    src/handlers/profile.rs: |
+      use crate::auth::session::Session;
+
+      pub fn get_profile(session: &Session) -> String {
+          format!("profile for {}", session.user_id)
+      }
+    src/middleware/auth_check.rs: |
+      use crate::auth::session::Session;
+
+      pub fn require_auth(session: &Session) -> Result<(), String> {
+          if session.is_valid() {
+              Ok(())
+          } else {
+              Err("invalid session".into())
+          }
+      }
+    src/caching/lru.rs: |
+      pub const GARBAGE_R012_LRU_A: &str = "lru_cache";
+
+      pub struct LruCache {
+          pub capacity: usize,
+      }
+    src/caching/ttl.rs: |
+      pub const GARBAGE_R012_TTL_B: &str = "ttl_cache";
+
+      pub struct TtlCache {
+          pub ttl_secs: u64,
+      }
+    src/caching/noop.rs: |
+      pub const GARBAGE_R012_NOOP_C: &str = "noop_cache";
+
+      pub struct NoopCache;
+  changed_files:
+    src/auth/types.rs: |
+      #[derive(Debug, Clone, PartialEq)]
+      pub struct Token(String);
+
+      impl Token {
+          pub fn new(raw: impl Into<String>) -> Self {
+              Self(raw.into())
+          }
+
+          pub fn as_str(&self) -> &str {
+              &self.0
+          }
+
+          pub fn is_empty(&self) -> bool {
+              self.0.is_empty()
+          }
+      }
+
+      #[derive(Debug, Clone, PartialEq)]
+      pub struct UserId(String);
+
+      impl UserId {
+          pub fn new(raw: impl Into<String>) -> Self {
+              Self(raw.into())
+          }
+
+          pub fn as_str(&self) -> &str {
+              &self.0
+          }
+      }
+    src/auth/session.rs: |
+      use super::types::{Token, UserId};
+
+      pub struct Session {
+          pub token: Token,
+          pub user_id: UserId,
+      }
+
+      impl Session {
+          pub fn new(token: Token, user_id: UserId) -> Self {
+              Self { token, user_id }
+          }
+
+          pub fn is_valid(&self) -> bool {
+              !self.token.is_empty()
+          }
+      }
+    src/handlers/login.rs: |
+      use crate::auth::session::Session;
+      use crate::auth::types::{Token, UserId};
+
+      pub fn login(username: &str, password: &str) -> Option<Session> {
+          if username == "admin" && password == "secret" {
+              Some(Session::new(Token::new("tok_abc"), UserId::new("usr_1")))
+          } else {
+              None
+          }
+      }
+    src/handlers/profile.rs: |
+      use crate::auth::session::Session;
+
+      pub fn get_profile(session: &Session) -> String {
+          format!("profile for {}", session.user_id.as_str())
+      }
+    src/middleware/auth_check.rs: |
+      use crate::auth::session::Session;
+
+      pub fn require_auth(session: &Session) -> Result<(), String> {
+          if session.is_valid() {
+              Ok(())
+          } else {
+              Err("invalid session".into())
+          }
+      }
+    src/caching/lru.rs: |
+      pub const GARBAGE_R012_LRU_A: &str = "lru_cache";
+
+      pub struct LruCache {
+          pub capacity: usize,
+      }
+    src/caching/ttl.rs: |
+      pub const GARBAGE_R012_TTL_B: &str = "ttl_cache";
+
+      pub struct TtlCache {
+          pub ttl_secs: u64,
+      }
+    src/caching/noop.rs: |
+      pub const GARBAGE_R012_NOOP_C: &str = "noop_cache";
+
+      pub struct NoopCache;
+  commit_message: "refactor: replace raw strings with Token and UserId newtypes"
+fragments:
+- id: token_newtype
+  selector:
+    path: src/auth/types.rs
+    anchor: "pub struct Token(String)"
+- id: user_id_newtype
+  selector:
+    path: src/auth/types.rs
+    anchor: "pub struct UserId(String)"
+- id: session_uses_types
+  selector:
+    path: src/auth/session.rs
+    anchor: "use super::types::{Token, UserId}"
+- id: login_uses_types
+  selector:
+    path: src/handlers/login.rs
+    anchor: "Token::new(\"tok_abc\")"
+- id: profile_uses_as_str
+  selector:
+    path: src/handlers/profile.rs
+    anchor: "session.user_id.as_str()"
+- id: auth_check_context
+  selector:
+    path: src/middleware/auth_check.rs
+    anchor: "session.is_valid()"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_R012_LRU_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_R012_TTL_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_R012_NOOP_C
+oracle:
+  required:
+  - token_newtype
+  - user_id_newtype
+  - session_uses_types
+  - login_uses_types
+  - profile_uses_as_str
+  allowed:
+  - auth_check_context
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

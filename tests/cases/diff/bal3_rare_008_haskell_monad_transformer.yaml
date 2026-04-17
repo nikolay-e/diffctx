@@ -1,0 +1,187 @@
+name: bal3_rare_008_haskell_monad_transformer
+tags:
+- lang:kotlin
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:easy
+repo:
+  initial_files:
+    core/src/main/kotlin/com/platform/pagination/PageRequest.kt: |
+      package com.platform.pagination
+
+      data class PageRequest(
+          val page: Int,
+          val size: Int,
+          val sortBy: String = "id",
+          val ascending: Boolean = true,
+      ) {
+          fun offset(): Int = page * size
+      }
+    core/src/main/kotlin/com/platform/pagination/Page.kt: |
+      package com.platform.pagination
+
+      data class Page<T>(
+          val items: List<T>,
+          val totalCount: Long,
+          val request: PageRequest,
+      ) {
+          val totalPages: Int get() = ((totalCount + request.size - 1) / request.size).toInt()
+          val hasNext: Boolean get() = request.page < totalPages - 1
+          val hasPrev: Boolean get() = request.page > 0
+      }
+    data/src/main/kotlin/com/platform/user/UserRepository.kt: |
+      package com.platform.user
+
+      import com.platform.pagination.Page
+      import com.platform.pagination.PageRequest
+
+      interface UserRepository {
+          fun findAll(request: PageRequest): Page<User>
+          fun findById(id: Long): User?
+          fun save(user: User): User
+      }
+    api/src/main/kotlin/com/platform/user/UserListService.kt: |
+      package com.platform.user
+
+      import com.platform.pagination.Page
+      import com.platform.pagination.PageRequest
+
+      class UserListService(private val repo: UserRepository) {
+          fun listUsers(page: Int, size: Int): Page<User> {
+              val request = PageRequest(page = page, size = size)
+              return repo.findAll(request)
+          }
+      }
+    garbage/src/main/kotlin/com/platform/audit/AuditWriter.kt: |
+      package com.platform.audit
+
+      // GARBAGE_HSK8_A = "audit_writer_unrelated"
+      class AuditWriter {
+          fun write(event: String, actor: String) {}
+      }
+    garbage/src/main/kotlin/com/platform/notify/PushSender.kt: |
+      package com.platform.notify
+
+      // GARBAGE_HSK8_B = "push_sender_unrelated"
+      class PushSender {
+          fun send(deviceToken: String, message: String) {}
+      }
+    garbage/src/main/kotlin/com/platform/export/CsvExporter.kt: |
+      package com.platform.export
+
+      // GARBAGE_HSK8_C = "csv_exporter_unrelated"
+      class CsvExporter {
+          fun export(rows: List<List<String>>): String = ""
+      }
+  changed_files:
+    core/src/main/kotlin/com/platform/pagination/PageRequest.kt: |
+      package com.platform.pagination
+
+      data class PageRequest(
+          val page: Int,
+          val size: Int,
+          val sortBy: String = "id",
+          val ascending: Boolean = true,
+      ) {
+          init {
+              require(page >= 0) { "page must be non-negative" }
+              require(size in 1..1000) { "size must be between 1 and 1000" }
+          }
+
+          fun offset(): Int = page * size
+      }
+    core/src/main/kotlin/com/platform/pagination/Page.kt: |
+      package com.platform.pagination
+
+      data class Page<T>(
+          val items: List<T>,
+          val totalCount: Long,
+          val request: PageRequest,
+      ) {
+          val totalPages: Int get() = ((totalCount + request.size - 1) / request.size).toInt()
+          val hasNext: Boolean get() = request.page < totalPages - 1
+          val hasPrev: Boolean get() = request.page > 0
+      }
+    data/src/main/kotlin/com/platform/user/UserRepository.kt: |
+      package com.platform.user
+
+      import com.platform.pagination.Page
+      import com.platform.pagination.PageRequest
+
+      interface UserRepository {
+          fun findAll(request: PageRequest): Page<User>
+          fun findById(id: Long): User?
+          fun save(user: User): User
+      }
+    api/src/main/kotlin/com/platform/user/UserListService.kt: |
+      package com.platform.user
+
+      import com.platform.pagination.Page
+      import com.platform.pagination.PageRequest
+
+      class UserListService(private val repo: UserRepository) {
+          fun listUsers(page: Int, size: Int): Page<User> {
+              val request = PageRequest(page = page, size = size)
+              return repo.findAll(request)
+          }
+      }
+    garbage/src/main/kotlin/com/platform/audit/AuditWriter.kt: |
+      package com.platform.audit
+
+      // GARBAGE_HSK8_A = "audit_writer_unrelated"
+      class AuditWriter {
+          fun write(event: String, actor: String) {}
+      }
+    garbage/src/main/kotlin/com/platform/notify/PushSender.kt: |
+      package com.platform.notify
+
+      // GARBAGE_HSK8_B = "push_sender_unrelated"
+      class PushSender {
+          fun send(deviceToken: String, message: String) {}
+      }
+    garbage/src/main/kotlin/com/platform/export/CsvExporter.kt: |
+      package com.platform.export
+
+      // GARBAGE_HSK8_C = "csv_exporter_unrelated"
+      class CsvExporter {
+          fun export(rows: List<List<String>>): String = ""
+      }
+  commit_message: "fix: add init validation to PageRequest to reject bad page/size values"
+fragments:
+- id: page_request_init
+  selector:
+    path: core/src/main/kotlin/com/platform/pagination/PageRequest.kt
+    anchor: "page must be non-negative"
+- id: page_request_size_check
+  selector:
+    path: core/src/main/kotlin/com/platform/pagination/PageRequest.kt
+    anchor: "size must be between"
+- id: service_creates_page_request
+  selector:
+    path: api/src/main/kotlin/com/platform/user/UserListService.kt
+    anchor: "PageRequest(page = page"
+- id: repo_find_all
+  selector:
+    path: data/src/main/kotlin/com/platform/user/UserRepository.kt
+    anchor: "fun findAll"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_HSK8_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_HSK8_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_HSK8_C
+oracle:
+  required:
+  - page_request_init
+  - page_request_size_check
+  - service_creates_page_request
+  allowed:
+  - repo_find_all
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

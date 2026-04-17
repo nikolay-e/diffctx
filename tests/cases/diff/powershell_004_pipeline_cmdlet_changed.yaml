@@ -1,0 +1,88 @@
+name: powershell_004_pipeline_cmdlet_changed
+tags:
+- lang:powershell
+- change:single_file
+- change:refactor
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    Get-ActiveServices.ps1: |
+      function Get-ActiveServices {
+          param([string]$ComputerName = $env:COMPUTERNAME)
+          Get-Service -ComputerName $ComputerName |
+              Where-Object { $_.Status -eq "Running" } |
+              Select-Object Name, DisplayName, Status |
+              Sort-Object Name
+      }
+
+      function Get-StoppedServices {
+          param([string]$ComputerName = $env:COMPUTERNAME)
+          Get-Service -ComputerName $ComputerName |
+              Where-Object { $_.Status -eq "Stopped" } |
+              Select-Object Name, DisplayName, Status |
+              Sort-Object Name
+      }
+    PS_NOISE_004_RegistryHelpers.psm1: |
+      function PS_NOISE_004_Read-RegistryValue {
+          param([string]$KeyPath, [string]$ValueName)
+          return (Get-ItemProperty -Path $KeyPath -Name $ValueName).$ValueName
+      }
+      Export-ModuleMember -Function PS_NOISE_004_Read-RegistryValue
+    PS_NOISE_004_CertUtils.psm1: |
+      function PS_NOISE_004_Get-CertExpiry {
+          param([string]$Thumbprint)
+          $cert = Get-ChildItem Cert:\LocalMachine\My | Where-Object { $_.Thumbprint -eq $Thumbprint }
+          return $cert.NotAfter
+      }
+      Export-ModuleMember -Function PS_NOISE_004_Get-CertExpiry
+  changed_files:
+    Get-ActiveServices.ps1: |
+      function Get-ActiveServices {
+          param([string]$ComputerName = $env:COMPUTERNAME)
+          Get-Service -ComputerName $ComputerName |
+              Where-Object { $_.Status -eq "Running" -and $_.StartType -ne "Disabled" } |
+              Select-Object Name, DisplayName, Status, StartType |
+              Sort-Object Name
+      }
+
+      function Get-StoppedServices {
+          param([string]$ComputerName = $env:COMPUTERNAME)
+          Get-Service -ComputerName $ComputerName |
+              Where-Object { $_.Status -eq "Stopped" } |
+              Select-Object Name, DisplayName, Status |
+              Sort-Object Name
+      }
+  commit_message: "refactor: exclude Disabled services from Get-ActiveServices filter"
+fragments:
+- id: active_services_filter
+  selector:
+    path: Get-ActiveServices.ps1
+    anchor: StartType -ne "Disabled"
+- id: active_services_select
+  selector:
+    path: Get-ActiveServices.ps1
+    anchor: Select-Object Name, DisplayName, Status, StartType
+- id: no_registry_helpers
+  selector:
+    path: PS_NOISE_004_RegistryHelpers.psm1
+- id: no_cert_utils
+  selector:
+    path: PS_NOISE_004_CertUtils.psm1
+- id: no_global_0
+  selector:
+    anchor: PS_NOISE_004_Read-RegistryValue
+- id: no_global_1
+  selector:
+    anchor: PS_NOISE_004_Get-CertExpiry
+oracle:
+  required:
+  - active_services_filter
+  - active_services_select
+  allowed: []
+  forbidden:
+  - no_registry_helpers
+  - no_cert_utils
+  - no_global_0
+  - no_global_1

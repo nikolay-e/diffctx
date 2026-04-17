@@ -1,0 +1,140 @@
+name: bal4_3hop_003_ruby_analytics_tracker
+tags:
+- lang:ruby
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:trivial
+repo:
+  initial_files:
+    lib/analytics/event.rb: |
+      module Analytics
+        class Event
+          attr_reader :name, :ts
+          def initialize(name)
+            @name = name
+            @ts = Time.now
+          end
+        end
+      end
+    lib/analytics/tracker.rb: |
+      require_relative 'event'
+      module Analytics
+        class Tracker
+          def track(name)
+            Event.new(name)
+          end
+        end
+      end
+    lib/analytics/pipeline.rb: |
+      require_relative 'tracker'
+      module Analytics
+        class Pipeline
+          def push(name)
+            Tracker.new.track(name)
+          end
+        end
+      end
+    lib/analytics/api.rb: |
+      require_relative 'pipeline'
+      module Analytics
+        class Api
+          def record(name)
+            Pipeline.new.push(name)
+          end
+        end
+      end
+    lib/db/connection.rb: |
+      module Db
+        GARBAGE_003_CONN_A = "pg"
+        GARBAGE_003_POOL_B = 5
+        class Connection
+          def self.pool
+            5
+          end
+        end
+      end
+  changed_files:
+    lib/analytics/event.rb: |
+      module Analytics
+        class Event
+          attr_reader :name, :ts, :source
+          def initialize(name, source: "web")
+            @name = name
+            @ts = Time.now
+            @source = source
+          end
+        end
+      end
+    lib/analytics/tracker.rb: |
+      require_relative 'event'
+      module Analytics
+        class Tracker
+          def track(name)
+            Event.new(name)
+          end
+        end
+      end
+    lib/analytics/pipeline.rb: |
+      require_relative 'tracker'
+      module Analytics
+        class Pipeline
+          def push(name)
+            Tracker.new.track(name)
+          end
+        end
+      end
+    lib/analytics/api.rb: |
+      require_relative 'pipeline'
+      module Analytics
+        class Api
+          def record(name)
+            Pipeline.new.push(name)
+          end
+        end
+      end
+    lib/db/connection.rb: |
+      module Db
+        GARBAGE_003_CONN_A = "pg"
+        GARBAGE_003_POOL_B = 5
+        class Connection
+          def self.pool
+            5
+          end
+        end
+      end
+  commit_message: "feat: add source tracking to events"
+fragments:
+- id: event_source
+  selector:
+    path: lib/analytics/event.rb
+    anchor: "source"
+- id: tracker_uses_event
+  selector:
+    path: lib/analytics/tracker.rb
+    anchor: "require_relative 'event'"
+- id: pipeline_uses_tracker
+  selector:
+    path: lib/analytics/pipeline.rb
+    anchor: "require_relative 'tracker'"
+- id: api_uses_pipeline
+  selector:
+    path: lib/analytics/api.rb
+    anchor: "require_relative 'pipeline'"
+- id: no_connection
+  selector:
+    path: lib/db/connection.rb
+    anchor: "GARBAGE_003_CONN_A"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_003_POOL_B
+oracle:
+  required:
+  - event_source
+  - tracker_uses_event
+  - pipeline_uses_tracker
+  - api_uses_pipeline
+  allowed: []
+  forbidden:
+  - no_connection
+  - no_global_0

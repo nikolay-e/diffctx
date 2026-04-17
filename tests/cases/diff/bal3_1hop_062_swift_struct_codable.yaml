@@ -1,0 +1,279 @@
+name: bal3_1hop_062_swift_struct_codable
+tags:
+- lang:swift
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    Sources/Models/User.swift: |
+      import Foundation
+
+      struct User: Codable {
+          let id: Int
+          let name: String
+          let email: String
+      }
+    Sources/ViewModels/UserListViewModel.swift: |
+      import Foundation
+      import Models
+
+      class UserListViewModel: ObservableObject {
+          @Published var users: [User] = []
+          @Published var isLoading = false
+
+          func loadUsers() {
+              isLoading = true
+          }
+
+          func userDisplayName(for user: User) -> String {
+              return user.name
+          }
+      }
+    Sources/ViewModels/UserDetailViewModel.swift: |
+      import Foundation
+      import Models
+
+      class UserDetailViewModel: ObservableObject {
+          @Published var user: User?
+
+          func loadDetail(userId: Int) {
+              // fetch user detail
+          }
+
+          func formattedEmail() -> String {
+              return user?.email ?? "N/A"
+          }
+      }
+    Sources/Views/ProfileView.swift: |
+      import Foundation
+      import Models
+
+      struct ProfileView {
+          let user: User
+
+          func renderHeader() -> String {
+              return "Profile: \(user.name)"
+          }
+
+          func renderContact() -> String {
+              return "Email: \(user.email)"
+          }
+      }
+    Sources/Views/SettingsView.swift: |
+      import Foundation
+      import Models
+
+      struct SettingsView {
+          let user: User
+
+          func renderSettings() -> String {
+              return "Settings for \(user.name)"
+          }
+      }
+    Sources/Persistence/CoreDataStack.swift: |
+      import Foundation
+      GARBAGE_062_COREDATA_STACK_A = "coredata"
+      GARBAGE_062_CONTAINER_NAME_B = "Model"
+
+      class CoreDataStack {
+          static let shared = CoreDataStack()
+          func saveContext() {}
+          func resetStore() {}
+      }
+    Sources/Utils/KeychainHelper.swift: |
+      import Foundation
+      GARBAGE_062_KEYCHAIN_SVC_C = "keychain"
+      GARBAGE_062_ACCESS_GROUP_D = "team.app"
+
+      class KeychainHelper {
+          static func save(key: String, value: String) {}
+          static func load(key: String) -> String? { return nil }
+      }
+    Sources/Utils/Reachability.swift: |
+      import Foundation
+      GARBAGE_062_REACH_HOST_E = "example.com"
+      GARBAGE_062_REACH_TIMEOUT_F = 5.0
+
+      class Reachability {
+          var isReachable: Bool { return true }
+      }
+  changed_files:
+    Sources/Models/User.swift: |
+      import Foundation
+
+      struct User: Codable, Identifiable {
+          let id: Int
+          let name: String
+          let email: String
+          let avatarURL: URL?
+          let role: UserRole
+
+          enum UserRole: String, Codable {
+              case admin
+              case member
+              case guest
+          }
+      }
+    Sources/ViewModels/UserListViewModel.swift: |
+      import Foundation
+      import Models
+
+      class UserListViewModel: ObservableObject {
+          @Published var users: [User] = []
+          @Published var isLoading = false
+
+          func loadUsers() {
+              isLoading = true
+          }
+
+          func userDisplayName(for user: User) -> String {
+              return user.name
+          }
+      }
+    Sources/ViewModels/UserDetailViewModel.swift: |
+      import Foundation
+      import Models
+
+      class UserDetailViewModel: ObservableObject {
+          @Published var user: User?
+
+          func loadDetail(userId: Int) {
+              // fetch user detail
+          }
+
+          func formattedEmail() -> String {
+              return user?.email ?? "N/A"
+          }
+      }
+    Sources/Views/ProfileView.swift: |
+      import Foundation
+      import Models
+
+      struct ProfileView {
+          let user: User
+
+          func renderHeader() -> String {
+              return "Profile: \(user.name)"
+          }
+
+          func renderContact() -> String {
+              return "Email: \(user.email)"
+          }
+      }
+    Sources/Views/SettingsView.swift: |
+      import Foundation
+      import Models
+
+      struct SettingsView {
+          let user: User
+
+          func renderSettings() -> String {
+              return "Settings for \(user.name)"
+          }
+      }
+    Sources/Persistence/CoreDataStack.swift: |
+      import Foundation
+      GARBAGE_062_COREDATA_STACK_A = "coredata"
+      GARBAGE_062_CONTAINER_NAME_B = "Model"
+
+      class CoreDataStack {
+          static let shared = CoreDataStack()
+          func saveContext() {}
+          func resetStore() {}
+      }
+    Sources/Utils/KeychainHelper.swift: |
+      import Foundation
+      GARBAGE_062_KEYCHAIN_SVC_C = "keychain"
+      GARBAGE_062_ACCESS_GROUP_D = "team.app"
+
+      class KeychainHelper {
+          static func save(key: String, value: String) {}
+          static func load(key: String) -> String? { return nil }
+      }
+    Sources/Utils/Reachability.swift: |
+      import Foundation
+      GARBAGE_062_REACH_HOST_E = "example.com"
+      GARBAGE_062_REACH_TIMEOUT_F = 5.0
+
+      class Reachability {
+          var isReachable: Bool { return true }
+      }
+  commit_message: "feat: add Identifiable, avatarURL and role to User struct"
+fragments:
+- id: list_vm_imports
+  selector:
+    path: Sources/ViewModels/UserListViewModel.swift
+    anchor: "import Models"
+- id: list_vm_users_array
+  selector:
+    path: Sources/ViewModels/UserListViewModel.swift
+    anchor: "var users: [User]"
+- id: detail_vm_imports
+  selector:
+    path: Sources/ViewModels/UserDetailViewModel.swift
+    anchor: "import Models"
+- id: detail_vm_user_prop
+  selector:
+    path: Sources/ViewModels/UserDetailViewModel.swift
+    anchor: "var user: User?"
+- id: profile_view_imports
+  selector:
+    path: Sources/Views/ProfileView.swift
+    anchor: "import Models"
+- id: profile_view_user_prop
+  selector:
+    path: Sources/Views/ProfileView.swift
+    anchor: "let user: User"
+- id: settings_view_imports
+  selector:
+    path: Sources/Views/SettingsView.swift
+    anchor: "import Models"
+- id: no_coredata
+  selector:
+    path: Sources/Persistence/CoreDataStack.swift
+- id: no_keychain
+  selector:
+    path: Sources/Utils/KeychainHelper.swift
+- id: no_reachability
+  selector:
+    path: Sources/Utils/Reachability.swift
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_062_COREDATA_STACK_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_062_CONTAINER_NAME_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_062_KEYCHAIN_SVC_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_062_ACCESS_GROUP_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_062_REACH_HOST_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_062_REACH_TIMEOUT_F
+oracle:
+  required:
+  - list_vm_imports
+  - list_vm_users_array
+  - detail_vm_imports
+  - detail_vm_user_prop
+  - profile_view_imports
+  - profile_view_user_prop
+  - settings_view_imports
+  allowed: []
+  forbidden:
+  - no_coredata
+  - no_keychain
+  - no_reachability
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

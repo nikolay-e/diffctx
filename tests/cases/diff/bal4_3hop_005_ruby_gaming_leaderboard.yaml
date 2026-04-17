@@ -1,0 +1,172 @@
+name: bal4_3hop_005_ruby_gaming_leaderboard
+tags:
+- lang:ruby
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:easy
+repo:
+  initial_files:
+    lib/gaming/score.rb: |
+      module Gaming
+        class Score
+          attr_reader :player, :points
+          def initialize(player, points)
+            @player = player
+            @points = points
+          end
+        end
+      end
+    lib/gaming/board.rb: |
+      require_relative 'score'
+      module Gaming
+        class Board
+          def initialize
+            @scores = []
+          end
+          def submit(player, points)
+            @scores << Score.new(player, points)
+          end
+          def top(n)
+            @scores.sort_by(&:points).reverse.first(n)
+          end
+        end
+      end
+    lib/gaming/season.rb: |
+      require_relative 'board'
+      module Gaming
+        class Season
+          def initialize(name)
+            @name = name
+            @board = Board.new
+          end
+          def record(player, points)
+            @board.submit(player, points)
+          end
+          def leaders(n)
+            @board.top(n)
+          end
+        end
+      end
+    lib/gaming/api.rb: |
+      require_relative 'season'
+      module Gaming
+        class Api
+          def initialize(season_name)
+            @season = Season.new(season_name)
+          end
+          def leaderboard(n)
+            @season.leaders(n)
+          end
+        end
+      end
+    lib/gaming/replay.rb: |
+      module Gaming
+        GARBAGE_005_REPLAY_A = "record"
+        GARBAGE_005_CODEC_B = "mp4"
+        class Replay
+          def self.save(data)
+            data
+          end
+        end
+      end
+  changed_files:
+    lib/gaming/score.rb: |
+      module Gaming
+        class Score
+          attr_reader :player, :points, :timestamp
+          def initialize(player, points, timestamp: Time.now)
+            @player = player
+            @points = points
+            @timestamp = timestamp
+          end
+        end
+      end
+    lib/gaming/board.rb: |
+      require_relative 'score'
+      module Gaming
+        class Board
+          def initialize
+            @scores = []
+          end
+          def submit(player, points)
+            @scores << Score.new(player, points)
+          end
+          def top(n)
+            @scores.sort_by(&:points).reverse.first(n)
+          end
+        end
+      end
+    lib/gaming/season.rb: |
+      require_relative 'board'
+      module Gaming
+        class Season
+          def initialize(name)
+            @name = name
+            @board = Board.new
+          end
+          def record(player, points)
+            @board.submit(player, points)
+          end
+          def leaders(n)
+            @board.top(n)
+          end
+        end
+      end
+    lib/gaming/api.rb: |
+      require_relative 'season'
+      module Gaming
+        class Api
+          def initialize(season_name)
+            @season = Season.new(season_name)
+          end
+          def leaderboard(n)
+            @season.leaders(n)
+          end
+        end
+      end
+    lib/gaming/replay.rb: |
+      module Gaming
+        GARBAGE_005_REPLAY_A = "record"
+        GARBAGE_005_CODEC_B = "mp4"
+        class Replay
+          def self.save(data)
+            data
+          end
+        end
+      end
+  commit_message: "feat: add timestamp to score"
+fragments:
+- id: score_timestamp
+  selector:
+    path: lib/gaming/score.rb
+    anchor: "timestamp"
+- id: board_uses_score
+  selector:
+    path: lib/gaming/board.rb
+    anchor: "require_relative 'score'"
+- id: season_uses_board
+  selector:
+    path: lib/gaming/season.rb
+    anchor: "require_relative 'board'"
+- id: api_uses_season
+  selector:
+    path: lib/gaming/api.rb
+    anchor: "require_relative 'season'"
+- id: no_replay
+  selector:
+    path: lib/gaming/replay.rb
+    anchor: "GARBAGE_005_REPLAY_A"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_005_CODEC_B
+oracle:
+  required:
+  - score_timestamp
+  - board_uses_score
+  - season_uses_board
+  - api_uses_season
+  allowed: []
+  forbidden:
+  - no_replay
+  - no_global_0

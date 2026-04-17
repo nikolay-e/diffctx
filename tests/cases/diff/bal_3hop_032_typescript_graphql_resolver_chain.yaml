@@ -1,0 +1,230 @@
+name: bal_3hop_032_typescript_graphql_resolver_chain
+tags:
+- lang:typescript
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/schema/product.ts: |
+      export interface Product {
+        id: string;
+        name: string;
+        price: number;
+      }
+
+      export interface ProductFilter {
+        minPrice?: number;
+        maxPrice?: number;
+      }
+    src/datasources/product.ts: |
+      import { Product, ProductFilter } from '../schema/product';
+
+      export class ProductDataSource {
+        private products: Product[] = [];
+
+        findAll(filter?: ProductFilter): Product[] {
+          let result = this.products;
+          if (filter?.minPrice) result = result.filter(p => p.price >= filter.minPrice!);
+          if (filter?.maxPrice) result = result.filter(p => p.price <= filter.maxPrice!);
+          return result;
+        }
+
+        findById(id: string): Product | undefined {
+          return this.products.find(p => p.id === id);
+        }
+      }
+    src/services/product.ts: |
+      import { ProductDataSource } from '../datasources/product';
+      import { ProductFilter } from '../schema/product';
+
+      export class ProductService {
+        constructor(private ds: ProductDataSource) {}
+
+        getProducts(filter?: ProductFilter) {
+          return this.ds.findAll(filter);
+        }
+
+        getProduct(id: string) {
+          return this.ds.findById(id);
+        }
+      }
+    src/resolvers/product.ts: |
+      import { ProductService } from '../services/product';
+
+      export const productResolvers = {
+        Query: {
+          products: (_: any, args: any, ctx: { productService: ProductService }) => {
+            return ctx.productService.getProducts(args.filter);
+          },
+          product: (_: any, args: { id: string }, ctx: { productService: ProductService }) => {
+            return ctx.productService.getProduct(args.id);
+          },
+        },
+      };
+    src/utils/sanitizer.ts: |
+      GARBAGE_032_SANITIZER_MARKER_A = "sanitizer";
+      GARBAGE_032_XSS_MARKER_B = true;
+
+      export function sanitizeInput(input: string): string {
+        return input.replace(/<[^>]*>/g, '');
+      }
+    src/utils/pagination.ts: |
+      GARBAGE_032_PAGINATION_MARKER_C = "pagination";
+      GARBAGE_032_OFFSET_MARKER_D = 0;
+
+      export interface PaginationArgs {
+        page: number;
+        limit: number;
+      }
+
+      export function paginate<T>(items: T[], args: PaginationArgs): T[] {
+        const start = (args.page - 1) * args.limit;
+        return items.slice(start, start + args.limit);
+      }
+    src/middleware/rateLimit.ts: |
+      GARBAGE_032_RATELIMIT_MARKER_E = "ratelimit";
+      GARBAGE_032_WINDOW_MARKER_F = 60;
+
+      export function rateLimitMiddleware() {
+        return (req: any, res: any, next: any) => next();
+      }
+  changed_files:
+    src/schema/product.ts: |
+      export interface Product {
+        id: string;
+        name: string;
+        price: number;
+        category: string;
+      }
+
+      export interface ProductFilter {
+        minPrice?: number;
+        maxPrice?: number;
+        category?: string;
+      }
+    src/datasources/product.ts: |
+      import { Product, ProductFilter } from '../schema/product';
+
+      export class ProductDataSource {
+        private products: Product[] = [];
+
+        findAll(filter?: ProductFilter): Product[] {
+          let result = this.products;
+          if (filter?.minPrice) result = result.filter(p => p.price >= filter.minPrice!);
+          if (filter?.maxPrice) result = result.filter(p => p.price <= filter.maxPrice!);
+          if (filter?.category) result = result.filter(p => p.category === filter.category);
+          return result;
+        }
+
+        findById(id: string): Product | undefined {
+          return this.products.find(p => p.id === id);
+        }
+      }
+    src/services/product.ts: |
+      import { ProductDataSource } from '../datasources/product';
+      import { ProductFilter } from '../schema/product';
+
+      export class ProductService {
+        constructor(private ds: ProductDataSource) {}
+
+        getProducts(filter?: ProductFilter) {
+          return this.ds.findAll(filter);
+        }
+
+        getProduct(id: string) {
+          return this.ds.findById(id);
+        }
+      }
+    src/resolvers/product.ts: |
+      import { ProductService } from '../services/product';
+
+      export const productResolvers = {
+        Query: {
+          products: (_: any, args: any, ctx: { productService: ProductService }) => {
+            return ctx.productService.getProducts(args.filter);
+          },
+          product: (_: any, args: { id: string }, ctx: { productService: ProductService }) => {
+            return ctx.productService.getProduct(args.id);
+          },
+        },
+      };
+    src/utils/sanitizer.ts: |
+      GARBAGE_032_SANITIZER_MARKER_A = "sanitizer";
+      GARBAGE_032_XSS_MARKER_B = true;
+
+      export function sanitizeInput(input: string): string {
+        return input.replace(/<[^>]*>/g, '');
+      }
+    src/utils/pagination.ts: |
+      GARBAGE_032_PAGINATION_MARKER_C = "pagination";
+      GARBAGE_032_OFFSET_MARKER_D = 0;
+
+      export interface PaginationArgs {
+        page: number;
+        limit: number;
+      }
+
+      export function paginate<T>(items: T[], args: PaginationArgs): T[] {
+        const start = (args.page - 1) * args.limit;
+        return items.slice(start, start + args.limit);
+      }
+    src/middleware/rateLimit.ts: |
+      GARBAGE_032_RATELIMIT_MARKER_E = "ratelimit";
+      GARBAGE_032_WINDOW_MARKER_F = 60;
+
+      export function rateLimitMiddleware() {
+        return (req: any, res: any, next: any) => next();
+      }
+  commit_message: "feat: add category field to Product schema"
+fragments:
+- id: product_category_field
+  selector:
+    path: src/schema/product.ts
+    anchor: "category: string"
+- id: filter_category_field
+  selector:
+    path: src/schema/product.ts
+    anchor: "category?: string"
+- id: ds_filter_category
+  selector:
+    path: src/datasources/product.ts
+    anchor: "filter?.category"
+- id: service_imports_ds
+  selector:
+    path: src/services/product.ts
+    anchor: "import { ProductDataSource } from '../datasources/product'"
+- id: resolver_imports_service
+  selector:
+    path: src/resolvers/product.ts
+    anchor: "import { ProductService } from '../services/product'"
+- id: resolver_products_query
+  selector:
+    path: src/resolvers/product.ts
+    anchor: "ctx.productService.getProducts"
+- id: no_sanitizer
+  selector:
+    path: src/utils/sanitizer.ts
+    anchor: "GARBAGE_032_SANITIZER_MARKER_A"
+- id: no_pagination
+  selector:
+    path: src/utils/pagination.ts
+    anchor: "GARBAGE_032_PAGINATION_MARKER_C"
+- id: no_ratelimit
+  selector:
+    path: src/middleware/rateLimit.ts
+    anchor: "GARBAGE_032_RATELIMIT_MARKER_E"
+oracle:
+  required:
+  - product_category_field
+  - filter_category_field
+  - ds_filter_category
+  - service_imports_ds
+  - resolver_imports_service
+  - resolver_products_query
+  allowed: []
+  forbidden:
+  - no_sanitizer
+  - no_pagination
+  - no_ratelimit

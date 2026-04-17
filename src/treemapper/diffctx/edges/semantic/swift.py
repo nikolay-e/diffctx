@@ -124,6 +124,8 @@ class SwiftEdgeBuilder(EdgeBuilder):
     same_module_weight = EDGE_WEIGHTS["swift_same_module"].forward
     reverse_weight_factor = EDGE_WEIGHTS["swift_import"].reverse_factor
 
+    _DISCOVERY_MAX_DEPTH = 2
+
     def discover_related_files(
         self,
         changed_files: list[Path],
@@ -137,14 +139,29 @@ class SwiftEdgeBuilder(EdgeBuilder):
 
         changed_set = set(changed_files)
         discovered: set[Path] = set()
+        frontier = list(swift_changed)
 
-        referenced_types = self._collect_referenced_types(swift_changed)
-        if referenced_types:
-            discovered.update(self._find_files_defining_types(all_candidate_files, changed_set, referenced_types))
+        for _depth in range(self._DISCOVERY_MAX_DEPTH):
+            skip = changed_set | discovered
 
-        defined_types = self._collect_defined_types(swift_changed)
-        if defined_types:
-            discovered.update(self._find_files_referencing_types(all_candidate_files, changed_set, defined_types))
+            referenced_types = self._collect_referenced_types(frontier)
+            defined_types = self._collect_defined_types(frontier)
+
+            next_frontier: list[Path] = []
+            if referenced_types:
+                for f in self._find_files_defining_types(all_candidate_files, skip, referenced_types):
+                    if f not in discovered:
+                        discovered.add(f)
+                        next_frontier.append(f)
+            if defined_types:
+                for f in self._find_files_referencing_types(all_candidate_files, skip, defined_types):
+                    if f not in discovered:
+                        discovered.add(f)
+                        next_frontier.append(f)
+
+            frontier = next_frontier
+            if not frontier:
+                break
 
         return list(discovered)
 

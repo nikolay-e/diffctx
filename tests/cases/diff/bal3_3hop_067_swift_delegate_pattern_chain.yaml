@@ -1,0 +1,188 @@
+name: bal3_3hop_067_swift_delegate_pattern_chain
+tags:
+- lang:swift
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    Sources/Protocols/MediaPlayerDelegate.swift: |
+      import Foundation
+
+      protocol MediaPlayerDelegate: AnyObject {
+          func playerDidStart()
+          func playerDidStop()
+      }
+    Sources/Player/AudioEngine.swift: |
+      import Foundation
+      import Protocols
+
+      class AudioEngine {
+          weak var delegate: MediaPlayerDelegate?
+          func play(url: URL) {
+              delegate?.playerDidStart()
+          }
+          func stop() {
+              delegate?.playerDidStop()
+          }
+      }
+    Sources/Player/PlayerManager.swift: |
+      import Foundation
+      import Protocols
+
+      class PlayerManager: MediaPlayerDelegate {
+          private let engine: AudioEngine
+          init(engine: AudioEngine) {
+              self.engine = engine
+              engine.delegate = self
+          }
+          func playerDidStart() {}
+          func playerDidStop() {}
+          func playTrack(url: URL) {
+              engine.play(url: url)
+          }
+      }
+    Sources/ViewModels/NowPlayingViewModel.swift: |
+      import Foundation
+      import Player
+
+      class NowPlayingViewModel {
+          private let manager: PlayerManager
+          init(manager: PlayerManager) {
+              self.manager = manager
+          }
+          func play(url: URL) {
+              manager.playTrack(url: url)
+          }
+      }
+    Sources/Views/EqualizerView.swift: |
+      import SwiftUI
+      let GARBAGE_067_EQ_A = "equalizer"
+      let GARBAGE_067_BAND_B = 10
+
+      struct EqualizerView: View {
+          var body: some View { Text("EQ") }
+      }
+    Sources/Views/LyricsView.swift: |
+      import SwiftUI
+      let GARBAGE_067_LYRICS_C = "lyrics"
+      let GARBAGE_067_SYNC_D = true
+
+      struct LyricsView: View {
+          var body: some View { Text("Lyrics") }
+      }
+  changed_files:
+    Sources/Protocols/MediaPlayerDelegate.swift: |
+      import Foundation
+
+      protocol MediaPlayerDelegate: AnyObject {
+          func playerDidStart()
+          func playerDidStop()
+          func playerDidPause()
+          func playerProgressUpdated(currentTime: TimeInterval, duration: TimeInterval)
+      }
+    Sources/Player/AudioEngine.swift: |
+      import Foundation
+      import Protocols
+
+      class AudioEngine {
+          weak var delegate: MediaPlayerDelegate?
+          func play(url: URL) {
+              delegate?.playerDidStart()
+          }
+          func pause() {
+              delegate?.playerDidPause()
+          }
+          func stop() {
+              delegate?.playerDidStop()
+          }
+      }
+    Sources/Player/PlayerManager.swift: |
+      import Foundation
+      import Protocols
+
+      class PlayerManager: MediaPlayerDelegate {
+          private let engine: AudioEngine
+          init(engine: AudioEngine) {
+              self.engine = engine
+              engine.delegate = self
+          }
+          func playerDidStart() {}
+          func playerDidStop() {}
+          func playerDidPause() {}
+          func playerProgressUpdated(currentTime: TimeInterval, duration: TimeInterval) {}
+          func playTrack(url: URL) {
+              engine.play(url: url)
+          }
+      }
+    Sources/ViewModels/NowPlayingViewModel.swift: |
+      import Foundation
+      import Player
+
+      class NowPlayingViewModel {
+          private let manager: PlayerManager
+          init(manager: PlayerManager) {
+              self.manager = manager
+          }
+          func play(url: URL) {
+              manager.playTrack(url: url)
+          }
+      }
+    Sources/Views/EqualizerView.swift: |
+      import SwiftUI
+      let GARBAGE_067_EQ_A = "equalizer"
+      let GARBAGE_067_BAND_B = 10
+
+      struct EqualizerView: View {
+          var body: some View { Text("EQ") }
+      }
+    Sources/Views/LyricsView.swift: |
+      import SwiftUI
+      let GARBAGE_067_LYRICS_C = "lyrics"
+      let GARBAGE_067_SYNC_D = true
+
+      struct LyricsView: View {
+          var body: some View { Text("Lyrics") }
+      }
+  commit_message: "feat: add pause and progress delegate methods"
+fragments:
+- id: delegate_pause
+  selector:
+    path: Sources/Protocols/MediaPlayerDelegate.swift
+    anchor: "func playerDidPause()"
+- id: delegate_progress
+  selector:
+    path: Sources/Protocols/MediaPlayerDelegate.swift
+    anchor: "func playerProgressUpdated"
+- id: engine_pause
+  selector:
+    path: Sources/Player/AudioEngine.swift
+    anchor: "func pause()"
+- id: manager_conforms
+  selector:
+    path: Sources/Player/PlayerManager.swift
+    anchor: "func playerDidPause()"
+- id: vm_imports_player
+  selector:
+    path: Sources/ViewModels/NowPlayingViewModel.swift
+    anchor: "import Player"
+- id: no_equalizer
+  selector:
+    path: Sources/Views/EqualizerView.swift
+    anchor: "GARBAGE_067_EQ_A"
+- id: no_lyrics
+  selector:
+    path: Sources/Views/LyricsView.swift
+    anchor: "GARBAGE_067_LYRICS_C"
+oracle:
+  required:
+  - delegate_pause
+  - delegate_progress
+  - engine_pause
+  - manager_conforms
+  - vm_imports_player
+  allowed: []
+  forbidden:
+  - no_equalizer
+  - no_lyrics

@@ -1,242 +1,92 @@
 name: yaml_009_api_versioning
+tags:
+- lang:kotlin
+- change:bug_fix
+- change:single_file
+- context:same_file
+- distance:0hop
+- difficulty:medium
 repo:
   initial_files:
-    config/api.yaml: |
-      api:
-        version: v1
-        prefix: /api
-    src/routes.py: |
-      from src.config_loader import load_config
+    src/logistics/PackageRouter.kt: |
+      data class Package(val id: String, val weightKg: Double, val fragile: Boolean)
+      data class Route(val carrier: String, val estimatedDays: Int, val cost: Double)
 
-      def register_routes(app, version: str = "v1", prefix: str = "/api"):
-          base_path = f"{prefix}/{version}"
-          app.add_route(f"{base_path}/users", users_handler)
-          app.add_route(f"{base_path}/items", items_handler)
-          app.add_route(f"{base_path}/orders", orders_handler)
+      class PackageRouter(private val routes: List<Route>) {
+          fun selectRoute(pkg: Package): Route {
+              val candidates = routes.filter { route ->
+                  // BUG: fragile packages should prefer slower, cheaper routes, not faster ones
+                  if (pkg.fragile) route.estimatedDays <= 2 else true
+              }
+              return candidates.minByOrNull { it.cost }
+                  ?: throw IllegalStateException("No route available for package ${pkg.id}")
+          }
 
-      def users_handler(request):
-          return {"users": [], "version": request.path.split("/")[2]}
-
-      def items_handler(request):
-          return {"items": []}
-
-      def orders_handler(request):
-          return {"orders": []}
-    src/config_loader.py: |
-      import yaml
-
-      def load_config(path: str = "config/api.yaml") -> dict:
-          with open(path) as f:
-              return yaml.safe_load(f)
-
-      def get_api_version(config: dict) -> str:
-          return config.get("api", {}).get("version", "v1")
-
-      def get_deprecated_versions(config: dict) -> list:
-          return config.get("api", {}).get("deprecated_versions", [])
-    config/openapi.yaml: |
-      openapi: "3.0.0"
-      info:
-        title: My API
-        version: "1.0.0"
-        description: Backend REST API
-        contact:
-          name: API Support
-          email: api@example.com
-      servers:
-        - url: https://api.example.com/v1
-          description: Production v1
-        - url: https://api.example.com/v2
-          description: Production v2
-    src/serializers.py: |
-      from datetime import datetime
-
-      class ResponseSerializer:
-          def __init__(self, envelope: bool = True):
-              self.envelope = envelope
-
-          def serialize(self, data: dict, status: int = 200) -> dict:
-              if self.envelope:
-                  return {
-                      "status": status,
-                      "data": data,
-                      "timestamp": datetime.utcnow().isoformat(),
-                  }
-              return data
-
-          def error(self, message: str, status: int = 400) -> dict:
-              return {"status": status, "error": message}
-    src/middleware.py: |
-      import logging
-      import time
-
-      logger = logging.getLogger(__name__)
-
-      class RequestLoggingMiddleware:
-          def __init__(self, app):
-              self.app = app
-
-          def process_request(self, request):
-              request.start_time = time.time()
-              logger.info(f"Incoming request: {request.method} {request.path}")
-              return request
-
-          def process_response(self, request, response):
-              elapsed = time.time() - request.start_time
-              logger.info(f"Response: {response.status} in {elapsed:.3f}s for {request.path}")
-              return response
-    config/rate_limits.yaml: |
-      rate_limits:
-        v1:
-          requests_per_minute: 60
-          burst_size: 10
-        v2:
-          requests_per_minute: 120
-          burst_size: 20
-        default:
-          requests_per_minute: 30
-          burst_size: 5
-    tests/test_routes.py: |
-      import pytest
-
-      class TestRoutes:
-          def test_register_routes_default_version(self, app):
-              register_routes(app)
-              assert app.has_route("/api/v1/users")
-              assert app.has_route("/api/v1/items")
-              assert app.has_route("/api/v1/orders")
-
-          def test_register_routes_custom_version(self, app):
-              register_routes(app, version="v2")
-              assert app.has_route("/api/v2/users")
-              assert app.has_route("/api/v2/items")
-
-          def test_users_handler_returns_version(self, client):
-              response = client.get("/api/v1/users")
-              assert response.json["version"] == "v1"
+          fun estimateCost(pkg: Package): Double {
+              return selectRoute(pkg).cost * if (pkg.weightKg > 10) 1.2 else 1.0
+          }
+      }
+    garbage/WarehouseLayout.kt: |
+      // GARBAGE_PKG_A = "warehouse_layout_marker"
+    garbage/LabelPrinter.kt: |
+      // GARBAGE_PKG_B = "label_printer_marker"
+    garbage/TrackingNotifier.kt: |
+      // GARBAGE_PKG_C = "tracking_notifier_marker"
+    garbage/ReturnProcessor.kt: |
+      // GARBAGE_PKG_D = "return_processor_marker"
   changed_files:
-    config/api.yaml: |
-      api:
-        version: v2
-        prefix: /api
-        deprecated_versions:
-          - v1
-    src/routes.py: |
-      from src.config_loader import load_config
+    src/logistics/PackageRouter.kt: |
+      data class Package(val id: String, val weightKg: Double, val fragile: Boolean)
+      data class Route(val carrier: String, val estimatedDays: Int, val cost: Double)
 
-      def register_routes(app, version: str = "v1", prefix: str = "/api"):
-          base_path = f"{prefix}/{version}"
-          app.add_route(f"{base_path}/users", users_handler)
-          app.add_route(f"{base_path}/items", items_handler)
-          app.add_route(f"{base_path}/orders", orders_handler)
+      class PackageRouter(private val routes: List<Route>) {
+          fun selectRoute(pkg: Package): Route {
+              val candidates = routes.filter { route ->
+                  if (pkg.fragile) route.estimatedDays >= 3 else true
+              }
+              return candidates.minByOrNull { it.cost }
+                  ?: throw IllegalStateException("No route available for package ${pkg.id}")
+          }
 
-      def users_handler(request):
-          return {"users": [], "version": request.path.split("/")[2]}
-
-      def items_handler(request):
-          return {"items": []}
-
-      def orders_handler(request):
-          return {"orders": []}
-    src/config_loader.py: |
-      import yaml
-
-      def load_config(path: str = "config/api.yaml") -> dict:
-          with open(path) as f:
-              return yaml.safe_load(f)
-
-      def get_api_version(config: dict) -> str:
-          return config.get("api", {}).get("version", "v1")
-
-      def get_deprecated_versions(config: dict) -> list:
-          return config.get("api", {}).get("deprecated_versions", [])
-  commit_message: Update files
+          fun estimateCost(pkg: Package): Double {
+              return selectRoute(pkg).cost * if (pkg.weightKg > 10) 1.2 else 1.0
+          }
+      }
+    garbage/WarehouseLayout.kt: |
+      // GARBAGE_PKG_A = "warehouse_layout_marker"
+    garbage/LabelPrinter.kt: |
+      // GARBAGE_PKG_B = "label_printer_marker"
+    garbage/TrackingNotifier.kt: |
+      // GARBAGE_PKG_C = "tracking_notifier_marker"
+    garbage/ReturnProcessor.kt: |
+      // GARBAGE_PKG_D = "return_processor_marker"
+  commit_message: "fix: fragile packages must avoid fast routes to prevent rough handling"
 fragments:
-- id: routes
+- id: select_route
   selector:
-    path: src/routes.py
-    anchor: 'version: str = "v1"'
-- id: routes_1
+    anchor: "fun selectRoute(pkg: Package)"
+- id: estimate_cost
   selector:
-    path: src/routes.py
-    anchor: base_path = f"{prefix}/{version}"
-- id: config_loader
+    anchor: "fun estimateCost(pkg: Package)"
+- id: no_garbage_a
   selector:
-    path: src/config_loader.py
-    anchor: def get_deprecated_versions
-- id: config_loader_1
+    anchor: GARBAGE_PKG_A
+- id: no_garbage_b
   selector:
-    path: src/config_loader.py
-    anchor: deprecated_versions
-- id: no_openapi
+    anchor: GARBAGE_PKG_B
+- id: no_garbage_c
   selector:
-    path: config/openapi.yaml
-- id: no_serializers
+    anchor: GARBAGE_PKG_C
+- id: no_garbage_d
   selector:
-    path: src/serializers.py
-- id: no_middleware
-  selector:
-    path: src/middleware.py
-- id: no_rate_limits
-  selector:
-    path: config/rate_limits.yaml
-- id: no_test_routes
-  selector:
-    path: tests/test_routes.py
-- id: no_global_0
-  selector:
-    anchor: API Support
-- id: no_global_1
-  selector:
-    anchor: api@example.com
-- id: no_global_2
-  selector:
-    anchor: 'openapi: "3.0.0"'
-- id: no_global_3
-  selector:
-    anchor: ResponseSerializer
-- id: no_global_4
-  selector:
-    anchor: envelope
-- id: no_global_5
-  selector:
-    anchor: RequestLoggingMiddleware
-- id: no_global_6
-  selector:
-    anchor: process_request
-- id: no_global_7
-  selector:
-    anchor: requests_per_minute
-- id: no_global_8
-  selector:
-    anchor: burst_size
-- id: no_global_9
-  selector:
-    anchor: test_register_routes_default_version
-- id: no_global_10
-  selector:
-    anchor: test_register_routes_custom_version
+    anchor: GARBAGE_PKG_D
 oracle:
   required:
-  - routes
-  - routes_1
-  - config_loader
-  - config_loader_1
-  allowed: []
+  - select_route
+  allowed:
+  - estimate_cost
   forbidden:
-  - no_openapi
-  - no_serializers
-  - no_middleware
-  - no_rate_limits
-  - no_test_routes
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
-  - no_global_8
-  - no_global_9
-  - no_global_10
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

@@ -1,0 +1,141 @@
+name: bal_rare_016_nim_string_utils
+tags:
+- lang:json
+- lang:yaml
+- change:config
+- change:single_file
+- context:import_chain
+- distance:2hop
+- difficulty:medium
+repo:
+  initial_files:
+    config/telemetry.json: |
+      {
+        "telemetry": {
+          "exportInterval": 30,
+          "batchSize": 100,
+          "endpoint": "http://collector:4318"
+        }
+      }
+    src/telemetry/exporter.py: |
+      import json
+      from src.telemetry.batcher import MetricBatcher
+
+      def load_telemetry_config(path: str = "config/telemetry.json") -> dict:
+          with open(path) as f:
+              return json.load(f)
+
+      def create_exporter(config: dict) -> "OtlpExporter":
+          interval = config["telemetry"]["exportInterval"]
+          endpoint = config["telemetry"]["endpoint"]
+          return OtlpExporter(interval=interval, endpoint=endpoint)
+    src/telemetry/batcher.py: |
+      class MetricBatcher:
+          def __init__(self, batch_size: int, export_fn):
+              self.batch_size = batch_size
+              self.export_fn = export_fn
+              self._buffer = []
+
+          def record(self, metric: dict) -> None:
+              self._buffer.append(metric)
+              if len(self._buffer) >= self.batch_size:
+                  self.flush()
+
+          def flush(self) -> None:
+              if self._buffer:
+                  self.export_fn(self._buffer)
+                  self._buffer = []
+    garbage/HealthCheck.py: |
+      # GARBAGE_TEL_A = "health_check_marker"
+    garbage/AlertManager.py: |
+      # GARBAGE_TEL_B = "alert_manager_marker"
+    garbage/Dashboard.py: |
+      # GARBAGE_TEL_C = "dashboard_marker"
+    garbage/Retention.py: |
+      # GARBAGE_TEL_D = "retention_marker"
+  changed_files:
+    config/telemetry.json: |
+      {
+        "telemetry": {
+          "exportInterval": 10,
+          "batchSize": 500,
+          "endpoint": "http://collector:4318",
+          "compression": "gzip",
+          "retryAttempts": 3
+        }
+      }
+    src/telemetry/exporter.py: |
+      import json
+      from src.telemetry.batcher import MetricBatcher
+
+      def load_telemetry_config(path: str = "config/telemetry.json") -> dict:
+          with open(path) as f:
+              return json.load(f)
+
+      def create_exporter(config: dict) -> "OtlpExporter":
+          interval = config["telemetry"]["exportInterval"]
+          endpoint = config["telemetry"]["endpoint"]
+          compression = config["telemetry"].get("compression", "none")
+          retries = config["telemetry"].get("retryAttempts", 1)
+          return OtlpExporter(interval=interval, endpoint=endpoint,
+                              compression=compression, retries=retries)
+    src/telemetry/batcher.py: |
+      class MetricBatcher:
+          def __init__(self, batch_size: int, export_fn):
+              self.batch_size = batch_size
+              self.export_fn = export_fn
+              self._buffer = []
+
+          def record(self, metric: dict) -> None:
+              self._buffer.append(metric)
+              if len(self._buffer) >= self.batch_size:
+                  self.flush()
+
+          def flush(self) -> None:
+              if self._buffer:
+                  self.export_fn(self._buffer)
+                  self._buffer = []
+    garbage/HealthCheck.py: |
+      # GARBAGE_TEL_A = "health_check_marker"
+    garbage/AlertManager.py: |
+      # GARBAGE_TEL_B = "alert_manager_marker"
+    garbage/Dashboard.py: |
+      # GARBAGE_TEL_C = "dashboard_marker"
+    garbage/Retention.py: |
+      # GARBAGE_TEL_D = "retention_marker"
+  commit_message: "config: tune telemetry export interval, batch size, add compression and retry"
+fragments:
+- id: telemetry_config
+  selector:
+    path: config/telemetry.json
+    anchor: "exportInterval"
+- id: create_exporter
+  selector:
+    path: src/telemetry/exporter.py
+    anchor: "def create_exporter"
+- id: no_batcher
+  selector:
+    path: src/telemetry/batcher.py
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_TEL_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_TEL_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_TEL_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_TEL_D
+oracle:
+  required:
+  - telemetry_config
+  - create_exporter
+  allowed: []
+  forbidden:
+  - no_batcher
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

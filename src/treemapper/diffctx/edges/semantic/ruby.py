@@ -6,7 +6,7 @@ from pathlib import Path
 
 from ...config.weights import EDGE_WEIGHTS
 from ...types import Fragment, FragmentId
-from ..base import EdgeBuilder, EdgeDict, discover_files_by_refs
+from ..base import EdgeBuilder, EdgeDict, read_cached
 
 _RUBY_EXTS = {".rb", ".rake", ".gemspec"}
 _RUBY_FILES = {"rakefile", "gemfile", "guardfile", "vagrantfile", "capfile", "podfile"}
@@ -91,6 +91,9 @@ class _RubyIndex:
         self.dir_to_frags = defaultdict(list)
 
 
+_DISCOVERY_MAX_DEPTH = 2
+
+
 class RubyEdgeBuilder(EdgeBuilder):
     weight = 0.70
     require_weight = EDGE_WEIGHTS["ruby_require"].forward
@@ -110,22 +113,87 @@ class RubyEdgeBuilder(EdgeBuilder):
         if not ruby_changed:
             return []
 
-        refs: set[str] = set()
-        for f in ruby_changed:
-            try:
-                content = f.read_text(encoding="utf-8")
-                requires, relative_requires = _extract_requires(content)
-                for req in requires | relative_requires:
-                    refs.add(req.split("/")[-1].lower())
-                    refs.add(req.lower())
-                classes, modules, _ = _extract_definitions(content)
-                for name in classes | modules:
-                    underscore_path = re.sub(r"(?<=[a-z])(?=[A-Z])", "_", name).lower()
-                    refs.add(underscore_path)
-            except (OSError, UnicodeDecodeError):
-                continue
+        fc = kwargs.get("file_cache")
+        cache: dict[Path, str] | None = fc if isinstance(fc, dict) else None
 
-        return discover_files_by_refs(refs, changed_files, all_candidate_files, repo_root)
+        ruby_candidates = [f for f in all_candidate_files if _is_ruby_file(f)]
+        file_requires: dict[Path, set[str]] = {}
+        file_classes: dict[Path, set[str]] = {}
+
+        for candidate in ruby_candidates:
+            content = read_cached(candidate, cache)
+            if content is None:
+                continue
+            requires, relative_requires = _extract_requires(content)
+            all_reqs: set[str] = set()
+            for req in requires | relative_requires:
+                all_reqs.add(req.split("/")[-1].lower())
+            file_requires[candidate] = all_reqs
+            classes, modules, _ = _extract_definitions(content)
+            file_classes[candidate] = {c.lower() for c in classes | modules}
+            file_classes[candidate].add(candidate.stem.lower())
+
+        changed_set = set(changed_files)
+        discovered: set[Path] = set()
+        frontier = set(ruby_changed)
+
+        for _depth in range(_DISCOVERY_MAX_DEPTH):
+            frontier_names, frontier_classes = self._collect_frontier_refs(frontier, cache)
+            frontier = self._discover_one_hop(
+                ruby_candidates,
+                changed_set | discovered,
+                frontier_names,
+                frontier_classes,
+                file_requires,
+                cache,
+            )
+            discovered.update(frontier)
+            if not frontier:
+                break
+
+        return list(discovered)
+
+    @staticmethod
+    def _collect_frontier_refs(
+        frontier: set[Path],
+        cache: dict[Path, str] | None,
+    ) -> tuple[set[str], set[str]]:
+        names: set[str] = set()
+        classes: set[str] = set()
+        for f in frontier:
+            names.add(f.stem.lower())
+            names.add(re.sub(r"(?<=[a-z])(?=[A-Z])", "_", f.stem).lower())
+            content = read_cached(f, cache)
+            if content is None:
+                continue
+            cls, mods, _ = _extract_definitions(content)
+            for n in cls | mods:
+                classes.add(n.lower())
+                names.add(re.sub(r"(?<=[a-z])(?=[A-Z])", "_", n).lower())
+        return names, classes
+
+    @staticmethod
+    def _discover_one_hop(
+        candidates: list[Path],
+        skip: set[Path],
+        frontier_names: set[str],
+        frontier_classes: set[str],
+        file_requires: dict[Path, set[str]],
+        cache: dict[Path, str] | None,
+    ) -> set[Path]:
+        found: set[Path] = set()
+        for candidate in candidates:
+            if candidate in skip:
+                continue
+            if file_requires.get(candidate, set()) & frontier_names:
+                found.add(candidate)
+                continue
+            cand_content = read_cached(candidate, cache)
+            if cand_content:
+                includes = _extract_includes(cand_content)
+                if {i.lower() for i in includes} & frontier_classes:
+                    found.add(candidate)
+        return found
 
     def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:
         ruby_frags = [f for f in fragments if _is_ruby_file(f.path)]

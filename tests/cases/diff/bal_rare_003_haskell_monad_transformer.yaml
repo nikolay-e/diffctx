@@ -1,0 +1,163 @@
+name: bal_rare_003_haskell_monad_transformer
+tags:
+- lang:haskell
+- change:single_file
+- change:bug_fix
+- context:same_file
+- distance:0hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/Config.hs: |
+      module Config where
+
+      data AppConfig = AppConfig
+        { dbHost :: String
+        , dbPort :: Int
+        , logLevel :: String
+        } deriving (Show)
+
+      defaultConfig :: AppConfig
+      defaultConfig = AppConfig
+        { dbHost = "localhost"
+        , dbPort = 5432
+        , logLevel = "info"
+        }
+
+      getConnectionString :: AppConfig -> String
+      getConnectionString cfg =
+        "host=" ++ dbHost cfg ++ " port=" ++ show (dbPort cfg)
+    src/Database.hs: |
+      module Database where
+      import Config (AppConfig, getConnectionString)
+
+      data Connection = Connection String deriving (Show)
+
+      connect :: AppConfig -> IO Connection
+      connect cfg = do
+        let connStr = getConnectionString cfg
+        return (Connection connStr)
+
+      query :: Connection -> String -> IO [String]
+      query _ _ = return []
+    garbage_email.hs: |
+      module GarbageEmail where
+      GARBAGE_RARE_003_SMTP_A = "smtp.example.com"
+      GARBAGE_RARE_003_PORT_B = 587
+
+      sendEmail :: String -> String -> IO ()
+      sendEmail _ _ = return ()
+
+      GARBAGE_RARE_003_TLS_C = True
+    garbage_queue.hs: |
+      module GarbageQueue where
+      GARBAGE_RARE_003_QUEUE_D = "rabbitmq"
+      GARBAGE_RARE_003_PREFETCH_E = 10
+
+      publishMessage :: String -> IO ()
+      publishMessage _ = return ()
+
+      GARBAGE_RARE_003_RETRY_F = 3
+  changed_files:
+    src/Config.hs: |
+      module Config where
+
+      data AppConfig = AppConfig
+        { dbHost :: String
+        , dbPort :: Int
+        , logLevel :: String
+        } deriving (Show)
+
+      defaultConfig :: AppConfig
+      defaultConfig = AppConfig
+        { dbHost = "localhost"
+        , dbPort = 5432
+        , logLevel = "info"
+        }
+
+      getConnectionString :: AppConfig -> String
+      getConnectionString cfg =
+        "host=" ++ dbHost cfg ++ " port=" ++ show (dbPort cfg) ++ " sslmode=require"
+    src/Database.hs: |
+      module Database where
+      import Config (AppConfig, getConnectionString)
+
+      data Connection = Connection String deriving (Show)
+
+      connect :: AppConfig -> IO Connection
+      connect cfg = do
+        let connStr = getConnectionString cfg
+        return (Connection connStr)
+
+      query :: Connection -> String -> IO [String]
+      query _ _ = return []
+    garbage_email.hs: |
+      module GarbageEmail where
+      GARBAGE_RARE_003_SMTP_A = "smtp.example.com"
+      GARBAGE_RARE_003_PORT_B = 587
+
+      sendEmail :: String -> String -> IO ()
+      sendEmail _ _ = return ()
+
+      GARBAGE_RARE_003_TLS_C = True
+    garbage_queue.hs: |
+      module GarbageQueue where
+      GARBAGE_RARE_003_QUEUE_D = "rabbitmq"
+      GARBAGE_RARE_003_PREFETCH_E = 10
+
+      publishMessage :: String -> IO ()
+      publishMessage _ = return ()
+
+      GARBAGE_RARE_003_RETRY_F = 3
+  commit_message: "fix: add sslmode to connection string"
+fragments:
+- id: config_conn_string
+  selector:
+    path: src/Config.hs
+    anchor: "getConnectionString"
+- id: config_sslmode
+  selector:
+    path: src/Config.hs
+    anchor: "sslmode=require"
+- id: no_database
+  selector:
+    path: src/Database.hs
+- id: no_garbage_email
+  selector:
+    path: garbage_email.hs
+- id: no_garbage_queue
+  selector:
+    path: garbage_queue.hs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_RARE_003_SMTP_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_RARE_003_PORT_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_RARE_003_TLS_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_RARE_003_QUEUE_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_RARE_003_PREFETCH_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_RARE_003_RETRY_F
+oracle:
+  required:
+  - config_conn_string
+  - config_sslmode
+  allowed: []
+  forbidden:
+  - no_database
+  - no_garbage_email
+  - no_garbage_queue
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

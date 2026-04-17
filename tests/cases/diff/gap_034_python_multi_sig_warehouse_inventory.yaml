@@ -1,0 +1,162 @@
+name: gap_034_python_multi_sig_warehouse_inventory
+tags:
+- change:multi_file
+- change:signature
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:python
+repo:
+  initial_files:
+    warehouse/stock.py: |
+      from dataclasses import dataclass
+
+      @dataclass
+      class StockItem:
+          sku: str
+          quantity: int
+          location: str
+
+      class StockLedger:
+          def __init__(self):
+              self.items: dict[str, StockItem] = {}
+
+          def add(self, sku: str, quantity: int, location: str) -> StockItem:
+              if sku in self.items:
+                  self.items[sku].quantity += quantity
+              else:
+                  self.items[sku] = StockItem(sku, quantity, location)
+              return self.items[sku]
+
+          def remove(self, sku: str, quantity: int) -> int:
+              if sku not in self.items:
+                  return 0
+              item = self.items[sku]
+              removed = min(quantity, item.quantity)
+              item.quantity -= removed
+              return removed
+    warehouse/picker.py: |
+      class PickOrder:
+          def __init__(self, order_id: str):
+              self.order_id = order_id
+              self.lines: list[tuple[str, int]] = []
+
+          def add_line(self, sku: str, quantity: int) -> None:
+              self.lines.append((sku, quantity))
+
+          def total_items(self) -> int:
+              return sum(q for _, q in self.lines)
+
+          def unique_skus(self) -> int:
+              return len(set(s for s, _ in self.lines))
+    warehouse/receiving.py: |
+      GARBAGE_GAP_034_RECV_A = "dock_marker"
+      GARBAGE_GAP_034_VENDOR_B = "acme"
+
+      def log_receipt(vendor: str, items: list[dict]) -> str:
+          return f"received_{vendor}_{len(items)}"
+    warehouse/shipping.py: |
+      GARBAGE_GAP_034_SHIP_C = "carrier_marker"
+      GARBAGE_GAP_034_ZONE_D = "domestic"
+
+      def estimate_cost(weight_kg: float, zone: str) -> float:
+          return weight_kg * (5.0 if zone == "international" else 2.5)
+  changed_files:
+    warehouse/stock.py: |
+      from dataclasses import dataclass
+
+      @dataclass
+      class StockItem:
+          sku: str
+          quantity: int
+          location: str
+          min_quantity: int = 0
+
+      class StockLedger:
+          def __init__(self):
+              self.items: dict[str, StockItem] = {}
+
+          def add(self, sku: str, quantity: int, location: str, min_quantity: int = 0) -> StockItem:
+              if sku in self.items:
+                  self.items[sku].quantity += quantity
+              else:
+                  self.items[sku] = StockItem(sku, quantity, location, min_quantity)
+              return self.items[sku]
+
+          def remove(self, sku: str, quantity: int) -> int:
+              if sku not in self.items:
+                  return 0
+              item = self.items[sku]
+              removed = min(quantity, item.quantity)
+              item.quantity -= removed
+              return removed
+
+          def low_stock_alerts(self) -> list[StockItem]:
+              return [i for i in self.items.values() if i.quantity <= i.min_quantity]
+    warehouse/picker.py: |
+      class PickOrder:
+          def __init__(self, order_id: str, priority: int = 0):
+              self.order_id = order_id
+              self.priority = priority
+              self.lines: list[tuple[str, int]] = []
+
+          def add_line(self, sku: str, quantity: int) -> None:
+              self.lines.append((sku, quantity))
+
+          def total_items(self) -> int:
+              return sum(q for _, q in self.lines)
+
+          def unique_skus(self) -> int:
+              return len(set(s for s, _ in self.lines))
+  commit_message: "add min stock threshold and pick order priority"
+fixtures:
+  auto_garbage: true
+fragments:
+- id: stock_min_qty
+  selector:
+    path: warehouse/stock.py
+    anchor: "min_quantity: int"
+- id: stock_low_alerts
+  selector:
+    path: warehouse/stock.py
+    anchor: "def low_stock_alerts"
+- id: stock_add
+  selector:
+    path: warehouse/stock.py
+    anchor: "def add"
+- id: picker_init
+  selector:
+    path: warehouse/picker.py
+    anchor: "def __init__"
+- id: no_receiving
+  selector:
+    path: warehouse/receiving.py
+- id: no_shipping
+  selector:
+    path: warehouse/shipping.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_034_RECV_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GAP_034_VENDOR_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GAP_034_SHIP_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GAP_034_ZONE_D
+oracle:
+  required:
+  - stock_min_qty
+  - stock_low_alerts
+  - stock_add
+  - picker_init
+  allowed: []
+  forbidden:
+  - no_receiving
+  - no_shipping
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

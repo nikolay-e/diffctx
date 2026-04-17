@@ -1,169 +1,102 @@
 name: scala_018_cats_effect
+tags:
+- lang:kotlin
+- change:bug_fix
+- change:single_file
+- context:test_file
+- distance:1hop
+- difficulty:trivial
 repo:
   initial_files:
-    Database.scala: |
-      import cats.effect.IO
+    src/main/kotlin/auth/TokenValidator.kt: |
+      class TokenValidator {
+          fun validate(token: String): Boolean {
+              return token.length > 0  // BUG: accepts whitespace-only tokens
+          }
 
-      object Database {
-        def connect(): IO[Unit] = IO(println("Connected"))
-        def disconnect(): IO[Unit] = IO(println("Disconnected"))
-        def query(sql: String): IO[List[String]] = IO(List("result1", "result2"))
+          fun extractUserId(token: String): String {
+              return token.split(".").last()
+          }
       }
-    Program.scala: |
-      object Program {}
-    Cache.scala: |
-      import cats.effect.{IO, Ref}
+    src/test/kotlin/auth/TokenValidatorTest.kt: |
+      import org.junit.Test
+      import kotlin.test.assertFalse
+      import kotlin.test.assertTrue
 
-      class Cache(ref: Ref[IO, Map[String, String]]) {
-        def get(key: String): IO[Option[String]] =
-          ref.get.map(_.get(key))
+      class TokenValidatorTest {
+          private val validator = TokenValidator()
 
-        def put(key: String, value: String): IO[Unit] =
-          ref.update(_ + (key -> value))
+          @Test fun validTokenPasses() {
+              assertTrue(validator.validate("eyJ.payload.sig"))
+          }
 
-        def remove(key: String): IO[Unit] =
-          ref.update(_ - key)
-
-        def size: IO[Int] =
-          ref.get.map(_.size)
+          @Test fun emptyTokenFails() {
+              assertFalse(validator.validate(""))
+          }
       }
-
-      object Cache {
-        def empty: IO[Cache] =
-          Ref.of[IO, Map[String, String]](Map.empty).map(new Cache(_))
-      }
-    Migrations.scala: |
-      import cats.effect.IO
-
-      object Migrations {
-        def runAll(): IO[Unit] = for {
-          _ <- IO(println("Running migration 1: create users table"))
-          _ <- IO(println("Running migration 2: create orders table"))
-          _ <- IO(println("Running migration 3: add indexes"))
-        } yield ()
-
-        def rollback(version: Int): IO[Unit] =
-          IO(println(s"Rolling back to version $version"))
-      }
+    garbage/PaymentLogger.kt: |
+      // GARBAGE_SCALA018_A = "payment_logger_marker"
+    garbage/ShipmentConfig.kt: |
+      // GARBAGE_SCALA018_B = "shipment_config_marker"
+    garbage/InventoryCache.kt: |
+      // GARBAGE_SCALA018_C = "inventory_cache_marker"
   changed_files:
-    Database.scala: |
-      import cats.effect.IO
+    src/main/kotlin/auth/TokenValidator.kt: |
+      class TokenValidator {
+          fun validate(token: String): Boolean {
+              return token.isNotBlank()
+          }
 
-      object Database {
-        def connect(): IO[Unit] = IO(println("Connected"))
-        def disconnect(): IO[Unit] = IO(println("Disconnected"))
-        def query(sql: String): IO[List[String]] = IO(List("result1", "result2"))
+          fun extractUserId(token: String): String {
+              return token.split(".").last()
+          }
       }
-    Program.scala: |
-      import cats.effect.{IO, IOApp, ExitCode}
-      import cats.syntax.all._
+    src/test/kotlin/auth/TokenValidatorTest.kt: |
+      import org.junit.Test
+      import kotlin.test.assertFalse
+      import kotlin.test.assertTrue
 
-      object Program extends IOApp {
-        def program: IO[Unit] = for {
-          _ <- Database.connect()
-          results <- Database.query("SELECT * FROM users")
-          _ <- IO(results.foreach(println))
-          _ <- Database.disconnect()
-        } yield ()
+      class TokenValidatorTest {
+          private val validator = TokenValidator()
 
-        def run(args: List[String]): IO[ExitCode] = {
-          program.as(ExitCode.Success)
-        }
+          @Test fun validTokenPasses() {
+              assertTrue(validator.validate("eyJ.payload.sig"))
+          }
+
+          @Test fun emptyTokenFails() {
+              assertFalse(validator.validate(""))
+          }
       }
-    Cache.scala: |
-      import cats.effect.{IO, Ref}
-
-      class Cache(ref: Ref[IO, Map[String, String]]) {
-        def get(key: String): IO[Option[String]] =
-          ref.get.map(_.get(key))
-
-        def put(key: String, value: String): IO[Unit] =
-          ref.update(_ + (key -> value))
-
-        def remove(key: String): IO[Unit] =
-          ref.update(_ - key)
-
-        def size: IO[Int] =
-          ref.get.map(_.size)
-      }
-
-      object Cache {
-        def empty: IO[Cache] =
-          Ref.of[IO, Map[String, String]](Map.empty).map(new Cache(_))
-      }
-    Migrations.scala: |
-      import cats.effect.IO
-
-      object Migrations {
-        def runAll(): IO[Unit] = for {
-          _ <- IO(println("Running migration 1: create users table"))
-          _ <- IO(println("Running migration 2: create orders table"))
-          _ <- IO(println("Running migration 3: add indexes"))
-        } yield ()
-
-        def rollback(version: Int): IO[Unit] =
-          IO(println(s"Rolling back to version $version"))
-      }
-  commit_message: Update files
+    garbage/PaymentLogger.kt: |
+      // GARBAGE_SCALA018_A = "payment_logger_marker"
+    garbage/ShipmentConfig.kt: |
+      // GARBAGE_SCALA018_B = "shipment_config_marker"
+    garbage/InventoryCache.kt: |
+      // GARBAGE_SCALA018_C = "inventory_cache_marker"
+  commit_message: "fix: use isNotBlank to reject whitespace-only tokens"
 fragments:
-- id: program
+- id: validate_method
   selector:
-    path: Program.scala
-    anchor: import cats.effect.{IO, IOApp, ExitCode}
-- id: program_1
+    path: src/main/kotlin/auth/TokenValidator.kt
+    anchor: "fun validate(token: String)"
+- id: test_file
   selector:
-    path: Program.scala
-    anchor: _ <- Database.connect()
-- id: program_2
+    path: src/test/kotlin/auth/TokenValidatorTest.kt
+- id: no_garbage_a
   selector:
-    path: Program.scala
-    anchor: results <- Database.query
-- id: database
+    anchor: GARBAGE_SCALA018_A
+- id: no_garbage_b
   selector:
-    path: Database.scala
-    anchor: 'def connect(): IO[Unit]'
-- id: database_1
+    anchor: GARBAGE_SCALA018_B
+- id: no_garbage_c
   selector:
-    path: Database.scala
-    anchor: 'def query(sql: String): IO[List[String]]'
-- id: no_cache
-  selector:
-    path: Cache.scala
-- id: no_migrations
-  selector:
-    path: Migrations.scala
-- id: no_global_0
-  selector:
-    anchor: class Cache
-- id: no_global_1
-  selector:
-    anchor: Ref.of[IO
-- id: no_global_2
-  selector:
-    anchor: ref.update
-- id: no_global_3
-  selector:
-    anchor: Migrations
-- id: no_global_4
-  selector:
-    anchor: runAll
-- id: no_global_5
-  selector:
-    anchor: rollback
+    anchor: GARBAGE_SCALA018_C
 oracle:
   required:
-  - program
-  - program_1
-  - program_2
-  - database
-  - database_1
+  - validate_method
+  - test_file
   allowed: []
   forbidden:
-  - no_cache
-  - no_migrations
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

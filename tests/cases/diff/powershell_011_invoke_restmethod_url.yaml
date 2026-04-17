@@ -1,0 +1,92 @@
+name: powershell_011_invoke_restmethod_url
+tags:
+- lang:powershell
+- change:single_file
+- change:refactor
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    api.ps1: |
+      $Script:ApiBaseUrl = "https://api.v1.example.com"
+
+      function Get-ApiUser {
+          param([int]$UserId)
+          return Invoke-RestMethod -Uri "$Script:ApiBaseUrl/users/$UserId" -Method Get
+      }
+
+      function Get-ApiOrders {
+          param([int]$UserId)
+          return Invoke-RestMethod -Uri "$Script:ApiBaseUrl/users/$UserId/orders" -Method Get
+      }
+
+      function New-ApiOrder {
+          param([int]$UserId, [hashtable]$OrderData)
+          $body = $OrderData | ConvertTo-Json
+          return Invoke-RestMethod -Uri "$Script:ApiBaseUrl/users/$UserId/orders" -Method Post -Body $body -ContentType "application/json"
+      }
+    PS_NOISE_011_SshUtils.psm1: |
+      function PS_NOISE_011_Invoke-SshCommand {
+          param([string]$Host, [string]$Command, [string]$KeyPath)
+          return ssh -i $KeyPath "$Host" $Command
+      }
+      Export-ModuleMember -Function PS_NOISE_011_Invoke-SshCommand
+    PS_NOISE_011_DockerUtils.psm1: |
+      function PS_NOISE_011_Get-RunningContainers {
+          param([string]$Filter)
+          $result = docker ps --filter "name=$Filter" --format "{{.Names}}"
+          return $result -split "`n" | Where-Object { $_ }
+      }
+      Export-ModuleMember -Function PS_NOISE_011_Get-RunningContainers
+  changed_files:
+    api.ps1: |
+      $Script:ApiBaseUrl = "https://api.v2.example.com"
+
+      function Get-ApiUser {
+          param([int]$UserId)
+          return Invoke-RestMethod -Uri "$Script:ApiBaseUrl/users/$UserId" -Method Get
+      }
+
+      function Get-ApiOrders {
+          param([int]$UserId)
+          return Invoke-RestMethod -Uri "$Script:ApiBaseUrl/users/$UserId/orders" -Method Get
+      }
+
+      function New-ApiOrder {
+          param([int]$UserId, [hashtable]$OrderData)
+          $body = $OrderData | ConvertTo-Json
+          return Invoke-RestMethod -Uri "$Script:ApiBaseUrl/users/$UserId/orders" -Method Post -Body $body -ContentType "application/json"
+      }
+  commit_message: "config: migrate API base URL from v1 to v2"
+fragments:
+- id: api_base_url
+  selector:
+    path: api.ps1
+    anchor: ApiBaseUrl
+- id: get_api_user
+  selector:
+    path: api.ps1
+    anchor: Get-ApiUser
+- id: no_ssh_utils
+  selector:
+    path: PS_NOISE_011_SshUtils.psm1
+- id: no_docker_utils
+  selector:
+    path: PS_NOISE_011_DockerUtils.psm1
+- id: no_global_0
+  selector:
+    anchor: PS_NOISE_011_Invoke-SshCommand
+- id: no_global_1
+  selector:
+    anchor: PS_NOISE_011_Get-RunningContainers
+oracle:
+  required:
+  - api_base_url
+  - get_api_user
+  allowed: []
+  forbidden:
+  - no_ssh_utils
+  - no_docker_utils
+  - no_global_0
+  - no_global_1

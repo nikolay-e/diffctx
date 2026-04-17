@@ -1,0 +1,154 @@
+name: gap2_125_python_multi_file_invoice_generator
+tags:
+- change:multi_file
+- change:new_function
+- change:signature
+- context:same_file
+- difficulty:medium
+- distance:0hop
+- lang:python
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    billing/invoice.py: |
+      from dataclasses import dataclass
+      from typing import List
+      from decimal import Decimal
+
+      @dataclass
+      class LineItem:
+          description: str
+          quantity: int
+          unit_price: Decimal
+
+          def subtotal(self) -> Decimal:
+              return self.unit_price * self.quantity
+
+      @dataclass
+      class Invoice:
+          invoice_id: str
+          customer_name: str
+          items: List[LineItem]
+
+          def total(self) -> Decimal:
+              return sum(item.subtotal() for item in self.items)
+    billing/formatter.py: |
+      from billing.invoice import Invoice
+
+      class InvoiceFormatter:
+          def to_text(self, invoice: Invoice) -> str:
+              lines = [f"Invoice: {invoice.invoice_id}"]
+              for item in invoice.items:
+                  lines.append(f"  {item.description}: {item.subtotal()}")
+              lines.append(f"Total: {invoice.total()}")
+              return "\n".join(lines)
+    billing/tax.py: |
+      TRAP_GAP2_125_TAX_A = "tax_noise"
+      TRAP_GAP2_125_TAX_B = 0.21
+
+      def calculate_vat(amount, rate=0.21):
+          return amount * rate
+    billing/currency.py: |
+      TRAP_GAP2_125_CURR_C = "currency_noise"
+      TRAP_GAP2_125_CURR_D = "EUR"
+
+      EXCHANGE_RATES = {"USD": 1.0, "EUR": 0.92, "GBP": 0.79}
+
+      def convert(amount, from_cur, to_cur):
+          usd = amount / EXCHANGE_RATES[from_cur]
+          return usd * EXCHANGE_RATES[to_cur]
+  changed_files:
+    billing/invoice.py: |
+      from dataclasses import dataclass, field
+      from typing import List, Optional
+      from decimal import Decimal
+      from datetime import date
+
+      @dataclass
+      class LineItem:
+          description: str
+          quantity: int
+          unit_price: Decimal
+
+          def subtotal(self) -> Decimal:
+              return self.unit_price * self.quantity
+
+      @dataclass
+      class Invoice:
+          invoice_id: str
+          customer_name: str
+          items: List[LineItem]
+          due_date: Optional[date] = None
+          discount_pct: Decimal = Decimal("0")
+
+          def total(self) -> Decimal:
+              raw = sum(item.subtotal() for item in self.items)
+              return raw * (1 - self.discount_pct / 100)
+
+          def is_overdue(self, today: date) -> bool:
+              if self.due_date is None:
+                  return False
+              return today > self.due_date
+    billing/formatter.py: |
+      from billing.invoice import Invoice
+
+      class InvoiceFormatter:
+          def to_text(self, invoice: Invoice) -> str:
+              lines = [f"Invoice: {invoice.invoice_id}"]
+              if invoice.due_date:
+                  lines.append(f"Due: {invoice.due_date.isoformat()}")
+              for item in invoice.items:
+                  lines.append(f"  {item.description}: {item.subtotal()}")
+              if invoice.discount_pct:
+                  lines.append(f"Discount: {invoice.discount_pct}%")
+              lines.append(f"Total: {invoice.total()}")
+              return "\n".join(lines)
+fragments:
+- id: due_date_field
+  selector:
+    path: billing/invoice.py
+    anchor: "due_date: Optional[date] = None"
+- id: discount_field
+  selector:
+    path: billing/invoice.py
+    anchor: "discount_pct: Decimal"
+- id: is_overdue
+  selector:
+    path: billing/invoice.py
+    anchor: "def is_overdue(self, today: date) -> bool:"
+- id: formatter_due
+  selector:
+    path: billing/formatter.py
+    anchor: invoice.due_date.isoformat()
+- id: no_tax
+  selector:
+    path: billing/tax.py
+- id: no_currency
+  selector:
+    path: billing/currency.py
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_125_TAX_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_125_TAX_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP2_125_CURR_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP2_125_CURR_D
+oracle:
+  required:
+  - due_date_field
+  - discount_field
+  - is_overdue
+  - formatter_due
+  forbidden:
+  - no_tax
+  - no_currency
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

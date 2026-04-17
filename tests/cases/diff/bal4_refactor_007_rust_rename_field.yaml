@@ -1,0 +1,114 @@
+name: bal4_refactor_007_rust_rename_field
+tags:
+- lang:rust
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/config.rs: |
+      pub struct Config {
+          pub addr: String,
+          pub port: u16,
+      }
+
+      impl Config {
+          pub fn new() -> Self {
+              Config { addr: "0.0.0.0".into(), port: 8080 }
+          }
+      }
+    src/server.rs: |
+      use crate::config::Config;
+
+      pub fn start(cfg: &Config) {
+          println!("{}:{}", cfg.addr, cfg.port);
+      }
+    src/garbage_log.rs: |
+      // GARBAGE_BAL4R007_LOG_A
+      pub const GARBAGE_BAL4R007_LEVEL_B: &str = "info";
+
+      pub struct GarbageLogger {
+          // GARBAGE_BAL4R007_LOGGER_C
+      }
+    src/garbage_cache.rs: |
+      // GARBAGE_BAL4R007_CACHE_D
+      pub const GARBAGE_BAL4R007_TTL_E: u64 = 300;
+  changed_files:
+    src/config.rs: |
+      pub struct Config {
+          pub host: String,
+          pub port: u16,
+      }
+
+      impl Config {
+          pub fn new() -> Self {
+              Config { host: "0.0.0.0".into(), port: 8080 }
+          }
+      }
+    src/server.rs: |
+      use crate::config::Config;
+
+      pub fn start(cfg: &Config) {
+          println!("{}:{}", cfg.host, cfg.port);
+      }
+    src/garbage_log.rs: |
+      // GARBAGE_BAL4R007_LOG_A
+      pub const GARBAGE_BAL4R007_LEVEL_B: &str = "info";
+
+      pub struct GarbageLogger {
+          // GARBAGE_BAL4R007_LOGGER_C
+      }
+    src/garbage_cache.rs: |
+      // GARBAGE_BAL4R007_CACHE_D
+      pub const GARBAGE_BAL4R007_TTL_E: u64 = 300;
+  commit_message: "refactor: rename addr field to host"
+fragments:
+- id: renamed_field_def
+  selector:
+    path: src/config.rs
+    anchor: "pub host: String"
+- id: renamed_field_init
+  selector:
+    path: src/config.rs
+    anchor: "host: \"0.0.0.0\""
+- id: caller_uses_host
+  selector:
+    path: src/server.rs
+    anchor: "cfg.host"
+- id: no_garbage_log
+  selector:
+    path: src/garbage_log.rs
+- id: no_garbage_cache
+  selector:
+    path: src/garbage_cache.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL4R007_LOG_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL4R007_LEVEL_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL4R007_LOGGER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL4R007_CACHE_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL4R007_TTL_E
+oracle:
+  required:
+  - renamed_field_def
+  - renamed_field_init
+  - caller_uses_host
+  allowed: []
+  forbidden:
+  - no_garbage_log
+  - no_garbage_cache
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

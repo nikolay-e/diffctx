@@ -1,0 +1,161 @@
+name: gap2_112_ts_config_import_chain_db_connection
+tags:
+- change:config
+- change:single_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:typescript
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/config/database.ts: |
+      export interface DatabaseConfig {
+        host: string;
+        port: number;
+        name: string;
+        poolSize: number;
+        sslMode: string;
+      }
+
+      export const dbConfig: DatabaseConfig = {
+        host: "localhost",
+        port: 5432,
+        name: "devdb",
+        poolSize: 5,
+        sslMode: "disable",
+      };
+    src/db/pool.ts: |
+      import { dbConfig } from "../config/database";
+
+      export function createConnectionString(): string {
+        const ssl = dbConfig.sslMode !== "disable" ? `?sslmode=${dbConfig.sslMode}` : "";
+        return `postgres://${dbConfig.host}:${dbConfig.port}/${dbConfig.name}${ssl}`;
+      }
+
+      export function getPoolSize(): number {
+        return dbConfig.poolSize;
+      }
+    src/repositories/user_repo.ts: |
+      import { createConnectionString, getPoolSize } from "../db/pool";
+
+      export function initUserRepo(): string {
+        const connStr = createConnectionString();
+        const pool = getPoolSize();
+        return `UserRepo: ${connStr} (pool=${pool})`;
+      }
+
+      export function findUserById(id: number): string {
+        return `SELECT * FROM users WHERE id = ${id}`;
+      }
+    src/utils/retry.ts: |
+      const TRAP_GAP2_112_RETRY_A: string = "retry_helper";
+      const TRAP_GAP2_112_BACKOFF_B: number = 1000;
+
+      export function withRetry<T>(fn: () => T, maxAttempts: number): T {
+        let lastError: Error | undefined;
+        for (let i = 0; i < maxAttempts; i++) {
+          try {
+            return fn();
+          } catch (e) {
+            lastError = e as Error;
+          }
+        }
+        throw lastError;
+      }
+  changed_files:
+    src/config/database.ts: |
+      export interface DatabaseConfig {
+        host: string;
+        port: number;
+        name: string;
+        poolSize: number;
+        sslMode: string;
+        statementTimeout: number;
+      }
+
+      export const dbConfig: DatabaseConfig = {
+        host: "db.production.internal",
+        port: 5432,
+        name: "proddb",
+        poolSize: 20,
+        sslMode: "require",
+        statementTimeout: 30000,
+      };
+    src/db/pool.ts: |
+      import { dbConfig } from "../config/database";
+
+      export function createConnectionString(): string {
+        const ssl = dbConfig.sslMode !== "disable" ? `?sslmode=${dbConfig.sslMode}` : "";
+        return `postgres://${dbConfig.host}:${dbConfig.port}/${dbConfig.name}${ssl}`;
+      }
+
+      export function getPoolSize(): number {
+        return dbConfig.poolSize;
+      }
+    src/repositories/user_repo.ts: |
+      import { createConnectionString, getPoolSize } from "../db/pool";
+
+      export function initUserRepo(): string {
+        const connStr = createConnectionString();
+        const pool = getPoolSize();
+        return `UserRepo: ${connStr} (pool=${pool})`;
+      }
+
+      export function findUserById(id: number): string {
+        return `SELECT * FROM users WHERE id = ${id}`;
+      }
+    src/utils/retry.ts: |
+      const TRAP_GAP2_112_RETRY_A: string = "retry_helper";
+      const TRAP_GAP2_112_BACKOFF_B: number = 1000;
+
+      export function withRetry<T>(fn: () => T, maxAttempts: number): T {
+        let lastError: Error | undefined;
+        for (let i = 0; i < maxAttempts; i++) {
+          try {
+            return fn();
+          } catch (e) {
+            lastError = e as Error;
+          }
+        }
+        throw lastError;
+      }
+  commit_message: Update files
+fragments:
+- id: db_host
+  selector:
+    path: src/config/database.ts
+    anchor: '"db.production.internal"'
+- id: db_ssl
+  selector:
+    path: src/config/database.ts
+    anchor: '"require"'
+- id: pool_conn
+  selector:
+    path: src/db/pool.ts
+    anchor: dbConfig.sslMode
+- id: repo_init
+  selector:
+    path: src/repositories/user_repo.ts
+    anchor: createConnectionString
+- id: no_retry
+  selector:
+    path: src/utils/retry.ts
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_112_RETRY_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_112_BACKOFF_B
+oracle:
+  required:
+  - db_host
+  - db_ssl
+  - pool_conn
+  - repo_init
+  allowed: []
+  forbidden:
+  - no_retry
+  - no_global_0
+  - no_global_1

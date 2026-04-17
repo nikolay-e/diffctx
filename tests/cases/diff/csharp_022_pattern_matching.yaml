@@ -1,134 +1,155 @@
 name: csharp_022_pattern_matching
+tags:
+- lang:typescript
+- change:multi_file
+- context:same_file
+- distance:0hop
+- difficulty:trivial
 repo:
   initial_files:
-    Models/Shape.cs: |
-      namespace MyApp.Models;
+    src/components/Alert.tsx: |
+      import React from 'react';
 
-      public abstract class Shape { }
-
-      public class Circle : Shape
-      {
-          public double Radius { get; set; }
+      interface AlertProps {
+        message: string;
+        type: 'info' | 'success' | 'warning' | 'error';
       }
 
-      public class Rectangle : Shape
-      {
-          public double Width { get; set; }
-          public double Height { get; set; }
+      export const Alert: React.FC<AlertProps> = ({ message, type }) => (
+        <div className={`alert alert-${type}`}>{message}</div>
+      );
+    src/components/Avatar.tsx: |
+      import React from 'react';
+
+      interface AvatarProps {
+        src?: string;
+        alt: string;
+        size?: number;
       }
 
-      public class Triangle : Shape
-      {
-          public double Base { get; set; }
-          public double Height { get; set; }
-      }
-    Services/AreaCalculator.cs: |
-      namespace MyApp.Services;
-
-      public class AreaCalculator { }
-    Unrelated/TaxCalculator.cs: |
-      namespace MyApp.Unrelated;
-
-      public class TaxCalculator
-      {
-          private const string GARBAGE_CS_022_TAX_CALCULATOR_A = "tax_calculator_marker";
-
-          public decimal Calculate(decimal amount) => amount * 0.2m;
-      }
-    Unrelated/DiscountEngine.cs: |
-      namespace MyApp.Unrelated;
-
-      public class DiscountEngine
-      {
-          public const string GARBAGE_CS_022_DISCOUNT_ENGINE_B = "discount_engine_marker";
-
-          public decimal Apply(decimal price, decimal percent) => price * (1 - percent);
-      }
+      export const Avatar: React.FC<AvatarProps> = ({ src, alt, size = 40 }) => (
+        <img
+          src={src ?? `https://ui-avatars.com/api/?name=${encodeURIComponent(alt)}`}
+          alt={alt}
+          width={size}
+          height={size}
+          className="avatar"
+        />
+      );
+    garbage/animations.ts: |
+      const GARBAGE_CS022_ANIM_A = "animations_marker";
+      export function fadeIn(el: HTMLElement): void {}
+    garbage/breakpoints.ts: |
+      const GARBAGE_CS022_BP_B = "breakpoints_marker";
+      export const MOBILE = 768;
+    garbage/zindex.ts: |
+      const GARBAGE_CS022_ZIDX_C = "zindex_marker";
+      export const MODAL_Z = 1000;
   changed_files:
-    Models/Shape.cs: |
-      namespace MyApp.Models;
+    src/components/Alert.tsx: |
+      import React from 'react';
 
-      public abstract class Shape { }
-
-      public class Circle : Shape
-      {
-          public double Radius { get; set; }
+      interface AlertProps {
+        message: string;
+        type: 'info' | 'success' | 'warning' | 'error';
+        dismissible?: boolean;
+        onDismiss?: () => void;
+        icon?: React.ReactNode;
       }
 
-      public class Rectangle : Shape
-      {
-          public double Width { get; set; }
-          public double Height { get; set; }
+      export const Alert: React.FC<AlertProps> = ({
+        message,
+        type,
+        dismissible = false,
+        onDismiss,
+        icon,
+      }) => (
+        <div className={`alert alert-${type}`} role="alert">
+          {icon && <span className="alert-icon">{icon}</span>}
+          <span className="alert-message">{message}</span>
+          {dismissible && (
+            <button className="alert-close" onClick={onDismiss} aria-label="Dismiss">
+              ×
+            </button>
+          )}
+        </div>
+      );
+    src/components/Avatar.tsx: |
+      import React from 'react';
+
+      type AvatarShape = 'circle' | 'square';
+
+      interface AvatarProps {
+        src?: string;
+        alt: string;
+        size?: number;
+        shape?: AvatarShape;
+        online?: boolean;
       }
 
-      public class Triangle : Shape
-      {
-          public double Base { get; set; }
-          public double Height { get; set; }
-      }
-    Services/AreaCalculator.cs: |
-      using MyApp.Models;
-
-      namespace MyApp.Services;
-
-      public class AreaCalculator
-      {
-          public double Calculate(Shape shape)
-          {
-              return shape switch
-              {
-                  Circle c => Math.PI * c.Radius * c.Radius,
-                  Rectangle r => r.Width * r.Height,
-                  Triangle t => 0.5 * t.Base * t.Height,
-                  _ => throw new ArgumentException("Unknown shape")
-              };
-          }
-      }
-    Unrelated/TaxCalculator.cs: |
-      namespace MyApp.Unrelated;
-
-      public class TaxCalculator
-      {
-          private const string GARBAGE_CS_022_TAX_CALCULATOR_A = "tax_calculator_marker";
-
-          public decimal Calculate(decimal amount) => amount * 0.2m;
-      }
-    Unrelated/DiscountEngine.cs: |
-      namespace MyApp.Unrelated;
-
-      public class DiscountEngine
-      {
-          public const string GARBAGE_CS_022_DISCOUNT_ENGINE_B = "discount_engine_marker";
-
-          public decimal Apply(decimal price, decimal percent) => price * (1 - percent);
-      }
-  commit_message: Update files
+      export const Avatar: React.FC<AvatarProps> = ({
+        src,
+        alt,
+        size = 40,
+        shape = 'circle',
+        online,
+      }) => (
+        <div className={`avatar-wrapper avatar-${shape}`} style={{ width: size, height: size }}>
+          <img
+            src={src ?? `https://ui-avatars.com/api/?name=${encodeURIComponent(alt)}`}
+            alt={alt}
+            width={size}
+            height={size}
+          />
+          {online !== undefined && (
+            <span className={`avatar-status ${online ? 'online' : 'offline'}`} />
+          )}
+        </div>
+      );
+    garbage/animations.ts: |
+      const GARBAGE_CS022_ANIM_A = "animations_marker";
+      export function fadeIn(el: HTMLElement): void {}
+    garbage/breakpoints.ts: |
+      const GARBAGE_CS022_BP_B = "breakpoints_marker";
+      export const MOBILE = 768;
+    garbage/zindex.ts: |
+      const GARBAGE_CS022_ZIDX_C = "zindex_marker";
+      export const MODAL_Z = 1000;
+  commit_message: "feat: add dismissible/icon to Alert and shape/online to Avatar"
 fragments:
-- id: areacalculator_file
+- id: alert_dismissible_prop
   selector:
-    path: Services/AreaCalculator.cs
-- id: req_global_0
+    path: src/components/Alert.tsx
+    anchor: "dismissible?: boolean"
+- id: alert_icon_prop
   selector:
-    anchor: public class AreaCalculator
-- id: no_global_0
+    path: src/components/Alert.tsx
+    anchor: "icon?: React.ReactNode"
+- id: avatar_shape_type
   selector:
-    anchor: GARBAGE_CS_022_DISCOUNT_ENGINE_B
-- id: no_global_1
+    path: src/components/Avatar.tsx
+    anchor: "type AvatarShape"
+- id: avatar_online_prop
   selector:
-    anchor: GARBAGE_CS_022_TAX_CALCULATOR_A
-- id: no_global_2
+    path: src/components/Avatar.tsx
+    anchor: "online?: boolean"
+- id: no_garbage_a
   selector:
-    anchor: DiscountEngine.cs
-- id: no_global_3
+    anchor: GARBAGE_CS022_ANIM_A
+- id: no_garbage_b
   selector:
-    anchor: TaxCalculator.cs
+    anchor: GARBAGE_CS022_BP_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_CS022_ZIDX_C
 oracle:
   required:
-  - areacalculator_file
-  - req_global_0
+  - alert_dismissible_prop
+  - alert_icon_prop
+  - avatar_shape_type
+  - avatar_online_prop
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

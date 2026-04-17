@@ -1,26 +1,164 @@
 name: internals_031_thai_mixed_with_code
+tags:
+- lang:ruby
+- change:bug_fix
+- change:single_file
+- context:same_file
+- distance:0hop
+- difficulty:trivial
 repo:
   initial_files:
-    thai_mixed.py: |
-      def placeholder():
-          pass
+    app/models/product.rb: |
+      class Product
+        CATEGORIES = %w[electronics clothing food sports books].freeze
+
+        attr_reader :id, :name, :price, :category, :stock
+
+        def initialize(id:, name:, price:, category:, stock: 0)
+          @id = id
+          @name = name
+          @price = price
+          @category = category
+          @stock = stock
+        end
+
+        def in_stock?
+          @stock > 0
+        end
+
+        def apply_discount(percent)
+          raise ArgumentError, "discount must be between 0 and 100" unless (0..100).include?(percent)
+          @price = @price * (1 - percent / 100.0)
+        end
+
+        def restock(qty)
+          @stock += qty
+        end
+
+        def sell(qty)
+          raise ArgumentError, "insufficient stock" if qty > @stock
+          @stock -= qty
+        end
+
+        def valid_category?
+          CATEGORIES.include?(@category)
+        end
+      end
+    garbage/services/audit.rb: |
+      # GARBAGE_THAI31_A = "audit_service_unrelated"
+      class AuditService
+        def log_change(entity_id, field, old_val, new_val)
+          nil
+        end
+      end
+    garbage/services/search.rb: |
+      # GARBAGE_THAI31_B = "search_service_unrelated"
+      class SearchService
+        def search(query)
+          []
+        end
+      end
+    garbage/services/export.rb: |
+      # GARBAGE_THAI31_C = "export_service_unrelated"
+      class ExportService
+        def to_csv(records)
+          ""
+        end
+      end
   changed_files:
-    thai_mixed.py: |
-      # ฟังก์ชันคำนวณ
-      def compute(x):  # คำนวณค่า
-          # ส่งคืนผลลัพธ์
-          return x * 2
-  commit_message: Update files
+    app/models/product.rb: |
+      class Product
+        CATEGORIES = %w[electronics clothing food sports books].freeze
+        MAX_DISCOUNT_PERCENT = 80
+
+        attr_reader :id, :name, :price, :category, :stock
+
+        def initialize(id:, name:, price:, category:, stock: 0)
+          raise ArgumentError, "price must be positive" unless price > 0
+          @id = id
+          @name = name
+          @price = price
+          @category = category
+          @stock = stock
+        end
+
+        def in_stock?
+          @stock > 0
+        end
+
+        def apply_discount(percent)
+          unless (0..MAX_DISCOUNT_PERCENT).include?(percent)
+            raise ArgumentError, "discount must be between 0 and #{MAX_DISCOUNT_PERCENT}"
+          end
+          @price = (@price * (1 - percent / 100.0)).round(2)
+        end
+
+        def restock(qty)
+          raise ArgumentError, "restock quantity must be positive" unless qty > 0
+          @stock += qty
+        end
+
+        def sell(qty)
+          raise ArgumentError, "sell quantity must be positive" unless qty > 0
+          raise ArgumentError, "insufficient stock" if qty > @stock
+          @stock -= qty
+        end
+
+        def valid_category?
+          CATEGORIES.include?(@category)
+        end
+      end
+    garbage/services/audit.rb: |
+      # GARBAGE_THAI31_A = "audit_service_unrelated"
+      class AuditService
+        def log_change(entity_id, field, old_val, new_val)
+          nil
+        end
+      end
+    garbage/services/search.rb: |
+      # GARBAGE_THAI31_B = "search_service_unrelated"
+      class SearchService
+        def search(query)
+          []
+        end
+      end
+    garbage/services/export.rb: |
+      # GARBAGE_THAI31_C = "export_service_unrelated"
+      class ExportService
+        def to_csv(records)
+          ""
+        end
+      end
+  commit_message: "fix: validate price on init, cap discount at 80%, guard restock/sell qty"
 fragments:
-- id: thai_mixed_file
+- id: price_positive_guard
   selector:
-    path: thai_mixed.py
-- id: req_global_0
+    path: app/models/product.rb
+    anchor: "price must be positive"
+- id: max_discount_constant
   selector:
-    anchor: 'def compute(x):  # คำนวณค่า'
+    path: app/models/product.rb
+    anchor: "MAX_DISCOUNT_PERCENT"
+- id: restock_qty_guard
+  selector:
+    path: app/models/product.rb
+    anchor: "restock quantity must be positive"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_THAI31_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_THAI31_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_THAI31_C
 oracle:
   required:
-  - thai_mixed_file
-  - req_global_0
-  allowed: []
-  forbidden: []
+  - price_positive_guard
+  - max_discount_constant
+  allowed:
+  - restock_qty_guard
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

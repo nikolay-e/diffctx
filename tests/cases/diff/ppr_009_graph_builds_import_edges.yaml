@@ -1,100 +1,194 @@
 name: ppr_009_graph_builds_import_edges
+tags:
+- lang:typescript
+- change:multi_file
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:hard
 repo:
   initial_files:
-    main.py: |
-      from helper import do_work
+    src/api/client.ts: |
+      import { HttpAdapter } from '../http/adapter';
 
-      def main():
-          do_work()
-    helper.py: |
-      def do_work():
-          pass
-    scheduler.py: |
-      from helper import do_work
+      export class ApiClient {
+          constructor(private adapter: HttpAdapter) {}
 
-      class TaskScheduler:
-          def run_scheduled(self):
-              return do_work()
+          async get(path: string): Promise<unknown> {
+              return this.adapter.request('GET', path);
+          }
 
-          def schedule(self, task_name):
-              return f"scheduled: {task_name}"
-    cli.py: |
-      def main():
-          return "cli_entry_point"
+          async post(path: string, body: unknown): Promise<unknown> {
+              return this.adapter.request('POST', path, body);
+          }
+      }
+    src/http/adapter.ts: |
+      export class HttpAdapter {
+          async request(method: string, path: string, body?: unknown): Promise<unknown> {
+              const res = await fetch(path, {
+                  method,
+                  body: body ? JSON.stringify(body) : undefined,
+              });
+              return res.json();
+          }
+      }
+    src/services/user_service.ts: |
+      import { ApiClient } from '../api/client';
 
-      def parse_args(argv):
-          return {"verbose": False}
+      export class UserService {
+          constructor(private client: ApiClient) {}
+
+          async getUser(id: string): Promise<{ id: string; name: string }> {
+              return this.client.get(`/users/${id}`) as Promise<{ id: string; name: string }>;
+          }
+      }
+    src/analytics/tracker.ts: |
+      export const GARBAGE_PPR009_A = 'analytics_event_prefix';
+      export const GARBAGE_PPR009_B = 42;
+
+      export class EventTracker {
+          track(event: string, data: Record<string, unknown>): void {
+              console.log(event, data);
+          }
+      }
+    src/cache/memory_cache.ts: |
+      export const GARBAGE_PPR009_C = 'memory_cache_v1';
+
+      export class MemoryCache {
+          private store = new Map<string, unknown>();
+          get(key: string): unknown { return this.store.get(key); }
+          set(key: string, value: unknown): void { this.store.set(key, value); }
+      }
+    src/logging/logger.ts: |
+      export const GARBAGE_PPR009_D = 'log_level_debug';
+
+      export function createLogger(name: string) {
+          return { info: (msg: string) => console.log(`[${name}] ${msg}`) };
+      }
   changed_files:
-    main.py: |
-      from helper import do_work
+    src/api/client.ts: |
+      import { HttpAdapter, RequestOptions } from '../http/adapter';
 
-      def main():
-          do_work()
-          return 1
-    helper.py: |
-      def do_work():
-          pass
-    scheduler.py: |
-      from helper import do_work
+      export class ApiClient {
+          constructor(private adapter: HttpAdapter) {}
 
-      class TaskScheduler:
-          def run_scheduled(self):
-              return do_work()
+          async get(path: string, options?: RequestOptions): Promise<unknown> {
+              return this.adapter.request('GET', path, undefined, options);
+          }
 
-          def schedule(self, task_name):
-              return f"scheduled: {task_name}"
-    cli.py: |
-      def main():
-          return "cli_entry_point"
+          async post(path: string, body: unknown, options?: RequestOptions): Promise<unknown> {
+              return this.adapter.request('POST', path, body, options);
+          }
+      }
+    src/http/adapter.ts: |
+      export interface RequestOptions {
+          headers?: Record<string, string>;
+          timeout?: number;
+      }
 
-      def parse_args(argv):
-          return {"verbose": False}
-  commit_message: Update files
+      export class HttpAdapter {
+          async request(method: string, path: string, body?: unknown, options?: RequestOptions): Promise<unknown> {
+              const controller = new AbortController();
+              const timeoutId = options?.timeout
+                  ? setTimeout(() => controller.abort(), options.timeout)
+                  : null;
+              try {
+                  const res = await fetch(path, {
+                      method,
+                      headers: options?.headers,
+                      body: body ? JSON.stringify(body) : undefined,
+                      signal: controller.signal,
+                  });
+                  return res.json();
+              } finally {
+                  if (timeoutId) clearTimeout(timeoutId);
+              }
+          }
+      }
+    src/services/user_service.ts: |
+      import { ApiClient } from '../api/client';
+
+      export class UserService {
+          constructor(private client: ApiClient) {}
+
+          async getUser(id: string): Promise<{ id: string; name: string }> {
+              return this.client.get(`/users/${id}`) as Promise<{ id: string; name: string }>;
+          }
+      }
+    src/analytics/tracker.ts: |
+      export const GARBAGE_PPR009_A = 'analytics_event_prefix';
+      export const GARBAGE_PPR009_B = 42;
+
+      export class EventTracker {
+          track(event: string, data: Record<string, unknown>): void {
+              console.log(event, data);
+          }
+      }
+    src/cache/memory_cache.ts: |
+      export const GARBAGE_PPR009_C = 'memory_cache_v1';
+
+      export class MemoryCache {
+          private store = new Map<string, unknown>();
+          get(key: string): unknown { return this.store.get(key); }
+          set(key: string, value: unknown): void { this.store.set(key, value); }
+      }
+    src/logging/logger.ts: |
+      export const GARBAGE_PPR009_D = 'log_level_debug';
+
+      export function createLogger(name: string) {
+          return { info: (msg: string) => console.log(`[${name}] ${msg}`) };
+      }
+  commit_message: "feat: add RequestOptions with headers and timeout to HttpAdapter"
 fragments:
-- id: main
+- id: request_options_interface
   selector:
-    path: main.py
-    anchor: 'def main():'
-- id: main_1
+    path: src/http/adapter.ts
+    anchor: "export interface RequestOptions"
+- id: adapter_request
   selector:
-    path: main.py
-    anchor: do_work()
-- id: main_2
+    path: src/http/adapter.ts
+    anchor: "async request"
+- id: api_client_get
   selector:
-    path: main.py
-    anchor: return 1
-- id: no_scheduler
+    path: src/api/client.ts
+    anchor: "async get(path: string, options?: RequestOptions)"
+- id: api_client_post
   selector:
-    path: scheduler.py
-- id: no_cli
+    path: src/api/client.ts
+    anchor: "async post(path: string, body: unknown, options?: RequestOptions)"
+- id: no_tracker
   selector:
-    path: cli.py
+    path: src/analytics/tracker.ts
+- id: no_cache
+  selector:
+    path: src/cache/memory_cache.ts
+- id: no_logger
+  selector:
+    path: src/logging/logger.ts
 - id: no_global_0
   selector:
-    anchor: TaskScheduler
+    anchor: GARBAGE_PPR009_A
 - id: no_global_1
   selector:
-    anchor: run_scheduled
+    anchor: GARBAGE_PPR009_B
 - id: no_global_2
   selector:
-    anchor: schedule
+    anchor: GARBAGE_PPR009_C
 - id: no_global_3
   selector:
-    anchor: cli_entry_point
-- id: no_global_4
-  selector:
-    anchor: parse_args
+    anchor: GARBAGE_PPR009_D
 oracle:
   required:
-  - main
-  - main_1
-  - main_2
+  - request_options_interface
+  - adapter_request
+  - api_client_get
+  - api_client_post
   allowed: []
   forbidden:
-  - no_scheduler
-  - no_cli
+  - no_tracker
+  - no_cache
+  - no_logger
   - no_global_0
   - no_global_1
   - no_global_2
   - no_global_3
-  - no_global_4

@@ -1,0 +1,117 @@
+name: bal4_3hop_066_go_http_billing_ledger_account
+tags:
+- lang:go
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:trivial
+repo:
+  initial_files:
+    pkg/account/balance.go: |
+      package account
+
+      func Balance(id int) float64 {
+          return 100.0
+      }
+    pkg/ledger/entry.go: |
+      package ledger
+
+      import "myapp/pkg/account"
+
+      func Debit(id int, amt float64) float64 {
+          return account.Balance(id) - amt
+      }
+    pkg/billing/invoice.go: |
+      package billing
+
+      import "myapp/pkg/ledger"
+
+      func Charge(id int, amt float64) float64 {
+          return ledger.Debit(id, amt)
+      }
+    pkg/http/billing_handler.go: |
+      package http
+
+      import "myapp/pkg/billing"
+
+      func HandleCharge(id int) float64 {
+          return billing.Charge(id, 10.0)
+      }
+    pkg/garbage/extra.go: |
+      package garbage
+
+      var GARBAGE_066_EXTRA_A = "extra"
+      var GARBAGE_066_EXTRA_B = 0
+
+      func GarbageExtra() int { return 0 }
+  changed_files:
+    pkg/account/balance.go: |
+      package account
+
+      func Balance(id int, currency string) float64 {
+          return 100.0
+      }
+    pkg/ledger/entry.go: |
+      package ledger
+
+      import "myapp/pkg/account"
+
+      func Debit(id int, amt float64) float64 {
+          return account.Balance(id, "USD") - amt
+      }
+    pkg/billing/invoice.go: |
+      package billing
+
+      import "myapp/pkg/ledger"
+
+      func Charge(id int, amt float64) float64 {
+          return ledger.Debit(id, amt)
+      }
+    pkg/http/billing_handler.go: |
+      package http
+
+      import "myapp/pkg/billing"
+
+      func HandleCharge(id int) float64 {
+          return billing.Charge(id, 10.0)
+      }
+    pkg/garbage/extra.go: |
+      package garbage
+
+      var GARBAGE_066_EXTRA_A = "extra"
+      var GARBAGE_066_EXTRA_B = 0
+
+      func GarbageExtra() int { return 0 }
+  commit_message: "add currency param to Balance"
+fragments:
+- id: balance
+  selector:
+    path: pkg/account/balance.go
+    anchor: "func Balance"
+- id: debit
+  selector:
+    path: pkg/ledger/entry.go
+    anchor: "func Debit"
+- id: charge
+  selector:
+    path: pkg/billing/invoice.go
+    anchor: "func Charge"
+- id: no_garbage_extra
+  selector:
+    path: pkg/garbage/extra.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_066_EXTRA_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_066_EXTRA_B
+oracle:
+  required:
+  - balance
+  - debit
+  - charge
+  allowed: []
+  forbidden:
+  - no_garbage_extra
+  - no_global_0
+  - no_global_1

@@ -1,0 +1,128 @@
+name: bal2_testctx_031_csharp_email_validator
+tags:
+- lang:csharp
+- change:single_file
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/Validators/EmailValidator.cs: |
+      using System;
+      using System.Text.RegularExpressions;
+
+      namespace App.Validators
+      {
+          public class EmailValidator
+          {
+              private static readonly Regex EmailRegex = new Regex(
+                  @"^[^@\s]+@[^@\s]+\.[^@\s]+$",
+                  RegexOptions.Compiled);
+
+              public bool IsValid(string email)
+              {
+                  if (string.IsNullOrWhiteSpace(email)) return false;
+                  return EmailRegex.IsMatch(email);
+              }
+          }
+      }
+    Tests/EmailValidatorTests.cs: |
+      using Xunit;
+      using App.Validators;
+
+      namespace App.Tests
+      {
+          public class EmailValidatorTests
+          {
+              private readonly EmailValidator _validator = new EmailValidator();
+
+              [Fact]
+              public void IsValid_ValidEmail_ReturnsTrue()
+              {
+                  Assert.True(_validator.IsValid("user@example.com"));
+              }
+
+              [Fact]
+              public void IsValid_EmptyString_ReturnsFalse()
+              {
+                  Assert.False(_validator.IsValid(""));
+              }
+          }
+      }
+    src/Services/NotificationService.cs: |
+      using System;
+
+      namespace App.Services
+      {
+          public class NotificationService
+          {
+              public void Send(string message)
+              {
+                  Console.WriteLine(message);
+              }
+          }
+      }
+  changed_files:
+    src/Validators/EmailValidator.cs: |
+      using System;
+      using System.Text.RegularExpressions;
+      using System.Collections.Generic;
+
+      namespace App.Validators
+      {
+          public class EmailValidator
+          {
+              private static readonly Regex EmailRegex = new Regex(
+                  @"^[^@\s]+@[^@\s]+\.[^@\s]+$",
+                  RegexOptions.Compiled);
+
+              private static readonly HashSet<string> BlockedDomains = new HashSet<string>
+              {
+                  "tempmail.com", "throwaway.net"
+              };
+
+              public bool IsValid(string email)
+              {
+                  if (string.IsNullOrWhiteSpace(email)) return false;
+                  return EmailRegex.IsMatch(email);
+              }
+
+              public bool IsAllowed(string email)
+              {
+                  if (!IsValid(email)) return false;
+                  var domain = email.Split('@')[1];
+                  return !BlockedDomains.Contains(domain.ToLowerInvariant());
+              }
+          }
+      }
+  commit_message: "feat: add blocked domain check to email validator"
+fragments:
+- id: is_allowed_fn
+  selector:
+    path: src/Validators/EmailValidator.cs
+    anchor: "public bool IsAllowed(string email)"
+- id: blocked_domains
+  selector:
+    path: src/Validators/EmailValidator.cs
+    anchor: "BlockedDomains"
+- id: test_imports
+  selector:
+    path: Tests/EmailValidatorTests.cs
+    anchor: "using App.Validators"
+- id: test_class
+  selector:
+    path: Tests/EmailValidatorTests.cs
+    anchor: "public class EmailValidatorTests"
+- id: no_notification
+  selector:
+    path: src/Services/NotificationService.cs
+    anchor: "class NotificationService"
+oracle:
+  required:
+  - is_allowed_fn
+  - test_imports
+  allowed:
+  - blocked_domains
+  - test_class
+  forbidden:
+  - no_notification

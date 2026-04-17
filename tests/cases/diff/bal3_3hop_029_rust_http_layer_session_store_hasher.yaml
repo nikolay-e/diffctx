@@ -1,0 +1,195 @@
+name: bal3_3hop_029_rust_http_layer_session_store_hasher
+tags:
+- lang:rust
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/hasher/sha_hasher.rs: |
+      use std::collections::hash_map::DefaultHasher;
+      use std::hash::{Hash, Hasher};
+
+      pub struct ShaHasher {
+          secret: String,
+      }
+
+      impl ShaHasher {
+          pub fn new(secret: &str) -> Self {
+              Self { secret: secret.to_string() }
+          }
+
+          pub fn hash(&self, input: &str) -> u64 {
+              let mut h = DefaultHasher::new();
+              format!("{}{}", self.secret, input).hash(&mut h);
+              h.finish()
+          }
+
+          pub fn verify(&self, input: &str, expected: u64) -> bool {
+              self.hash(input) == expected
+          }
+      }
+    src/hasher/mod.rs: |
+      pub mod sha_hasher;
+    src/session_store/store.rs: |
+      use crate::hasher::sha_hasher::ShaHasher;
+      use std::collections::HashMap;
+
+      pub struct SessionStore {
+          hasher: ShaHasher,
+          sessions: HashMap<String, String>,
+      }
+
+      impl SessionStore {
+          pub fn new(hasher: ShaHasher) -> Self {
+              Self { hasher, sessions: HashMap::new() }
+          }
+
+          pub fn create(&mut self, user_id: &str) -> String {
+              let token = format!("{}", self.hasher.hash(user_id));
+              self.sessions.insert(token.clone(), user_id.to_string());
+              token
+          }
+
+          pub fn validate(&self, token: &str, user_id: &str) -> bool {
+              match self.sessions.get(token) {
+                  Some(uid) => uid == user_id,
+                  None => false,
+              }
+          }
+      }
+    src/session_store/mod.rs: |
+      pub mod store;
+    src/session/manager.rs: |
+      use crate::session_store::store::SessionStore;
+
+      pub struct SessionManager {
+          store: SessionStore,
+      }
+
+      impl SessionManager {
+          pub fn new(store: SessionStore) -> Self {
+              Self { store }
+          }
+
+          pub fn login(&mut self, user_id: &str) -> String {
+              self.store.create(user_id)
+          }
+
+          pub fn is_valid(&self, token: &str, user_id: &str) -> bool {
+              self.store.validate(token, user_id)
+          }
+      }
+    src/session/mod.rs: |
+      pub mod manager;
+    src/http/layer.rs: |
+      use crate::session::manager::SessionManager;
+
+      pub struct HttpLayer {
+          session_mgr: SessionManager,
+      }
+
+      impl HttpLayer {
+          pub fn new(session_mgr: SessionManager) -> Self {
+              Self { session_mgr }
+          }
+
+          pub fn authenticate(&self, token: &str, user_id: &str) -> bool {
+              self.session_mgr.is_valid(token, user_id)
+          }
+
+          pub fn create_session(&mut self, user_id: &str) -> String {
+              self.session_mgr.login(user_id)
+          }
+      }
+    src/http/mod.rs: |
+      pub mod layer;
+    src/cors/policy.rs: |
+      pub static GARBAGE_BAL3_029_CORS_MARKER_A: &str = "cors";
+      pub static GARBAGE_BAL3_029_ORIGIN_MARKER_B: &str = "*";
+
+      pub struct CorsPolicy;
+      impl CorsPolicy {
+          pub fn allow_all(&self) -> bool { true }
+      }
+    src/cors/mod.rs: |
+      pub mod policy;
+    src/lib.rs: |
+      pub mod hasher;
+      pub mod session_store;
+      pub mod session;
+      pub mod http;
+      pub mod cors;
+  changed_files:
+    src/hasher/sha_hasher.rs: |
+      use std::collections::hash_map::DefaultHasher;
+      use std::hash::{Hash, Hasher};
+
+      pub struct ShaHasher {
+          secret: String,
+      }
+
+      impl ShaHasher {
+          pub fn new(secret: &str) -> Self {
+              Self { secret: secret.to_string() }
+          }
+
+          pub fn hash(&self, input: &str) -> u64 {
+              let mut h = DefaultHasher::new();
+              format!("{}{}", self.secret, input).hash(&mut h);
+              h.finish()
+          }
+
+          pub fn verify(&self, input: &str, expected: u64) -> bool {
+              let actual = self.hash(input);
+              constant_time_compare(actual, expected)
+          }
+      }
+
+      fn constant_time_compare(a: u64, b: u64) -> bool {
+          (a ^ b) == 0
+      }
+  commit_message: "Fix timing-safe comparison in session hasher"
+fragments:
+- id: hasher_constant_time
+  selector:
+    path: src/hasher/sha_hasher.rs
+    anchor: "fn constant_time_compare"
+- id: hasher_verify
+  selector:
+    path: src/hasher/sha_hasher.rs
+    anchor: "constant_time_compare(actual, expected)"
+- id: store_validate
+  selector:
+    path: src/session_store/store.rs
+    anchor: "pub fn validate"
+- id: session_is_valid
+  selector:
+    path: src/session/manager.rs
+    anchor: "pub fn is_valid"
+- id: http_authenticate
+  selector:
+    path: src/http/layer.rs
+    anchor: "pub fn authenticate"
+- id: no_cors
+  selector:
+    path: src/cors/policy.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_029_CORS_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_029_ORIGIN_MARKER_B
+oracle:
+  required:
+  - hasher_constant_time
+  - hasher_verify
+  - store_validate
+  - session_is_valid
+  - http_authenticate
+  allowed: []
+  forbidden:
+  - no_cors
+  - no_global_0
+  - no_global_1

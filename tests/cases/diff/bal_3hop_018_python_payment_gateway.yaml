@@ -1,0 +1,154 @@
+name: bal_3hop_018_python_payment_gateway
+tags:
+- lang:python
+- change:single_file
+- change:multi_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    payments/currency.py: |
+      class Currency:
+          def __init__(self, code: str, symbol: str, decimals: int = 2):
+              self.code = code
+              self.symbol = symbol
+              self.decimals = decimals
+          def format_amount(self, amount: int) -> str:
+              value = amount / (10 ** self.decimals)
+              return f"{self.symbol}{value:.{self.decimals}f}"
+    payments/transaction.py: |
+      from payments.currency import Currency
+      class Transaction:
+          def __init__(self, tx_id: str, amount: int, currency: Currency):
+              self.tx_id = tx_id
+              self.amount = amount
+              self.currency = currency
+              self.status = "pending"
+          def complete(self):
+              self.status = "completed"
+          def display_amount(self) -> str:
+              return self.currency.format_amount(self.amount)
+    payments/processor.py: |
+      from payments.transaction import Transaction
+      from payments.currency import Currency
+      class PaymentProcessor:
+          def __init__(self):
+              self.transactions: list[Transaction] = []
+          def charge(self, tx_id: str, amount: int, currency: Currency) -> Transaction:
+              tx = Transaction(tx_id, amount, currency)
+              tx.complete()
+              self.transactions.append(tx)
+              return tx
+    api/checkout.py: |
+      from payments.processor import PaymentProcessor
+      from payments.currency import Currency
+      USD = Currency("USD", "$", 2)
+      class CheckoutAPI:
+          def __init__(self):
+              self.processor = PaymentProcessor()
+          def purchase(self, item_id: str, amount: int) -> dict:
+              tx = self.processor.charge(f"tx_{item_id}", amount, USD)
+              return {"tx_id": tx.tx_id, "amount": tx.display_amount(), "status": tx.status}
+    utils/receipt.py: |
+      def generate_receipt(tx_id: str, amount: str, date: str) -> str:
+          return f"Receipt #{tx_id}\nAmount: {amount}\nDate: {date}"
+    db/ledger.py: |
+      class Ledger:
+          def __init__(self):
+              self.entries: list[dict] = []
+          def record(self, debit: str, credit: str, amount: int):
+              self.entries.append({"debit": debit, "credit": credit, "amount": amount})
+  changed_files:
+    payments/currency.py: |
+      from typing import Optional
+      class Currency:
+          def __init__(self, code: str, symbol: str, decimals: int = 2):
+              self.code = code
+              self.symbol = symbol
+              self.decimals = decimals
+          def format_amount(self, amount: int) -> str:
+              value = amount / (10 ** self.decimals)
+              return f"{self.symbol}{value:.{self.decimals}f}"
+          def convert_to(self, amount: int, target: "Currency", rate: float) -> int:
+              base = amount / (10 ** self.decimals)
+              converted = base * rate
+              return int(converted * (10 ** target.decimals))
+    payments/transaction.py: |
+      from payments.currency import Currency
+      class Transaction:
+          def __init__(self, tx_id: str, amount: int, currency: Currency):
+              self.tx_id = tx_id
+              self.amount = amount
+              self.currency = currency
+              self.status = "pending"
+          def complete(self):
+              self.status = "completed"
+          def display_amount(self) -> str:
+              return self.currency.format_amount(self.amount)
+    payments/processor.py: |
+      from payments.transaction import Transaction
+      from payments.currency import Currency
+      class PaymentProcessor:
+          def __init__(self):
+              self.transactions: list[Transaction] = []
+          def charge(self, tx_id: str, amount: int, currency: Currency) -> Transaction:
+              tx = Transaction(tx_id, amount, currency)
+              tx.complete()
+              self.transactions.append(tx)
+              return tx
+    api/checkout.py: |
+      from payments.processor import PaymentProcessor
+      from payments.currency import Currency
+      USD = Currency("USD", "$", 2)
+      class CheckoutAPI:
+          def __init__(self):
+              self.processor = PaymentProcessor()
+          def purchase(self, item_id: str, amount: int) -> dict:
+              tx = self.processor.charge(f"tx_{item_id}", amount, USD)
+              return {"tx_id": tx.tx_id, "amount": tx.display_amount(), "status": tx.status}
+    utils/receipt.py: |
+      def generate_receipt(tx_id: str, amount: str, date: str) -> str:
+          return f"Receipt #{tx_id}\nAmount: {amount}\nDate: {date}"
+    db/ledger.py: |
+      class Ledger:
+          def __init__(self):
+              self.entries: list[dict] = []
+          def record(self, debit: str, credit: str, amount: int):
+              self.entries.append({"debit": debit, "credit": credit, "amount": amount})
+  commit_message: "feat: add currency conversion method to Currency"
+fragments:
+- id: currency_convert
+  selector:
+    path: payments/currency.py
+    anchor: "def convert_to(self, amount: int, target:"
+- id: transaction_uses_currency
+  selector:
+    path: payments/transaction.py
+    anchor: "from payments.currency import Currency"
+- id: processor_uses_transaction
+  selector:
+    path: payments/processor.py
+    anchor: "from payments.transaction import Transaction"
+- id: checkout_uses_processor
+  selector:
+    path: api/checkout.py
+    anchor: "from payments.processor import PaymentProcessor"
+- id: no_receipt
+  selector:
+    path: utils/receipt.py
+    anchor: "def generate_receipt"
+- id: no_ledger
+  selector:
+    path: db/ledger.py
+    anchor: "class Ledger"
+oracle:
+  required:
+  - currency_convert
+  - transaction_uses_currency
+  - processor_uses_transaction
+  - checkout_uses_processor
+  allowed: []
+  forbidden:
+  - no_receipt
+  - no_ledger

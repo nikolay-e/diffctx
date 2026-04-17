@@ -1,0 +1,75 @@
+name: bal4_testctx_013_kotlin_calculator_test
+tags:
+- lang:kotlin
+- change:single_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/main/kotlin/math/Calculator.kt: |
+      package math
+
+      class Calculator {
+          fun add(a: Int, b: Int): Int = a + b
+
+          fun subtract(a: Int, b: Int): Int = a - b
+      }
+    src/test/kotlin/math/CalculatorTest.kt: |
+      package math
+
+      import org.junit.jupiter.api.Test
+      import org.junit.jupiter.api.Assertions.assertEquals
+
+      class CalculatorTest {
+          private val calc = Calculator()
+
+          @Test
+          fun testAdd() {
+              assertEquals(5, calc.add(2, 3))
+          }
+
+          @Test
+          fun testSubtract() {
+              assertEquals(2, calc.subtract(5, 3))
+          }
+      }
+    src/main/kotlin/format/Formatter.kt: |
+      package format
+
+      class Formatter {
+          fun padLeft(s: String, width: Int): String = s.padStart(width)
+      }
+  changed_files:
+    src/main/kotlin/math/Calculator.kt: |
+      package math
+
+      class Calculator {
+          fun add(a: Int, b: Int): Int = a + b
+
+          fun subtract(a: Int, b: Int): Int = a - b
+
+          fun multiply(a: Int, b: Int): Int = a * b
+      }
+  commit_message: "feat: add multiply to Calculator"
+fragments:
+- id: multiply_fn
+  selector:
+    path: src/main/kotlin/math/Calculator.kt
+    anchor: "fun multiply(a: Int, b: Int): Int"
+- id: test_calc
+  selector:
+    path: src/test/kotlin/math/CalculatorTest.kt
+    anchor: "class CalculatorTest"
+- id: no_formatter
+  selector:
+    path: src/main/kotlin/format/Formatter.kt
+    anchor: "class Formatter"
+oracle:
+  required:
+  - multiply_fn
+  - test_calc
+  allowed: []
+  forbidden:
+  - no_formatter

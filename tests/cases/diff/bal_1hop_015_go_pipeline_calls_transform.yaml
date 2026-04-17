@@ -1,0 +1,266 @@
+name: bal_1hop_015_go_pipeline_calls_transform
+tags:
+- lang:rust
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/order/matcher.rs: |
+      use crate::book::depth::OrderBook;
+
+      pub struct OrderMatcher {
+          book: OrderBook,
+      }
+
+      impl OrderMatcher {
+          pub fn new(book: OrderBook) -> Self {
+              OrderMatcher { book }
+          }
+
+          pub fn try_match(&mut self, side: &str, price: f64, qty: u64) -> Option<u64> {
+              if side == "buy" {
+                  self.book.best_ask()
+                      .filter(|&ask| ask <= price)
+                      .map(|_| self.book.consume_ask(qty))
+              } else {
+                  self.book.best_bid()
+                      .filter(|&bid| bid >= price)
+                      .map(|_| self.book.consume_bid(qty))
+              }
+          }
+
+          pub fn fill_ratio(&self) -> f64 {
+              // BUG: returns 0.0 always — filled / total not tracked
+              0.0
+          }
+      }
+    src/book/depth.rs: |
+      use std::collections::BTreeMap;
+
+      pub struct OrderBook {
+          bids: BTreeMap<u64, u64>,
+          asks: BTreeMap<u64, u64>,
+      }
+
+      impl OrderBook {
+          pub fn new() -> Self {
+              OrderBook { bids: BTreeMap::new(), asks: BTreeMap::new() }
+          }
+
+          pub fn add_bid(&mut self, price_ticks: u64, qty: u64) {
+              *self.bids.entry(price_ticks).or_default() += qty;
+          }
+
+          pub fn add_ask(&mut self, price_ticks: u64, qty: u64) {
+              *self.asks.entry(price_ticks).or_default() += qty;
+          }
+
+          pub fn best_bid(&self) -> Option<f64> {
+              self.bids.keys().next_back().map(|&p| p as f64 / 100.0)
+          }
+
+          pub fn best_ask(&self) -> Option<f64> {
+              self.asks.keys().next().map(|&p| p as f64 / 100.0)
+          }
+
+          pub fn consume_bid(&mut self, qty: u64) -> u64 {
+              let mut remaining = qty;
+              let keys: Vec<u64> = self.bids.keys().copied().rev().collect();
+              for key in keys {
+                  if remaining == 0 { break; }
+                  let level = self.bids.get_mut(&key).unwrap();
+                  let taken = remaining.min(*level);
+                  *level -= taken;
+                  remaining -= taken;
+                  if *level == 0 { self.bids.remove(&key); }
+              }
+              qty - remaining
+          }
+
+          pub fn consume_ask(&mut self, qty: u64) -> u64 {
+              let mut remaining = qty;
+              let keys: Vec<u64> = self.asks.keys().copied().collect();
+              for key in keys {
+                  if remaining == 0 { break; }
+                  let level = self.asks.get_mut(&key).unwrap();
+                  let taken = remaining.min(*level);
+                  *level -= taken;
+                  remaining -= taken;
+                  if *level == 0 { self.asks.remove(&key); }
+              }
+              qty - remaining
+          }
+      }
+    src/risk/checker.rs: |
+      use crate::order::matcher::OrderMatcher;
+
+      pub fn within_fill_threshold(matcher: &OrderMatcher, threshold: f64) -> bool {
+          matcher.fill_ratio() >= threshold
+      }
+    garbage/compliance.rs: |
+      // GARBAGE_1HOP15_COMPLY_A = "compliance_marker"
+    garbage/settlement.rs: |
+      // GARBAGE_1HOP15_SETTL_B = "settlement_marker"
+    garbage/reporting.rs: |
+      // GARBAGE_1HOP15_REPORT_C = "reporting_marker"
+    garbage/custody.rs: |
+      // GARBAGE_1HOP15_CUST_D = "custody_marker"
+  changed_files:
+    src/order/matcher.rs: |
+      use crate::book::depth::OrderBook;
+
+      pub struct OrderMatcher {
+          book: OrderBook,
+          total_qty: u64,
+          filled_qty: u64,
+      }
+
+      impl OrderMatcher {
+          pub fn new(book: OrderBook) -> Self {
+              OrderMatcher { book, total_qty: 0, filled_qty: 0 }
+          }
+
+          pub fn try_match(&mut self, side: &str, price: f64, qty: u64) -> Option<u64> {
+              self.total_qty += qty;
+              let filled = if side == "buy" {
+                  self.book.best_ask()
+                      .filter(|&ask| ask <= price)
+                      .map(|_| self.book.consume_ask(qty))
+              } else {
+                  self.book.best_bid()
+                      .filter(|&bid| bid >= price)
+                      .map(|_| self.book.consume_bid(qty))
+              };
+              if let Some(f) = filled {
+                  self.filled_qty += f;
+              }
+              filled
+          }
+
+          pub fn fill_ratio(&self) -> f64 {
+              if self.total_qty == 0 {
+                  return 0.0;
+              }
+              self.filled_qty as f64 / self.total_qty as f64
+          }
+      }
+    src/book/depth.rs: |
+      use std::collections::BTreeMap;
+
+      pub struct OrderBook {
+          bids: BTreeMap<u64, u64>,
+          asks: BTreeMap<u64, u64>,
+      }
+
+      impl OrderBook {
+          pub fn new() -> Self {
+              OrderBook { bids: BTreeMap::new(), asks: BTreeMap::new() }
+          }
+
+          pub fn add_bid(&mut self, price_ticks: u64, qty: u64) {
+              *self.bids.entry(price_ticks).or_default() += qty;
+          }
+
+          pub fn add_ask(&mut self, price_ticks: u64, qty: u64) {
+              *self.asks.entry(price_ticks).or_default() += qty;
+          }
+
+          pub fn best_bid(&self) -> Option<f64> {
+              self.bids.keys().next_back().map(|&p| p as f64 / 100.0)
+          }
+
+          pub fn best_ask(&self) -> Option<f64> {
+              self.asks.keys().next().map(|&p| p as f64 / 100.0)
+          }
+
+          pub fn consume_bid(&mut self, qty: u64) -> u64 {
+              let mut remaining = qty;
+              let keys: Vec<u64> = self.bids.keys().copied().rev().collect();
+              for key in keys {
+                  if remaining == 0 { break; }
+                  let level = self.bids.get_mut(&key).unwrap();
+                  let taken = remaining.min(*level);
+                  *level -= taken;
+                  remaining -= taken;
+                  if *level == 0 { self.bids.remove(&key); }
+              }
+              qty - remaining
+          }
+
+          pub fn consume_ask(&mut self, qty: u64) -> u64 {
+              let mut remaining = qty;
+              let keys: Vec<u64> = self.asks.keys().copied().collect();
+              for key in keys {
+                  if remaining == 0 { break; }
+                  let level = self.asks.get_mut(&key).unwrap();
+                  let taken = remaining.min(*level);
+                  *level -= taken;
+                  remaining -= taken;
+                  if *level == 0 { self.asks.remove(&key); }
+              }
+              qty - remaining
+          }
+      }
+    src/risk/checker.rs: |
+      use crate::order::matcher::OrderMatcher;
+
+      pub fn within_fill_threshold(matcher: &OrderMatcher, threshold: f64) -> bool {
+          matcher.fill_ratio() >= threshold
+      }
+    garbage/compliance.rs: |
+      // GARBAGE_1HOP15_COMPLY_A = "compliance_marker"
+    garbage/settlement.rs: |
+      // GARBAGE_1HOP15_SETTL_B = "settlement_marker"
+    garbage/reporting.rs: |
+      // GARBAGE_1HOP15_REPORT_C = "reporting_marker"
+    garbage/custody.rs: |
+      // GARBAGE_1HOP15_CUST_D = "custody_marker"
+  commit_message: "fix: track filled/total qty so fill_ratio returns correct value"
+fragments:
+- id: matcher_filled_field
+  selector:
+    path: src/order/matcher.rs
+    anchor: "filled_qty: u64,"
+- id: fill_ratio_impl
+  selector:
+    path: src/order/matcher.rs
+    anchor: "self.filled_qty as f64 / self.total_qty as f64"
+- id: matcher_accumulates_fill
+  selector:
+    path: src/order/matcher.rs
+    anchor: "self.filled_qty += f;"
+- id: risk_calls_fill_ratio
+  selector:
+    path: src/risk/checker.rs
+    anchor: "matcher.fill_ratio() >= threshold"
+- id: orderbook_consume_ask
+  selector:
+    path: src/book/depth.rs
+    anchor: "pub fn consume_ask(&mut self, qty: u64) -> u64 {"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_1HOP15_COMPLY_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_1HOP15_SETTL_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_1HOP15_REPORT_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_1HOP15_CUST_D
+oracle:
+  required:
+  - matcher_filled_field
+  - fill_ratio_impl
+  - matcher_accumulates_fill
+  - risk_calls_fill_ratio
+  allowed:
+  - orderbook_consume_ask
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

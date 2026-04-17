@@ -1,4 +1,11 @@
 name: ansible_002_include_vars
+tags:
+- lang:yaml
+- change:multi_file
+- change:config
+- context:same_file
+- distance:0hop
+- difficulty:easy
 repo:
   initial_files:
     playbooks/webserver.yml: |

@@ -1,0 +1,70 @@
+name: css_003_variable_renamed
+tags:
+- lang:css
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    tokens.css: |
+      :root {
+        --brand-color: #0057ff;
+        --text-color: #1a1a1a;
+      }
+    button.css: |
+      @import "tokens.css";
+      .btn { background: var(--brand-color); color: var(--text-color); }
+    card.css: |
+      @import "tokens.css";
+      .card { border: 1px solid var(--brand-color); }
+    CSS_NOISE_003_print.css: |
+      .CSS_NOISE_003_print_only { display: block; }
+      .CSS_NOISE_003_no_print { display: none; }
+    CSS_NOISE_003_email.css: |
+      .CSS_NOISE_003_email_body { font-family: Arial; }
+      .CSS_NOISE_003_email_header { background: #eee; }
+  changed_files:
+    tokens.css: |
+      :root {
+        --brand-color: #0057ff;
+        --text-color: #1a1a1a;
+        --accent-color: #ff4400;
+      }
+  commit_message: "style: add --accent-color token"
+fragments:
+- id: tokens_css
+  selector:
+    path: tokens.css
+    anchor: accent-color
+- id: button_css
+  selector:
+    path: button.css
+    anchor: brand-color
+- id: card_css
+  selector:
+    path: card.css
+    anchor: brand-color
+- id: no_print
+  selector:
+    path: CSS_NOISE_003_print.css
+- id: no_email
+  selector:
+    path: CSS_NOISE_003_email.css
+- id: no_global_0
+  selector:
+    anchor: CSS_NOISE_003_print_only
+- id: no_global_1
+  selector:
+    anchor: CSS_NOISE_003_email_body
+oracle:
+  required:
+  - tokens_css
+  - button_css
+  - card_css
+  allowed: []
+  forbidden:
+  - no_print
+  - no_email
+  - no_global_0
+  - no_global_1

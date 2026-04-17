@@ -1,0 +1,177 @@
+name: gap_015_python_cli_batch_export_command
+tags:
+- lang:python
+- change:multi_file
+- change:new_function
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    cli/commands.py: |
+      import sys
+      from cli.args import parse_args
+
+      def cmd_list(config: dict) -> int:
+          items = config.get("items", [])
+          for item in items:
+              print(f"  - {item['name']}: {item['status']}")
+          return 0
+
+      def cmd_status(config: dict) -> int:
+          total = len(config.get("items", []))
+          active = sum(1 for i in config.get("items", []) if i["status"] == "active")
+          print(f"Total: {total}, Active: {active}")
+          return 0
+
+      def main() -> int:
+          args = parse_args(sys.argv[1:])
+          dispatch = {"list": cmd_list, "status": cmd_status}
+          handler = dispatch.get(args.command)
+          if handler is None:
+              print(f"Unknown command: {args.command}", file=sys.stderr)
+              return 1
+          return handler(args.config)
+    cli/args.py: |
+      from dataclasses import dataclass
+
+      @dataclass
+      class ParsedArgs:
+          command: str
+          config: dict
+          verbose: bool = False
+
+      def parse_args(argv: list[str]) -> ParsedArgs:
+          command = argv[0] if argv else "status"
+          verbose = "--verbose" in argv or "-v" in argv
+          return ParsedArgs(command=command, config={}, verbose=verbose)
+    cli/formatters.py: |
+      class TableFormatter:
+          def __init__(self, columns: list[str]):
+              self._columns = columns
+
+          def format_row(self, values: list[str]) -> str:
+              return " | ".join(v.ljust(20) for v in values)
+
+          def format_header(self) -> str:
+              header = self.format_row(self._columns)
+              separator = "-+-".join("-" * 20 for _ in self._columns)
+              return f"{header}\n{separator}"
+    data/store.py: |
+      import json
+      from pathlib import Path
+
+      class FileStore:
+          def __init__(self, base_path: str):
+              self._base = Path(base_path)
+
+          def load(self, name: str) -> dict:
+              path = self._base / f"{name}.json"
+              return json.loads(path.read_text())
+
+          def save(self, name: str, data: dict) -> None:
+              path = self._base / f"{name}.json"
+              path.write_text(json.dumps(data, indent=2))
+
+          def exists(self, name: str) -> bool:
+              return (self._base / f"{name}.json").exists()
+    cli/completions.py: |
+      class BashCompleter:
+          def __init__(self, commands: list[str]):
+              self._commands = commands
+
+          def generate_script(self) -> str:
+              options = " ".join(self._commands)
+              return f'complete -W "{options}" mycli'
+  changed_files:
+    cli/commands.py: |
+      import sys
+      from cli.args import parse_args
+      from cli.formatters import TableFormatter
+
+      def cmd_list(config: dict) -> int:
+          items = config.get("items", [])
+          for item in items:
+              print(f"  - {item['name']}: {item['status']}")
+          return 0
+
+      def cmd_status(config: dict) -> int:
+          total = len(config.get("items", []))
+          active = sum(1 for i in config.get("items", []) if i["status"] == "active")
+          print(f"Total: {total}, Active: {active}")
+          return 0
+
+      def cmd_export(config: dict) -> int:
+          items = config.get("items", [])
+          if not items:
+              print("Nothing to export", file=sys.stderr)
+              return 1
+          formatter = TableFormatter(["name", "status", "updated"])
+          print(formatter.format_header())
+          for item in items:
+              row = [item.get("name", ""), item.get("status", ""), item.get("updated", "")]
+              print(formatter.format_row(row))
+          return 0
+
+      def main() -> int:
+          args = parse_args(sys.argv[1:])
+          dispatch = {"list": cmd_list, "status": cmd_status, "export": cmd_export}
+          handler = dispatch.get(args.command)
+          if handler is None:
+              print(f"Unknown command: {args.command}", file=sys.stderr)
+              return 1
+          return handler(args.config)
+    cli/formatters.py: |
+      class TableFormatter:
+          def __init__(self, columns: list[str]):
+              self._columns = columns
+
+          def format_row(self, values: list[str]) -> str:
+              return " | ".join(v.ljust(20) for v in values)
+
+          def format_header(self) -> str:
+              header = self.format_row(self._columns)
+              separator = "-+-".join("-" * 20 for _ in self._columns)
+              return f"{header}\n{separator}"
+
+          def format_csv(self, values: list[str]) -> str:
+              escaped = []
+              for v in values:
+                  if "," in v or '"' in v:
+                      escaped.append(f'"{v.replace(chr(34), chr(34)+chr(34))}"')
+                  else:
+                      escaped.append(v)
+              return ",".join(escaped)
+fragments:
+- id: cmd_export
+  selector:
+    path: cli/commands.py
+    anchor: "def cmd_export"
+- id: cmd_main
+  selector:
+    path: cli/commands.py
+    anchor: "def main"
+- id: formatter_row
+  selector:
+    path: cli/formatters.py
+    anchor: "def format_row"
+- id: formatter_header
+  selector:
+    path: cli/formatters.py
+    anchor: "def format_header"
+- id: no_store
+  selector:
+    path: data/store.py
+- id: no_completions
+  selector:
+    path: cli/completions.py
+oracle:
+  required:
+  - cmd_export
+  - cmd_main
+  - formatter_row
+  forbidden:
+  - no_store
+  - no_completions

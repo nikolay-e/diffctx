@@ -1,0 +1,67 @@
+name: bal4_testctx_003_go_converter_test
+tags:
+- lang:go
+- change:single_file
+- change:signature
+- context:test_file
+- distance:1hop
+- difficulty:trivial
+xfail:
+  category: go-test-context-discovery
+repo:
+  initial_files:
+    convert/temperature.go: |
+      package convert
+
+      func CelsiusToFahrenheit(c float64) float64 {
+          return c*9/5 + 32
+      }
+    convert/temperature_test.go: |
+      package convert
+
+      import "testing"
+
+      func TestCelsiusToFahrenheit(t *testing.T) {
+          got := CelsiusToFahrenheit(100)
+          if got != 212 {
+              t.Fatalf("expected 212, got %f", got)
+          }
+      }
+    convert/distance.go: |
+      package convert
+
+      func MilesToKm(miles float64) float64 {
+          return miles * 1.60934
+      }
+  changed_files:
+    convert/temperature.go: |
+      package convert
+
+      func CelsiusToFahrenheit(c float64, round bool) float64 {
+          f := c*9/5 + 32
+          if round {
+              return float64(int(f + 0.5))
+          }
+          return f
+      }
+  commit_message: "refactor: add round parameter to CelsiusToFahrenheit"
+fragments:
+- id: celsius_fn
+  selector:
+    path: convert/temperature.go
+    anchor: "func CelsiusToFahrenheit(c float64, round bool)"
+- id: test_celsius
+  selector:
+    path: convert/temperature_test.go
+    anchor: "func TestCelsiusToFahrenheit(t *testing.T)"
+- id: no_distance
+  selector:
+    path: convert/distance.go
+    anchor: "func MilesToKm"
+oracle:
+  required:
+  - celsius_fn
+  - test_celsius
+  allowed: []
+  forbidden:
+  - no_distance

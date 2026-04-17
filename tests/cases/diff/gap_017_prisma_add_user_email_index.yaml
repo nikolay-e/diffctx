@@ -1,0 +1,140 @@
+name: gap_017_prisma_add_user_email_index
+tags:
+- lang:prisma
+- lang:sql
+- lang:typescript
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    prisma/schema.prisma: |
+      generator client {
+        provider = "prisma-client-js"
+      }
+
+      datasource db {
+        provider = "postgresql"
+        url      = env("DATABASE_URL")
+      }
+
+      model User {
+        id        Int      @id @default(autoincrement())
+        email     String   @unique
+        name      String?
+        createdAt DateTime @default(now())
+        posts     Post[]
+      }
+
+      model Post {
+        id        Int      @id @default(autoincrement())
+        title     String
+        content   String?
+        published Boolean  @default(false)
+        authorId  Int
+        author    User     @relation(fields: [authorId], references: [id])
+      }
+    src/db/queries.ts: |
+      import { PrismaClient } from '@prisma/client';
+
+      const prisma = new PrismaClient();
+
+      export async function findUserByEmail(email: string) {
+        return prisma.user.findUnique({ where: { email } });
+      }
+
+      export async function createUser(email: string, name?: string) {
+        return prisma.user.create({ data: { email, name } });
+      }
+
+      export async function listPublishedPosts() {
+        return prisma.post.findMany({
+          where: { published: true },
+          include: { author: true },
+        });
+      }
+    migrations/001_init.sql: |
+      CREATE TABLE "User" (
+        "id" SERIAL PRIMARY KEY,
+        "email" TEXT NOT NULL UNIQUE,
+        "name" TEXT,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE "Post" (
+        "id" SERIAL PRIMARY KEY,
+        "title" TEXT NOT NULL,
+        "content" TEXT,
+        "published" BOOLEAN NOT NULL DEFAULT false,
+        "authorId" INTEGER NOT NULL,
+        CONSTRAINT "Post_authorId_fkey" FOREIGN KEY ("authorId") REFERENCES "User"("id")
+      );
+    src/services/notification.ts: |
+      export class NotificationService {
+        private queue: Array<{ to: string; message: string }> = [];
+
+        enqueue(to: string, message: string): void {
+          this.queue.push({ to, message });
+        }
+
+        flush(): Array<{ to: string; message: string }> {
+          const items = [...this.queue];
+          this.queue = [];
+          return items;
+        }
+      }
+  changed_files:
+    prisma/schema.prisma: |
+      generator client {
+        provider = "prisma-client-js"
+      }
+
+      datasource db {
+        provider = "postgresql"
+        url      = env("DATABASE_URL")
+      }
+
+      model User {
+        id        Int      @id @default(autoincrement())
+        email     String   @unique
+        name      String?
+        role      String   @default("user")
+        createdAt DateTime @default(now())
+        posts     Post[]
+
+        @@index([email, role])
+      }
+
+      model Post {
+        id        Int      @id @default(autoincrement())
+        title     String
+        content   String?
+        published Boolean  @default(false)
+        authorId  Int
+        author    User     @relation(fields: [authorId], references: [id])
+      }
+fragments:
+- id: user_model
+  selector:
+    path: prisma/schema.prisma
+    anchor: "model User"
+- id: user_index
+  selector:
+    path: prisma/schema.prisma
+    anchor: "@@index"
+- id: no_notification
+  selector:
+    path: src/services/notification.ts
+- id: no_queries
+  selector:
+    path: src/db/queries.ts
+oracle:
+  required:
+  - user_model
+  - user_index
+  forbidden:
+  - no_notification
+  - no_queries

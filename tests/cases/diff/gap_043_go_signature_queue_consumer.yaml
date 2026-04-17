@@ -1,0 +1,203 @@
+name: gap_043_go_signature_queue_consumer
+tags:
+- lang:go
+- change:signature
+- change:single_file
+- context:cross_module
+- distance:2hop
+- difficulty:medium
+repo:
+  initial_files:
+    pkg/queue/broker.go: |
+      package queue
+
+      import (
+          "sync"
+      )
+
+      type Message struct {
+          ID      string
+          Topic   string
+          Payload []byte
+      }
+
+      type Handler func(msg Message) error
+
+      type Broker struct {
+          mu       sync.RWMutex
+          handlers map[string][]Handler
+          messages []Message
+      }
+
+      func NewBroker() *Broker {
+          return &Broker{
+              handlers: make(map[string][]Handler),
+          }
+      }
+
+      func (b *Broker) Subscribe(topic string, h Handler) {
+          b.mu.Lock()
+          defer b.mu.Unlock()
+          b.handlers[topic] = append(b.handlers[topic], h)
+      }
+
+      func (b *Broker) Publish(msg Message) error {
+          b.mu.RLock()
+          defer b.mu.RUnlock()
+          for _, h := range b.handlers[msg.Topic] {
+              if err := h(msg); err != nil {
+                  return err
+              }
+          }
+          return nil
+      }
+    pkg/worker/consumer.go: |
+      package worker
+
+      import (
+          "log"
+          "mymodule/pkg/queue"
+      )
+
+      type Consumer struct {
+          broker *queue.Broker
+          name   string
+      }
+
+      func NewConsumer(name string, broker *queue.Broker) *Consumer {
+          return &Consumer{name: name, broker: broker}
+      }
+
+      func (c *Consumer) Listen(topic string) {
+          c.broker.Subscribe(topic, func(msg queue.Message) error {
+              log.Printf("[%s] received: %s", c.name, msg.ID)
+              return nil
+          })
+      }
+    cmd/worker/main.go: |
+      package main
+
+      import (
+          "mymodule/pkg/queue"
+          "mymodule/pkg/worker"
+      )
+
+      func main() {
+          broker := queue.NewBroker()
+          c := worker.NewConsumer("worker-1", broker)
+          c.Listen("orders")
+          broker.Publish(queue.Message{
+              ID:      "msg-001",
+              Topic:   "orders",
+              Payload: []byte(`{"order_id": 42}`),
+          })
+      }
+  changed_files:
+    pkg/queue/broker.go: |
+      package queue
+
+      import (
+          "context"
+          "sync"
+      )
+
+      type Message struct {
+          ID      string
+          Topic   string
+          Payload []byte
+      }
+
+      type Handler func(ctx context.Context, msg Message) error
+
+      type Broker struct {
+          mu       sync.RWMutex
+          handlers map[string][]Handler
+          messages []Message
+      }
+
+      func NewBroker() *Broker {
+          return &Broker{
+              handlers: make(map[string][]Handler),
+          }
+      }
+
+      func (b *Broker) Subscribe(topic string, h Handler) {
+          b.mu.Lock()
+          defer b.mu.Unlock()
+          b.handlers[topic] = append(b.handlers[topic], h)
+      }
+
+      func (b *Broker) Publish(ctx context.Context, msg Message) error {
+          b.mu.RLock()
+          defer b.mu.RUnlock()
+          for _, h := range b.handlers[msg.Topic] {
+              if err := h(ctx, msg); err != nil {
+                  return err
+              }
+          }
+          return nil
+      }
+    pkg/worker/consumer.go: |
+      package worker
+
+      import (
+          "log"
+          "mymodule/pkg/queue"
+      )
+
+      type Consumer struct {
+          broker *queue.Broker
+          name   string
+      }
+
+      func NewConsumer(name string, broker *queue.Broker) *Consumer {
+          return &Consumer{name: name, broker: broker}
+      }
+
+      func (c *Consumer) Listen(topic string) {
+          c.broker.Subscribe(topic, func(msg queue.Message) error {
+              log.Printf("[%s] received: %s", c.name, msg.ID)
+              return nil
+          })
+      }
+    cmd/worker/main.go: |
+      package main
+
+      import (
+          "mymodule/pkg/queue"
+          "mymodule/pkg/worker"
+      )
+
+      func main() {
+          broker := queue.NewBroker()
+          c := worker.NewConsumer("worker-1", broker)
+          c.Listen("orders")
+          broker.Publish(queue.Message{
+              ID:      "msg-001",
+              Topic:   "orders",
+              Payload: []byte(`{"order_id": 42}`),
+          })
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: handler_type
+  selector:
+    path: pkg/queue/broker.go
+    anchor: "type Handler func(ctx context.Context, msg Message) error"
+- id: publish_signature
+  selector:
+    path: pkg/queue/broker.go
+    anchor: "func (b *Broker) Publish(ctx context.Context, msg Message) error"
+- id: consumer_listen
+  selector:
+    path: pkg/worker/consumer.go
+    anchor: "c.broker.Subscribe(topic, func(msg queue.Message) error"
+oracle:
+  required:
+  - handler_type
+  - publish_signature
+  - consumer_listen
+  allowed: []
+  forbidden: []

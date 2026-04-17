@@ -1,0 +1,214 @@
+name: bal_1hop_024_rust_middleware_calls_auth
+tags:
+- lang:csharp
+- change:bug_fix
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/Collections/BoundedStack.cs: |
+      namespace Collections;
+
+      public class BoundedStack<T>
+      {
+          private readonly T[] _items;
+          private int _top = -1;
+
+          public BoundedStack(int capacity)
+          {
+              _items = new T[capacity];
+          }
+
+          public bool Push(T item)
+          {
+              if (_top >= _items.Length - 1) return false;
+              _items[_top] = item;
+              _top++;
+              return true;
+          }
+
+          public T? Pop()
+          {
+              if (_top < 0) return default;
+              return _items[_top--];
+          }
+
+          public int Count => _top + 1;
+      }
+    tests/Collections/BoundedStackTests.cs: |
+      using Xunit;
+      using Collections;
+
+      public class BoundedStackTests
+      {
+          [Fact]
+          public void Push_WithinCapacity_ReturnsTrue()
+          {
+              var stack = new BoundedStack<int>(3);
+              Assert.True(stack.Push(1));
+          }
+
+          [Fact]
+          public void Pop_FromEmpty_ReturnsDefault()
+          {
+              var stack = new BoundedStack<int>(3);
+              Assert.Equal(0, stack.Pop());
+          }
+
+          [Fact]
+          public void Push_BeyondCapacity_ReturnsFalse()
+          {
+              var stack = new BoundedStack<int>(1);
+              stack.Push(1);
+              Assert.False(stack.Push(2));
+          }
+      }
+    garbage/Audit.cs: |
+      namespace Garbage;
+
+      public static class AuditLog
+      {
+          public const string GARBAGE_BAL1HOP024_A = "audit_marker";
+          public const string GARBAGE_BAL1HOP024_B = "entry_marker";
+      }
+    garbage/Telemetry.cs: |
+      namespace Garbage;
+
+      public static class Telemetry
+      {
+          public const string GARBAGE_BAL1HOP024_C = "span_marker";
+      }
+    garbage/Retry.cs: |
+      namespace Garbage;
+
+      public static class RetryPolicy
+      {
+          public const string GARBAGE_BAL1HOP024_D = "retry_marker";
+          public const string GARBAGE_BAL1HOP024_E = "backoff_marker";
+      }
+  changed_files:
+    src/Collections/BoundedStack.cs: |
+      namespace Collections;
+
+      public class BoundedStack<T>
+      {
+          private readonly T[] _items;
+          private int _top = -1;
+
+          public BoundedStack(int capacity)
+          {
+              _items = new T[capacity];
+          }
+
+          public bool Push(T item)
+          {
+              if (_top >= _items.Length - 1) return false;
+              _top++;
+              _items[_top] = item;
+              return true;
+          }
+
+          public T? Pop()
+          {
+              if (_top < 0) return default;
+              return _items[_top--];
+          }
+
+          public int Count => _top + 1;
+      }
+    tests/Collections/BoundedStackTests.cs: |
+      using Xunit;
+      using Collections;
+
+      public class BoundedStackTests
+      {
+          [Fact]
+          public void Push_WithinCapacity_ReturnsTrue()
+          {
+              var stack = new BoundedStack<int>(3);
+              Assert.True(stack.Push(1));
+          }
+
+          [Fact]
+          public void Pop_FromEmpty_ReturnsDefault()
+          {
+              var stack = new BoundedStack<int>(3);
+              Assert.Equal(0, stack.Pop());
+          }
+
+          [Fact]
+          public void Push_BeyondCapacity_ReturnsFalse()
+          {
+              var stack = new BoundedStack<int>(1);
+              stack.Push(1);
+              Assert.False(stack.Push(2));
+          }
+
+          [Fact]
+          public void Push_ThenPop_ReturnsLastPushed()
+          {
+              var stack = new BoundedStack<int>(5);
+              stack.Push(10);
+              stack.Push(20);
+              Assert.Equal(20, stack.Pop());
+          }
+      }
+    garbage/Audit.cs: |
+      namespace Garbage;
+
+      public static class AuditLog
+      {
+          public const string GARBAGE_BAL1HOP024_A = "audit_marker";
+          public const string GARBAGE_BAL1HOP024_B = "entry_marker";
+      }
+    garbage/Telemetry.cs: |
+      namespace Garbage;
+
+      public static class Telemetry
+      {
+          public const string GARBAGE_BAL1HOP024_C = "span_marker";
+      }
+    garbage/Retry.cs: |
+      namespace Garbage;
+
+      public static class RetryPolicy
+      {
+          public const string GARBAGE_BAL1HOP024_D = "retry_marker";
+          public const string GARBAGE_BAL1HOP024_E = "backoff_marker";
+      }
+  commit_message: "fix: correct Push to increment _top before assigning item"
+fragments:
+- id: push_fix
+  selector:
+    path: src/Collections/BoundedStack.cs
+    anchor: "_top++;"
+- id: test_file
+  selector:
+    path: tests/Collections/BoundedStackTests.cs
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_BAL1HOP024_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_BAL1HOP024_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_BAL1HOP024_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_BAL1HOP024_D
+- id: no_garbage_e
+  selector:
+    anchor: GARBAGE_BAL1HOP024_E
+oracle:
+  required:
+  - push_fix
+  - test_file
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d
+  - no_garbage_e

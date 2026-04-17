@@ -1,0 +1,214 @@
+name: bal2_3hop_044_rust_physics_collision_resolver
+tags:
+- lang:rust
+- change:multi_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/physics/aabb.rs: |
+      #[derive(Debug, Clone)]
+      pub struct AABB {
+          pub min_x: f32,
+          pub min_y: f32,
+          pub max_x: f32,
+          pub max_y: f32,
+      }
+
+      impl AABB {
+          pub fn new(min_x: f32, min_y: f32, max_x: f32, max_y: f32) -> Self {
+              Self { min_x, min_y, max_x, max_y }
+          }
+
+          pub fn intersects(&self, other: &AABB) -> bool {
+              self.min_x <= other.max_x && self.max_x >= other.min_x
+                  && self.min_y <= other.max_y && self.max_y >= other.min_y
+          }
+      }
+    src/physics/detector.rs: |
+      use crate::physics::aabb::AABB;
+
+      pub struct CollisionDetector;
+
+      impl CollisionDetector {
+          pub fn check_pair(a: &AABB, b: &AABB) -> bool {
+              a.intersects(b)
+          }
+
+          pub fn find_collisions(objects: &[AABB]) -> Vec<(usize, usize)> {
+              let mut pairs = Vec::new();
+              for i in 0..objects.len() {
+                  for j in (i + 1)..objects.len() {
+                      if objects[i].intersects(&objects[j]) {
+                          pairs.push((i, j));
+                      }
+                  }
+              }
+              pairs
+          }
+      }
+    src/physics/resolver.rs: |
+      use crate::physics::detector::CollisionDetector;
+      use crate::physics::aabb::AABB;
+
+      pub struct CollisionResolver {
+          restitution: f32,
+      }
+
+      impl CollisionResolver {
+          pub fn new(restitution: f32) -> Self {
+              Self { restitution }
+          }
+
+          pub fn resolve(&self, objects: &mut [AABB]) {
+              let pairs = CollisionDetector::find_collisions(objects);
+              for (i, j) in pairs {
+                  let overlap_x = objects[i].max_x.min(objects[j].max_x)
+                      - objects[i].min_x.max(objects[j].min_x);
+                  objects[i].max_x -= overlap_x * 0.5 * self.restitution;
+                  objects[j].min_x += overlap_x * 0.5 * self.restitution;
+              }
+          }
+      }
+    src/simulation/world.rs: |
+      use crate::physics::resolver::CollisionResolver;
+      use crate::physics::aabb::AABB;
+
+      pub struct PhysicsWorld {
+          resolver: CollisionResolver,
+          bodies: Vec<AABB>,
+      }
+
+      impl PhysicsWorld {
+          pub fn new(resolver: CollisionResolver) -> Self {
+              Self { resolver, bodies: Vec::new() }
+          }
+
+          pub fn add_body(&mut self, body: AABB) {
+              self.bodies.push(body);
+          }
+
+          pub fn step(&mut self) {
+              self.resolver.resolve(&mut self.bodies);
+          }
+      }
+    src/physics/raycast.rs: |
+      GARBAGE_044_RAY_MARKER_A = "raycaster";
+      GARBAGE_044_ORIGIN_MARKER_B = "0,0";
+
+      pub struct Ray {
+          origin_x: f32,
+          origin_y: f32,
+          dir_x: f32,
+          dir_y: f32,
+      }
+    src/physics/gravity.rs: |
+      GARBAGE_044_GRAV_MARKER_C = "gravity_const";
+      GARBAGE_044_ACCEL_MARKER_D = 9.81;
+
+      pub const GRAVITY: f32 = 9.81;
+    src/debug/wireframe.rs: |
+      GARBAGE_044_WIRE_MARKER_E = "debug_draw";
+      GARBAGE_044_COLOR_MARKER_F = "green";
+
+      pub fn draw_wireframe(x: f32, y: f32, w: f32, h: f32) {
+          println!("Wire: {} {} {} {}", x, y, w, h);
+      }
+  changed_files:
+    src/physics/aabb.rs: |
+      #[derive(Debug, Clone)]
+      pub struct AABB {
+          pub min_x: f32,
+          pub min_y: f32,
+          pub max_x: f32,
+          pub max_y: f32,
+      }
+
+      impl AABB {
+          pub fn new(min_x: f32, min_y: f32, max_x: f32, max_y: f32) -> Self {
+              Self { min_x, min_y, max_x, max_y }
+          }
+
+          pub fn intersects(&self, other: &AABB) -> bool {
+              self.min_x <= other.max_x && self.max_x >= other.min_x
+                  && self.min_y <= other.max_y && self.max_y >= other.min_y
+          }
+
+          pub fn center(&self) -> (f32, f32) {
+              ((self.min_x + self.max_x) * 0.5, (self.min_y + self.max_y) * 0.5)
+          }
+
+          pub fn overlap_area(&self, other: &AABB) -> f32 {
+              let dx = self.max_x.min(other.max_x) - self.min_x.max(other.min_x);
+              let dy = self.max_y.min(other.max_y) - self.min_y.max(other.min_y);
+              if dx > 0.0 && dy > 0.0 { dx * dy } else { 0.0 }
+          }
+      }
+    src/physics/resolver.rs: |
+      use crate::physics::detector::CollisionDetector;
+      use crate::physics::aabb::AABB;
+
+      pub struct CollisionResolver {
+          restitution: f32,
+      }
+
+      impl CollisionResolver {
+          pub fn new(restitution: f32) -> Self {
+              Self { restitution }
+          }
+
+          pub fn resolve(&self, objects: &mut [AABB]) {
+              let pairs = CollisionDetector::find_collisions(objects);
+              for (i, j) in pairs {
+                  let area = objects[i].overlap_area(&objects[j]);
+                  if area > 0.0 {
+                      let overlap_x = objects[i].max_x.min(objects[j].max_x)
+                          - objects[i].min_x.max(objects[j].min_x);
+                      objects[i].max_x -= overlap_x * 0.5 * self.restitution;
+                      objects[j].min_x += overlap_x * 0.5 * self.restitution;
+                  }
+              }
+          }
+      }
+  commit_message: "feat: add center/overlap_area to AABB and use in resolver"
+fragments:
+- id: aabb_overlap_area
+  selector:
+    path: src/physics/aabb.rs
+    anchor: "pub fn overlap_area"
+- id: detector_find
+  selector:
+    path: src/physics/detector.rs
+    anchor: "pub fn find_collisions"
+- id: resolver_uses_overlap
+  selector:
+    path: src/physics/resolver.rs
+    anchor: "overlap_area"
+- id: world_step
+  selector:
+    path: src/simulation/world.rs
+    anchor: "pub fn step"
+- id: no_raycast
+  selector:
+    path: src/physics/raycast.rs
+    anchor: "GARBAGE_044_RAY_MARKER_A"
+- id: no_gravity
+  selector:
+    path: src/physics/gravity.rs
+    anchor: "GARBAGE_044_GRAV_MARKER_C"
+- id: no_wireframe
+  selector:
+    path: src/debug/wireframe.rs
+    anchor: "GARBAGE_044_WIRE_MARKER_E"
+oracle:
+  required:
+  - aabb_overlap_area
+  - detector_find
+  - resolver_uses_overlap
+  - world_step
+  allowed: []
+  forbidden:
+  - no_raycast
+  - no_gravity
+  - no_wireframe

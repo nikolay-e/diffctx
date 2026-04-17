@@ -1,0 +1,267 @@
+name: bal3_3hop_074_php_dto_transformer_chain
+tags:
+- lang:php
+- change:multi_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/Entity/Product.php: |
+      <?php
+      namespace App\Entity;
+
+      class Product {
+          private int $id;
+          private string $name;
+          private float $price;
+          public function __construct(int $id, string $name, float $price) {
+              $this->id = $id;
+              $this->name = $name;
+              $this->price = $price;
+          }
+          public function getId(): int { return $this->id; }
+          public function getName(): string { return $this->name; }
+          public function getPrice(): float { return $this->price; }
+      }
+    src/DTO/ProductDTO.php: |
+      <?php
+      namespace App\DTO;
+
+      use App\Entity\Product;
+
+      class ProductDTO {
+          public int $id;
+          public string $name;
+          public float $price;
+          public static function fromEntity(Product $product): self {
+              $dto = new self();
+              $dto->id = $product->getId();
+              $dto->name = $product->getName();
+              $dto->price = $product->getPrice();
+              return $dto;
+          }
+      }
+    src/Transformers/ProductTransformer.php: |
+      <?php
+      namespace App\Transformers;
+
+      use App\DTO\ProductDTO;
+      use App\Entity\Product;
+
+      class ProductTransformer {
+          public function transform(Product $product): ProductDTO {
+              return ProductDTO::fromEntity($product);
+          }
+          public function transformCollection(array $products): array {
+              return array_map(fn(Product $p) => $this->transform($p), $products);
+          }
+      }
+    src/Services/CatalogService.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Transformers\ProductTransformer;
+
+      class CatalogService {
+          private ProductTransformer $transformer;
+          public function __construct(ProductTransformer $transformer) {
+              $this->transformer = $transformer;
+          }
+          public function listProducts(array $products): array {
+              return $this->transformer->transformCollection($products);
+          }
+      }
+    src/Controllers/CatalogController.php: |
+      <?php
+      namespace App\Controllers;
+
+      use App\Services\CatalogService;
+
+      class CatalogController {
+          private CatalogService $service;
+          public function __construct(CatalogService $service) {
+              $this->service = $service;
+          }
+          public function index(array $products): array {
+              return $this->service->listProducts($products);
+          }
+      }
+    src/Validators/ProductValidator.php: |
+      <?php
+      namespace App\Validators;
+      define('GARBAGE_074_VALID_A', 'product');
+      define('GARBAGE_074_RULE_B', 'required');
+
+      class ProductValidator {
+          public function validate(array $data): bool { return true; }
+      }
+    src/Formatters/PriceFormatter.php: |
+      <?php
+      namespace App\Formatters;
+      define('GARBAGE_074_PRICE_C', 'format');
+      define('GARBAGE_074_CURR_D', 'USD');
+
+      class PriceFormatter {
+          public function format(float $price): string { return "$" . $price; }
+      }
+  changed_files:
+    src/Entity/Product.php: |
+      <?php
+      namespace App\Entity;
+
+      class Product {
+          private int $id;
+          private string $name;
+          private float $price;
+          private string $sku;
+          private string $category;
+          public function __construct(int $id, string $name, float $price, string $sku = '', string $category = 'general') {
+              $this->id = $id;
+              $this->name = $name;
+              $this->price = $price;
+              $this->sku = $sku;
+              $this->category = $category;
+          }
+          public function getId(): int { return $this->id; }
+          public function getName(): string { return $this->name; }
+          public function getPrice(): float { return $this->price; }
+          public function getSku(): string { return $this->sku; }
+          public function getCategory(): string { return $this->category; }
+      }
+    src/DTO/ProductDTO.php: |
+      <?php
+      namespace App\DTO;
+
+      use App\Entity\Product;
+
+      class ProductDTO {
+          public int $id;
+          public string $name;
+          public float $price;
+          public string $sku;
+          public string $category;
+          public static function fromEntity(Product $product): self {
+              $dto = new self();
+              $dto->id = $product->getId();
+              $dto->name = $product->getName();
+              $dto->price = $product->getPrice();
+              $dto->sku = $product->getSku();
+              $dto->category = $product->getCategory();
+              return $dto;
+          }
+      }
+    src/Transformers/ProductTransformer.php: |
+      <?php
+      namespace App\Transformers;
+
+      use App\DTO\ProductDTO;
+      use App\Entity\Product;
+
+      class ProductTransformer {
+          public function transform(Product $product): ProductDTO {
+              return ProductDTO::fromEntity($product);
+          }
+          public function transformCollection(array $products): array {
+              return array_map(fn(Product $p) => $this->transform($p), $products);
+          }
+      }
+    src/Services/CatalogService.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Transformers\ProductTransformer;
+
+      class CatalogService {
+          private ProductTransformer $transformer;
+          public function __construct(ProductTransformer $transformer) {
+              $this->transformer = $transformer;
+          }
+          public function listProducts(array $products): array {
+              return $this->transformer->transformCollection($products);
+          }
+      }
+    src/Controllers/CatalogController.php: |
+      <?php
+      namespace App\Controllers;
+
+      use App\Services\CatalogService;
+
+      class CatalogController {
+          private CatalogService $service;
+          public function __construct(CatalogService $service) {
+              $this->service = $service;
+          }
+          public function index(array $products): array {
+              return $this->service->listProducts($products);
+          }
+      }
+    src/Validators/ProductValidator.php: |
+      <?php
+      namespace App\Validators;
+      define('GARBAGE_074_VALID_A', 'product');
+      define('GARBAGE_074_RULE_B', 'required');
+
+      class ProductValidator {
+          public function validate(array $data): bool { return true; }
+      }
+    src/Formatters/PriceFormatter.php: |
+      <?php
+      namespace App\Formatters;
+      define('GARBAGE_074_PRICE_C', 'format');
+      define('GARBAGE_074_CURR_D', 'USD');
+
+      class PriceFormatter {
+          public function format(float $price): string { return "$" . $price; }
+      }
+  commit_message: "feat: add SKU and category fields to Product entity"
+fragments:
+- id: entity_sku
+  selector:
+    path: src/Entity/Product.php
+    anchor: "private string $sku"
+- id: entity_category
+  selector:
+    path: src/Entity/Product.php
+    anchor: "private string $category"
+- id: dto_sku
+  selector:
+    path: src/DTO/ProductDTO.php
+    anchor: "public string $sku"
+- id: dto_from_entity
+  selector:
+    path: src/DTO/ProductDTO.php
+    anchor: "use App\\Entity\\Product"
+- id: transformer_uses_dto
+  selector:
+    path: src/Transformers/ProductTransformer.php
+    anchor: "use App\\DTO\\ProductDTO"
+- id: service_uses_transformer
+  selector:
+    path: src/Services/CatalogService.php
+    anchor: "use App\\Transformers\\ProductTransformer"
+- id: controller_uses_service
+  selector:
+    path: src/Controllers/CatalogController.php
+    anchor: "use App\\Services\\CatalogService"
+- id: no_validator
+  selector:
+    path: src/Validators/ProductValidator.php
+    anchor: "GARBAGE_074_VALID_A"
+- id: no_price_formatter
+  selector:
+    path: src/Formatters/PriceFormatter.php
+    anchor: "GARBAGE_074_PRICE_C"
+oracle:
+  required:
+  - entity_sku
+  - dto_sku
+  - dto_from_entity
+  - transformer_uses_dto
+  - service_uses_transformer
+  - controller_uses_service
+  allowed:
+  - entity_category
+  forbidden:
+  - no_validator
+  - no_price_formatter

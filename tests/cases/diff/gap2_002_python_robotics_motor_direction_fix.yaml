@@ -1,0 +1,115 @@
+name: gap2_002_python_robotics_motor_direction_fix
+tags:
+- lang:python
+- change:bug_fix
+- change:multi_file
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    robot/motor_controller.py: |
+      from robot.pwm_driver import PwmChannel
+
+      class MotorController:
+          def __init__(self, left: PwmChannel, right: PwmChannel):
+              self.left = left
+              self.right = right
+
+          def drive_forward(self, speed: float) -> None:
+              self.left.set_duty(speed)
+              self.right.set_duty(speed)
+
+          def turn_left(self, speed: float) -> None:
+              self.left.set_duty(-speed)
+              self.right.set_duty(-speed)
+
+          def stop(self) -> None:
+              self.left.set_duty(0.0)
+              self.right.set_duty(0.0)
+    robot/pwm_driver.py: |
+      class PwmChannel:
+          def __init__(self, pin: int, frequency: int = 1000):
+              self.pin = pin
+              self.frequency = frequency
+              self._duty: float = 0.0
+
+          def set_duty(self, value: float) -> None:
+              self._duty = max(-1.0, min(1.0, value))
+
+          def get_duty(self) -> float:
+              return self._duty
+    robot/sensors.py: |
+      class UltrasonicSensor:
+          def __init__(self, trigger_pin: int, echo_pin: int):
+              self.trigger_pin = trigger_pin
+              self.echo_pin = echo_pin
+
+          def read_distance_cm(self) -> float:
+              return 0.0
+
+          def is_obstacle_near(self, threshold_cm: float = 30.0) -> bool:
+              return self.read_distance_cm() < threshold_cm
+  changed_files:
+    robot/motor_controller.py: |
+      from robot.pwm_driver import PwmChannel
+
+      class MotorController:
+          def __init__(self, left: PwmChannel, right: PwmChannel):
+              self.left = left
+              self.right = right
+
+          def drive_forward(self, speed: float) -> None:
+              self.left.set_duty(speed)
+              self.right.set_duty(speed)
+
+          def turn_left(self, speed: float) -> None:
+              self.left.set_duty(-speed)
+              self.right.set_duty(speed)
+
+          def stop(self) -> None:
+              self.left.set_duty(0.0)
+              self.right.set_duty(0.0)
+    robot/pwm_driver.py: |
+      class PwmChannel:
+          def __init__(self, pin: int, frequency: int = 1000):
+              self.pin = pin
+              self.frequency = frequency
+              self._duty: float = 0.0
+
+          def set_duty(self, value: float) -> None:
+              self._duty = max(-1.0, min(1.0, value))
+
+          def get_duty(self) -> float:
+              return self._duty
+  commit_message: "fix: correct turn_left motor direction"
+fragments:
+- id: turn_left_fix
+  selector:
+    path: robot/motor_controller.py
+    anchor: "def turn_left"
+- id: drive_forward
+  selector:
+    path: robot/motor_controller.py
+    anchor: "def drive_forward"
+- id: motor_class
+  selector:
+    path: robot/motor_controller.py
+    anchor: "class MotorController"
+- id: no_sensors
+  selector:
+    path: robot/sensors.py
+- id: no_ultrasonic
+  selector:
+    anchor: UltrasonicSensor
+oracle:
+  required:
+  - turn_left_fix
+  - drive_forward
+  - motor_class
+  allowed: []
+  forbidden:
+  - no_sensors
+  - no_ultrasonic

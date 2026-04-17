@@ -1,0 +1,160 @@
+name: bal_1hop_056_typescript_transformer_to_pipeline
+tags:
+- lang:typescript
+- change:new_function
+- change:multi_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/transform/textTransformer.ts: |
+      export type TransformFn = (input: string) => string;
+
+      export function toUpperCase(input: string): string {
+        return input.toUpperCase();
+      }
+
+      export function trim(input: string): string {
+        return input.trim();
+      }
+
+      export function removeExtraSpaces(input: string): string {
+        return input.replace(/\s+/g, ' ');
+      }
+    src/pipeline/transformPipeline.ts: |
+      import { TransformFn, toUpperCase, trim, removeExtraSpaces } from '../transform/textTransformer';
+
+      export class TransformPipeline {
+        private steps: TransformFn[] = [];
+
+        add(fn: TransformFn): TransformPipeline {
+          this.steps.push(fn);
+          return this;
+        }
+
+        execute(input: string): string {
+          return this.steps.reduce((acc, fn) => fn(acc), input);
+        }
+
+        static defaultPipeline(): TransformPipeline {
+          return new TransformPipeline()
+            .add(trim)
+            .add(removeExtraSpaces)
+            .add(toUpperCase);
+        }
+      }
+    src/io/fileReader.ts: |
+      export function readLines(content: string): string[] {
+        return content.split('\n').filter(line => line.length > 0);
+      }
+    src/io/fileWriter.ts: |
+      export function writeOutput(lines: string[]): string {
+        return lines.join('\n') + '\n';
+      }
+    src/metrics/pipelineMetrics.ts: |
+      export interface PipelineStats {
+        inputLength: number;
+        outputLength: number;
+        stepsExecuted: number;
+      }
+
+      export function computeStats(input: string, output: string, steps: number): PipelineStats {
+        return {
+          inputLength: input.length,
+          outputLength: output.length,
+          stepsExecuted: steps,
+        };
+      }
+  changed_files:
+    src/transform/textTransformer.ts: |
+      export type TransformFn = (input: string) => string;
+
+      export function toUpperCase(input: string): string {
+        return input.toUpperCase();
+      }
+
+      export function toLowerCase(input: string): string {
+        return input.toLowerCase();
+      }
+
+      export function trim(input: string): string {
+        return input.trim();
+      }
+
+      export function removeExtraSpaces(input: string): string {
+        return input.replace(/\s+/g, ' ');
+      }
+
+      export function capitalize(input: string): string {
+        return input.replace(/\b\w/g, char => char.toUpperCase());
+      }
+
+      export function slugify(input: string): string {
+        return input
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '');
+      }
+
+      export function truncate(maxLength: number): TransformFn {
+        return (input: string) => input.length > maxLength
+          ? input.slice(0, maxLength) + '...'
+          : input;
+      }
+  commit_message: "feat: add toLowerCase, capitalize, slugify, and truncate transforms"
+fragments:
+- id: transform_to_lower
+  selector:
+    path: textTransformer.ts
+    anchor: "toLowerCase"
+- id: transform_capitalize
+  selector:
+    path: textTransformer.ts
+    anchor: "capitalize"
+- id: transform_slugify
+  selector:
+    path: textTransformer.ts
+    anchor: "slugify"
+- id: transform_truncate
+  selector:
+    path: textTransformer.ts
+    anchor: "truncate"
+- id: pipeline_uses_transform
+  selector:
+    path: transformPipeline.ts
+    anchor: "toUpperCase"
+- id: pipeline_add_step
+  selector:
+    path: transformPipeline.ts
+    anchor: "add(fn: TransformFn)"
+- id: pipeline_execute
+  selector:
+    path: transformPipeline.ts
+    anchor: "execute(input"
+- id: no_file_reader
+  selector:
+    path: fileReader.ts
+    anchor: "readLines"
+- id: no_file_writer
+  selector:
+    path: fileWriter.ts
+    anchor: "writeOutput"
+- id: no_pipeline_metrics
+  selector:
+    path: pipelineMetrics.ts
+    anchor: "PipelineStats"
+oracle:
+  required:
+  - transform_slugify
+  - transform_truncate
+  - pipeline_uses_transform
+  - pipeline_execute
+  allowed:
+  - transform_to_lower
+  - transform_capitalize
+  - pipeline_add_step
+  forbidden:
+  - no_file_reader
+  - no_file_writer
+  - no_pipeline_metrics

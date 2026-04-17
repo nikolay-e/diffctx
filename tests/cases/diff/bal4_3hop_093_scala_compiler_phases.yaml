@@ -1,0 +1,158 @@
+name: bal4_3hop_093_scala_compiler_phases
+tags:
+- lang:scala
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/compiler/ast/AstNode.scala: |
+      package compiler.ast
+
+      sealed trait AstNode
+      case class Literal(value: Int) extends AstNode
+      case class BinOp(op: String, left: AstNode, right: AstNode) extends AstNode
+      case class Ident(name: String) extends AstNode
+    src/main/scala/compiler/parser/Parser.scala: |
+      package compiler.parser
+
+      import compiler.ast.{AstNode, Literal, BinOp, Ident}
+
+      object Parser {
+        def parse(tokens: List[String]): AstNode = tokens match {
+          case num :: Nil if num.forall(_.isDigit) => Literal(num.toInt)
+          case name :: Nil => Ident(name)
+          case left :: op :: right :: Nil => BinOp(op, parse(List(left)), parse(List(right)))
+          case _ => Literal(0)
+        }
+      }
+    src/main/scala/compiler/typecheck/TypeChecker.scala: |
+      package compiler.typecheck
+
+      import compiler.ast.{AstNode, Literal, BinOp, Ident}
+      import compiler.parser.Parser
+
+      object TypeChecker {
+        def check(node: AstNode): Boolean = node match {
+          case Literal(_) => true
+          case Ident(_) => true
+          case BinOp(_, l, r) => check(l) && check(r)
+        }
+      }
+    src/main/scala/compiler/codegen/CodeGen.scala: |
+      package compiler.codegen
+
+      import compiler.ast.{AstNode, Literal, BinOp, Ident}
+      import compiler.typecheck.TypeChecker
+
+      object CodeGen {
+        def emit(node: AstNode): String = node match {
+          case Literal(v) => s"PUSH $v"
+          case Ident(n) => s"LOAD $n"
+          case BinOp(op, l, r) => s"${emit(l)}\n${emit(r)}\n$op"
+        }
+      }
+    src/main/scala/compiler/Driver.scala: |
+      package compiler
+
+      import compiler.parser.Parser
+      import compiler.typecheck.TypeChecker
+      import compiler.codegen.CodeGen
+
+      object Driver {
+        def compile(source: List[String]): String = {
+          val ast = Parser.parse(source)
+          if (TypeChecker.check(ast)) CodeGen.emit(ast)
+          else "ERROR"
+        }
+      }
+    src/main/scala/util/FileReader.scala: |
+      package util
+
+      object FileReader {
+        val GARBAGE_093_FILE_A = "buffered"
+        val GARBAGE_093_FILE_B = "streaming"
+
+        def readAll(path: String): String = ""
+      }
+    src/main/scala/util/Profiler.scala: |
+      package util
+
+      object Profiler {
+        val GARBAGE_093_PROF_C = "timing"
+        val GARBAGE_093_PROF_D = "memory"
+
+        def time[T](label: String)(block: => T): T = block
+      }
+    src/main/scala/util/Cache.scala: |
+      package util
+
+      object Cache {
+        val GARBAGE_093_CACHE_E = "lru"
+
+        def get[T](key: String): Option[T] = None
+      }
+  changed_files:
+    src/main/scala/compiler/ast/AstNode.scala: |
+      package compiler.ast
+
+      sealed trait AstNode
+      case class Literal(value: Int) extends AstNode
+      case class BinOp(op: String, left: AstNode, right: AstNode) extends AstNode
+      case class Ident(name: String) extends AstNode
+      case class LetBinding(name: String, value: AstNode, body: AstNode) extends AstNode
+  commit_message: "feat: add LetBinding AST node for variable declarations"
+fragments:
+- id: ast_let_binding
+  selector:
+    path: src/main/scala/compiler/ast/AstNode.scala
+    anchor: "LetBinding"
+- id: parser_uses_ast
+  selector:
+    path: src/main/scala/compiler/parser/Parser.scala
+    anchor: "import compiler.ast."
+- id: typechecker_uses_ast
+  selector:
+    path: src/main/scala/compiler/typecheck/TypeChecker.scala
+    anchor: "import compiler.ast."
+- id: codegen_uses_ast
+  selector:
+    path: src/main/scala/compiler/codegen/CodeGen.scala
+    anchor: "import compiler.ast."
+- id: driver_pipeline
+  selector:
+    path: src/main/scala/compiler/Driver.scala
+    anchor: "import compiler.parser.Parser"
+- id: no_file_reader
+  selector:
+    path: src/main/scala/util/FileReader.scala
+    anchor: "GARBAGE_093_FILE_A"
+- id: no_profiler
+  selector:
+    path: src/main/scala/util/Profiler.scala
+    anchor: "GARBAGE_093_PROF_C"
+- id: no_cache
+  selector:
+    path: src/main/scala/util/Cache.scala
+    anchor: "GARBAGE_093_CACHE_E"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_093_FILE_B
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_093_PROF_D
+oracle:
+  required:
+  - ast_let_binding
+  - parser_uses_ast
+  - typechecker_uses_ast
+  - codegen_uses_ast
+  - driver_pipeline
+  allowed: []
+  forbidden:
+  - no_file_reader
+  - no_profiler
+  - no_cache
+  - no_global_0
+  - no_global_1

@@ -1,0 +1,122 @@
+name: bal4_3hop_063_go_middleware_auth_token_store
+tags:
+- lang:go
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:trivial
+repo:
+  initial_files:
+    pkg/store/token_store.go: |
+      package store
+
+      func SaveToken(tok string) bool {
+          return true
+      }
+    pkg/token/issuer.go: |
+      package token
+
+      import "myapp/pkg/store"
+
+      func Issue(uid string) bool {
+          tok := "t-" + uid
+          return store.SaveToken(tok)
+      }
+    pkg/auth/login.go: |
+      package auth
+
+      import "myapp/pkg/token"
+
+      func Login(uid string) bool {
+          return token.Issue(uid)
+      }
+    pkg/mw/auth_mw.go: |
+      package mw
+
+      import "myapp/pkg/auth"
+
+      func Check(uid string) bool {
+          return auth.Login(uid)
+      }
+    pkg/garbage/filler.go: |
+      package garbage
+
+      var GARBAGE_063_FILLER_A = "x"
+      var GARBAGE_063_FILLER_B = "y"
+
+      func GarbageNoop() {}
+  changed_files:
+    pkg/store/token_store.go: |
+      package store
+
+      func SaveToken(tok string) bool {
+          if tok == "" {
+              return false
+          }
+          return true
+      }
+    pkg/token/issuer.go: |
+      package token
+
+      import "myapp/pkg/store"
+
+      func Issue(uid string) bool {
+          tok := "t-" + uid
+          return store.SaveToken(tok)
+      }
+    pkg/auth/login.go: |
+      package auth
+
+      import "myapp/pkg/token"
+
+      func Login(uid string) bool {
+          return token.Issue(uid)
+      }
+    pkg/mw/auth_mw.go: |
+      package mw
+
+      import "myapp/pkg/auth"
+
+      func Check(uid string) bool {
+          return auth.Login(uid)
+      }
+    pkg/garbage/filler.go: |
+      package garbage
+
+      var GARBAGE_063_FILLER_A = "x"
+      var GARBAGE_063_FILLER_B = "y"
+
+      func GarbageNoop() {}
+  commit_message: "fix empty token validation"
+fragments:
+- id: save_token
+  selector:
+    path: pkg/store/token_store.go
+    anchor: "func SaveToken"
+- id: issue
+  selector:
+    path: pkg/token/issuer.go
+    anchor: "func Issue"
+- id: login
+  selector:
+    path: pkg/auth/login.go
+    anchor: "func Login"
+- id: no_garbage_filler
+  selector:
+    path: pkg/garbage/filler.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_063_FILLER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_063_FILLER_B
+oracle:
+  required:
+  - save_token
+  - issue
+  - login
+  allowed: []
+  forbidden:
+  - no_garbage_filler
+  - no_global_0
+  - no_global_1

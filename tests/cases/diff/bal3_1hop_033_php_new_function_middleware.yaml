@@ -1,0 +1,260 @@
+name: bal3_1hop_033_php_new_function_middleware
+tags:
+- lang:php
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: php-no-tree-sitter
+repo:
+  initial_files:
+    src/Http/Middleware/RateLimiter.php: |
+      <?php
+      namespace App\Http\Middleware;
+
+      class RateLimiter
+      {
+          private int $maxRequests;
+
+          public function __construct(int $maxRequests = 60)
+          {
+              $this->maxRequests = $maxRequests;
+          }
+
+          public function handle(array $request): array
+          {
+              return ['allowed' => true, 'remaining' => $this->maxRequests - 1];
+          }
+      }
+    src/Http/Kernel.php: |
+      <?php
+      namespace App\Http;
+
+      use App\Http\Middleware\RateLimiter;
+
+      class Kernel
+      {
+          private RateLimiter $rateLimiter;
+
+          public function __construct(RateLimiter $rateLimiter)
+          {
+              $this->rateLimiter = $rateLimiter;
+          }
+
+          public function process(array $request): array
+          {
+              $check = $this->rateLimiter->handle($request);
+              if (!$check['allowed']) {
+                  return ['status' => 429];
+              }
+              return ['status' => 200];
+          }
+      }
+    src/Http/Router.php: |
+      <?php
+      namespace App\Http;
+
+      use App\Http\Middleware\RateLimiter;
+
+      class Router
+      {
+          private RateLimiter $limiter;
+
+          public function __construct(RateLimiter $limiter)
+          {
+              $this->limiter = $limiter;
+          }
+
+          public function dispatch(string $path): array
+          {
+              $check = $this->limiter->handle(['path' => $path]);
+              return ['path' => $path, 'rate_limit' => $check];
+          }
+      }
+    src/Http/ApiGateway.php: |
+      <?php
+      namespace App\Http;
+
+      use App\Http\Middleware\RateLimiter;
+
+      class ApiGateway
+      {
+          private RateLimiter $rateLimiter;
+
+          public function __construct(RateLimiter $rateLimiter)
+          {
+              $this->rateLimiter = $rateLimiter;
+          }
+
+          public function forward(array $request): array
+          {
+              return $this->rateLimiter->handle($request);
+          }
+      }
+    src/Http/WebhookHandler.php: |
+      <?php
+      namespace App\Http;
+
+      use App\Http\Middleware\RateLimiter;
+
+      class WebhookHandler
+      {
+          private RateLimiter $limiter;
+
+          public function __construct(RateLimiter $limiter)
+          {
+              $this->limiter = $limiter;
+          }
+
+          public function receive(array $payload): array
+          {
+              $check = $this->limiter->handle($payload);
+              return ['received' => true, 'limited' => !$check['allowed']];
+          }
+      }
+    src/Config/AppConfig.php: |
+      <?php
+      namespace App\Config;
+
+      GARBAGE_BAL3_033_CONFIG_A = 'config';
+      GARBAGE_BAL3_033_ENV_B = 'production';
+
+      class AppConfig
+      {
+          public function get(string $key): mixed
+          {
+              return null;
+          }
+      }
+    src/Config/DatabaseConfig.php: |
+      <?php
+      namespace App\Config;
+
+      GARBAGE_BAL3_033_DB_C = 'database';
+      GARBAGE_BAL3_033_DRIVER_D = 'mysql';
+
+      class DatabaseConfig
+      {
+          public function getDsn(): string
+          {
+              return 'mysql:host=localhost';
+          }
+      }
+    src/Config/CacheConfig.php: |
+      <?php
+      namespace App\Config;
+
+      GARBAGE_BAL3_033_CACHECFG_E = 'cache';
+      GARBAGE_BAL3_033_STORE_F = 'redis';
+
+      class CacheConfig
+      {
+          public function getDriver(): string
+          {
+              return 'redis';
+          }
+      }
+  changed_files:
+    src/Http/Middleware/RateLimiter.php: |
+      <?php
+      namespace App\Http\Middleware;
+
+      class RateLimiter
+      {
+          private int $maxRequests;
+          private int $windowSeconds;
+
+          public function __construct(int $maxRequests = 60, int $windowSeconds = 60)
+          {
+              $this->maxRequests = $maxRequests;
+              $this->windowSeconds = $windowSeconds;
+          }
+
+          public function handle(array $request): array
+          {
+              return ['allowed' => true, 'remaining' => $this->maxRequests - 1];
+          }
+
+          public function throttle(string $clientIp): array
+          {
+              return [
+                  'ip' => $clientIp,
+                  'max' => $this->maxRequests,
+                  'window' => $this->windowSeconds,
+                  'throttled' => false,
+              ];
+          }
+
+          public function resetClient(string $clientIp): bool
+          {
+              return true;
+          }
+      }
+  commit_message: "Add throttle and reset methods to RateLimiter"
+fragments:
+- id: kernel_import
+  selector:
+    path: src/Http/Kernel.php
+    anchor: "use App\\Http\\Middleware\\RateLimiter"
+- id: kernel_usage
+  selector:
+    path: src/Http/Kernel.php
+    anchor: "rateLimiter->handle"
+- id: router_import
+  selector:
+    path: src/Http/Router.php
+    anchor: "use App\\Http\\Middleware\\RateLimiter"
+- id: api_gateway_import
+  selector:
+    path: src/Http/ApiGateway.php
+    anchor: "use App\\Http\\Middleware\\RateLimiter"
+- id: webhook_import
+  selector:
+    path: src/Http/WebhookHandler.php
+    anchor: "use App\\Http\\Middleware\\RateLimiter"
+- id: no_app_config
+  selector:
+    path: src/Config/AppConfig.php
+- id: no_db_config
+  selector:
+    path: src/Config/DatabaseConfig.php
+- id: no_cache_config
+  selector:
+    path: src/Config/CacheConfig.php
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_033_CONFIG_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_033_ENV_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_033_DB_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_033_DRIVER_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL3_033_CACHECFG_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL3_033_STORE_F
+oracle:
+  required:
+  - kernel_import
+  - kernel_usage
+  - router_import
+  - api_gateway_import
+  - webhook_import
+  allowed: []
+  forbidden:
+  - no_app_config
+  - no_db_config
+  - no_cache_config
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

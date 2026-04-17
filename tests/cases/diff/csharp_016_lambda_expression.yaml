@@ -1,135 +1,364 @@
 name: csharp_016_lambda_expression
+tags:
+- lang:rust
+- change:bug_fix
+- change:multi_file
+- context:test_file
+- distance:2hop
+- difficulty:hard
 repo:
   initial_files:
-    Services/Validator.cs: |
-      namespace MyApp.Services;
+    src/dns/resolver.rs: |
+      use std::collections::HashMap;
+      use std::net::IpAddr;
 
-      public class Validator<T>
-      {
-          private readonly List<Func<T, bool>> _rules = new();
+      pub struct DnsRecord {
+          pub name: String,
+          pub record_type: String,
+          pub value: String,
+          pub ttl: u32,
+      }
 
-          public Validator<T> AddRule(Func<T, bool> rule)
-          {
-              _rules.Add(rule);
-              return this;
+      pub struct DnsResolver {
+          records: HashMap<String, Vec<DnsRecord>>,
+      }
+
+      impl DnsResolver {
+          pub fn new() -> Self {
+              DnsResolver { records: HashMap::new() }
           }
 
-          public bool Validate(T item)
-          {
-              return _rules.All(rule => rule(item));
+          pub fn add_record(&mut self, record: DnsRecord) {
+              self.records
+                  .entry(record.name.clone())
+                  .or_insert_with(Vec::new)
+                  .push(record);
+          }
+
+          pub fn resolve(&self, name: &str, record_type: &str) -> Vec<&DnsRecord> {
+              self.records
+                  .get(name)
+                  .map(|recs| recs.iter().filter(|r| r.record_type == record_type).collect())
+                  .unwrap_or_default()
           }
       }
-    Program.cs: |
-      using System;
+    src/dns/cache.rs: |
+      use crate::dns::resolver::DnsRecord;
+      use std::collections::HashMap;
+      use std::time::{Duration, Instant};
 
-      class Program
-      {
-          static void Main() { }
+      struct CacheEntry {
+          records: Vec<DnsRecord>,
+          expires_at: Instant,
       }
-    Unrelated/RetryHandler.cs: |
-      namespace MyApp.Unrelated;
 
-      public class RetryHandler
-      {
-          private const string GARBAGE_CS_016_RETRY_HANDLER_A = "retry_handler_marker";
-
-          public void Retry(int attempts) => _ = GARBAGE_CS_016_RETRY_HANDLER_A;
+      pub struct DnsCache {
+          entries: HashMap<String, CacheEntry>,
       }
-    Unrelated/DeadLetterQueue.cs: |
-      namespace MyApp.Unrelated;
 
-      public class DeadLetterQueue
-      {
-          public const string GARBAGE_CS_016_DEAD_LETTER_B = "dead_letter_queue_marker";
+      impl DnsCache {
+          pub fn new() -> Self {
+              DnsCache { entries: HashMap::new() }
+          }
 
-          public void Enqueue(string message) => _ = GARBAGE_CS_016_DEAD_LETTER_B + message;
+          pub fn get(&self, key: &str) -> Option<&Vec<DnsRecord>> {
+              self.entries.get(key).and_then(|e| {
+                  if Instant::now() < e.expires_at {
+                      Some(&e.records)
+                  } else {
+                      None
+                  }
+              })
+          }
+
+          pub fn set(&mut self, key: String, records: Vec<DnsRecord>, ttl: Duration) {
+              self.entries.insert(key, CacheEntry {
+                  records,
+                  expires_at: Instant::now() + ttl,
+              });
+          }
+      }
+    src/dns/client.rs: |
+      use crate::dns::resolver::DnsResolver;
+      use crate::dns::cache::DnsCache;
+      use std::time::Duration;
+
+      pub struct DnsClient {
+          resolver: DnsResolver,
+          cache: DnsCache,
+      }
+
+      impl DnsClient {
+          pub fn new() -> Self {
+              DnsClient {
+                  resolver: DnsResolver::new(),
+                  cache: DnsCache::new(),
+              }
+          }
+
+          pub fn lookup(&mut self, name: &str, record_type: &str) -> Vec<String> {
+              let records = self.resolver.resolve(name, record_type);
+              records.iter().map(|r| r.value.clone()).collect()
+          }
+      }
+    tests/dns_integration.rs: |
+      use crate::dns::resolver::{DnsRecord, DnsResolver};
+      use crate::dns::client::DnsClient;
+
+      #[test]
+      fn resolver_finds_a_record() {
+          let mut resolver = DnsResolver::new();
+          resolver.add_record(DnsRecord {
+              name: "example.com".to_string(),
+              record_type: "A".to_string(),
+              value: "93.184.216.34".to_string(),
+              ttl: 300,
+          });
+          let results = resolver.resolve("example.com", "A");
+          assert_eq!(results.len(), 1);
+          assert_eq!(results[0].value, "93.184.216.34");
+      }
+
+      #[test]
+      fn resolver_returns_empty_for_unknown_name() {
+          let resolver = DnsResolver::new();
+          assert!(resolver.resolve("unknown.example", "A").is_empty());
+      }
+    src/proxy/forward.rs: |
+      // GARBAGE_CS16_A = "proxy_forward_unrelated"
+      pub fn forward_request(target: &str, data: &[u8]) -> Vec<u8> {
+          vec![]
+      }
+    src/tls/cert.rs: |
+      // GARBAGE_CS16_B = "tls_cert_unrelated"
+      pub struct Certificate {
+          pub common_name: String,
+      }
+      impl Certificate {
+          pub fn new(cn: &str) -> Self { Certificate { common_name: cn.to_string() } }
+      }
+    src/load_balancer/round_robin.rs: |
+      // GARBAGE_CS16_C = "round_robin_lb_unrelated"
+      pub struct RoundRobin {
+          backends: Vec<String>,
+          idx: usize,
+      }
+      impl RoundRobin {
+          pub fn new(backends: Vec<String>) -> Self { RoundRobin { backends, idx: 0 } }
+          pub fn next(&mut self) -> Option<&str> {
+              if self.backends.is_empty() { return None; }
+              let b = &self.backends[self.idx % self.backends.len()];
+              self.idx += 1;
+              Some(b)
+          }
       }
   changed_files:
-    Services/Validator.cs: |
-      namespace MyApp.Services;
+    src/dns/resolver.rs: |
+      use std::collections::HashMap;
+      use std::net::IpAddr;
 
-      public class Validator<T>
-      {
-          private readonly List<Func<T, bool>> _rules = new();
+      pub struct DnsRecord {
+          pub name: String,
+          pub record_type: String,
+          pub value: String,
+          pub ttl: u32,
+      }
 
-          public Validator<T> AddRule(Func<T, bool> rule)
-          {
-              _rules.Add(rule);
-              return this;
+      pub struct DnsResolver {
+          records: HashMap<String, Vec<DnsRecord>>,
+      }
+
+      impl DnsResolver {
+          pub fn new() -> Self {
+              DnsResolver { records: HashMap::new() }
           }
 
-          public bool Validate(T item)
-          {
-              return _rules.All(rule => rule(item));
+          pub fn add_record(&mut self, record: DnsRecord) {
+              self.records
+                  .entry(record.name.clone())
+                  .or_insert_with(Vec::new)
+                  .push(record);
+          }
+
+          pub fn remove_records(&mut self, name: &str, record_type: &str) -> usize {
+              if let Some(recs) = self.records.get_mut(name) {
+                  let before = recs.len();
+                  recs.retain(|r| r.record_type != record_type);
+                  before - recs.len()
+              } else {
+                  0
+              }
+          }
+
+          pub fn resolve(&self, name: &str, record_type: &str) -> Vec<&DnsRecord> {
+              self.records
+                  .get(name)
+                  .map(|recs| recs.iter().filter(|r| r.record_type == record_type).collect())
+                  .unwrap_or_default()
+          }
+
+          pub fn all_names(&self) -> Vec<&str> {
+              self.records.keys().map(|k| k.as_str()).collect()
           }
       }
-    Program.cs: |
-      using System;
-      using MyApp.Services;
-      using MyApp.Models;
+    src/dns/cache.rs: |
+      use crate::dns::resolver::DnsRecord;
+      use std::collections::HashMap;
+      use std::time::{Duration, Instant};
 
-      class Program
-      {
-          static void Main()
-          {
-              var validator = new Validator<User>()
-                  .AddRule(u => !string.IsNullOrEmpty(u.Name))
-                  .AddRule(u => u.Id > 0)
-                  .AddRule(u => u.Name.Length <= 100);
+      struct CacheEntry {
+          records: Vec<DnsRecord>,
+          expires_at: Instant,
+      }
 
-              var user = new User { Id = 1, Name = "John" };
-              var isValid = validator.Validate(user);
+      pub struct DnsCache {
+          entries: HashMap<String, CacheEntry>,
+      }
+
+      impl DnsCache {
+          pub fn new() -> Self {
+              DnsCache { entries: HashMap::new() }
+          }
+
+          pub fn get(&self, key: &str) -> Option<&Vec<DnsRecord>> {
+              self.entries.get(key).and_then(|e| {
+                  if Instant::now() < e.expires_at {
+                      Some(&e.records)
+                  } else {
+                      None
+                  }
+              })
+          }
+
+          pub fn set(&mut self, key: String, records: Vec<DnsRecord>, ttl: Duration) {
+              self.entries.insert(key, CacheEntry {
+                  records,
+                  expires_at: Instant::now() + ttl,
+              });
+          }
+
+          pub fn evict_expired(&mut self) -> usize {
+              let now = Instant::now();
+              let before = self.entries.len();
+              self.entries.retain(|_, e| now < e.expires_at);
+              before - self.entries.len()
           }
       }
-    Unrelated/RetryHandler.cs: |
-      namespace MyApp.Unrelated;
+    src/dns/client.rs: |
+      use crate::dns::resolver::DnsResolver;
+      use crate::dns::cache::DnsCache;
+      use std::time::Duration;
 
-      public class RetryHandler
-      {
-          private const string GARBAGE_CS_016_RETRY_HANDLER_A = "retry_handler_marker";
-
-          public void Retry(int attempts) => _ = GARBAGE_CS_016_RETRY_HANDLER_A;
+      pub struct DnsClient {
+          resolver: DnsResolver,
+          cache: DnsCache,
       }
-    Unrelated/DeadLetterQueue.cs: |
-      namespace MyApp.Unrelated;
 
-      public class DeadLetterQueue
-      {
-          public const string GARBAGE_CS_016_DEAD_LETTER_B = "dead_letter_queue_marker";
+      impl DnsClient {
+          pub fn new() -> Self {
+              DnsClient {
+                  resolver: DnsResolver::new(),
+                  cache: DnsCache::new(),
+              }
+          }
 
-          public void Enqueue(string message) => _ = GARBAGE_CS_016_DEAD_LETTER_B + message;
+          pub fn lookup(&mut self, name: &str, record_type: &str) -> Vec<String> {
+              let records = self.resolver.resolve(name, record_type);
+              records.iter().map(|r| r.value.clone()).collect()
+          }
       }
-  commit_message: Update files
+    tests/dns_integration.rs: |
+      use crate::dns::resolver::{DnsRecord, DnsResolver};
+      use crate::dns::client::DnsClient;
+
+      #[test]
+      fn resolver_finds_a_record() {
+          let mut resolver = DnsResolver::new();
+          resolver.add_record(DnsRecord {
+              name: "example.com".to_string(),
+              record_type: "A".to_string(),
+              value: "93.184.216.34".to_string(),
+              ttl: 300,
+          });
+          let results = resolver.resolve("example.com", "A");
+          assert_eq!(results.len(), 1);
+          assert_eq!(results[0].value, "93.184.216.34");
+      }
+
+      #[test]
+      fn resolver_returns_empty_for_unknown_name() {
+          let resolver = DnsResolver::new();
+          assert!(resolver.resolve("unknown.example", "A").is_empty());
+      }
+
+      #[test]
+      fn resolver_remove_records_deletes_by_type() {
+          let mut resolver = DnsResolver::new();
+          resolver.add_record(DnsRecord { name: "test.com".to_string(), record_type: "A".to_string(), value: "1.2.3.4".to_string(), ttl: 60 });
+          resolver.add_record(DnsRecord { name: "test.com".to_string(), record_type: "AAAA".to_string(), value: "::1".to_string(), ttl: 60 });
+          let removed = resolver.remove_records("test.com", "A");
+          assert_eq!(removed, 1);
+          assert!(resolver.resolve("test.com", "A").is_empty());
+          assert_eq!(resolver.resolve("test.com", "AAAA").len(), 1);
+      }
+    src/proxy/forward.rs: |
+      // GARBAGE_CS16_A = "proxy_forward_unrelated"
+      pub fn forward_request(target: &str, data: &[u8]) -> Vec<u8> {
+          vec![]
+      }
+    src/tls/cert.rs: |
+      // GARBAGE_CS16_B = "tls_cert_unrelated"
+      pub struct Certificate {
+          pub common_name: String,
+      }
+      impl Certificate {
+          pub fn new(cn: &str) -> Self { Certificate { common_name: cn.to_string() } }
+      }
+    src/load_balancer/round_robin.rs: |
+      // GARBAGE_CS16_C = "round_robin_lb_unrelated"
+      pub struct RoundRobin {
+          backends: Vec<String>,
+          idx: usize,
+      }
+      impl RoundRobin {
+          pub fn new(backends: Vec<String>) -> Self { RoundRobin { backends, idx: 0 } }
+          pub fn next(&mut self) -> Option<&str> {
+              if self.backends.is_empty() { return None; }
+              let b = &self.backends[self.idx % self.backends.len()];
+              self.idx += 1;
+              Some(b)
+          }
+      }
+  commit_message: "fix: add remove_records to DnsResolver and evict_expired to DnsCache"
 fragments:
-- id: program_file
+- id: remove_records_fn
   selector:
-    path: Program.cs
-- id: req_global_0
+    path: src/dns/resolver.rs
+    anchor: "pub fn remove_records"
+- id: evict_expired_fn
   selector:
-    anchor: using MyApp.Services;
-- id: req_global_1
+    path: src/dns/cache.rs
+    anchor: "pub fn evict_expired"
+- id: test_remove_records
   selector:
-    anchor: static void Main()
-- id: no_global_0
+    path: tests/dns_integration.rs
+    anchor: "resolver_remove_records_deletes_by_type"
+- id: no_garbage_a
   selector:
-    anchor: GARBAGE_CS_016_DEAD_LETTER_B
-- id: no_global_1
+    anchor: GARBAGE_CS16_A
+- id: no_garbage_b
   selector:
-    anchor: GARBAGE_CS_016_RETRY_HANDLER_A
-- id: no_global_2
+    anchor: GARBAGE_CS16_B
+- id: no_garbage_c
   selector:
-    anchor: DeadLetterQueue.cs
-- id: no_global_3
-  selector:
-    anchor: RetryHandler.cs
+    anchor: GARBAGE_CS16_C
 oracle:
   required:
-  - program_file
-  - req_global_0
-  - req_global_1
+  - remove_records_fn
+  - evict_expired_fn
+  - test_remove_records
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

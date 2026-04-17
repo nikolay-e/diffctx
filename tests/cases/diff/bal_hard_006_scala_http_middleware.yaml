@@ -1,0 +1,141 @@
+name: bal_hard_006_scala_http_middleware
+tags:
+- lang:scala
+- change:multi_file
+- change:new_function
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/http/Request.scala: |
+      package http
+      case class Request(method: String, path: String, headers: Map[String, String], body: String)
+    src/main/scala/http/Response.scala: |
+      package http
+      case class Response(status: Int, body: String, headers: Map[String, String] = Map.empty)
+    src/main/scala/middleware/Middleware.scala: |
+      package middleware
+      import http.{Request, Response}
+      trait Middleware {
+        def handle(req: Request, next: Request => Response): Response
+      }
+    src/main/scala/middleware/LoggingMiddleware.scala: |
+      package middleware
+      import http.{Request, Response}
+      class LoggingMiddleware extends Middleware {
+        def handle(req: Request, next: Request => Response): Response = {
+          println(s"${req.method} ${req.path}")
+          next(req)
+        }
+      }
+    src/main/scala/middleware/MiddlewareChain.scala: |
+      package middleware
+      import http.{Request, Response}
+      class MiddlewareChain(middlewares: List[Middleware]) {
+        def execute(req: Request, handler: Request => Response): Response = {
+          middlewares.foldRight(handler) { (mw, next) =>
+            (r: Request) => mw.handle(r, next)
+          }(req)
+        }
+      }
+    src/main/scala/handler/ApiHandler.scala: |
+      package handler
+      import http.{Request, Response}
+      class ApiHandler {
+        def handle(req: Request): Response = {
+          Response(200, s"OK: ${req.path}")
+        }
+      }
+    src/main/scala/server/Server.scala: |
+      package server
+      import middleware.{MiddlewareChain, LoggingMiddleware}
+      import handler.ApiHandler
+      import http.Request
+      class Server {
+        private val chain = new MiddlewareChain(List(new LoggingMiddleware()))
+        private val apiHandler = new ApiHandler()
+        def serve(req: Request) = chain.execute(req, apiHandler.handle)
+      }
+    src/main/scala/util/HeaderUtils.scala: |
+      package util
+      object HeaderUtils {
+        def contentType(ct: String): Map[String, String] = Map("Content-Type" -> ct)
+      }
+  changed_files:
+    src/main/scala/middleware/AuthMiddleware.scala: |
+      package middleware
+      import http.{Request, Response}
+      class AuthMiddleware(validTokens: Set[String]) extends Middleware {
+        def handle(req: Request, next: Request => Response): Response = {
+          req.headers.get("Authorization") match {
+            case Some(token) if validTokens.contains(token) => next(req)
+            case _ => Response(401, "Unauthorized")
+          }
+        }
+      }
+    src/main/scala/server/Server.scala: |
+      package server
+      import middleware.{MiddlewareChain, LoggingMiddleware, AuthMiddleware}
+      import handler.ApiHandler
+      import http.Request
+      class Server {
+        private val tokens = Set("secret-token-123")
+        private val chain = new MiddlewareChain(List(new LoggingMiddleware(), new AuthMiddleware(tokens)))
+        private val apiHandler = new ApiHandler()
+        def serve(req: Request) = chain.execute(req, apiHandler.handle)
+      }
+  commit_message: "feat: add auth middleware to server"
+fragments:
+- id: auth_middleware_class
+  selector:
+    path: AuthMiddleware.scala
+    anchor: "class AuthMiddleware"
+- id: auth_check_token
+  selector:
+    path: AuthMiddleware.scala
+    anchor: "validTokens.contains(token)"
+- id: server_uses_auth
+  selector:
+    path: Server.scala
+    anchor: "new AuthMiddleware(tokens)"
+- id: middleware_trait
+  selector:
+    path: Middleware.scala
+    anchor: "trait Middleware"
+- id: chain_execute
+  selector:
+    path: MiddlewareChain.scala
+    anchor: "def execute"
+- id: request_headers
+  selector:
+    path: Request.scala
+    anchor: "headers: Map[String, String]"
+- id: response_class
+  selector:
+    path: Response.scala
+    anchor: "case class Response"
+- id: no_header_utils
+  selector:
+    path: util/HeaderUtils.scala
+- id: no_logging_mw_body
+  selector:
+    path: LoggingMiddleware.scala
+    anchor: "println"
+- id: no_content_type
+  selector:
+    anchor: "def contentType"
+oracle:
+  required:
+  - auth_middleware_class
+  - auth_check_token
+  - server_uses_auth
+  - middleware_trait
+  - chain_execute
+  - request_headers
+  - response_class
+  allowed: []
+  forbidden:
+  - no_header_utils
+  - no_logging_mw_body
+  - no_content_type

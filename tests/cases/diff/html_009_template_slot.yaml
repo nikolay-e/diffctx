@@ -1,0 +1,103 @@
+name: html_009_template_slot
+tags:
+- lang:html
+- lang:javascript
+- change:multi_file
+- context:cross_module
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    template.html: |
+      <!DOCTYPE html>
+      <html lang="en">
+      <body>
+        <template id="card-template">
+          <div class="card">
+            <div class="card-body">
+              <slot name="content"></slot>
+            </div>
+            <div class="card-footer">
+              <slot name="actions"></slot>
+            </div>
+          </div>
+        </template>
+        <script src="component.js"></script>
+      </body>
+      </html>
+    component.js: |
+      const template = document.getElementById('card-template');
+      function createCard({ content, actions }) {
+        const clone = template.content.cloneNode(true);
+        clone.querySelector('slot[name="content"]').replaceWith(content);
+        clone.querySelector('slot[name="actions"]').replaceWith(actions);
+        return clone;
+      }
+    HTML_NOISE_009_loading.html: |
+      <!-- HTML_NOISE_009_loading_screen -->
+      <div class="HTML_NOISE_009_loading_spinner">Loading...</div>
+    HTML_NOISE_009_consent.html: |
+      <!-- HTML_NOISE_009_consent_dialog -->
+      <dialog class="HTML_NOISE_009_consent_modal">Cookie consent</dialog>
+  changed_files:
+    template.html: |
+      <!DOCTYPE html>
+      <html lang="en">
+      <body>
+        <template id="card-template">
+          <div class="card">
+            <div class="card-header">
+              <slot name="header"></slot>
+            </div>
+            <div class="card-body">
+              <slot name="content"></slot>
+            </div>
+            <div class="card-footer">
+              <slot name="actions"></slot>
+            </div>
+          </div>
+        </template>
+        <script src="component.js"></script>
+      </body>
+      </html>
+    component.js: |
+      const template = document.getElementById('card-template');
+      function createCard({ header, content, actions }) {
+        const clone = template.content.cloneNode(true);
+        if (header) clone.querySelector('slot[name="header"]').replaceWith(header);
+        clone.querySelector('slot[name="content"]').replaceWith(content);
+        clone.querySelector('slot[name="actions"]').replaceWith(actions);
+        return clone;
+      }
+  commit_message: "feat: add optional header slot to card template and component"
+fragments:
+- id: header_slot_added
+  selector:
+    path: template.html
+    anchor: "slot name=\"header\""
+- id: js_fills_header_slot
+  selector:
+    path: component.js
+    anchor: "slot[name=\"header\"]"
+- id: no_loading
+  selector:
+    path: HTML_NOISE_009_loading.html
+- id: no_consent
+  selector:
+    path: HTML_NOISE_009_consent.html
+- id: no_global_0
+  selector:
+    anchor: HTML_NOISE_009_loading_spinner
+- id: no_global_1
+  selector:
+    anchor: HTML_NOISE_009_consent_modal
+oracle:
+  required:
+  - header_slot_added
+  - js_fills_header_slot
+  allowed: []
+  forbidden:
+  - no_loading
+  - no_consent
+  - no_global_0
+  - no_global_1

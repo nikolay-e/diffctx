@@ -1,0 +1,279 @@
+name: bal3_refactor_004_go_interface_extraction
+tags:
+- lang:rust
+- change:bug_fix
+- change:multi_file
+- context:test_file
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/session/manager.rs: |
+      use crate::session::store::SessionStore;
+      use crate::session::session::Session;
+      use std::time::{SystemTime, UNIX_EPOCH};
+
+      pub struct SessionManager {
+          store: SessionStore,
+          ttl_secs: u64,
+      }
+
+      impl SessionManager {
+          pub fn new(store: SessionStore, ttl_secs: u64) -> Self {
+              Self { store, ttl_secs }
+          }
+
+          pub fn create(&mut self, user_id: &str) -> String {
+              let token = uuid::Uuid::new_v4().to_string();
+              let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+              let session = Session { user_id: user_id.to_string(), created_at: now, expires_at: now + self.ttl_secs };
+              self.store.insert(token.clone(), session);
+              token
+          }
+
+          pub fn get(&self, token: &str) -> Option<&Session> {
+              self.store.get(token)
+          }
+
+          pub fn invalidate(&mut self, token: &str) {
+              self.store.remove(token);
+          }
+      }
+    src/session/store.rs: |
+      use crate::session::session::Session;
+      use std::collections::HashMap;
+
+      pub struct SessionStore {
+          sessions: HashMap<String, Session>,
+      }
+
+      impl SessionStore {
+          pub fn new() -> Self {
+              Self { sessions: HashMap::new() }
+          }
+
+          pub fn insert(&mut self, token: String, session: Session) {
+              self.sessions.insert(token, session);
+          }
+
+          pub fn get(&self, token: &str) -> Option<&Session> {
+              self.sessions.get(token)
+          }
+
+          pub fn remove(&mut self, token: &str) {
+              self.sessions.remove(token);
+          }
+      }
+    src/session/session.rs: |
+      pub struct Session {
+          pub user_id: String,
+          pub created_at: u64,
+          pub expires_at: u64,
+      }
+    tests/test_session.rs: |
+      use crate::session::manager::SessionManager;
+      use crate::session::store::SessionStore;
+
+      #[test]
+      fn test_create_returns_token() {
+          let mut manager = SessionManager::new(SessionStore::new(), 3600);
+          let token = manager.create("user42");
+          assert!(!token.is_empty());
+      }
+
+      #[test]
+      fn test_invalidate_removes_session() {
+          let mut manager = SessionManager::new(SessionStore::new(), 3600);
+          let token = manager.create("user42");
+          manager.invalidate(&token);
+          assert!(manager.get(&token).is_none());
+      }
+    src/email/smtp_client.rs: |
+      pub const GARBAGE_BAL3R004_A: &str = "smtp_host_default";
+
+      pub struct SmtpClient;
+      impl SmtpClient {
+          pub fn send(&self, _to: &str, _body: &str) -> bool { true }
+      }
+    src/cache/redis_client.rs: |
+      pub const GARBAGE_BAL3R004_B: &str = "redis_connection_string";
+      pub const GARBAGE_BAL3R004_C: u32 = 6379;
+
+      pub struct RedisClient;
+      impl RedisClient {
+          pub fn get(&self, _key: &str) -> Option<String> { None }
+      }
+    src/queue/job_queue.rs: |
+      pub const GARBAGE_BAL3R004_D: &str = "job_queue_worker_count";
+
+      pub struct JobQueue;
+      impl JobQueue {
+          pub fn push(&self, _job: &str) {}
+      }
+  changed_files:
+    src/session/manager.rs: |
+      use crate::session::store::SessionStore;
+      use crate::session::session::Session;
+      use std::time::{SystemTime, UNIX_EPOCH};
+
+      pub struct SessionManager {
+          store: SessionStore,
+          ttl_secs: u64,
+      }
+
+      impl SessionManager {
+          pub fn new(store: SessionStore, ttl_secs: u64) -> Self {
+              Self { store, ttl_secs }
+          }
+
+          pub fn create(&mut self, user_id: &str) -> String {
+              let token = uuid::Uuid::new_v4().to_string();
+              let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+              let session = Session { user_id: user_id.to_string(), created_at: now, expires_at: now + self.ttl_secs };
+              self.store.insert(token.clone(), session);
+              token
+          }
+
+          pub fn get(&self, token: &str) -> Option<&Session> {
+              let session = self.store.get(token)?;
+              let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+              if session.expires_at < now {
+                  return None;
+              }
+              Some(session)
+          }
+
+          pub fn invalidate(&mut self, token: &str) {
+              self.store.remove(token);
+          }
+      }
+    src/session/store.rs: |
+      use crate::session::session::Session;
+      use std::collections::HashMap;
+
+      pub struct SessionStore {
+          sessions: HashMap<String, Session>,
+      }
+
+      impl SessionStore {
+          pub fn new() -> Self {
+              Self { sessions: HashMap::new() }
+          }
+
+          pub fn insert(&mut self, token: String, session: Session) {
+              self.sessions.insert(token, session);
+          }
+
+          pub fn get(&self, token: &str) -> Option<&Session> {
+              self.sessions.get(token)
+          }
+
+          pub fn remove(&mut self, token: &str) {
+              self.sessions.remove(token);
+          }
+      }
+    src/session/session.rs: |
+      pub struct Session {
+          pub user_id: String,
+          pub created_at: u64,
+          pub expires_at: u64,
+      }
+    tests/test_session.rs: |
+      use crate::session::manager::SessionManager;
+      use crate::session::store::SessionStore;
+      use crate::session::session::Session;
+
+      #[test]
+      fn test_create_returns_token() {
+          let mut manager = SessionManager::new(SessionStore::new(), 3600);
+          let token = manager.create("user42");
+          assert!(!token.is_empty());
+      }
+
+      #[test]
+      fn test_invalidate_removes_session() {
+          let mut manager = SessionManager::new(SessionStore::new(), 3600);
+          let token = manager.create("user42");
+          manager.invalidate(&token);
+          assert!(manager.get(&token).is_none());
+      }
+
+      #[test]
+      fn test_expired_session_returns_none() {
+          let store = SessionStore::new();
+          let mut manager = SessionManager::new(store, 0);
+          let token = manager.create("user99");
+          std::thread::sleep(std::time::Duration::from_secs(1));
+          assert!(manager.get(&token).is_none(), "Expired session should return None");
+      }
+    src/email/smtp_client.rs: |
+      pub const GARBAGE_BAL3R004_A: &str = "smtp_host_default";
+
+      pub struct SmtpClient;
+      impl SmtpClient {
+          pub fn send(&self, _to: &str, _body: &str) -> bool { true }
+      }
+    src/cache/redis_client.rs: |
+      pub const GARBAGE_BAL3R004_B: &str = "redis_connection_string";
+      pub const GARBAGE_BAL3R004_C: u32 = 6379;
+
+      pub struct RedisClient;
+      impl RedisClient {
+          pub fn get(&self, _key: &str) -> Option<String> { None }
+      }
+    src/queue/job_queue.rs: |
+      pub const GARBAGE_BAL3R004_D: &str = "job_queue_worker_count";
+
+      pub struct JobQueue;
+      impl JobQueue {
+          pub fn push(&self, _job: &str) {}
+      }
+  commit_message: "fix: check session expiry in SessionManager::get"
+fragments:
+- id: session_manager_get_expiry
+  selector:
+    path: src/session/manager.rs
+    anchor: "if session.expires_at < now"
+- id: session_struct
+  selector:
+    path: src/session/session.rs
+    anchor: "pub struct Session"
+- id: test_expired_session
+  selector:
+    path: tests/test_session.rs
+    anchor: "fn test_expired_session_returns_none"
+- id: no_smtp
+  selector:
+    path: src/email/smtp_client.rs
+- id: no_redis
+  selector:
+    path: src/cache/redis_client.rs
+- id: no_job_queue
+  selector:
+    path: src/queue/job_queue.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3R004_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3R004_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3R004_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3R004_D
+oracle:
+  required:
+  - session_manager_get_expiry
+  - session_struct
+  - test_expired_session
+  allowed: []
+  forbidden:
+  - no_smtp
+  - no_redis
+  - no_job_queue
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

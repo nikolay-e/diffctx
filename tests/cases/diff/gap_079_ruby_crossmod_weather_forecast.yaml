@@ -1,0 +1,314 @@
+name: gap_079_ruby_crossmod_weather_forecast
+tags:
+- change:new_function
+- change:single_file
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+- lang:ruby
+repo:
+  initial_files:
+    lib/weather/reading.rb: |
+      module Weather
+        class Reading
+          attr_reader :station, :temperature, :humidity, :wind_speed, :timestamp
+
+          def initialize(station, temperature, humidity, wind_speed, timestamp)
+            @station = station
+            @temperature = temperature
+            @humidity = humidity
+            @wind_speed = wind_speed
+            @timestamp = timestamp
+          end
+
+          def feels_like
+            temperature - (wind_speed * 0.7)
+          end
+
+          def is_freezing?
+            temperature <= 0
+          end
+        end
+      end
+    lib/weather/station.rb: |
+      require_relative 'reading'
+
+      module Weather
+        class Station
+          attr_reader :name, :latitude, :longitude
+
+          def initialize(name, latitude, longitude)
+            @name = name
+            @latitude = latitude
+            @longitude = longitude
+            @readings = []
+          end
+
+          def record(reading)
+            @readings << reading
+          end
+
+          def latest
+            @readings.last
+          end
+
+          def average_temperature
+            return 0.0 if @readings.empty?
+            @readings.sum(&:temperature) / @readings.length.to_f
+          end
+
+          def readings
+            @readings.dup
+          end
+        end
+      end
+    lib/weather/aggregator.rb: |
+      require_relative 'station'
+
+      module Weather
+        class Aggregator
+          def initialize
+            @stations = {}
+          end
+
+          def register(station)
+            @stations[station.name] = station
+          end
+
+          def find(name)
+            @stations[name]
+          end
+
+          def global_average
+            all_temps = @stations.values.map(&:average_temperature)
+            return 0.0 if all_temps.empty?
+            all_temps.sum / all_temps.length.to_f
+          end
+        end
+      end
+    lib/weather/alert.rb: |
+      TRAP_GAP079_ALERT_A = "weather_alert"
+      TRAP_GAP079_SEVERITY_B = "high"
+
+      module Weather
+        class Alert
+          def initialize(threshold)
+            @threshold = threshold
+          end
+
+          def check(temperature)
+            temperature > @threshold ? :warning : :ok
+          end
+
+          def message(temperature)
+            "Temperature #{temperature}C - #{check(temperature)}"
+          end
+        end
+      end
+    lib/weather/archive.rb: |
+      TRAP_GAP079_ARCHIVE_C = "data_archive"
+      TRAP_GAP079_RETENTION_D = 365
+
+      module Weather
+        class Archive
+          def initialize
+            @records = []
+          end
+
+          def store(record)
+            @records << record
+          end
+
+          def query(station_name)
+            @records.select { |r| r[:station] == station_name }
+          end
+
+          def total_records
+            @records.length
+          end
+        end
+      end
+  changed_files:
+    lib/weather/reading.rb: |
+      module Weather
+        class Reading
+          attr_reader :station, :temperature, :humidity, :wind_speed, :timestamp
+
+          def initialize(station, temperature, humidity, wind_speed, timestamp)
+            @station = station
+            @temperature = temperature
+            @humidity = humidity
+            @wind_speed = wind_speed
+            @timestamp = timestamp
+          end
+
+          def feels_like
+            temperature - (wind_speed * 0.7)
+          end
+
+          def is_freezing?
+            temperature <= 0
+          end
+        end
+      end
+    lib/weather/station.rb: |
+      require_relative 'reading'
+
+      module Weather
+        class Station
+          attr_reader :name, :latitude, :longitude
+
+          def initialize(name, latitude, longitude)
+            @name = name
+            @latitude = latitude
+            @longitude = longitude
+            @readings = []
+          end
+
+          def record(reading)
+            @readings << reading
+          end
+
+          def latest
+            @readings.last
+          end
+
+          def average_temperature
+            return 0.0 if @readings.empty?
+            @readings.sum(&:temperature) / @readings.length.to_f
+          end
+
+          def readings
+            @readings.dup
+          end
+        end
+      end
+    lib/weather/aggregator.rb: |
+      require_relative 'station'
+
+      module Weather
+        class Aggregator
+          def initialize
+            @stations = {}
+          end
+
+          def register(station)
+            @stations[station.name] = station
+          end
+
+          def find(name)
+            @stations[name]
+          end
+
+          def global_average
+            all_temps = @stations.values.map(&:average_temperature)
+            return 0.0 if all_temps.empty?
+            all_temps.sum / all_temps.length.to_f
+          end
+
+          def coldest_station
+            @stations.values.min_by(&:average_temperature)
+          end
+
+          def freezing_stations
+            @stations.values.select do |station|
+              recent = station.latest
+              recent && recent.is_freezing?
+            end
+          end
+        end
+      end
+    lib/weather/alert.rb: |
+      TRAP_GAP079_ALERT_A = "weather_alert"
+      TRAP_GAP079_SEVERITY_B = "high"
+
+      module Weather
+        class Alert
+          def initialize(threshold)
+            @threshold = threshold
+          end
+
+          def check(temperature)
+            temperature > @threshold ? :warning : :ok
+          end
+
+          def message(temperature)
+            "Temperature #{temperature}C - #{check(temperature)}"
+          end
+        end
+      end
+    lib/weather/archive.rb: |
+      TRAP_GAP079_ARCHIVE_C = "data_archive"
+      TRAP_GAP079_RETENTION_D = 365
+
+      module Weather
+        class Archive
+          def initialize
+            @records = []
+          end
+
+          def store(record)
+            @records << record
+          end
+
+          def query(station_name)
+            @records.select { |r| r[:station] == station_name }
+          end
+
+          def total_records
+            @records.length
+          end
+        end
+      end
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: aggregator_coldest
+  selector:
+    path: lib/weather/aggregator.rb
+    anchor: 'def coldest_station'
+- id: aggregator_freezing
+  selector:
+    path: lib/weather/aggregator.rb
+    anchor: 'def freezing_stations'
+- id: station_average
+  selector:
+    path: lib/weather/station.rb
+    anchor: 'def average_temperature'
+- id: reading_freezing
+  selector:
+    path: lib/weather/reading.rb
+    anchor: 'def is_freezing?'
+- id: no_alert
+  selector:
+    path: lib/weather/alert.rb
+- id: no_archive
+  selector:
+    path: lib/weather/archive.rb
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP079_ALERT_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP079_SEVERITY_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP079_ARCHIVE_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP079_RETENTION_D
+oracle:
+  required:
+  - aggregator_coldest
+  - aggregator_freezing
+  - station_average
+  - reading_freezing
+  allowed: []
+  forbidden:
+  - no_alert
+  - no_archive
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

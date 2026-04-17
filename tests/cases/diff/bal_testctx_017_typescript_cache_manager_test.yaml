@@ -1,0 +1,183 @@
+name: bal_testctx_017_typescript_cache_manager_test
+tags:
+- lang:typescript
+- change:single_file
+- change:signature
+- context:test_file
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/cacheManager.ts: |
+      interface CacheEntry<T> {
+        value: T;
+        expiresAt: number;
+      }
+
+      export class CacheManager<T> {
+        private store: Map<string, CacheEntry<T>> = new Map();
+        private defaultTtl: number;
+
+        constructor(defaultTtlMs: number = 60000) {
+          this.defaultTtl = defaultTtlMs;
+        }
+
+        set(key: string, value: T, ttlMs?: number): void {
+          const ttl = ttlMs ?? this.defaultTtl;
+          this.store.set(key, {
+            value,
+            expiresAt: Date.now() + ttl,
+          });
+        }
+
+        get(key: string): T | undefined {
+          const entry = this.store.get(key);
+          if (!entry) return undefined;
+          if (Date.now() > entry.expiresAt) {
+            this.store.delete(key);
+            return undefined;
+          }
+          return entry.value;
+        }
+
+        size(): number {
+          return this.store.size;
+        }
+      }
+    __tests__/cacheManager.test.ts: |
+      import { CacheManager } from '../src/cacheManager';
+
+      describe('CacheManager', () => {
+        test('stores and retrieves values', () => {
+          const cache = new CacheManager<string>();
+          cache.set('key1', 'value1');
+          expect(cache.get('key1')).toBe('value1');
+        });
+
+        test('returns undefined for missing key', () => {
+          const cache = new CacheManager<string>();
+          expect(cache.get('missing')).toBeUndefined();
+        });
+
+        test('tracks size', () => {
+          const cache = new CacheManager<number>();
+          cache.set('a', 1);
+          cache.set('b', 2);
+          expect(cache.size()).toBe(2);
+        });
+      });
+    src/taskScheduler.ts: |
+      export interface Task {
+        id: string;
+        name: string;
+        execute: () => Promise<void>;
+      }
+
+      export class TaskScheduler {
+        private queue: Task[] = [];
+
+        add(task: Task): void {
+          this.queue.push(task);
+        }
+
+        async runAll(): Promise<void> {
+          for (const task of this.queue) {
+            await task.execute();
+          }
+          this.queue = [];
+        }
+      }
+  changed_files:
+    src/cacheManager.ts: |
+      interface CacheEntry<T> {
+        value: T;
+        expiresAt: number;
+      }
+
+      export class CacheManager<T> {
+        private store: Map<string, CacheEntry<T>> = new Map();
+        private defaultTtl: number;
+        private maxSize: number;
+
+        constructor(defaultTtlMs: number = 60000, maxSize: number = 1000) {
+          this.defaultTtl = defaultTtlMs;
+          this.maxSize = maxSize;
+        }
+
+        set(key: string, value: T, ttlMs?: number): void {
+          if (this.store.size >= this.maxSize && !this.store.has(key)) {
+            const oldestKey = this.store.keys().next().value;
+            if (oldestKey !== undefined) {
+              this.store.delete(oldestKey);
+            }
+          }
+          const ttl = ttlMs ?? this.defaultTtl;
+          this.store.set(key, {
+            value,
+            expiresAt: Date.now() + ttl,
+          });
+        }
+
+        get(key: string): T | undefined {
+          const entry = this.store.get(key);
+          if (!entry) return undefined;
+          if (Date.now() > entry.expiresAt) {
+            this.store.delete(key);
+            return undefined;
+          }
+          return entry.value;
+        }
+
+        has(key: string): boolean {
+          return this.get(key) !== undefined;
+        }
+
+        clear(): void {
+          this.store.clear();
+        }
+
+        size(): number {
+          return this.store.size;
+        }
+      }
+  commit_message: "feat: add maxSize eviction, has, and clear to CacheManager"
+fragments:
+- id: constructor_max_size
+  selector:
+    path: src/cacheManager.ts
+    anchor: "constructor(defaultTtlMs: number = 60000, maxSize"
+- id: set_eviction
+  selector:
+    path: src/cacheManager.ts
+    anchor: "set(key: string, value: T"
+- id: has_method
+  selector:
+    path: src/cacheManager.ts
+    anchor: "has(key: string)"
+- id: clear_method
+  selector:
+    path: src/cacheManager.ts
+    anchor: "clear(): void"
+- id: test_imports_cache
+  selector:
+    path: __tests__/cacheManager.test.ts
+    anchor: "import { CacheManager } from"
+- id: test_stores_retrieves
+  selector:
+    path: __tests__/cacheManager.test.ts
+    anchor: "test('stores and retrieves values'"
+- id: no_task_scheduler
+  selector:
+    path: src/taskScheduler.ts
+    anchor: "export class TaskScheduler"
+oracle:
+  required:
+  - constructor_max_size
+  - set_eviction
+  - test_imports_cache
+  allowed:
+  - has_method
+  - clear_method
+  - test_stores_retrieves
+  forbidden:
+  - no_task_scheduler

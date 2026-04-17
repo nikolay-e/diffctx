@@ -1,0 +1,181 @@
+name: bal3_3hop_045_java_message_broker_routing
+tags:
+- lang:java
+- change:multi_file
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/app/broker/Envelope.java: |
+      package com.app.broker;
+
+      public class Envelope {
+          private String topic;
+          private String payload;
+          public Envelope(String topic, String payload) {
+              this.topic = topic;
+              this.payload = payload;
+          }
+          public String getTopic() { return topic; }
+          public String getPayload() { return payload; }
+      }
+    src/main/java/com/app/broker/Router.java: |
+      package com.app.broker;
+
+      import java.util.HashMap;
+      import java.util.Map;
+
+      public class Router {
+          private final Map<String, String> routes = new HashMap<>();
+          public void register(String topic, String handler) {
+              routes.put(topic, handler);
+          }
+          public String route(Envelope envelope) {
+              return routes.getOrDefault(envelope.getTopic(), "default");
+          }
+      }
+    src/main/java/com/app/broker/Broker.java: |
+      package com.app.broker;
+
+      public class Broker {
+          private final Router router;
+          public Broker(Router router) {
+              this.router = router;
+          }
+          public String dispatch(Envelope envelope) {
+              String handler = router.route(envelope);
+              return "dispatched:" + handler;
+          }
+      }
+    src/main/java/com/app/service/MessagingService.java: |
+      package com.app.service;
+
+      import com.app.broker.Broker;
+      import com.app.broker.Envelope;
+
+      public class MessagingService {
+          private final Broker broker;
+          public MessagingService(Broker broker) {
+              this.broker = broker;
+          }
+          public String send(String topic, String payload) {
+              return broker.dispatch(new Envelope(topic, payload));
+          }
+      }
+    src/main/java/com/app/web/MessageController.java: |
+      package com.app.web;
+
+      import com.app.service.MessagingService;
+
+      public class MessageController {
+          private final MessagingService messagingService;
+          public MessageController(MessagingService messagingService) {
+              this.messagingService = messagingService;
+          }
+          public String publish(String topic, String body) {
+              return messagingService.send(topic, body);
+          }
+      }
+    src/main/java/com/app/util/TopicParser.java: |
+      package com.app.util;
+
+      public class TopicParser {
+          public static String GARBAGE_045_TOPIC_MARKER_A = "topic";
+          public static String GARBAGE_045_WILD_MARKER_B = "*";
+          public static String parse(String raw) { return raw; }
+      }
+    src/main/java/com/app/util/PayloadCodec.java: |
+      package com.app.util;
+
+      public class PayloadCodec {
+          public static String GARBAGE_045_CODEC_MARKER_C = "json";
+          public static boolean GARBAGE_045_GZIP_MARKER_D = false;
+          public static String encode(Object obj) { return "{}"; }
+      }
+  changed_files:
+    src/main/java/com/app/broker/Envelope.java: |
+      package com.app.broker;
+
+      import java.util.Map;
+      import java.util.HashMap;
+
+      public class Envelope {
+          private String topic;
+          private String payload;
+          private Map<String, String> headers;
+          public Envelope(String topic, String payload) {
+              this.topic = topic;
+              this.payload = payload;
+              this.headers = new HashMap<>();
+          }
+          public String getTopic() { return topic; }
+          public String getPayload() { return payload; }
+          public Map<String, String> getHeaders() { return headers; }
+          public void addHeader(String key, String value) {
+              headers.put(key, value);
+          }
+      }
+    src/main/java/com/app/broker/Router.java: |
+      package com.app.broker;
+
+      import java.util.HashMap;
+      import java.util.Map;
+
+      public class Router {
+          private final Map<String, String> routes = new HashMap<>();
+          public void register(String topic, String handler) {
+              routes.put(topic, handler);
+          }
+          public String route(Envelope envelope) {
+              String contentType = envelope.getHeaders().getOrDefault("content-type", "text");
+              return routes.getOrDefault(envelope.getTopic(), "default") + ":" + contentType;
+          }
+      }
+  commit_message: "feat: add headers to Envelope and use in Router"
+fragments:
+- id: envelope_headers_field
+  selector:
+    path: src/main/java/com/app/broker/Envelope.java
+    anchor: "Map<String, String> headers"
+- id: envelope_add_header
+  selector:
+    path: src/main/java/com/app/broker/Envelope.java
+    anchor: "addHeader"
+- id: router_uses_headers
+  selector:
+    path: src/main/java/com/app/broker/Router.java
+    anchor: "getHeaders"
+- id: broker_uses_router
+  selector:
+    path: src/main/java/com/app/broker/Broker.java
+    anchor: "router.route(envelope)"
+- id: service_imports_broker
+  selector:
+    path: src/main/java/com/app/service/MessagingService.java
+    anchor: "import com.app.broker.Broker"
+- id: controller_imports_service
+  selector:
+    path: src/main/java/com/app/web/MessageController.java
+    anchor: "import com.app.service.MessagingService"
+- id: no_topic_parser
+  selector:
+    path: src/main/java/com/app/util/TopicParser.java
+    anchor: "GARBAGE_045_TOPIC_MARKER_A"
+- id: no_payload_codec
+  selector:
+    path: src/main/java/com/app/util/PayloadCodec.java
+    anchor: "GARBAGE_045_CODEC_MARKER_C"
+oracle:
+  required:
+  - envelope_headers_field
+  - envelope_add_header
+  - router_uses_headers
+  - broker_uses_router
+  - service_imports_broker
+  allowed:
+  - controller_imports_service
+  forbidden:
+  - no_topic_parser
+  - no_payload_codec

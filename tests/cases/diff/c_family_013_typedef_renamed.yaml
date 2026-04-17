@@ -1,0 +1,108 @@
+name: c_family_013_typedef_renamed
+tags:
+- lang:c
+- change:single_file
+- change:refactor
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    types.h: |
+      #ifndef TYPES_H
+      #define TYPES_H
+      typedef int handle_t;
+      #define INVALID_HANDLE (-1)
+      #endif
+    device.c: |
+      #include "types.h"
+      handle_t device_open(const char *path) {
+          /* open device, return handle */
+          return 0;
+      }
+      void device_close(handle_t h) { /* close */ }
+    session.c: |
+      #include "types.h"
+      static handle_t g_session = INVALID_HANDLE;
+      int session_start(const char *path) {
+          /* placeholder: open session */
+          g_session = 0;
+          return g_session != INVALID_HANDLE ? 0 : -1;
+      }
+      void session_end(void) { g_session = INVALID_HANDLE; }
+    C_NOISE_013_gps.h: |
+      #ifndef C_NOISE_013_GPS_H
+      #define C_NOISE_013_GPS_H
+      float C_NOISE_013_gps_latitude(void);
+      float C_NOISE_013_gps_longitude(void);
+      #endif
+    C_NOISE_013_gps.c: |
+      #include "C_NOISE_013_gps.h"
+      float C_NOISE_013_gps_latitude(void) { return 0.0f; }
+      float C_NOISE_013_gps_longitude(void) { return 0.0f; }
+  changed_files:
+    types.h: |
+      #ifndef TYPES_H
+      #define TYPES_H
+      typedef int resource_handle_t;
+      #define INVALID_HANDLE (-1)
+      #endif
+    device.c: |
+      #include "types.h"
+      resource_handle_t device_open(const char *path) {
+          /* open device, return handle */
+          return 0;
+      }
+      void device_close(resource_handle_t h) { /* close */ }
+    session.c: |
+      #include "types.h"
+      static resource_handle_t g_session = INVALID_HANDLE;
+      int session_start(const char *path) {
+          /* placeholder: open session */
+          g_session = 0;
+          return g_session != INVALID_HANDLE ? 0 : -1;
+      }
+      void session_end(void) { g_session = INVALID_HANDLE; }
+    C_NOISE_013_gps.h: |
+      #ifndef C_NOISE_013_GPS_H
+      #define C_NOISE_013_GPS_H
+      float C_NOISE_013_gps_latitude(void);
+      float C_NOISE_013_gps_longitude(void);
+      #endif
+    C_NOISE_013_gps.c: |
+      #include "C_NOISE_013_gps.h"
+      float C_NOISE_013_gps_latitude(void) { return 0.0f; }
+      float C_NOISE_013_gps_longitude(void) { return 0.0f; }
+  commit_message: "refactor: rename handle_t to resource_handle_t in types.h and all users"
+fragments:
+- id: types_h
+  selector:
+    path: types.h
+    anchor: resource_handle_t
+- id: device_c
+  selector:
+    path: device.c
+    anchor: "resource_handle_t device_open"
+- id: session_c
+  selector:
+    path: session.c
+    anchor: "resource_handle_t g_session"
+- id: no_gps_h
+  selector:
+    anchor: C_NOISE_013_gps_latitude
+- id: no_gps_c
+  selector:
+    path: C_NOISE_013_gps.c
+- id: no_global_longitude
+  selector:
+    anchor: C_NOISE_013_gps_longitude
+oracle:
+  required:
+  - types_h
+  - device_c
+  - session_c
+  allowed: []
+  forbidden:
+  - no_gps_h
+  - no_gps_c
+  - no_global_longitude

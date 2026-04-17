@@ -1,97 +1,200 @@
 name: internals_010_katakana_hiragana_segmentation
+tags:
+- lang:java
+- change:multi_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:hard
 repo:
   initial_files:
-    src/text/processor.py: |
-      from src.text.tokenizer import tokenize_text
-      def process_document(text: str) -> dict:
-          tokens = tokenize_text(text)
-          return {"tokens": tokens, "count": len(tokens)}
-      def normalize_text(text: str) -> str:
-          return text.strip().lower()
-    src/text/tokenizer.py: |
-      def tokenize_text(text: str) -> list:
-          return text.split()
-      def count_characters(text: str) -> int:
-          return len(text)
-    garbage_text_index.py: |
-      GARBAGE_INT_010_INDEX_MARKER_A = "tidx"
-      GARBAGE_INT_010_NGRAM_MARKER_B = "tri"
+    src/main/java/com/payments/ledger/LedgerService.java: |
+      package com.payments.ledger;
 
-      class GarbageTextIndex:
-          def noop(self):
-              pass
-    garbage_encoding_detector.py: |
-      GARBAGE_INT_010_DETECT_MARKER_C = "chardet"
-      GARBAGE_INT_010_FALLBACK_MARKER_D = "utf8"
+      import com.payments.model.Transaction;
+      import java.util.List;
+      import java.util.ArrayList;
 
-      class GarbageEncodingDetector:
-          def noop(self):
-              pass
+      public class LedgerService {
+          private final List<Transaction> entries = new ArrayList<>();
+
+          public void record(Transaction tx) {
+              entries.add(tx);
+          }
+
+          public List<Transaction> getEntries() {
+              return entries;
+          }
+      }
+    src/main/java/com/payments/model/Transaction.java: |
+      package com.payments.model;
+
+      public class Transaction {
+          public final String id;
+          public final double amount;
+          public final String currency;
+
+          public Transaction(String id, double amount, String currency) {
+              this.id = id;
+              this.amount = amount;
+              this.currency = currency;
+          }
+      }
+    src/test/java/com/payments/ledger/LedgerServiceTest.java: |
+      package com.payments.ledger;
+
+      import com.payments.model.Transaction;
+      import org.junit.jupiter.api.Test;
+      import static org.junit.jupiter.api.Assertions.*;
+
+      public class LedgerServiceTest {
+          @Test
+          void recordAndRetrieve() {
+              LedgerService svc = new LedgerService();
+              svc.record(new Transaction("t1", 100.0, "USD"));
+              assertEquals(1, svc.getEntries().size());
+          }
+      }
+    garbage/AuditLogger.java: |
+      // GARBAGE_KANA_A = "audit_marker"
+      public class AuditLogger {
+          public void log(String event) {}
+      }
+    garbage/NotificationSender.java: |
+      // GARBAGE_KANA_B = "notification_marker"
+      public class NotificationSender {
+          public void send(String msg) {}
+      }
+    garbage/ReportGenerator.java: |
+      // GARBAGE_KANA_C = "report_marker"
+      public class ReportGenerator {
+          public String generate() { return ""; }
+      }
   changed_files:
-    src/text/processor.py: |
-      from src.text.tokenizer import tokenize_text
-      def process_document(text: str) -> dict:
-          katakana_var = "カタカナ"
-          hiragana_func = "ひらがな"
-          tokens = tokenize_text(text)
-          result = {"tokens": tokens, "count": len(tokens), "katakana": katakana_var, "hiragana": hiragana_func}
-          return result
-      def normalize_text(text: str) -> str:
-          return text.strip().lower()
-    src/text/tokenizer.py: |
-      def tokenize_text(text: str) -> list:
-          return text.split()
-      def count_characters(text: str) -> int:
-          return len(text)
-    garbage_text_index.py: |
-      GARBAGE_INT_010_INDEX_MARKER_A = "tidx"
-      GARBAGE_INT_010_NGRAM_MARKER_B = "tri"
+    src/main/java/com/payments/ledger/LedgerService.java: |
+      package com.payments.ledger;
 
-      class GarbageTextIndex:
-          def noop(self):
-              pass
-    garbage_encoding_detector.py: |
-      GARBAGE_INT_010_DETECT_MARKER_C = "chardet"
-      GARBAGE_INT_010_FALLBACK_MARKER_D = "utf8"
+      import com.payments.model.Transaction;
+      import java.util.List;
+      import java.util.ArrayList;
+      import java.util.stream.Collectors;
 
-      class GarbageEncodingDetector:
-          def noop(self):
-              pass
-  commit_message: Update files
+      public class LedgerService {
+          private final List<Transaction> entries = new ArrayList<>();
+
+          public void record(Transaction tx) {
+              entries.add(tx);
+          }
+
+          public List<Transaction> getEntries() {
+              return entries;
+          }
+
+          public double totalByCurrency(String currency) {
+              return entries.stream()
+                  .filter(tx -> tx.currency.equals(currency))
+                  .mapToDouble(tx -> tx.amount)
+                  .sum();
+          }
+
+          public List<Transaction> filterByCurrency(String currency) {
+              return entries.stream()
+                  .filter(tx -> tx.currency.equals(currency))
+                  .collect(Collectors.toList());
+          }
+      }
+    src/main/java/com/payments/model/Transaction.java: |
+      package com.payments.model;
+
+      public class Transaction {
+          public final String id;
+          public final double amount;
+          public final String currency;
+
+          public Transaction(String id, double amount, String currency) {
+              this.id = id;
+              this.amount = amount;
+              this.currency = currency;
+          }
+      }
+    src/test/java/com/payments/ledger/LedgerServiceTest.java: |
+      package com.payments.ledger;
+
+      import com.payments.model.Transaction;
+      import org.junit.jupiter.api.Test;
+      import static org.junit.jupiter.api.Assertions.*;
+
+      public class LedgerServiceTest {
+          @Test
+          void recordAndRetrieve() {
+              LedgerService svc = new LedgerService();
+              svc.record(new Transaction("t1", 100.0, "USD"));
+              assertEquals(1, svc.getEntries().size());
+          }
+
+          @Test
+          void totalByCurrencySum() {
+              LedgerService svc = new LedgerService();
+              svc.record(new Transaction("t1", 50.0, "USD"));
+              svc.record(new Transaction("t2", 75.0, "USD"));
+              svc.record(new Transaction("t3", 30.0, "EUR"));
+              assertEquals(125.0, svc.totalByCurrency("USD"), 0.001);
+          }
+
+          @Test
+          void filterByCurrencyReturnsSubset() {
+              LedgerService svc = new LedgerService();
+              svc.record(new Transaction("t1", 10.0, "GBP"));
+              svc.record(new Transaction("t2", 20.0, "USD"));
+              assertEquals(1, svc.filterByCurrency("GBP").size());
+          }
+      }
+    garbage/AuditLogger.java: |
+      // GARBAGE_KANA_A = "audit_marker"
+      public class AuditLogger {
+          public void log(String event) {}
+      }
+    garbage/NotificationSender.java: |
+      // GARBAGE_KANA_B = "notification_marker"
+      public class NotificationSender {
+          public void send(String msg) {}
+      }
+    garbage/ReportGenerator.java: |
+      // GARBAGE_KANA_C = "report_marker"
+      public class ReportGenerator {
+          public String generate() { return ""; }
+      }
+  commit_message: "feat: add totalByCurrency and filterByCurrency to LedgerService"
 fragments:
-- id: processor_file
+- id: total_by_currency
   selector:
-    path: src/text/processor.py
-- id: req_global_0
+    anchor: "public double totalByCurrency(String currency)"
+- id: filter_by_currency
   selector:
-    anchor: katakana_var = "カタカナ"
-- id: no_global_0
+    anchor: "public List<Transaction> filterByCurrency(String currency)"
+- id: test_total_sum
   selector:
-    anchor: GARBAGE_INT_010_DETECT_MARKER_C
-- id: no_global_1
+    anchor: "void totalByCurrencySum()"
+- id: test_filter_subset
   selector:
-    anchor: GARBAGE_INT_010_FALLBACK_MARKER_D
-- id: no_global_2
+    anchor: "void filterByCurrencyReturnsSubset()"
+- id: no_garbage_a
   selector:
-    anchor: GARBAGE_INT_010_INDEX_MARKER_A
-- id: no_global_3
+    anchor: GARBAGE_KANA_A
+- id: no_garbage_b
   selector:
-    anchor: GARBAGE_INT_010_NGRAM_MARKER_B
-- id: no_global_4
+    anchor: GARBAGE_KANA_B
+- id: no_garbage_c
   selector:
-    anchor: garbage_encoding_detector.py
-- id: no_global_5
-  selector:
-    anchor: garbage_text_index.py
+    anchor: GARBAGE_KANA_C
 oracle:
   required:
-  - processor_file
-  - req_global_0
+  - total_by_currency
+  - filter_by_currency
+  - test_total_sum
+  - test_filter_subset
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

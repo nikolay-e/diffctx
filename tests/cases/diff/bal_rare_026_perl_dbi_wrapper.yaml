@@ -1,0 +1,194 @@
+name: bal_rare_026_perl_dbi_wrapper
+tags:
+- lang:rust
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/render/renderer.rs: |
+      pub struct RenderOptions {
+          pub width: u32,
+          pub height: u32,
+          pub samples: u32,
+      }
+
+      pub struct FrameBuffer {
+          pub pixels: Vec<u32>,
+          pub width: u32,
+          pub height: u32,
+      }
+
+      impl FrameBuffer {
+          pub fn new(width: u32, height: u32) -> Self {
+              Self { pixels: vec![0u32; (width * height) as usize], width, height }
+          }
+      }
+
+      pub fn render_frame(options: &RenderOptions) -> FrameBuffer {
+          let buf = FrameBuffer::new(options.width, options.height);
+          buf
+      }
+    src/scene/camera.rs: |
+      use crate::render::renderer::RenderOptions;
+
+      pub struct Camera {
+          pub fov: f32,
+          pub near: f32,
+          pub far: f32,
+      }
+
+      impl Camera {
+          pub fn new(fov: f32) -> Self {
+              Self { fov, near: 0.1, far: 1000.0 }
+          }
+
+          pub fn to_render_options(&self, width: u32, height: u32) -> RenderOptions {
+              RenderOptions { width, height, samples: 1 }
+          }
+      }
+    src/engine/game_loop.rs: |
+      use crate::scene::camera::Camera;
+      use crate::render::renderer::render_frame;
+
+      pub struct GameLoop {
+          camera: Camera,
+      }
+
+      impl GameLoop {
+          pub fn new() -> Self {
+              Self { camera: Camera::new(90.0) }
+          }
+
+          pub fn tick(&self, width: u32, height: u32) {
+              let options = self.camera.to_render_options(width, height);
+              let _frame = render_frame(&options);
+          }
+      }
+    garbage/audio.rs: |
+      // GARBAGE_DBIWRAP_A = "audio_engine_marker"
+    garbage/physics.rs: |
+      // GARBAGE_DBIWRAP_B = "physics_world_marker"
+    garbage/networking.rs: |
+      // GARBAGE_DBIWRAP_C = "network_sync_marker"
+  changed_files:
+    src/render/renderer.rs: |
+      pub struct RenderOptions {
+          pub width: u32,
+          pub height: u32,
+          pub samples: u32,
+          pub hdr: bool,
+      }
+
+      pub trait Renderer {
+          fn render(&self, options: &RenderOptions) -> FrameBuffer;
+          fn name(&self) -> &'static str;
+      }
+
+      pub struct FrameBuffer {
+          pub pixels: Vec<u32>,
+          pub width: u32,
+          pub height: u32,
+      }
+
+      impl FrameBuffer {
+          pub fn new(width: u32, height: u32) -> Self {
+              Self { pixels: vec![0u32; (width * height) as usize], width, height }
+          }
+      }
+
+      pub struct DefaultRenderer;
+
+      impl Renderer for DefaultRenderer {
+          fn render(&self, options: &RenderOptions) -> FrameBuffer {
+              FrameBuffer::new(options.width, options.height)
+          }
+
+          fn name(&self) -> &'static str {
+              "default"
+          }
+      }
+    src/scene/camera.rs: |
+      use crate::render::renderer::RenderOptions;
+
+      pub struct Camera {
+          pub fov: f32,
+          pub near: f32,
+          pub far: f32,
+          pub hdr: bool,
+      }
+
+      impl Camera {
+          pub fn new(fov: f32) -> Self {
+              Self { fov, near: 0.1, far: 1000.0, hdr: false }
+          }
+
+          pub fn to_render_options(&self, width: u32, height: u32) -> RenderOptions {
+              RenderOptions { width, height, samples: 1, hdr: self.hdr }
+          }
+      }
+    src/engine/game_loop.rs: |
+      use crate::scene::camera::Camera;
+      use crate::render::renderer::{Renderer, DefaultRenderer};
+
+      pub struct GameLoop<R: Renderer> {
+          camera: Camera,
+          renderer: R,
+      }
+
+      impl GameLoop<DefaultRenderer> {
+          pub fn new() -> Self {
+              Self { camera: Camera::new(90.0), renderer: DefaultRenderer }
+          }
+      }
+
+      impl<R: Renderer> GameLoop<R> {
+          pub fn tick(&self, width: u32, height: u32) {
+              let options = self.camera.to_render_options(width, height);
+              let _frame = self.renderer.render(&options);
+          }
+      }
+    garbage/audio.rs: |
+      // GARBAGE_DBIWRAP_A = "audio_engine_marker"
+    garbage/physics.rs: |
+      // GARBAGE_DBIWRAP_B = "physics_world_marker"
+    garbage/networking.rs: |
+      // GARBAGE_DBIWRAP_C = "network_sync_marker"
+  commit_message: "refactor: introduce Renderer trait and hdr flag in RenderOptions"
+fragments:
+- id: renderer_trait
+  selector:
+    anchor: "pub trait Renderer"
+- id: hdr_field_added
+  selector:
+    anchor: "pub hdr: bool"
+- id: camera_passes_hdr
+  selector:
+    path: src/scene/camera.rs
+    anchor: "hdr: self.hdr"
+- id: game_loop_uses_trait
+  selector:
+    path: src/engine/game_loop.rs
+    anchor: "use crate::render::renderer::{Renderer, DefaultRenderer}"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_DBIWRAP_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_DBIWRAP_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_DBIWRAP_C
+oracle:
+  required:
+  - renderer_trait
+  - hdr_field_added
+  - camera_passes_hdr
+  - game_loop_uses_trait
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

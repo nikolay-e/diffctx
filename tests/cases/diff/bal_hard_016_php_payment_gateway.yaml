@@ -1,0 +1,198 @@
+name: bal_hard_016_php_payment_gateway
+tags:
+- lang:php
+- change:multi_file
+- change:new_function
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/Models/Payment.php: |
+      <?php
+      namespace App\Models;
+      class Payment {
+          public string $id;
+          public float $amount;
+          public string $currency;
+          public string $status;
+          public function __construct(string $id, float $amount, string $currency) {
+              $this->id = $id;
+              $this->amount = $amount;
+              $this->currency = $currency;
+              $this->status = 'pending';
+          }
+      }
+    src/Gateway/GatewayInterface.php: |
+      <?php
+      namespace App\Gateway;
+      use App\Models\Payment;
+      interface GatewayInterface {
+          public function charge(Payment $payment): bool;
+          public function refund(string $paymentId): bool;
+      }
+    src/Gateway/StripeGateway.php: |
+      <?php
+      namespace App\Gateway;
+      use App\Models\Payment;
+      class StripeGateway implements GatewayInterface {
+          private string $apiKey;
+          public function __construct(string $apiKey) {
+              $this->apiKey = $apiKey;
+          }
+          public function charge(Payment $payment): bool {
+              $payment->status = 'charged';
+              return true;
+          }
+          public function refund(string $paymentId): bool {
+              return true;
+          }
+      }
+    src/Service/PaymentService.php: |
+      <?php
+      namespace App\Service;
+      use App\Gateway\GatewayInterface;
+      use App\Models\Payment;
+      class PaymentService {
+          private GatewayInterface $gateway;
+          public function __construct(GatewayInterface $gateway) {
+              $this->gateway = $gateway;
+          }
+          public function processPayment(string $id, float $amount, string $currency): Payment {
+              $payment = new Payment($id, $amount, $currency);
+              $this->gateway->charge($payment);
+              return $payment;
+          }
+      }
+    src/Controller/PaymentController.php: |
+      <?php
+      namespace App\Controller;
+      use App\Service\PaymentService;
+      class PaymentController {
+          private PaymentService $service;
+          public function __construct(PaymentService $service) {
+              $this->service = $service;
+          }
+          public function charge(string $id, float $amount, string $currency): array {
+              $payment = $this->service->processPayment($id, $amount, $currency);
+              return ['id' => $payment->id, 'status' => $payment->status];
+          }
+      }
+    src/Helpers/CurrencyConverter.php: |
+      <?php
+      namespace App\Helpers;
+      class CurrencyConverter {
+          public function convert(float $amount, string $from, string $to): float {
+              $rates = ['USD_EUR' => 0.85, 'EUR_USD' => 1.18];
+              $key = $from . '_' . $to;
+              return $amount * ($rates[$key] ?? 1.0);
+          }
+      }
+    src/Helpers/IdGenerator.php: |
+      <?php
+      namespace App\Helpers;
+      class IdGenerator {
+          public static function uuid(): string {
+              return bin2hex(random_bytes(16));
+          }
+      }
+  changed_files:
+    src/Gateway/GatewayInterface.php: |
+      <?php
+      namespace App\Gateway;
+      use App\Models\Payment;
+      interface GatewayInterface {
+          public function charge(Payment $payment): bool;
+          public function refund(string $paymentId): bool;
+          public function authorize(Payment $payment): string;
+      }
+    src/Gateway/StripeGateway.php: |
+      <?php
+      namespace App\Gateway;
+      use App\Models\Payment;
+      class StripeGateway implements GatewayInterface {
+          private string $apiKey;
+          public function __construct(string $apiKey) {
+              $this->apiKey = $apiKey;
+          }
+          public function charge(Payment $payment): bool {
+              $payment->status = 'charged';
+              return true;
+          }
+          public function refund(string $paymentId): bool {
+              return true;
+          }
+          public function authorize(Payment $payment): string {
+              $payment->status = 'authorized';
+              return 'auth_' . $payment->id;
+          }
+      }
+    src/Service/PaymentService.php: |
+      <?php
+      namespace App\Service;
+      use App\Gateway\GatewayInterface;
+      use App\Models\Payment;
+      class PaymentService {
+          private GatewayInterface $gateway;
+          public function __construct(GatewayInterface $gateway) {
+              $this->gateway = $gateway;
+          }
+          public function processPayment(string $id, float $amount, string $currency): Payment {
+              $payment = new Payment($id, $amount, $currency);
+              $this->gateway->charge($payment);
+              return $payment;
+          }
+          public function authorizePayment(string $id, float $amount, string $currency): array {
+              $payment = new Payment($id, $amount, $currency);
+              $token = $this->gateway->authorize($payment);
+              return ['payment' => $payment, 'token' => $token];
+          }
+      }
+  commit_message: "feat: add payment authorization flow"
+fragments:
+- id: gateway_authorize
+  selector:
+    path: GatewayInterface.php
+    anchor: "public function authorize(Payment $payment): string"
+- id: stripe_authorize
+  selector:
+    path: StripeGateway.php
+    anchor: "public function authorize(Payment $payment): string"
+- id: service_authorize
+  selector:
+    path: PaymentService.php
+    anchor: "public function authorizePayment"
+- id: service_calls_gateway_authorize
+  selector:
+    path: PaymentService.php
+    anchor: "$this->gateway->authorize($payment)"
+- id: payment_model
+  selector:
+    path: Payment.php
+    anchor: "class Payment"
+- id: controller_uses_service
+  selector:
+    path: PaymentController.php
+    anchor: "$this->service->processPayment"
+- id: no_currency_converter
+  selector:
+    path: Helpers/CurrencyConverter.php
+- id: no_id_generator
+  selector:
+    path: Helpers/IdGenerator.php
+- id: no_uuid
+  selector:
+    anchor: "public static function uuid()"
+oracle:
+  required:
+  - gateway_authorize
+  - stripe_authorize
+  - service_authorize
+  - service_calls_gateway_authorize
+  - payment_model
+  - controller_uses_service
+  allowed: []
+  forbidden:
+  - no_currency_converter
+  - no_id_generator
+  - no_uuid

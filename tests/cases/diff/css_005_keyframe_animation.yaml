@@ -1,0 +1,80 @@
+name: css_005_keyframe_animation
+tags:
+- lang:css
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    animations.css: |
+      @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+      @keyframes fade-in {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+    spinner.css: |
+      @import "animations.css";
+      .spinner {
+        width: 32px;
+        height: 32px;
+        border: 3px solid #e5e7eb;
+        border-top-color: #3b82f6;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+    CSS_NOISE_005_invoice.css: |
+      .CSS_NOISE_005_invoice_header { font-size: 24px; font-weight: bold; }
+      .CSS_NOISE_005_invoice_row { border-bottom: 1px solid #eee; }
+    CSS_NOISE_005_tooltip.css: |
+      .CSS_NOISE_005_tooltip_bubble { background: #111; color: #fff; border-radius: 4px; }
+      .CSS_NOISE_005_tooltip_arrow { border: 6px solid transparent; }
+  changed_files:
+    animations.css: |
+      @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+      @keyframes spin-fast {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+      @keyframes fade-in {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+  commit_message: "style: add spin-fast keyframe variant"
+fragments:
+- id: spin_fast_keyframe
+  selector:
+    path: animations.css
+    anchor: spin-fast
+- id: spinner_imports_animations
+  selector:
+    path: spinner.css
+    anchor: animations.css
+- id: no_invoice
+  selector:
+    path: CSS_NOISE_005_invoice.css
+- id: no_tooltip
+  selector:
+    path: CSS_NOISE_005_tooltip.css
+- id: no_global_0
+  selector:
+    anchor: CSS_NOISE_005_invoice_header
+- id: no_global_1
+  selector:
+    anchor: CSS_NOISE_005_tooltip_bubble
+oracle:
+  required:
+  - spin_fast_keyframe
+  - spinner_imports_animations
+  allowed: []
+  forbidden:
+  - no_invoice
+  - no_tooltip
+  - no_global_0
+  - no_global_1

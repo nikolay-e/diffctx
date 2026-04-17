@@ -1,0 +1,203 @@
+name: bal2_3hop_014_java_template_engine
+tags:
+- lang:java
+- change:multi_file
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/app/template/Variable.java: |
+      package com.app.template;
+
+      public class Variable {
+          private final String name;
+          private final String value;
+          public Variable(String name, String value) {
+              this.name = name;
+              this.value = value;
+          }
+          public String getName() { return name; }
+          public String getValue() { return value; }
+      }
+    src/main/java/com/app/template/TemplateContext.java: |
+      package com.app.template;
+
+      import com.app.template.Variable;
+      import java.util.HashMap;
+      import java.util.Map;
+
+      public class TemplateContext {
+          private final Map<String, Variable> variables = new HashMap<>();
+          public void set(String name, String value) {
+              variables.put(name, new Variable(name, value));
+          }
+          public String resolve(String name) {
+              Variable v = variables.get(name);
+              return v != null ? v.getValue() : "";
+          }
+      }
+    src/main/java/com/app/template/TemplateRenderer.java: |
+      package com.app.template;
+
+      import com.app.template.TemplateContext;
+
+      public class TemplateRenderer {
+          private final TemplateContext context;
+          public TemplateRenderer(TemplateContext context) {
+              this.context = context;
+          }
+          public String render(String template) {
+              String result = template;
+              return result;
+          }
+      }
+    src/main/java/com/app/web/PageController.java: |
+      package com.app.web;
+
+      import com.app.template.TemplateRenderer;
+
+      public class PageController {
+          private final TemplateRenderer renderer;
+          public PageController(TemplateRenderer renderer) {
+              this.renderer = renderer;
+          }
+          public String servePage(String templateName) {
+              return renderer.render("Hello {{name}}");
+          }
+      }
+    src/main/java/com/app/util/HtmlEscaper.java: |
+      package com.app.util;
+
+      public class HtmlEscaper {
+          public static String escape(String input) {
+              return input.replace("&", "&amp;").replace("<", "&lt;");
+          }
+      }
+    src/main/java/com/app/util/PathResolver.java: |
+      package com.app.util;
+
+      public class PathResolver {
+          public static String resolve(String base, String relative) {
+              return base + "/" + relative;
+          }
+      }
+  changed_files:
+    src/main/java/com/app/template/Variable.java: |
+      package com.app.template;
+
+      public class Variable {
+          private final String name;
+          private final String value;
+          private final boolean escaped;
+          public Variable(String name, String value, boolean escaped) {
+              this.name = name;
+              this.value = value;
+              this.escaped = escaped;
+          }
+          public String getName() { return name; }
+          public String getValue() { return value; }
+          public boolean isEscaped() { return escaped; }
+      }
+    src/main/java/com/app/template/TemplateContext.java: |
+      package com.app.template;
+
+      import com.app.template.Variable;
+      import java.util.HashMap;
+      import java.util.Map;
+
+      public class TemplateContext {
+          private final Map<String, Variable> variables = new HashMap<>();
+          public void set(String name, String value) {
+              variables.put(name, new Variable(name, value, true));
+          }
+          public void setRaw(String name, String value) {
+              variables.put(name, new Variable(name, value, false));
+          }
+          public String resolve(String name) {
+              Variable v = variables.get(name);
+              return v != null ? v.getValue() : "";
+          }
+      }
+    src/main/java/com/app/template/TemplateRenderer.java: |
+      package com.app.template;
+
+      import com.app.template.TemplateContext;
+
+      public class TemplateRenderer {
+          private final TemplateContext context;
+          public TemplateRenderer(TemplateContext context) {
+              this.context = context;
+          }
+          public String render(String template) {
+              String result = template;
+              return result;
+          }
+      }
+    src/main/java/com/app/web/PageController.java: |
+      package com.app.web;
+
+      import com.app.template.TemplateRenderer;
+
+      public class PageController {
+          private final TemplateRenderer renderer;
+          public PageController(TemplateRenderer renderer) {
+              this.renderer = renderer;
+          }
+          public String servePage(String templateName) {
+              return renderer.render("Hello {{name}}");
+          }
+      }
+    src/main/java/com/app/util/HtmlEscaper.java: |
+      package com.app.util;
+
+      public class HtmlEscaper {
+          public static String escape(String input) {
+              return input.replace("&", "&amp;").replace("<", "&lt;");
+          }
+      }
+    src/main/java/com/app/util/PathResolver.java: |
+      package com.app.util;
+
+      public class PathResolver {
+          public static String resolve(String base, String relative) {
+              return base + "/" + relative;
+          }
+      }
+  commit_message: "feat: add escaped flag to Variable for XSS prevention"
+fragments:
+- id: variable_escaped
+  selector:
+    path: src/main/java/com/app/template/Variable.java
+    anchor: "private final boolean escaped"
+- id: context_imports_variable
+  selector:
+    path: src/main/java/com/app/template/TemplateContext.java
+    anchor: "import com.app.template.Variable"
+- id: renderer_imports_context
+  selector:
+    path: src/main/java/com/app/template/TemplateRenderer.java
+    anchor: "import com.app.template.TemplateContext"
+- id: page_imports_renderer
+  selector:
+    path: src/main/java/com/app/web/PageController.java
+    anchor: "import com.app.template.TemplateRenderer"
+- id: no_html_escaper
+  selector:
+    path: src/main/java/com/app/util/HtmlEscaper.java
+    anchor: "class HtmlEscaper"
+- id: no_path_resolver
+  selector:
+    path: src/main/java/com/app/util/PathResolver.java
+    anchor: "class PathResolver"
+oracle:
+  required:
+  - variable_escaped
+  - context_imports_variable
+  - renderer_imports_context
+  - page_imports_renderer
+  allowed: []
+  forbidden:
+  - no_html_escaper
+  - no_path_resolver

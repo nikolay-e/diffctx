@@ -1,182 +1,224 @@
 name: json_015_firebase_config
+tags:
+- lang:go
+- change:new_function
+- change:single_file
+- context:import_chain
+- distance:2hop
+- difficulty:medium
 repo:
   initial_files:
-    firebase.json: |
-      {
-        "hosting": {
-          "public": "public",
-          "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-          "cleanUrls": true,
-          "trailingSlash": false
-        },
-        "functions": {
-          "source": "functions",
-          "predeploy": ["npm --prefix functions run lint"]
-        },
-        "emulators": {
-          "functions": {"port": 5001},
-          "hosting": {"port": 5000}
-        }
-      }
-    functions/index.js: |
-      const functions = require('firebase-functions');
-      const { initializeApp } = require('firebase-admin/app');
-      const { getFirestore } = require('firebase-admin/firestore');
+    pkg/stream/publisher.go: |
+      package stream
 
-      initializeApp();
-      const db = getFirestore();
+      import "encoding/json"
 
-      exports.hello = functions.https.onRequest((req, res) => {
-          res.json({ message: 'Hello from Firebase!' });
-      });
-
-      exports.getItems = functions.https.onRequest(async (req, res) => {
-          const snapshot = await db.collection('items').get();
-          const items = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-          res.json({ items });
-      });
-
-      exports.addItem = functions.https.onRequest(async (req, res) => {
-          if (req.method !== 'POST') {
-              return res.status(405).send('Method Not Allowed');
-          }
-          const docRef = await db.collection('items').add(req.body);
-          res.status(201).json({ id: docRef.id });
-      });
-    functions/utils/validation.js: |
-      function validateItem(data) {
-          const errors = [];
-          if (!data.name || typeof data.name !== 'string') {
-              errors.push('name is required and must be a string');
-          }
-          if (data.price !== undefined && typeof data.price !== 'number') {
-              errors.push('price must be a number');
-          }
-          if (data.quantity !== undefined && !Number.isInteger(data.quantity)) {
-              errors.push('quantity must be an integer');
-          }
-          return { valid: errors.length === 0, errors };
+      type Event struct {
+          Topic   string
+          Payload map[string]interface{}
       }
 
-      function sanitizeInput(data) {
-          const allowed = ['name', 'price', 'quantity', 'description'];
-          const sanitized = {};
-          for (const key of allowed) {
-              if (key in data) sanitized[key] = data[key];
-          }
-          return sanitized;
+      type Publisher struct {
+          topic   string
+          encoder *json.Encoder
       }
 
-      module.exports = { validateItem, sanitizeInput };
-    public/index.html: |
-      <!DOCTYPE html>
-      <html lang="en">
-      <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>My App</title>
-          <link rel="stylesheet" href="/styles/main.css">
-      </head>
-      <body>
-          <div id="app"></div>
-          <script src="/js/main.js"></script>
-      </body>
-      </html>
-    functions/package.json: |
-      {
-        "name": "functions",
-        "description": "Cloud Functions for Firebase",
-        "engines": {"node": "18"},
-        "main": "index.js",
-        "dependencies": {
-          "firebase-admin": "^11.8.0",
-          "firebase-functions": "^4.3.1"
-        },
-        "devDependencies": {
-          "eslint": "^8.45.0"
-        },
-        "scripts": {
-          "lint": "eslint ."
-        }
+      func NewPublisher(topic string, enc *json.Encoder) *Publisher {
+          return &Publisher{topic: topic, encoder: enc}
       }
-    .firebaserc: |
-      {
-        "projects": {
-          "default": "my-app-prod",
-          "staging": "my-app-staging"
-        }
+
+      func (p *Publisher) Publish(payload map[string]interface{}) error {
+          e := Event{Topic: p.topic, Payload: payload}
+          return p.encoder.Encode(e)
       }
+    internal/analytics/tracker.go: |
+      package analytics
+
+      import (
+          "encoding/json"
+          "os"
+          "pkg/stream"
+      )
+
+      type Tracker struct {
+          pub *stream.Publisher
+      }
+
+      func NewTracker(topic string) *Tracker {
+          enc := json.NewEncoder(os.Stdout)
+          return &Tracker{pub: stream.NewPublisher(topic, enc)}
+      }
+
+      func (t *Tracker) TrackEvent(name string, props map[string]interface{}) error {
+          return t.pub.Publish(map[string]interface{}{
+              "event": name,
+              "props": props,
+          })
+      }
+    internal/api/analytics_handler.go: |
+      package api
+
+      import "internal/analytics"
+
+      type AnalyticsHandler struct {
+          tracker *analytics.Tracker
+      }
+
+      func NewAnalyticsHandler(t *analytics.Tracker) *AnalyticsHandler {
+          return &AnalyticsHandler{tracker: t}
+      }
+
+      func (h *AnalyticsHandler) HandlePageView(page, userID string) error {
+          return h.tracker.TrackEvent("page_view", map[string]interface{}{
+              "page":    page,
+              "user_id": userID,
+          })
+      }
+    garbage/GameAuditLog.go: |
+      package garbage
+
+      // GARBAGE_JSON015_A = "game_audit_log_marker"
+
+      type GameAuditLog struct{ EventType string }
+    garbage/PaymentRetry.go: |
+      package garbage
+
+      // GARBAGE_JSON015_B = "payment_retry_marker"
+
+      type PaymentRetry struct{ Attempts int }
+    garbage/IoTTelemetry.go: |
+      package garbage
+
+      // GARBAGE_JSON015_C = "iot_telemetry_marker"
+
+      type IoTTelemetry struct{ SensorID string }
   changed_files:
-    firebase.json: |
-      {
-        "hosting": {
-          "public": "dist",
-          "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-          "cleanUrls": true,
-          "trailingSlash": false,
-          "rewrites": [
-            {"source": "**", "destination": "/index.html"}
-          ]
-        },
-        "functions": {
-          "source": "functions",
-          "runtime": "nodejs18",
-          "predeploy": ["npm --prefix functions run lint"]
-        },
-        "emulators": {
-          "functions": {"port": 5001},
-          "hosting": {"port": 5000}
-        }
+    pkg/stream/publisher.go: |
+      package stream
+
+      import "encoding/json"
+
+      type Event struct {
+          Topic   string
+          Payload map[string]interface{}
       }
-  commit_message: Update files
+
+      type Publisher struct {
+          topic   string
+          encoder *json.Encoder
+      }
+
+      func NewPublisher(topic string, enc *json.Encoder) *Publisher {
+          return &Publisher{topic: topic, encoder: enc}
+      }
+
+      func (p *Publisher) Publish(payload map[string]interface{}) error {
+          e := Event{Topic: p.topic, Payload: payload}
+          return p.encoder.Encode(e)
+      }
+
+      func (p *Publisher) PublishBatch(payloads []map[string]interface{}) error {
+          for _, payload := range payloads {
+              if err := p.Publish(payload); err != nil {
+                  return err
+              }
+          }
+          return nil
+      }
+    internal/analytics/tracker.go: |
+      package analytics
+
+      import (
+          "encoding/json"
+          "os"
+          "pkg/stream"
+      )
+
+      type Tracker struct {
+          pub *stream.Publisher
+      }
+
+      func NewTracker(topic string) *Tracker {
+          enc := json.NewEncoder(os.Stdout)
+          return &Tracker{pub: stream.NewPublisher(topic, enc)}
+      }
+
+      func (t *Tracker) TrackEvent(name string, props map[string]interface{}) error {
+          return t.pub.Publish(map[string]interface{}{
+              "event": name,
+              "props": props,
+          })
+      }
+
+      func (t *Tracker) TrackBatch(events []map[string]interface{}) error {
+          return t.pub.PublishBatch(events)
+      }
+    internal/api/analytics_handler.go: |
+      package api
+
+      import "internal/analytics"
+
+      type AnalyticsHandler struct {
+          tracker *analytics.Tracker
+      }
+
+      func NewAnalyticsHandler(t *analytics.Tracker) *AnalyticsHandler {
+          return &AnalyticsHandler{tracker: t}
+      }
+
+      func (h *AnalyticsHandler) HandlePageView(page, userID string) error {
+          return h.tracker.TrackEvent("page_view", map[string]interface{}{
+              "page":    page,
+              "user_id": userID,
+          })
+      }
+    garbage/GameAuditLog.go: |
+      package garbage
+
+      // GARBAGE_JSON015_A = "game_audit_log_marker"
+
+      type GameAuditLog struct{ EventType string }
+    garbage/PaymentRetry.go: |
+      package garbage
+
+      // GARBAGE_JSON015_B = "payment_retry_marker"
+
+      type PaymentRetry struct{ Attempts int }
+    garbage/IoTTelemetry.go: |
+      package garbage
+
+      // GARBAGE_JSON015_C = "iot_telemetry_marker"
+
+      type IoTTelemetry struct{ SensorID string }
+  commit_message: "feat: add PublishBatch to stream publisher, expose TrackBatch in analytics"
 fragments:
-- id: firebase
+- id: publish_batch_fn
   selector:
-    path: firebase.json
-    anchor: '"public": "dist"'
-- id: firebase_1
+    path: pkg/stream/publisher.go
+    anchor: "func (p *Publisher) PublishBatch"
+- id: tracker_batch
   selector:
-    path: firebase.json
-    anchor: '"runtime": "nodejs18"'
-- id: no_index
+    path: internal/analytics/tracker.go
+    anchor: "func (t *Tracker) TrackBatch"
+- id: no_analytics_handler
   selector:
-    path: public/index.html
-- id: no_firebaserc
+    path: internal/api/analytics_handler.go
+- id: no_garbage_a
   selector:
-    path: .firebaserc
-- id: no_global_0
+    anchor: GARBAGE_JSON015_A
+- id: no_garbage_b
   selector:
-    anchor: <div id="app">
-- id: no_global_1
+    anchor: GARBAGE_JSON015_B
+- id: no_garbage_c
   selector:
-    anchor: main.css
-- id: no_global_2
-  selector:
-    anchor: main.js
-- id: no_global_3
-  selector:
-    anchor: firebase-admin
-- id: no_global_4
-  selector:
-    anchor: firebase-functions
-- id: no_global_5
-  selector:
-    anchor: my-app-prod
-- id: no_global_6
-  selector:
-    anchor: my-app-staging
+    anchor: GARBAGE_JSON015_C
 oracle:
   required:
-  - firebase
-  - firebase_1
+  - publish_batch_fn
+  - tracker_batch
   allowed: []
   forbidden:
-  - no_index
-  - no_firebaserc
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
+  - no_analytics_handler
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

@@ -1,0 +1,274 @@
+name: bal2_1hop_075_csharp_factory_new_method
+tags:
+- lang:csharp
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: csharp-no-tree-sitter
+repo:
+  initial_files:
+    src/Factories/NotificationFactory.cs: |
+      using System;
+      using App.Notifications;
+
+      namespace App.Factories
+      {
+          public class NotificationFactory
+          {
+              public INotification CreateEmail(string to, string subject, string body)
+              {
+                  return new EmailNotification(to, subject, body);
+              }
+
+              public INotification CreateSms(string phone, string message)
+              {
+                  return new SmsNotification(phone, message);
+              }
+          }
+      }
+    src/Notifications/INotification.cs: |
+      using System;
+      using System.Threading.Tasks;
+
+      namespace App.Notifications
+      {
+          public interface INotification
+          {
+              string Recipient { get; }
+              Task Send();
+          }
+      }
+    src/Notifications/EmailNotification.cs: |
+      using System;
+      using System.Threading.Tasks;
+      using App.Notifications;
+
+      namespace App.Notifications
+      {
+          public class EmailNotification : INotification
+          {
+              public string Recipient { get; }
+              private readonly string _subject;
+              private readonly string _body;
+
+              public EmailNotification(string to, string subject, string body)
+              {
+                  Recipient = to;
+                  _subject = subject;
+                  _body = body;
+              }
+
+              public async Task Send()
+              {
+                  Console.WriteLine($"Email to {Recipient}: {_subject}");
+                  await Task.CompletedTask;
+              }
+          }
+      }
+    src/Notifications/SmsNotification.cs: |
+      using System;
+      using System.Threading.Tasks;
+      using App.Notifications;
+
+      namespace App.Notifications
+      {
+          public class SmsNotification : INotification
+          {
+              public string Recipient { get; }
+              private readonly string _message;
+
+              public SmsNotification(string phone, string message)
+              {
+                  Recipient = phone;
+                  _message = message;
+              }
+
+              public async Task Send()
+              {
+                  Console.WriteLine($"SMS to {Recipient}: {_message}");
+                  await Task.CompletedTask;
+              }
+          }
+      }
+    src/Services/NotificationDispatcher.cs: |
+      using System;
+      using System.Threading.Tasks;
+      using App.Factories;
+      using App.Notifications;
+
+      namespace App.Services
+      {
+          public class NotificationDispatcher
+          {
+              private readonly NotificationFactory _factory;
+
+              public NotificationDispatcher(NotificationFactory factory)
+              {
+                  _factory = factory;
+              }
+
+              public async Task NotifyByEmail(string to, string subject, string body)
+              {
+                  var notification = _factory.CreateEmail(to, subject, body);
+                  await notification.Send();
+              }
+
+              public async Task NotifyBySms(string phone, string message)
+              {
+                  var notification = _factory.CreateSms(phone, message);
+                  await notification.Send();
+              }
+          }
+      }
+    src/Controllers/NotificationController.cs: |
+      using System;
+      using System.Threading.Tasks;
+      using App.Services;
+      using Microsoft.AspNetCore.Mvc;
+
+      namespace App.Controllers
+      {
+          [ApiController]
+          [Route("api/notifications")]
+          public class NotificationController : ControllerBase
+          {
+              private readonly NotificationDispatcher _dispatcher;
+
+              public NotificationController(NotificationDispatcher dispatcher)
+              {
+                  _dispatcher = dispatcher;
+              }
+
+              [HttpPost("email")]
+              public async Task<IActionResult> SendEmail(string to, string subject, string body)
+              {
+                  await _dispatcher.NotifyByEmail(to, subject, body);
+                  return Ok();
+              }
+          }
+      }
+    garbage/Billing/InvoiceNumberGenerator.cs: |
+      using System;
+      GARBAGE_075_INVOICE_PREFIX_A = "INV";
+      GARBAGE_075_SEQ_START_B = 1000;
+
+      namespace App.Billing
+      {
+          public class InvoiceNumberGenerator
+          {
+              GARBAGE_075_FORMAT_C = "INV-{0:D6}";
+
+              public string Generate(int seq) { return $"INV-{seq:D6}"; }
+          }
+      }
+    garbage/Geo/CoordinateParser.cs: |
+      using System;
+      GARBAGE_075_GEO_SYSTEM_D = "wgs84";
+      GARBAGE_075_PRECISION_E = 6;
+
+      namespace App.Geo
+      {
+          public class CoordinateParser
+          {
+              GARBAGE_075_FORMAT_F = "decimal";
+
+              public (double, double) Parse(string coords) { return (0, 0); }
+          }
+      }
+    garbage/Versioning/SemVerParser.cs: |
+      using System;
+      GARBAGE_075_SEMVER_G = "2.0.0";
+      GARBAGE_075_PRERELEASE_H = "alpha";
+
+      namespace App.Versioning
+      {
+          public class SemVerParser
+          {
+              GARBAGE_075_BUILD_META_I = "";
+              GARBAGE_075_STRICT_J = true;
+
+              public int[] Parse(string version) { return new[] { 0, 0, 0 }; }
+          }
+      }
+  changed_files:
+    src/Factories/NotificationFactory.cs: |
+      using System;
+      using App.Notifications;
+
+      namespace App.Factories
+      {
+          public class NotificationFactory
+          {
+              public INotification CreateEmail(string to, string subject, string body)
+              {
+                  return new EmailNotification(to, subject, body);
+              }
+
+              public INotification CreateSms(string phone, string message)
+              {
+                  return new SmsNotification(phone, message);
+              }
+
+              public INotification CreatePush(string deviceToken, string title, string body)
+              {
+                  return new PushNotification(deviceToken, title, body);
+              }
+
+              public INotification CreateSlack(string channel, string message)
+              {
+                  return new SlackNotification(channel, message);
+              }
+          }
+      }
+  commit_message: "Add push and slack notification factory methods"
+fragments:
+- id: dispatcher_email
+  selector:
+    path: src/Services/NotificationDispatcher.cs
+    anchor: "_factory.CreateEmail(to, subject, body)"
+- id: dispatcher_sms
+  selector:
+    path: src/Services/NotificationDispatcher.cs
+    anchor: "_factory.CreateSms(phone, message)"
+- id: email_notification_send
+  selector:
+    path: src/Notifications/EmailNotification.cs
+    anchor: "public async Task Send()"
+- id: sms_notification_send
+  selector:
+    path: src/Notifications/SmsNotification.cs
+    anchor: "public async Task Send()"
+- id: no_invoice_gen
+  selector:
+    path: garbage/Billing/InvoiceNumberGenerator.cs
+- id: no_coord_parser
+  selector:
+    path: garbage/Geo/CoordinateParser.cs
+- id: no_semver
+  selector:
+    path: garbage/Versioning/SemVerParser.cs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_075_INVOICE_PREFIX_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_075_GEO_SYSTEM_D
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_075_SEMVER_G
+oracle:
+  required:
+  - dispatcher_email
+  - dispatcher_sms
+  - email_notification_send
+  - sms_notification_send
+  allowed: []
+  forbidden:
+  - no_invoice_gen
+  - no_coord_parser
+  - no_semver
+  - no_global_0
+  - no_global_1
+  - no_global_2

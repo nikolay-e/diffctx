@@ -1,0 +1,217 @@
+name: bal3_3hop_022_rust_scheduler_queue_worker_task
+tags:
+- lang:rust
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/task/task.rs: |
+      #[derive(Clone)]
+      pub struct Task {
+          pub id: String,
+          pub payload: String,
+          pub done: bool,
+      }
+
+      impl Task {
+          pub fn new(id: &str, payload: &str) -> Self {
+              Self {
+                  id: id.to_string(),
+                  payload: payload.to_string(),
+                  done: false,
+              }
+          }
+
+          pub fn complete(&mut self) {
+              self.done = true;
+          }
+      }
+    src/task/mod.rs: |
+      pub mod task;
+    src/worker/worker.rs: |
+      use crate::task::task::Task;
+
+      pub struct Worker {
+          pub id: String,
+      }
+
+      impl Worker {
+          pub fn new(id: &str) -> Self {
+              Self { id: id.to_string() }
+          }
+
+          pub fn process(&self, task: &mut Task) {
+              task.complete();
+          }
+      }
+    src/worker/mod.rs: |
+      pub mod worker;
+    src/queue/task_queue.rs: |
+      use crate::worker::worker::Worker;
+      use crate::task::task::Task;
+
+      pub struct TaskQueue {
+          workers: Vec<Worker>,
+          pending: Vec<Task>,
+      }
+
+      impl TaskQueue {
+          pub fn new(workers: Vec<Worker>) -> Self {
+              Self { workers, pending: Vec::new() }
+          }
+
+          pub fn enqueue(&mut self, task: Task) {
+              self.pending.push(task);
+          }
+
+          pub fn size(&self) -> usize {
+              self.pending.len()
+          }
+      }
+    src/queue/mod.rs: |
+      pub mod task_queue;
+    src/scheduler/scheduler.rs: |
+      use crate::queue::task_queue::TaskQueue;
+      use crate::task::task::Task;
+
+      pub struct Scheduler {
+          queue: TaskQueue,
+      }
+
+      impl Scheduler {
+          pub fn new(queue: TaskQueue) -> Self {
+              Self { queue }
+          }
+
+          pub fn schedule(&mut self, task: Task) {
+              self.queue.enqueue(task);
+          }
+
+          pub fn pending_count(&self) -> usize {
+              self.queue.size()
+          }
+      }
+    src/scheduler/mod.rs: |
+      pub mod scheduler;
+    src/monitoring/health.rs: |
+      pub static GARBAGE_BAL3_022_HEALTH_MARKER_A: &str = "health";
+      pub static GARBAGE_BAL3_022_ALIVE_MARKER_B: bool = true;
+
+      pub struct HealthCheck;
+      impl HealthCheck {
+          pub fn check(&self) -> bool { true }
+      }
+    src/monitoring/metrics.rs: |
+      pub static GARBAGE_BAL3_022_METRICS_MARKER_C: &str = "metrics";
+      pub static GARBAGE_BAL3_022_COUNTER_MARKER_D: u64 = 0;
+
+      pub struct Metrics;
+      impl Metrics {
+          pub fn record(&self) {}
+      }
+    src/monitoring/mod.rs: |
+      pub mod health;
+      pub mod metrics;
+    src/lib.rs: |
+      pub mod task;
+      pub mod worker;
+      pub mod queue;
+      pub mod scheduler;
+      pub mod monitoring;
+  changed_files:
+    src/task/task.rs: |
+      #[derive(Clone, PartialEq)]
+      pub enum Priority {
+          Low,
+          Normal,
+          High,
+      }
+
+      #[derive(Clone)]
+      pub struct Task {
+          pub id: String,
+          pub payload: String,
+          pub done: bool,
+          pub priority: Priority,
+      }
+
+      impl Task {
+          pub fn new(id: &str, payload: &str, priority: Priority) -> Self {
+              Self {
+                  id: id.to_string(),
+                  payload: payload.to_string(),
+                  done: false,
+                  priority,
+              }
+          }
+
+          pub fn complete(&mut self) {
+              self.done = true;
+          }
+
+          pub fn is_high_priority(&self) -> bool {
+              self.priority == Priority::High
+          }
+      }
+  commit_message: "Add priority enum to task with high-priority check"
+fragments:
+- id: priority_enum
+  selector:
+    path: src/task/task.rs
+    anchor: "pub enum Priority"
+- id: task_priority_field
+  selector:
+    path: src/task/task.rs
+    anchor: "pub priority: Priority"
+- id: task_is_high
+  selector:
+    path: src/task/task.rs
+    anchor: "pub fn is_high_priority"
+- id: worker_process
+  selector:
+    path: src/worker/worker.rs
+    anchor: "pub fn process"
+- id: queue_enqueue
+  selector:
+    path: src/queue/task_queue.rs
+    anchor: "pub fn enqueue"
+- id: scheduler_schedule
+  selector:
+    path: src/scheduler/scheduler.rs
+    anchor: "pub fn schedule"
+- id: no_health
+  selector:
+    path: src/monitoring/health.rs
+- id: no_metrics
+  selector:
+    path: src/monitoring/metrics.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_022_HEALTH_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_022_ALIVE_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_022_METRICS_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_022_COUNTER_MARKER_D
+oracle:
+  required:
+  - priority_enum
+  - task_priority_field
+  - task_is_high
+  - worker_process
+  - queue_enqueue
+  - scheduler_schedule
+  allowed: []
+  forbidden:
+  - no_health
+  - no_metrics
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

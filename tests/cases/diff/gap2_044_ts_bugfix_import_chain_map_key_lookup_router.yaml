@@ -1,0 +1,166 @@
+name: gap2_044_ts_bugfix_import_chain_map_key_lookup_router
+tags:
+- lang:erlang
+- change:refactor
+- change:single_file
+- context:call_graph
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/rate_limiter.erl: |
+      -module(rate_limiter).
+      -export([new/2, allow/2, reset/1]).
+
+      new(MaxRequests, WindowMs) ->
+          #{max => MaxRequests, window => WindowMs, count => 0, start_time => erlang:system_time(millisecond)}.
+
+      allow(State = #{max := Max, count := Count, window := Window, start_time := Start}, _Key) ->
+          Now = erlang:system_time(millisecond),
+          Elapsed = Now - Start,
+          if
+              Elapsed > Window ->
+                  {allow, State#{count => 1, start_time => Now}};
+              Count < Max ->
+                  {allow, State#{count => Count + 1}};
+              true ->
+                  {deny, State}
+          end.
+
+      reset(State) ->
+          State#{count => 0, start_time => erlang:system_time(millisecond)}.
+    src/api_gateway.erl: |
+      -module(api_gateway).
+      -export([handle/3]).
+
+      handle(Path, Method, State) ->
+          case rate_limiter:allow(State, Path) of
+              {allow, NewState} ->
+                  {ok, route(Path, Method), NewState};
+              {deny, NewState} ->
+                  {error, rate_limited, NewState}
+          end.
+
+      route("/health", _) -> health_check;
+      route("/api/v1/users", "GET") -> list_users;
+      route("/api/v1/users", "POST") -> create_user;
+      route(_, _) -> not_found.
+    garbage/cache_store.erl: |
+      -module(cache_store).
+      %% GARBAGE_GAP044_A = "cache_store_marker"
+      -export([get/1, put/2]).
+
+      get(Key) -> {ok, Key}.
+      put(Key, Val) -> {ok, Key, Val}.
+    garbage/audit_log.erl: |
+      -module(audit_log).
+      %% GARBAGE_GAP044_B = "audit_log_marker"
+      -export([write/2]).
+
+      write(Event, Data) -> {logged, Event, Data}.
+    garbage/feature_flags.erl: |
+      -module(feature_flags).
+      %% GARBAGE_GAP044_C = "feature_flags_marker"
+      -export([enabled/1]).
+
+      enabled(Flag) -> {ok, Flag, true}.
+  changed_files:
+    src/rate_limiter.erl: |
+      -module(rate_limiter).
+      -export([new/2, allow/2, reset/1, per_key_allow/3]).
+
+      new(MaxRequests, WindowMs) ->
+          #{max => MaxRequests, window => WindowMs, count => 0, start_time => erlang:system_time(millisecond)}.
+
+      allow(State = #{max := Max, count := Count, window := Window, start_time := Start}, _Key) ->
+          Now = erlang:system_time(millisecond),
+          Elapsed = Now - Start,
+          if
+              Elapsed > Window ->
+                  {allow, State#{count => 1, start_time => Now}};
+              Count < Max ->
+                  {allow, State#{count => Count + 1}};
+              true ->
+                  {deny, State}
+          end.
+
+      reset(State) ->
+          State#{count => 0, start_time => erlang:system_time(millisecond)}.
+
+      per_key_allow(Buckets, Key, Config = #{max := Max, window := Window}) ->
+          Bucket = maps:get(Key, Buckets, #{count => 0, start_time => erlang:system_time(millisecond)}),
+          case allow(Bucket#{max => Max, window => Window}, Key) of
+              {allow, NewBucket} -> {allow, maps:put(Key, NewBucket, Buckets)};
+              {deny,  NewBucket} -> {deny,  maps:put(Key, NewBucket, Buckets)}
+          end.
+    src/api_gateway.erl: |
+      -module(api_gateway).
+      -export([handle/3, handle_keyed/4]).
+
+      handle(Path, Method, State) ->
+          case rate_limiter:allow(State, Path) of
+              {allow, NewState} ->
+                  {ok, route(Path, Method), NewState};
+              {deny, NewState} ->
+                  {error, rate_limited, NewState}
+          end.
+
+      handle_keyed(Path, Method, Buckets, Config) ->
+          case rate_limiter:per_key_allow(Buckets, Path, Config) of
+              {allow, NewBuckets} ->
+                  {ok, route(Path, Method), NewBuckets};
+              {deny, NewBuckets} ->
+                  {error, rate_limited, NewBuckets}
+          end.
+
+      route("/health", _) -> health_check;
+      route("/api/v1/users", "GET") -> list_users;
+      route("/api/v1/users", "POST") -> create_user;
+      route(_, _) -> not_found.
+    garbage/cache_store.erl: |
+      -module(cache_store).
+      %% GARBAGE_GAP044_A = "cache_store_marker"
+      -export([get/1, put/2]).
+
+      get(Key) -> {ok, Key}.
+      put(Key, Val) -> {ok, Key, Val}.
+    garbage/audit_log.erl: |
+      -module(audit_log).
+      %% GARBAGE_GAP044_B = "audit_log_marker"
+      -export([write/2]).
+
+      write(Event, Data) -> {logged, Event, Data}.
+    garbage/feature_flags.erl: |
+      -module(feature_flags).
+      %% GARBAGE_GAP044_C = "feature_flags_marker"
+      -export([enabled/1]).
+
+      enabled(Flag) -> {ok, Flag, true}.
+  commit_message: "refactor: add per_key_allow to rate_limiter, expose handle_keyed in api_gateway"
+fragments:
+- id: per_key_allow_fn
+  selector:
+    path: src/rate_limiter.erl
+    anchor: "per_key_allow(Buckets, Key, Config"
+- id: handle_keyed_fn
+  selector:
+    path: src/api_gateway.erl
+    anchor: "handle_keyed(Path, Method, Buckets, Config) ->"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_GAP044_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_GAP044_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_GAP044_C
+oracle:
+  required:
+  - per_key_allow_fn
+  - handle_keyed_fn
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

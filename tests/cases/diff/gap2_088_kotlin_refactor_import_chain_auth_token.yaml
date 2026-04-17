@@ -1,0 +1,148 @@
+name: gap2_088_kotlin_refactor_import_chain_auth_token
+tags:
+- change:multi_file
+- change:refactor
+- context:import_chain
+- difficulty:hard
+- distance:2hop
+- lang:kotlin
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/main/kotlin/auth/TokenValidator.kt: |
+      package auth
+
+      import auth.store.TokenStore
+      import auth.model.TokenPayload
+
+      class TokenValidator(private val store: TokenStore) {
+          fun validate(rawToken: String): TokenPayload? {
+              val payload = store.lookup(rawToken)
+              if (payload == null || payload.expiry < System.currentTimeMillis()) {
+                  return null
+              }
+              return payload
+          }
+      }
+    src/main/kotlin/auth/store/TokenStore.kt: |
+      package auth.store
+
+      import auth.model.TokenPayload
+
+      class TokenStore {
+          private val tokens = mutableMapOf<String, TokenPayload>()
+
+          fun lookup(raw: String): TokenPayload? = tokens[raw]
+
+          fun save(raw: String, payload: TokenPayload) {
+              tokens[raw] = payload
+          }
+
+          fun revoke(raw: String) {
+              tokens.remove(raw)
+          }
+      }
+    src/main/kotlin/auth/model/TokenPayload.kt: |
+      package auth.model
+
+      data class TokenPayload(
+          val userId: String,
+          val scope: String,
+          val expiry: Long
+      )
+    src/main/kotlin/search/SearchIndex.kt: |
+      package search
+
+      val TRAP_GAP2_088_SEARCH_A: String = "search_noise"
+      val TRAP_GAP2_088_SEARCH_B: Boolean = false
+
+      class SearchIndex {
+          fun query(term: String): List<String> = emptyList()
+          fun reindex() {}
+      }
+  changed_files:
+    src/main/kotlin/auth/TokenValidator.kt: |
+      package auth
+
+      import auth.store.TokenStore
+      import auth.model.AuthToken
+      import auth.model.TokenScope
+
+      class TokenValidator(private val store: TokenStore) {
+          fun validate(rawToken: String): AuthToken? {
+              val token = store.lookup(rawToken) ?: return null
+              if (token.expiresAtMillis < System.currentTimeMillis()) return null
+              return token
+          }
+
+          fun hasScope(rawToken: String, required: TokenScope): Boolean {
+              val token = validate(rawToken) ?: return false
+              return token.scopes.contains(required)
+          }
+      }
+    src/main/kotlin/auth/store/TokenStore.kt: |
+      package auth.store
+
+      import auth.model.AuthToken
+
+      class TokenStore {
+          private val tokens = mutableMapOf<String, AuthToken>()
+
+          fun lookup(raw: String): AuthToken? = tokens[raw]
+
+          fun save(raw: String, token: AuthToken) {
+              tokens[raw] = token
+          }
+
+          fun revoke(raw: String) {
+              tokens.remove(raw)
+          }
+      }
+    src/main/kotlin/auth/model/TokenPayload.kt: |
+      package auth.model
+
+      enum class TokenScope { READ, WRITE, ADMIN }
+
+      data class AuthToken(
+          val userId: String,
+          val scopes: Set<TokenScope>,
+          val expiresAtMillis: Long
+      )
+  commit_message: Update files
+fragments:
+- id: auth_token
+  selector:
+    path: src/main/kotlin/auth/model/TokenPayload.kt
+    anchor: "data class AuthToken"
+- id: token_scope_enum
+  selector:
+    path: src/main/kotlin/auth/model/TokenPayload.kt
+    anchor: "enum class TokenScope"
+- id: has_scope
+  selector:
+    path: src/main/kotlin/auth/TokenValidator.kt
+    anchor: "fun hasScope"
+- id: store_lookup
+  selector:
+    path: src/main/kotlin/auth/store/TokenStore.kt
+    anchor: "fun lookup"
+- id: no_search
+  selector:
+    path: src/main/kotlin/search/SearchIndex.kt
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_088_SEARCH_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_088_SEARCH_B
+oracle:
+  required:
+  - auth_token
+  - token_scope_enum
+  - has_scope
+  - store_lookup
+  forbidden:
+  - no_search
+  - no_global_0
+  - no_global_1

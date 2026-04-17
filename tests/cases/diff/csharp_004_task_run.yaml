@@ -1,161 +1,191 @@
 name: csharp_004_task_run
+tags:
+- lang:python
+- change:config
+- change:single_file
+- context:cross_module
+- distance:2hop
+- difficulty:hard
 repo:
   initial_files:
-    Services/ComputeService.cs: |
-      using System;
+    config/game_settings.py: |
+      MATCHMAKING_TIMEOUT = 30
+      MAX_PLAYERS_PER_ROOM = 4
+      RANKED_QUEUE_ENABLED = True
+      ELO_K_FACTOR = 32
+      MIN_ELO_DIFF_FOR_MATCH = 200
+    matchmaking/queue.py: |
+      from config.game_settings import MATCHMAKING_TIMEOUT, MAX_PLAYERS_PER_ROOM, MIN_ELO_DIFF_FOR_MATCH
 
-      namespace MyApp.Services;
+      class MatchmakingQueue:
+          def __init__(self):
+              self.timeout = MATCHMAKING_TIMEOUT
+              self.max_players = MAX_PLAYERS_PER_ROOM
+              self.elo_diff = MIN_ELO_DIFF_FOR_MATCH
+              self._waiting = []
 
-      public class ComputeService
-      {
-          public int HeavyComputation(int input)
-          {
-              int result = 0;
-              for (int i = 0; i < input; i++)
-              {
-                  result += (i * i) % 997;
-              }
-              return result;
-          }
+          def enqueue(self, player_id: str, elo: int):
+              self._waiting.append({"id": player_id, "elo": elo})
 
-          public double ComputeAverage(int[] values)
-          {
-              if (values.Length == 0) return 0.0;
-              long sum = 0;
-              foreach (var v in values) sum += v;
-              return (double)sum / values.Length;
-          }
-      }
-    Program.cs: |
-      using System;
+          def dequeue_match(self):
+              if len(self._waiting) < self.max_players:
+                  return None
+              return self._waiting[:self.max_players]
+    matchmaking/elo.py: |
+      from config.game_settings import ELO_K_FACTOR
 
-      class Program
-      {
-          static void Main()
-          {
-              Console.WriteLine("Application ready");
-          }
-      }
-    Unrelated/NotificationSender.cs: |
-      namespace MyApp.Unrelated;
+      class EloCalculator:
+          def __init__(self):
+              self.k = ELO_K_FACTOR
 
-      public class NotificationSender
-      {
-          private const string GARBAGE_CS_004_NOTIFICATION_A = "notification_marker";
+          def expected_score(self, player_elo: int, opponent_elo: int) -> float:
+              return 1.0 / (1 + 10 ** ((opponent_elo - player_elo) / 400))
 
-          public void Send(string message)
-          {
-              _ = GARBAGE_CS_004_NOTIFICATION_A + message;
-          }
-      }
-    Unrelated/RateLimiter.cs: |
-      namespace MyApp.Unrelated;
+          def update(self, player_elo: int, opponent_elo: int, won: bool) -> int:
+              expected = self.expected_score(player_elo, opponent_elo)
+              actual = 1 if won else 0
+              return int(player_elo + self.k * (actual - expected))
+    services/game_session.py: |
+      from matchmaking.queue import MatchmakingQueue
+      from matchmaking.elo import EloCalculator
 
-      public class RateLimiter
-      {
-          public const string GARBAGE_CS_004_RATE_LIMITER_B = "rate_limit_marker";
+      class GameSessionService:
+          def __init__(self):
+              self.queue = MatchmakingQueue()
+              self.elo = EloCalculator()
 
-          public bool IsAllowed(string key)
-          {
-              return key != GARBAGE_CS_004_RATE_LIMITER_B;
-          }
-      }
+          def start_matchmaking(self, player_id: str, elo: int):
+              self.queue.enqueue(player_id, elo)
+    garbage/StreamingBitrate.py: |
+      # GARBAGE_CSHAR004_A = "streaming_bitrate_marker"
+
+      class StreamingBitrate:
+          default = 1080
+    garbage/PaymentInvoice.py: |
+      # GARBAGE_CSHAR004_B = "payment_invoice_marker"
+
+      class PaymentInvoice:
+          currency = "USD"
+    garbage/IoTSensorHub.py: |
+      # GARBAGE_CSHAR004_C = "iot_sensor_hub_marker"
+
+      class IoTSensorHub:
+          protocol = "MQTT"
   changed_files:
-    Services/ComputeService.cs: |
-      using System;
+    config/game_settings.py: |
+      MATCHMAKING_TIMEOUT = 30
+      MAX_PLAYERS_PER_ROOM = 4
+      RANKED_QUEUE_ENABLED = True
+      ELO_K_FACTOR = 16
+      MIN_ELO_DIFF_FOR_MATCH = 150
+      PLACEMENT_MATCHES_REQUIRED = 10
+    matchmaking/queue.py: |
+      from config.game_settings import MATCHMAKING_TIMEOUT, MAX_PLAYERS_PER_ROOM, MIN_ELO_DIFF_FOR_MATCH
 
-      namespace MyApp.Services;
+      class MatchmakingQueue:
+          def __init__(self):
+              self.timeout = MATCHMAKING_TIMEOUT
+              self.max_players = MAX_PLAYERS_PER_ROOM
+              self.elo_diff = MIN_ELO_DIFF_FOR_MATCH
+              self._waiting = []
 
-      public class ComputeService
-      {
-          public int HeavyComputation(int input)
-          {
-              int result = 0;
-              for (int i = 0; i < input; i++)
-              {
-                  result += (i * i) % 997;
-              }
-              return result;
-          }
+          def enqueue(self, player_id: str, elo: int):
+              self._waiting.append({"id": player_id, "elo": elo})
 
-          public double ComputeAverage(int[] values)
-          {
-              if (values.Length == 0) return 0.0;
-              long sum = 0;
-              foreach (var v in values) sum += v;
-              return (double)sum / values.Length;
-          }
-      }
-    Program.cs: |
-      using System;
-      using System.Threading.Tasks;
-      using MyApp.Services;
+          def dequeue_match(self):
+              if len(self._waiting) < self.max_players:
+                  return None
+              return self._waiting[:self.max_players]
+    matchmaking/elo.py: |
+      from config.game_settings import ELO_K_FACTOR, PLACEMENT_MATCHES_REQUIRED
 
-      class Program
-      {
-          static async Task Main()
-          {
-              var service = new ComputeService();
-              var result = await Task.Run(() => service.HeavyComputation(1000000));
-              var avg = await Task.Run(() => service.ComputeAverage(new[] { 1, 2, 3, 4, 5 }));
-              Console.WriteLine($"Result: {result}, Average: {avg}");
-          }
-      }
-    Unrelated/NotificationSender.cs: |
-      namespace MyApp.Unrelated;
+      class EloCalculator:
+          def __init__(self):
+              self.k = ELO_K_FACTOR
+              self.placement_required = PLACEMENT_MATCHES_REQUIRED
 
-      public class NotificationSender
-      {
-          private const string GARBAGE_CS_004_NOTIFICATION_A = "notification_marker";
+          def expected_score(self, player_elo: int, opponent_elo: int) -> float:
+              return 1.0 / (1 + 10 ** ((opponent_elo - player_elo) / 400))
 
-          public void Send(string message)
-          {
-              _ = GARBAGE_CS_004_NOTIFICATION_A + message;
-          }
-      }
-    Unrelated/RateLimiter.cs: |
-      namespace MyApp.Unrelated;
+          def update(self, player_elo: int, opponent_elo: int, won: bool, games_played: int = 0) -> int:
+              k = self.k * 2 if games_played < self.placement_required else self.k
+              expected = self.expected_score(player_elo, opponent_elo)
+              actual = 1 if won else 0
+              return int(player_elo + k * (actual - expected))
+    services/game_session.py: |
+      from matchmaking.queue import MatchmakingQueue
+      from matchmaking.elo import EloCalculator
 
-      public class RateLimiter
-      {
-          public const string GARBAGE_CS_004_RATE_LIMITER_B = "rate_limit_marker";
+      class GameSessionService:
+          def __init__(self):
+              self.queue = MatchmakingQueue()
+              self.elo = EloCalculator()
 
-          public bool IsAllowed(string key)
-          {
-              return key != GARBAGE_CS_004_RATE_LIMITER_B;
-          }
-      }
-  commit_message: Update files
+          def start_matchmaking(self, player_id: str, elo: int):
+              self.queue.enqueue(player_id, elo)
+    garbage/StreamingBitrate.py: |
+      # GARBAGE_CSHAR004_A = "streaming_bitrate_marker"
+
+      class StreamingBitrate:
+          default = 1080
+    garbage/PaymentInvoice.py: |
+      # GARBAGE_CSHAR004_B = "payment_invoice_marker"
+
+      class PaymentInvoice:
+          currency = "USD"
+    garbage/IoTSensorHub.py: |
+      # GARBAGE_CSHAR004_C = "iot_sensor_hub_marker"
+
+      class IoTSensorHub:
+          protocol = "MQTT"
+  commit_message: "config: reduce ELO_K_FACTOR to 16, tighten matchmaking diff, add placement matches"
 fragments:
-- id: program_file
+- id: config_k_factor
   selector:
-    path: Program.cs
-- id: req_global_0
+    path: config/game_settings.py
+    anchor: "ELO_K_FACTOR = 16"
+- id: config_elo_diff
   selector:
-    anchor: using System.Threading.Tasks;
-- id: req_global_1
+    path: config/game_settings.py
+    anchor: "MIN_ELO_DIFF_FOR_MATCH = 150"
+- id: config_placement
   selector:
-    anchor: static async Task Main()
-- id: no_global_0
+    path: config/game_settings.py
+    anchor: "PLACEMENT_MATCHES_REQUIRED = 10"
+- id: elo_placement_import
   selector:
-    anchor: GARBAGE_CS_004_NOTIFICATION_A
-- id: no_global_1
+    path: matchmaking/elo.py
+    anchor: "PLACEMENT_MATCHES_REQUIRED"
+- id: elo_placement_logic
   selector:
-    anchor: GARBAGE_CS_004_RATE_LIMITER_B
-- id: no_global_2
+    path: matchmaking/elo.py
+    anchor: "k = self.k * 2 if games_played < self.placement_required"
+- id: no_queue
   selector:
-    anchor: NotificationSender.cs
-- id: no_global_3
+    path: matchmaking/queue.py
+- id: no_session
   selector:
-    anchor: RateLimiter.cs
+    path: services/game_session.py
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_CSHAR004_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_CSHAR004_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_CSHAR004_C
 oracle:
   required:
-  - program_file
-  - req_global_0
-  - req_global_1
-  allowed: []
+  - config_k_factor
+  - config_placement
+  - elo_placement_import
+  - elo_placement_logic
+  allowed:
+  - config_elo_diff
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
+  - no_queue
+  - no_session
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

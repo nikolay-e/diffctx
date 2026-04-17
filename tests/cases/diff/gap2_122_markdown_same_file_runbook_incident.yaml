@@ -1,0 +1,94 @@
+name: gap2_122_markdown_same_file_runbook_incident
+tags:
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+- lang:markdown
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    runbooks/database.md: |
+      # Database Runbook
+
+      ## Restarting the Primary
+
+      Stop all application connections first.
+      Issue a graceful shutdown via pg_ctl stop -m fast.
+      Verify WAL replay completes before accepting connections.
+
+      ## Failover Procedure
+
+      Promote the standby with pg_ctl promote.
+      Update the DNS record to point to the new primary.
+      Notify the on-call engineer via PagerDuty.
+    runbooks/networking.md: |
+      # Networking Runbook
+
+      TRAP_GAP2_122_NET_A placeholder text.
+
+      ## DNS Propagation Delays
+
+      Check TTL values in the zone file.
+      Use dig to verify propagation across resolvers.
+    runbooks/kubernetes.md: |
+      # Kubernetes Runbook
+
+      TRAP_GAP2_122_K8S_B placeholder text.
+
+      ## Pod Crash Loop
+
+      Check pod logs with kubectl logs.
+      Describe the pod for event history.
+  changed_files:
+    runbooks/database.md: |
+      # Database Runbook
+
+      ## Restarting the Primary
+
+      Stop all application connections first.
+      Issue a graceful shutdown via pg_ctl stop -m fast.
+      Verify WAL replay completes before accepting connections.
+
+      ## Failover Procedure
+
+      Promote the standby with pg_ctl promote.
+      Update the DNS record to point to the new primary.
+      Notify the on-call engineer via PagerDuty.
+
+      ## Vacuum Bloat Recovery
+
+      Identify bloated tables using pgstattuple extension.
+      Schedule a VACUUM FULL during the maintenance window.
+      Monitor disk space reclamation with pg_total_relation_size.
+fragments:
+- id: vacuum_header
+  selector:
+    path: runbooks/database.md
+    anchor: "## Vacuum Bloat Recovery"
+- id: vacuum_body
+  selector:
+    path: runbooks/database.md
+    anchor: pgstattuple extension
+- id: no_networking
+  selector:
+    path: runbooks/networking.md
+- id: no_kubernetes
+  selector:
+    path: runbooks/kubernetes.md
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_122_NET_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_122_K8S_B
+oracle:
+  required:
+  - vacuum_header
+  - vacuum_body
+  forbidden:
+  - no_networking
+  - no_kubernetes
+  - no_global_0
+  - no_global_1

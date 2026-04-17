@@ -1,0 +1,253 @@
+name: bal3_refactor_010_rust_extract_builder
+tags:
+- lang:rust
+- change:bug_fix
+- change:multi_file
+- context:test_file
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/rate_limiter/limiter.rs: |
+      use crate::rate_limiter::store::RateLimitStore;
+      use crate::rate_limiter::config::RateLimitConfig;
+
+      pub struct RateLimiter {
+          store: RateLimitStore,
+          config: RateLimitConfig,
+      }
+
+      impl RateLimiter {
+          pub fn new(store: RateLimitStore, config: RateLimitConfig) -> Self {
+              Self { store, config }
+          }
+
+          pub fn check(&mut self, key: &str) -> bool {
+              let count = self.store.increment(key);
+              count < self.config.max_requests
+          }
+
+          pub fn reset(&mut self, key: &str) {
+              self.store.reset(key);
+          }
+      }
+    src/rate_limiter/store.rs: |
+      use std::collections::HashMap;
+
+      pub struct RateLimitStore {
+          counts: HashMap<String, u32>,
+      }
+
+      impl RateLimitStore {
+          pub fn new() -> Self {
+              Self { counts: HashMap::new() }
+          }
+
+          pub fn increment(&mut self, key: &str) -> u32 {
+              let entry = self.counts.entry(key.to_string()).or_insert(0);
+              *entry += 1;
+              *entry
+          }
+
+          pub fn reset(&mut self, key: &str) {
+              self.counts.remove(key);
+          }
+      }
+    src/rate_limiter/config.rs: |
+      pub struct RateLimitConfig {
+          pub max_requests: u32,
+          pub window_secs: u64,
+      }
+    tests/test_rate_limiter.rs: |
+      use crate::rate_limiter::limiter::RateLimiter;
+      use crate::rate_limiter::store::RateLimitStore;
+      use crate::rate_limiter::config::RateLimitConfig;
+
+      #[test]
+      fn test_allows_within_limit() {
+          let config = RateLimitConfig { max_requests: 3, window_secs: 60 };
+          let mut limiter = RateLimiter::new(RateLimitStore::new(), config);
+          assert!(limiter.check("user1"));
+          assert!(limiter.check("user1"));
+          assert!(limiter.check("user1"));
+      }
+
+      #[test]
+      fn test_blocks_at_limit() {
+          let config = RateLimitConfig { max_requests: 2, window_secs: 60 };
+          let mut limiter = RateLimiter::new(RateLimitStore::new(), config);
+          limiter.check("user1");
+          limiter.check("user1");
+          assert!(!limiter.check("user1"));
+      }
+    src/middleware/auth.rs: |
+      pub const GARBAGE_BAL3R010_A: &str = "bearer_token_prefix";
+
+      pub fn extract_token(header: &str) -> Option<&str> {
+          header.strip_prefix("Bearer ")
+      }
+    src/middleware/cors.rs: |
+      pub const GARBAGE_BAL3R010_B: &str = "cors_allow_all";
+      pub const GARBAGE_BAL3R010_C: u32 = 86400;
+
+      pub fn allowed_origin(origin: &str) -> bool { !origin.is_empty() }
+    src/logging/access_log.rs: |
+      pub const GARBAGE_BAL3R010_D: &str = "access_log_format";
+
+      pub fn log_request(method: &str, path: &str) {
+          println!("{} {}", method, path);
+      }
+  changed_files:
+    src/rate_limiter/limiter.rs: |
+      use crate::rate_limiter::store::RateLimitStore;
+      use crate::rate_limiter::config::RateLimitConfig;
+
+      pub struct RateLimiter {
+          store: RateLimitStore,
+          config: RateLimitConfig,
+      }
+
+      impl RateLimiter {
+          pub fn new(store: RateLimitStore, config: RateLimitConfig) -> Self {
+              Self { store, config }
+          }
+
+          pub fn check(&mut self, key: &str) -> bool {
+              let count = self.store.increment(key);
+              count <= self.config.max_requests
+          }
+
+          pub fn reset(&mut self, key: &str) {
+              self.store.reset(key);
+          }
+      }
+    src/rate_limiter/store.rs: |
+      use std::collections::HashMap;
+
+      pub struct RateLimitStore {
+          counts: HashMap<String, u32>,
+      }
+
+      impl RateLimitStore {
+          pub fn new() -> Self {
+              Self { counts: HashMap::new() }
+          }
+
+          pub fn increment(&mut self, key: &str) -> u32 {
+              let entry = self.counts.entry(key.to_string()).or_insert(0);
+              *entry += 1;
+              *entry
+          }
+
+          pub fn reset(&mut self, key: &str) {
+              self.counts.remove(key);
+          }
+      }
+    src/rate_limiter/config.rs: |
+      pub struct RateLimitConfig {
+          pub max_requests: u32,
+          pub window_secs: u64,
+      }
+    tests/test_rate_limiter.rs: |
+      use crate::rate_limiter::limiter::RateLimiter;
+      use crate::rate_limiter::store::RateLimitStore;
+      use crate::rate_limiter::config::RateLimitConfig;
+
+      #[test]
+      fn test_allows_within_limit() {
+          let config = RateLimitConfig { max_requests: 3, window_secs: 60 };
+          let mut limiter = RateLimiter::new(RateLimitStore::new(), config);
+          assert!(limiter.check("user1"));
+          assert!(limiter.check("user1"));
+          assert!(limiter.check("user1"));
+      }
+
+      #[test]
+      fn test_blocks_at_limit() {
+          let config = RateLimitConfig { max_requests: 2, window_secs: 60 };
+          let mut limiter = RateLimiter::new(RateLimitStore::new(), config);
+          limiter.check("user1");
+          limiter.check("user1");
+          assert!(!limiter.check("user1"));
+      }
+
+      #[test]
+      fn test_allows_exactly_at_max() {
+          let config = RateLimitConfig { max_requests: 3, window_secs: 60 };
+          let mut limiter = RateLimiter::new(RateLimitStore::new(), config);
+          assert!(limiter.check("user2"));
+          assert!(limiter.check("user2"));
+          assert!(limiter.check("user2"));
+          assert!(!limiter.check("user2"));
+      }
+    src/middleware/auth.rs: |
+      pub const GARBAGE_BAL3R010_A: &str = "bearer_token_prefix";
+
+      pub fn extract_token(header: &str) -> Option<&str> {
+          header.strip_prefix("Bearer ")
+      }
+    src/middleware/cors.rs: |
+      pub const GARBAGE_BAL3R010_B: &str = "cors_allow_all";
+      pub const GARBAGE_BAL3R010_C: u32 = 86400;
+
+      pub fn allowed_origin(origin: &str) -> bool { !origin.is_empty() }
+    src/logging/access_log.rs: |
+      pub const GARBAGE_BAL3R010_D: &str = "access_log_format";
+
+      pub fn log_request(method: &str, path: &str) {
+          println!("{} {}", method, path);
+      }
+  commit_message: "fix: use <= instead of < in rate limiter to allow exactly max_requests"
+fragments:
+- id: limiter_check_fixed
+  selector:
+    path: src/rate_limiter/limiter.rs
+    anchor: "count <= self.config.max_requests"
+- id: rate_limit_config
+  selector:
+    path: src/rate_limiter/config.rs
+    anchor: "pub struct RateLimitConfig"
+- id: test_allows_within
+  selector:
+    path: tests/test_rate_limiter.rs
+    anchor: "fn test_allows_within_limit"
+- id: test_allows_exactly_at_max
+  selector:
+    path: tests/test_rate_limiter.rs
+    anchor: "fn test_allows_exactly_at_max"
+- id: no_auth
+  selector:
+    path: src/middleware/auth.rs
+- id: no_cors
+  selector:
+    path: src/middleware/cors.rs
+- id: no_access_log
+  selector:
+    path: src/logging/access_log.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3R010_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3R010_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3R010_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3R010_D
+oracle:
+  required:
+  - limiter_check_fixed
+  - rate_limit_config
+  - test_allows_within
+  - test_allows_exactly_at_max
+  allowed: []
+  forbidden:
+  - no_auth
+  - no_cors
+  - no_access_log
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

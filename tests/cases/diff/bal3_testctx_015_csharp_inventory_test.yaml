@@ -1,0 +1,182 @@
+name: bal3_testctx_015_csharp_inventory_test
+tags:
+- lang:csharp
+- change:single_file
+- change:bug_fix
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/Inventory.cs: |
+      namespace Shop;
+
+      using System.Collections.Generic;
+
+      public class Inventory
+      {
+          private readonly Dictionary<string, int> _stock = new();
+
+          public void AddStock(string productId, int quantity)
+          {
+              if (_stock.ContainsKey(productId))
+                  _stock[productId] += quantity;
+              else
+                  _stock[productId] = quantity;
+          }
+
+          public int GetStock(string productId)
+          {
+              return _stock.GetValueOrDefault(productId, 0);
+          }
+
+          public bool RemoveStock(string productId, int quantity)
+          {
+              if (!_stock.ContainsKey(productId) || _stock[productId] < quantity)
+                  return false;
+              _stock[productId] -= quantity;
+              return true;
+          }
+      }
+    tests/InventoryTests.cs: |
+      using Xunit;
+      using Shop;
+
+      public class InventoryTests
+      {
+          [Fact]
+          public void AddStock_IncreasesQuantity()
+          {
+              var inv = new Inventory();
+              inv.AddStock("item1", 10);
+              Assert.Equal(10, inv.GetStock("item1"));
+          }
+
+          [Fact]
+          public void RemoveStock_DecreasesQuantity()
+          {
+              var inv = new Inventory();
+              inv.AddStock("item1", 10);
+              Assert.True(inv.RemoveStock("item1", 3));
+              Assert.Equal(7, inv.GetStock("item1"));
+          }
+
+          [Fact]
+          public void RemoveStock_FailsIfInsufficient()
+          {
+              var inv = new Inventory();
+              inv.AddStock("item1", 2);
+              Assert.False(inv.RemoveStock("item1", 5));
+          }
+
+          [Fact]
+          public void GetStock_ReturnsZeroForUnknown()
+          {
+              var inv = new Inventory();
+              Assert.Equal(0, inv.GetStock("nonexistent"));
+          }
+      }
+    src/Pricing.cs: |
+      namespace Shop;
+
+      public class Pricing
+      {
+          public decimal ApplyDiscount(decimal price, decimal discountPercent)
+          {
+              return price * (1 - discountPercent / 100);
+          }
+      }
+    src/Shipping.cs: |
+      namespace Shop;
+
+      public class Shipping
+      {
+          public decimal CalculateCost(decimal weight)
+          {
+              return weight * 2.5m;
+          }
+      }
+  changed_files:
+    src/Inventory.cs: |
+      namespace Shop;
+
+      using System;
+      using System.Collections.Generic;
+
+      public class Inventory
+      {
+          private readonly Dictionary<string, int> _stock = new();
+
+          public void AddStock(string productId, int quantity)
+          {
+              if (quantity <= 0)
+                  throw new ArgumentException("Quantity must be positive");
+              if (_stock.ContainsKey(productId))
+                  _stock[productId] += quantity;
+              else
+                  _stock[productId] = quantity;
+          }
+
+          public int GetStock(string productId)
+          {
+              return _stock.GetValueOrDefault(productId, 0);
+          }
+
+          public bool RemoveStock(string productId, int quantity)
+          {
+              if (quantity <= 0)
+                  throw new ArgumentException("Quantity must be positive");
+              if (!_stock.ContainsKey(productId) || _stock[productId] < quantity)
+                  return false;
+              _stock[productId] -= quantity;
+              if (_stock[productId] == 0)
+                  _stock.Remove(productId);
+              return true;
+          }
+
+          public bool HasStock(string productId)
+          {
+              return _stock.ContainsKey(productId) && _stock[productId] > 0;
+          }
+      }
+  commit_message: "fix: validate positive quantity, clean up zero stock entries"
+fragments:
+- id: add_validation
+  selector:
+    path: src/Inventory.cs
+    anchor: "Quantity must be positive"
+- id: remove_zero_cleanup
+  selector:
+    path: src/Inventory.cs
+    anchor: "_stock.Remove(productId)"
+- id: has_stock_method
+  selector:
+    path: src/Inventory.cs
+    anchor: "public bool HasStock(string productId)"
+- id: test_add_stock
+  selector:
+    path: tests/InventoryTests.cs
+    anchor: "public void AddStock_IncreasesQuantity()"
+- id: test_remove_insufficient
+  selector:
+    path: tests/InventoryTests.cs
+    anchor: "public void RemoveStock_FailsIfInsufficient()"
+- id: no_pricing
+  selector:
+    path: src/Pricing.cs
+    anchor: "public class Pricing"
+- id: no_shipping
+  selector:
+    path: src/Shipping.cs
+    anchor: "public class Shipping"
+oracle:
+  required:
+  - add_validation
+  - remove_zero_cleanup
+  - has_stock_method
+  - test_add_stock
+  allowed:
+  - test_remove_insufficient
+  forbidden:
+  - no_pricing
+  - no_shipping

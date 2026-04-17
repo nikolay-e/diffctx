@@ -1,0 +1,91 @@
+name: bal4_testctx_002_go_stack_test
+tags:
+- lang:go
+- change:single_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:trivial
+repo:
+  initial_files:
+    stack/stack.go: |
+      package stack
+
+      type Stack struct {
+          items []int
+      }
+
+      func (s *Stack) Push(val int) {
+          s.items = append(s.items, val)
+      }
+
+      func (s *Stack) Pop() int {
+          n := len(s.items)
+          val := s.items[n-1]
+          s.items = s.items[:n-1]
+          return val
+      }
+    stack/stack_test.go: |
+      package stack
+
+      import "testing"
+
+      func TestPushPop(t *testing.T) {
+          s := &Stack{}
+          s.Push(42)
+          got := s.Pop()
+          if got != 42 {
+              t.Fatalf("expected 42, got %d", got)
+          }
+      }
+    logger/logger.go: |
+      package logger
+
+      import "fmt"
+
+      func Info(msg string) {
+          fmt.Println("[INFO]", msg)
+      }
+  changed_files:
+    stack/stack.go: |
+      package stack
+
+      type Stack struct {
+          items []int
+      }
+
+      func (s *Stack) Push(val int) {
+          s.items = append(s.items, val)
+      }
+
+      func (s *Stack) Pop() int {
+          n := len(s.items)
+          val := s.items[n-1]
+          s.items = s.items[:n-1]
+          return val
+      }
+
+      func (s *Stack) Peek() int {
+          return s.items[len(s.items)-1]
+      }
+  commit_message: "feat: add Peek method to stack"
+fragments:
+- id: peek_fn
+  selector:
+    path: stack/stack.go
+    anchor: "func (s *Stack) Peek() int"
+- id: test_push_pop
+  selector:
+    path: stack/stack_test.go
+    anchor: "func TestPushPop(t *testing.T)"
+- id: no_logger
+  selector:
+    path: logger/logger.go
+    anchor: "func Info"
+oracle:
+  required:
+  - peek_fn
+  - test_push_pop
+  allowed: []
+  forbidden:
+  - no_logger

@@ -1,0 +1,185 @@
+name: bal4_cfgcode_011_rust_storage_backend
+tags:
+- lang:rust
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    storage.toml: |
+      [storage]
+      backend = "local"
+      base_path = "/data/uploads"
+      max_file_size_mb = 10
+      allowed_types = ["png", "jpg", "pdf"]
+    src/storage/config.rs: |
+      use std::fs;
+      use toml::Value;
+
+      pub struct StorageConfig {
+          pub backend: String,
+          pub base_path: String,
+          pub max_file_size: u64,
+          pub allowed_types: Vec<String>,
+      }
+
+      impl StorageConfig {
+          pub fn load() -> Self {
+              let raw = fs::read_to_string("storage.toml").unwrap();
+              let cfg: Value = raw.parse().unwrap();
+              let s = &cfg["storage"];
+              StorageConfig {
+                  backend: s["backend"].as_str().unwrap().to_string(),
+                  base_path: s["base_path"].as_str().unwrap().to_string(),
+                  max_file_size: s["max_file_size_mb"].as_integer().unwrap() as u64 * 1048576,
+                  allowed_types: s["allowed_types"].as_array().unwrap()
+                      .iter().map(|v| v.as_str().unwrap().to_string()).collect(),
+              }
+          }
+      }
+    src/storage/uploader.rs: |
+      use super::config::StorageConfig;
+
+      pub struct Uploader {
+          config: StorageConfig,
+      }
+
+      impl Uploader {
+          pub fn new() -> Self {
+              Uploader { config: StorageConfig::load() }
+          }
+          pub fn validate_type(&self, ext: &str) -> bool {
+              self.config.allowed_types.contains(&ext.to_string())
+          }
+          pub fn max_size(&self) -> u64 {
+              self.config.max_file_size
+          }
+      }
+    src/storage/cleaner.rs: |
+      use super::config::StorageConfig;
+
+      pub fn cleanup_old_files() {
+          let cfg = StorageConfig::load();
+          let path = &cfg.base_path;
+          println!("Cleaning files in {}", path);
+      }
+    src/api/upload_handler.rs: |
+      use crate::storage::uploader::Uploader;
+
+      pub fn handle_upload(data: &[u8], ext: &str) -> Result<String, String> {
+          let up = Uploader::new();
+          if !up.validate_type(ext) {
+              return Err("type not allowed".to_string());
+          }
+          if data.len() as u64 > up.max_size() {
+              return Err("file too large".to_string());
+          }
+          Ok("uploaded".to_string())
+      }
+    garbage_email.rs: |
+      const GARBAGE_CFGCODE_011_EMAIL_A: &str = "smtp";
+      const GARBAGE_CFGCODE_011_EMAIL_B: u16 = 587;
+      pub struct EmailSender {
+          pub host: String,
+      }
+      const GARBAGE_CFGCODE_011_EMAIL_C: bool = true;
+      const GARBAGE_CFGCODE_011_EMAIL_D: &str = "tls";
+    garbage_queue.rs: |
+      const GARBAGE_CFGCODE_011_QUEUE_E: &str = "rabbitmq";
+      const GARBAGE_CFGCODE_011_QUEUE_F: u32 = 5672;
+      pub struct QueueClient {
+          pub prefetch: u32,
+      }
+      const GARBAGE_CFGCODE_011_QUEUE_G: &str = "default";
+      const GARBAGE_CFGCODE_011_QUEUE_H: bool = false;
+    garbage_health.rs: |
+      const GARBAGE_CFGCODE_011_HEALTH_I: &str = "/healthz";
+      const GARBAGE_CFGCODE_011_HEALTH_J: u64 = 5;
+  changed_files:
+    storage.toml: |
+      [storage]
+      backend = "s3"
+      base_path = "uploads/"
+      max_file_size_mb = 50
+      allowed_types = ["png", "jpg", "pdf", "docx", "xlsx"]
+      bucket = "myapp-prod-assets"
+  commit_message: "migrate storage to s3 and increase limits"
+fragments:
+- id: storage_config
+  selector:
+    path: storage.toml
+    anchor: "backend = \"s3\""
+- id: config_loader
+  selector:
+    path: src/storage/config.rs
+    anchor: "storage.toml"
+- id: uploader
+  selector:
+    path: src/storage/uploader.rs
+    anchor: "allowed_types"
+- id: cleaner
+  selector:
+    path: src/storage/cleaner.rs
+    anchor: "base_path"
+- id: no_email
+  selector:
+    path: garbage_email.rs
+- id: no_queue
+  selector:
+    path: garbage_queue.rs
+- id: no_health
+  selector:
+    path: garbage_health.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_011_EMAIL_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_011_EMAIL_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_011_QUEUE_E
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_011_QUEUE_F
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CFGCODE_011_HEALTH_I
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CFGCODE_011_HEALTH_J
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_CFGCODE_011_EMAIL_C
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_CFGCODE_011_EMAIL_D
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_CFGCODE_011_QUEUE_G
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_CFGCODE_011_QUEUE_H
+oracle:
+  required:
+  - storage_config
+  - config_loader
+  - uploader
+  - cleaner
+  allowed: []
+  forbidden:
+  - no_email
+  - no_queue
+  - no_health
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

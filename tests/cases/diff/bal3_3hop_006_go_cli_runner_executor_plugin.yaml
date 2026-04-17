@@ -1,0 +1,192 @@
+name: bal3_3hop_006_go_cli_runner_executor_plugin
+tags:
+- lang:go
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    pkg/plugin/base.go: |
+      package plugin
+
+      type Plugin struct {
+          Name    string
+          Version string
+      }
+
+      func NewPlugin(name, version string) *Plugin {
+          return &Plugin{Name: name, Version: version}
+      }
+
+      func (p *Plugin) Execute(args []string) (string, error) {
+          return p.Name + " executed", nil
+      }
+    pkg/executor/executor.go: |
+      package executor
+
+      import "myapp/pkg/plugin"
+
+      type Executor struct {
+          plugins map[string]*plugin.Plugin
+      }
+
+      func NewExecutor() *Executor {
+          return &Executor{plugins: make(map[string]*plugin.Plugin)}
+      }
+
+      func (e *Executor) Register(p *plugin.Plugin) {
+          e.plugins[p.Name] = p
+      }
+
+      func (e *Executor) Run(name string, args []string) (string, error) {
+          p, ok := e.plugins[name]
+          if !ok {
+              return "", nil
+          }
+          return p.Execute(args)
+      }
+    pkg/runner/runner.go: |
+      package runner
+
+      import "myapp/pkg/executor"
+
+      type Runner struct {
+          exec *executor.Executor
+      }
+
+      func NewRunner(exec *executor.Executor) *Runner {
+          return &Runner{exec: exec}
+      }
+
+      func (r *Runner) RunTask(name string, args []string) (string, error) {
+          return r.exec.Run(name, args)
+      }
+    cmd/cli/main.go: |
+      package main
+
+      import (
+          "fmt"
+          "myapp/pkg/runner"
+          "myapp/pkg/executor"
+          "myapp/pkg/plugin"
+      )
+
+      func setupCLI() *runner.Runner {
+          exec := executor.NewExecutor()
+          p := plugin.NewPlugin("hello", "1.0")
+          exec.Register(p)
+          return runner.NewRunner(exec)
+      }
+
+      func main() {
+          r := setupCLI()
+          result, _ := r.RunTask("hello", nil)
+          fmt.Println(result)
+      }
+    pkg/logger/file_logger.go: |
+      package logger
+
+      var GARBAGE_BAL3_006_FILELOG_MARKER_A = "filelog"
+      var GARBAGE_BAL3_006_ROTATE_MARKER_B = 7
+
+      type FileLogger struct {
+          path string
+      }
+
+      func (l *FileLogger) Log(msg string) {}
+    pkg/logger/console_logger.go: |
+      package logger
+
+      var GARBAGE_BAL3_006_CONSOLE_MARKER_C = "console"
+      var GARBAGE_BAL3_006_COLOR_MARKER_D = true
+
+      type ConsoleLogger struct{}
+
+      func (l *ConsoleLogger) Log(msg string) {}
+  changed_files:
+    pkg/plugin/base.go: |
+      package plugin
+
+      import "fmt"
+
+      type Plugin struct {
+          Name    string
+          Version string
+          Enabled bool
+      }
+
+      func NewPlugin(name, version string) *Plugin {
+          return &Plugin{Name: name, Version: version, Enabled: true}
+      }
+
+      func (p *Plugin) Execute(args []string) (string, error) {
+          if !p.Enabled {
+              return "", fmt.Errorf("plugin %s is disabled", p.Name)
+          }
+          return p.Name + " executed", nil
+      }
+
+      func (p *Plugin) Disable() {
+          p.Enabled = false
+      }
+  commit_message: "Add enabled flag and disable method to plugin"
+fragments:
+- id: plugin_enabled
+  selector:
+    path: pkg/plugin/base.go
+    anchor: "Enabled bool"
+- id: plugin_disable
+  selector:
+    path: pkg/plugin/base.go
+    anchor: "func (p *Plugin) Disable"
+- id: plugin_check
+  selector:
+    path: pkg/plugin/base.go
+    anchor: "plugin %s is disabled"
+- id: executor_run
+  selector:
+    path: pkg/executor/executor.go
+    anchor: "func (e *Executor) Run"
+- id: runner_run
+  selector:
+    path: pkg/runner/runner.go
+    anchor: "func (r *Runner) RunTask"
+- id: cli_setup
+  selector:
+    path: cmd/cli/main.go
+    anchor: "func setupCLI"
+- id: no_file_logger
+  selector:
+    path: pkg/logger/file_logger.go
+- id: no_console_logger
+  selector:
+    path: pkg/logger/console_logger.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_006_FILELOG_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_006_ROTATE_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_006_CONSOLE_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_006_COLOR_MARKER_D
+oracle:
+  required:
+  - plugin_enabled
+  - plugin_disable
+  - plugin_check
+  - executor_run
+  - runner_run
+  - cli_setup
+  allowed: []
+  forbidden:
+  - no_file_logger
+  - no_console_logger
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

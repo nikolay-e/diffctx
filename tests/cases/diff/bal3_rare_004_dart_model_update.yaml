@@ -1,0 +1,181 @@
+name: bal3_rare_004_dart_model_update
+tags:
+- lang:dart
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+xfail:
+  category: dart-no-tree-sitter
+repo:
+  initial_files:
+    lib/models/user.dart: |
+      class User {
+        final String id;
+        final String name;
+        final String email;
+
+        User({required this.id, required this.name, required this.email});
+
+        factory User.fromJson(Map<String, dynamic> json) {
+          return User(
+            id: json['id'] as String,
+            name: json['name'] as String,
+            email: json['email'] as String,
+          );
+        }
+
+        Map<String, dynamic> toJson() {
+          return {'id': id, 'name': name, 'email': email};
+        }
+      }
+    lib/services/user_service.dart: |
+      import '../models/user.dart';
+
+      class UserService {
+        final List<User> _users = [];
+
+        void addUser(User user) {
+          _users.add(user);
+        }
+
+        User? findById(String id) {
+          return _users.where((u) => u.id == id).firstOrNull;
+        }
+
+        List<User> listAll() => List.unmodifiable(_users);
+      }
+    lib/widgets/user_card.dart: |
+      import '../models/user.dart';
+
+      class UserCard {
+        final User user;
+
+        UserCard(this.user);
+
+        String render() {
+          return '${user.name} <${user.email}>';
+        }
+      }
+    lib/utils/validators.dart: |
+      // ignore: unused_field
+      const GARBAGE_RARE_004_VALID_A = 'validator';
+      const GARBAGE_RARE_004_REGEX_B = 'pattern';
+
+      bool isValidEmail(String email) => email.contains('@');
+    lib/services/analytics.dart: |
+      const GARBAGE_RARE_004_TRACK_C = 'analytics';
+      const GARBAGE_RARE_004_EVENT_D = 'event';
+
+      class Analytics {
+        void track(String event) {}
+      }
+    lib/utils/logger.dart: |
+      const GARBAGE_RARE_004_LOG_E = 'debug';
+      const GARBAGE_RARE_004_LEVEL_F = 'info';
+
+      class Logger {
+        void info(String msg) {}
+      }
+  changed_files:
+    lib/models/user.dart: |
+      class User {
+        final String id;
+        final String name;
+        final String email;
+        final String? avatarUrl;
+        final DateTime createdAt;
+
+        User({
+          required this.id,
+          required this.name,
+          required this.email,
+          this.avatarUrl,
+          required this.createdAt,
+        });
+
+        factory User.fromJson(Map<String, dynamic> json) {
+          return User(
+            id: json['id'] as String,
+            name: json['name'] as String,
+            email: json['email'] as String,
+            avatarUrl: json['avatar_url'] as String?,
+            createdAt: DateTime.parse(json['created_at'] as String),
+          );
+        }
+
+        Map<String, dynamic> toJson() {
+          return {
+            'id': id,
+            'name': name,
+            'email': email,
+            'avatar_url': avatarUrl,
+            'created_at': createdAt.toIso8601String(),
+          };
+        }
+      }
+  commit_message: "add avatarUrl and createdAt to User model"
+fragments:
+- id: service_uses_user
+  selector:
+    path: lib/services/user_service.dart
+    anchor: "import '../models/user.dart'"
+- id: service_find_by_id
+  selector:
+    path: lib/services/user_service.dart
+    anchor: "User? findById"
+- id: card_uses_user
+  selector:
+    path: lib/widgets/user_card.dart
+    anchor: "import '../models/user.dart'"
+- id: card_render
+  selector:
+    path: lib/widgets/user_card.dart
+    anchor: "user.name"
+- id: no_validators
+  selector:
+    path: lib/utils/validators.dart
+    anchor: "isValidEmail"
+- id: no_analytics
+  selector:
+    path: lib/services/analytics.dart
+    anchor: "class Analytics"
+- id: no_logger
+  selector:
+    path: lib/utils/logger.dart
+    anchor: "class Logger"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_RARE_004_VALID_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_RARE_004_REGEX_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_RARE_004_TRACK_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_RARE_004_EVENT_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_RARE_004_LOG_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_RARE_004_LEVEL_F
+oracle:
+  required:
+  - service_uses_user
+  - service_find_by_id
+  - card_uses_user
+  allowed:
+  - card_render
+  forbidden:
+  - no_validators
+  - no_analytics
+  - no_logger
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

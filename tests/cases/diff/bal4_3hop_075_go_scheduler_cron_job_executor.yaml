@@ -1,0 +1,190 @@
+name: bal4_3hop_075_go_scheduler_cron_job_executor
+tags:
+- lang:go
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:easy
+repo:
+  initial_files:
+    pkg/executor/worker.go: |
+      package executor
+
+      type Result struct {
+          OK  bool
+          Msg string
+      }
+
+      func Execute(cmd string) Result {
+          return Result{OK: true, Msg: cmd}
+      }
+    pkg/job/definition.go: |
+      package job
+
+      import "myapp/pkg/executor"
+
+      type Job struct {
+          Name string
+          Cmd  string
+      }
+
+      func (j Job) Run() executor.Result {
+          return executor.Execute(j.Cmd)
+      }
+    pkg/cron/ticker.go: |
+      package cron
+
+      import "myapp/pkg/job"
+      import "myapp/pkg/executor"
+
+      type Entry struct {
+          Interval int
+          Job      job.Job
+      }
+
+      func Tick(e Entry) executor.Result {
+          return e.Job.Run()
+      }
+    pkg/scheduler/planner.go: |
+      package scheduler
+
+      import (
+          "myapp/pkg/cron"
+          "myapp/pkg/executor"
+          "myapp/pkg/job"
+      )
+
+      func Plan(name, cmd string, interval int) executor.Result {
+          j := job.Job{Name: name, Cmd: cmd}
+          e := cron.Entry{Interval: interval, Job: j}
+          return cron.Tick(e)
+      }
+    pkg/garbage/timer_noise.go: |
+      package garbage
+
+      var GARBAGE_075_TIMER_A = "timer"
+      var GARBAGE_075_TIMER_B = 1000
+
+      type GarbageTicker struct {
+          GARBAGE_075_TIMER_C int
+      }
+
+      func GarbageTick() {}
+  changed_files:
+    pkg/executor/worker.go: |
+      package executor
+
+      type Result struct {
+          OK  bool
+          Msg string
+      }
+
+      func Execute(cmd string) Result {
+          return Result{OK: true, Msg: cmd}
+      }
+
+      func ExecuteWithTimeout(cmd string, timeout int) Result {
+          if timeout <= 0 {
+              return Result{OK: false, Msg: "invalid timeout"}
+          }
+          return Result{OK: true, Msg: cmd}
+      }
+    pkg/job/definition.go: |
+      package job
+
+      import "myapp/pkg/executor"
+
+      type Job struct {
+          Name    string
+          Cmd     string
+          Timeout int
+      }
+
+      func (j Job) Run() executor.Result {
+          return executor.Execute(j.Cmd)
+      }
+
+      func (j Job) RunWithTimeout() executor.Result {
+          return executor.ExecuteWithTimeout(j.Cmd, j.Timeout)
+      }
+    pkg/cron/ticker.go: |
+      package cron
+
+      import "myapp/pkg/job"
+      import "myapp/pkg/executor"
+
+      type Entry struct {
+          Interval int
+          Job      job.Job
+      }
+
+      func Tick(e Entry) executor.Result {
+          return e.Job.Run()
+      }
+    pkg/scheduler/planner.go: |
+      package scheduler
+
+      import (
+          "myapp/pkg/cron"
+          "myapp/pkg/executor"
+          "myapp/pkg/job"
+      )
+
+      func Plan(name, cmd string, interval int) executor.Result {
+          j := job.Job{Name: name, Cmd: cmd}
+          e := cron.Entry{Interval: interval, Job: j}
+          return cron.Tick(e)
+      }
+    pkg/garbage/timer_noise.go: |
+      package garbage
+
+      var GARBAGE_075_TIMER_A = "timer"
+      var GARBAGE_075_TIMER_B = 1000
+
+      type GarbageTicker struct {
+          GARBAGE_075_TIMER_C int
+      }
+
+      func GarbageTick() {}
+  commit_message: "add timeout-based execution to worker and job"
+fragments:
+- id: execute_with_timeout
+  selector:
+    path: pkg/executor/worker.go
+    anchor: "func ExecuteWithTimeout"
+- id: run_with_timeout
+  selector:
+    path: pkg/job/definition.go
+    anchor: "func (j Job) RunWithTimeout"
+- id: job_struct
+  selector:
+    path: pkg/job/definition.go
+    anchor: "type Job struct"
+- id: result_struct
+  selector:
+    path: pkg/executor/worker.go
+    anchor: "type Result struct"
+- id: no_garbage_timer
+  selector:
+    path: pkg/garbage/timer_noise.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_075_TIMER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_075_TIMER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_075_TIMER_C
+oracle:
+  required:
+  - execute_with_timeout
+  - run_with_timeout
+  - job_struct
+  - result_struct
+  allowed: []
+  forbidden:
+  - no_garbage_timer
+  - no_global_0
+  - no_global_1
+  - no_global_2

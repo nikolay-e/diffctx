@@ -1,0 +1,247 @@
+name: bal_1hop_059_typescript_query_builder_to_data_access
+tags:
+- lang:typescript
+- change:bug_fix
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/db/queryBuilder.ts: |
+      export interface WhereClause {
+        field: string;
+        operator: '=' | '!=' | '>' | '<' | 'LIKE';
+        value: string | number;
+      }
+
+      export class QueryBuilder {
+        private table: string = '';
+        private selectFields: string[] = ['*'];
+        private whereClauses: WhereClause[] = [];
+        private limitValue: number | null = null;
+
+        from(table: string): QueryBuilder {
+          this.table = table;
+          return this;
+        }
+
+        select(...fields: string[]): QueryBuilder {
+          this.selectFields = fields;
+          return this;
+        }
+
+        where(field: string, operator: WhereClause['operator'], value: string | number): QueryBuilder {
+          this.whereClauses.push({ field, operator, value });
+          return this;
+        }
+
+        limit(n: number): QueryBuilder {
+          this.limitValue = n;
+          return this;
+        }
+
+        build(): string {
+          const sel = this.selectFields.join(', ');
+          let sql = `SELECT ${sel} FROM ${this.table}`;
+          if (this.whereClauses.length > 0) {
+            const conditions = this.whereClauses.map(w => {
+              const val = typeof w.value === 'string' ? `'${w.value}'` : w.value;
+              return `${w.field} ${w.operator} ${val}`;
+            });
+            sql += ` WHERE ${conditions.join(' AND ')}`;
+          }
+          if (this.limitValue !== null) {
+            sql += ` LIMIT ${this.limitValue}`;
+          }
+          return sql;
+        }
+      }
+    src/data/userDataAccess.ts: |
+      import { QueryBuilder } from '../db/queryBuilder';
+
+      export function findActiveUsers(limit: number): string {
+        return new QueryBuilder()
+          .from('users')
+          .select('id', 'name', 'email')
+          .where('active', '=', 1)
+          .limit(limit)
+          .build();
+      }
+
+      export function findUserByEmail(email: string): string {
+        return new QueryBuilder()
+          .from('users')
+          .select('id', 'name', 'email', 'created_at')
+          .where('email', '=', email)
+          .build();
+      }
+
+      export function findRecentUsers(days: number): string {
+        return new QueryBuilder()
+          .from('users')
+          .select('*')
+          .where('created_at', '>', `NOW() - INTERVAL '${days} days'`)
+          .build();
+      }
+    src/data/productDataAccess.ts: |
+      export function findProductsByPrice(maxPrice: number): string {
+        return `SELECT * FROM products WHERE price <= ${maxPrice}`;
+      }
+    src/util/sqlSanitizer.ts: |
+      export function sanitize(input: string): string {
+        return input.replace(/'/g, "''");
+      }
+    src/migration/schemaVersion.ts: |
+      export function getCurrentVersion(): number {
+        return 3;
+      }
+
+      export function getTargetVersion(): number {
+        return 4;
+      }
+    src/pool/connectionPool.ts: |
+      export interface PoolConfig {
+        min: number;
+        max: number;
+        idleTimeoutMs: number;
+      }
+
+      export function createPool(config: PoolConfig): { size: number } {
+        return { size: config.min };
+      }
+  changed_files:
+    src/db/queryBuilder.ts: |
+      export interface WhereClause {
+        field: string;
+        operator: '=' | '!=' | '>' | '<' | '>=' | '<=' | 'LIKE' | 'IN';
+        value: string | number | (string | number)[];
+      }
+
+      export class QueryBuilder {
+        private table: string = '';
+        private selectFields: string[] = ['*'];
+        private whereClauses: WhereClause[] = [];
+        private orderByField: string | null = null;
+        private orderDirection: 'ASC' | 'DESC' = 'ASC';
+        private limitValue: number | null = null;
+        private offsetValue: number | null = null;
+
+        from(table: string): QueryBuilder {
+          this.table = table;
+          return this;
+        }
+
+        select(...fields: string[]): QueryBuilder {
+          this.selectFields = fields;
+          return this;
+        }
+
+        where(field: string, operator: WhereClause['operator'], value: string | number | (string | number)[]): QueryBuilder {
+          this.whereClauses.push({ field, operator, value });
+          return this;
+        }
+
+        orderBy(field: string, direction: 'ASC' | 'DESC' = 'ASC'): QueryBuilder {
+          this.orderByField = field;
+          this.orderDirection = direction;
+          return this;
+        }
+
+        limit(n: number): QueryBuilder {
+          this.limitValue = n;
+          return this;
+        }
+
+        offset(n: number): QueryBuilder {
+          this.offsetValue = n;
+          return this;
+        }
+
+        build(): string {
+          const sel = this.selectFields.join(', ');
+          let sql = `SELECT ${sel} FROM ${this.table}`;
+          if (this.whereClauses.length > 0) {
+            const conditions = this.whereClauses.map(w => {
+              if (w.operator === 'IN' && Array.isArray(w.value)) {
+                const vals = w.value.map(v => typeof v === 'string' ? `'${v}'` : v).join(', ');
+                return `${w.field} IN (${vals})`;
+              }
+              const val = typeof w.value === 'string' ? `'${w.value}'` : w.value;
+              return `${w.field} ${w.operator} ${val}`;
+            });
+            sql += ` WHERE ${conditions.join(' AND ')}`;
+          }
+          if (this.orderByField) {
+            sql += ` ORDER BY ${this.orderByField} ${this.orderDirection}`;
+          }
+          if (this.limitValue !== null) {
+            sql += ` LIMIT ${this.limitValue}`;
+          }
+          if (this.offsetValue !== null) {
+            sql += ` OFFSET ${this.offsetValue}`;
+          }
+          return sql;
+        }
+      }
+  commit_message: "fix: add IN operator, orderBy, offset and missing comparison operators"
+fragments:
+- id: qb_in_operator
+  selector:
+    path: queryBuilder.ts
+    anchor: "IN"
+- id: qb_order_by
+  selector:
+    path: queryBuilder.ts
+    anchor: "orderBy"
+- id: qb_offset
+  selector:
+    path: queryBuilder.ts
+    anchor: "offset(n: number)"
+- id: qb_build_in_handling
+  selector:
+    path: queryBuilder.ts
+    anchor: "Array.isArray"
+- id: da_uses_query_builder
+  selector:
+    path: userDataAccess.ts
+    anchor: "new QueryBuilder()"
+- id: da_find_active
+  selector:
+    path: userDataAccess.ts
+    anchor: "findActiveUsers"
+- id: da_find_by_email
+  selector:
+    path: userDataAccess.ts
+    anchor: "findUserByEmail"
+- id: no_product_da
+  selector:
+    path: productDataAccess.ts
+    anchor: "findProductsByPrice"
+- id: no_sanitizer
+  selector:
+    path: sqlSanitizer.ts
+    anchor: "sanitize"
+- id: no_schema_version
+  selector:
+    path: schemaVersion.ts
+    anchor: "getCurrentVersion"
+- id: no_pool
+  selector:
+    path: connectionPool.ts
+    anchor: "createPool"
+oracle:
+  required:
+  - qb_in_operator
+  - qb_order_by
+  - qb_build_in_handling
+  - da_uses_query_builder
+  allowed:
+  - qb_offset
+  - da_find_active
+  - da_find_by_email
+  forbidden:
+  - no_product_da
+  - no_sanitizer
+  - no_schema_version
+  - no_pool

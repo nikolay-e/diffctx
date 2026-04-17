@@ -1,0 +1,240 @@
+name: bal2_1hop_064_csharp_dto_mapping_bugfix
+tags:
+- lang:csharp
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: csharp-no-tree-sitter
+repo:
+  initial_files:
+    src/Models/OrderDto.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Models
+      {
+          public class OrderDto
+          {
+              public string OrderId { get; set; }
+              public decimal TotalAmount { get; set; }
+              public List<OrderItemDto> Items { get; set; }
+              public string CustomerName { get; set; }
+          }
+
+          public class OrderItemDto
+          {
+              public string ProductName { get; set; }
+              public int Quantity { get; set; }
+              public decimal UnitPrice { get; set; }
+          }
+      }
+    src/Mapping/OrderMapper.cs: |
+      using System;
+      using System.Linq;
+      using App.Models;
+      using App.Domain;
+
+      namespace App.Mapping
+      {
+          public class OrderMapper
+          {
+              public OrderDto ToDto(Order order)
+              {
+                  return new OrderDto
+                  {
+                      OrderId = order.Id.ToString(),
+                      TotalAmount = order.Items.Sum(i => i.Price * i.Qty),
+                      Items = order.Items.Select(i => new OrderItemDto
+                      {
+                          ProductName = i.Name,
+                          Quantity = i.Qty,
+                          UnitPrice = i.Price
+                      }).ToList(),
+                      CustomerName = order.Customer.FullName
+                  };
+              }
+          }
+      }
+    src/Domain/Order.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Domain
+      {
+          public class Order
+          {
+              public Guid Id { get; set; }
+              public List<OrderItem> Items { get; set; }
+              public Customer Customer { get; set; }
+              public DateTime CreatedAt { get; set; }
+          }
+
+          public class OrderItem
+          {
+              public string Name { get; set; }
+              public int Qty { get; set; }
+              public decimal Price { get; set; }
+          }
+
+          public class Customer
+          {
+              public string FullName { get; set; }
+              public string Email { get; set; }
+          }
+      }
+    src/Services/OrderService.cs: |
+      using System;
+      using System.Threading.Tasks;
+      using App.Mapping;
+      using App.Models;
+
+      namespace App.Services
+      {
+          public class OrderService
+          {
+              private readonly OrderMapper _mapper;
+
+              public OrderService(OrderMapper mapper)
+              {
+                  _mapper = mapper;
+              }
+
+              public OrderDto GetOrderDetails(Domain.Order order)
+              {
+                  return _mapper.ToDto(order);
+              }
+          }
+      }
+    src/Validation/OrderValidator.cs: |
+      using System;
+      using App.Models;
+
+      namespace App.Validation
+      {
+          public class OrderValidator
+          {
+              public bool IsValid(OrderDto dto)
+              {
+                  return dto.Items != null && dto.Items.Count > 0 && dto.TotalAmount > 0;
+              }
+          }
+      }
+    garbage/Export/CsvExporter.cs: |
+      using System;
+      GARBAGE_064_CSV_EXPORT_A = "csv";
+      GARBAGE_064_DELIMITER_B = ",";
+
+      namespace App.Export
+      {
+          public class CsvExporter
+          {
+              GARBAGE_064_ENCODING_C = "utf-8";
+
+              public string Export(object data) { return ""; }
+          }
+      }
+    garbage/Scheduling/TaskScheduler.cs: |
+      using System;
+      GARBAGE_064_SCHEDULER_D = "cron";
+      GARBAGE_064_INTERVAL_E = 60;
+
+      namespace App.Scheduling
+      {
+          public class TaskScheduler
+          {
+              GARBAGE_064_MAX_RETRIES_F = 5;
+
+              public void Schedule(Action action, int delay) { }
+          }
+      }
+    garbage/Security/Encryptor.cs: |
+      using System;
+      GARBAGE_064_ENCRYPT_ALG_G = "aes256";
+      GARBAGE_064_KEY_SIZE_H = 256;
+
+      namespace App.Security
+      {
+          public class Encryptor
+          {
+              GARBAGE_064_IV_LENGTH_I = 16;
+              GARBAGE_064_SALT_ROUNDS_J = 12;
+
+              public string Encrypt(string plaintext) { return plaintext; }
+          }
+      }
+  changed_files:
+    src/Models/OrderDto.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Models
+      {
+          public class OrderDto
+          {
+              public string OrderId { get; set; }
+              public decimal TotalAmount { get; set; }
+              public decimal TaxAmount { get; set; }
+              public List<OrderItemDto> Items { get; set; }
+              public string CustomerName { get; set; }
+          }
+
+          public class OrderItemDto
+          {
+              public string ProductName { get; set; }
+              public int Quantity { get; set; }
+              public decimal UnitPrice { get; set; }
+              public decimal LineTotal { get; set; }
+          }
+      }
+  commit_message: "Fix missing tax and line total in order DTO"
+fragments:
+- id: mapper_to_dto
+  selector:
+    path: src/Mapping/OrderMapper.cs
+    anchor: "public OrderDto ToDto(Order order)"
+- id: mapper_total_calc
+  selector:
+    path: src/Mapping/OrderMapper.cs
+    anchor: "TotalAmount = order.Items.Sum"
+- id: service_get_details
+  selector:
+    path: src/Services/OrderService.cs
+    anchor: "return _mapper.ToDto(order)"
+- id: validator_is_valid
+  selector:
+    path: src/Validation/OrderValidator.cs
+    anchor: "dto.TotalAmount > 0"
+- id: no_csv_exporter
+  selector:
+    path: garbage/Export/CsvExporter.cs
+- id: no_task_scheduler
+  selector:
+    path: garbage/Scheduling/TaskScheduler.cs
+- id: no_encryptor
+  selector:
+    path: garbage/Security/Encryptor.cs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_064_CSV_EXPORT_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_064_SCHEDULER_D
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_064_ENCRYPT_ALG_G
+oracle:
+  required:
+  - mapper_to_dto
+  - mapper_total_calc
+  - service_get_details
+  - validator_is_valid
+  allowed: []
+  forbidden:
+  - no_csv_exporter
+  - no_task_scheduler
+  - no_encryptor
+  - no_global_0
+  - no_global_1
+  - no_global_2

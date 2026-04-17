@@ -1,0 +1,135 @@
+name: gap_005_python_cache_eviction_lru_fix
+tags:
+- lang:python
+- change:bug_fix
+- change:single_file
+- context:import_chain
+- difficulty:hard
+- distance:1hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    caching/lru.py: |
+      from collections import OrderedDict
+      from caching.limits import MAX_CACHE_SIZE, EVICTION_BATCH
+
+      class LRUCache:
+          def __init__(self):
+              self._store: OrderedDict[str, bytes] = OrderedDict()
+              self._size_bytes = 0
+
+          def get(self, key: str) -> bytes | None:
+              if key not in self._store:
+                  return None
+              self._store.move_to_end(key)
+              return self._store[key]
+
+          def put(self, key: str, value: bytes) -> None:
+              if key in self._store:
+                  self._size_bytes -= len(self._store[key])
+                  del self._store[key]
+              self._store[key] = value
+              self._size_bytes += len(value)
+              while self._size_bytes > MAX_CACHE_SIZE:
+                  self._evict_oldest()
+
+          def _evict_oldest(self) -> None:
+              for _ in range(EVICTION_BATCH):
+                  if not self._store:
+                      break
+                  _, val = self._store.popitem(last=False)
+                  self._size_bytes -= len(val)
+    caching/limits.py: |
+      MAX_CACHE_SIZE = 1024 * 1024 * 256
+      EVICTION_BATCH = 16
+      TTL_DEFAULT = 3600
+      COMPRESSION_THRESHOLD = 4096
+    caching/serializer.py: |
+      import pickle
+
+      class CacheSerializer:
+          def serialize(self, obj: object) -> bytes:
+              return pickle.dumps(obj)
+
+          def deserialize(self, data: bytes) -> object:
+              return pickle.loads(data)
+    caching/stats.py: |
+      class CacheStats:
+          def __init__(self):
+              self.hits = 0
+              self.misses = 0
+
+          def record_hit(self) -> None:
+              self.hits += 1
+
+          def record_miss(self) -> None:
+              self.misses += 1
+
+          def hit_rate(self) -> float:
+              total = self.hits + self.misses
+              return self.hits / total if total > 0 else 0.0
+  changed_files:
+    caching/lru.py: |
+      from collections import OrderedDict
+      from caching.limits import MAX_CACHE_SIZE, EVICTION_BATCH
+
+      class LRUCache:
+          def __init__(self):
+              self._store: OrderedDict[str, bytes] = OrderedDict()
+              self._size_bytes = 0
+
+          def get(self, key: str) -> bytes | None:
+              if key not in self._store:
+                  return None
+              self._store.move_to_end(key)
+              return self._store[key]
+
+          def put(self, key: str, value: bytes) -> None:
+              if key in self._store:
+                  self._size_bytes -= len(self._store[key])
+                  del self._store[key]
+              while self._size_bytes + len(value) > MAX_CACHE_SIZE:
+                  if not self._store:
+                      break
+                  self._evict_oldest()
+              self._store[key] = value
+              self._size_bytes += len(value)
+
+          def _evict_oldest(self) -> None:
+              for _ in range(EVICTION_BATCH):
+                  if not self._store:
+                      break
+                  _, val = self._store.popitem(last=False)
+                  self._size_bytes -= len(val)
+
+          def clear(self) -> None:
+              self._store.clear()
+              self._size_bytes = 0
+fragments:
+- id: lru_put
+  selector:
+    path: caching/lru.py
+    anchor: "def put"
+- id: limits_max_size
+  selector:
+    path: caching/limits.py
+    anchor: MAX_CACHE_SIZE
+- id: limits_batch
+  selector:
+    path: caching/limits.py
+    anchor: EVICTION_BATCH
+- id: no_serializer
+  selector:
+    path: caching/serializer.py
+- id: no_stats
+  selector:
+    path: caching/stats.py
+oracle:
+  required:
+  - lru_put
+  - limits_max_size
+  - limits_batch
+  forbidden:
+  - no_serializer
+  - no_stats

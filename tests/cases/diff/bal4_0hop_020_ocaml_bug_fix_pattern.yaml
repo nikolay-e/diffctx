@@ -1,0 +1,95 @@
+name: bal4_0hop_020_ocaml_bug_fix_pattern
+tags:
+- lang:ocaml
+- change:single_file
+- change:bug_fix
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/stack.ml: |
+      type 'a stack = 'a list
+
+      let push x s = x :: s
+
+      let pop = function
+        | _ :: rest -> rest
+        | [] -> []
+
+      let peek = function
+        | x :: _ -> x
+        | [] -> failwith "empty stack"
+    src/garbage_queue.ml: |
+      let garbage_b4o020_que_a = "queue"
+      let garbage_b4o020_que_b = 0
+
+      let garbage_enqueue x = [x]
+    src/garbage_deque.ml: |
+      let garbage_b4o020_dq_c = "deque"
+      let garbage_b4o020_dq_d = true
+
+      let garbage_front _ = None
+  changed_files:
+    src/stack.ml: |
+      type 'a stack = 'a list
+
+      let push x s = x :: s
+
+      let pop = function
+        | _ :: rest -> rest
+        | [] -> []
+
+      let peek = function
+        | x :: _ -> Some x
+        | [] -> None
+    src/garbage_queue.ml: |
+      let garbage_b4o020_que_a = "queue"
+      let garbage_b4o020_que_b = 0
+
+      let garbage_enqueue x = [x]
+    src/garbage_deque.ml: |
+      let garbage_b4o020_dq_c = "deque"
+      let garbage_b4o020_dq_d = true
+
+      let garbage_front _ = None
+  commit_message: "fix: return option from peek instead of failing"
+fragments:
+- id: some_branch
+  selector:
+    path: src/stack.ml
+    anchor: "| x :: _ -> Some x"
+- id: none_branch
+  selector:
+    path: src/stack.ml
+    anchor: "| [] -> None"
+- id: no_garbage_queue
+  selector:
+    path: src/garbage_queue.ml
+- id: no_garbage_deque
+  selector:
+    path: src/garbage_deque.ml
+- id: no_global_0
+  selector:
+    anchor: garbage_b4o020_que_a
+- id: no_global_1
+  selector:
+    anchor: garbage_b4o020_que_b
+- id: no_global_2
+  selector:
+    anchor: garbage_b4o020_dq_c
+- id: no_global_3
+  selector:
+    anchor: garbage_b4o020_dq_d
+oracle:
+  required:
+  - some_branch
+  - none_branch
+  allowed: []
+  forbidden:
+  - no_garbage_queue
+  - no_garbage_deque
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

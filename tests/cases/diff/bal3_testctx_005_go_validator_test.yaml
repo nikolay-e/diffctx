@@ -1,0 +1,183 @@
+name: bal3_testctx_005_go_validator_test
+tags:
+- lang:go
+- change:multi_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    validator/email.go: |
+      package validator
+
+      import "regexp"
+
+      var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+
+      func IsValidEmail(email string) bool {
+          return emailRegex.MatchString(email)
+      }
+    validator/phone.go: |
+      package validator
+
+      import "regexp"
+
+      var phoneRegex = regexp.MustCompile(`^\+?[1-9]\d{6,14}$`)
+
+      func IsValidPhone(phone string) bool {
+          return phoneRegex.MatchString(phone)
+      }
+    validator/email_test.go: |
+      package validator
+
+      import "testing"
+
+      func TestIsValidEmail_Valid(t *testing.T) {
+          cases := []string{"user@example.com", "test.name@domain.org"}
+          for _, c := range cases {
+              if !IsValidEmail(c) {
+                  t.Errorf("expected valid: %s", c)
+              }
+          }
+      }
+
+      func TestIsValidEmail_Invalid(t *testing.T) {
+          cases := []string{"notanemail", "@missing.com", "user@"}
+          for _, c := range cases {
+              if IsValidEmail(c) {
+                  t.Errorf("expected invalid: %s", c)
+              }
+          }
+      }
+    validator/phone_test.go: |
+      package validator
+
+      import "testing"
+
+      func TestIsValidPhone_Valid(t *testing.T) {
+          if !IsValidPhone("+1234567890") {
+              t.Error("expected valid phone")
+          }
+      }
+    models/user.go: |
+      package models
+
+      type User struct {
+          Name  string
+          Email string
+          Phone string
+      }
+    server/router.go: |
+      package server
+
+      import "net/http"
+
+      func SetupRoutes() *http.ServeMux {
+          mux := http.NewServeMux()
+          mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+              w.Write([]byte("welcome"))
+          })
+          return mux
+      }
+  changed_files:
+    validator/email.go: |
+      package validator
+
+      import (
+          "regexp"
+          "strings"
+      )
+
+      var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+
+      var disposableDomains = map[string]bool{
+          "tempmail.com":    true,
+          "throwaway.email": true,
+          "mailinator.com":  true,
+      }
+
+      func IsValidEmail(email string) bool {
+          return emailRegex.MatchString(email)
+      }
+
+      func IsDisposableEmail(email string) bool {
+          parts := strings.SplitN(email, "@", 2)
+          if len(parts) != 2 {
+              return false
+          }
+          return disposableDomains[strings.ToLower(parts[1])]
+      }
+
+      func ValidateEmail(email string) (bool, string) {
+          if !IsValidEmail(email) {
+              return false, "invalid email format"
+          }
+          if IsDisposableEmail(email) {
+              return false, "disposable email not allowed"
+          }
+          return true, ""
+      }
+    validator/phone.go: |
+      package validator
+
+      import "regexp"
+
+      var phoneRegex = regexp.MustCompile(`^\+?[1-9]\d{6,14}$`)
+
+      func IsValidPhone(phone string) bool {
+          return phoneRegex.MatchString(phone)
+      }
+
+      func NormalizePhone(phone string) string {
+          if len(phone) > 0 && phone[0] != '+' {
+              return "+" + phone
+          }
+          return phone
+      }
+  commit_message: "feat: add disposable email check and phone normalization"
+fragments:
+- id: disposable_map
+  selector:
+    path: validator/email.go
+    anchor: "disposableDomains = map[string]bool"
+- id: is_disposable_fn
+  selector:
+    path: validator/email.go
+    anchor: "func IsDisposableEmail(email string)"
+- id: validate_email_fn
+  selector:
+    path: validator/email.go
+    anchor: "func ValidateEmail(email string)"
+- id: normalize_phone_fn
+  selector:
+    path: validator/phone.go
+    anchor: "func NormalizePhone(phone string)"
+- id: test_email_valid
+  selector:
+    path: validator/email_test.go
+    anchor: "func TestIsValidEmail_Valid(t *testing.T)"
+- id: test_phone_valid
+  selector:
+    path: validator/phone_test.go
+    anchor: "func TestIsValidPhone_Valid(t *testing.T)"
+- id: no_models
+  selector:
+    path: models/user.go
+    anchor: "type User struct"
+- id: no_router
+  selector:
+    path: server/router.go
+    anchor: "func SetupRoutes"
+oracle:
+  required:
+  - disposable_map
+  - is_disposable_fn
+  - validate_email_fn
+  - normalize_phone_fn
+  - test_email_valid
+  allowed:
+  - test_phone_valid
+  forbidden:
+  - no_models
+  - no_router

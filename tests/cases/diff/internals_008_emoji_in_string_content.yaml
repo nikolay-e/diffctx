@@ -1,103 +1,176 @@
 name: internals_008_emoji_in_string_content
+tags:
+- lang:kotlin
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:easy
 repo:
   initial_files:
-    src/status/reporter.py: |
-      from src.status.formatter import format_status_line
-      def get_system_status() -> dict:
-          return {"state": "running", "uptime": 3600}
-      def report_status() -> str:
-          status = get_system_status()
-          return format_status_line(status)
-    src/status/formatter.py: |
-      def format_status_line(status: dict) -> str:
-          return "State: " + status["state"]
-      def format_uptime(seconds: int) -> str:
-          return str(seconds // 3600) + "h"
-    garbage_status_dashboard.py: |
-      GARBAGE_INT_008_DASH_MARKER_A = "panel"
-      GARBAGE_INT_008_WIDGET_MARKER_B = "chart"
+    util/Retry.kt: |
+      package util
 
-      class GarbageStatusDashboard:
-          def noop(self):
-              pass
-    garbage_alert_manager.py: |
-      GARBAGE_INT_008_ALERT_MARKER_C = "pager"
-      GARBAGE_INT_008_ESCALATE_MARKER_D = "oncall"
+      object Retry {
+          // BUG: maxAttempts=0 causes infinite loop
+          fun <T> withRetry(maxAttempts: Int, block: () -> T): T {
+              var attempt = 0
+              while (true) {
+                  attempt++
+                  try {
+                      return block()
+                  } catch (e: Exception) {
+                      if (attempt >= maxAttempts) throw e
+                  }
+              }
+          }
+      }
+    domain/FileUploader.kt: |
+      package domain
 
-      class GarbageAlertManager:
-          def noop(self):
-              pass
+      import util.Retry
+
+      class FileUploader {
+          fun upload(bytes: ByteArray): String {
+              return Retry.withRetry(3) {
+                  performUpload(bytes)
+              }
+          }
+
+          private fun performUpload(bytes: ByteArray): String {
+              return "uploaded:${bytes.size}"
+          }
+      }
+    service/MediaService.kt: |
+      package service
+
+      import domain.FileUploader
+
+      class MediaService {
+          private val uploader = FileUploader()
+
+          fun processMedia(data: ByteArray): String {
+              return uploader.upload(data)
+          }
+      }
+    api/MediaController.kt: |
+      package api
+
+      import service.MediaService
+
+      class MediaController(private val svc: MediaService) {
+          fun handleUpload(data: ByteArray): String {
+              return svc.processMedia(data)
+          }
+      }
+    garbage/Logger.kt: |
+      // GARBAGE_KRET_A = "logger_marker"
+      object Logger { fun log(msg: String) {} }
+    garbage/Config.kt: |
+      // GARBAGE_KRET_B = "config_marker"
+      data class AppConfig(val region: String)
+    garbage/Notifier.kt: |
+      // GARBAGE_KRET_C = "notifier_marker"
+      class Notifier { fun notify(msg: String) {} }
   changed_files:
-    src/status/reporter.py: |
-      from src.status.formatter import format_status_line
-      def get_system_status() -> dict:
-          return {"state": "active", "emoji": "🔥🚀", "uptime": 3600}
-      def report_status() -> str:
-          status = get_system_status()
-          return format_status_line(status)
-    src/status/formatter.py: |
-      def format_status_line(status: dict) -> str:
-          emoji = status.get("emoji", "")
-          return "Status: " + emoji + " " + status["state"]
-      def format_uptime(seconds: int) -> str:
-          return str(seconds // 3600) + "h"
-    garbage_status_dashboard.py: |
-      GARBAGE_INT_008_DASH_MARKER_A = "panel"
-      GARBAGE_INT_008_WIDGET_MARKER_B = "chart"
+    util/Retry.kt: |
+      package util
 
-      class GarbageStatusDashboard:
-          def noop(self):
-              pass
-    garbage_alert_manager.py: |
-      GARBAGE_INT_008_ALERT_MARKER_C = "pager"
-      GARBAGE_INT_008_ESCALATE_MARKER_D = "oncall"
+      object Retry {
+          fun <T> withRetry(maxAttempts: Int, block: () -> T): T {
+              require(maxAttempts > 0) { "maxAttempts must be positive, got $maxAttempts" }
+              var attempt = 0
+              while (true) {
+                  attempt++
+                  try {
+                      return block()
+                  } catch (e: Exception) {
+                      if (attempt >= maxAttempts) throw e
+                  }
+              }
+          }
+      }
+    domain/FileUploader.kt: |
+      package domain
 
-      class GarbageAlertManager:
-          def noop(self):
-              pass
-  commit_message: Update files
+      import util.Retry
+
+      class FileUploader {
+          fun upload(bytes: ByteArray): String {
+              return Retry.withRetry(3) {
+                  performUpload(bytes)
+              }
+          }
+
+          private fun performUpload(bytes: ByteArray): String {
+              return "uploaded:${bytes.size}"
+          }
+      }
+    service/MediaService.kt: |
+      package service
+
+      import domain.FileUploader
+
+      class MediaService {
+          private val uploader = FileUploader()
+
+          fun processMedia(data: ByteArray): String {
+              return uploader.upload(data)
+          }
+      }
+    api/MediaController.kt: |
+      package api
+
+      import service.MediaService
+
+      class MediaController(private val svc: MediaService) {
+          fun handleUpload(data: ByteArray): String {
+              return svc.processMedia(data)
+          }
+      }
+    garbage/Logger.kt: |
+      // GARBAGE_KRET_A = "logger_marker"
+      object Logger { fun log(msg: String) {} }
+    garbage/Config.kt: |
+      // GARBAGE_KRET_B = "config_marker"
+      data class AppConfig(val region: String)
+    garbage/Notifier.kt: |
+      // GARBAGE_KRET_C = "notifier_marker"
+      class Notifier { fun notify(msg: String) {} }
+  commit_message: "fix: guard maxAttempts > 0 in Retry.withRetry to prevent infinite loop"
 fragments:
-- id: formatter_file
+- id: require_positive
   selector:
-    path: src/status/formatter.py
-- id: reporter_file
+    anchor: "require(maxAttempts > 0)"
+- id: retry_obj
   selector:
-    path: src/status/reporter.py
-- id: req_global_0
+    anchor: "object Retry"
+- id: uploader_imports_retry
   selector:
-    anchor: emoji = status.get("emoji", "")
-- id: req_global_1
+    anchor: "import util.Retry"
+- id: media_service_imports_uploader
   selector:
-    anchor: 'return {"state": "active", "emoji": "🔥🚀", "uptime": 3600}'
-- id: no_global_0
+    anchor: "import domain.FileUploader"
+- id: controller_imports_service
   selector:
-    anchor: GARBAGE_INT_008_ALERT_MARKER_C
-- id: no_global_1
+    anchor: "import service.MediaService"
+- id: no_garbage_a
   selector:
-    anchor: GARBAGE_INT_008_DASH_MARKER_A
-- id: no_global_2
+    anchor: GARBAGE_KRET_A
+- id: no_garbage_b
   selector:
-    anchor: GARBAGE_INT_008_ESCALATE_MARKER_D
-- id: no_global_3
+    anchor: GARBAGE_KRET_B
+- id: no_garbage_c
   selector:
-    anchor: GARBAGE_INT_008_WIDGET_MARKER_B
-- id: no_global_4
-  selector:
-    anchor: garbage_alert_manager.py
-- id: no_global_5
-  selector:
-    anchor: garbage_status_dashboard.py
+    anchor: GARBAGE_KRET_C
 oracle:
   required:
-  - formatter_file
-  - reporter_file
-  - req_global_0
-  - req_global_1
-  allowed: []
+  - require_positive
+  - retry_obj
+  - uploader_imports_retry
+  allowed:
+  - media_service_imports_uploader
+  - controller_imports_service
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

@@ -1,0 +1,153 @@
+name: bal2_1hop_038_scala_type_class
+tags:
+- lang:scala
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/typeclass/Renderable.scala: |
+      package typeclass
+
+      trait Renderable[A] {
+        def render(value: A): String
+      }
+
+      object Renderable {
+        def apply[A](implicit r: Renderable[A]): Renderable[A] = r
+      }
+    src/main/scala/model/Product.scala: |
+      package model
+
+      case class Product(id: String, name: String, price: Double)
+    src/main/scala/model/Invoice.scala: |
+      package model
+
+      case class Invoice(number: String, total: Double, items: List[String])
+    src/main/scala/instances/ProductRenderable.scala: |
+      package instances
+
+      import typeclass.Renderable
+      import model.Product
+
+      implicit object ProductRenderable extends Renderable[Product] {
+        def render(p: Product): String = s"${p.name} ($$${p.price})"
+      }
+    src/main/scala/instances/InvoiceRenderable.scala: |
+      package instances
+
+      import typeclass.Renderable
+      import model.Invoice
+
+      implicit object InvoiceRenderable extends Renderable[Invoice] {
+        def render(inv: Invoice): String = s"Invoice #${inv.number}: $$${inv.total}"
+      }
+    src/main/scala/view/Renderer.scala: |
+      package view
+
+      import typeclass.Renderable
+
+      object Renderer {
+        def renderAll[A: Renderable](items: List[A]): String = {
+          items.map(Renderable[A].render).mkString("\n")
+        }
+      }
+    src/main/scala/billing/TaxCalc.scala: |
+      package billing
+
+      GARBAGE_038_TAX_CALC_A = "tax"
+
+      object TaxCalc {
+        def withTax(amount: Double, rate: Double): Double = amount * (1 + rate)
+      }
+    src/main/scala/shipping/Tracker.scala: |
+      package shipping
+
+      GARBAGE_038_TRACKER_B = "tracker"
+
+      class Tracker {
+        def track(shipmentId: String): String = s"tracking-$shipmentId"
+      }
+    src/main/scala/analytics/Dashboard.scala: |
+      package analytics
+
+      GARBAGE_038_DASHBOARD_C = "dashboard"
+
+      class Dashboard {
+        def summary(): Map[String, Int] = Map("orders" -> 0)
+      }
+  changed_files:
+    src/main/scala/typeclass/Renderable.scala: |
+      package typeclass
+
+      trait Renderable[A] {
+        def render(value: A): String
+        def renderWithLabel(label: String, value: A): String = s"$label: ${render(value)}"
+      }
+
+      object Renderable {
+        def apply[A](implicit r: Renderable[A]): Renderable[A] = r
+
+        def instance[A](f: A => String): Renderable[A] = new Renderable[A] {
+          def render(value: A): String = f(value)
+        }
+      }
+  commit_message: "feat: add renderWithLabel and factory method to Renderable"
+fragments:
+- id: render_with_label
+  selector:
+    path: src/main/scala/typeclass/Renderable.scala
+    anchor: "def renderWithLabel"
+- id: renderable_instance
+  selector:
+    path: src/main/scala/typeclass/Renderable.scala
+    anchor: "def instance[A]"
+- id: product_renderable
+  selector:
+    path: src/main/scala/instances/ProductRenderable.scala
+    anchor: "extends Renderable[Product]"
+- id: invoice_renderable
+  selector:
+    path: src/main/scala/instances/InvoiceRenderable.scala
+    anchor: "extends Renderable[Invoice]"
+- id: renderer_uses_typeclass
+  selector:
+    path: src/main/scala/view/Renderer.scala
+    anchor: "Renderable[A].render"
+- id: unrelated_tax
+  selector:
+    path: src/main/scala/billing/TaxCalc.scala
+    anchor: "object TaxCalc"
+- id: unrelated_tracker
+  selector:
+    path: src/main/scala/shipping/Tracker.scala
+    anchor: "class Tracker"
+- id: unrelated_dashboard
+  selector:
+    path: src/main/scala/analytics/Dashboard.scala
+    anchor: "class Dashboard"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_038_TAX_CALC_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_038_TRACKER_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_038_DASHBOARD_C
+oracle:
+  required:
+  - render_with_label
+  - renderable_instance
+  - product_renderable
+  - invoice_renderable
+  allowed:
+  - renderer_uses_typeclass
+  forbidden:
+  - unrelated_tax
+  - unrelated_tracker
+  - unrelated_dashboard
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

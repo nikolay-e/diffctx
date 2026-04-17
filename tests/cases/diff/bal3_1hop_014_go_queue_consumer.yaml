@@ -1,0 +1,235 @@
+name: bal3_1hop_014_go_queue_consumer
+tags:
+- lang:scala
+- change:multi_file
+- change:new_function
+- context:cross_module
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/fleet/Vehicle.scala: |
+      package fleet
+
+      case class Vehicle(
+        id: String,
+        plateNumber: String,
+        capacityKg: Double,
+        status: String
+      )
+    src/main/scala/fleet/VehicleRepository.scala: |
+      package fleet
+
+      class VehicleRepository {
+        private var store: Map[String, Vehicle] = Map.empty
+
+        def save(v: Vehicle): Unit = {
+          store = store + (v.id -> v)
+        }
+
+        def find(id: String): Option[Vehicle] = store.get(id)
+
+        def all(): List[Vehicle] = store.values.toList
+      }
+    src/main/scala/fleet/DispatchService.scala: |
+      package fleet
+
+      class DispatchService(repo: VehicleRepository) {
+        def assignDelivery(vehicleId: String): Either[String, Vehicle] = {
+          repo.find(vehicleId) match {
+            case None    => Left(s"Vehicle $vehicleId not found")
+            case Some(v) => Right(v.copy(status = "on_route"))
+          }
+        }
+      }
+    src/main/scala/fleet/api/DispatchController.scala: |
+      package fleet.api
+
+      import fleet.{DispatchService, VehicleRepository, Vehicle}
+
+      class DispatchController(service: DispatchService) {
+        def handleAssign(vehicleId: String): String = {
+          service.assignDelivery(vehicleId) match {
+            case Right(v) => s"Vehicle ${v.id} assigned"
+            case Left(e)  => s"ERROR: $e"
+          }
+        }
+      }
+    src/main/scala/BAL014_GPS.scala: |
+      package gps
+
+      object BAL014_GPS {
+        val BAL014_GARBAGE_A = "gps_marker"
+        val BAL014_GARBAGE_B = "api_key"
+
+        def getCurrentLocation(vehicleId: String): (Double, Double) = (0.0, 0.0)
+      }
+    src/main/scala/BAL014_Fuel.scala: |
+      package fuel
+
+      object BAL014_Fuel {
+        val BAL014_GARBAGE_C = "fuel_marker"
+        val BAL014_GARBAGE_D = "price_per_liter"
+
+        def estimateCost(distanceKm: Double): Double = distanceKm * 0.12
+      }
+    src/main/scala/BAL014_Maintenance.scala: |
+      package maintenance
+
+      object BAL014_Maintenance {
+        val BAL014_GARBAGE_E = "maintenance_marker"
+
+        def isDue(vehicleId: String): Boolean = false
+      }
+  changed_files:
+    src/main/scala/fleet/Vehicle.scala: |
+      package fleet
+
+      case class Vehicle(
+        id: String,
+        plateNumber: String,
+        capacityKg: Double,
+        status: String,
+        currentLoadKg: Double
+      )
+    src/main/scala/fleet/VehicleRepository.scala: |
+      package fleet
+
+      class VehicleRepository {
+        private var store: Map[String, Vehicle] = Map.empty
+
+        def save(v: Vehicle): Unit = {
+          store = store + (v.id -> v)
+        }
+
+        def find(id: String): Option[Vehicle] = store.get(id)
+
+        def all(): List[Vehicle] = store.values.toList
+
+        def available(): List[Vehicle] =
+          store.values.filter(_.status == "idle").toList
+      }
+    src/main/scala/fleet/DispatchService.scala: |
+      package fleet
+
+      class DispatchService(repo: VehicleRepository) {
+        def assignDelivery(vehicleId: String): Either[String, Vehicle] = {
+          repo.find(vehicleId) match {
+            case None    => Left(s"Vehicle $vehicleId not found")
+            case Some(v) => Right(v.copy(status = "on_route"))
+          }
+        }
+
+        def loadCargo(vehicleId: String, weightKg: Double): Either[String, Vehicle] = {
+          repo.find(vehicleId) match {
+            case None    => Left(s"Vehicle $vehicleId not found")
+            case Some(v) =>
+              if (v.currentLoadKg + weightKg > v.capacityKg)
+                Left(s"Overload: capacity ${v.capacityKg}kg exceeded")
+              else {
+                val updated = v.copy(currentLoadKg = v.currentLoadKg + weightKg)
+                repo.save(updated)
+                Right(updated)
+              }
+          }
+        }
+
+        def listAvailable(): List[Vehicle] = repo.available()
+      }
+    src/main/scala/fleet/api/DispatchController.scala: |
+      package fleet.api
+
+      import fleet.{DispatchService, VehicleRepository, Vehicle}
+
+      class DispatchController(service: DispatchService) {
+        def handleAssign(vehicleId: String): String = {
+          service.assignDelivery(vehicleId) match {
+            case Right(v) => s"Vehicle ${v.id} assigned"
+            case Left(e)  => s"ERROR: $e"
+          }
+        }
+
+        def handleLoadCargo(vehicleId: String, weightKg: Double): String = {
+          service.loadCargo(vehicleId, weightKg) match {
+            case Right(v) => s"Loaded ${weightKg}kg onto ${v.id}"
+            case Left(e)  => s"ERROR: $e"
+          }
+        }
+      }
+    src/main/scala/BAL014_GPS.scala: |
+      package gps
+
+      object BAL014_GPS {
+        val BAL014_GARBAGE_A = "gps_marker"
+        val BAL014_GARBAGE_B = "api_key"
+
+        def getCurrentLocation(vehicleId: String): (Double, Double) = (0.0, 0.0)
+      }
+    src/main/scala/BAL014_Fuel.scala: |
+      package fuel
+
+      object BAL014_Fuel {
+        val BAL014_GARBAGE_C = "fuel_marker"
+        val BAL014_GARBAGE_D = "price_per_liter"
+
+        def estimateCost(distanceKm: Double): Double = distanceKm * 0.12
+      }
+    src/main/scala/BAL014_Maintenance.scala: |
+      package maintenance
+
+      object BAL014_Maintenance {
+        val BAL014_GARBAGE_E = "maintenance_marker"
+
+        def isDue(vehicleId: String): Boolean = false
+      }
+  commit_message: "feat: add currentLoadKg to Vehicle, loadCargo and listAvailable to DispatchService"
+fragments:
+- id: vehicle_current_load
+  selector:
+    path: src/main/scala/fleet/Vehicle.scala
+    anchor: "currentLoadKg: Double"
+- id: repo_available
+  selector:
+    path: src/main/scala/fleet/VehicleRepository.scala
+    anchor: "def available()"
+- id: service_load_cargo
+  selector:
+    path: src/main/scala/fleet/DispatchService.scala
+    anchor: "def loadCargo(vehicleId: String, weightKg: Double)"
+- id: service_list_available
+  selector:
+    path: src/main/scala/fleet/DispatchService.scala
+    anchor: "def listAvailable()"
+- id: controller_handle_load
+  selector:
+    path: src/main/scala/fleet/api/DispatchController.scala
+    anchor: "def handleLoadCargo(vehicleId: String, weightKg: Double)"
+- id: no_garbage_a
+  selector:
+    anchor: BAL014_GARBAGE_A
+- id: no_garbage_b
+  selector:
+    anchor: BAL014_GARBAGE_B
+- id: no_garbage_c
+  selector:
+    anchor: BAL014_GARBAGE_C
+- id: no_garbage_d
+  selector:
+    anchor: BAL014_GARBAGE_D
+- id: no_garbage_e
+  selector:
+    anchor: BAL014_GARBAGE_E
+oracle:
+  required:
+  - vehicle_current_load
+  - repo_available
+  - service_load_cargo
+  - service_list_available
+  - controller_handle_load
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d
+  - no_garbage_e

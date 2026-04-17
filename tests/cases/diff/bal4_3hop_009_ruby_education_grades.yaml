@@ -1,0 +1,191 @@
+name: bal4_3hop_009_ruby_education_grades
+tags:
+- lang:ruby
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:easy
+repo:
+  initial_files:
+    lib/edu/grade.rb: |
+      module Edu
+        class Grade
+          attr_reader :score
+          def initialize(score)
+            @score = score
+          end
+          def letter
+            case score
+            when 90..100 then "A"
+            when 80..89 then "B"
+            when 70..79 then "C"
+            else "F"
+            end
+          end
+        end
+      end
+    lib/edu/student.rb: |
+      require_relative 'grade'
+      module Edu
+        class Student
+          attr_reader :name, :grades
+          def initialize(name)
+            @name = name
+            @grades = []
+          end
+          def add_grade(score)
+            @grades << Grade.new(score)
+          end
+          def average
+            @grades.sum(&:score) / @grades.size
+          end
+        end
+      end
+    lib/edu/classroom.rb: |
+      require_relative 'student'
+      module Edu
+        class Classroom
+          def initialize
+            @students = {}
+          end
+          def enroll(name)
+            @students[name] = Student.new(name)
+          end
+          def grade(name, score)
+            @students[name].add_grade(score)
+          end
+        end
+      end
+    lib/edu/school.rb: |
+      require_relative 'classroom'
+      module Edu
+        class School
+          def initialize
+            @rooms = []
+          end
+          def add_room
+            room = Classroom.new
+            @rooms << room
+            room
+          end
+        end
+      end
+    lib/edu/calendar.rb: |
+      module Edu
+        GARBAGE_009_CALENDAR_A = "semester"
+        GARBAGE_009_TERM_B = "fall"
+        class Calendar
+          def self.current
+            "Fall 2025"
+          end
+        end
+      end
+  changed_files:
+    lib/edu/grade.rb: |
+      module Edu
+        class Grade
+          attr_reader :score
+          def initialize(score)
+            @score = [[score, 0].max, 100].min
+          end
+          def letter
+            case score
+            when 90..100 then "A"
+            when 80..89 then "B"
+            when 70..79 then "C"
+            else "F"
+            end
+          end
+        end
+      end
+    lib/edu/student.rb: |
+      require_relative 'grade'
+      module Edu
+        class Student
+          attr_reader :name, :grades
+          def initialize(name)
+            @name = name
+            @grades = []
+          end
+          def add_grade(score)
+            @grades << Grade.new(score)
+          end
+          def average
+            @grades.sum(&:score) / @grades.size
+          end
+        end
+      end
+    lib/edu/classroom.rb: |
+      require_relative 'student'
+      module Edu
+        class Classroom
+          def initialize
+            @students = {}
+          end
+          def enroll(name)
+            @students[name] = Student.new(name)
+          end
+          def grade(name, score)
+            @students[name].add_grade(score)
+          end
+        end
+      end
+    lib/edu/school.rb: |
+      require_relative 'classroom'
+      module Edu
+        class School
+          def initialize
+            @rooms = []
+          end
+          def add_room
+            room = Classroom.new
+            @rooms << room
+            room
+          end
+        end
+      end
+    lib/edu/calendar.rb: |
+      module Edu
+        GARBAGE_009_CALENDAR_A = "semester"
+        GARBAGE_009_TERM_B = "fall"
+        class Calendar
+          def self.current
+            "Fall 2025"
+          end
+        end
+      end
+  commit_message: "fix: clamp grade score to 0-100 range"
+fragments:
+- id: grade_clamp
+  selector:
+    path: lib/edu/grade.rb
+    anchor: "[[score, 0].max, 100].min"
+- id: student_uses_grade
+  selector:
+    path: lib/edu/student.rb
+    anchor: "require_relative 'grade'"
+- id: classroom_uses_student
+  selector:
+    path: lib/edu/classroom.rb
+    anchor: "require_relative 'student'"
+- id: school_uses_classroom
+  selector:
+    path: lib/edu/school.rb
+    anchor: "require_relative 'classroom'"
+- id: no_calendar
+  selector:
+    path: lib/edu/calendar.rb
+    anchor: "GARBAGE_009_CALENDAR_A"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_009_TERM_B
+oracle:
+  required:
+  - grade_clamp
+  - student_uses_grade
+  - classroom_uses_student
+  - school_uses_classroom
+  allowed: []
+  forbidden:
+  - no_calendar
+  - no_global_0

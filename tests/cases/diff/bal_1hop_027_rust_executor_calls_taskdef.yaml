@@ -1,0 +1,251 @@
+name: bal_1hop_027_rust_executor_calls_taskdef
+tags:
+- lang:go
+- change:new_function
+- change:single_file
+- context:import_chain
+- distance:2hop
+- difficulty:medium
+repo:
+  initial_files:
+    pkg/queue/task_queue.go: |
+      package queue
+
+      import "sync"
+
+      type Task struct {
+          ID      string
+          Payload []byte
+          Retries int
+      }
+
+      type TaskQueue struct {
+          mu    sync.Mutex
+          items []Task
+      }
+
+      func NewTaskQueue() *TaskQueue {
+          return &TaskQueue{}
+      }
+
+      func (q *TaskQueue) Enqueue(t Task) {
+          q.mu.Lock()
+          defer q.mu.Unlock()
+          q.items = append(q.items, t)
+      }
+
+      func (q *TaskQueue) Dequeue() (Task, bool) {
+          q.mu.Lock()
+          defer q.mu.Unlock()
+          if len(q.items) == 0 {
+              return Task{}, false
+          }
+          t := q.items[0]
+          q.items = q.items[1:]
+          return t, true
+      }
+    internal/worker/processor.go: |
+      package worker
+
+      import "pkg/queue"
+
+      type Processor struct {
+          q *queue.TaskQueue
+      }
+
+      func NewProcessor(q *queue.TaskQueue) *Processor {
+          return &Processor{q: q}
+      }
+
+      func (p *Processor) Run() {
+          for {
+              t, ok := p.q.Dequeue()
+              if !ok {
+                  break
+              }
+              _ = t
+          }
+      }
+    internal/api/job_handler.go: |
+      package api
+
+      import "pkg/queue"
+
+      type JobHandler struct {
+          q *queue.TaskQueue
+      }
+
+      func NewJobHandler(q *queue.TaskQueue) *JobHandler {
+          return &JobHandler{q: q}
+      }
+
+      func (h *JobHandler) Submit(id string, payload []byte) {
+          h.q.Enqueue(queue.Task{ID: id, Payload: payload})
+      }
+    garbage/EcommerceDiscount.go: |
+      package garbage
+
+      // GARBAGE_BAL1HOP027_A = "ecommerce_discount_marker"
+
+      type EcommerceDiscount struct{ Code string }
+    garbage/StreamingManifest.go: |
+      package garbage
+
+      // GARBAGE_BAL1HOP027_B = "streaming_manifest_marker"
+
+      type StreamingManifest struct{ SegmentDuration float64 }
+    garbage/IoTCommand.go: |
+      package garbage
+
+      // GARBAGE_BAL1HOP027_C = "iot_command_marker"
+
+      type IoTCommand struct{ Action string }
+  changed_files:
+    pkg/queue/task_queue.go: |
+      package queue
+
+      import "sync"
+
+      type Task struct {
+          ID      string
+          Payload []byte
+          Retries int
+      }
+
+      type TaskQueue struct {
+          mu    sync.Mutex
+          items []Task
+      }
+
+      func NewTaskQueue() *TaskQueue {
+          return &TaskQueue{}
+      }
+
+      func (q *TaskQueue) Enqueue(t Task) {
+          q.mu.Lock()
+          defer q.mu.Unlock()
+          q.items = append(q.items, t)
+      }
+
+      func (q *TaskQueue) Dequeue() (Task, bool) {
+          q.mu.Lock()
+          defer q.mu.Unlock()
+          if len(q.items) == 0 {
+              return Task{}, false
+          }
+          t := q.items[0]
+          q.items = q.items[1:]
+          return t, true
+      }
+
+      func (q *TaskQueue) Len() int {
+          q.mu.Lock()
+          defer q.mu.Unlock()
+          return len(q.items)
+      }
+
+      func (q *TaskQueue) Peek() (Task, bool) {
+          q.mu.Lock()
+          defer q.mu.Unlock()
+          if len(q.items) == 0 {
+              return Task{}, false
+          }
+          return q.items[0], true
+      }
+    internal/worker/processor.go: |
+      package worker
+
+      import "pkg/queue"
+
+      type Processor struct {
+          q *queue.TaskQueue
+      }
+
+      func NewProcessor(q *queue.TaskQueue) *Processor {
+          return &Processor{q: q}
+      }
+
+      func (p *Processor) Run() {
+          for {
+              t, ok := p.q.Dequeue()
+              if !ok {
+                  break
+              }
+              _ = t
+          }
+      }
+
+      func (p *Processor) QueueDepth() int {
+          return p.q.Len()
+      }
+    internal/api/job_handler.go: |
+      package api
+
+      import "pkg/queue"
+
+      type JobHandler struct {
+          q *queue.TaskQueue
+      }
+
+      func NewJobHandler(q *queue.TaskQueue) *JobHandler {
+          return &JobHandler{q: q}
+      }
+
+      func (h *JobHandler) Submit(id string, payload []byte) {
+          h.q.Enqueue(queue.Task{ID: id, Payload: payload})
+      }
+    garbage/EcommerceDiscount.go: |
+      package garbage
+
+      // GARBAGE_BAL1HOP027_A = "ecommerce_discount_marker"
+
+      type EcommerceDiscount struct{ Code string }
+    garbage/StreamingManifest.go: |
+      package garbage
+
+      // GARBAGE_BAL1HOP027_B = "streaming_manifest_marker"
+
+      type StreamingManifest struct{ SegmentDuration float64 }
+    garbage/IoTCommand.go: |
+      package garbage
+
+      // GARBAGE_BAL1HOP027_C = "iot_command_marker"
+
+      type IoTCommand struct{ Action string }
+  commit_message: "feat: add Len and Peek to TaskQueue, expose QueueDepth in Processor"
+fragments:
+- id: len_fn
+  selector:
+    path: pkg/queue/task_queue.go
+    anchor: "func (q *TaskQueue) Len()"
+- id: peek_fn
+  selector:
+    path: pkg/queue/task_queue.go
+    anchor: "func (q *TaskQueue) Peek()"
+- id: queue_depth
+  selector:
+    path: internal/worker/processor.go
+    anchor: "func (p *Processor) QueueDepth()"
+- id: no_job_handler
+  selector:
+    path: internal/api/job_handler.go
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_BAL1HOP027_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_BAL1HOP027_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_BAL1HOP027_C
+oracle:
+  required:
+  - len_fn
+  - peek_fn
+  - queue_depth
+  allowed: []
+  forbidden:
+  - no_job_handler
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

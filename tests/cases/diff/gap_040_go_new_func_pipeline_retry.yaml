@@ -1,0 +1,310 @@
+name: gap_040_go_new_func_pipeline_retry
+tags:
+- change:multi_file
+- change:new_function
+- context:cross_module
+- difficulty:medium
+- distance:2hop
+- lang:go
+repo:
+  initial_files:
+    internal/task/job.go: |
+      package task
+
+      type Status int
+
+      const (
+          Pending Status = iota
+          Running
+          Completed
+          Failed
+      )
+
+      type Job struct {
+          ID      string
+          Payload string
+          Status  Status
+          Attempt int
+      }
+
+      func NewJob(id string, payload string) *Job {
+          return &Job{ID: id, Payload: payload, Status: Pending, Attempt: 0}
+      }
+
+      func (j *Job) MarkRunning() {
+          j.Status = Running
+          j.Attempt++
+      }
+
+      func (j *Job) MarkCompleted() {
+          j.Status = Completed
+      }
+
+      func (j *Job) MarkFailed() {
+          j.Status = Failed
+      }
+    internal/task/queue.go: |
+      package task
+
+      type Queue struct {
+          Jobs []*Job
+      }
+
+      func NewQueue() *Queue {
+          return &Queue{}
+      }
+
+      func (q *Queue) Enqueue(job *Job) {
+          q.Jobs = append(q.Jobs, job)
+      }
+
+      func (q *Queue) Dequeue() *Job {
+          if len(q.Jobs) == 0 {
+              return nil
+          }
+          job := q.Jobs[0]
+          q.Jobs = q.Jobs[1:]
+          return job
+      }
+
+      func (q *Queue) Len() int {
+          return len(q.Jobs)
+      }
+    internal/pipeline/executor.go: |
+      package pipeline
+
+      import "internal/task"
+
+      type Executor struct {
+          Queue *task.Queue
+      }
+
+      func NewExecutor(q *task.Queue) *Executor {
+          return &Executor{Queue: q}
+      }
+
+      func (e *Executor) ProcessNext() *task.Job {
+          job := e.Queue.Dequeue()
+          if job == nil {
+              return nil
+          }
+          job.MarkRunning()
+          job.MarkCompleted()
+          return job
+      }
+
+      func (e *Executor) ProcessAll() int {
+          count := 0
+          for e.Queue.Len() > 0 {
+              e.ProcessNext()
+              count++
+          }
+          return count
+      }
+    internal/storage/blob.go: |
+      package storage
+
+      var GARBAGE_GAP_040_BLOB_A = "s3_marker"
+      var GARBAGE_GAP_040_REGION_B = "us-east-1"
+
+      func Upload(key string, data []byte) error {
+          return nil
+      }
+    internal/events/emitter.go: |
+      package events
+
+      var GARBAGE_GAP_040_EMIT_C = "event_marker"
+      var GARBAGE_GAP_040_TOPIC_D = "pipeline"
+
+      func Emit(topic string, payload string) {}
+  changed_files:
+    internal/task/job.go: |
+      package task
+
+      type Status int
+
+      const (
+          Pending Status = iota
+          Running
+          Completed
+          Failed
+      )
+
+      type Job struct {
+          ID         string
+          Payload    string
+          Status     Status
+          Attempt    int
+          MaxRetries int
+      }
+
+      func NewJob(id string, payload string) *Job {
+          return &Job{ID: id, Payload: payload, Status: Pending, Attempt: 0, MaxRetries: 3}
+      }
+
+      func (j *Job) MarkRunning() {
+          j.Status = Running
+          j.Attempt++
+      }
+
+      func (j *Job) MarkCompleted() {
+          j.Status = Completed
+      }
+
+      func (j *Job) MarkFailed() {
+          j.Status = Failed
+      }
+
+      func (j *Job) CanRetry() bool {
+          return j.Attempt < j.MaxRetries && j.Status == Failed
+      }
+    internal/task/queue.go: |
+      package task
+
+      type Queue struct {
+          Jobs []*Job
+      }
+
+      func NewQueue() *Queue {
+          return &Queue{}
+      }
+
+      func (q *Queue) Enqueue(job *Job) {
+          q.Jobs = append(q.Jobs, job)
+      }
+
+      func (q *Queue) Dequeue() *Job {
+          if len(q.Jobs) == 0 {
+              return nil
+          }
+          job := q.Jobs[0]
+          q.Jobs = q.Jobs[1:]
+          return job
+      }
+
+      func (q *Queue) Len() int {
+          return len(q.Jobs)
+      }
+
+      func (q *Queue) RequeueFailed() int {
+          var retry []*Job
+          var keep []*Job
+          for _, j := range q.Jobs {
+              if j.CanRetry() {
+                  j.Status = Pending
+                  retry = append(retry, j)
+              } else {
+                  keep = append(keep, j)
+              }
+          }
+          q.Jobs = append(keep, retry...)
+          return len(retry)
+      }
+    internal/pipeline/executor.go: |
+      package pipeline
+
+      import "internal/task"
+
+      type Executor struct {
+          Queue *task.Queue
+      }
+
+      func NewExecutor(q *task.Queue) *Executor {
+          return &Executor{Queue: q}
+      }
+
+      func (e *Executor) ProcessNext() *task.Job {
+          job := e.Queue.Dequeue()
+          if job == nil {
+              return nil
+          }
+          job.MarkRunning()
+          job.MarkCompleted()
+          return job
+      }
+
+      func (e *Executor) ProcessAll() int {
+          count := 0
+          for e.Queue.Len() > 0 {
+              e.ProcessNext()
+              count++
+          }
+          return count
+      }
+
+      func (e *Executor) ProcessWithRetry() (completed int, retried int) {
+          completed = e.ProcessAll()
+          retried = e.Queue.RequeueFailed()
+          if retried > 0 {
+              completed += e.ProcessAll()
+          }
+          return completed, retried
+      }
+    internal/storage/blob.go: |
+      package storage
+
+      var GARBAGE_GAP_040_BLOB_A = "s3_marker"
+      var GARBAGE_GAP_040_REGION_B = "us-east-1"
+
+      func Upload(key string, data []byte) error {
+          return nil
+      }
+    internal/events/emitter.go: |
+      package events
+
+      var GARBAGE_GAP_040_EMIT_C = "event_marker"
+      var GARBAGE_GAP_040_TOPIC_D = "pipeline"
+
+      func Emit(topic string, payload string) {}
+  commit_message: "add retry logic to job pipeline executor"
+fixtures:
+  auto_garbage: true
+fragments:
+- id: job_max_retries
+  selector:
+    path: internal/task/job.go
+    anchor: "MaxRetries int"
+- id: job_can_retry
+  selector:
+    path: internal/task/job.go
+    anchor: "func (j *Job) CanRetry"
+- id: queue_requeue
+  selector:
+    path: internal/task/queue.go
+    anchor: "func (q *Queue) RequeueFailed"
+- id: executor_retry
+  selector:
+    path: internal/pipeline/executor.go
+    anchor: "func (e *Executor) ProcessWithRetry"
+- id: no_storage
+  selector:
+    path: internal/storage/blob.go
+- id: no_events
+  selector:
+    path: internal/events/emitter.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_040_BLOB_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GAP_040_REGION_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GAP_040_EMIT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GAP_040_TOPIC_D
+oracle:
+  required:
+  - job_max_retries
+  - job_can_retry
+  - queue_requeue
+  - executor_retry
+  allowed: []
+  forbidden:
+  - no_storage
+  - no_events
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

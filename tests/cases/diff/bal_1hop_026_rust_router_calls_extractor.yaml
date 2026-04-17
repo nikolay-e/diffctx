@@ -1,0 +1,119 @@
+name: bal_1hop_026_rust_router_calls_extractor
+tags:
+- lang:rust
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/extractor/path.rs: |
+      use std::collections::HashMap;
+
+      pub struct PathParams {
+          params: HashMap<String, String>,
+      }
+
+      impl PathParams {
+          pub fn new() -> Self {
+              PathParams { params: HashMap::new() }
+          }
+
+          pub fn insert(&mut self, key: &str, value: &str) {
+              self.params.insert(key.to_string(), value.to_string());
+          }
+
+          pub fn get(&self, key: &str) -> Option<&String> {
+              self.params.get(key)
+          }
+      }
+    src/router/dispatch.rs: |
+      use crate::extractor::path::PathParams;
+
+      pub struct Route {
+          pub method: String,
+          pub pattern: String,
+      }
+
+      pub fn match_route(routes: &[Route], method: &str, path: &str) -> Option<PathParams> {
+          for route in routes {
+              if route.method == method && route.pattern == path {
+                  return Some(PathParams::new());
+              }
+          }
+          None
+      }
+    src/response/builder.rs: |
+      pub struct Response {
+          pub status: u16,
+          pub body: String,
+      }
+
+      impl Response {
+          pub fn ok(body: &str) -> Self {
+              Response { status: 200, body: body.to_string() }
+          }
+
+          pub fn not_found() -> Self {
+              Response { status: 404, body: "Not Found".to_string() }
+          }
+      }
+  changed_files:
+    src/extractor/path.rs: |
+      use std::collections::HashMap;
+
+      pub struct PathParams {
+          params: HashMap<String, String>,
+      }
+
+      impl PathParams {
+          pub fn new() -> Self {
+              PathParams { params: HashMap::new() }
+          }
+
+          pub fn insert(&mut self, key: &str, value: &str) {
+              self.params.insert(key.to_string(), value.to_string());
+          }
+
+          pub fn get(&self, key: &str) -> Option<&String> {
+              self.params.get(key)
+          }
+
+          pub fn get_typed<T: std::str::FromStr>(&self, key: &str) -> Result<T, String> {
+              self.params
+                  .get(key)
+                  .ok_or_else(|| format!("missing param: {}", key))?
+                  .parse::<T>()
+                  .map_err(|_| format!("invalid param type for: {}", key))
+          }
+
+          pub fn keys(&self) -> Vec<&String> {
+              self.params.keys().collect()
+          }
+      }
+  commit_message: "feat: add typed param extraction and keys listing"
+fragments:
+- id: get_typed_method
+  selector:
+    path: src/extractor/path.rs
+    anchor: "pub fn get_typed"
+- id: keys_method
+  selector:
+    path: src/extractor/path.rs
+    anchor: "pub fn keys"
+- id: router_calls_pathparams
+  selector:
+    path: src/router/dispatch.rs
+    anchor: "PathParams::new()"
+- id: unrelated_response
+  selector:
+    path: src/response/builder.rs
+    anchor: "pub struct Response"
+oracle:
+  required:
+  - get_typed_method
+  - router_calls_pathparams
+  allowed:
+  - keys_method
+  forbidden:
+  - unrelated_response

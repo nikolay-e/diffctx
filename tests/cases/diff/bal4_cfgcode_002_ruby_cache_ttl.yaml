@@ -1,0 +1,124 @@
+name: bal4_cfgcode_002_ruby_cache_ttl
+tags:
+- lang:ruby
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:trivial
+repo:
+  initial_files:
+    config/cache.yml: |
+      defaults:
+        store: memcached
+        ttl: 300
+        max_size: 1000
+    app/services/cache_service.rb: |
+      require 'yaml'
+      class CacheService
+        def initialize
+          @settings = YAML.load_file('config/cache.yml')['defaults']
+        end
+        def ttl
+          @settings['ttl']
+        end
+        def store_type
+          @settings['store']
+        end
+      end
+    garbage_auth.rb: |
+      GARBAGE_CFGCODE_002_AUTH_A = "jwt"
+      GARBAGE_CFGCODE_002_AUTH_B = 3600
+      class AuthHandler
+        GARBAGE_CFGCODE_002_AUTH_C = "secret"
+        def verify(token)
+          GARBAGE_CFGCODE_002_AUTH_D = true
+        end
+      end
+    garbage_router.rb: |
+      GARBAGE_CFGCODE_002_ROUTER_E = "/api"
+      GARBAGE_CFGCODE_002_ROUTER_F = "v2"
+      class Router
+        GARBAGE_CFGCODE_002_ROUTER_G = []
+        def match(path)
+          GARBAGE_CFGCODE_002_ROUTER_H = path
+        end
+      end
+    garbage_validator.rb: |
+      GARBAGE_CFGCODE_002_VALID_I = true
+      GARBAGE_CFGCODE_002_VALID_J = "email"
+  changed_files:
+    config/cache.yml: |
+      defaults:
+        store: redis
+        ttl: 600
+        max_size: 5000
+        namespace: prod
+  commit_message: "switch cache to redis and increase ttl"
+fragments:
+- id: cache_config
+  selector:
+    path: config/cache.yml
+    anchor: "store: redis"
+- id: cache_service
+  selector:
+    path: app/services/cache_service.rb
+    anchor: "YAML.load_file"
+- id: no_auth
+  selector:
+    path: garbage_auth.rb
+- id: no_router
+  selector:
+    path: garbage_router.rb
+- id: no_validator
+  selector:
+    path: garbage_validator.rb
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_002_AUTH_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_002_AUTH_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_002_ROUTER_E
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_002_ROUTER_F
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CFGCODE_002_VALID_I
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CFGCODE_002_VALID_J
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_CFGCODE_002_AUTH_C
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_CFGCODE_002_AUTH_D
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_CFGCODE_002_ROUTER_G
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_CFGCODE_002_ROUTER_H
+oracle:
+  required:
+  - cache_config
+  - cache_service
+  allowed: []
+  forbidden:
+  - no_auth
+  - no_router
+  - no_validator
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

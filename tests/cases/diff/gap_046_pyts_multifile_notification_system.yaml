@@ -1,0 +1,199 @@
+name: gap_046_pyts_multifile_notification_system
+tags:
+- lang:python
+- lang:typescript
+- change:multi_file
+- change:new_function
+- change:signature
+- context:same_file
+- distance:0hop
+- difficulty:easy
+repo:
+  initial_files:
+    server/notifications.py: |
+      from enum import Enum
+      from dataclasses import dataclass
+      from typing import Optional
+
+      class Priority(Enum):
+          LOW = "low"
+          MEDIUM = "medium"
+          HIGH = "high"
+
+      @dataclass
+      class Notification:
+          recipient_id: str
+          title: str
+          body: str
+          priority: Priority = Priority.MEDIUM
+
+      class NotificationDispatcher:
+          def __init__(self):
+              self._queue: list[Notification] = []
+
+          def enqueue(self, notification: Notification) -> int:
+              self._queue.append(notification)
+              return len(self._queue)
+
+          def flush(self) -> list[Notification]:
+              batch = list(self._queue)
+              self._queue.clear()
+              return batch
+
+          def pending_count(self) -> int:
+              return len(self._queue)
+    client/notifications.ts: |
+      type Priority = "low" | "medium" | "high";
+
+      interface Notification {
+        recipientId: string;
+        title: string;
+        body: string;
+        priority: Priority;
+      }
+
+      function createNotification(
+        recipientId: string,
+        title: string,
+        body: string
+      ): Notification {
+        return { recipientId, title, body, priority: "medium" };
+      }
+
+      function isUrgent(notification: Notification): boolean {
+        return notification.priority === "high";
+      }
+
+      function summarize(notification: Notification): string {
+        return `[${notification.priority.toUpperCase()}] ${notification.title}`;
+      }
+    client/api.ts: |
+      const NOTIFY_ENDPOINT = "/api/notifications";
+
+      async function sendNotification(n: Notification): Promise<void> {
+        await fetch(NOTIFY_ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(n),
+        });
+      }
+  changed_files:
+    server/notifications.py: |
+      from enum import Enum
+      from dataclasses import dataclass
+      from typing import Optional
+      from datetime import datetime
+
+      class Priority(Enum):
+          LOW = "low"
+          MEDIUM = "medium"
+          HIGH = "high"
+          CRITICAL = "critical"
+
+      @dataclass
+      class Notification:
+          recipient_id: str
+          title: str
+          body: str
+          priority: Priority = Priority.MEDIUM
+          expires_at: Optional[datetime] = None
+
+      class NotificationDispatcher:
+          def __init__(self):
+              self._queue: list[Notification] = []
+
+          def enqueue(self, notification: Notification) -> int:
+              self._queue.append(notification)
+              return len(self._queue)
+
+          def flush(self) -> list[Notification]:
+              batch = list(self._queue)
+              self._queue.clear()
+              return batch
+
+          def flush_expired(self) -> list[Notification]:
+              now = datetime.now()
+              expired = [n for n in self._queue if n.expires_at and n.expires_at < now]
+              self._queue = [n for n in self._queue if n not in expired]
+              return expired
+
+          def pending_count(self) -> int:
+              return len(self._queue)
+    client/notifications.ts: |
+      type Priority = "low" | "medium" | "high" | "critical";
+
+      interface Notification {
+        recipientId: string;
+        title: string;
+        body: string;
+        priority: Priority;
+        expiresAt?: string;
+      }
+
+      function createNotification(
+        recipientId: string,
+        title: string,
+        body: string
+      ): Notification {
+        return { recipientId, title, body, priority: "medium" };
+      }
+
+      function isUrgent(notification: Notification): boolean {
+        return notification.priority === "high" || notification.priority === "critical";
+      }
+
+      function isExpired(notification: Notification): boolean {
+        if (!notification.expiresAt) return false;
+        return new Date(notification.expiresAt) < new Date();
+      }
+
+      function summarize(notification: Notification): string {
+        return `[${notification.priority.toUpperCase()}] ${notification.title}`;
+      }
+    client/api.ts: |
+      const NOTIFY_ENDPOINT = "/api/notifications";
+
+      async function sendNotification(n: Notification): Promise<void> {
+        await fetch(NOTIFY_ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(n),
+        });
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: py_critical_priority
+  selector:
+    path: server/notifications.py
+    anchor: 'CRITICAL = "critical"'
+- id: py_expires_at
+  selector:
+    path: server/notifications.py
+    anchor: "expires_at: Optional[datetime] = None"
+- id: py_flush_expired
+  selector:
+    path: server/notifications.py
+    anchor: "def flush_expired(self) -> list[Notification]:"
+- id: ts_critical_type
+  selector:
+    path: client/notifications.ts
+    anchor: '"critical"'
+- id: ts_expires_field
+  selector:
+    path: client/notifications.ts
+    anchor: "expiresAt?: string;"
+- id: ts_is_expired
+  selector:
+    path: client/notifications.ts
+    anchor: "function isExpired(notification: Notification): boolean"
+oracle:
+  required:
+  - py_critical_priority
+  - py_expires_at
+  - py_flush_expired
+  - ts_expires_field
+  - ts_is_expired
+  allowed: []
+  forbidden: []

@@ -1,0 +1,266 @@
+name: bal3_3hop_082_csharp_mediator_command_chain
+tags:
+- lang:csharp
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/Commands/ICommand.cs: |
+      using System;
+
+      namespace App.Commands
+      {
+          public interface ICommand
+          {
+              string CommandName { get; }
+          }
+      }
+    src/Commands/CreateOrderCommand.cs: |
+      using System;
+      using App.Commands;
+
+      namespace App.Commands
+      {
+          public class CreateOrderCommand : ICommand
+          {
+              public string CommandName => "CreateOrder";
+              public string ProductId { get; set; }
+              public int Quantity { get; set; }
+          }
+      }
+    src/Handlers/OrderHandler.cs: |
+      using System;
+      using App.Commands;
+
+      namespace App.Handlers
+      {
+          public class OrderHandler
+          {
+              public string Handle(CreateOrderCommand command)
+              {
+                  return $"Order created for {command.ProductId} x{command.Quantity}";
+              }
+          }
+      }
+    src/Mediator/Mediator.cs: |
+      using System;
+      using App.Handlers;
+      using App.Commands;
+
+      namespace App.Mediator
+      {
+          public class Mediator
+          {
+              private readonly OrderHandler _orderHandler;
+              public Mediator(OrderHandler orderHandler)
+              {
+                  _orderHandler = orderHandler;
+              }
+              public string Send(ICommand command)
+              {
+                  if (command is CreateOrderCommand createOrder)
+                  {
+                      return _orderHandler.Handle(createOrder);
+                  }
+                  throw new InvalidOperationException("Unknown command");
+              }
+          }
+      }
+    src/Controllers/OrderController.cs: |
+      using System;
+      using App.Mediator;
+      using App.Commands;
+
+      namespace App.Controllers
+      {
+          public class OrderController
+          {
+              private readonly Mediator _mediator;
+              public OrderController(Mediator mediator)
+              {
+                  _mediator = mediator;
+              }
+              public string CreateOrder(string productId, int quantity)
+              {
+                  var command = new CreateOrderCommand { ProductId = productId, Quantity = quantity };
+                  return _mediator.Send(command);
+              }
+          }
+      }
+    src/Logging/ConsoleLogger.cs: |
+      using System;
+      // GARBAGE_082_CONSOLE_A = "logger"
+      // GARBAGE_082_LEVEL_B = "info"
+
+      namespace App.Logging
+      {
+          public class ConsoleLogger
+          {
+              public void Log(string message) => Console.WriteLine(message);
+          }
+      }
+    src/Logging/FileLogger.cs: |
+      using System;
+      // GARBAGE_082_FILE_C = "logger"
+      // GARBAGE_082_PATH_D = "/tmp/log"
+
+      namespace App.Logging
+      {
+          public class FileLogger
+          {
+              public void Log(string message) { }
+          }
+      }
+  changed_files:
+    src/Commands/ICommand.cs: |
+      using System;
+
+      namespace App.Commands
+      {
+          public interface ICommand
+          {
+              string CommandName { get; }
+              DateTime CreatedAt { get; }
+          }
+      }
+    src/Commands/CreateOrderCommand.cs: |
+      using System;
+      using App.Commands;
+
+      namespace App.Commands
+      {
+          public class CreateOrderCommand : ICommand
+          {
+              public string CommandName => "CreateOrder";
+              public DateTime CreatedAt { get; } = DateTime.UtcNow;
+              public string ProductId { get; set; }
+              public int Quantity { get; set; }
+              public string Currency { get; set; } = "USD";
+          }
+      }
+    src/Handlers/OrderHandler.cs: |
+      using System;
+      using App.Commands;
+
+      namespace App.Handlers
+      {
+          public class OrderHandler
+          {
+              public string Handle(CreateOrderCommand command)
+              {
+                  return $"Order created for {command.ProductId} x{command.Quantity} ({command.Currency}) at {command.CreatedAt:u}";
+              }
+          }
+      }
+    src/Mediator/Mediator.cs: |
+      using System;
+      using App.Handlers;
+      using App.Commands;
+
+      namespace App.Mediator
+      {
+          public class Mediator
+          {
+              private readonly OrderHandler _orderHandler;
+              public Mediator(OrderHandler orderHandler)
+              {
+                  _orderHandler = orderHandler;
+              }
+              public string Send(ICommand command)
+              {
+                  if (command is CreateOrderCommand createOrder)
+                  {
+                      return _orderHandler.Handle(createOrder);
+                  }
+                  throw new InvalidOperationException("Unknown command");
+              }
+          }
+      }
+    src/Controllers/OrderController.cs: |
+      using System;
+      using App.Mediator;
+      using App.Commands;
+
+      namespace App.Controllers
+      {
+          public class OrderController
+          {
+              private readonly Mediator _mediator;
+              public OrderController(Mediator mediator)
+              {
+                  _mediator = mediator;
+              }
+              public string CreateOrder(string productId, int quantity)
+              {
+                  var command = new CreateOrderCommand { ProductId = productId, Quantity = quantity };
+                  return _mediator.Send(command);
+              }
+          }
+      }
+    src/Logging/ConsoleLogger.cs: |
+      using System;
+      // GARBAGE_082_CONSOLE_A = "logger"
+      // GARBAGE_082_LEVEL_B = "info"
+
+      namespace App.Logging
+      {
+          public class ConsoleLogger
+          {
+              public void Log(string message) => Console.WriteLine(message);
+          }
+      }
+    src/Logging/FileLogger.cs: |
+      using System;
+      // GARBAGE_082_FILE_C = "logger"
+      // GARBAGE_082_PATH_D = "/tmp/log"
+
+      namespace App.Logging
+      {
+          public class FileLogger
+          {
+              public void Log(string message) { }
+          }
+      }
+  commit_message: "feat: add timestamp and currency to order command"
+fragments:
+- id: icommand_created_at
+  selector:
+    path: src/Commands/ICommand.cs
+    anchor: "DateTime CreatedAt"
+- id: create_order_currency
+  selector:
+    path: src/Commands/CreateOrderCommand.cs
+    anchor: "Currency"
+- id: handler_uses_commands
+  selector:
+    path: src/Handlers/OrderHandler.cs
+    anchor: "using App.Commands"
+- id: mediator_uses_handlers
+  selector:
+    path: src/Mediator/Mediator.cs
+    anchor: "using App.Handlers"
+- id: controller_uses_mediator
+  selector:
+    path: src/Controllers/OrderController.cs
+    anchor: "using App.Mediator"
+- id: no_console_logger
+  selector:
+    path: src/Logging/ConsoleLogger.cs
+    anchor: "GARBAGE_082_CONSOLE_A"
+- id: no_file_logger
+  selector:
+    path: src/Logging/FileLogger.cs
+    anchor: "GARBAGE_082_FILE_C"
+oracle:
+  required:
+  - icommand_created_at
+  - create_order_currency
+  - handler_uses_commands
+  - mediator_uses_handlers
+  - controller_uses_mediator
+  allowed: []
+  forbidden:
+  - no_console_logger
+  - no_file_logger

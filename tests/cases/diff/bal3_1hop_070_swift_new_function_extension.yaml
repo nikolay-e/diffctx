@@ -1,0 +1,271 @@
+name: bal3_1hop_070_swift_new_function_extension
+tags:
+- lang:swift
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: swift-no-tree-sitter
+repo:
+  initial_files:
+    Sources/Extensions/String+Helpers.swift: |
+      import Foundation
+
+      extension String {
+          func trimmed() -> String {
+              return trimmingCharacters(in: .whitespacesAndNewlines)
+          }
+
+          func truncated(to length: Int) -> String {
+              if count <= length { return self }
+              return String(prefix(length)) + "..."
+          }
+      }
+    Sources/Formatters/DisplayFormatter.swift: |
+      import Foundation
+      import Extensions
+
+      class DisplayFormatter {
+          func formatTitle(_ title: String) -> String {
+              return title.trimmed().truncated(to: 50)
+          }
+
+          func formatDescription(_ desc: String) -> String {
+              return desc.trimmed().truncated(to: 200)
+          }
+      }
+    Sources/Formatters/LogFormatter.swift: |
+      import Foundation
+      import Extensions
+
+      class LogFormatter {
+          func formatMessage(_ msg: String) -> String {
+              return "[\(Date())] \(msg.trimmed())"
+          }
+
+          func formatTag(_ tag: String) -> String {
+              return tag.trimmed().truncated(to: 20)
+          }
+      }
+    Sources/Formatters/CSVFormatter.swift: |
+      import Foundation
+      import Extensions
+
+      class CSVFormatter {
+          func formatCell(_ value: String) -> String {
+              let cleaned = value.trimmed()
+              if cleaned.contains(",") {
+                  return "\"\(cleaned)\""
+              }
+              return cleaned
+          }
+      }
+    Sources/Formatters/SearchFormatter.swift: |
+      import Foundation
+      import Extensions
+
+      class SearchFormatter {
+          func normalizeQuery(_ query: String) -> String {
+              return query.trimmed().truncated(to: 100)
+          }
+      }
+    Sources/Audio/AudioPlayer.swift: |
+      import Foundation
+      GARBAGE_070_AUDIO_FORMAT_A = "mp3"
+      GARBAGE_070_SAMPLE_RATE_B = 44100
+
+      class AudioPlayer {
+          func play(url: URL) {}
+          func stop() {}
+      }
+    Sources/Audio/Equalizer.swift: |
+      import Foundation
+      GARBAGE_070_BANDS_COUNT_C = 10
+      GARBAGE_070_DEFAULT_GAIN_D = 0.0
+
+      class Equalizer {
+          func setBand(index: Int, gain: Double) {}
+      }
+    Sources/Video/VideoDecoder.swift: |
+      import Foundation
+      GARBAGE_070_CODEC_TYPE_E = "h264"
+      GARBAGE_070_FRAME_RATE_F = 30
+
+      class VideoDecoder {
+          func decode(frame: Data) -> Data { return frame }
+      }
+  changed_files:
+    Sources/Extensions/String+Helpers.swift: |
+      import Foundation
+
+      extension String {
+          func trimmed() -> String {
+              return trimmingCharacters(in: .whitespacesAndNewlines)
+          }
+
+          func truncated(to length: Int) -> String {
+              if count <= length { return self }
+              return String(prefix(length)) + "..."
+          }
+
+          func slugified() -> String {
+              let allowed = CharacterSet.alphanumerics
+              return lowercased()
+                  .components(separatedBy: allowed.inverted)
+                  .filter { !$0.isEmpty }
+                  .joined(separator: "-")
+          }
+
+          func masked(visibleCount: Int = 4) -> String {
+              if count <= visibleCount { return self }
+              let visible = suffix(visibleCount)
+              let masked = String(repeating: "*", count: count - visibleCount)
+              return masked + visible
+          }
+      }
+    Sources/Formatters/DisplayFormatter.swift: |
+      import Foundation
+      import Extensions
+
+      class DisplayFormatter {
+          func formatTitle(_ title: String) -> String {
+              return title.trimmed().truncated(to: 50)
+          }
+
+          func formatDescription(_ desc: String) -> String {
+              return desc.trimmed().truncated(to: 200)
+          }
+      }
+    Sources/Formatters/LogFormatter.swift: |
+      import Foundation
+      import Extensions
+
+      class LogFormatter {
+          func formatMessage(_ msg: String) -> String {
+              return "[\(Date())] \(msg.trimmed())"
+          }
+
+          func formatTag(_ tag: String) -> String {
+              return tag.trimmed().truncated(to: 20)
+          }
+      }
+    Sources/Formatters/CSVFormatter.swift: |
+      import Foundation
+      import Extensions
+
+      class CSVFormatter {
+          func formatCell(_ value: String) -> String {
+              let cleaned = value.trimmed()
+              if cleaned.contains(",") {
+                  return "\"\(cleaned)\""
+              }
+              return cleaned
+          }
+      }
+    Sources/Formatters/SearchFormatter.swift: |
+      import Foundation
+      import Extensions
+
+      class SearchFormatter {
+          func normalizeQuery(_ query: String) -> String {
+              return query.trimmed().truncated(to: 100)
+          }
+      }
+    Sources/Audio/AudioPlayer.swift: |
+      import Foundation
+      GARBAGE_070_AUDIO_FORMAT_A = "mp3"
+      GARBAGE_070_SAMPLE_RATE_B = 44100
+
+      class AudioPlayer {
+          func play(url: URL) {}
+          func stop() {}
+      }
+    Sources/Audio/Equalizer.swift: |
+      import Foundation
+      GARBAGE_070_BANDS_COUNT_C = 10
+      GARBAGE_070_DEFAULT_GAIN_D = 0.0
+
+      class Equalizer {
+          func setBand(index: Int, gain: Double) {}
+      }
+    Sources/Video/VideoDecoder.swift: |
+      import Foundation
+      GARBAGE_070_CODEC_TYPE_E = "h264"
+      GARBAGE_070_FRAME_RATE_F = 30
+
+      class VideoDecoder {
+          func decode(frame: Data) -> Data { return frame }
+      }
+  commit_message: "feat: add slugified and masked string extensions"
+fragments:
+- id: display_imports
+  selector:
+    path: Sources/Formatters/DisplayFormatter.swift
+    anchor: "import Extensions"
+- id: display_trimmed
+  selector:
+    path: Sources/Formatters/DisplayFormatter.swift
+    anchor: "title.trimmed()"
+- id: log_imports
+  selector:
+    path: Sources/Formatters/LogFormatter.swift
+    anchor: "import Extensions"
+- id: csv_imports
+  selector:
+    path: Sources/Formatters/CSVFormatter.swift
+    anchor: "import Extensions"
+- id: csv_trimmed
+  selector:
+    path: Sources/Formatters/CSVFormatter.swift
+    anchor: "value.trimmed()"
+- id: search_imports
+  selector:
+    path: Sources/Formatters/SearchFormatter.swift
+    anchor: "import Extensions"
+- id: no_audio_player
+  selector:
+    path: Sources/Audio/AudioPlayer.swift
+- id: no_equalizer
+  selector:
+    path: Sources/Audio/Equalizer.swift
+- id: no_video
+  selector:
+    path: Sources/Video/VideoDecoder.swift
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_070_AUDIO_FORMAT_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_070_SAMPLE_RATE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_070_BANDS_COUNT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_070_DEFAULT_GAIN_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_070_CODEC_TYPE_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_070_FRAME_RATE_F
+oracle:
+  required:
+  - display_imports
+  - display_trimmed
+  - log_imports
+  - csv_imports
+  - csv_trimmed
+  - search_imports
+  allowed: []
+  forbidden:
+  - no_audio_player
+  - no_equalizer
+  - no_video
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

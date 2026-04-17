@@ -1,0 +1,126 @@
+name: bal4_3hop_061_go_handler_service_repo_model
+tags:
+- lang:go
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:trivial
+repo:
+  initial_files:
+    pkg/model/user.go: |
+      package model
+
+      type User struct {
+          ID   int
+          Name string
+      }
+    pkg/repo/user_repo.go: |
+      package repo
+
+      import "myapp/pkg/model"
+
+      func FindUser(id int) model.User {
+          return model.User{ID: id, Name: "alice"}
+      }
+    pkg/service/user_service.go: |
+      package service
+
+      import "myapp/pkg/repo"
+
+      func GetUser(id int) string {
+          u := repo.FindUser(id)
+          return u.Name
+      }
+    pkg/handler/user_handler.go: |
+      package handler
+
+      import "myapp/pkg/service"
+
+      func HandleUser(id int) string {
+          return service.GetUser(id)
+      }
+    pkg/util/garbage_strings.go: |
+      package util
+
+      var GARBAGE_061_STRING_A = "pad"
+      var GARBAGE_061_STRING_B = "filler"
+
+      func GarbageTrim(s string) string {
+          return s
+      }
+  changed_files:
+    pkg/model/user.go: |
+      package model
+
+      type User struct {
+          ID    int
+          Name  string
+          Email string
+      }
+    pkg/repo/user_repo.go: |
+      package repo
+
+      import "myapp/pkg/model"
+
+      func FindUser(id int) model.User {
+          return model.User{ID: id, Name: "alice"}
+      }
+    pkg/service/user_service.go: |
+      package service
+
+      import "myapp/pkg/repo"
+
+      func GetUser(id int) string {
+          u := repo.FindUser(id)
+          return u.Name
+      }
+    pkg/handler/user_handler.go: |
+      package handler
+
+      import "myapp/pkg/service"
+
+      func HandleUser(id int) string {
+          return service.GetUser(id)
+      }
+    pkg/util/garbage_strings.go: |
+      package util
+
+      var GARBAGE_061_STRING_A = "pad"
+      var GARBAGE_061_STRING_B = "filler"
+
+      func GarbageTrim(s string) string {
+          return s
+      }
+  commit_message: "add email field to user model"
+fragments:
+- id: user_struct
+  selector:
+    path: pkg/model/user.go
+    anchor: "type User struct"
+- id: find_user
+  selector:
+    path: pkg/repo/user_repo.go
+    anchor: "func FindUser"
+- id: get_user
+  selector:
+    path: pkg/service/user_service.go
+    anchor: "func GetUser"
+- id: no_garbage_strings
+  selector:
+    path: pkg/util/garbage_strings.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_061_STRING_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_061_STRING_B
+oracle:
+  required:
+  - user_struct
+  - find_user
+  - get_user
+  allowed: []
+  forbidden:
+  - no_garbage_strings
+  - no_global_0
+  - no_global_1

@@ -1,0 +1,91 @@
+name: bal_cfgcode_015_typescript_rate_limits
+tags:
+- lang:typescript
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    config/rate-limit.json: |
+      {
+        "windowMs": 60000,
+        "maxRequests": 100,
+        "message": "Too many requests"
+      }
+    src/rate-limiter.ts: |
+      import rateCfg from '../config/rate-limit.json';
+
+      const WINDOW = rateCfg.windowMs;
+      const MAX = rateCfg.maxRequests;
+      const MSG = rateCfg.message;
+
+      export function checkLimit(count: number): boolean {
+        return count <= MAX;
+      }
+    src/database.ts: |
+      const GARBAGE_CFGCODE_015_DB_A = "postgres";
+      const GARBAGE_CFGCODE_015_DB_B = 5432;
+
+      export function query(sql: string): any[] {
+        return [];
+      }
+  changed_files:
+    config/rate-limit.json: |
+      {
+        "windowMs": 60000,
+        "maxRequests": 200,
+        "message": "Rate limit exceeded. Retry after {retryAfter}s.",
+        "skipSuccessful": true
+      }
+    src/rate-limiter.ts: |
+      import rateCfg from '../config/rate-limit.json';
+
+      const WINDOW = rateCfg.windowMs;
+      const MAX = rateCfg.maxRequests;
+      const MSG = rateCfg.message;
+
+      export function checkLimit(count: number): boolean {
+        return count <= MAX;
+      }
+    src/database.ts: |
+      const GARBAGE_CFGCODE_015_DB_A = "postgres";
+      const GARBAGE_CFGCODE_015_DB_B = 5432;
+
+      export function query(sql: string): any[] {
+        return [];
+      }
+  commit_message: "config: increase rate limit and add skip option"
+fragments:
+- id: config_max
+  selector:
+    path: config/rate-limit.json
+    anchor: '"maxRequests": 200'
+- id: config_skip
+  selector:
+    path: config/rate-limit.json
+    anchor: "skipSuccessful"
+- id: limiter_reads_config
+  selector:
+    path: src/rate-limiter.ts
+    anchor: "import rateCfg from '../config/rate-limit.json'"
+- id: no_database
+  selector:
+    path: src/database.ts
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_015_DB_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_015_DB_B
+oracle:
+  required:
+  - config_max
+  - config_skip
+  - limiter_reads_config
+  allowed: []
+  forbidden:
+  - no_database
+  - no_global_0
+  - no_global_1

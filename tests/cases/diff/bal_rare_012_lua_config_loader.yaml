@@ -1,0 +1,255 @@
+name: bal_rare_012_lua_config_loader
+tags:
+- lang:lua
+- change:multi_file
+- change:signature
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/config.lua: |
+      local Config = {}
+      Config.__index = Config
+
+      function Config.load(path)
+        local file = io.open(path, "r")
+        if not file then return nil, "file not found" end
+        local content = file:read("*a")
+        file:close()
+        local data = {}
+        for line in content:gmatch("[^\n]+") do
+          local key, value = line:match("^(%w+)%s*=%s*(.+)$")
+          if key then data[key] = value end
+        end
+        return setmetatable({data = data}, Config)
+      end
+
+      function Config:get(key)
+        return self.data[key]
+      end
+
+      return Config
+    src/server.lua: |
+      local Config = require("src.config")
+
+      local Server = {}
+
+      function Server.new(config_path)
+        local cfg = Config.load(config_path)
+        return {
+          host = cfg:get("host") or "0.0.0.0",
+          port = tonumber(cfg:get("port")) or 8080,
+        }
+      end
+
+      return Server
+    src/middleware.lua: |
+      local function cors_middleware(handler)
+        return function(req, res)
+          res.headers["Access-Control-Allow-Origin"] = "*"
+          return handler(req, res)
+        end
+      end
+
+      return { cors = cors_middleware }
+    src/app.lua: |
+      local Server = require("src.server")
+      local middleware = require("src.middleware")
+
+      local App = {}
+
+      function App.start(config_path)
+        local srv = Server.new(config_path)
+        print("Starting on " .. srv.host .. ":" .. srv.port)
+        return srv
+      end
+
+      return App
+    garbage_template.lua: |
+      local GARBAGE_RARE_012_ENGINE_A = "mustache"
+      local GARBAGE_RARE_012_CACHE_B = true
+
+      local GarbageTemplate = {}
+
+      function GarbageTemplate.render()
+        return GARBAGE_RARE_012_ENGINE_A
+      end
+
+      local GARBAGE_RARE_012_EXT_C = ".html"
+
+      return GarbageTemplate
+    garbage_session.lua: |
+      local GARBAGE_RARE_012_TTL_D = 3600
+      local GARBAGE_RARE_012_SECURE_E = true
+
+      local GarbageSession = {}
+
+      function GarbageSession.create()
+        return GARBAGE_RARE_012_TTL_D
+      end
+
+      local GARBAGE_RARE_012_STORE_F = "memory"
+
+      return GarbageSession
+  changed_files:
+    src/config.lua: |
+      local Config = {}
+      Config.__index = Config
+
+      function Config.load(path, defaults)
+        defaults = defaults or {}
+        local file = io.open(path, "r")
+        if not file then
+          return setmetatable({data = defaults}, Config)
+        end
+        local content = file:read("*a")
+        file:close()
+        local data = {}
+        for k, v in pairs(defaults) do data[k] = v end
+        for line in content:gmatch("[^\n]+") do
+          local key, value = line:match("^(%w+)%s*=%s*(.+)$")
+          if key then data[key] = value end
+        end
+        return setmetatable({data = data}, Config)
+      end
+
+      function Config:get(key)
+        return self.data[key]
+      end
+
+      function Config:get_int(key, fallback)
+        local val = self.data[key]
+        return tonumber(val) or fallback or 0
+      end
+
+      return Config
+    src/server.lua: |
+      local Config = require("src.config")
+
+      local Server = {}
+
+      function Server.new(config_path)
+        local defaults = {host = "0.0.0.0", port = "8080"}
+        local cfg = Config.load(config_path, defaults)
+        return {
+          host = cfg:get("host"),
+          port = cfg:get_int("port", 8080),
+        }
+      end
+
+      return Server
+    src/middleware.lua: |
+      local function cors_middleware(handler)
+        return function(req, res)
+          res.headers["Access-Control-Allow-Origin"] = "*"
+          return handler(req, res)
+        end
+      end
+
+      return { cors = cors_middleware }
+    src/app.lua: |
+      local Server = require("src.server")
+      local middleware = require("src.middleware")
+
+      local App = {}
+
+      function App.start(config_path)
+        local srv = Server.new(config_path)
+        print("Starting on " .. srv.host .. ":" .. srv.port)
+        return srv
+      end
+
+      return App
+    garbage_template.lua: |
+      local GARBAGE_RARE_012_ENGINE_A = "mustache"
+      local GARBAGE_RARE_012_CACHE_B = true
+
+      local GarbageTemplate = {}
+
+      function GarbageTemplate.render()
+        return GARBAGE_RARE_012_ENGINE_A
+      end
+
+      local GARBAGE_RARE_012_EXT_C = ".html"
+
+      return GarbageTemplate
+    garbage_session.lua: |
+      local GARBAGE_RARE_012_TTL_D = 3600
+      local GARBAGE_RARE_012_SECURE_E = true
+
+      local GarbageSession = {}
+
+      function GarbageSession.create()
+        return GARBAGE_RARE_012_TTL_D
+      end
+
+      local GARBAGE_RARE_012_STORE_F = "memory"
+
+      return GarbageSession
+  commit_message: "feat: add defaults support and get_int to Config"
+fragments:
+- id: config_load_defaults
+  selector:
+    path: src/config.lua
+    anchor: "function Config.load(path, defaults)"
+- id: config_get_int
+  selector:
+    path: src/config.lua
+    anchor: "function Config:get_int(key, fallback)"
+- id: server_uses_defaults
+  selector:
+    path: src/server.lua
+    anchor: 'local defaults = {host = "0.0.0.0"'
+- id: server_uses_get_int
+  selector:
+    path: src/server.lua
+    anchor: "cfg:get_int(\"port\", 8080)"
+- id: no_middleware
+  selector:
+    path: src/middleware.lua
+- id: no_app
+  selector:
+    path: src/app.lua
+- id: no_garbage_template
+  selector:
+    path: garbage_template.lua
+- id: no_garbage_session
+  selector:
+    path: garbage_session.lua
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_RARE_012_ENGINE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_RARE_012_CACHE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_RARE_012_EXT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_RARE_012_TTL_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_RARE_012_SECURE_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_RARE_012_STORE_F
+oracle:
+  required:
+  - config_load_defaults
+  - config_get_int
+  - server_uses_defaults
+  - server_uses_get_int
+  allowed: []
+  forbidden:
+  - no_middleware
+  - no_app
+  - no_garbage_template
+  - no_garbage_session
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

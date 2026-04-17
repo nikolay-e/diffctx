@@ -1,0 +1,183 @@
+name: c_family_002_header_include_chain
+tags:
+- lang:c
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    include/vector.h: |
+      #ifndef VECTOR_H
+      #define VECTOR_H
+
+      #include <stddef.h>
+
+      typedef struct {
+          double x;
+          double y;
+      } Vector2D;
+
+      Vector2D vector_add(Vector2D a, Vector2D b);
+      Vector2D vector_scale(Vector2D v, double scalar);
+      double vector_magnitude(Vector2D v);
+
+      #endif
+    src/vector.c: |
+      #include "vector.h"
+      #include <math.h>
+
+      Vector2D vector_add(Vector2D a, Vector2D b) {
+          return (Vector2D){a.x + b.x, a.y + b.y};
+      }
+
+      Vector2D vector_scale(Vector2D v, double scalar) {
+          return (Vector2D){v.x * scalar, v.y * scalar};
+      }
+
+      double vector_magnitude(Vector2D v) {
+          return sqrt(v.x * v.x + v.y * v.y);
+      }
+    src/physics.c: |
+      #include "vector.h"
+
+      typedef struct {
+          Vector2D position;
+          Vector2D velocity;
+          double mass;
+      } Particle;
+
+      void particle_update(Particle *p, double dt) {
+          p->position = vector_add(p->position, vector_scale(p->velocity, dt));
+      }
+
+      double particle_kinetic_energy(Particle *p) {
+          double v = vector_magnitude(p->velocity);
+          return 0.5 * p->mass * v * v;
+      }
+    src/renderer.c: |
+      #include <stdio.h>
+
+      void render_frame(int width, int height) {
+          printf("Rendering %dx%d frame\n", width, height);
+      }
+
+      void clear_screen(void) {
+          printf("\033[2J\033[H");
+      }
+  changed_files:
+    include/vector.h: |
+      #ifndef VECTOR_H
+      #define VECTOR_H
+
+      #include <stddef.h>
+
+      typedef struct {
+          double x;
+          double y;
+          double z;
+      } Vector3D;
+
+      typedef Vector3D Vector2D;
+
+      Vector3D vector_add(Vector3D a, Vector3D b);
+      Vector3D vector_scale(Vector3D v, double scalar);
+      double vector_magnitude(Vector3D v);
+      Vector3D vector_cross(Vector3D a, Vector3D b);
+      double vector_dot(Vector3D a, Vector3D b);
+
+      #endif
+    src/vector.c: |
+      #include "vector.h"
+      #include <math.h>
+
+      Vector3D vector_add(Vector3D a, Vector3D b) {
+          return (Vector3D){a.x + b.x, a.y + b.y, a.z + b.z};
+      }
+
+      Vector3D vector_scale(Vector3D v, double scalar) {
+          return (Vector3D){v.x * scalar, v.y * scalar, v.z * scalar};
+      }
+
+      double vector_magnitude(Vector3D v) {
+          return sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+      }
+
+      Vector3D vector_cross(Vector3D a, Vector3D b) {
+          return (Vector3D){
+              a.y * b.z - a.z * b.y,
+              a.z * b.x - a.x * b.z,
+              a.x * b.y - a.y * b.x
+          };
+      }
+
+      double vector_dot(Vector3D a, Vector3D b) {
+          return a.x * b.x + a.y * b.y + a.z * b.z;
+      }
+    src/physics.c: |
+      #include "vector.h"
+
+      typedef struct {
+          Vector2D position;
+          Vector2D velocity;
+          double mass;
+      } Particle;
+
+      void particle_update(Particle *p, double dt) {
+          p->position = vector_add(p->position, vector_scale(p->velocity, dt));
+      }
+
+      double particle_kinetic_energy(Particle *p) {
+          double v = vector_magnitude(p->velocity);
+          return 0.5 * p->mass * v * v;
+      }
+    src/renderer.c: |
+      #include <stdio.h>
+
+      void render_frame(int width, int height) {
+          printf("Rendering %dx%d frame\n", width, height);
+      }
+
+      void clear_screen(void) {
+          printf("\033[2J\033[H");
+      }
+  commit_message: "feat: upgrade to 3D vector with cross and dot products"
+fragments:
+- id: vector3d_struct
+  selector:
+    path: include/vector.h
+    anchor: "double z;"
+- id: vector_cross_decl
+  selector:
+    path: include/vector.h
+    anchor: "Vector3D vector_cross(Vector3D a, Vector3D b)"
+- id: vector_cross_impl
+  selector:
+    path: src/vector.c
+    anchor: "a.y * b.z - a.z * b.y"
+- id: vector_dot_impl
+  selector:
+    path: src/vector.c
+    anchor: "return a.x * b.x + a.y * b.y + a.z * b.z"
+- id: physics_uses_vector
+  selector:
+    path: src/physics.c
+    anchor: '#include "vector.h"'
+- id: no_renderer
+  selector:
+    path: src/renderer.c
+- id: no_render_frame
+  selector:
+    anchor: render_frame
+oracle:
+  required:
+  - vector3d_struct
+  - vector_cross_decl
+  - vector_cross_impl
+  - vector_dot_impl
+  - physics_uses_vector
+  allowed: []
+  forbidden:
+  - no_renderer
+  - no_render_frame

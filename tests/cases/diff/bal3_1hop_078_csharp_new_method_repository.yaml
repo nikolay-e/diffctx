@@ -1,0 +1,384 @@
+name: bal3_1hop_078_csharp_new_method_repository
+tags:
+- lang:csharp
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/Data/IRepository.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Data
+      {
+          public interface IRepository<T>
+          {
+              T GetById(int id);
+              IEnumerable<T> GetAll();
+              void Add(T entity);
+              void Update(T entity);
+              void Delete(int id);
+          }
+      }
+    src/Data/ProductRepository.cs: |
+      using System;
+      using System.Collections.Generic;
+      using App.Data;
+
+      namespace App.Data.Impl
+      {
+          public class ProductRepository : IRepository<Product>
+          {
+              public Product GetById(int id) { return null; }
+              public IEnumerable<Product> GetAll() { return new List<Product>(); }
+              public void Add(Product entity) { }
+              public void Update(Product entity) { }
+              public void Delete(int id) { }
+          }
+
+          public class Product
+          {
+              public int Id { get; set; }
+              public string Name { get; set; }
+              public decimal Price { get; set; }
+          }
+      }
+    src/Services/ProductService.cs: |
+      using System;
+      using App.Data;
+      using App.Data.Impl;
+
+      namespace App.Services
+      {
+          public class ProductService
+          {
+              private readonly IRepository<Product> _repo;
+
+              public ProductService(IRepository<Product> repo)
+              {
+                  _repo = repo;
+              }
+
+              public Product Get(int id)
+              {
+                  return _repo.GetById(id);
+              }
+
+              public void Create(Product product)
+              {
+                  _repo.Add(product);
+              }
+          }
+      }
+    src/Controllers/ProductController.cs: |
+      using System;
+      using App.Data;
+      using App.Data.Impl;
+
+      namespace App.Controllers
+      {
+          public class ProductController
+          {
+              private readonly IRepository<Product> _repo;
+
+              public ProductController(IRepository<Product> repo)
+              {
+                  _repo = repo;
+              }
+
+              public Product GetProduct(int id)
+              {
+                  return _repo.GetById(id);
+              }
+          }
+      }
+    src/Batch/ProductImporter.cs: |
+      using System;
+      using System.Collections.Generic;
+      using App.Data;
+      using App.Data.Impl;
+
+      namespace App.Batch
+      {
+          public class ProductImporter
+          {
+              private readonly IRepository<Product> _repo;
+
+              public ProductImporter(IRepository<Product> repo)
+              {
+                  _repo = repo;
+              }
+
+              public void ImportBatch(IEnumerable<Product> products)
+              {
+                  foreach (var p in products)
+                  {
+                      _repo.Add(p);
+                  }
+              }
+          }
+      }
+    src/Scheduling/CronJob.cs: |
+      using System;
+      GARBAGE_078_CRON_EXPR_A = "0 * * * *";
+      GARBAGE_078_TIMEZONE_B = "UTC";
+
+      namespace App.Scheduling
+      {
+          public class CronJob
+          {
+              public void Execute() { }
+          }
+      }
+    src/Scheduling/RetryPolicy.cs: |
+      using System;
+      GARBAGE_078_MAX_ATTEMPTS_C = 5;
+      GARBAGE_078_BACKOFF_MS_D = 1000;
+
+      namespace App.Scheduling
+      {
+          public class RetryPolicy
+          {
+              public bool ShouldRetry(int attempt) { return attempt < 5; }
+          }
+      }
+    src/Logging/SerilogConfig.cs: |
+      using System;
+      GARBAGE_078_LOG_PATH_E = "/var/log/app.log";
+      GARBAGE_078_ROLLING_SIZE_F = 10485760;
+
+      namespace App.Logging
+      {
+          public class SerilogConfig
+          {
+              public string FilePath { get; set; }
+          }
+      }
+  changed_files:
+    src/Data/IRepository.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Linq.Expressions;
+
+      namespace App.Data
+      {
+          public interface IRepository<T>
+          {
+              T GetById(int id);
+              IEnumerable<T> GetAll();
+              IEnumerable<T> Find(Expression<Func<T, bool>> predicate);
+              void Add(T entity);
+              void AddRange(IEnumerable<T> entities);
+              void Update(T entity);
+              void Delete(int id);
+              int Count();
+          }
+      }
+    src/Data/ProductRepository.cs: |
+      using System;
+      using System.Collections.Generic;
+      using App.Data;
+
+      namespace App.Data.Impl
+      {
+          public class ProductRepository : IRepository<Product>
+          {
+              public Product GetById(int id) { return null; }
+              public IEnumerable<Product> GetAll() { return new List<Product>(); }
+              public void Add(Product entity) { }
+              public void Update(Product entity) { }
+              public void Delete(int id) { }
+          }
+
+          public class Product
+          {
+              public int Id { get; set; }
+              public string Name { get; set; }
+              public decimal Price { get; set; }
+          }
+      }
+    src/Services/ProductService.cs: |
+      using System;
+      using App.Data;
+      using App.Data.Impl;
+
+      namespace App.Services
+      {
+          public class ProductService
+          {
+              private readonly IRepository<Product> _repo;
+
+              public ProductService(IRepository<Product> repo)
+              {
+                  _repo = repo;
+              }
+
+              public Product Get(int id)
+              {
+                  return _repo.GetById(id);
+              }
+
+              public void Create(Product product)
+              {
+                  _repo.Add(product);
+              }
+          }
+      }
+    src/Controllers/ProductController.cs: |
+      using System;
+      using App.Data;
+      using App.Data.Impl;
+
+      namespace App.Controllers
+      {
+          public class ProductController
+          {
+              private readonly IRepository<Product> _repo;
+
+              public ProductController(IRepository<Product> repo)
+              {
+                  _repo = repo;
+              }
+
+              public Product GetProduct(int id)
+              {
+                  return _repo.GetById(id);
+              }
+          }
+      }
+    src/Batch/ProductImporter.cs: |
+      using System;
+      using System.Collections.Generic;
+      using App.Data;
+      using App.Data.Impl;
+
+      namespace App.Batch
+      {
+          public class ProductImporter
+          {
+              private readonly IRepository<Product> _repo;
+
+              public ProductImporter(IRepository<Product> repo)
+              {
+                  _repo = repo;
+              }
+
+              public void ImportBatch(IEnumerable<Product> products)
+              {
+                  foreach (var p in products)
+                  {
+                      _repo.Add(p);
+                  }
+              }
+          }
+      }
+    src/Scheduling/CronJob.cs: |
+      using System;
+      GARBAGE_078_CRON_EXPR_A = "0 * * * *";
+      GARBAGE_078_TIMEZONE_B = "UTC";
+
+      namespace App.Scheduling
+      {
+          public class CronJob
+          {
+              public void Execute() { }
+          }
+      }
+    src/Scheduling/RetryPolicy.cs: |
+      using System;
+      GARBAGE_078_MAX_ATTEMPTS_C = 5;
+      GARBAGE_078_BACKOFF_MS_D = 1000;
+
+      namespace App.Scheduling
+      {
+          public class RetryPolicy
+          {
+              public bool ShouldRetry(int attempt) { return attempt < 5; }
+          }
+      }
+    src/Logging/SerilogConfig.cs: |
+      using System;
+      GARBAGE_078_LOG_PATH_E = "/var/log/app.log";
+      GARBAGE_078_ROLLING_SIZE_F = 10485760;
+
+      namespace App.Logging
+      {
+          public class SerilogConfig
+          {
+              public string FilePath { get; set; }
+          }
+      }
+  commit_message: "feat: add Find, AddRange and Count to IRepository"
+fragments:
+- id: product_repo_implements
+  selector:
+    path: src/Data/ProductRepository.cs
+    anchor: "class ProductRepository : IRepository<Product>"
+- id: product_svc_using
+  selector:
+    path: src/Services/ProductService.cs
+    anchor: "using App.Data"
+- id: product_svc_repo
+  selector:
+    path: src/Services/ProductService.cs
+    anchor: "IRepository<Product> _repo"
+- id: controller_using
+  selector:
+    path: src/Controllers/ProductController.cs
+    anchor: "using App.Data"
+- id: importer_using
+  selector:
+    path: src/Batch/ProductImporter.cs
+    anchor: "using App.Data"
+- id: importer_add
+  selector:
+    path: src/Batch/ProductImporter.cs
+    anchor: "_repo.Add(p)"
+- id: no_cron
+  selector:
+    path: src/Scheduling/CronJob.cs
+- id: no_retry
+  selector:
+    path: src/Scheduling/RetryPolicy.cs
+- id: no_serilog
+  selector:
+    path: src/Logging/SerilogConfig.cs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_078_CRON_EXPR_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_078_TIMEZONE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_078_MAX_ATTEMPTS_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_078_BACKOFF_MS_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_078_LOG_PATH_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_078_ROLLING_SIZE_F
+oracle:
+  required:
+  - product_repo_implements
+  - product_svc_using
+  - product_svc_repo
+  - controller_using
+  - importer_using
+  - importer_add
+  allowed: []
+  forbidden:
+  - no_cron
+  - no_retry
+  - no_serilog
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

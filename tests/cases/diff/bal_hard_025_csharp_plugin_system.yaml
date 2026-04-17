@@ -1,0 +1,239 @@
+name: bal_hard_025_csharp_plugin_system
+tags:
+- lang:csharp
+- change:multi_file
+- change:new_function
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/Plugin/IPlugin.cs: |
+      namespace App.Plugin
+      {
+          public interface IPlugin
+          {
+              string Name { get; }
+              void Initialize();
+              string Execute(string input);
+          }
+      }
+    src/Plugin/PluginManager.cs: |
+      namespace App.Plugin
+      {
+          using System.Collections.Generic;
+          public class PluginManager
+          {
+              private readonly List<IPlugin> _plugins = new();
+              public void Register(IPlugin plugin)
+              {
+                  plugin.Initialize();
+                  _plugins.Add(plugin);
+              }
+              public List<string> ExecuteAll(string input)
+              {
+                  var results = new List<string>();
+                  foreach (var plugin in _plugins)
+                  {
+                      results.Add(plugin.Execute(input));
+                  }
+                  return results;
+              }
+          }
+      }
+    src/Plugins/UpperCasePlugin.cs: |
+      namespace App.Plugins
+      {
+          using App.Plugin;
+          public class UpperCasePlugin : IPlugin
+          {
+              public string Name => "UpperCase";
+              public void Initialize() { }
+              public string Execute(string input) => input.ToUpper();
+          }
+      }
+    src/Plugins/ReversePlugin.cs: |
+      namespace App.Plugins
+      {
+          using System;
+          using System.Linq;
+          using App.Plugin;
+          public class ReversePlugin : IPlugin
+          {
+              public string Name => "Reverse";
+              public void Initialize() { }
+              public string Execute(string input) => new string(input.Reverse().ToArray());
+          }
+      }
+    src/Pipeline/TextPipeline.cs: |
+      namespace App.Pipeline
+      {
+          using System.Collections.Generic;
+          using App.Plugin;
+          public class TextPipeline
+          {
+              private readonly PluginManager _manager;
+              public TextPipeline(PluginManager manager) { _manager = manager; }
+              public List<string> Process(string text) => _manager.ExecuteAll(text);
+          }
+      }
+    src/App/PipelineSetup.cs: |
+      namespace App.App
+      {
+          using App.Plugin;
+          using App.Plugins;
+          using App.Pipeline;
+          public class PipelineSetup
+          {
+              public static TextPipeline Create()
+              {
+                  var manager = new PluginManager();
+                  manager.Register(new UpperCasePlugin());
+                  manager.Register(new ReversePlugin());
+                  return new TextPipeline(manager);
+              }
+          }
+      }
+    src/Helpers/FileUtils.cs: |
+      namespace App.Helpers
+      {
+          using System.IO;
+          public static class FileUtils
+          {
+              public static string ReadAll(string path) => File.ReadAllText(path);
+          }
+      }
+    src/Helpers/MathUtils.cs: |
+      namespace App.Helpers
+      {
+          using System;
+          public static class MathUtils
+          {
+              public static int Clamp(int value, int min, int max) => Math.Max(min, Math.Min(max, value));
+          }
+      }
+  changed_files:
+    src/Plugin/IPlugin.cs: |
+      namespace App.Plugin
+      {
+          public interface IPlugin
+          {
+              string Name { get; }
+              int Priority { get; }
+              void Initialize();
+              string Execute(string input);
+          }
+      }
+    src/Plugin/PluginManager.cs: |
+      namespace App.Plugin
+      {
+          using System.Collections.Generic;
+          using System.Linq;
+          public class PluginManager
+          {
+              private readonly List<IPlugin> _plugins = new();
+              public void Register(IPlugin plugin)
+              {
+                  plugin.Initialize();
+                  _plugins.Add(plugin);
+                  _plugins.Sort((a, b) => b.Priority.CompareTo(a.Priority));
+              }
+              public List<string> ExecuteAll(string input)
+              {
+                  var results = new List<string>();
+                  foreach (var plugin in _plugins)
+                  {
+                      results.Add(plugin.Execute(input));
+                  }
+                  return results;
+              }
+              public string ExecuteChain(string input)
+              {
+                  var result = input;
+                  foreach (var plugin in _plugins)
+                  {
+                      result = plugin.Execute(result);
+                  }
+                  return result;
+              }
+          }
+      }
+    src/Plugins/UpperCasePlugin.cs: |
+      namespace App.Plugins
+      {
+          using App.Plugin;
+          public class UpperCasePlugin : IPlugin
+          {
+              public string Name => "UpperCase";
+              public int Priority => 10;
+              public void Initialize() { }
+              public string Execute(string input) => input.ToUpper();
+          }
+      }
+    src/Plugins/ReversePlugin.cs: |
+      namespace App.Plugins
+      {
+          using System;
+          using System.Linq;
+          using App.Plugin;
+          public class ReversePlugin : IPlugin
+          {
+              public string Name => "Reverse";
+              public int Priority => 5;
+              public void Initialize() { }
+              public string Execute(string input) => new string(input.Reverse().ToArray());
+          }
+      }
+  commit_message: "feat: add priority ordering and chain execution to plugins"
+fragments:
+- id: iplugin_priority
+  selector:
+    path: IPlugin.cs
+    anchor: "int Priority { get; }"
+- id: manager_sort_by_priority
+  selector:
+    path: PluginManager.cs
+    anchor: "_plugins.Sort((a, b) => b.Priority.CompareTo(a.Priority))"
+- id: manager_execute_chain
+  selector:
+    path: PluginManager.cs
+    anchor: "public string ExecuteChain"
+- id: uppercase_priority
+  selector:
+    path: UpperCasePlugin.cs
+    anchor: "public int Priority => 10"
+- id: reverse_priority
+  selector:
+    path: ReversePlugin.cs
+    anchor: "public int Priority => 5"
+- id: pipeline_uses_manager
+  selector:
+    path: TextPipeline.cs
+    anchor: "_manager.ExecuteAll"
+- id: setup_registers_plugins
+  selector:
+    path: PipelineSetup.cs
+    anchor: "manager.Register"
+- id: no_file_utils
+  selector:
+    path: Helpers/FileUtils.cs
+- id: no_math_utils
+  selector:
+    path: Helpers/MathUtils.cs
+- id: no_clamp
+  selector:
+    anchor: "public static int Clamp"
+oracle:
+  required:
+  - iplugin_priority
+  - manager_sort_by_priority
+  - manager_execute_chain
+  - uppercase_priority
+  - reverse_priority
+  - pipeline_uses_manager
+  - setup_registers_plugins
+  allowed: []
+  forbidden:
+  - no_file_utils
+  - no_math_utils
+  - no_clamp

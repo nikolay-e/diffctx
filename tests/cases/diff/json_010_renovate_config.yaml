@@ -1,150 +1,164 @@
 name: json_010_renovate_config
+tags:
+- lang:java
+- change:signature
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
 repo:
   initial_files:
-    renovate.json: |
-      {
-        "extends": ["config:base"],
-        "automerge": false,
-        "labels": ["dependencies"],
-        "schedule": ["every weekend"],
-        "prHourlyLimit": 5,
-        "prConcurrentLimit": 10
+    src/main/java/com/shop/inventory/ProductRepository.java: |
+      package com.shop.inventory;
+
+      import java.util.List;
+      import java.util.Optional;
+
+      public interface ProductRepository {
+          Optional<Product> findById(long id);
+          List<Product> findByCategory(String category);
+          void save(Product product);
       }
-    package.json: |
-      {
-        "name": "webapp",
-        "version": "3.0.0",
-        "dependencies": {
-          "lodash": "^4.17.0",
-          "express": "^4.18.0",
-          "axios": "^1.4.0"
-        },
-        "devDependencies": {
-          "jest": "^29.6.0",
-          "eslint": "^8.45.0",
-          "typescript": "^5.2.0"
-        }
+    src/main/java/com/shop/inventory/ProductService.java: |
+      package com.shop.inventory;
+
+      import java.util.List;
+      import java.util.Optional;
+
+      public class ProductService {
+          private final ProductRepository repository;
+
+          public ProductService(ProductRepository repository) {
+              this.repository = repository;
+          }
+
+          public Optional<Product> getProduct(long id) {
+              return repository.findById(id);
+          }
+
+          public List<Product> getByCategory(String category) {
+              return repository.findByCategory(category);
+          }
       }
-    src/app.js: |
-      const express = require('express');
-      const axios = require('axios');
-      const _ = require('lodash');
+    src/main/java/com/shop/inventory/Product.java: |
+      package com.shop.inventory;
 
-      const app = express();
+      public class Product {
+          private final long id;
+          private final String name;
+          private final String category;
 
-      app.get('/api/data', async (req, res) => {
-          const response = await axios.get('https://api.example.com/data');
-          const filtered = _.pick(response.data, ['id', 'name', 'status']);
-          res.json(filtered);
-      });
+          public Product(long id, String name, String category) {
+              this.id = id;
+              this.name = name;
+              this.category = category;
+          }
 
-      app.get('/api/health', (req, res) => {
-          res.json({ status: 'ok', version: '3.0.0' });
-      });
-
-      function startServer(port) {
-          return app.listen(port, () => {
-              console.log(`Server started on port ${port}`);
-          });
+          public long getId() { return id; }
+          public String getName() { return name; }
+          public String getCategory() { return category; }
       }
-
-      module.exports = { app, startServer };
-    .github/workflows/ci.yml: |
-      name: CI
-      on: [push, pull_request]
-      jobs:
-        test:
-          runs-on: ubuntu-latest
-          steps:
-            - uses: actions/checkout@v4
-            - uses: actions/setup-node@v4
-              with:
-                node-version: 18
-            - run: npm ci
-            - run: npm test
-            - run: npm run lint
-    tests/app.test.js: |
-      const request = require('supertest');
-      const { app } = require('../src/app');
-
-      describe('API endpoints', () => {
-          it('GET /api/health returns ok', async () => {
-              const res = await request(app).get('/api/health');
-              expect(res.status).toBe(200);
-              expect(res.body.status).toBe('ok');
-          });
-      });
+    garbage/AuditLogger.java: |
+      // GARBAGE_RENV_A = "audit_logger_marker"
+    garbage/MetricsCollector.java: |
+      // GARBAGE_RENV_B = "metrics_collector_marker"
+    garbage/HealthCheck.java: |
+      // GARBAGE_RENV_C = "health_check_marker"
   changed_files:
-    renovate.json: |
-      {
-        "extends": ["config:base"],
-        "automerge": true,
-        "labels": ["dependencies"],
-        "schedule": ["every weekend"],
-        "prHourlyLimit": 5,
-        "prConcurrentLimit": 10,
-        "packageRules": [
-          {"matchPackagePatterns": ["*"], "enabled": true},
-          {"matchDepTypes": ["devDependencies"], "automerge": true}
-        ]
+    src/main/java/com/shop/inventory/ProductRepository.java: |
+      package com.shop.inventory;
+
+      import java.util.List;
+      import java.util.Optional;
+
+      public interface ProductRepository {
+          Optional<Product> findById(long id);
+          List<Product> findByCategory(String category, int page, int pageSize);
+          void save(Product product);
+          void delete(long id);
       }
-  commit_message: Update files
+    src/main/java/com/shop/inventory/ProductService.java: |
+      package com.shop.inventory;
+
+      import java.util.List;
+      import java.util.Optional;
+
+      public class ProductService {
+          private final ProductRepository repository;
+
+          public ProductService(ProductRepository repository) {
+              this.repository = repository;
+          }
+
+          public Optional<Product> getProduct(long id) {
+              return repository.findById(id);
+          }
+
+          public List<Product> getByCategoryPaged(String category, int page, int pageSize) {
+              return repository.findByCategory(category, page, pageSize);
+          }
+
+          public void removeProduct(long id) {
+              repository.delete(id);
+          }
+      }
+    src/main/java/com/shop/inventory/Product.java: |
+      package com.shop.inventory;
+
+      public class Product {
+          private final long id;
+          private final String name;
+          private final String category;
+
+          public Product(long id, String name, String category) {
+              this.id = id;
+              this.name = name;
+              this.category = category;
+          }
+
+          public long getId() { return id; }
+          public String getName() { return name; }
+          public String getCategory() { return category; }
+      }
+    garbage/AuditLogger.java: |
+      // GARBAGE_RENV_A = "audit_logger_marker"
+    garbage/MetricsCollector.java: |
+      // GARBAGE_RENV_B = "metrics_collector_marker"
+    garbage/HealthCheck.java: |
+      // GARBAGE_RENV_C = "health_check_marker"
+  commit_message: "feat: add paginated findByCategory and delete to ProductRepository"
 fragments:
-- id: renovate
+- id: paginated_signature
   selector:
-    path: renovate.json
-    anchor: '"automerge": true'
-- id: renovate_1
+    anchor: "List<Product> findByCategory(String category, int page, int pageSize)"
+- id: delete_signature
   selector:
-    path: renovate.json
-    anchor: '"matchDepTypes": ["devDependencies"]'
-- id: no_ci
+    anchor: "void delete(long id)"
+- id: service_calls_paged
   selector:
-    path: .github/workflows/ci.yml
-- id: no_app_test
+    path: src/main/java/com/shop/inventory/ProductService.java
+    anchor: "getByCategoryPaged"
+- id: service_calls_delete
   selector:
-    path: tests/app.test.js
-- id: no_app
+    path: src/main/java/com/shop/inventory/ProductService.java
+    anchor: "removeProduct"
+- id: no_garbage_a
   selector:
-    path: src/app.js
-- id: no_global_0
+    anchor: GARBAGE_RENV_A
+- id: no_garbage_b
   selector:
-    anchor: _.pick
-- id: no_global_1
+    anchor: GARBAGE_RENV_B
+- id: no_garbage_c
   selector:
-    anchor: startServer
-- id: no_global_2
-  selector:
-    anchor: api.example.com
-- id: no_global_3
-  selector:
-    anchor: actions/checkout
-- id: no_global_4
-  selector:
-    anchor: actions/setup-node
-- id: no_global_5
-  selector:
-    anchor: npm run lint
-- id: no_global_6
-  selector:
-    anchor: supertest
-- id: no_global_7
-  selector:
-    anchor: GET /api/health
+    anchor: GARBAGE_RENV_C
 oracle:
   required:
-  - renovate
-  - renovate_1
+  - paginated_signature
+  - delete_signature
+  - service_calls_paged
+  - service_calls_delete
   allowed: []
   forbidden:
-  - no_ci
-  - no_app_test
-  - no_app
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

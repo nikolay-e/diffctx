@@ -1,0 +1,173 @@
+name: gap_063_pyts_multifile_color_palette
+tags:
+- lang:csharp
+- change:bug_fix
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/Shopping/CartCalculator.cs: |
+      namespace Shopping;
+
+      public class CartCalculator
+      {
+          public decimal CalculateTotal(IEnumerable<decimal> prices)
+          {
+              decimal total = 0;
+              foreach (var price in prices)
+                  total += price;
+              return total;
+          }
+
+          public decimal ApplyDiscount(decimal total, decimal discountPercent)
+          {
+              return total - (total / discountPercent);
+          }
+      }
+    tests/Shopping/CartCalculatorTests.cs: |
+      using Xunit;
+      using Shopping;
+
+      public class CartCalculatorTests
+      {
+          private readonly CartCalculator _calc = new();
+
+          [Fact]
+          public void ApplyDiscount_TenPercent_ReturnsCorrectAmount()
+          {
+              var result = _calc.ApplyDiscount(100m, 10m);
+              Assert.Equal(90m, result);
+          }
+
+          [Fact]
+          public void CalculateTotal_EmptyList_ReturnsZero()
+          {
+              var result = _calc.CalculateTotal(new List<decimal>());
+              Assert.Equal(0m, result);
+          }
+      }
+    garbage/Logging.cs: |
+      namespace Garbage;
+
+      public static class Logging
+      {
+          public const string GARBAGE_GAP063_A = "log_marker";
+
+          public static void Log(string msg) { }
+      }
+    garbage/Config.cs: |
+      namespace Garbage;
+
+      public static class Config
+      {
+          public const string GARBAGE_GAP063_B = "config_marker";
+          public const string GARBAGE_GAP063_C = "env_marker";
+      }
+    garbage/Metrics.cs: |
+      namespace Garbage;
+
+      public static class Metrics
+      {
+          public const string GARBAGE_GAP063_D = "metrics_marker";
+
+          public static void Record(string name, double value) { }
+      }
+  changed_files:
+    src/Shopping/CartCalculator.cs: |
+      namespace Shopping;
+
+      public class CartCalculator
+      {
+          public decimal CalculateTotal(IEnumerable<decimal> prices)
+          {
+              decimal total = 0;
+              foreach (var price in prices)
+                  total += price;
+              return total;
+          }
+
+          public decimal ApplyDiscount(decimal total, decimal discountPercent)
+          {
+              return total - (total * discountPercent / 100m);
+          }
+      }
+    tests/Shopping/CartCalculatorTests.cs: |
+      using Xunit;
+      using Shopping;
+
+      public class CartCalculatorTests
+      {
+          private readonly CartCalculator _calc = new();
+
+          [Fact]
+          public void ApplyDiscount_TenPercent_ReturnsCorrectAmount()
+          {
+              var result = _calc.ApplyDiscount(100m, 10m);
+              Assert.Equal(90m, result);
+          }
+
+          [Fact]
+          public void CalculateTotal_EmptyList_ReturnsZero()
+          {
+              var result = _calc.CalculateTotal(new List<decimal>());
+              Assert.Equal(0m, result);
+          }
+      }
+    garbage/Logging.cs: |
+      namespace Garbage;
+
+      public static class Logging
+      {
+          public const string GARBAGE_GAP063_A = "log_marker";
+
+          public static void Log(string msg) { }
+      }
+    garbage/Config.cs: |
+      namespace Garbage;
+
+      public static class Config
+      {
+          public const string GARBAGE_GAP063_B = "config_marker";
+          public const string GARBAGE_GAP063_C = "env_marker";
+      }
+    garbage/Metrics.cs: |
+      namespace Garbage;
+
+      public static class Metrics
+      {
+          public const string GARBAGE_GAP063_D = "metrics_marker";
+
+          public static void Record(string name, double value) { }
+      }
+  commit_message: "fix: correct discount formula from division to multiplication"
+fragments:
+- id: calc_fix
+  selector:
+    path: src/Shopping/CartCalculator.cs
+    anchor: "total * discountPercent / 100m"
+- id: test_file
+  selector:
+    path: tests/Shopping/CartCalculatorTests.cs
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_GAP063_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_GAP063_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_GAP063_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_GAP063_D
+oracle:
+  required:
+  - calc_fix
+  - test_file
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

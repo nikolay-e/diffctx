@@ -1,0 +1,91 @@
+name: bal_cfgcode_003_python_feature_flags
+tags:
+- lang:python
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    config/features.yaml: |
+      features:
+        dark_mode: false
+        beta_signup: false
+        analytics: true
+    src/app.py: |
+      import yaml
+
+      def load_features():
+          with open("config/features.yaml") as f:
+              data = yaml.safe_load(f)
+          return data["features"]
+
+      def is_feature_enabled(name):
+          features = load_features()
+          return features.get(name, False)
+    src/middleware.py: |
+      GARBAGE_CFGCODE_003_MW_A = "middleware"
+      GARBAGE_CFGCODE_003_MW_B = 42
+
+      class RequestLogger:
+          def process(self, request):
+              pass
+  changed_files:
+    config/features.yaml: |
+      features:
+        dark_mode: true
+        beta_signup: true
+        analytics: true
+        new_dashboard: false
+    src/app.py: |
+      import yaml
+
+      def load_features():
+          with open("config/features.yaml") as f:
+              data = yaml.safe_load(f)
+          return data["features"]
+
+      def is_feature_enabled(name):
+          features = load_features()
+          return features.get(name, False)
+    src/middleware.py: |
+      GARBAGE_CFGCODE_003_MW_A = "middleware"
+      GARBAGE_CFGCODE_003_MW_B = 42
+
+      class RequestLogger:
+          def process(self, request):
+              pass
+  commit_message: "config: enable dark mode and beta signup flags"
+fragments:
+- id: config_dark_mode
+  selector:
+    path: config/features.yaml
+    anchor: "dark_mode: true"
+- id: config_beta
+  selector:
+    path: config/features.yaml
+    anchor: "beta_signup: true"
+- id: app_reads_features
+  selector:
+    path: src/app.py
+    anchor: 'data["features"]'
+- id: no_middleware
+  selector:
+    path: src/middleware.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_003_MW_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_003_MW_B
+oracle:
+  required:
+  - config_dark_mode
+  - config_beta
+  - app_reads_features
+  allowed: []
+  forbidden:
+  - no_middleware
+  - no_global_0
+  - no_global_1

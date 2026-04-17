@@ -1,0 +1,140 @@
+name: gap_095_rust_same_file_trivial_bitfield_flags
+tags:
+- lang:rust
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+repo:
+  initial_files:
+    src/flags.rs: |
+      pub struct Flags {
+          bits: u32,
+      }
+
+      impl Flags {
+          pub fn empty() -> Self {
+              Flags { bits: 0 }
+          }
+
+          pub fn set(&mut self, bit: u32) {
+              self.bits |= 1 << bit;
+          }
+
+          pub fn clear(&mut self, bit: u32) {
+              self.bits &= !(1 << bit);
+          }
+
+          pub fn is_set(&self, bit: u32) -> bool {
+              (self.bits & (1 << bit)) != 0
+          }
+
+          pub fn raw(&self) -> u32 {
+              self.bits
+          }
+      }
+    src/bitmask.rs: |
+      pub fn count_ones(value: u32) -> u32 {
+          value.count_ones()
+      }
+
+      pub fn count_zeros(value: u32) -> u32 {
+          value.count_zeros()
+      }
+
+      pub fn leading_zeros(value: u32) -> u32 {
+          value.leading_zeros()
+      }
+
+      pub fn trailing_zeros(value: u32) -> u32 {
+          value.trailing_zeros()
+      }
+
+      pub fn rotate_left(value: u32, n: u32) -> u32 {
+          value.rotate_left(n)
+      }
+    src/register.rs: |
+      pub struct Register {
+          value: u64,
+      }
+
+      impl Register {
+          pub fn new() -> Self {
+              Register { value: 0 }
+          }
+
+          pub fn load(&mut self, val: u64) {
+              self.value = val;
+          }
+
+          pub fn read(&self) -> u64 {
+              self.value
+          }
+
+          pub fn increment(&mut self) {
+              self.value = self.value.wrapping_add(1);
+          }
+      }
+  changed_files:
+    src/flags.rs: |
+      pub struct Flags {
+          bits: u32,
+      }
+
+      impl Flags {
+          pub fn empty() -> Self {
+              Flags { bits: 0 }
+          }
+
+          pub fn all() -> Self {
+              Flags { bits: u32::MAX }
+          }
+
+          pub fn set(&mut self, bit: u32) {
+              self.bits |= 1 << bit;
+          }
+
+          pub fn clear(&mut self, bit: u32) {
+              self.bits &= !(1 << bit);
+          }
+
+          pub fn is_set(&self, bit: u32) -> bool {
+              (self.bits & (1 << bit)) != 0
+          }
+
+          pub fn raw(&self) -> u32 {
+              self.bits
+          }
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: flags_file
+  selector:
+    path: flags.rs
+- id: req_all
+  selector:
+    anchor: "pub fn all()"
+- id: req_empty
+  selector:
+    anchor: "pub fn empty()"
+- id: no_bitmask
+  selector:
+    path: bitmask.rs
+- id: no_register
+  selector:
+    path: register.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_095_A
+oracle:
+  required:
+  - flags_file
+  - req_all
+  - req_empty
+  allowed: []
+  forbidden:
+  - no_bitmask
+  - no_register
+  - no_global_0

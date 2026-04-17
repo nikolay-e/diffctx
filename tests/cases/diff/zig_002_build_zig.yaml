@@ -1,275 +1,156 @@
 name: zig_002_build_zig
+tags:
+- lang:rust
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:hard
 repo:
   initial_files:
-    build.zig: |
-      const std = @import("std");
+    src/crypto/hasher.rs: |
+      use std::collections::hash_map::DefaultHasher;
+      use std::hash::{Hash, Hasher};
 
-      pub fn build(b: *std.Build) void {
-          const target = b.standardTargetOptions(.{});
-          const optimize = b.standardOptimizeOption(.{});
-
-          const exe = b.addExecutable(.{
-              .name = "myapp",
-              .root_source_file = .{ .path = "src/main.zig" },
-              .target = target,
-              .optimize = optimize,
-          });
-
-          exe.addModule("network", b.createModule(.{
-              .source_file = .{ .path = "src/network.zig" },
-          }));
-
-          b.installArtifact(exe);
+      pub struct TokenHasher {
+          secret: String,
       }
-    src/main.zig: |
-      const std = @import("std");
-      const network = @import("network");
 
-      pub fn main() !void {
-          try network.listen(8080);
-      }
-    src/network.zig: |
-      const std = @import("std");
-
-      pub fn listen(port: u16) !void {
-          const address = std.net.Address.parseIp("0.0.0.0", port) catch unreachable;
-          var server = try address.listen(.{});
-          defer server.deinit();
-      }
-    src/storage.zig: |
-      const std = @import("std");
-
-      pub const StorageEngine = struct {
-          path: []const u8,
-          capacity: usize,
-
-          pub fn init(path: []const u8, capacity: usize) StorageEngine {
-              return .{ .path = path, .capacity = capacity };
+      impl TokenHasher {
+          pub fn new(secret: &str) -> Self {
+              Self { secret: secret.to_string() }
           }
 
-          pub fn write(self: *StorageEngine, key: []const u8, value: []const u8) !void {
-              _ = self;
-              _ = key;
-              _ = value;
+          pub fn hash_token(&self, token: &str) -> u64 {
+              let mut h = DefaultHasher::new();
+              token.hash(&mut h);
+              h.finish()
           }
 
-          pub fn read(self: *StorageEngine, key: []const u8) !?[]const u8 {
-              _ = self;
-              _ = key;
-              return null;
+          pub fn verify(&self, token: &str, expected_hash: u64) -> bool {
+              self.hash_token(token) == expected_hash
           }
-      };
-    build.zig.zon: |
-      .{
-          .name = "myapp",
-          .version = "0.1.0",
-          GARBAGE_ZIG_002_ZON_MARKER_A = "zon",
-          GARBAGE_ZIG_002_MANIFEST_B = true,
       }
-    src/client.zig: |
-      const std = @import("std");
+    src/auth/session_store.rs: |
+      use crate::crypto::hasher::TokenHasher;
+      use std::collections::HashMap;
 
-      const GARBAGE_ZIG_002_CLIENT_MARKER_C: []const u8 = "client";
-      const GARBAGE_ZIG_002_CONN_FLAG_D: bool = true;
-
-      pub fn connect(host: []const u8, port: u16) !std.net.Stream {
-          const address = try std.net.Address.resolveIp(host, port);
-          return try std.net.tcpConnectToAddress(address);
+      pub struct SessionStore {
+          hasher: TokenHasher,
+          sessions: HashMap<u64, String>,
       }
-    src/logger.zig: |
-      const std = @import("std");
 
-      const GARBAGE_ZIG_002_LOGGER_MARKER_E: []const u8 = "logger";
-      const GARBAGE_ZIG_002_LOG_LEVEL_F: u8 = 3;
+      impl SessionStore {
+          pub fn new(secret: &str) -> Self {
+              Self {
+                  hasher: TokenHasher::new(secret),
+                  sessions: HashMap::new(),
+              }
+          }
 
-      pub fn info(msg: []const u8) void {
-          std.debug.print("[INFO] {s}\n", .{msg});
+          pub fn create_session(&mut self, token: &str, user_id: &str) {
+              let hash = self.hasher.hash_token(token);
+              self.sessions.insert(hash, user_id.to_string());
+          }
+
+          pub fn get_user(&self, token: &str) -> Option<&String> {
+              let hash = self.hasher.hash_token(token);
+              self.sessions.get(&hash)
+          }
       }
-    src/constants.zig: |
-      const GARBAGE_ZIG_002_CONST_MARKER_G: []const u8 = "constants";
-      const GARBAGE_ZIG_002_APP_VER_H: []const u8 = "0.1.0";
-
-      pub const max_retries: u32 = 3;
-      pub const timeout_ms: u64 = 5000;
+    garbage/rate_limiter.rs: |
+      // GARBAGE_ZIG002_A = "token_bucket_marker"
+    garbage/audit_log.rs: |
+      // GARBAGE_ZIG002_B = "audit_log_marker"
+    garbage/cors.rs: |
+      // GARBAGE_ZIG002_C = "cors_middleware_marker"
   changed_files:
-    build.zig: |
-      const std = @import("std");
+    src/crypto/hasher.rs: |
+      use std::collections::hash_map::DefaultHasher;
+      use std::hash::{Hash, Hasher};
 
-      pub fn build(b: *std.Build) void {
-          const target = b.standardTargetOptions(.{});
-          const optimize = b.standardOptimizeOption(.{});
-
-          const exe = b.addExecutable(.{
-              .name = "myapp",
-              .root_source_file = .{ .path = "src/main.zig" },
-              .target = target,
-              .optimize = optimize,
-          });
-
-          exe.addModule("network", b.createModule(.{
-              .source_file = .{ .path = "src/network.zig" },
-          }));
-
-          exe.addModule("storage", b.createModule(.{
-              .source_file = .{ .path = "src/storage.zig" },
-          }));
-
-          b.installArtifact(exe);
+      pub struct TokenHasher {
+          secret: String,
       }
-    src/main.zig: |
-      const std = @import("std");
-      const network = @import("network");
-      const storage = @import("storage");
 
-      pub fn main() !void {
-          var store = storage.StorageEngine.init("/tmp/data", 1024 * 1024);
-          try store.write("server.started", "true");
-          try network.listen(8080);
-      }
-    src/network.zig: |
-      const std = @import("std");
-
-      pub fn listen(port: u16) !void {
-          const address = std.net.Address.parseIp("0.0.0.0", port) catch unreachable;
-          var server = try address.listen(.{});
-          defer server.deinit();
-      }
-    src/storage.zig: |
-      const std = @import("std");
-
-      pub const StorageEngine = struct {
-          path: []const u8,
-          capacity: usize,
-
-          pub fn init(path: []const u8, capacity: usize) StorageEngine {
-              return .{ .path = path, .capacity = capacity };
+      impl TokenHasher {
+          pub fn new(secret: &str) -> Self {
+              Self { secret: secret.to_string() }
           }
 
-          pub fn write(self: *StorageEngine, key: []const u8, value: []const u8) !void {
-              _ = self;
-              _ = key;
-              _ = value;
+          pub fn hash_token(&self, token: &str) -> u64 {
+              let mut h = DefaultHasher::new();
+              let combined = format!("{}:{}", self.secret, token);
+              combined.hash(&mut h);
+              h.finish()
           }
 
-          pub fn read(self: *StorageEngine, key: []const u8) !?[]const u8 {
-              _ = self;
-              _ = key;
-              return null;
+          pub fn verify(&self, token: &str, expected_hash: u64) -> bool {
+              self.hash_token(token) == expected_hash
           }
-      };
-    build.zig.zon: |
-      .{
-          .name = "myapp",
-          .version = "0.1.0",
-          GARBAGE_ZIG_002_ZON_MARKER_A = "zon",
-          GARBAGE_ZIG_002_MANIFEST_B = true,
       }
-    src/client.zig: |
-      const std = @import("std");
+    src/auth/session_store.rs: |
+      use crate::crypto::hasher::TokenHasher;
+      use std::collections::HashMap;
 
-      const GARBAGE_ZIG_002_CLIENT_MARKER_C: []const u8 = "client";
-      const GARBAGE_ZIG_002_CONN_FLAG_D: bool = true;
-
-      pub fn connect(host: []const u8, port: u16) !std.net.Stream {
-          const address = try std.net.Address.resolveIp(host, port);
-          return try std.net.tcpConnectToAddress(address);
+      pub struct SessionStore {
+          hasher: TokenHasher,
+          sessions: HashMap<u64, String>,
       }
-    src/logger.zig: |
-      const std = @import("std");
 
-      const GARBAGE_ZIG_002_LOGGER_MARKER_E: []const u8 = "logger";
-      const GARBAGE_ZIG_002_LOG_LEVEL_F: u8 = 3;
+      impl SessionStore {
+          pub fn new(secret: &str) -> Self {
+              Self {
+                  hasher: TokenHasher::new(secret),
+                  sessions: HashMap::new(),
+              }
+          }
 
-      pub fn info(msg: []const u8) void {
-          std.debug.print("[INFO] {s}\n", .{msg});
+          pub fn create_session(&mut self, token: &str, user_id: &str) {
+              let hash = self.hasher.hash_token(token);
+              self.sessions.insert(hash, user_id.to_string());
+          }
+
+          pub fn get_user(&self, token: &str) -> Option<&String> {
+              let hash = self.hasher.hash_token(token);
+              self.sessions.get(&hash)
+          }
       }
-    src/constants.zig: |
-      const GARBAGE_ZIG_002_CONST_MARKER_G: []const u8 = "constants";
-      const GARBAGE_ZIG_002_APP_VER_H: []const u8 = "0.1.0";
-
-      pub const max_retries: u32 = 3;
-      pub const timeout_ms: u64 = 5000;
-  commit_message: Update files
+    garbage/rate_limiter.rs: |
+      // GARBAGE_ZIG002_A = "token_bucket_marker"
+    garbage/audit_log.rs: |
+      // GARBAGE_ZIG002_B = "audit_log_marker"
+    garbage/cors.rs: |
+      // GARBAGE_ZIG002_C = "cors_middleware_marker"
+  commit_message: "fix: include secret in hash_token to prevent token forgery"
 fragments:
-- id: build
+- id: secret_in_hash
   selector:
-    path: build.zig
-    anchor: '"storage"'
-- id: build_1
+    path: src/crypto/hasher.rs
+    anchor: 'let combined = format!("{}:{}", self.secret, token)'
+- id: session_store_calls_hasher
   selector:
-    path: build.zig
-    anchor: src/storage.zig
-- id: main
+    path: src/auth/session_store.rs
+    anchor: "use crate::crypto::hasher::TokenHasher"
+- id: create_session_context
   selector:
-    path: src/main.zig
-    anchor: const storage = @import("storage")
-- id: main_1
+    path: src/auth/session_store.rs
+    anchor: "let hash = self.hasher.hash_token(token)"
+- id: no_garbage_a
   selector:
-    path: src/main.zig
-    anchor: storage.StorageEngine.init
-- id: storage
+    anchor: GARBAGE_ZIG002_A
+- id: no_garbage_b
   selector:
-    path: src/storage.zig
-    anchor: pub const StorageEngine = struct
-- id: storage_1
+    anchor: GARBAGE_ZIG002_B
+- id: no_garbage_c
   selector:
-    path: src/storage.zig
-    anchor: 'pub fn init(path: []const u8, capacity: usize) StorageEngine'
-- id: no_build_zig
-  selector:
-    path: build.zig.zon
-- id: no_client
-  selector:
-    path: src/client.zig
-- id: no_logger
-  selector:
-    path: src/logger.zig
-- id: no_constants
-  selector:
-    path: src/constants.zig
-- id: no_global_0
-  selector:
-    anchor: GARBAGE_ZIG_002_ZON_MARKER_A
-- id: no_global_1
-  selector:
-    anchor: GARBAGE_ZIG_002_MANIFEST_B
-- id: no_global_2
-  selector:
-    anchor: GARBAGE_ZIG_002_CLIENT_MARKER_C
-- id: no_global_3
-  selector:
-    anchor: GARBAGE_ZIG_002_CONN_FLAG_D
-- id: no_global_4
-  selector:
-    anchor: GARBAGE_ZIG_002_LOGGER_MARKER_E
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_ZIG_002_LOG_LEVEL_F
-- id: no_global_6
-  selector:
-    anchor: GARBAGE_ZIG_002_CONST_MARKER_G
-- id: no_global_7
-  selector:
-    anchor: GARBAGE_ZIG_002_APP_VER_H
+    anchor: GARBAGE_ZIG002_C
 oracle:
   required:
-  - build
-  - build_1
-  - main
-  - main_1
-  - storage
-  - storage_1
+  - secret_in_hash
+  - session_store_calls_hasher
+  - create_session_context
   allowed: []
   forbidden:
-  - no_build_zig
-  - no_client
-  - no_logger
-  - no_constants
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

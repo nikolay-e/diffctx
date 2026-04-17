@@ -1,0 +1,168 @@
+name: bal3_3hop_016_rust_handler_service_repo_entity
+tags:
+- lang:rust
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/entity/user.rs: |
+      pub struct User {
+          pub id: u64,
+          pub name: String,
+          pub email: String,
+      }
+
+      impl User {
+          pub fn new(id: u64, name: String, email: String) -> Self {
+              Self { id, name, email }
+          }
+
+          pub fn display_name(&self) -> &str {
+              &self.name
+          }
+      }
+    src/entity/mod.rs: |
+      pub mod user;
+    src/repo/user_repo.rs: |
+      use crate::entity::user::User;
+
+      pub struct UserRepo {
+          users: Vec<User>,
+      }
+
+      impl UserRepo {
+          pub fn new() -> Self {
+              Self { users: Vec::new() }
+          }
+
+          pub fn save(&mut self, user: User) {
+              self.users.push(user);
+          }
+
+          pub fn find_by_id(&self, id: u64) -> Option<&User> {
+              self.users.iter().find(|u| u.id == id)
+          }
+      }
+    src/repo/mod.rs: |
+      pub mod user_repo;
+    src/service/user_service.rs: |
+      use crate::repo::user_repo::UserRepo;
+
+      pub struct UserService {
+          repo: UserRepo,
+      }
+
+      impl UserService {
+          pub fn new(repo: UserRepo) -> Self {
+              Self { repo }
+          }
+
+          pub fn get_user_name(&self, id: u64) -> Option<String> {
+              self.repo.find_by_id(id).map(|u| u.name.clone())
+          }
+      }
+    src/service/mod.rs: |
+      pub mod user_service;
+    src/handler/user_handler.rs: |
+      use crate::service::user_service::UserService;
+
+      pub struct UserHandler {
+          service: UserService,
+      }
+
+      impl UserHandler {
+          pub fn new(service: UserService) -> Self {
+              Self { service }
+          }
+
+          pub fn handle_get(&self, id: u64) -> String {
+              match self.service.get_user_name(id) {
+                  Some(name) => format!("User: {}", name),
+                  None => "Not found".to_string(),
+              }
+          }
+      }
+    src/handler/mod.rs: |
+      pub mod user_handler;
+    src/util/format.rs: |
+      pub static GARBAGE_BAL3_016_FORMAT_MARKER_A: &str = "format";
+      pub static GARBAGE_BAL3_016_PADDING_MARKER_B: usize = 20;
+
+      pub fn pad_right(s: &str, width: usize) -> String {
+          format!("{:<width$}", s, width = width)
+      }
+    src/util/mod.rs: |
+      pub mod format;
+    src/lib.rs: |
+      pub mod entity;
+      pub mod repo;
+      pub mod service;
+      pub mod handler;
+      pub mod util;
+  changed_files:
+    src/entity/user.rs: |
+      pub struct User {
+          pub id: u64,
+          pub name: String,
+          pub email: String,
+          pub active: bool,
+      }
+
+      impl User {
+          pub fn new(id: u64, name: String, email: String) -> Self {
+              Self { id, name, email, active: true }
+          }
+
+          pub fn display_name(&self) -> &str {
+              &self.name
+          }
+
+          pub fn deactivate(&mut self) {
+              self.active = false;
+          }
+      }
+  commit_message: "Add active status field to user entity"
+fragments:
+- id: user_active
+  selector:
+    path: src/entity/user.rs
+    anchor: "pub active: bool"
+- id: user_deactivate
+  selector:
+    path: src/entity/user.rs
+    anchor: "pub fn deactivate"
+- id: repo_find
+  selector:
+    path: src/repo/user_repo.rs
+    anchor: "pub fn find_by_id"
+- id: service_get
+  selector:
+    path: src/service/user_service.rs
+    anchor: "pub fn get_user_name"
+- id: handler_get
+  selector:
+    path: src/handler/user_handler.rs
+    anchor: "pub fn handle_get"
+- id: no_format
+  selector:
+    path: src/util/format.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_016_FORMAT_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_016_PADDING_MARKER_B
+oracle:
+  required:
+  - user_active
+  - user_deactivate
+  - repo_find
+  - service_get
+  - handler_get
+  allowed: []
+  forbidden:
+  - no_format
+  - no_global_0
+  - no_global_1

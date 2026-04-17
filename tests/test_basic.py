@@ -298,3 +298,58 @@ def test_svg_files_not_classified_as_binary(tmp_path):
     assert "<svg" in node_content
     assert "<circle" in node_content
     assert 'xmlns="http://www.w3.org/2000/svg"' in node_content
+
+
+class TestMultiPathInput:
+    def test_single_file(self, temp_project, run_mapper):
+        file_path = temp_project / "src" / "main.py"
+        output = temp_project / "single.yaml"
+        assert run_mapper([str(file_path), "-o", str(output)])
+        result = load_yaml(output)
+        assert result["type"] == "file" or any(c.get("name", "").endswith("main.py") for c in result.get("children", []))
+
+    def test_multiple_files(self, temp_project, run_mapper):
+        f1 = temp_project / "src" / "main.py"
+        f2 = temp_project / "src" / "test.py"
+        output = temp_project / "multi.yaml"
+        assert run_mapper([str(f1), str(f2), "-o", str(output)])
+        result = load_yaml(output)
+        children = result.get("children", [])
+        names = {c["name"] for c in children}
+        assert len(names) == 2
+
+    def test_glob_pattern(self, temp_project, run_mapper):
+        output = temp_project / "glob.yaml"
+        assert run_mapper([str(temp_project / "src" / "*.py"), "-o", str(output)])
+        result = load_yaml(output)
+        children = result.get("children", [])
+        assert len(children) >= 2
+        assert all(c["name"].endswith(".py") for c in children)
+
+    def test_directory_plus_file(self, temp_project, run_mapper):
+        src_dir = temp_project / "src"
+        readme = temp_project / "README.md"
+        readme.write_text("# Test")
+        output = temp_project / "mixed.yaml"
+        assert run_mapper([str(src_dir), str(readme), "-o", str(output)])
+        result = load_yaml(output)
+        children = result.get("children", [])
+        types = {c["type"] for c in children}
+        assert "directory" in types
+        assert "file" in types
+
+    def test_multiple_directories(self, temp_project, run_mapper):
+        dir1 = temp_project / "src"
+        dir2 = temp_project / "docs"
+        output = temp_project / "multi_dir.yaml"
+        assert run_mapper([str(dir1), str(dir2), "-o", str(output)])
+        result = load_yaml(output)
+        children = result.get("children", [])
+        names = {c["name"] for c in children}
+        assert "src" in names
+        assert "docs" in names
+
+    def test_nonexistent_pattern_fails(self, run_mapper, capsys):
+        assert not run_mapper(["nonexistent_*.xyz"])
+        captured = capsys.readouterr()
+        assert "No matches" in captured.err or "Cannot access" in captured.err

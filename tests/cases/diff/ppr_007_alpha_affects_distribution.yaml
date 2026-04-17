@@ -1,247 +1,279 @@
 name: ppr_007_alpha_affects_distribution
+tags:
+- lang:typescript
+- change:multi_file
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:hard
 repo:
   initial_files:
-    base.py: |
-      def compute_base():
-          return 10
-    step1.py: |
-      from base import compute_base
+    src/storage/repository.ts: |
+      import { DbConnection } from './connection';
+      import { QueryBuilder } from './query_builder';
 
-      def add_margin():
-          price = compute_base()
-          return price + 5
-    step2.py: |
-      from step1 import add_margin
+      export class Repository<T> {
+          constructor(
+              private conn: DbConnection,
+              private table: string,
+          ) {}
 
-      def apply_tax():
-          subtotal = add_margin()
-          return subtotal * 1.2
-    step3.py: |
-      from step2 import apply_tax
+          async findById(id: string): Promise<T | null> {
+              const q = new QueryBuilder(this.table).where('id', id).limit(1);
+              const rows = await this.conn.execute(q.build());
+              return rows[0] as T ?? null;
+          }
 
-      def round_total():
-          total = apply_tax()
-          return round(total, 2)
-    step4.py: |
-      from step3 import round_total
+          async findAll(): Promise<T[]> {
+              const q = new QueryBuilder(this.table);
+              const rows = await this.conn.execute(q.build());
+              return rows as T[];
+          }
+      }
+    src/storage/connection.ts: |
+      export interface QueryResult {
+          rows: unknown[];
+      }
 
-      def format_receipt():
-          amount = round_total()
-          return f"Total: ${amount}"
-    alt_base.py: |
-      GARBAGE_PPR007_ALT_A = "alt_base"
-      GARBAGE_PPR007_ALT_B = 99
+      export class DbConnection {
+          constructor(private dsn: string) {}
 
-      def compute_base():
-          return GARBAGE_PPR007_ALT_B
+          async execute(sql: string): Promise<unknown[]> {
+              console.log(`Executing: ${sql}`);
+              return [];
+          }
+      }
+    src/storage/query_builder.ts: |
+      export class QueryBuilder {
+          private conditions: string[] = [];
+          private _limit?: number;
 
-      def compute_base_discounted():
-          GARBAGE_PPR007_ALT_C = 0.9
-          return compute_base() * GARBAGE_PPR007_ALT_C
-    price_logger.py: |
-      GARBAGE_PPR007_LOG_D = "logger"
-      GARBAGE_PPR007_LOG_E = True
+          constructor(private table: string) {}
 
-      def log_base_price(base_price):
-          GARBAGE_PPR007_LOG_F = f"Logged: {base_price}"
-          return GARBAGE_PPR007_LOG_F
+          where(col: string, val: string): this {
+              this.conditions.push(`${col} = '${val}'`);
+              return this;
+          }
 
-      class PriceAuditTrail:
-          GARBAGE_PPR007_LOG_G = []
+          limit(n: number): this {
+              this._limit = n;
+              return this;
+          }
 
-          def record(self, price):
-              self.GARBAGE_PPR007_LOG_G.append(price)
-    garbage_parallel_calc.py: |
-      GARBAGE_PPR007_CALC_H = "parallel_calc"
-      GARBAGE_PPR007_CALC_I = 50
+          build(): string {
+              let sql = `SELECT * FROM ${this.table}`;
+              if (this.conditions.length) sql += ` WHERE ${this.conditions.join(' AND ')}`;
+              if (this._limit) sql += ` LIMIT ${this._limit}`;
+              return sql;
+          }
+      }
+    src/domain/product_repository.ts: |
+      import { Repository } from '../storage/repository';
+      import { DbConnection } from '../storage/connection';
 
-      def parallel_base():
-          return GARBAGE_PPR007_CALC_I
+      export interface Product {
+          id: string;
+          name: string;
+          price: number;
+      }
 
-      def parallel_margin():
-          GARBAGE_PPR007_CALC_J = 8
-          return parallel_base() + GARBAGE_PPR007_CALC_J
+      export class ProductRepository extends Repository<Product> {
+          constructor(conn: DbConnection) {
+              super(conn, 'products');
+          }
+      }
+    src/workers/cleanup.ts: |
+      export const GARBAGE_PPR007_A = 'cleanup_worker_interval';
 
-      class ParallelPricing:
-          GARBAGE_PPR007_CALC_K = 1.15
+      export class CleanupWorker {
+          run(): void { console.log('cleanup'); }
+      }
+    src/cache/lru.ts: |
+      export const GARBAGE_PPR007_B = 'lru_cache_capacity';
+      export const GARBAGE_PPR007_C = 256;
 
-          def compute(self):
-              return parallel_margin() * self.GARBAGE_PPR007_CALC_K
+      export class LruCache<K, V> {
+          private map = new Map<K, V>();
+          get(k: K): V | undefined { return this.map.get(k); }
+          set(k: K, v: V): void { this.map.set(k, v); }
+      }
+    src/health/checker.ts: |
+      export const GARBAGE_PPR007_D = 'health_check_path';
+
+      export function checkHealth(): boolean { return true; }
   changed_files:
-    base.py: |
-      def compute_base():
-          return 25
-    step1.py: |
-      from base import compute_base
+    src/storage/repository.ts: |
+      import { DbConnection } from './connection';
+      import { QueryBuilder, SortOrder } from './query_builder';
 
-      def add_margin():
-          price = compute_base()
-          return price + 5
-    step2.py: |
-      from step1 import add_margin
+      export interface FindOptions {
+          orderBy?: string;
+          sortOrder?: SortOrder;
+          limit?: number;
+      }
 
-      def apply_tax():
-          subtotal = add_margin()
-          return subtotal * 1.2
-    step3.py: |
-      from step2 import apply_tax
+      export class Repository<T> {
+          constructor(
+              private conn: DbConnection,
+              private table: string,
+          ) {}
 
-      def round_total():
-          total = apply_tax()
-          return round(total, 2)
-    step4.py: |
-      from step3 import round_total
+          async findById(id: string): Promise<T | null> {
+              const q = new QueryBuilder(this.table).where('id', id).limit(1);
+              const rows = await this.conn.execute(q.build());
+              return rows[0] as T ?? null;
+          }
 
-      def format_receipt():
-          amount = round_total()
-          return f"Total: ${amount}"
-    alt_base.py: |
-      GARBAGE_PPR007_ALT_A = "alt_base"
-      GARBAGE_PPR007_ALT_B = 99
+          async findAll(options?: FindOptions): Promise<T[]> {
+              const q = new QueryBuilder(this.table);
+              if (options?.orderBy) q.orderBy(options.orderBy, options.sortOrder);
+              if (options?.limit) q.limit(options.limit);
+              const rows = await this.conn.execute(q.build());
+              return rows as T[];
+          }
+      }
+    src/storage/connection.ts: |
+      export interface QueryResult {
+          rows: unknown[];
+      }
 
-      def compute_base():
-          return GARBAGE_PPR007_ALT_B
+      export class DbConnection {
+          constructor(private dsn: string) {}
 
-      def compute_base_discounted():
-          GARBAGE_PPR007_ALT_C = 0.9
-          return compute_base() * GARBAGE_PPR007_ALT_C
-    price_logger.py: |
-      GARBAGE_PPR007_LOG_D = "logger"
-      GARBAGE_PPR007_LOG_E = True
+          async execute(sql: string): Promise<unknown[]> {
+              console.log(`Executing: ${sql}`);
+              return [];
+          }
+      }
+    src/storage/query_builder.ts: |
+      export type SortOrder = 'ASC' | 'DESC';
 
-      def log_base_price(base_price):
-          GARBAGE_PPR007_LOG_F = f"Logged: {base_price}"
-          return GARBAGE_PPR007_LOG_F
+      export class QueryBuilder {
+          private conditions: string[] = [];
+          private _limit?: number;
+          private _orderBy?: string;
+          private _sortOrder: SortOrder = 'ASC';
 
-      class PriceAuditTrail:
-          GARBAGE_PPR007_LOG_G = []
+          constructor(private table: string) {}
 
-          def record(self, price):
-              self.GARBAGE_PPR007_LOG_G.append(price)
-    garbage_parallel_calc.py: |
-      GARBAGE_PPR007_CALC_H = "parallel_calc"
-      GARBAGE_PPR007_CALC_I = 50
+          where(col: string, val: string): this {
+              this.conditions.push(`${col} = '${val}'`);
+              return this;
+          }
 
-      def parallel_base():
-          return GARBAGE_PPR007_CALC_I
+          limit(n: number): this {
+              this._limit = n;
+              return this;
+          }
 
-      def parallel_margin():
-          GARBAGE_PPR007_CALC_J = 8
-          return parallel_base() + GARBAGE_PPR007_CALC_J
+          orderBy(col: string, order: SortOrder = 'ASC'): this {
+              this._orderBy = col;
+              this._sortOrder = order;
+              return this;
+          }
 
-      class ParallelPricing:
-          GARBAGE_PPR007_CALC_K = 1.15
+          build(): string {
+              let sql = `SELECT * FROM ${this.table}`;
+              if (this.conditions.length) sql += ` WHERE ${this.conditions.join(' AND ')}`;
+              if (this._orderBy) sql += ` ORDER BY ${this._orderBy} ${this._sortOrder}`;
+              if (this._limit) sql += ` LIMIT ${this._limit}`;
+              return sql;
+          }
+      }
+    src/domain/product_repository.ts: |
+      import { Repository, FindOptions } from '../storage/repository';
+      import { DbConnection } from '../storage/connection';
 
-          def compute(self):
-              return parallel_margin() * self.GARBAGE_PPR007_CALC_K
-  commit_message: Update files
+      export interface Product {
+          id: string;
+          name: string;
+          price: number;
+      }
+
+      export class ProductRepository extends Repository<Product> {
+          constructor(conn: DbConnection) {
+              super(conn, 'products');
+          }
+
+          async findAllSortedByPrice(order: 'ASC' | 'DESC' = 'ASC'): Promise<Product[]> {
+              return this.findAll({ orderBy: 'price', sortOrder: order });
+          }
+      }
+    src/workers/cleanup.ts: |
+      export const GARBAGE_PPR007_A = 'cleanup_worker_interval';
+
+      export class CleanupWorker {
+          run(): void { console.log('cleanup'); }
+      }
+    src/cache/lru.ts: |
+      export const GARBAGE_PPR007_B = 'lru_cache_capacity';
+      export const GARBAGE_PPR007_C = 256;
+
+      export class LruCache<K, V> {
+          private map = new Map<K, V>();
+          get(k: K): V | undefined { return this.map.get(k); }
+          set(k: K, v: V): void { this.map.set(k, v); }
+      }
+    src/health/checker.ts: |
+      export const GARBAGE_PPR007_D = 'health_check_path';
+
+      export function checkHealth(): boolean { return true; }
+  commit_message: "feat: add orderBy and sortOrder options to Repository.findAll"
 fragments:
-- id: base
+- id: sort_order_type
   selector:
-    path: base.py
-    anchor: 'def compute_base():'
-- id: base_1
+    path: src/storage/query_builder.ts
+    anchor: "export type SortOrder"
+- id: query_builder_order_by
   selector:
-    path: base.py
-    anchor: return 25
-- id: step1
+    path: src/storage/query_builder.ts
+    anchor: "orderBy(col: string, order: SortOrder"
+- id: find_options_interface
   selector:
-    path: step1.py
-    anchor: from base import compute_base
-- id: step1_1
+    path: src/storage/repository.ts
+    anchor: "export interface FindOptions"
+- id: repository_find_all
   selector:
-    path: step1.py
-    anchor: price = compute_base()
-- id: step1_2
+    path: src/storage/repository.ts
+    anchor: "async findAll(options?: FindOptions)"
+- id: product_repo_sorted
   selector:
-    path: step1.py
-    anchor: return price + 5
-- id: no_alt_base
+    path: src/domain/product_repository.ts
+    anchor: "async findAllSortedByPrice"
+- id: no_cleanup
   selector:
-    path: alt_base.py
-- id: no_price_logger
+    path: src/workers/cleanup.ts
+- id: no_lru
   selector:
-    path: price_logger.py
-- id: no_garbage_parallel_calc
+    path: src/cache/lru.ts
+- id: no_health
   selector:
-    path: garbage_parallel_calc.py
+    path: src/health/checker.ts
 - id: no_global_0
   selector:
-    anchor: GARBAGE_PPR007_ALT_A
+    anchor: GARBAGE_PPR007_A
 - id: no_global_1
   selector:
-    anchor: GARBAGE_PPR007_ALT_B
+    anchor: GARBAGE_PPR007_B
 - id: no_global_2
   selector:
-    anchor: GARBAGE_PPR007_ALT_C
+    anchor: GARBAGE_PPR007_C
 - id: no_global_3
   selector:
-    anchor: compute_base_discounted
-- id: no_global_4
-  selector:
-    anchor: GARBAGE_PPR007_LOG_D
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_PPR007_LOG_E
-- id: no_global_6
-  selector:
-    anchor: GARBAGE_PPR007_LOG_F
-- id: no_global_7
-  selector:
-    anchor: GARBAGE_PPR007_LOG_G
-- id: no_global_8
-  selector:
-    anchor: PriceAuditTrail
-- id: no_global_9
-  selector:
-    anchor: log_base_price
-- id: no_global_10
-  selector:
-    anchor: GARBAGE_PPR007_CALC_H
-- id: no_global_11
-  selector:
-    anchor: GARBAGE_PPR007_CALC_I
-- id: no_global_12
-  selector:
-    anchor: GARBAGE_PPR007_CALC_J
-- id: no_global_13
-  selector:
-    anchor: GARBAGE_PPR007_CALC_K
-- id: no_global_14
-  selector:
-    anchor: ParallelPricing
-- id: no_global_15
-  selector:
-    anchor: parallel_base
-- id: no_global_16
-  selector:
-    anchor: parallel_margin
+    anchor: GARBAGE_PPR007_D
 oracle:
   required:
-  - base
-  - base_1
-  - step1
-  - step1_1
-  - step1_2
+  - sort_order_type
+  - query_builder_order_by
+  - find_options_interface
+  - repository_find_all
+  - product_repo_sorted
   allowed: []
   forbidden:
-  - no_alt_base
-  - no_price_logger
-  - no_garbage_parallel_calc
+  - no_cleanup
+  - no_lru
+  - no_health
   - no_global_0
   - no_global_1
   - no_global_2
   - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
-  - no_global_8
-  - no_global_9
-  - no_global_10
-  - no_global_11
-  - no_global_12
-  - no_global_13
-  - no_global_14
-  - no_global_15
-  - no_global_16

@@ -1,0 +1,182 @@
+name: bal2_3hop_035_rust_render_pipeline_shader
+tags:
+- lang:rust
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/gfx/shader.rs: |
+      #[derive(Debug, Clone)]
+      pub struct ShaderModule {
+          pub name: String,
+          pub source: String,
+          pub stage: ShaderStage,
+      }
+
+      #[derive(Debug, Clone, Copy)]
+      pub enum ShaderStage {
+          Vertex,
+          Fragment,
+      }
+
+      impl ShaderModule {
+          pub fn new(name: &str, source: &str, stage: ShaderStage) -> Self {
+              Self { name: name.to_string(), source: source.to_string(), stage }
+          }
+      }
+    src/gfx/material.rs: |
+      use crate::gfx::shader::{ShaderModule, ShaderStage};
+
+      pub struct Material {
+          vertex: ShaderModule,
+          fragment: ShaderModule,
+      }
+
+      impl Material {
+          pub fn new(vertex: ShaderModule, fragment: ShaderModule) -> Self {
+              Self { vertex, fragment }
+          }
+
+          pub fn shaders(&self) -> [&ShaderModule; 2] {
+              [&self.vertex, &self.fragment]
+          }
+      }
+    src/gfx/pipeline.rs: |
+      use crate::gfx::material::Material;
+
+      pub struct RenderPipeline {
+          material: Material,
+          depth_test: bool,
+      }
+
+      impl RenderPipeline {
+          pub fn new(material: Material, depth_test: bool) -> Self {
+              Self { material, depth_test }
+          }
+
+          pub fn bind(&self) {
+              for shader in self.material.shaders() {
+                  println!("Binding shader: {}", shader.name);
+              }
+          }
+      }
+    src/renderer/frame.rs: |
+      use crate::gfx::pipeline::RenderPipeline;
+
+      pub struct FrameRenderer {
+          pipelines: Vec<RenderPipeline>,
+      }
+
+      impl FrameRenderer {
+          pub fn new() -> Self {
+              Self { pipelines: Vec::new() }
+          }
+
+          pub fn add_pipeline(&mut self, pipeline: RenderPipeline) {
+              self.pipelines.push(pipeline);
+          }
+
+          pub fn render(&self) {
+              for pipeline in &self.pipelines {
+                  pipeline.bind();
+              }
+          }
+      }
+    src/gfx/texture.rs: |
+      GARBAGE_035_TEX_MARKER_A = "texture2d";
+      GARBAGE_035_FORMAT_MARKER_B = "rgba8";
+
+      pub struct Texture {
+          width: u32,
+          height: u32,
+      }
+
+      impl Texture {
+          pub fn new(width: u32, height: u32) -> Self {
+              Self { width, height }
+          }
+      }
+    src/gfx/mesh.rs: |
+      GARBAGE_035_MESH_MARKER_C = "vertex_buffer";
+      GARBAGE_035_INDEX_MARKER_D = "index_buffer";
+
+      pub struct Mesh {
+          vertex_count: usize,
+      }
+
+      impl Mesh {
+          pub fn new(vertex_count: usize) -> Self {
+              Self { vertex_count }
+          }
+      }
+    src/input/keyboard.rs: |
+      GARBAGE_035_KEY_MARKER_E = "keyboard_input";
+      GARBAGE_035_MOD_MARKER_F = "shift";
+
+      pub struct KeyboardState {
+          pressed: Vec<u8>,
+      }
+  changed_files:
+    src/gfx/shader.rs: |
+      #[derive(Debug, Clone)]
+      pub struct ShaderModule {
+          pub name: String,
+          pub source: String,
+          pub stage: ShaderStage,
+      }
+
+      #[derive(Debug, Clone, Copy)]
+      pub enum ShaderStage {
+          Vertex,
+          Fragment,
+          Compute,
+      }
+
+      impl ShaderModule {
+          pub fn new(name: &str, source: &str, stage: ShaderStage) -> Self {
+              Self { name: name.to_string(), source: source.to_string(), stage }
+          }
+      }
+  commit_message: "feat: add Compute variant to ShaderStage enum"
+fragments:
+- id: shader_compute
+  selector:
+    path: src/gfx/shader.rs
+    anchor: "Compute"
+- id: material_shaders
+  selector:
+    path: src/gfx/material.rs
+    anchor: "use crate::gfx::shader"
+- id: pipeline_bind
+  selector:
+    path: src/gfx/pipeline.rs
+    anchor: "pub fn bind"
+- id: frame_render
+  selector:
+    path: src/renderer/frame.rs
+    anchor: "pub fn render"
+- id: no_texture
+  selector:
+    path: src/gfx/texture.rs
+    anchor: "GARBAGE_035_TEX_MARKER_A"
+- id: no_mesh
+  selector:
+    path: src/gfx/mesh.rs
+    anchor: "GARBAGE_035_MESH_MARKER_C"
+- id: no_keyboard
+  selector:
+    path: src/input/keyboard.rs
+    anchor: "GARBAGE_035_KEY_MARKER_E"
+oracle:
+  required:
+  - shader_compute
+  - material_shaders
+  - pipeline_bind
+  - frame_render
+  allowed: []
+  forbidden:
+  - no_texture
+  - no_mesh
+  - no_keyboard

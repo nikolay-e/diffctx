@@ -1,0 +1,101 @@
+name: gap2_153_python_import_chain_shipping_calculator
+tags:
+- change:new_function
+- change:signature
+- change:single_file
+- context:import_chain
+- difficulty:hard
+- distance:2hop
+- lang:python
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    shipping/calculator.py: |
+      from shipping.rates import lookup_rate
+
+      class ShippingCalculator:
+          def __init__(self, origin_country: str):
+              self.origin_country = origin_country
+
+          def calculate_cost(self, weight_kg: float, destination: str) -> float:
+              rate = lookup_rate(self.origin_country, destination)
+              return round(weight_kg * rate, 2)
+    shipping/rates.py: |
+      from shipping.zones import zone_for_country
+
+      def lookup_rate(origin: str, destination: str) -> float:
+          zone = zone_for_country(destination)
+          base_rates = {1: 5.0, 2: 10.0, 3: 18.0, 4: 30.0}
+          return base_rates.get(zone, 50.0)
+
+      def express_multiplier(zone: int) -> float:
+          return 1.5 if zone <= 2 else 2.0
+    shipping/zones.py: |
+      ZONE_MAP = {
+          "US": 1, "CA": 1, "MX": 2, "GB": 2, "DE": 2,
+          "JP": 3, "AU": 3, "BR": 4, "ZA": 4,
+      }
+
+      def zone_for_country(country_code: str) -> int:
+          return ZONE_MAP.get(country_code, 4)
+
+      def is_domestic(origin: str, destination: str) -> bool:
+          return origin == destination
+    shipping/tracking.py: |
+      TRACKING_PREFIX = "SHP"
+
+      class TrackingService:
+          def __init__(self):
+              self._events: dict[str, list[str]] = {}
+
+          def add_event(self, tracking_id: str, event: str) -> None:
+              self._events.setdefault(tracking_id, []).append(event)
+
+          def latest_event(self, tracking_id: str) -> str:
+              events = self._events.get(tracking_id, [])
+              return events[-1] if events else "unknown"
+  changed_files:
+    shipping/calculator.py: |
+      from shipping.rates import lookup_rate, express_multiplier
+
+      class ShippingCalculator:
+          def __init__(self, origin_country: str):
+              self.origin_country = origin_country
+
+          def calculate_cost(self, weight_kg: float, destination: str) -> float:
+              rate = lookup_rate(self.origin_country, destination)
+              return round(weight_kg * rate, 2)
+
+          def calculate_express_cost(self, weight_kg: float, destination: str, zone: int) -> float:
+              base = self.calculate_cost(weight_kg, destination)
+              multiplier = express_multiplier(zone)
+              return round(base * multiplier, 2)
+  commit_message: "feat: add express shipping cost calculation"
+fragments:
+- id: calc_express
+  selector:
+    path: shipping/calculator.py
+    anchor: "def calculate_express_cost"
+- id: rates_express_mult
+  selector:
+    path: shipping/rates.py
+    anchor: "def express_multiplier"
+- id: zones_zone_map
+  selector:
+    path: shipping/zones.py
+    anchor: ZONE_MAP
+- id: no_tracking
+  selector:
+    path: shipping/tracking.py
+- id: no_tracking_prefix
+  selector:
+    anchor: TRACKING_PREFIX
+oracle:
+  required:
+  - calc_express
+  - rates_express_mult
+  - zones_zone_map
+  forbidden:
+  - no_tracking
+  - no_tracking_prefix

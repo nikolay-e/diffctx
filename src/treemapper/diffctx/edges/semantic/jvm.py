@@ -265,12 +265,8 @@ class JVMEdgeBuilder(EdgeBuilder):
 
         return list(discovered_set)
 
-    def _discover_single_hop(
-        self,
-        source_files: list[Path],
-        candidates: list[Path],
-        repo_root: Path | None,
-    ) -> list[Path]:
+    @staticmethod
+    def _collect_source_refs(source_files: list[Path]) -> tuple[set[str], set[str]]:
         type_refs: set[str] = set()
         import_packages: set[str] = set()
         for f in source_files:
@@ -286,9 +282,10 @@ class JVMEdgeBuilder(EdgeBuilder):
                             import_packages.add(parts[0])
             except (OSError, UnicodeDecodeError):
                 pass
+        return type_refs, import_packages
 
-        source_dirs = {f.parent for f in source_files}
-
+    @staticmethod
+    def _compute_import_dirs(repo_root: Path | None, import_packages: set[str]) -> set[Path]:
         import_dirs: set[Path] = set()
         if repo_root and import_packages:
             for pkg in import_packages:
@@ -296,20 +293,54 @@ class JVMEdgeBuilder(EdgeBuilder):
                 import_dirs.add(pkg_path)
                 for src_prefix in ("src/main/java", "src/main/kotlin", "src/main/scala"):
                     import_dirs.add(repo_root / src_prefix / Path(*pkg.split(".")))
+        return import_dirs
 
-        eligible_dirs = source_dirs | import_dirs
+    def _discover_single_hop(
+        self,
+        source_files: list[Path],
+        candidates: list[Path],
+        repo_root: Path | None,
+    ) -> list[Path]:
+        type_refs, import_packages = self._collect_source_refs(source_files)
+        source_dirs = {f.parent for f in source_files}
+        eligible_dirs = source_dirs | self._compute_import_dirs(repo_root, import_packages)
         source_set = set(source_files)
-        discovered: list[Path] = []
 
+        frontier_classes: set[str] = set()
+        frontier_packages: set[str] = set()
+        for f in source_files:
+            try:
+                content = f.read_text(encoding="utf-8")
+                frontier_classes.update(_extract_classes(content, f))
+                pkg = _extract_package(content)
+                if pkg:
+                    frontier_packages.add(pkg)
+            except (OSError, UnicodeDecodeError):
+                pass
+
+        discovered: list[Path] = []
         for candidate in candidates:
             if candidate in source_set:
                 continue
-            if candidate.parent not in eligible_dirs:
-                continue
             try:
                 content = candidate.read_text(encoding="utf-8")
-                if _extract_classes(content, candidate) & type_refs:
+                cand_classes = _extract_classes(content, candidate)
+
+                if candidate.parent in eligible_dirs and cand_classes & type_refs:
                     discovered.append(candidate)
+                    continue
+
+                cand_type_refs = _extract_type_refs(content)
+                if cand_type_refs & frontier_classes:
+                    discovered.append(candidate)
+                    continue
+
+                cand_imports = _extract_imports(content, candidate)
+                for imp in cand_imports:
+                    imp_class = imp.rsplit(".", 1)[-1]
+                    if imp_class in frontier_classes:
+                        discovered.append(candidate)
+                        break
             except (OSError, UnicodeDecodeError):
                 pass
 
@@ -369,23 +400,40 @@ class JVMEdgeBuilder(EdgeBuilder):
     ) -> None:
         for imp in _extract_imports(jf.content, jf.path):
             if imp.endswith(".*"):
-                if package_to_frags is not None:
-                    pkg_prefix = imp[:-2]
-                    for fid in package_to_frags.get(pkg_prefix, []):
-                        if fid != jf.id:
-                            self.add_edge(edges, jf.id, fid, self.import_weight)
-                continue
+                self._link_wildcard_import(jf, imp, package_to_frags, edges)
+            else:
+                self._link_explicit_import(jf, imp, fqn_to_frags, class_to_frags, edges)
 
-            imp_lower = imp.lower()
-            for fid in fqn_to_frags.get(imp_lower, []):
+    def _link_wildcard_import(
+        self,
+        jf: Fragment,
+        imp: str,
+        package_to_frags: dict[str, list[FragmentId]] | None,
+        edges: EdgeDict,
+    ) -> None:
+        if package_to_frags is None:
+            return
+        pkg_prefix = imp[:-2]
+        for fid in package_to_frags.get(pkg_prefix, []):
+            if fid != jf.id:
+                self.add_edge(edges, jf.id, fid, self.import_weight)
+
+    def _link_explicit_import(
+        self,
+        jf: Fragment,
+        imp: str,
+        fqn_to_frags: dict[str, list[FragmentId]],
+        class_to_frags: dict[str, list[FragmentId]],
+        edges: EdgeDict,
+    ) -> None:
+        for fid in fqn_to_frags.get(imp.lower(), []):
+            if fid != jf.id:
+                self.add_edge(edges, jf.id, fid, self.import_weight)
+        parts = imp.split(".")
+        if parts:
+            for fid in class_to_frags.get(parts[-1].lower(), []):
                 if fid != jf.id:
                     self.add_edge(edges, jf.id, fid, self.import_weight)
-
-            parts = imp.split(".")
-            if parts:
-                for fid in class_to_frags.get(parts[-1].lower(), []):
-                    if fid != jf.id:
-                        self.add_edge(edges, jf.id, fid, self.import_weight)
 
     def _link_refs(
         self,

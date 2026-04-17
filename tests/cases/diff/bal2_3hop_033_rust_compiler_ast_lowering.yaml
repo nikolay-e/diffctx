@@ -1,0 +1,171 @@
+name: bal2_3hop_033_rust_compiler_ast_lowering
+tags:
+- lang:rust
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/ast/node.rs: |
+      #[derive(Debug, Clone)]
+      pub enum AstNode {
+          IntLiteral(i64),
+          BinOp { op: BinOpKind, lhs: Box<AstNode>, rhs: Box<AstNode> },
+          Ident(String),
+      }
+
+      #[derive(Debug, Clone, Copy)]
+      pub enum BinOpKind {
+          Add,
+          Sub,
+          Mul,
+      }
+    src/hir/expr.rs: |
+      use crate::ast::node::{AstNode, BinOpKind};
+
+      #[derive(Debug)]
+      pub enum HirExpr {
+          Const(i64),
+          BinaryOp { op: BinOpKind, lhs: Box<HirExpr>, rhs: Box<HirExpr> },
+          Var(String),
+      }
+
+      pub fn lower_ast(node: &AstNode) -> HirExpr {
+          match node {
+              AstNode::IntLiteral(v) => HirExpr::Const(*v),
+              AstNode::BinOp { op, lhs, rhs } => HirExpr::BinaryOp {
+                  op: *op,
+                  lhs: Box::new(lower_ast(lhs)),
+                  rhs: Box::new(lower_ast(rhs)),
+              },
+              AstNode::Ident(name) => HirExpr::Var(name.clone()),
+          }
+      }
+    src/codegen/emitter.rs: |
+      use crate::hir::expr::HirExpr;
+      use crate::ast::node::BinOpKind;
+
+      pub struct Emitter {
+          output: Vec<String>,
+      }
+
+      impl Emitter {
+          pub fn new() -> Self {
+              Self { output: Vec::new() }
+          }
+
+          pub fn emit(&mut self, expr: &HirExpr) {
+              match expr {
+                  HirExpr::Const(v) => self.output.push(format!("PUSH {}", v)),
+                  HirExpr::BinaryOp { op, lhs, rhs } => {
+                      self.emit(lhs);
+                      self.emit(rhs);
+                      let instr = match op {
+                          BinOpKind::Add => "ADD",
+                          BinOpKind::Sub => "SUB",
+                          BinOpKind::Mul => "MUL",
+                      };
+                      self.output.push(instr.to_string());
+                  }
+                  HirExpr::Var(name) => self.output.push(format!("LOAD {}", name)),
+              }
+          }
+      }
+    src/driver/compile.rs: |
+      use crate::codegen::emitter::Emitter;
+      use crate::hir::expr::lower_ast;
+      use crate::ast::node::AstNode;
+
+      pub fn compile(ast: &AstNode) -> Vec<String> {
+          let hir = lower_ast(ast);
+          let mut emitter = Emitter::new();
+          emitter.emit(&hir);
+          emitter.instructions()
+      }
+    src/parser/lexer.rs: |
+      GARBAGE_033_LEXER_MARKER_A = "tokenizer";
+      GARBAGE_033_TOKEN_MARKER_B = "eof";
+
+      pub struct Lexer {
+          source: String,
+          pos: usize,
+      }
+
+      impl Lexer {
+          pub fn new(source: &str) -> Self {
+              Self { source: source.to_string(), pos: 0 }
+          }
+      }
+    src/optimizer/fold.rs: |
+      GARBAGE_033_FOLD_MARKER_C = "constant_fold";
+      GARBAGE_033_PASS_MARKER_D = 1;
+
+      pub fn constant_fold(value: i64) -> i64 {
+          value
+      }
+    src/diagnostics/error.rs: |
+      GARBAGE_033_DIAG_MARKER_E = "error_reporter";
+      GARBAGE_033_SPAN_MARKER_F = 0;
+
+      pub struct Diagnostic {
+          message: String,
+          line: usize,
+      }
+  changed_files:
+    src/ast/node.rs: |
+      #[derive(Debug, Clone)]
+      pub enum AstNode {
+          IntLiteral(i64),
+          BoolLiteral(bool),
+          BinOp { op: BinOpKind, lhs: Box<AstNode>, rhs: Box<AstNode> },
+          Ident(String),
+      }
+
+      #[derive(Debug, Clone, Copy)]
+      pub enum BinOpKind {
+          Add,
+          Sub,
+          Mul,
+      }
+  commit_message: "feat: add BoolLiteral variant to AST node"
+fragments:
+- id: ast_bool_literal
+  selector:
+    path: src/ast/node.rs
+    anchor: "BoolLiteral(bool)"
+- id: hir_lower_ast
+  selector:
+    path: src/hir/expr.rs
+    anchor: "pub fn lower_ast"
+- id: emitter_emit
+  selector:
+    path: src/codegen/emitter.rs
+    anchor: "pub fn emit"
+- id: driver_compile
+  selector:
+    path: src/driver/compile.rs
+    anchor: "pub fn compile"
+- id: no_lexer
+  selector:
+    path: src/parser/lexer.rs
+    anchor: "GARBAGE_033_LEXER_MARKER_A"
+- id: no_fold
+  selector:
+    path: src/optimizer/fold.rs
+    anchor: "GARBAGE_033_FOLD_MARKER_C"
+- id: no_diag
+  selector:
+    path: src/diagnostics/error.rs
+    anchor: "GARBAGE_033_DIAG_MARKER_E"
+oracle:
+  required:
+  - ast_bool_literal
+  - hir_lower_ast
+  - emitter_emit
+  - driver_compile
+  allowed: []
+  forbidden:
+  - no_lexer
+  - no_fold
+  - no_diag

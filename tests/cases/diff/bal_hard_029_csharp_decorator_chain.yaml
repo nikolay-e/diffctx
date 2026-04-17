@@ -1,0 +1,218 @@
+name: bal_hard_029_csharp_decorator_chain
+tags:
+- lang:csharp
+- change:multi_file
+- change:new_function
+- context:cross_module
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/Notification/INotifier.cs: |
+      namespace App.Notification
+      {
+          public interface INotifier
+          {
+              void Send(string message);
+          }
+      }
+    src/Notification/EmailNotifier.cs: |
+      namespace App.Notification
+      {
+          using System;
+          public class EmailNotifier : INotifier
+          {
+              private readonly string _recipient;
+              public EmailNotifier(string recipient) { _recipient = recipient; }
+              public void Send(string message)
+              {
+                  Console.WriteLine($"Email to {_recipient}: {message}");
+              }
+          }
+      }
+    src/Notification/NotifierDecorator.cs: |
+      namespace App.Notification
+      {
+          public abstract class NotifierDecorator : INotifier
+          {
+              protected readonly INotifier _wrapped;
+              protected NotifierDecorator(INotifier wrapped) { _wrapped = wrapped; }
+              public virtual void Send(string message) => _wrapped.Send(message);
+          }
+      }
+    src/Notification/SlackDecorator.cs: |
+      namespace App.Notification
+      {
+          using System;
+          public class SlackDecorator : NotifierDecorator
+          {
+              private readonly string _channel;
+              public SlackDecorator(INotifier wrapped, string channel) : base(wrapped) { _channel = channel; }
+              public override void Send(string message)
+              {
+                  base.Send(message);
+                  Console.WriteLine($"Slack #{_channel}: {message}");
+              }
+          }
+      }
+    src/Service/AlertService.cs: |
+      namespace App.Service
+      {
+          using App.Notification;
+          public class AlertService
+          {
+              private readonly INotifier _notifier;
+              public AlertService(INotifier notifier) { _notifier = notifier; }
+              public void Alert(string message) => _notifier.Send(message);
+          }
+      }
+    src/App/NotifierFactory.cs: |
+      namespace App.App
+      {
+          using App.Notification;
+          public static class NotifierFactory
+          {
+              public static INotifier Create(string email, string slackChannel)
+              {
+                  INotifier notifier = new EmailNotifier(email);
+                  notifier = new SlackDecorator(notifier, slackChannel);
+                  return notifier;
+              }
+          }
+      }
+    src/Controllers/AlertController.cs: |
+      namespace App.Controllers
+      {
+          using App.Service;
+          public class AlertController
+          {
+              private readonly AlertService _alertService;
+              public AlertController(AlertService alertService) { _alertService = alertService; }
+              public void TriggerAlert(string msg) => _alertService.Alert(msg);
+          }
+      }
+    src/Helpers/JsonSerializer.cs: |
+      namespace App.Helpers
+      {
+          public static class JsonSerializer
+          {
+              public static string Serialize(object obj) => obj.ToString();
+          }
+      }
+  changed_files:
+    src/Notification/SmsDecorator.cs: |
+      namespace App.Notification
+      {
+          using System;
+          public class SmsDecorator : NotifierDecorator
+          {
+              private readonly string _phoneNumber;
+              public SmsDecorator(INotifier wrapped, string phoneNumber) : base(wrapped)
+              {
+                  _phoneNumber = phoneNumber;
+              }
+              public override void Send(string message)
+              {
+                  base.Send(message);
+                  Console.WriteLine($"SMS to {_phoneNumber}: {message}");
+              }
+          }
+      }
+    src/Notification/RetryDecorator.cs: |
+      namespace App.Notification
+      {
+          using System;
+          public class RetryDecorator : NotifierDecorator
+          {
+              private readonly int _maxRetries;
+              public RetryDecorator(INotifier wrapped, int maxRetries = 3) : base(wrapped)
+              {
+                  _maxRetries = maxRetries;
+              }
+              public override void Send(string message)
+              {
+                  for (int i = 0; i <= _maxRetries; i++)
+                  {
+                      try { base.Send(message); return; }
+                      catch (Exception) { if (i == _maxRetries) throw; }
+                  }
+              }
+          }
+      }
+    src/App/NotifierFactory.cs: |
+      namespace App.App
+      {
+          using App.Notification;
+          public static class NotifierFactory
+          {
+              public static INotifier Create(string email, string slackChannel, string phone = null)
+              {
+                  INotifier notifier = new EmailNotifier(email);
+                  notifier = new SlackDecorator(notifier, slackChannel);
+                  if (phone != null)
+                      notifier = new SmsDecorator(notifier, phone);
+                  notifier = new RetryDecorator(notifier, 2);
+                  return notifier;
+              }
+          }
+      }
+  commit_message: "feat: add SMS and retry decorators to notification chain"
+fragments:
+- id: sms_decorator
+  selector:
+    path: SmsDecorator.cs
+    anchor: "class SmsDecorator : NotifierDecorator"
+- id: retry_decorator
+  selector:
+    path: RetryDecorator.cs
+    anchor: "class RetryDecorator : NotifierDecorator"
+- id: retry_logic
+  selector:
+    path: RetryDecorator.cs
+    anchor: "for (int i = 0; i <= _maxRetries; i++)"
+- id: factory_creates_sms
+  selector:
+    path: NotifierFactory.cs
+    anchor: "new SmsDecorator(notifier, phone)"
+- id: factory_creates_retry
+  selector:
+    path: NotifierFactory.cs
+    anchor: "new RetryDecorator(notifier, 2)"
+- id: notifier_interface
+  selector:
+    path: INotifier.cs
+    anchor: "public interface INotifier"
+- id: decorator_base
+  selector:
+    path: NotifierDecorator.cs
+    anchor: "abstract class NotifierDecorator"
+- id: alert_service_sends
+  selector:
+    path: AlertService.cs
+    anchor: "_notifier.Send(message)"
+- id: no_json_serializer
+  selector:
+    path: Helpers/JsonSerializer.cs
+- id: no_slack_body
+  selector:
+    path: SlackDecorator.cs
+    anchor: "Slack #"
+- id: no_email_body
+  selector:
+    path: EmailNotifier.cs
+    anchor: "Email to"
+oracle:
+  required:
+  - sms_decorator
+  - retry_decorator
+  - retry_logic
+  - factory_creates_sms
+  - factory_creates_retry
+  - notifier_interface
+  - decorator_base
+  - alert_service_sends
+  allowed: []
+  forbidden:
+  - no_json_serializer
+  - no_slack_body
+  - no_email_body

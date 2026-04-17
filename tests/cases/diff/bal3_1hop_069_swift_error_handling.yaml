@@ -1,0 +1,330 @@
+name: bal3_1hop_069_swift_error_handling
+tags:
+- lang:swift
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    Sources/Validation/Validator.swift: |
+      import Foundation
+
+      enum ValidationError: Error {
+          case emptyField(String)
+          case tooLong(String, max: Int)
+      }
+
+      class Validator {
+          func validateEmail(_ email: String) throws {
+              if email.isEmpty {
+                  throw ValidationError.emptyField("email")
+              }
+          }
+
+          func validateName(_ name: String) throws {
+              if name.isEmpty {
+                  throw ValidationError.emptyField("name")
+              }
+              if name.count > 100 {
+                  throw ValidationError.tooLong("name", max: 100)
+              }
+          }
+      }
+    Sources/Forms/RegistrationForm.swift: |
+      import Foundation
+      import Validation
+
+      class RegistrationForm {
+          private let validator: Validator
+          var name: String = ""
+          var email: String = ""
+
+          init(validator: Validator) {
+              self.validator = validator
+          }
+
+          func submit() throws {
+              try validator.validateName(name)
+              try validator.validateEmail(email)
+          }
+      }
+    Sources/Forms/ProfileEditForm.swift: |
+      import Foundation
+      import Validation
+
+      class ProfileEditForm {
+          private let validator: Validator
+          var displayName: String = ""
+
+          init(validator: Validator) {
+              self.validator = validator
+          }
+
+          func save() throws {
+              try validator.validateName(displayName)
+          }
+      }
+    Sources/Forms/ContactForm.swift: |
+      import Foundation
+      import Validation
+
+      class ContactForm {
+          private let validator: Validator
+          var senderEmail: String = ""
+          var message: String = ""
+
+          init(validator: Validator) {
+              self.validator = validator
+          }
+
+          func send() throws {
+              try validator.validateEmail(senderEmail)
+          }
+      }
+    Sources/Forms/FeedbackForm.swift: |
+      import Foundation
+      import Validation
+
+      class FeedbackForm {
+          private let validator: Validator
+          var title: String = ""
+          var body: String = ""
+
+          init(validator: Validator) {
+              self.validator = validator
+          }
+
+          func submit() throws {
+              try validator.validateName(title)
+          }
+      }
+    Sources/Theme/ColorPalette.swift: |
+      import Foundation
+      GARBAGE_069_PRIMARY_COLOR_A = "#3366FF"
+      GARBAGE_069_ACCENT_COLOR_B = "#FF6633"
+
+      struct ColorPalette {
+          static let primary = "#3366FF"
+          static let secondary = "#666666"
+      }
+    Sources/Theme/Typography.swift: |
+      import Foundation
+      GARBAGE_069_FONT_FAMILY_C = "Helvetica"
+      GARBAGE_069_FONT_SIZE_D = 16
+
+      struct Typography {
+          static let heading = "Helvetica-Bold"
+          static let body = "Helvetica"
+      }
+    Sources/Localization/StringTable.swift: |
+      import Foundation
+      GARBAGE_069_DEFAULT_LANG_E = "en"
+      GARBAGE_069_FALLBACK_LANG_F = "en"
+
+      class StringTable {
+          func localized(key: String) -> String { return key }
+      }
+  changed_files:
+    Sources/Validation/Validator.swift: |
+      import Foundation
+
+      enum ValidationError: Error, Equatable {
+          case emptyField(String)
+          case tooLong(String, max: Int)
+          case invalidFormat(String, pattern: String)
+          case outOfRange(String, min: Int, max: Int)
+      }
+
+      class Validator {
+          func validateEmail(_ email: String) throws {
+              if email.isEmpty {
+                  throw ValidationError.emptyField("email")
+              }
+              let emailPattern = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
+              if email.range(of: emailPattern, options: .regularExpression) == nil {
+                  throw ValidationError.invalidFormat("email", pattern: emailPattern)
+              }
+          }
+
+          func validateName(_ name: String) throws {
+              if name.isEmpty {
+                  throw ValidationError.emptyField("name")
+              }
+              if name.count > 100 {
+                  throw ValidationError.tooLong("name", max: 100)
+              }
+          }
+
+          func validateAge(_ age: Int) throws {
+              if age < 0 || age > 150 {
+                  throw ValidationError.outOfRange("age", min: 0, max: 150)
+              }
+          }
+      }
+    Sources/Forms/RegistrationForm.swift: |
+      import Foundation
+      import Validation
+
+      class RegistrationForm {
+          private let validator: Validator
+          var name: String = ""
+          var email: String = ""
+
+          init(validator: Validator) {
+              self.validator = validator
+          }
+
+          func submit() throws {
+              try validator.validateName(name)
+              try validator.validateEmail(email)
+          }
+      }
+    Sources/Forms/ProfileEditForm.swift: |
+      import Foundation
+      import Validation
+
+      class ProfileEditForm {
+          private let validator: Validator
+          var displayName: String = ""
+
+          init(validator: Validator) {
+              self.validator = validator
+          }
+
+          func save() throws {
+              try validator.validateName(displayName)
+          }
+      }
+    Sources/Forms/ContactForm.swift: |
+      import Foundation
+      import Validation
+
+      class ContactForm {
+          private let validator: Validator
+          var senderEmail: String = ""
+          var message: String = ""
+
+          init(validator: Validator) {
+              self.validator = validator
+          }
+
+          func send() throws {
+              try validator.validateEmail(senderEmail)
+          }
+      }
+    Sources/Forms/FeedbackForm.swift: |
+      import Foundation
+      import Validation
+
+      class FeedbackForm {
+          private let validator: Validator
+          var title: String = ""
+          var body: String = ""
+
+          init(validator: Validator) {
+              self.validator = validator
+          }
+
+          func submit() throws {
+              try validator.validateName(title)
+          }
+      }
+    Sources/Theme/ColorPalette.swift: |
+      import Foundation
+      GARBAGE_069_PRIMARY_COLOR_A = "#3366FF"
+      GARBAGE_069_ACCENT_COLOR_B = "#FF6633"
+
+      struct ColorPalette {
+          static let primary = "#3366FF"
+          static let secondary = "#666666"
+      }
+    Sources/Theme/Typography.swift: |
+      import Foundation
+      GARBAGE_069_FONT_FAMILY_C = "Helvetica"
+      GARBAGE_069_FONT_SIZE_D = 16
+
+      struct Typography {
+          static let heading = "Helvetica-Bold"
+          static let body = "Helvetica"
+      }
+    Sources/Localization/StringTable.swift: |
+      import Foundation
+      GARBAGE_069_DEFAULT_LANG_E = "en"
+      GARBAGE_069_FALLBACK_LANG_F = "en"
+
+      class StringTable {
+          func localized(key: String) -> String { return key }
+      }
+  commit_message: "fix: add email format validation and new error cases to Validator"
+fragments:
+- id: registration_imports
+  selector:
+    path: Sources/Forms/RegistrationForm.swift
+    anchor: "import Validation"
+- id: registration_validate_email
+  selector:
+    path: Sources/Forms/RegistrationForm.swift
+    anchor: "validator.validateEmail(email)"
+- id: profile_imports
+  selector:
+    path: Sources/Forms/ProfileEditForm.swift
+    anchor: "import Validation"
+- id: contact_imports
+  selector:
+    path: Sources/Forms/ContactForm.swift
+    anchor: "import Validation"
+- id: contact_validate_email
+  selector:
+    path: Sources/Forms/ContactForm.swift
+    anchor: "validator.validateEmail(senderEmail)"
+- id: feedback_imports
+  selector:
+    path: Sources/Forms/FeedbackForm.swift
+    anchor: "import Validation"
+- id: no_color_palette
+  selector:
+    path: Sources/Theme/ColorPalette.swift
+- id: no_typography
+  selector:
+    path: Sources/Theme/Typography.swift
+- id: no_string_table
+  selector:
+    path: Sources/Localization/StringTable.swift
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_069_PRIMARY_COLOR_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_069_ACCENT_COLOR_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_069_FONT_FAMILY_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_069_FONT_SIZE_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_069_DEFAULT_LANG_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_069_FALLBACK_LANG_F
+oracle:
+  required:
+  - registration_imports
+  - registration_validate_email
+  - profile_imports
+  - contact_imports
+  - contact_validate_email
+  - feedback_imports
+  allowed: []
+  forbidden:
+  - no_color_palette
+  - no_typography
+  - no_string_table
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

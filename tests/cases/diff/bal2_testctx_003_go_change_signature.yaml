@@ -1,0 +1,204 @@
+name: bal2_testctx_003_go_change_signature
+tags:
+- lang:go
+- change:signature
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    cache/lru.go: |
+      package cache
+
+      type LRUCache struct {
+          capacity int
+          items    map[string]string
+      }
+
+      func NewLRUCache(capacity int) *LRUCache {
+          return &LRUCache{
+              capacity: capacity,
+              items:    make(map[string]string),
+          }
+      }
+
+      func (c *LRUCache) Get(key string) (string, bool) {
+          val, ok := c.items[key]
+          return val, ok
+      }
+
+      func (c *LRUCache) Set(key, value string) {
+          if len(c.items) >= c.capacity {
+              for k := range c.items {
+                  delete(c.items, k)
+                  break
+              }
+          }
+          c.items[key] = value
+      }
+    cache/lru_test.go: |
+      package cache
+
+      import "testing"
+
+      func TestNewLRUCache(t *testing.T) {
+          c := NewLRUCache(10)
+          if c.capacity != 10 {
+              t.Fatal("wrong capacity")
+          }
+      }
+
+      func TestLRUCacheSetGet(t *testing.T) {
+          c := NewLRUCache(2)
+          c.Set("a", "1")
+          val, ok := c.Get("a")
+          if !ok || val != "1" {
+              t.Fatal("expected to find key a")
+          }
+      }
+    cache/redis.go: |
+      package cache
+
+      GARBAGE_BAL2_003_REDIS_A = "redis"
+      GARBAGE_BAL2_003_REDIS_MARKER_B = true
+
+      type RedisCache struct {
+          addr string
+      }
+
+      func NewRedisCache(addr string) *RedisCache {
+          return &RedisCache{addr: addr}
+      }
+    store/memory.go: |
+      package store
+
+      GARBAGE_BAL2_003_MEMORY_C = "memory"
+
+      type MemoryStore struct {
+          data map[string]interface{}
+      }
+
+      func NewMemoryStore() *MemoryStore {
+          return &MemoryStore{data: make(map[string]interface{})}
+      }
+  changed_files:
+    cache/lru.go: |
+      package cache
+
+      import "time"
+
+      type LRUCache struct {
+          capacity int
+          ttl      time.Duration
+          items    map[string]string
+      }
+
+      func NewLRUCache(capacity int, ttl time.Duration) *LRUCache {
+          return &LRUCache{
+              capacity: capacity,
+              ttl:      ttl,
+              items:    make(map[string]string),
+          }
+      }
+
+      func (c *LRUCache) Get(key string) (string, bool) {
+          val, ok := c.items[key]
+          return val, ok
+      }
+
+      func (c *LRUCache) Set(key, value string) {
+          if len(c.items) >= c.capacity {
+              for k := range c.items {
+                  delete(c.items, k)
+                  break
+              }
+          }
+          c.items[key] = value
+      }
+    cache/lru_test.go: |
+      package cache
+
+      import (
+          "testing"
+          "time"
+      )
+
+      func TestNewLRUCache(t *testing.T) {
+          c := NewLRUCache(10, 5*time.Minute)
+          if c.capacity != 10 {
+              t.Fatal("wrong capacity")
+          }
+          if c.ttl != 5*time.Minute {
+              t.Fatal("wrong ttl")
+          }
+      }
+
+      func TestLRUCacheSetGet(t *testing.T) {
+          c := NewLRUCache(2, time.Hour)
+          c.Set("a", "1")
+          val, ok := c.Get("a")
+          if !ok || val != "1" {
+              t.Fatal("expected to find key a")
+          }
+      }
+    cache/redis.go: |
+      package cache
+
+      GARBAGE_BAL2_003_REDIS_A = "redis"
+      GARBAGE_BAL2_003_REDIS_MARKER_B = true
+
+      type RedisCache struct {
+          addr string
+      }
+
+      func NewRedisCache(addr string) *RedisCache {
+          return &RedisCache{addr: addr}
+      }
+    store/memory.go: |
+      package store
+
+      GARBAGE_BAL2_003_MEMORY_C = "memory"
+
+      type MemoryStore struct {
+          data map[string]interface{}
+      }
+
+      func NewMemoryStore() *MemoryStore {
+          return &MemoryStore{data: make(map[string]interface{})}
+      }
+  commit_message: "Add TTL parameter to LRUCache constructor"
+fragments:
+- id: lru_constructor
+  selector:
+    path: cache/lru.go
+    anchor: "func NewLRUCache(capacity int, ttl time.Duration)"
+- id: lru_test
+  selector:
+    path: cache/lru_test.go
+    anchor: "func TestNewLRUCache"
+- id: no_redis
+  selector:
+    path: cache/redis.go
+- id: no_memory
+  selector:
+    path: store/memory.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL2_003_REDIS_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL2_003_REDIS_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL2_003_MEMORY_C
+oracle:
+  required:
+  - lru_constructor
+  - lru_test
+  allowed: []
+  forbidden:
+  - no_redis
+  - no_memory
+  - no_global_0
+  - no_global_1
+  - no_global_2

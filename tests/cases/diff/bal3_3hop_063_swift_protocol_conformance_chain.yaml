@@ -1,0 +1,190 @@
+name: bal3_3hop_063_swift_protocol_conformance_chain
+tags:
+- lang:swift
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    Sources/Protocols/Cacheable.swift: |
+      import Foundation
+
+      protocol Cacheable {
+          var cacheKey: String { get }
+          func serialize() -> Data
+      }
+    Sources/Models/Product.swift: |
+      import Foundation
+      import Protocols
+
+      struct Product: Cacheable {
+          let id: String
+          let name: String
+          let price: Double
+          var cacheKey: String { return "product_\(id)" }
+          func serialize() -> Data {
+              return Data()
+          }
+      }
+    Sources/Cache/CacheManager.swift: |
+      import Foundation
+      import Protocols
+
+      class CacheManager {
+          private var store: [String: Data] = [:]
+          func save(_ item: Cacheable) {
+              store[item.cacheKey] = item.serialize()
+          }
+          func load(key: String) -> Data? {
+              return store[key]
+          }
+      }
+    Sources/Services/ProductService.swift: |
+      import Foundation
+      import Cache
+      import Models
+
+      class ProductService {
+          private let cache: CacheManager
+          init(cache: CacheManager) {
+              self.cache = cache
+          }
+          func getProduct(id: String) -> Product? {
+              if let data = cache.load(key: "product_\(id)") {
+                  return nil
+              }
+              return nil
+          }
+      }
+    Sources/Analytics/Tracker.swift: |
+      import Foundation
+      let GARBAGE_063_TRACKER_A = "analytics"
+      let GARBAGE_063_EVENT_B = "track"
+
+      class Tracker {
+          func track(event: String) {}
+      }
+    Sources/Analytics/Logger.swift: |
+      import Foundation
+      let GARBAGE_063_LOGGER_C = "log"
+      let GARBAGE_063_LEVEL_D = "info"
+
+      class Logger {
+          func log(message: String) {}
+      }
+  changed_files:
+    Sources/Protocols/Cacheable.swift: |
+      import Foundation
+
+      protocol Cacheable {
+          var cacheKey: String { get }
+          var ttl: TimeInterval { get }
+          func serialize() -> Data
+      }
+    Sources/Models/Product.swift: |
+      import Foundation
+      import Protocols
+
+      struct Product: Cacheable {
+          let id: String
+          let name: String
+          let price: Double
+          var cacheKey: String { return "product_\(id)" }
+          var ttl: TimeInterval { return 300 }
+          func serialize() -> Data {
+              return Data()
+          }
+      }
+    Sources/Cache/CacheManager.swift: |
+      import Foundation
+      import Protocols
+
+      class CacheManager {
+          private var store: [String: Data] = [:]
+          private var timestamps: [String: Date] = [:]
+          func save(_ item: Cacheable) {
+              store[item.cacheKey] = item.serialize()
+              timestamps[item.cacheKey] = Date()
+          }
+          func load(key: String, ttl: TimeInterval) -> Data? {
+              guard let ts = timestamps[key], Date().timeIntervalSince(ts) < ttl else {
+                  return nil
+              }
+              return store[key]
+          }
+      }
+    Sources/Services/ProductService.swift: |
+      import Foundation
+      import Cache
+      import Models
+
+      class ProductService {
+          private let cache: CacheManager
+          init(cache: CacheManager) {
+              self.cache = cache
+          }
+          func getProduct(id: String) -> Product? {
+              if let data = cache.load(key: "product_\(id)", ttl: 300) {
+                  return nil
+              }
+              return nil
+          }
+      }
+    Sources/Analytics/Tracker.swift: |
+      import Foundation
+      let GARBAGE_063_TRACKER_A = "analytics"
+      let GARBAGE_063_EVENT_B = "track"
+
+      class Tracker {
+          func track(event: String) {}
+      }
+    Sources/Analytics/Logger.swift: |
+      import Foundation
+      let GARBAGE_063_LOGGER_C = "log"
+      let GARBAGE_063_LEVEL_D = "info"
+
+      class Logger {
+          func log(message: String) {}
+      }
+  commit_message: "feat: add TTL support to Cacheable protocol"
+fragments:
+- id: cacheable_ttl
+  selector:
+    path: Sources/Protocols/Cacheable.swift
+    anchor: "var ttl: TimeInterval"
+- id: product_ttl
+  selector:
+    path: Sources/Models/Product.swift
+    anchor: "var ttl: TimeInterval"
+- id: cache_timestamps
+  selector:
+    path: Sources/Cache/CacheManager.swift
+    anchor: "private var timestamps"
+- id: cache_load_ttl
+  selector:
+    path: Sources/Cache/CacheManager.swift
+    anchor: "func load(key: String, ttl: TimeInterval)"
+- id: service_uses_ttl
+  selector:
+    path: Sources/Services/ProductService.swift
+    anchor: "cache.load(key:"
+- id: no_tracker
+  selector:
+    path: Sources/Analytics/Tracker.swift
+    anchor: "GARBAGE_063_TRACKER_A"
+- id: no_logger
+  selector:
+    path: Sources/Analytics/Logger.swift
+    anchor: "GARBAGE_063_LOGGER_C"
+oracle:
+  required:
+  - cacheable_ttl
+  - product_ttl
+  - cache_load_ttl
+  - service_uses_ttl
+  allowed:
+  - cache_timestamps
+  forbidden:
+  - no_tracker
+  - no_logger

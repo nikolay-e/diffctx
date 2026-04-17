@@ -1,0 +1,123 @@
+name: r_lang_011_shiny_reactive_changed
+tags:
+- lang:r
+- change:single_file
+- change:refactor
+- context:cross_module
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    R/server.R: |
+      library(shiny)
+      library(dplyr)
+
+      server <- function(input, output, session) {
+        filtered_data <- reactive({
+          req(input$region)
+          sales_data |>
+            filter(region == input$region)
+        })
+
+        output$sales_table <- renderTable({
+          filtered_data()
+        })
+
+        output$total_revenue <- renderText({
+          paste("Total:", sum(filtered_data()$revenue))
+        })
+      }
+    R/ui.R: |
+      library(shiny)
+
+      ui <- fluidPage(
+        titlePanel("Sales Dashboard"),
+        sidebarLayout(
+          sidebarPanel(
+            selectInput("region", "Region:", choices = c("North", "South", "East", "West")),
+            dateRangeInput("date_range", "Date Range:")
+          ),
+          mainPanel(
+            tableOutput("sales_table"),
+            textOutput("total_revenue"),
+            plotOutput("revenue_trend")
+          )
+        )
+      )
+    R/R_NOISE_011_api_helpers.R: |
+      R_NOISE_011_build_query_string <- function(params) {
+        paste(names(params), unlist(params), sep = "=", collapse = "&")
+      }
+      R_NOISE_011_parse_json_response <- function(resp) {
+        jsonlite::fromJSON(httr::content(resp, as = "text", encoding = "UTF-8"))
+      }
+    R/R_NOISE_011_color_utils.R: |
+      R_NOISE_011_hex_to_rgb <- function(hex) {
+        col2rgb(hex)[, 1]
+      }
+      R_NOISE_011_rgb_to_hex <- function(r, g, b) {
+        sprintf("#%02X%02X%02X", r, g, b)
+      }
+  changed_files:
+    R/server.R: |
+      library(shiny)
+      library(dplyr)
+
+      server <- function(input, output, session) {
+        filtered_data <- reactive({
+          req(input$region, input$date_range)
+          sales_data |>
+            filter(
+              region == input$region,
+              sale_date >= input$date_range[1],
+              sale_date <= input$date_range[2]
+            )
+        })
+
+        output$sales_table <- renderTable({
+          filtered_data()
+        })
+
+        output$total_revenue <- renderText({
+          paste("Total:", format(sum(filtered_data()$revenue), big.mark = ","))
+        })
+
+        output$revenue_trend <- renderPlot({
+          filtered_data() |>
+            group_by(sale_date) |>
+            summarise(daily = sum(revenue)) |>
+            plot(type = "l", main = "Daily Revenue")
+        })
+      }
+  commit_message: "Update files"
+fragments:
+- id: server_reactive_changed
+  selector:
+    path: R/server.R
+    anchor: filtered_data
+- id: ui_render_outputs
+  selector:
+    path: R/ui.R
+    anchor: revenue_trend
+- id: no_api_helpers
+  selector:
+    path: R/R_NOISE_011_api_helpers.R
+- id: no_color_utils
+  selector:
+    path: R/R_NOISE_011_color_utils.R
+- id: no_global_0
+  selector:
+    anchor: R_NOISE_011_build_query_string
+- id: no_global_1
+  selector:
+    anchor: R_NOISE_011_hex_to_rgb
+oracle:
+  required:
+  - server_reactive_changed
+  - ui_render_outputs
+  allowed: []
+  forbidden:
+  - no_api_helpers
+  - no_color_utils
+  - no_global_0
+  - no_global_1

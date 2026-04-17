@@ -1,0 +1,179 @@
+name: bal3_3hop_043_java_scheduler_job_queue
+tags:
+- lang:java
+- change:single_file
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/app/scheduler/Job.java: |
+      package com.app.scheduler;
+
+      public class Job {
+          private String name;
+          private Runnable task;
+          public Job(String name, Runnable task) {
+              this.name = name;
+              this.task = task;
+          }
+          public String getName() { return name; }
+          public void execute() { task.run(); }
+      }
+    src/main/java/com/app/scheduler/JobQueue.java: |
+      package com.app.scheduler;
+
+      import java.util.LinkedList;
+      import java.util.Queue;
+
+      public class JobQueue {
+          private final Queue<Job> queue = new LinkedList<>();
+          public void enqueue(Job job) {
+              queue.add(job);
+          }
+          public Job dequeue() {
+              return queue.poll();
+          }
+          public boolean isEmpty() { return queue.isEmpty(); }
+      }
+    src/main/java/com/app/scheduler/Scheduler.java: |
+      package com.app.scheduler;
+
+      public class Scheduler {
+          private final JobQueue jobQueue;
+          public Scheduler(JobQueue jobQueue) {
+              this.jobQueue = jobQueue;
+          }
+          public void run() {
+              while (!jobQueue.isEmpty()) {
+                  Job job = jobQueue.dequeue();
+                  job.execute();
+              }
+          }
+      }
+    src/main/java/com/app/service/TaskService.java: |
+      package com.app.service;
+
+      import com.app.scheduler.Scheduler;
+      import com.app.scheduler.JobQueue;
+      import com.app.scheduler.Job;
+
+      public class TaskService {
+          private final Scheduler scheduler;
+          private final JobQueue jobQueue;
+          public TaskService(Scheduler scheduler, JobQueue jobQueue) {
+              this.scheduler = scheduler;
+              this.jobQueue = jobQueue;
+          }
+          public void submit(String name, Runnable task) {
+              jobQueue.enqueue(new Job(name, task));
+          }
+          public void runAll() {
+              scheduler.run();
+          }
+      }
+    src/main/java/com/app/web/TaskController.java: |
+      package com.app.web;
+
+      import com.app.service.TaskService;
+
+      public class TaskController {
+          private final TaskService taskService;
+          public TaskController(TaskService taskService) {
+              this.taskService = taskService;
+          }
+          public String trigger() {
+              taskService.runAll();
+              return "done";
+          }
+      }
+    src/main/java/com/app/util/RetryHelper.java: |
+      package com.app.util;
+
+      public class RetryHelper {
+          public static String GARBAGE_043_RETRY_MARKER_A = "retry";
+          public static int GARBAGE_043_MAX_MARKER_B = 3;
+          public static void retry(Runnable r) { r.run(); }
+      }
+    src/main/java/com/app/util/ThreadPool.java: |
+      package com.app.util;
+
+      public class ThreadPool {
+          public static String GARBAGE_043_POOL_MARKER_C = "pool";
+          public static int GARBAGE_043_SIZE_MARKER_D = 4;
+          public static void execute(Runnable r) { r.run(); }
+      }
+  changed_files:
+    src/main/java/com/app/scheduler/Job.java: |
+      package com.app.scheduler;
+
+      public class Job {
+          private String name;
+          private Runnable task;
+          private int maxRetries;
+          private int retryCount;
+          public Job(String name, Runnable task, int maxRetries) {
+              this.name = name;
+              this.task = task;
+              this.maxRetries = maxRetries;
+              this.retryCount = 0;
+          }
+          public String getName() { return name; }
+          public int getMaxRetries() { return maxRetries; }
+          public boolean canRetry() { return retryCount < maxRetries; }
+          public void execute() {
+              try {
+                  task.run();
+              } catch (Exception e) {
+                  retryCount++;
+                  if (canRetry()) execute();
+              }
+          }
+      }
+  commit_message: "feat: add retry logic to Job execution"
+fragments:
+- id: job_max_retries
+  selector:
+    path: src/main/java/com/app/scheduler/Job.java
+    anchor: "private int maxRetries"
+- id: job_can_retry
+  selector:
+    path: src/main/java/com/app/scheduler/Job.java
+    anchor: "canRetry"
+- id: queue_uses_job
+  selector:
+    path: src/main/java/com/app/scheduler/JobQueue.java
+    anchor: "enqueue(Job job)"
+- id: scheduler_uses_queue
+  selector:
+    path: src/main/java/com/app/scheduler/Scheduler.java
+    anchor: "private final JobQueue jobQueue"
+- id: service_imports_scheduler
+  selector:
+    path: src/main/java/com/app/service/TaskService.java
+    anchor: "import com.app.scheduler.Scheduler"
+- id: controller_imports_service
+  selector:
+    path: src/main/java/com/app/web/TaskController.java
+    anchor: "import com.app.service.TaskService"
+- id: no_retry_helper
+  selector:
+    path: src/main/java/com/app/util/RetryHelper.java
+    anchor: "GARBAGE_043_RETRY_MARKER_A"
+- id: no_thread_pool
+  selector:
+    path: src/main/java/com/app/util/ThreadPool.java
+    anchor: "GARBAGE_043_POOL_MARKER_C"
+oracle:
+  required:
+  - job_max_retries
+  - job_can_retry
+  - queue_uses_job
+  - scheduler_uses_queue
+  - service_imports_scheduler
+  allowed:
+  - controller_imports_service
+  forbidden:
+  - no_retry_helper
+  - no_thread_pool

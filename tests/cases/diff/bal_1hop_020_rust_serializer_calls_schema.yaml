@@ -1,0 +1,165 @@
+name: bal_1hop_020_rust_serializer_calls_schema
+tags:
+- lang:java
+- change:signature
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/logistics/tracking/ShipmentRepository.java: |
+      package com.logistics.tracking;
+
+      import java.util.List;
+      import java.util.Optional;
+
+      public interface ShipmentRepository {
+          Optional<Shipment> findByTrackingCode(String code);
+          List<Shipment> findByStatus(ShipmentStatus status);
+          void save(Shipment shipment);
+      }
+    src/main/java/com/logistics/tracking/TrackingService.java: |
+      package com.logistics.tracking;
+
+      import java.util.List;
+      import java.util.Optional;
+
+      public class TrackingService {
+          private final ShipmentRepository repository;
+
+          public TrackingService(ShipmentRepository repository) {
+              this.repository = repository;
+          }
+
+          public Optional<Shipment> track(String code) {
+              return repository.findByTrackingCode(code);
+          }
+
+          public List<Shipment> getByStatus(ShipmentStatus status) {
+              return repository.findByStatus(status);
+          }
+      }
+    src/main/java/com/logistics/tracking/Shipment.java: |
+      package com.logistics.tracking;
+
+      public class Shipment {
+          private final String trackingCode;
+          private ShipmentStatus status;
+
+          public Shipment(String trackingCode, ShipmentStatus status) {
+              this.trackingCode = trackingCode;
+              this.status = status;
+          }
+
+          public String getTrackingCode() { return trackingCode; }
+          public ShipmentStatus getStatus() { return status; }
+          public void setStatus(ShipmentStatus status) { this.status = status; }
+      }
+    garbage/WarehouseConnector.java: |
+      // GARBAGE_SERIALSCH_A = "warehouse_connector_marker"
+    garbage/RouteOptimizer.java: |
+      // GARBAGE_SERIALSCH_B = "route_optimizer_marker"
+    garbage/CustomsChecker.java: |
+      // GARBAGE_SERIALSCH_C = "customs_checker_marker"
+  changed_files:
+    src/main/java/com/logistics/tracking/ShipmentRepository.java: |
+      package com.logistics.tracking;
+
+      import java.util.List;
+      import java.util.Optional;
+
+      public interface ShipmentRepository {
+          Optional<Shipment> findByTrackingCode(String code);
+          List<Shipment> findByStatus(ShipmentStatus status);
+          List<Shipment> findByStatusAndCarrier(ShipmentStatus status, String carrierId);
+          void save(Shipment shipment);
+          void updateStatus(String trackingCode, ShipmentStatus newStatus);
+      }
+    src/main/java/com/logistics/tracking/TrackingService.java: |
+      package com.logistics.tracking;
+
+      import java.util.List;
+      import java.util.Optional;
+
+      public class TrackingService {
+          private final ShipmentRepository repository;
+
+          public TrackingService(ShipmentRepository repository) {
+              this.repository = repository;
+          }
+
+          public Optional<Shipment> track(String code) {
+              return repository.findByTrackingCode(code);
+          }
+
+          public List<Shipment> getByStatus(ShipmentStatus status) {
+              return repository.findByStatus(status);
+          }
+
+          public List<Shipment> getByStatusAndCarrier(ShipmentStatus status, String carrierId) {
+              return repository.findByStatusAndCarrier(status, carrierId);
+          }
+
+          public void changeStatus(String trackingCode, ShipmentStatus newStatus) {
+              repository.updateStatus(trackingCode, newStatus);
+          }
+      }
+    src/main/java/com/logistics/tracking/Shipment.java: |
+      package com.logistics.tracking;
+
+      public class Shipment {
+          private final String trackingCode;
+          private ShipmentStatus status;
+
+          public Shipment(String trackingCode, ShipmentStatus status) {
+              this.trackingCode = trackingCode;
+              this.status = status;
+          }
+
+          public String getTrackingCode() { return trackingCode; }
+          public ShipmentStatus getStatus() { return status; }
+          public void setStatus(ShipmentStatus status) { this.status = status; }
+      }
+    garbage/WarehouseConnector.java: |
+      // GARBAGE_SERIALSCH_A = "warehouse_connector_marker"
+    garbage/RouteOptimizer.java: |
+      // GARBAGE_SERIALSCH_B = "route_optimizer_marker"
+    garbage/CustomsChecker.java: |
+      // GARBAGE_SERIALSCH_C = "customs_checker_marker"
+  commit_message: "feat: add carrier filter and updateStatus to ShipmentRepository"
+fragments:
+- id: carrier_filter_sig
+  selector:
+    anchor: "List<Shipment> findByStatusAndCarrier(ShipmentStatus status, String carrierId)"
+- id: update_status_sig
+  selector:
+    anchor: "void updateStatus(String trackingCode, ShipmentStatus newStatus)"
+- id: service_calls_carrier
+  selector:
+    path: src/main/java/com/logistics/tracking/TrackingService.java
+    anchor: "getByStatusAndCarrier"
+- id: service_calls_update
+  selector:
+    path: src/main/java/com/logistics/tracking/TrackingService.java
+    anchor: "changeStatus"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_SERIALSCH_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_SERIALSCH_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_SERIALSCH_C
+oracle:
+  required:
+  - carrier_filter_sig
+  - update_status_sig
+  - service_calls_carrier
+  - service_calls_update
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

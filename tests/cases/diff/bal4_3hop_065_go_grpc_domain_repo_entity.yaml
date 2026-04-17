@@ -1,0 +1,122 @@
+name: bal4_3hop_065_go_grpc_domain_repo_entity
+tags:
+- lang:go
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:trivial
+repo:
+  initial_files:
+    internal/entity/item.go: |
+      package entity
+
+      type Item struct {
+          ID   int
+          Qty  int
+      }
+    internal/repo/item_repo.go: |
+      package repo
+
+      import "myapp/internal/entity"
+
+      func GetItem(id int) entity.Item {
+          return entity.Item{ID: id, Qty: 5}
+      }
+    internal/domain/inventory.go: |
+      package domain
+
+      import "myapp/internal/repo"
+
+      func Stock(id int) int {
+          it := repo.GetItem(id)
+          return it.Qty
+      }
+    internal/grpc/inventory_rpc.go: |
+      package grpc
+
+      import "myapp/internal/domain"
+
+      func GetStock(id int) int {
+          return domain.Stock(id)
+      }
+    internal/garbage/noise.go: |
+      package garbage
+
+      var GARBAGE_065_NOISE_A = true
+      var GARBAGE_065_NOISE_B = false
+
+      func GarbageNoise() bool { return false }
+  changed_files:
+    internal/entity/item.go: |
+      package entity
+
+      type Item struct {
+          ID    int
+          Qty   int
+          Price float64
+      }
+    internal/repo/item_repo.go: |
+      package repo
+
+      import "myapp/internal/entity"
+
+      func GetItem(id int) entity.Item {
+          return entity.Item{ID: id, Qty: 5}
+      }
+    internal/domain/inventory.go: |
+      package domain
+
+      import "myapp/internal/repo"
+
+      func Stock(id int) int {
+          it := repo.GetItem(id)
+          return it.Qty
+      }
+    internal/grpc/inventory_rpc.go: |
+      package grpc
+
+      import "myapp/internal/domain"
+
+      func GetStock(id int) int {
+          return domain.Stock(id)
+      }
+    internal/garbage/noise.go: |
+      package garbage
+
+      var GARBAGE_065_NOISE_A = true
+      var GARBAGE_065_NOISE_B = false
+
+      func GarbageNoise() bool { return false }
+  commit_message: "add Price field to Item entity"
+fragments:
+- id: item_struct
+  selector:
+    path: internal/entity/item.go
+    anchor: "type Item struct"
+- id: get_item
+  selector:
+    path: internal/repo/item_repo.go
+    anchor: "func GetItem"
+- id: stock
+  selector:
+    path: internal/domain/inventory.go
+    anchor: "func Stock"
+- id: no_garbage_noise
+  selector:
+    path: internal/garbage/noise.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_065_NOISE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_065_NOISE_B
+oracle:
+  required:
+  - item_struct
+  - get_item
+  - stock
+  allowed: []
+  forbidden:
+  - no_garbage_noise
+  - no_global_0
+  - no_global_1

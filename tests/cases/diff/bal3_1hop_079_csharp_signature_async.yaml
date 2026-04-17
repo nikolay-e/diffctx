@@ -1,0 +1,382 @@
+name: bal3_1hop_079_csharp_signature_async
+tags:
+- lang:csharp
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: csharp-no-tree-sitter
+repo:
+  initial_files:
+    src/Infrastructure/EmailSender.cs: |
+      using System;
+
+      namespace App.Infrastructure
+      {
+          public class EmailSender
+          {
+              public bool Send(string to, string subject, string body)
+              {
+                  Console.WriteLine($"Sending to {to}: {subject}");
+                  return true;
+              }
+
+              public bool SendBulk(string[] recipients, string subject, string body)
+              {
+                  foreach (var r in recipients)
+                  {
+                      Send(r, subject, body);
+                  }
+                  return true;
+              }
+          }
+      }
+    src/Services/NotificationService.cs: |
+      using System;
+      using App.Infrastructure;
+
+      namespace App.Services
+      {
+          public class NotificationService
+          {
+              private readonly EmailSender _sender;
+
+              public NotificationService(EmailSender sender)
+              {
+                  _sender = sender;
+              }
+
+              public void NotifyUser(string email, string message)
+              {
+                  _sender.Send(email, "Notification", message);
+              }
+          }
+      }
+    src/Services/AlertService.cs: |
+      using System;
+      using App.Infrastructure;
+
+      namespace App.Services
+      {
+          public class AlertService
+          {
+              private readonly EmailSender _sender;
+
+              public AlertService(EmailSender sender)
+              {
+                  _sender = sender;
+              }
+
+              public void SendAlert(string adminEmail, string alertMessage)
+              {
+                  _sender.Send(adminEmail, "ALERT", alertMessage);
+              }
+          }
+      }
+    src/Services/ReportService.cs: |
+      using System;
+      using App.Infrastructure;
+
+      namespace App.Services
+      {
+          public class ReportService
+          {
+              private readonly EmailSender _sender;
+
+              public ReportService(EmailSender sender)
+              {
+                  _sender = sender;
+              }
+
+              public void SendReport(string[] managers, string reportContent)
+              {
+                  _sender.SendBulk(managers, "Weekly Report", reportContent);
+              }
+          }
+      }
+    src/Services/WelcomeService.cs: |
+      using System;
+      using App.Infrastructure;
+
+      namespace App.Services
+      {
+          public class WelcomeService
+          {
+              private readonly EmailSender _sender;
+
+              public WelcomeService(EmailSender sender)
+              {
+                  _sender = sender;
+              }
+
+              public void SendWelcome(string email, string name)
+              {
+                  _sender.Send(email, "Welcome!", $"Hello {name}");
+              }
+          }
+      }
+    src/Auth/TokenProvider.cs: |
+      using System;
+      GARBAGE_079_TOKEN_EXPIRY_A = 3600;
+      GARBAGE_079_ISSUER_B = "app.example.com";
+
+      namespace App.Auth
+      {
+          public class TokenProvider
+          {
+              public string Generate(string userId) { return "token"; }
+          }
+      }
+    src/Auth/PasswordHasher.cs: |
+      using System;
+      GARBAGE_079_SALT_ROUNDS_C = 12;
+      GARBAGE_079_ALGORITHM_D = "bcrypt";
+
+      namespace App.Auth
+      {
+          public class PasswordHasher
+          {
+              public string Hash(string password) { return "hashed"; }
+          }
+      }
+    src/Middleware/RequestThrottle.cs: |
+      using System;
+      GARBAGE_079_THROTTLE_RPM_E = 60;
+      GARBAGE_079_BURST_SIZE_F = 10;
+
+      namespace App.Middleware
+      {
+          public class RequestThrottle
+          {
+              public bool AllowRequest(string clientId) { return true; }
+          }
+      }
+  changed_files:
+    src/Infrastructure/EmailSender.cs: |
+      using System;
+      using System.Threading.Tasks;
+
+      namespace App.Infrastructure
+      {
+          public class EmailSender
+          {
+              public async Task<bool> SendAsync(string to, string subject, string body)
+              {
+                  await Task.Delay(100);
+                  Console.WriteLine($"Sending to {to}: {subject}");
+                  return true;
+              }
+
+              public async Task<bool> SendBulkAsync(string[] recipients, string subject, string body)
+              {
+                  foreach (var r in recipients)
+                  {
+                      await SendAsync(r, subject, body);
+                  }
+                  return true;
+              }
+
+              public bool Send(string to, string subject, string body)
+              {
+                  return SendAsync(to, subject, body).GetAwaiter().GetResult();
+              }
+
+              public bool SendBulk(string[] recipients, string subject, string body)
+              {
+                  return SendBulkAsync(recipients, subject, body).GetAwaiter().GetResult();
+              }
+          }
+      }
+    src/Services/NotificationService.cs: |
+      using System;
+      using App.Infrastructure;
+
+      namespace App.Services
+      {
+          public class NotificationService
+          {
+              private readonly EmailSender _sender;
+
+              public NotificationService(EmailSender sender)
+              {
+                  _sender = sender;
+              }
+
+              public void NotifyUser(string email, string message)
+              {
+                  _sender.Send(email, "Notification", message);
+              }
+          }
+      }
+    src/Services/AlertService.cs: |
+      using System;
+      using App.Infrastructure;
+
+      namespace App.Services
+      {
+          public class AlertService
+          {
+              private readonly EmailSender _sender;
+
+              public AlertService(EmailSender sender)
+              {
+                  _sender = sender;
+              }
+
+              public void SendAlert(string adminEmail, string alertMessage)
+              {
+                  _sender.Send(adminEmail, "ALERT", alertMessage);
+              }
+          }
+      }
+    src/Services/ReportService.cs: |
+      using System;
+      using App.Infrastructure;
+
+      namespace App.Services
+      {
+          public class ReportService
+          {
+              private readonly EmailSender _sender;
+
+              public ReportService(EmailSender sender)
+              {
+                  _sender = sender;
+              }
+
+              public void SendReport(string[] managers, string reportContent)
+              {
+                  _sender.SendBulk(managers, "Weekly Report", reportContent);
+              }
+          }
+      }
+    src/Services/WelcomeService.cs: |
+      using System;
+      using App.Infrastructure;
+
+      namespace App.Services
+      {
+          public class WelcomeService
+          {
+              private readonly EmailSender _sender;
+
+              public WelcomeService(EmailSender sender)
+              {
+                  _sender = sender;
+              }
+
+              public void SendWelcome(string email, string name)
+              {
+                  _sender.Send(email, "Welcome!", $"Hello {name}");
+              }
+          }
+      }
+    src/Auth/TokenProvider.cs: |
+      using System;
+      GARBAGE_079_TOKEN_EXPIRY_A = 3600;
+      GARBAGE_079_ISSUER_B = "app.example.com";
+
+      namespace App.Auth
+      {
+          public class TokenProvider
+          {
+              public string Generate(string userId) { return "token"; }
+          }
+      }
+    src/Auth/PasswordHasher.cs: |
+      using System;
+      GARBAGE_079_SALT_ROUNDS_C = 12;
+      GARBAGE_079_ALGORITHM_D = "bcrypt";
+
+      namespace App.Auth
+      {
+          public class PasswordHasher
+          {
+              public string Hash(string password) { return "hashed"; }
+          }
+      }
+    src/Middleware/RequestThrottle.cs: |
+      using System;
+      GARBAGE_079_THROTTLE_RPM_E = 60;
+      GARBAGE_079_BURST_SIZE_F = 10;
+
+      namespace App.Middleware
+      {
+          public class RequestThrottle
+          {
+              public bool AllowRequest(string clientId) { return true; }
+          }
+      }
+  commit_message: "feat: add async Send/SendBulk methods to EmailSender"
+fragments:
+- id: notification_using
+  selector:
+    path: src/Services/NotificationService.cs
+    anchor: "using App.Infrastructure"
+- id: notification_send
+  selector:
+    path: src/Services/NotificationService.cs
+    anchor: "_sender.Send(email"
+- id: alert_using
+  selector:
+    path: src/Services/AlertService.cs
+    anchor: "using App.Infrastructure"
+- id: report_using
+  selector:
+    path: src/Services/ReportService.cs
+    anchor: "using App.Infrastructure"
+- id: report_bulk
+  selector:
+    path: src/Services/ReportService.cs
+    anchor: "_sender.SendBulk"
+- id: welcome_using
+  selector:
+    path: src/Services/WelcomeService.cs
+    anchor: "using App.Infrastructure"
+- id: no_token
+  selector:
+    path: src/Auth/TokenProvider.cs
+- id: no_hasher
+  selector:
+    path: src/Auth/PasswordHasher.cs
+- id: no_throttle
+  selector:
+    path: src/Middleware/RequestThrottle.cs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_079_TOKEN_EXPIRY_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_079_ISSUER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_079_SALT_ROUNDS_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_079_ALGORITHM_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_079_THROTTLE_RPM_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_079_BURST_SIZE_F
+oracle:
+  required:
+  - notification_using
+  - notification_send
+  - alert_using
+  - report_using
+  - report_bulk
+  - welcome_using
+  allowed: []
+  forbidden:
+  - no_token
+  - no_hasher
+  - no_throttle
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

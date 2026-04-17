@@ -1,0 +1,136 @@
+name: bal3_3hop_046_scala_akka_actor_pipeline
+tags:
+- lang:scala
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/com/app/protocol/Command.scala: |
+      package com.app.protocol
+
+      sealed trait Command
+      case class ProcessItem(id: String, data: String) extends Command
+      case class Shutdown() extends Command
+    src/main/scala/com/app/actor/Worker.scala: |
+      package com.app.actor
+
+      import com.app.protocol.{Command, ProcessItem}
+
+      class Worker {
+        def handle(cmd: Command): String = cmd match {
+          case ProcessItem(id, data) => s"processed:$id:$data"
+          case _ => "unknown"
+        }
+      }
+    src/main/scala/com/app/actor/Supervisor.scala: |
+      package com.app.actor
+
+      import com.app.protocol.Command
+
+      class Supervisor(worker: Worker) {
+        def delegate(cmd: Command): String = {
+          worker.handle(cmd)
+        }
+      }
+    src/main/scala/com/app/service/PipelineService.scala: |
+      package com.app.service
+
+      import com.app.actor.Supervisor
+      import com.app.protocol.ProcessItem
+
+      class PipelineService(supervisor: Supervisor) {
+        def process(id: String, data: String): String = {
+          supervisor.delegate(ProcessItem(id, data))
+        }
+      }
+    src/main/scala/com/app/api/PipelineEndpoint.scala: |
+      package com.app.api
+
+      import com.app.service.PipelineService
+
+      class PipelineEndpoint(service: PipelineService) {
+        def submit(id: String, data: String): String = {
+          service.process(id, data)
+        }
+      }
+    src/main/scala/com/app/util/Metrics.scala: |
+      package com.app.util
+
+      var GARBAGE_046_METRIC_MARKER_A = "counter"
+      var GARBAGE_046_GAUGE_MARKER_B = "gauge"
+
+      object Metrics {
+        def inc(name: String): Unit = ()
+      }
+    src/main/scala/com/app/util/Tracer.scala: |
+      package com.app.util
+
+      var GARBAGE_046_TRACE_MARKER_C = "span"
+      var GARBAGE_046_SAMPLE_MARKER_D = 0.1
+
+      object Tracer {
+        def trace(name: String): Unit = ()
+      }
+  changed_files:
+    src/main/scala/com/app/protocol/Command.scala: |
+      package com.app.protocol
+
+      sealed trait Command {
+        def priority: Int = 0
+      }
+      case class ProcessItem(id: String, data: String, override val priority: Int = 0) extends Command
+      case class Shutdown(reason: String = "normal") extends Command
+  commit_message: "feat: add priority to Command trait and Shutdown reason"
+fragments:
+- id: command_priority
+  selector:
+    path: src/main/scala/com/app/protocol/Command.scala
+    anchor: "def priority: Int"
+- id: process_item_priority
+  selector:
+    path: src/main/scala/com/app/protocol/Command.scala
+    anchor: "override val priority"
+- id: shutdown_reason
+  selector:
+    path: src/main/scala/com/app/protocol/Command.scala
+    anchor: "reason: String"
+- id: worker_imports_command
+  selector:
+    path: src/main/scala/com/app/actor/Worker.scala
+    anchor: "import com.app.protocol"
+- id: supervisor_uses_worker
+  selector:
+    path: src/main/scala/com/app/actor/Supervisor.scala
+    anchor: "worker.handle(cmd)"
+- id: service_imports_supervisor
+  selector:
+    path: src/main/scala/com/app/service/PipelineService.scala
+    anchor: "import com.app.actor.Supervisor"
+- id: endpoint_imports_service
+  selector:
+    path: src/main/scala/com/app/api/PipelineEndpoint.scala
+    anchor: "import com.app.service.PipelineService"
+- id: no_metrics
+  selector:
+    path: src/main/scala/com/app/util/Metrics.scala
+    anchor: "GARBAGE_046_METRIC_MARKER_A"
+- id: no_tracer
+  selector:
+    path: src/main/scala/com/app/util/Tracer.scala
+    anchor: "GARBAGE_046_TRACE_MARKER_C"
+oracle:
+  required:
+  - command_priority
+  - process_item_priority
+  - worker_imports_command
+  - supervisor_uses_worker
+  - service_imports_supervisor
+  allowed:
+  - shutdown_reason
+  - endpoint_imports_service
+  forbidden:
+  - no_metrics
+  - no_tracer

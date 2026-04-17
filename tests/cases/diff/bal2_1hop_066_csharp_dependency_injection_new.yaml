@@ -1,0 +1,234 @@
+name: bal2_1hop_066_csharp_dependency_injection_new
+tags:
+- lang:csharp
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: csharp-no-tree-sitter
+repo:
+  initial_files:
+    src/Services/ICacheService.cs: |
+      using System;
+      using System.Threading.Tasks;
+
+      namespace App.Services
+      {
+          public interface ICacheService
+          {
+              Task<string> Get(string key);
+              Task Set(string key, string value, TimeSpan ttl);
+              Task Remove(string key);
+          }
+      }
+    src/Services/RedisCacheService.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Threading.Tasks;
+      using App.Services;
+
+      namespace App.Services
+      {
+          public class RedisCacheService : ICacheService
+          {
+              private readonly Dictionary<string, string> _store = new();
+
+              public Task<string> Get(string key)
+              {
+                  _store.TryGetValue(key, out var value);
+                  return Task.FromResult(value);
+              }
+
+              public Task Set(string key, string value, TimeSpan ttl)
+              {
+                  _store[key] = value;
+                  return Task.CompletedTask;
+              }
+
+              public Task Remove(string key)
+              {
+                  _store.Remove(key);
+                  return Task.CompletedTask;
+              }
+          }
+      }
+    src/Services/ProductService.cs: |
+      using System;
+      using System.Threading.Tasks;
+      using App.Services;
+
+      namespace App.Services
+      {
+          public class ProductService
+          {
+              private readonly ICacheService _cache;
+
+              public ProductService(ICacheService cache)
+              {
+                  _cache = cache;
+              }
+
+              public async Task<string> GetProduct(string id)
+              {
+                  var cached = await _cache.Get($"product:{id}");
+                  if (cached != null) return cached;
+                  var product = $"Product-{id}";
+                  await _cache.Set($"product:{id}", product, TimeSpan.FromMinutes(10));
+                  return product;
+              }
+          }
+      }
+    src/Controllers/ProductController.cs: |
+      using System;
+      using System.Threading.Tasks;
+      using App.Services;
+      using Microsoft.AspNetCore.Mvc;
+
+      namespace App.Controllers
+      {
+          [ApiController]
+          [Route("api/products")]
+          public class ProductController : ControllerBase
+          {
+              private readonly ProductService _productService;
+
+              public ProductController(ProductService productService)
+              {
+                  _productService = productService;
+              }
+
+              [HttpGet("{id}")]
+              public async Task<IActionResult> Get(string id)
+              {
+                  var product = await _productService.GetProduct(id);
+                  return Ok(product);
+              }
+          }
+      }
+    src/Startup/ServiceRegistration.cs: |
+      using System;
+      using App.Services;
+      using Microsoft.Extensions.DependencyInjection;
+
+      namespace App.Startup
+      {
+          public static class ServiceRegistration
+          {
+              public static void AddApplicationServices(this IServiceCollection services)
+              {
+                  services.AddSingleton<ICacheService, RedisCacheService>();
+                  services.AddScoped<ProductService>();
+              }
+          }
+      }
+    garbage/Audit/AuditTrail.cs: |
+      using System;
+      GARBAGE_066_AUDIT_TRAIL_A = "enabled";
+      GARBAGE_066_RETENTION_B = 365;
+
+      namespace App.Audit
+      {
+          public class AuditTrail
+          {
+              GARBAGE_066_LOG_LEVEL_C = "info";
+
+              public void Record(string action) { }
+          }
+      }
+    garbage/Compression/GzipService.cs: |
+      using System;
+      GARBAGE_066_GZIP_D = "compress";
+      GARBAGE_066_LEVEL_E = 6;
+
+      namespace App.Compression
+      {
+          public class GzipService
+          {
+              GARBAGE_066_BUFFER_F = 4096;
+
+              public byte[] Compress(byte[] data) { return data; }
+          }
+      }
+    garbage/Localization/Translator.cs: |
+      using System;
+      GARBAGE_066_TRANSLATOR_G = "i18n";
+      GARBAGE_066_DEFAULT_LANG_H = "en";
+
+      namespace App.Localization
+      {
+          public class Translator
+          {
+              GARBAGE_066_FALLBACK_I = "en";
+              GARBAGE_066_CACHE_TTL_J = 3600;
+
+              public string Translate(string key) { return key; }
+          }
+      }
+  changed_files:
+    src/Services/ICacheService.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Threading.Tasks;
+
+      namespace App.Services
+      {
+          public interface ICacheService
+          {
+              Task<string> Get(string key);
+              Task Set(string key, string value, TimeSpan ttl);
+              Task Remove(string key);
+              Task<IDictionary<string, string>> GetMany(IEnumerable<string> keys);
+              Task InvalidatePattern(string pattern);
+          }
+      }
+  commit_message: "Add batch get and pattern invalidation to cache service"
+fragments:
+- id: redis_get
+  selector:
+    path: src/Services/RedisCacheService.cs
+    anchor: "public Task<string> Get(string key)"
+- id: redis_remove
+  selector:
+    path: src/Services/RedisCacheService.cs
+    anchor: "public Task Remove(string key)"
+- id: product_service_get
+  selector:
+    path: src/Services/ProductService.cs
+    anchor: "await _cache.Get($\"product:{id}\")"
+- id: registration_singleton
+  selector:
+    path: src/Startup/ServiceRegistration.cs
+    anchor: "services.AddSingleton<ICacheService, RedisCacheService>()"
+- id: no_audit_trail
+  selector:
+    path: garbage/Audit/AuditTrail.cs
+- id: no_gzip_service
+  selector:
+    path: garbage/Compression/GzipService.cs
+- id: no_translator
+  selector:
+    path: garbage/Localization/Translator.cs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_066_AUDIT_TRAIL_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_066_GZIP_D
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_066_TRANSLATOR_G
+oracle:
+  required:
+  - redis_get
+  - redis_remove
+  - product_service_get
+  - registration_singleton
+  allowed: []
+  forbidden:
+  - no_audit_trail
+  - no_gzip_service
+  - no_translator
+  - no_global_0
+  - no_global_1
+  - no_global_2

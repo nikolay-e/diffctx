@@ -1,104 +1,152 @@
 name: internals_007_emoji_in_function_name
+tags:
+- lang:python
+- change:bug_fix
+- change:multi_file
+- context:test_file
+- distance:1hop
+- difficulty:medium
 repo:
   initial_files:
-    src/events/dispatcher.py: |
-      from src.events.registry import get_handler
-      def dispatch_event(event_type: str, payload: dict) -> dict:
-          handler = get_handler(event_type)
-          return handler(payload)
-      def log_event(event_type: str) -> None:
+    src/queue/task_queue.py: |
+      from collections import deque
+      from src.queue.task import Task
+
+      class TaskQueue:
+          def __init__(self, max_size: int = 100) -> None:
+              self._queue: deque[Task] = deque()
+              self._max_size = max_size
+
+          def enqueue(self, task: Task) -> None:
+              # BUG: max_size not enforced; queue grows unbounded
+              self._queue.append(task)
+
+          def dequeue(self) -> Task | None:
+              return self._queue.popleft() if self._queue else None
+
+          def size(self) -> int:
+              return len(self._queue)
+    src/queue/task.py: |
+      from dataclasses import dataclass
+
+      @dataclass
+      class Task:
+          id: str
+          payload: str
+          priority: int = 0
+    tests/test_task_queue.py: |
+      from src.queue.task_queue import TaskQueue
+      from src.queue.task import Task
+
+      def test_enqueue_dequeue():
+          q = TaskQueue()
+          q.enqueue(Task("t1", "data"))
+          assert q.dequeue().id == "t1"
+
+      def test_empty_dequeue_returns_none():
+          q = TaskQueue()
+          assert q.dequeue() is None
+    garbage/scheduler.py: |
+      # GARBAGE_TSKQ_A = "scheduler_marker"
+      def schedule_at(cron: str) -> None:
           pass
-    src/events/registry.py: |
-      HANDLERS = {}
-      def register_handler(event_type: str, handler) -> None:
-          HANDLERS[event_type] = handler
-      def get_handler(event_type: str):
-          return HANDLERS.get(event_type, lambda p: p)
-    garbage_event_queue.py: |
-      GARBAGE_INT_007_QUEUE_MARKER_A = "evq"
-      GARBAGE_INT_007_PRIORITY_MARKER_B = "high"
-
-      class GarbageEventQueue:
-          def noop(self):
+    garbage/worker_pool.py: |
+      # GARBAGE_TSKQ_B = "worker_pool_marker"
+      class WorkerPool:
+          def start(self, n: int) -> None:
               pass
-    garbage_event_replay.py: |
-      GARBAGE_INT_007_REPLAY_MARKER_C = "journal"
-      GARBAGE_INT_007_SNAPSHOT_MARKER_D = "ckpt"
-
-      class GarbageEventReplay:
-          def noop(self):
-              pass
+    garbage/dead_letter.py: |
+      # GARBAGE_TSKQ_C = "dead_letter_marker"
+      def move_to_dlq(task_id: str) -> None:
+          pass
   changed_files:
-    src/events/dispatcher.py: |
-      from src.events.registry import get_handler
-      def fire_handler(event_type: str, payload: dict) -> dict:
-          handler = get_handler(event_type)
-          result = handler(payload)
-          log_event(event_type)
-          return result
-      def dispatch_event(event_type: str, payload: dict) -> dict:
-          return fire_handler(event_type, payload)
-      def log_event(event_type: str) -> None:
+    src/queue/task_queue.py: |
+      from collections import deque
+      from src.queue.task import Task
+
+      class TaskQueue:
+          def __init__(self, max_size: int = 100) -> None:
+              self._queue: deque[Task] = deque()
+              self._max_size = max_size
+
+          def enqueue(self, task: Task) -> bool:
+              if len(self._queue) >= self._max_size:
+                  return False
+              self._queue.append(task)
+              return True
+
+          def dequeue(self) -> Task | None:
+              return self._queue.popleft() if self._queue else None
+
+          def size(self) -> int:
+              return len(self._queue)
+    src/queue/task.py: |
+      from dataclasses import dataclass
+
+      @dataclass
+      class Task:
+          id: str
+          payload: str
+          priority: int = 0
+    tests/test_task_queue.py: |
+      from src.queue.task_queue import TaskQueue
+      from src.queue.task import Task
+
+      def test_enqueue_dequeue():
+          q = TaskQueue()
+          q.enqueue(Task("t1", "data"))
+          assert q.dequeue().id == "t1"
+
+      def test_empty_dequeue_returns_none():
+          q = TaskQueue()
+          assert q.dequeue() is None
+
+      def test_enqueue_at_capacity_returns_false():
+          q = TaskQueue(max_size=2)
+          assert q.enqueue(Task("t1", "a")) is True
+          assert q.enqueue(Task("t2", "b")) is True
+          assert q.enqueue(Task("t3", "c")) is False
+          assert q.size() == 2
+    garbage/scheduler.py: |
+      # GARBAGE_TSKQ_A = "scheduler_marker"
+      def schedule_at(cron: str) -> None:
           pass
-    src/events/registry.py: |
-      HANDLERS = {}
-      def register_handler(event_type: str, handler) -> None:
-          HANDLERS[event_type] = handler
-      def get_handler(event_type: str):
-          return HANDLERS.get(event_type, lambda p: p)
-    garbage_event_queue.py: |
-      GARBAGE_INT_007_QUEUE_MARKER_A = "evq"
-      GARBAGE_INT_007_PRIORITY_MARKER_B = "high"
-
-      class GarbageEventQueue:
-          def noop(self):
+    garbage/worker_pool.py: |
+      # GARBAGE_TSKQ_B = "worker_pool_marker"
+      class WorkerPool:
+          def start(self, n: int) -> None:
               pass
-    garbage_event_replay.py: |
-      GARBAGE_INT_007_REPLAY_MARKER_C = "journal"
-      GARBAGE_INT_007_SNAPSHOT_MARKER_D = "ckpt"
-
-      class GarbageEventReplay:
-          def noop(self):
-              pass
-  commit_message: Update files
+    garbage/dead_letter.py: |
+      # GARBAGE_TSKQ_C = "dead_letter_marker"
+      def move_to_dlq(task_id: str) -> None:
+          pass
+  commit_message: "fix: enforce max_size in TaskQueue.enqueue, return False when full"
 fragments:
-- id: dispatcher_file
+- id: enqueue_cap_check
   selector:
-    path: src/events/dispatcher.py
-- id: req_global_0
+    anchor: "if len(self._queue) >= self._max_size"
+- id: enqueue_returns_bool
   selector:
-    anchor: 'def fire_handler(event_type: str, payload: dict) -> dict:'
-- id: req_global_1
+    anchor: "def enqueue(self, task: Task) -> bool"
+- id: test_capacity
   selector:
-    anchor: return fire_handler(event_type, payload)
-- id: no_global_0
+    anchor: "def test_enqueue_at_capacity_returns_false()"
+- id: no_garbage_a
   selector:
-    anchor: GARBAGE_INT_007_PRIORITY_MARKER_B
-- id: no_global_1
+    anchor: GARBAGE_TSKQ_A
+- id: no_garbage_b
   selector:
-    anchor: GARBAGE_INT_007_QUEUE_MARKER_A
-- id: no_global_2
+    anchor: GARBAGE_TSKQ_B
+- id: no_garbage_c
   selector:
-    anchor: GARBAGE_INT_007_REPLAY_MARKER_C
-- id: no_global_3
-  selector:
-    anchor: GARBAGE_INT_007_SNAPSHOT_MARKER_D
-- id: no_global_4
-  selector:
-    anchor: garbage_event_queue.py
-- id: no_global_5
-  selector:
-    anchor: garbage_event_replay.py
+    anchor: GARBAGE_TSKQ_C
 oracle:
   required:
-  - dispatcher_file
-  - req_global_0
-  - req_global_1
+  - enqueue_cap_check
+  - enqueue_returns_bool
+  - test_capacity
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

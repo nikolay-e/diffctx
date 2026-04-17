@@ -1,0 +1,128 @@
+name: bal4_bugfix_002_swift_nil_check_optional
+tags:
+- lang:swift
+- change:single_file
+- change:bug_fix
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    Sources/Services/UserService.swift: |
+      struct User {
+          let id: Int
+          var nickname: String?
+          var email: String
+      }
+
+      class UserService {
+          func displayName(for user: User) -> String {
+              return user.nickname!
+          }
+
+          func isActive(_ user: User) -> Bool {
+              return user.id > 0
+          }
+      }
+    garbage_bal4_002_theme.swift: |
+      GARBAGE_BAL4_002_THEME_A = "dark"
+      GARBAGE_BAL4_002_FONT_B = 14
+
+      class ThemeService {
+          let GARBAGE_BAL4_002_MODE_C = "auto"
+          func apply() {}
+      }
+    garbage_bal4_002_network.swift: |
+      GARBAGE_BAL4_002_NET_D = "http"
+      GARBAGE_BAL4_002_TIMEOUT_E = 30
+
+      class NetworkClient {
+          let GARBAGE_BAL4_002_RETRY_F = 3
+          func fetch() {}
+      }
+  changed_files:
+    Sources/Services/UserService.swift: |
+      struct User {
+          let id: Int
+          var nickname: String?
+          var email: String
+      }
+
+      class UserService {
+          func displayName(for user: User) -> String {
+              return user.nickname ?? user.email
+          }
+
+          func isActive(_ user: User) -> Bool {
+              return user.id > 0
+          }
+      }
+    garbage_bal4_002_theme.swift: |
+      GARBAGE_BAL4_002_THEME_A = "dark"
+      GARBAGE_BAL4_002_FONT_B = 14
+
+      class ThemeService {
+          let GARBAGE_BAL4_002_MODE_C = "auto"
+          func apply() {}
+      }
+    garbage_bal4_002_network.swift: |
+      GARBAGE_BAL4_002_NET_D = "http"
+      GARBAGE_BAL4_002_TIMEOUT_E = 30
+
+      class NetworkClient {
+          let GARBAGE_BAL4_002_RETRY_F = 3
+          func fetch() {}
+      }
+  commit_message: "fix: handle nil nickname with fallback to email"
+fragments:
+- id: displayName_func
+  selector:
+    path: Sources/Services/UserService.swift
+    anchor: "func displayName(for user: User) -> String"
+- id: nil_coalesce
+  selector:
+    path: Sources/Services/UserService.swift
+    anchor: "user.nickname ?? user.email"
+- id: user_struct
+  selector:
+    path: Sources/Services/UserService.swift
+    anchor: "struct User"
+- id: no_garbage_theme
+  selector:
+    path: garbage_bal4_002_theme.swift
+- id: no_garbage_network
+  selector:
+    path: garbage_bal4_002_network.swift
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL4_002_THEME_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL4_002_FONT_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL4_002_MODE_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL4_002_NET_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL4_002_TIMEOUT_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL4_002_RETRY_F
+oracle:
+  required:
+  - displayName_func
+  - nil_coalesce
+  allowed:
+  - user_struct
+  forbidden:
+  - no_garbage_theme
+  - no_garbage_network
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

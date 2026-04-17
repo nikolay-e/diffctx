@@ -1,0 +1,122 @@
+name: xml_003_android_manifest_permission
+tags:
+- lang:xml
+- lang:java
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    app/src/main/AndroidManifest.xml: |
+      <?xml version="1.0" encoding="utf-8"?>
+      <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          package="com.example.trackapp">
+        <uses-permission android:name="android.permission.INTERNET"/>
+        <application
+            android:label="TrackApp"
+            android:theme="@style/AppTheme">
+          <activity android:name=".MainActivity">
+            <intent-filter>
+              <action android:name="android.intent.action.MAIN"/>
+              <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+          </activity>
+        </application>
+      </manifest>
+    app/src/main/java/com/example/trackapp/LocationService.java: |
+      package com.example.trackapp;
+      import android.Manifest;
+      import android.content.pm.PackageManager;
+      import android.location.LocationManager;
+      import androidx.core.content.ContextCompat;
+      public class LocationService {
+          private final LocationManager locationManager;
+          public LocationService(LocationManager locationManager) {
+              this.locationManager = locationManager;
+          }
+          public boolean hasLocationPermission(android.content.Context ctx) {
+              return ContextCompat.checkSelfPermission(ctx,
+                  Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+          }
+          public void startTracking() {
+              locationManager.requestLocationUpdates(
+                  LocationManager.GPS_PROVIDER, 5000, 10, location -> {});
+          }
+      }
+    app/src/main/java/com/example/trackapp/MainActivity.java: |
+      package com.example.trackapp;
+      import android.os.Bundle;
+      import androidx.appcompat.app.AppCompatActivity;
+      public class MainActivity extends AppCompatActivity {
+          @Override
+          protected void onCreate(Bundle savedInstanceState) {
+              super.onCreate(savedInstanceState);
+              setContentView(R.layout.activity_main);
+          }
+      }
+    XML_NOISE_003_strings.xml: |
+      <resources>
+        <!-- XML_NOISE_003_APP_NAME -->
+        <string name="app_name">TrackApp</string>
+        <string name="XML_NOISE_003_btn_submit">Submit</string>
+      </resources>
+    garbage/AnalyticsHelper.java: |
+      // XML_NOISE_003_AnalyticsHelper = "analytics_helper_marker"
+    garbage/NotificationManager.java: |
+      // XML_NOISE_003_NotificationManager = "push_notification_marker"
+  changed_files:
+    app/src/main/AndroidManifest.xml: |
+      <?xml version="1.0" encoding="utf-8"?>
+      <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          package="com.example.trackapp">
+        <uses-permission android:name="android.permission.INTERNET"/>
+        <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+        <application
+            android:label="TrackApp"
+            android:theme="@style/AppTheme">
+          <activity android:name=".MainActivity">
+            <intent-filter>
+              <action android:name="android.intent.action.MAIN"/>
+              <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+          </activity>
+        </application>
+      </manifest>
+  commit_message: "feat: add ACCESS_FINE_LOCATION permission to AndroidManifest"
+fragments:
+- id: manifest_permission
+  selector:
+    path: app/src/main/AndroidManifest.xml
+    anchor: ACCESS_FINE_LOCATION
+- id: location_service
+  selector:
+    path: app/src/main/java/com/example/trackapp/LocationService.java
+    anchor: ACCESS_FINE_LOCATION
+- id: no_strings_xml
+  selector:
+    path: XML_NOISE_003_strings.xml
+- id: no_analytics
+  selector:
+    path: garbage/AnalyticsHelper.java
+- id: no_global_0
+  selector:
+    anchor: XML_NOISE_003_APP_NAME
+- id: no_global_1
+  selector:
+    anchor: XML_NOISE_003_btn_submit
+- id: no_global_2
+  selector:
+    anchor: XML_NOISE_003_AnalyticsHelper
+oracle:
+  required:
+  - manifest_permission
+  - location_service
+  allowed: []
+  forbidden:
+  - no_strings_xml
+  - no_analytics
+  - no_global_0
+  - no_global_1
+  - no_global_2

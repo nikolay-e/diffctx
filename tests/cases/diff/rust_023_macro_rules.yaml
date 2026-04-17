@@ -1,209 +1,168 @@
 name: rust_023_macro_rules
+tags:
+- lang:java
+- change:multi_file
+- change:refactor
+- context:cross_module
+- distance:1hop
+- difficulty:medium
 repo:
   initial_files:
-    src/macros.rs: |
-      #[macro_export]
-      macro_rules! vec_of_strings {
-          ($($x:expr),*) => {
-              vec![$($x.to_string()),*]
-          };
-      }
+    src/main/java/com/healthcare/DiagnosisService.java: |
+      package com.healthcare;
 
-      #[macro_export]
-      macro_rules! log_info {
-          ($($arg:tt)*) => {
-              println!("[INFO] {}", format!($($arg)*));
-          };
-      }
-    src/main.rs: |
-      mod macros;
+      import java.util.List;
 
-      fn main() {
-          let v = vec_of_strings!["hello", "world", "rust"];
-          for item in &v {
-              log_info!("Item: {}", item);
-          }
-          println!("Total items: {}", v.len());
-      }
-    src/logging_macros.rs: |
-      #[macro_export]
-      macro_rules! log_debug {
-          ($($arg:tt)*) => {
-              if cfg!(debug_assertions) {
-                  eprintln!("[DEBUG] {}", format!($($arg)*));
+      public class DiagnosisService {
+          public String diagnose(String patientId, List<String> symptoms) {
+              if (patientId == null || patientId.isBlank()) {
+                  throw new IllegalArgumentException("Patient ID required");
               }
-          };
+              if (symptoms == null || symptoms.isEmpty()) {
+                  throw new IllegalArgumentException("Symptoms required");
+              }
+              return symptoms.contains("fever") ? "flu" : "unknown";
+          }
       }
+    src/main/java/com/healthcare/PrescriptionService.java: |
+      package com.healthcare;
 
-      #[macro_export]
-      macro_rules! log_error {
-          ($($arg:tt)*) => {
-              eprintln!("[ERROR] {}", format!($($arg)*));
-          };
+      public class PrescriptionService {
+          public String prescribe(String patientId, String diagnosis) {
+              if (patientId == null || patientId.isBlank()) {
+                  throw new IllegalArgumentException("Patient ID required");
+              }
+              if (diagnosis == null || diagnosis.isBlank()) {
+                  throw new IllegalArgumentException("Diagnosis required");
+              }
+              return diagnosis.equals("flu") ? "tamiflu" : "paracetamol";
+          }
       }
+    src/main/java/com/healthcare/LabService.java: |
+      package com.healthcare;
 
-      #[macro_export]
-      macro_rules! log_warn {
-          ($($arg:tt)*) => {
-              eprintln!("[WARN] {}", format!($($arg)*));
-          };
+      public class LabService {
+          public String orderTest(String patientId, String testType) {
+              return "LAB-" + patientId + "-" + testType;
+          }
       }
-    src/assert_helpers.rs: |
-      #[macro_export]
-      macro_rules! assert_approx_eq {
-          ($left:expr, $right:expr, $epsilon:expr) => {
-              let diff = ($left - $right).abs();
-              assert!(diff < $epsilon, "Values not approximately equal: {} vs {} (diff: {})", $left, $right, diff);
-          };
-      }
-
-      #[macro_export]
-      macro_rules! assert_contains {
-          ($haystack:expr, $needle:expr) => {
-              assert!($haystack.contains($needle), "{:?} does not contain {:?}", $haystack, $needle);
-          };
-      }
+    garbage/BillingIntegration.java: |
+      // GARBAGE_RUST23_BILL_A = "billing_integration_marker"
+    garbage/InsuranceClaim.java: |
+      // GARBAGE_RUST23_INS_B = "insurance_claim_marker"
+    garbage/PharmacyLink.java: |
+      // GARBAGE_RUST23_PHARM_C = "pharmacy_link_marker"
   changed_files:
-    src/macros.rs: |
-      #[macro_export]
-      macro_rules! vec_of_strings {
-          ($($x:expr),*) => {
-              vec![$($x.to_string()),*]
-          };
-      }
+    src/main/java/com/healthcare/DiagnosisService.java: |
+      package com.healthcare;
 
-      #[macro_export]
-      macro_rules! log_info {
-          ($($arg:tt)*) => {
-              println!("[INFO] {}", format!($($arg)*));
-          };
-      }
+      import com.healthcare.validation.PatientValidator;
+      import java.util.List;
 
-      #[macro_export]
-      macro_rules! hashmap {
-          ($($key:expr => $value:expr),* $(,)?) => {{
-              let mut map = std::collections::HashMap::new();
-              $(map.insert($key, $value);)*
-              map
-          }};
-      }
+      public class DiagnosisService {
+          private final PatientValidator validator;
 
-      #[macro_export]
-      macro_rules! ensure {
-          ($cond:expr, $msg:expr) => {
-              if !$cond {
-                  return Err($msg.to_string());
-              }
-          };
-      }
-    src/main.rs: |
-      mod macros;
-
-      fn main() {
-          let v = vec_of_strings!["hello", "world", "rust"];
-          for item in &v {
-              log_info!("Item: {}", item);
+          public DiagnosisService(PatientValidator validator) {
+              this.validator = validator;
           }
 
-          let config = hashmap! {
-              "host" => "localhost",
-              "port" => "8080",
-          };
-          for (k, v) in &config {
-              log_info!("Config: {} = {}", k, v);
+          public String diagnose(String patientId, List<String> symptoms) {
+              validator.requirePatientId(patientId);
+              if (symptoms == null || symptoms.isEmpty()) {
+                  throw new IllegalArgumentException("Symptoms required");
+              }
+              return symptoms.contains("fever") ? "flu" : "unknown";
+          }
+      }
+    src/main/java/com/healthcare/PrescriptionService.java: |
+      package com.healthcare;
+
+      import com.healthcare.validation.PatientValidator;
+
+      public class PrescriptionService {
+          private final PatientValidator validator;
+
+          public PrescriptionService(PatientValidator validator) {
+              this.validator = validator;
           }
 
-          println!("Total items: {}", v.len());
-      }
-    src/logging_macros.rs: |
-      #[macro_export]
-      macro_rules! log_debug {
-          ($($arg:tt)*) => {
-              if cfg!(debug_assertions) {
-                  eprintln!("[DEBUG] {}", format!($($arg)*));
+          public String prescribe(String patientId, String diagnosis) {
+              validator.requirePatientId(patientId);
+              if (diagnosis == null || diagnosis.isBlank()) {
+                  throw new IllegalArgumentException("Diagnosis required");
               }
-          };
+              return diagnosis.equals("flu") ? "tamiflu" : "paracetamol";
+          }
       }
+    src/main/java/com/healthcare/validation/PatientValidator.java: |
+      package com.healthcare.validation;
 
-      #[macro_export]
-      macro_rules! log_error {
-          ($($arg:tt)*) => {
-              eprintln!("[ERROR] {}", format!($($arg)*));
-          };
+      public class PatientValidator {
+          public void requirePatientId(String patientId) {
+              if (patientId == null || patientId.isBlank()) {
+                  throw new IllegalArgumentException("Patient ID required");
+              }
+          }
       }
+    src/main/java/com/healthcare/LabService.java: |
+      package com.healthcare;
 
-      #[macro_export]
-      macro_rules! log_warn {
-          ($($arg:tt)*) => {
-              eprintln!("[WARN] {}", format!($($arg)*));
-          };
+      public class LabService {
+          public String orderTest(String patientId, String testType) {
+              return "LAB-" + patientId + "-" + testType;
+          }
       }
-    src/assert_helpers.rs: |
-      #[macro_export]
-      macro_rules! assert_approx_eq {
-          ($left:expr, $right:expr, $epsilon:expr) => {
-              let diff = ($left - $right).abs();
-              assert!(diff < $epsilon, "Values not approximately equal: {} vs {} (diff: {})", $left, $right, diff);
-          };
-      }
-
-      #[macro_export]
-      macro_rules! assert_contains {
-          ($haystack:expr, $needle:expr) => {
-              assert!($haystack.contains($needle), "{:?} does not contain {:?}", $haystack, $needle);
-          };
-      }
-  commit_message: Update files
+    garbage/BillingIntegration.java: |
+      // GARBAGE_RUST23_BILL_A = "billing_integration_marker"
+    garbage/InsuranceClaim.java: |
+      // GARBAGE_RUST23_INS_B = "insurance_claim_marker"
+    garbage/PharmacyLink.java: |
+      // GARBAGE_RUST23_PHARM_C = "pharmacy_link_marker"
+  commit_message: "refactor: extract PatientValidator shared by DiagnosisService and PrescriptionService"
 fragments:
-- id: macros_file
+- id: diagnosis_uses_validator
   selector:
-    path: src/macros.rs
-- id: main_file
+    path: src/main/java/com/healthcare/DiagnosisService.java
+    anchor: "private final PatientValidator validator;"
+- id: diagnosis_validate_call
   selector:
-    path: src/main.rs
-- id: req_global_0
+    path: src/main/java/com/healthcare/DiagnosisService.java
+    anchor: "validator.requirePatientId(patientId);"
+- id: prescription_uses_validator
   selector:
-    anchor: macro_rules! hashmap {
-- id: req_global_1
+    path: src/main/java/com/healthcare/PrescriptionService.java
+    anchor: "import com.healthcare.validation.PatientValidator;"
+- id: validator_class
   selector:
-    anchor: let config = hashmap! {
-- id: no_logging_macros
+    path: src/main/java/com/healthcare/validation/PatientValidator.java
+    anchor: "public class PatientValidator {"
+- id: validator_require_method
   selector:
-    path: src/logging_macros.rs
-- id: no_assert_helpers
+    path: src/main/java/com/healthcare/validation/PatientValidator.java
+    anchor: "public void requirePatientId(String patientId) {"
+- id: unrelated_lab
   selector:
-    path: src/assert_helpers.rs
-- id: no_global_0
+    path: src/main/java/com/healthcare/LabService.java
+    anchor: "public String orderTest"
+- id: no_garbage_a
   selector:
-    anchor: log_debug
-- id: no_global_1
+    anchor: GARBAGE_RUST23_BILL_A
+- id: no_garbage_b
   selector:
-    anchor: log_error
-- id: no_global_2
+    anchor: GARBAGE_RUST23_INS_B
+- id: no_garbage_c
   selector:
-    anchor: assert_approx_eq
-- id: no_global_3
-  selector:
-    anchor: assert_contains
-- id: no_global_4
-  selector:
-    anchor: logging_macros.rs
-- id: no_global_5
-  selector:
-    anchor: assert_helpers.rs
+    anchor: GARBAGE_RUST23_PHARM_C
 oracle:
   required:
-  - macros_file
-  - main_file
-  - req_global_0
-  - req_global_1
-  allowed: []
+  - diagnosis_uses_validator
+  - diagnosis_validate_call
+  - validator_class
+  - validator_require_method
+  allowed:
+  - prescription_uses_validator
   forbidden:
-  - no_logging_macros
-  - no_assert_helpers
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+  - unrelated_lab
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

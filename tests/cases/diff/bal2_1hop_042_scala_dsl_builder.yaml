@@ -1,0 +1,194 @@
+name: bal2_1hop_042_scala_dsl_builder
+tags:
+- lang:scala
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/dsl/QueryBuilder.scala: |
+      package dsl
+
+      case class Query(table: String, conditions: List[String], columns: List[String])
+
+      class QueryBuilder(table: String) {
+        private var conditions: List[String] = Nil
+        private var columns: List[String] = List("*")
+
+        def where(cond: String): QueryBuilder = {
+          conditions = cond :: conditions
+          this
+        }
+
+        def select(cols: String*): QueryBuilder = {
+          columns = cols.toList
+          this
+        }
+
+        def build: Query = Query(table, conditions.reverse, columns)
+      }
+    src/main/scala/repo/UserQueryRepo.scala: |
+      package repo
+
+      import dsl.{Query, QueryBuilder}
+
+      class UserQueryRepo {
+        def activeUsers: Query = {
+          new QueryBuilder("users").where("active = true").select("id", "name").build
+        }
+
+        def userById(id: String): Query = {
+          new QueryBuilder("users").where(s"id = '$id'").build
+        }
+      }
+    src/main/scala/repo/OrderQueryRepo.scala: |
+      package repo
+
+      import dsl.{Query, QueryBuilder}
+
+      class OrderQueryRepo {
+        def recentOrders(limit: Int): Query = {
+          new QueryBuilder("orders").where(s"created_at > now() - interval '$limit days'").build
+        }
+      }
+    src/main/scala/executor/QueryExecutor.scala: |
+      package executor
+
+      import dsl.Query
+
+      class QueryExecutor(connectionString: String) {
+        def execute(query: Query): List[Map[String, Any]] = {
+          println(s"Executing on ${query.table}")
+          Nil
+        }
+      }
+    src/main/scala/migration/SchemaManager.scala: |
+      package migration
+
+      GARBAGE_042_SCHEMA_A = "schema"
+
+      class SchemaManager {
+        def createTable(name: String, cols: List[String]): Unit = ()
+        def dropTable(name: String): Unit = ()
+      }
+    src/main/scala/pool/ConnectionPool.scala: |
+      package pool
+
+      GARBAGE_042_POOL_B = "pool"
+
+      class ConnectionPool(size: Int) {
+        def acquire(): String = "conn-1"
+        def release(conn: String): Unit = ()
+      }
+    src/main/scala/backup/Snapshotter.scala: |
+      package backup
+
+      GARBAGE_042_SNAPSHOTTER_C = "snapshot"
+
+      class Snapshotter(storageDir: String) {
+        def snapshot(dbName: String): Unit = ()
+        def restore(path: String): Unit = ()
+      }
+  changed_files:
+    src/main/scala/dsl/QueryBuilder.scala: |
+      package dsl
+
+      case class Query(table: String, conditions: List[String], columns: List[String], orderBy: Option[String], limit: Option[Int])
+
+      class QueryBuilder(table: String) {
+        private var conditions: List[String] = Nil
+        private var columns: List[String] = List("*")
+        private var orderByCol: Option[String] = None
+        private var limitVal: Option[Int] = None
+
+        def where(cond: String): QueryBuilder = {
+          conditions = cond :: conditions
+          this
+        }
+
+        def select(cols: String*): QueryBuilder = {
+          columns = cols.toList
+          this
+        }
+
+        def orderBy(col: String): QueryBuilder = {
+          orderByCol = Some(col)
+          this
+        }
+
+        def limit(n: Int): QueryBuilder = {
+          limitVal = Some(n)
+          this
+        }
+
+        def build: Query = Query(table, conditions.reverse, columns, orderByCol, limitVal)
+      }
+  commit_message: "feat: add orderBy and limit to QueryBuilder DSL"
+fragments:
+- id: query_order_by_field
+  selector:
+    path: src/main/scala/dsl/QueryBuilder.scala
+    anchor: "orderBy: Option[String]"
+- id: query_limit_field
+  selector:
+    path: src/main/scala/dsl/QueryBuilder.scala
+    anchor: "limit: Option[Int]"
+- id: builder_order_by_method
+  selector:
+    path: src/main/scala/dsl/QueryBuilder.scala
+    anchor: "def orderBy(col: String)"
+- id: builder_limit_method
+  selector:
+    path: src/main/scala/dsl/QueryBuilder.scala
+    anchor: "def limit(n: Int)"
+- id: user_repo_uses_builder
+  selector:
+    path: src/main/scala/repo/UserQueryRepo.scala
+    anchor: "new QueryBuilder(\"users\")"
+- id: order_repo_uses_builder
+  selector:
+    path: src/main/scala/repo/OrderQueryRepo.scala
+    anchor: "new QueryBuilder(\"orders\")"
+- id: executor_uses_query
+  selector:
+    path: src/main/scala/executor/QueryExecutor.scala
+    anchor: "query: Query"
+- id: unrelated_schema
+  selector:
+    path: src/main/scala/migration/SchemaManager.scala
+    anchor: "class SchemaManager"
+- id: unrelated_pool
+  selector:
+    path: src/main/scala/pool/ConnectionPool.scala
+    anchor: "class ConnectionPool"
+- id: unrelated_snapshotter
+  selector:
+    path: src/main/scala/backup/Snapshotter.scala
+    anchor: "class Snapshotter"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_042_SCHEMA_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_042_POOL_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_042_SNAPSHOTTER_C
+oracle:
+  required:
+  - query_order_by_field
+  - query_limit_field
+  - builder_order_by_method
+  - builder_limit_method
+  allowed:
+  - user_repo_uses_builder
+  - order_repo_uses_builder
+  - executor_uses_query
+  forbidden:
+  - unrelated_schema
+  - unrelated_pool
+  - unrelated_snapshotter
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

@@ -1,0 +1,214 @@
+name: bal3_1hop_056_scala_signature_query_builder
+tags:
+- lang:scala
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: scala-no-tree-sitter
+repo:
+  initial_files:
+    src/main/scala/orm/QueryBuilder.scala: |
+      package orm
+
+      class QueryBuilder {
+        private var table: String = ""
+        private var conditions: List[(String, Any)] = Nil
+
+        def from(tableName: String): QueryBuilder = {
+          table = tableName
+          this
+        }
+
+        def where(column: String, value: Any): QueryBuilder = {
+          conditions = conditions :+ (column, value)
+          this
+        }
+
+        def toSql(): String = {
+          val sql = s"SELECT * FROM $table"
+          if (conditions.isEmpty) sql
+          else sql + " WHERE " + conditions.map { case (c, v) => s"$c = '$v'" }.mkString(" AND ")
+        }
+      }
+    src/main/scala/repo/PostRepository.scala: |
+      package repo
+
+      import orm.QueryBuilder
+
+      class PostRepository(qb: QueryBuilder) {
+        def findByAuthor(authorId: Int): String = {
+          qb.from("posts").where("author_id", authorId).toSql()
+        }
+      }
+    src/main/scala/repo/CommentRepository.scala: |
+      package repo
+
+      import orm.QueryBuilder
+
+      class CommentRepository(qb: QueryBuilder) {
+        def findByPost(postId: Int): String = {
+          qb.from("comments").where("post_id", postId).toSql()
+        }
+      }
+    src/main/scala/repo/TagRepository.scala: |
+      package repo
+
+      import orm.QueryBuilder
+
+      class TagRepository(qb: QueryBuilder) {
+        def findByName(name: String): String = {
+          qb.from("tags").where("name", name).toSql()
+        }
+      }
+    src/main/scala/repo/CategoryRepository.scala: |
+      package repo
+
+      import orm.QueryBuilder
+
+      class CategoryRepository(qb: QueryBuilder) {
+        def findBySlug(slug: String): String = {
+          qb.from("categories").where("slug", slug).toSql()
+        }
+      }
+    src/main/scala/email/SmtpClient.scala: |
+      package email
+
+      object SmtpClient {
+        val GARBAGE_BAL3_056_SMTP_A = "smtp"
+        val GARBAGE_BAL3_056_PORT_B = 587
+
+        def send(to: String, body: String): Boolean = true
+      }
+    src/main/scala/email/TemplateRenderer.scala: |
+      package email
+
+      object TemplateRenderer {
+        val GARBAGE_BAL3_056_TMPL_C = "template"
+        val GARBAGE_BAL3_056_ENGINE_D = "mustache"
+
+        def render(template: String, vars: Map[String, String]): String = template
+      }
+    src/main/scala/email/MailQueue.scala: |
+      package email
+
+      object MailQueue {
+        val GARBAGE_BAL3_056_MAILQ_E = "mailqueue"
+        val GARBAGE_BAL3_056_RETRY_F = 3
+
+        def enqueue(mail: Map[String, String]): Unit = ()
+      }
+  changed_files:
+    src/main/scala/orm/QueryBuilder.scala: |
+      package orm
+
+      class QueryBuilder {
+        private var table: String = ""
+        private var conditions: List[(String, String, Any)] = Nil
+        private var limitVal: Option[Int] = None
+        private var offsetVal: Option[Int] = None
+        private var orderByCol: Option[String] = None
+
+        def from(tableName: String): QueryBuilder = {
+          table = tableName
+          this
+        }
+
+        def where(column: String, value: Any, operator: String = "="): QueryBuilder = {
+          conditions = conditions :+ (column, operator, value)
+          this
+        }
+
+        def limit(n: Int): QueryBuilder = {
+          limitVal = Some(n)
+          this
+        }
+
+        def offset(n: Int): QueryBuilder = {
+          offsetVal = Some(n)
+          this
+        }
+
+        def orderBy(column: String, direction: String = "ASC"): QueryBuilder = {
+          orderByCol = Some(s"$column $direction")
+          this
+        }
+
+        def toSql(): String = {
+          var sql = s"SELECT * FROM $table"
+          if (conditions.nonEmpty)
+            sql += " WHERE " + conditions.map { case (c, op, v) => s"$c $op '$v'" }.mkString(" AND ")
+          orderByCol.foreach(o => sql += s" ORDER BY $o")
+          limitVal.foreach(l => sql += s" LIMIT $l")
+          offsetVal.foreach(o => sql += s" OFFSET $o")
+          sql
+        }
+      }
+  commit_message: "Add operator, pagination, and ordering to QueryBuilder"
+fragments:
+- id: post_repo
+  selector:
+    path: src/main/scala/repo/PostRepository.scala
+    anchor: "import orm.QueryBuilder"
+- id: post_from
+  selector:
+    path: src/main/scala/repo/PostRepository.scala
+    anchor: "qb.from"
+- id: comment_repo
+  selector:
+    path: src/main/scala/repo/CommentRepository.scala
+    anchor: "import orm.QueryBuilder"
+- id: tag_repo
+  selector:
+    path: src/main/scala/repo/TagRepository.scala
+    anchor: "import orm.QueryBuilder"
+- id: category_repo
+  selector:
+    path: src/main/scala/repo/CategoryRepository.scala
+    anchor: "import orm.QueryBuilder"
+- id: no_smtp
+  selector:
+    path: src/main/scala/email/SmtpClient.scala
+- id: no_template
+  selector:
+    path: src/main/scala/email/TemplateRenderer.scala
+- id: no_mail_queue
+  selector:
+    path: src/main/scala/email/MailQueue.scala
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_056_SMTP_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_056_PORT_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_056_TMPL_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_056_ENGINE_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL3_056_MAILQ_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL3_056_RETRY_F
+oracle:
+  required:
+  - post_repo
+  - post_from
+  - comment_repo
+  - tag_repo
+  - category_repo
+  allowed: []
+  forbidden:
+  - no_smtp
+  - no_template
+  - no_mail_queue
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

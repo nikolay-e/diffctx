@@ -1,0 +1,75 @@
+name: html_005_meta_viewport
+tags:
+- lang:html
+- change:single_file
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+xfail:
+  category: html-trivial-inline-change
+repo:
+  initial_files:
+    index.html: |
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width">
+        <title>My App</title>
+        <link rel="stylesheet" href="styles.css">
+      </head>
+      <body>
+        <main id="root"></main>
+        <script src="app.js"></script>
+      </body>
+      </html>
+    HTML_NOISE_005_error.html: |
+      <!-- HTML_NOISE_005_error_page -->
+      <div class="HTML_NOISE_005_error_container">
+        <h1>404 Not Found</h1>
+      </div>
+    HTML_NOISE_005_offline.html: |
+      <!-- HTML_NOISE_005_offline_page -->
+      <div class="HTML_NOISE_005_offline_message">You are offline</div>
+  changed_files:
+    index.html: |
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>My App</title>
+        <link rel="stylesheet" href="styles.css">
+      </head>
+      <body>
+        <main id="root"></main>
+        <script src="app.js"></script>
+      </body>
+      </html>
+  commit_message: "fix: add initial-scale=1.0 to meta viewport"
+fragments:
+- id: viewport_updated
+  selector:
+    path: index.html
+    anchor: initial-scale=1.0
+- id: no_error_page
+  selector:
+    path: HTML_NOISE_005_error.html
+- id: no_offline_page
+  selector:
+    path: HTML_NOISE_005_offline.html
+- id: no_global_0
+  selector:
+    anchor: HTML_NOISE_005_error_container
+- id: no_global_1
+  selector:
+    anchor: HTML_NOISE_005_offline_message
+oracle:
+  required:
+  - viewport_updated
+  allowed: []
+  forbidden:
+  - no_error_page
+  - no_offline_page
+  - no_global_0
+  - no_global_1

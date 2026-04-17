@@ -1,0 +1,144 @@
+name: bal_3hop_004_python_auth_flow_permission
+tags:
+- lang:python
+- change:single_file
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    auth/permissions.py: |
+      class Permission:
+          def __init__(self, name: str, level: int):
+              self.name = name
+              self.level = level
+          def can_access(self, required_level: int) -> bool:
+              return self.level >= required_level
+    auth/roles.py: |
+      from auth.permissions import Permission
+      class Role:
+          def __init__(self, name: str, permissions: list[Permission]):
+              self.name = name
+              self.permissions = permissions
+          def has_permission(self, perm_name: str) -> bool:
+              return any(p.name == perm_name for p in self.permissions)
+    auth/session.py: |
+      from auth.roles import Role
+      class Session:
+          def __init__(self, user_id: str, role: Role):
+              self.user_id = user_id
+              self.role = role
+              self.active = True
+          def check_access(self, perm_name: str) -> bool:
+              return self.active and self.role.has_permission(perm_name)
+    api/middleware.py: |
+      from auth.session import Session
+      class AuthMiddleware:
+          def __init__(self, session_store: dict):
+              self.session_store = session_store
+          def authenticate(self, token: str) -> Session:
+              session = self.session_store.get(token)
+              if session is None:
+                  raise ValueError("Invalid token")
+              return session
+          def authorize(self, token: str, perm_name: str) -> bool:
+              session = self.authenticate(token)
+              return session.check_access(perm_name)
+    utils/encryption.py: |
+      import hashlib
+      def hash_token(token: str) -> str:
+          return hashlib.sha256(token.encode()).hexdigest()
+    db/connection.py: |
+      class DatabasePool:
+          def __init__(self, dsn: str):
+              self.dsn = dsn
+          def get_connection(self):
+              return f"conn:{self.dsn}"
+  changed_files:
+    auth/permissions.py: |
+      from datetime import datetime
+      class Permission:
+          def __init__(self, name: str, level: int):
+              self.name = name
+              self.level = level
+          def can_access(self, required_level: int) -> bool:
+              return self.level >= required_level
+          def is_admin(self) -> bool:
+              return self.level >= 100
+    auth/roles.py: |
+      from auth.permissions import Permission
+      class Role:
+          def __init__(self, name: str, permissions: list[Permission]):
+              self.name = name
+              self.permissions = permissions
+          def has_permission(self, perm_name: str) -> bool:
+              return any(p.name == perm_name for p in self.permissions)
+    auth/session.py: |
+      from auth.roles import Role
+      class Session:
+          def __init__(self, user_id: str, role: Role):
+              self.user_id = user_id
+              self.role = role
+              self.active = True
+          def check_access(self, perm_name: str) -> bool:
+              return self.active and self.role.has_permission(perm_name)
+    api/middleware.py: |
+      from auth.session import Session
+      class AuthMiddleware:
+          def __init__(self, session_store: dict):
+              self.session_store = session_store
+          def authenticate(self, token: str) -> Session:
+              session = self.session_store.get(token)
+              if session is None:
+                  raise ValueError("Invalid token")
+              return session
+          def authorize(self, token: str, perm_name: str) -> bool:
+              session = self.authenticate(token)
+              return session.check_access(perm_name)
+    utils/encryption.py: |
+      import hashlib
+      def hash_token(token: str) -> str:
+          return hashlib.sha256(token.encode()).hexdigest()
+    db/connection.py: |
+      class DatabasePool:
+          def __init__(self, dsn: str):
+              self.dsn = dsn
+          def get_connection(self):
+              return f"conn:{self.dsn}"
+  commit_message: "feat: add is_admin method to Permission"
+fragments:
+- id: permission_is_admin
+  selector:
+    path: auth/permissions.py
+    anchor: "def is_admin(self) -> bool"
+- id: role_uses_permission
+  selector:
+    path: auth/roles.py
+    anchor: "from auth.permissions import Permission"
+- id: session_uses_role
+  selector:
+    path: auth/session.py
+    anchor: "from auth.roles import Role"
+- id: middleware_uses_session
+  selector:
+    path: api/middleware.py
+    anchor: "from auth.session import Session"
+- id: no_encryption
+  selector:
+    path: utils/encryption.py
+    anchor: "def hash_token"
+- id: no_db
+  selector:
+    path: db/connection.py
+    anchor: "class DatabasePool"
+oracle:
+  required:
+  - permission_is_admin
+  - role_uses_permission
+  - session_uses_role
+  - middleware_uses_session
+  allowed: []
+  forbidden:
+  - no_encryption
+  - no_db

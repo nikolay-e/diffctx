@@ -1,4 +1,11 @@
 name: helm_035_tests
+tags:
+- lang:yaml
+- change:single_file
+- change:config
+- context:same_file
+- distance:0hop
+- difficulty:trivial
 repo:
   initial_files:
     templates/tests/test-connection.yaml: |

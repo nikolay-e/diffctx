@@ -1,0 +1,268 @@
+name: bal_1hop_048_typescript_validator_to_form
+tags:
+- lang:rust
+- change:bug_fix
+- change:multi_file
+- context:test_file
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/inventory/stock_tracker.rs: |
+      use crate::inventory::warehouse::Warehouse;
+      use crate::inventory::product::Product;
+
+      pub struct StockTracker {
+          warehouse: Warehouse,
+      }
+
+      impl StockTracker {
+          pub fn new(warehouse: Warehouse) -> Self {
+              Self { warehouse }
+          }
+
+          pub fn reserve(&mut self, product_id: &str, quantity: u32) -> Result<(), String> {
+              let product = self.warehouse.get_mut(product_id)
+                  .ok_or_else(|| format!("Product {} not found", product_id))?;
+              if product.available < quantity {
+                  return Err(format!("Only {} units available", product.available));
+              }
+              product.available -= quantity;
+              product.reserved += quantity;
+              Ok(())
+          }
+
+          pub fn release(&mut self, product_id: &str, quantity: u32) {
+              if let Some(product) = self.warehouse.get_mut(product_id) {
+                  product.reserved = product.reserved.saturating_sub(quantity);
+                  product.available += quantity;
+              }
+          }
+      }
+    src/inventory/warehouse.rs: |
+      use crate::inventory::product::Product;
+      use std::collections::HashMap;
+
+      pub struct Warehouse {
+          products: HashMap<String, Product>,
+      }
+
+      impl Warehouse {
+          pub fn new() -> Self {
+              Self { products: HashMap::new() }
+          }
+
+          pub fn add(&mut self, product: Product) {
+              self.products.insert(product.id.clone(), product);
+          }
+
+          pub fn get_mut(&mut self, id: &str) -> Option<&mut Product> {
+              self.products.get_mut(id)
+          }
+      }
+    src/inventory/product.rs: |
+      pub struct Product {
+          pub id: String,
+          pub name: String,
+          pub available: u32,
+          pub reserved: u32,
+      }
+    tests/test_stock_tracker.rs: |
+      use crate::inventory::stock_tracker::StockTracker;
+      use crate::inventory::warehouse::Warehouse;
+      use crate::inventory::product::Product;
+
+      fn make_warehouse() -> Warehouse {
+          let mut wh = Warehouse::new();
+          wh.add(Product { id: "p1".to_string(), name: "Widget".to_string(), available: 10, reserved: 0 });
+          wh
+      }
+
+      #[test]
+      fn test_reserve_reduces_available() {
+          let mut tracker = StockTracker::new(make_warehouse());
+          tracker.reserve("p1", 3).unwrap();
+          // available should be 7
+      }
+
+      #[test]
+      fn test_reserve_fails_when_insufficient() {
+          let mut tracker = StockTracker::new(make_warehouse());
+          let result = tracker.reserve("p1", 20);
+          assert!(result.is_err());
+      }
+    src/pricing/discount.rs: |
+      pub const GARBAGE_BAL1HOP048_A: &str = "discount_code_prefix";
+
+      pub fn apply_discount(price: f64, pct: f64) -> f64 { price * (1.0 - pct) }
+    src/shipping/carrier.rs: |
+      pub const GARBAGE_BAL1HOP048_B: &str = "fedex_carrier_id";
+      pub const GARBAGE_BAL1HOP048_C: f64 = 9.99;
+
+      pub struct Carrier { pub name: String }
+    src/reporting/inventory_report.rs: |
+      pub const GARBAGE_BAL1HOP048_D: &str = "inventory_report_daily";
+
+      pub fn generate() -> String { "Inventory report".to_string() }
+  changed_files:
+    src/inventory/stock_tracker.rs: |
+      use crate::inventory::warehouse::Warehouse;
+      use crate::inventory::product::Product;
+
+      pub struct StockTracker {
+          warehouse: Warehouse,
+      }
+
+      impl StockTracker {
+          pub fn new(warehouse: Warehouse) -> Self {
+              Self { warehouse }
+          }
+
+          pub fn reserve(&mut self, product_id: &str, quantity: u32) -> Result<u32, String> {
+              if quantity == 0 {
+                  return Err("Quantity must be greater than zero".to_string());
+              }
+              let product = self.warehouse.get_mut(product_id)
+                  .ok_or_else(|| format!("Product {} not found", product_id))?;
+              if product.available < quantity {
+                  return Err(format!("Only {} units available", product.available));
+              }
+              product.available -= quantity;
+              product.reserved += quantity;
+              Ok(product.available)
+          }
+
+          pub fn release(&mut self, product_id: &str, quantity: u32) {
+              if let Some(product) = self.warehouse.get_mut(product_id) {
+                  product.reserved = product.reserved.saturating_sub(quantity);
+                  product.available += quantity;
+              }
+          }
+      }
+    src/inventory/warehouse.rs: |
+      use crate::inventory::product::Product;
+      use std::collections::HashMap;
+
+      pub struct Warehouse {
+          products: HashMap<String, Product>,
+      }
+
+      impl Warehouse {
+          pub fn new() -> Self {
+              Self { products: HashMap::new() }
+          }
+
+          pub fn add(&mut self, product: Product) {
+              self.products.insert(product.id.clone(), product);
+          }
+
+          pub fn get_mut(&mut self, id: &str) -> Option<&mut Product> {
+              self.products.get_mut(id)
+          }
+      }
+    src/inventory/product.rs: |
+      pub struct Product {
+          pub id: String,
+          pub name: String,
+          pub available: u32,
+          pub reserved: u32,
+      }
+    tests/test_stock_tracker.rs: |
+      use crate::inventory::stock_tracker::StockTracker;
+      use crate::inventory::warehouse::Warehouse;
+      use crate::inventory::product::Product;
+
+      fn make_warehouse() -> Warehouse {
+          let mut wh = Warehouse::new();
+          wh.add(Product { id: "p1".to_string(), name: "Widget".to_string(), available: 10, reserved: 0 });
+          wh
+      }
+
+      #[test]
+      fn test_reserve_reduces_available() {
+          let mut tracker = StockTracker::new(make_warehouse());
+          let remaining = tracker.reserve("p1", 3).unwrap();
+          assert_eq!(remaining, 7);
+      }
+
+      #[test]
+      fn test_reserve_fails_when_insufficient() {
+          let mut tracker = StockTracker::new(make_warehouse());
+          let result = tracker.reserve("p1", 20);
+          assert!(result.is_err());
+      }
+
+      #[test]
+      fn test_reserve_rejects_zero_quantity() {
+          let mut tracker = StockTracker::new(make_warehouse());
+          let result = tracker.reserve("p1", 0);
+          assert!(result.is_err());
+          assert!(result.unwrap_err().contains("greater than zero"));
+      }
+    src/pricing/discount.rs: |
+      pub const GARBAGE_BAL1HOP048_A: &str = "discount_code_prefix";
+
+      pub fn apply_discount(price: f64, pct: f64) -> f64 { price * (1.0 - pct) }
+    src/shipping/carrier.rs: |
+      pub const GARBAGE_BAL1HOP048_B: &str = "fedex_carrier_id";
+      pub const GARBAGE_BAL1HOP048_C: f64 = 9.99;
+
+      pub struct Carrier { pub name: String }
+    src/reporting/inventory_report.rs: |
+      pub const GARBAGE_BAL1HOP048_D: &str = "inventory_report_daily";
+
+      pub fn generate() -> String { "Inventory report".to_string() }
+  commit_message: "fix: validate zero quantity and return remaining stock in StockTracker::reserve"
+fragments:
+- id: reserve_zero_check
+  selector:
+    path: src/inventory/stock_tracker.rs
+    anchor: "Quantity must be greater than zero"
+- id: reserve_returns_remaining
+  selector:
+    path: src/inventory/stock_tracker.rs
+    anchor: "Ok(product.available)"
+- id: test_reserve_zero
+  selector:
+    path: tests/test_stock_tracker.rs
+    anchor: "fn test_reserve_rejects_zero_quantity"
+- id: product_struct
+  selector:
+    path: src/inventory/product.rs
+    anchor: "pub struct Product"
+- id: no_discount
+  selector:
+    path: src/pricing/discount.rs
+- id: no_carrier
+  selector:
+    path: src/shipping/carrier.rs
+- id: no_inventory_report
+  selector:
+    path: src/reporting/inventory_report.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL1HOP048_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL1HOP048_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL1HOP048_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL1HOP048_D
+oracle:
+  required:
+  - reserve_zero_check
+  - reserve_returns_remaining
+  - test_reserve_zero
+  - product_struct
+  allowed: []
+  forbidden:
+  - no_discount
+  - no_carrier
+  - no_inventory_report
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

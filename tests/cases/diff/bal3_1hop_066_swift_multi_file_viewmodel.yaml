@@ -1,0 +1,292 @@
+name: bal3_1hop_066_swift_multi_file_viewmodel
+tags:
+- lang:swift
+- change:multi_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    Sources/Models/Task.swift: |
+      import Foundation
+
+      struct Task: Identifiable, Codable {
+          let id: UUID
+          var title: String
+          var isCompleted: Bool
+          var priority: Int
+      }
+    Sources/Models/TaskList.swift: |
+      import Foundation
+
+      struct TaskList: Identifiable, Codable {
+          let id: UUID
+          var name: String
+          var tasks: [Task]
+      }
+    Sources/ViewModels/TaskViewModel.swift: |
+      import Foundation
+      import Models
+
+      class TaskViewModel: ObservableObject {
+          @Published var tasks: [Task] = []
+
+          func add(title: String) {
+              let task = Task(id: UUID(), title: title, isCompleted: false, priority: 0)
+              tasks.append(task)
+          }
+
+          func toggle(taskId: UUID) {
+              if let index = tasks.firstIndex(where: { $0.id == taskId }) {
+                  tasks[index].isCompleted.toggle()
+              }
+          }
+      }
+    Sources/ViewModels/TaskListViewModel.swift: |
+      import Foundation
+      import Models
+
+      class TaskListViewModel: ObservableObject {
+          @Published var lists: [TaskList] = []
+
+          func createList(name: String) {
+              let list = TaskList(id: UUID(), name: name, tasks: [])
+              lists.append(list)
+          }
+      }
+    Sources/Views/TaskRowView.swift: |
+      import Foundation
+      import Models
+
+      struct TaskRowView {
+          let task: Task
+
+          func render() -> String {
+              let status = task.isCompleted ? "[x]" : "[ ]"
+              return "\(status) \(task.title)"
+          }
+      }
+    Sources/Views/TaskListRowView.swift: |
+      import Foundation
+      import Models
+
+      struct TaskListRowView {
+          let list: TaskList
+
+          func render() -> String {
+              return "\(list.name) (\(list.tasks.count) tasks)"
+          }
+      }
+    Sources/Persistence/SQLiteStore.swift: |
+      import Foundation
+      GARBAGE_066_SQLITE_PATH_A = "tasks.db"
+      GARBAGE_066_PRAGMA_WAL_B = "PRAGMA journal_mode=WAL"
+
+      class SQLiteStore {
+          func execute(query: String) {}
+      }
+    Sources/Notifications/PushService.swift: |
+      import Foundation
+      GARBAGE_066_PUSH_TOKEN_C = "device_token"
+      GARBAGE_066_PUSH_SOUND_D = "default"
+
+      class PushService {
+          func sendNotification(title: String, body: String) {}
+      }
+    Sources/Sync/CloudSync.swift: |
+      import Foundation
+      GARBAGE_066_SYNC_URL_E = "https://sync.example.com"
+      GARBAGE_066_SYNC_INTERVAL_F = 300
+
+      class CloudSync {
+          func syncNow() {}
+      }
+  changed_files:
+    Sources/Models/Task.swift: |
+      import Foundation
+
+      enum TaskPriority: Int, Codable, Comparable {
+          case low = 0
+          case medium = 1
+          case high = 2
+          case urgent = 3
+
+          static func < (lhs: TaskPriority, rhs: TaskPriority) -> Bool {
+              return lhs.rawValue < rhs.rawValue
+          }
+      }
+
+      struct Task: Identifiable, Codable {
+          let id: UUID
+          var title: String
+          var isCompleted: Bool
+          var priority: TaskPriority
+          var dueDate: Date?
+      }
+    Sources/Models/TaskList.swift: |
+      import Foundation
+
+      struct TaskList: Identifiable, Codable {
+          let id: UUID
+          var name: String
+          var tasks: [Task]
+          var color: String
+
+          var pendingCount: Int {
+              tasks.filter { !$0.isCompleted }.count
+          }
+      }
+    Sources/ViewModels/TaskViewModel.swift: |
+      import Foundation
+      import Models
+
+      class TaskViewModel: ObservableObject {
+          @Published var tasks: [Task] = []
+
+          func add(title: String) {
+              let task = Task(id: UUID(), title: title, isCompleted: false, priority: 0)
+              tasks.append(task)
+          }
+
+          func toggle(taskId: UUID) {
+              if let index = tasks.firstIndex(where: { $0.id == taskId }) {
+                  tasks[index].isCompleted.toggle()
+              }
+          }
+      }
+    Sources/ViewModels/TaskListViewModel.swift: |
+      import Foundation
+      import Models
+
+      class TaskListViewModel: ObservableObject {
+          @Published var lists: [TaskList] = []
+
+          func createList(name: String) {
+              let list = TaskList(id: UUID(), name: name, tasks: [])
+              lists.append(list)
+          }
+      }
+    Sources/Views/TaskRowView.swift: |
+      import Foundation
+      import Models
+
+      struct TaskRowView {
+          let task: Task
+
+          func render() -> String {
+              let status = task.isCompleted ? "[x]" : "[ ]"
+              return "\(status) \(task.title)"
+          }
+      }
+    Sources/Views/TaskListRowView.swift: |
+      import Foundation
+      import Models
+
+      struct TaskListRowView {
+          let list: TaskList
+
+          func render() -> String {
+              return "\(list.name) (\(list.tasks.count) tasks)"
+          }
+      }
+    Sources/Persistence/SQLiteStore.swift: |
+      import Foundation
+      GARBAGE_066_SQLITE_PATH_A = "tasks.db"
+      GARBAGE_066_PRAGMA_WAL_B = "PRAGMA journal_mode=WAL"
+
+      class SQLiteStore {
+          func execute(query: String) {}
+      }
+    Sources/Notifications/PushService.swift: |
+      import Foundation
+      GARBAGE_066_PUSH_TOKEN_C = "device_token"
+      GARBAGE_066_PUSH_SOUND_D = "default"
+
+      class PushService {
+          func sendNotification(title: String, body: String) {}
+      }
+    Sources/Sync/CloudSync.swift: |
+      import Foundation
+      GARBAGE_066_SYNC_URL_E = "https://sync.example.com"
+      GARBAGE_066_SYNC_INTERVAL_F = 300
+
+      class CloudSync {
+          func syncNow() {}
+      }
+  commit_message: "feat: add TaskPriority enum, dueDate, list color and pendingCount"
+fragments:
+- id: task_vm_imports
+  selector:
+    path: Sources/ViewModels/TaskViewModel.swift
+    anchor: "import Models"
+- id: task_vm_tasks
+  selector:
+    path: Sources/ViewModels/TaskViewModel.swift
+    anchor: "var tasks: [Task]"
+- id: task_list_vm_imports
+  selector:
+    path: Sources/ViewModels/TaskListViewModel.swift
+    anchor: "import Models"
+- id: task_list_vm_lists
+  selector:
+    path: Sources/ViewModels/TaskListViewModel.swift
+    anchor: "var lists: [TaskList]"
+- id: task_row_imports
+  selector:
+    path: Sources/Views/TaskRowView.swift
+    anchor: "import Models"
+- id: task_row_task
+  selector:
+    path: Sources/Views/TaskRowView.swift
+    anchor: "let task: Task"
+- id: task_list_row_imports
+  selector:
+    path: Sources/Views/TaskListRowView.swift
+    anchor: "import Models"
+- id: no_sqlite
+  selector:
+    path: Sources/Persistence/SQLiteStore.swift
+- id: no_push
+  selector:
+    path: Sources/Notifications/PushService.swift
+- id: no_cloud
+  selector:
+    path: Sources/Sync/CloudSync.swift
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_066_SQLITE_PATH_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_066_PRAGMA_WAL_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_066_PUSH_TOKEN_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_066_PUSH_SOUND_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_066_SYNC_URL_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_066_SYNC_INTERVAL_F
+oracle:
+  required:
+  - task_vm_imports
+  - task_vm_tasks
+  - task_list_vm_imports
+  - task_list_vm_lists
+  - task_row_imports
+  - task_row_task
+  - task_list_row_imports
+  allowed: []
+  forbidden:
+  - no_sqlite
+  - no_push
+  - no_cloud
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

@@ -1,0 +1,98 @@
+name: toml_008_app_config_database_url
+tags:
+- lang:toml
+- lang:rust
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    config.toml: |
+      [server]
+      host = "0.0.0.0"
+      port = 8080
+
+      [database]
+      url = "postgres://user:pass@localhost:5432/mydb"
+      max_connections = 10
+    src/db.rs: |
+      use std::fs;
+
+      #[derive(Debug)]
+      pub struct DatabaseConfig {
+          pub url: String,
+          pub max_connections: u32,
+      }
+
+      impl DatabaseConfig {
+          pub fn from_toml(path: &str) -> Self {
+              let content = fs::read_to_string(path).expect("config not found");
+              let value: toml::Value = content.parse().unwrap();
+              let db = &value["database"];
+              DatabaseConfig {
+                  url: db["url"].as_str().unwrap().to_string(),
+                  max_connections: db["max_connections"].as_integer().unwrap() as u32,
+              }
+          }
+      }
+    src/main.rs: |
+      mod db;
+
+      fn main() {
+          let cfg = db::DatabaseConfig::from_toml("config.toml");
+          println!("Connecting to {}", cfg.url);
+      }
+    TOML_NOISE_008_email.toml: |
+      [TOML_NOISE_008_smtp]
+      TOML_NOISE_008_host = "smtp.mailer.io"
+      TOML_NOISE_008_port = 465
+      TOML_NOISE_008_user = "noreply@example.com"
+
+      [TOML_NOISE_008_templates]
+      TOML_NOISE_008_welcome = "welcome.html"
+    src/toml_noise_008_legacy.rs: |
+      // TOML_NOISE_008_legacy db adapter
+      pub fn toml_noise_008_old_connect() -> bool { false }
+  changed_files:
+    config.toml: |
+      [server]
+      host = "0.0.0.0"
+      port = 8080
+
+      [database]
+      url = "postgres://appuser:s3cr3t@db.prod.internal:5432/appdb?sslmode=require"
+      max_connections = 25
+  commit_message: "config: point database url to production host with ssl and raise pool size"
+fragments:
+- id: config_database_url
+  selector:
+    path: config.toml
+    anchor: "db.prod.internal"
+- id: db_rs_from_toml
+  selector:
+    path: src/db.rs
+    anchor: from_toml
+- id: no_noise_toml
+  selector:
+    path: TOML_NOISE_008_email.toml
+- id: no_legacy_rs
+  selector:
+    path: src/toml_noise_008_legacy.rs
+- id: no_global_0
+  selector:
+    anchor: TOML_NOISE_008_host
+- id: no_global_1
+  selector:
+    anchor: toml_noise_008_old_connect
+oracle:
+  required:
+  - config_database_url
+  - db_rs_from_toml
+  allowed: []
+  forbidden:
+  - no_noise_toml
+  - no_legacy_rs
+  - no_global_0
+  - no_global_1

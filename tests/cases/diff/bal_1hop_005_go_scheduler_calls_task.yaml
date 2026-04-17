@@ -1,0 +1,115 @@
+name: bal_1hop_005_go_scheduler_calls_task
+tags:
+- lang:go
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    pkg/task/runner.go: |
+      package task
+
+      import "fmt"
+
+      type Task struct {
+          Name string
+          Fn   func() error
+      }
+
+      func Run(t *Task) error {
+          fmt.Printf("running task: %s\n", t.Name)
+          return t.Fn()
+      }
+    pkg/scheduler/cron.go: |
+      package scheduler
+
+      import (
+          "time"
+          "myapp/pkg/task"
+      )
+
+      type Scheduler struct {
+          interval time.Duration
+          tasks    []*task.Task
+      }
+
+      func New(interval time.Duration) *Scheduler {
+          return &Scheduler{interval: interval}
+      }
+
+      func (s *Scheduler) Add(t *task.Task) {
+          s.tasks = append(s.tasks, t)
+      }
+
+      func (s *Scheduler) Start() {
+          for {
+              for _, t := range s.tasks {
+                  task.Run(t)
+              }
+              time.Sleep(s.interval)
+          }
+      }
+    pkg/notify/email.go: |
+      package notify
+
+      import "fmt"
+
+      func SendEmail(to, subject, body string) error {
+          fmt.Printf("sending email to %s: %s\n", to, subject)
+          return nil
+      }
+  changed_files:
+    pkg/task/runner.go: |
+      package task
+
+      import (
+          "fmt"
+          "time"
+      )
+
+      type Task struct {
+          Name    string
+          Fn      func() error
+          Timeout time.Duration
+      }
+
+      func Run(t *Task) error {
+          fmt.Printf("running task: %s\n", t.Name)
+          return t.Fn()
+      }
+
+      func RunWithTimeout(t *Task) error {
+          fmt.Printf("running task with timeout: %s (%v)\n", t.Name, t.Timeout)
+          done := make(chan error, 1)
+          go func() {
+              done <- t.Fn()
+          }()
+          select {
+          case err := <-done:
+              return err
+          case <-time.After(t.Timeout):
+              return fmt.Errorf("task %s timed out", t.Name)
+          }
+      }
+  commit_message: "feat: add RunWithTimeout for tasks"
+fragments:
+- id: run_with_timeout
+  selector:
+    path: pkg/task/runner.go
+    anchor: "func RunWithTimeout(t *Task) error"
+- id: scheduler_uses_task
+  selector:
+    path: pkg/scheduler/cron.go
+    anchor: "task.Run(t)"
+- id: unrelated_email
+  selector:
+    path: pkg/notify/email.go
+    anchor: "func SendEmail"
+oracle:
+  required:
+  - run_with_timeout
+  - scheduler_uses_task
+  allowed: []
+  forbidden:
+  - unrelated_email

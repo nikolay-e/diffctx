@@ -1,0 +1,126 @@
+name: gap_150_shell_terraform_deploy_script_same_file
+tags:
+- change:config
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+- lang:shell
+- lang:terraform
+xfail:
+  category: low-relevance-threshold-tuning
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    bin/deploy.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      IMAGE_REPO="${IMAGE_REPO:-ecr.aws/myapp}"
+      IMAGE_TAG="${IMAGE_TAG:-latest}"
+      CLUSTER_NAME="${CLUSTER_NAME:-prod}"
+      SERVICE_NAME="${SERVICE_NAME:-web}"
+      DESIRED_COUNT=2
+
+      aws ecs update-service \
+        --cluster "${CLUSTER_NAME}" \
+        --service "${SERVICE_NAME}" \
+        --force-new-deployment \
+        --desired-count "${DESIRED_COUNT}"
+
+      aws ecs wait services-stable \
+        --cluster "${CLUSTER_NAME}" \
+        --services "${SERVICE_NAME}"
+    terraform/ecs.tf: |
+      resource "aws_ecs_cluster" "main" {
+        name = "prod"
+
+        setting {
+          name  = "containerInsights"
+          value = "enabled"
+        }
+      }
+
+      resource "aws_ecs_service" "web" {
+        name            = "web"
+        cluster         = aws_ecs_cluster.main.id
+        task_definition = aws_ecs_task_definition.web.arn
+        desired_count   = 2
+        launch_type     = "FARGATE"
+      }
+    terraform/alb.tf: |
+      resource "aws_lb" "frontend" {
+        name               = "frontend-alb"
+        internal           = false
+        load_balancer_type = "application"
+        subnets            = var.public_subnets
+
+        enable_deletion_protection = true
+      }
+
+      resource "aws_lb_target_group" "web" {
+        name        = "web-tg"
+        port        = 8080
+        protocol    = "HTTP"
+        vpc_id      = var.vpc_id
+        target_type = "ip"
+
+        health_check {
+          path                = "/health"
+          healthy_threshold   = 2
+          unhealthy_threshold = 3
+        }
+      }
+  changed_files:
+    bin/deploy.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      IMAGE_REPO="${IMAGE_REPO:-ecr.aws/myapp}"
+      IMAGE_TAG="${IMAGE_TAG:-latest}"
+      CLUSTER_NAME="${CLUSTER_NAME:-prod}"
+      SERVICE_NAME="${SERVICE_NAME:-web}"
+      DESIRED_COUNT=3
+      DEPLOYMENT_TIMEOUT=600
+      ROLLBACK_ON_FAILURE=true
+
+      aws ecs update-service \
+        --cluster "${CLUSTER_NAME}" \
+        --service "${SERVICE_NAME}" \
+        --force-new-deployment \
+        --desired-count "${DESIRED_COUNT}"
+
+      if ! aws ecs wait services-stable \
+        --cluster "${CLUSTER_NAME}" \
+        --services "${SERVICE_NAME}"; then
+        if [[ "${ROLLBACK_ON_FAILURE}" == "true" ]]; then
+          aws ecs update-service \
+            --cluster "${CLUSTER_NAME}" \
+            --service "${SERVICE_NAME}" \
+            --force-new-deployment
+        fi
+        exit 1
+      fi
+fragments:
+- id: desired_count
+  selector:
+    path: bin/deploy.sh
+    anchor: DESIRED_COUNT=3
+- id: rollback
+  selector:
+    path: bin/deploy.sh
+    anchor: ROLLBACK_ON_FAILURE
+- id: no_ecs_tf
+  selector:
+    path: terraform/ecs.tf
+- id: no_alb
+  selector:
+    path: terraform/alb.tf
+oracle:
+  required:
+  - desired_count
+  - rollback
+  forbidden:
+  - no_ecs_tf
+  - no_alb

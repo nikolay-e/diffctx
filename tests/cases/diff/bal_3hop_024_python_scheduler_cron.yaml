@@ -1,0 +1,173 @@
+name: bal_3hop_024_python_scheduler_cron
+tags:
+- lang:python
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    scheduler/schedule.py: |
+      class Schedule:
+          def __init__(self, cron_expr: str):
+              self.cron_expr = cron_expr
+              parts = cron_expr.split()
+              self.minute = parts[0] if len(parts) > 0 else "*"
+              self.hour = parts[1] if len(parts) > 1 else "*"
+          def matches_hour(self, hour: int) -> bool:
+              return self.hour == "*" or int(self.hour) == hour
+          def matches_minute(self, minute: int) -> bool:
+              return self.minute == "*" or int(self.minute) == minute
+    scheduler/job.py: |
+      from scheduler.schedule import Schedule
+      class Job:
+          def __init__(self, name: str, schedule: Schedule, fn):
+              self.name = name
+              self.schedule = schedule
+              self.fn = fn
+              self.run_count = 0
+          def should_run(self, hour: int, minute: int) -> bool:
+              return self.schedule.matches_hour(hour) and self.schedule.matches_minute(minute)
+          def execute(self):
+              self.fn()
+              self.run_count += 1
+    scheduler/executor.py: |
+      from scheduler.job import Job
+      class Executor:
+          def __init__(self):
+              self.jobs: list[Job] = []
+          def add_job(self, job: Job):
+              self.jobs.append(job)
+          def tick(self, hour: int, minute: int) -> list[str]:
+              executed = []
+              for job in self.jobs:
+                  if job.should_run(hour, minute):
+                      job.execute()
+                      executed.append(job.name)
+              return executed
+    app/cron_daemon.py: |
+      from scheduler.executor import Executor
+      from scheduler.job import Job
+      from scheduler.schedule import Schedule
+      class CronDaemon:
+          def __init__(self):
+              self.executor = Executor()
+          def register(self, name: str, cron_expr: str, fn):
+              schedule = Schedule(cron_expr)
+              job = Job(name, schedule, fn)
+              self.executor.add_job(job)
+          def run_once(self, hour: int, minute: int) -> list[str]:
+              return self.executor.tick(hour, minute)
+    utils/time_utils.py: |
+      from datetime import datetime
+      def current_hour() -> int:
+          return datetime.now().hour
+      def current_minute() -> int:
+          return datetime.now().minute
+    config/jobs_config.py: |
+      CLEANUP_CRON = "0 3 * * *"
+      REPORT_CRON = "30 8 * * 1"
+      BACKUP_CRON = "0 0 * * *"
+  changed_files:
+    scheduler/schedule.py: |
+      class Schedule:
+          def __init__(self, cron_expr: str, timezone: str = "UTC"):
+              self.cron_expr = cron_expr
+              self.timezone = timezone
+              parts = cron_expr.split()
+              self.minute = parts[0] if len(parts) > 0 else "*"
+              self.hour = parts[1] if len(parts) > 1 else "*"
+              self.day_of_week = parts[4] if len(parts) > 4 else "*"
+          def matches_hour(self, hour: int) -> bool:
+              return self.hour == "*" or int(self.hour) == hour
+          def matches_minute(self, minute: int) -> bool:
+              return self.minute == "*" or int(self.minute) == minute
+          def matches_day(self, weekday: int) -> bool:
+              return self.day_of_week == "*" or int(self.day_of_week) == weekday
+    scheduler/job.py: |
+      from scheduler.schedule import Schedule
+      class Job:
+          def __init__(self, name: str, schedule: Schedule, fn):
+              self.name = name
+              self.schedule = schedule
+              self.fn = fn
+              self.run_count = 0
+          def should_run(self, hour: int, minute: int) -> bool:
+              return self.schedule.matches_hour(hour) and self.schedule.matches_minute(minute)
+          def execute(self):
+              self.fn()
+              self.run_count += 1
+    scheduler/executor.py: |
+      from scheduler.job import Job
+      class Executor:
+          def __init__(self):
+              self.jobs: list[Job] = []
+          def add_job(self, job: Job):
+              self.jobs.append(job)
+          def tick(self, hour: int, minute: int) -> list[str]:
+              executed = []
+              for job in self.jobs:
+                  if job.should_run(hour, minute):
+                      job.execute()
+                      executed.append(job.name)
+              return executed
+    app/cron_daemon.py: |
+      from scheduler.executor import Executor
+      from scheduler.job import Job
+      from scheduler.schedule import Schedule
+      class CronDaemon:
+          def __init__(self):
+              self.executor = Executor()
+          def register(self, name: str, cron_expr: str, fn):
+              schedule = Schedule(cron_expr)
+              job = Job(name, schedule, fn)
+              self.executor.add_job(job)
+          def run_once(self, hour: int, minute: int) -> list[str]:
+              return self.executor.tick(hour, minute)
+    utils/time_utils.py: |
+      from datetime import datetime
+      def current_hour() -> int:
+          return datetime.now().hour
+      def current_minute() -> int:
+          return datetime.now().minute
+    config/jobs_config.py: |
+      CLEANUP_CRON = "0 3 * * *"
+      REPORT_CRON = "30 8 * * 1"
+      BACKUP_CRON = "0 0 * * *"
+  commit_message: "feat: add timezone and day_of_week support to Schedule"
+fragments:
+- id: schedule_timezone
+  selector:
+    path: scheduler/schedule.py
+    anchor: "timezone: str = \"UTC\""
+- id: job_uses_schedule
+  selector:
+    path: scheduler/job.py
+    anchor: "from scheduler.schedule import Schedule"
+- id: executor_uses_job
+  selector:
+    path: scheduler/executor.py
+    anchor: "from scheduler.job import Job"
+- id: daemon_uses_executor
+  selector:
+    path: app/cron_daemon.py
+    anchor: "from scheduler.executor import Executor"
+- id: no_time_utils
+  selector:
+    path: utils/time_utils.py
+    anchor: "def current_hour"
+- id: no_jobs_config
+  selector:
+    path: config/jobs_config.py
+    anchor: "CLEANUP_CRON"
+oracle:
+  required:
+  - schedule_timezone
+  - job_uses_schedule
+  - executor_uses_job
+  - daemon_uses_executor
+  allowed: []
+  forbidden:
+  - no_time_utils
+  - no_jobs_config

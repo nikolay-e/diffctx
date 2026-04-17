@@ -1,0 +1,151 @@
+name: bal_crossmod_004_ruby_repo_to_api
+tags:
+- lang:ruby
+- change:single_file
+- change:signature
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    lib/repositories/product_repo.rb: |
+      module Repositories
+        class ProductRepo
+          def initialize(db)
+            @db = db
+          end
+
+          def find_by_id(id)
+            @db.query("SELECT * FROM products WHERE id = ?", id).first
+          end
+
+          def find_all
+            @db.query("SELECT * FROM products")
+          end
+        end
+      end
+    lib/services/catalog_service.rb: |
+      require_relative '../repositories/product_repo'
+      module Services
+        class CatalogService
+          def initialize(repo)
+            @repo = repo
+          end
+
+          def get_product(id)
+            @repo.find_by_id(id)
+          end
+
+          def list_products
+            @repo.find_all
+          end
+        end
+      end
+    lib/api/catalog_endpoint.rb: |
+      require_relative '../services/catalog_service'
+      module Api
+        class CatalogEndpoint
+          def initialize(service)
+            @service = service
+          end
+
+          def handle_list(params)
+            products = @service.list_products
+            { status: 200, body: products }
+          end
+        end
+      end
+    lib/config/database.rb: |
+      module Config
+        class Database
+          def self.connection_string
+            ENV.fetch('DATABASE_URL', 'postgres://localhost/app')
+          end
+        end
+      end
+  changed_files:
+    lib/repositories/product_repo.rb: |
+      module Repositories
+        class ProductRepo
+          def initialize(db)
+            @db = db
+          end
+
+          def find_by_id(id)
+            @db.query("SELECT * FROM products WHERE id = ?", id).first
+          end
+
+          def find_all(category: nil)
+            if category
+              @db.query("SELECT * FROM products WHERE category = ?", category)
+            else
+              @db.query("SELECT * FROM products")
+            end
+          end
+        end
+      end
+    lib/services/catalog_service.rb: |
+      require_relative '../repositories/product_repo'
+      module Services
+        class CatalogService
+          def initialize(repo)
+            @repo = repo
+          end
+
+          def get_product(id)
+            @repo.find_by_id(id)
+          end
+
+          def list_products
+            @repo.find_all
+          end
+        end
+      end
+    lib/api/catalog_endpoint.rb: |
+      require_relative '../services/catalog_service'
+      module Api
+        class CatalogEndpoint
+          def initialize(service)
+            @service = service
+          end
+
+          def handle_list(params)
+            products = @service.list_products
+            { status: 200, body: products }
+          end
+        end
+      end
+    lib/config/database.rb: |
+      module Config
+        class Database
+          def self.connection_string
+            ENV.fetch('DATABASE_URL', 'postgres://localhost/app')
+          end
+        end
+      end
+  commit_message: "feat: add category filter to find_all"
+fragments:
+- id: find_all_category
+  selector:
+    path: lib/repositories/product_repo.rb
+    anchor: "def find_all(category: nil)"
+- id: service_calls_find_all
+  selector:
+    path: lib/services/catalog_service.rb
+    anchor: "@repo.find_all"
+- id: api_calls_list
+  selector:
+    path: lib/api/catalog_endpoint.rb
+    anchor: "@service.list_products"
+- id: no_db_config
+  selector:
+    path: lib/config/database.rb
+    anchor: "def self.connection_string"
+oracle:
+  required:
+  - find_all_category
+  - service_calls_find_all
+  - api_calls_list
+  allowed: []
+  forbidden:
+  - no_db_config

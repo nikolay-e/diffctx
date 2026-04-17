@@ -1,0 +1,183 @@
+name: bal3_3hop_027_rust_resolver_registry_factory_config
+tags:
+- lang:rust
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/di_config/bindings.rs: |
+      use std::collections::HashMap;
+
+      pub struct Bindings {
+          map: HashMap<String, String>,
+      }
+
+      impl Bindings {
+          pub fn new() -> Self {
+              Self { map: HashMap::new() }
+          }
+
+          pub fn bind(&mut self, iface: &str, impl_name: &str) {
+              self.map.insert(iface.to_string(), impl_name.to_string());
+          }
+
+          pub fn resolve(&self, iface: &str) -> Option<String> {
+              self.map.get(iface).cloned()
+          }
+      }
+    src/di_config/mod.rs: |
+      pub mod bindings;
+    src/factory/factory.rs: |
+      use crate::di_config::bindings::Bindings;
+
+      pub struct Factory {
+          bindings: Bindings,
+      }
+
+      impl Factory {
+          pub fn new(bindings: Bindings) -> Self {
+              Self { bindings }
+          }
+
+          pub fn create(&self, iface: &str) -> Option<String> {
+              self.bindings.resolve(iface).map(|name| format!("instance:{}", name))
+          }
+      }
+    src/factory/mod.rs: |
+      pub mod factory;
+    src/di_registry/registry.rs: |
+      use crate::factory::factory::Factory;
+      use std::collections::HashMap;
+
+      pub struct Registry {
+          factory: Factory,
+          cache: HashMap<String, String>,
+      }
+
+      impl Registry {
+          pub fn new(factory: Factory) -> Self {
+              Self { factory, cache: HashMap::new() }
+          }
+
+          pub fn get(&mut self, iface: &str) -> Option<String> {
+              if let Some(cached) = self.cache.get(iface) {
+                  return Some(cached.clone());
+              }
+              if let Some(instance) = self.factory.create(iface) {
+                  self.cache.insert(iface.to_string(), instance.clone());
+                  return Some(instance);
+              }
+              None
+          }
+      }
+    src/di_registry/mod.rs: |
+      pub mod registry;
+    src/resolver/resolver.rs: |
+      use crate::di_registry::registry::Registry;
+
+      pub struct Resolver {
+          registry: Registry,
+      }
+
+      impl Resolver {
+          pub fn new(registry: Registry) -> Self {
+              Self { registry }
+          }
+
+          pub fn resolve(&mut self, iface: &str) -> Option<String> {
+              self.registry.get(iface)
+          }
+      }
+    src/resolver/mod.rs: |
+      pub mod resolver;
+    src/scope/scope.rs: |
+      pub static GARBAGE_BAL3_027_SCOPE_MARKER_A: &str = "scope";
+      pub static GARBAGE_BAL3_027_LIFETIME_MARKER_B: &str = "transient";
+
+      pub struct Scope {
+          pub name: String,
+      }
+    src/scope/mod.rs: |
+      pub mod scope;
+    src/lib.rs: |
+      pub mod di_config;
+      pub mod factory;
+      pub mod di_registry;
+      pub mod resolver;
+      pub mod scope;
+  changed_files:
+    src/di_config/bindings.rs: |
+      use std::collections::HashMap;
+
+      pub struct Bindings {
+          map: HashMap<String, String>,
+      }
+
+      impl Bindings {
+          pub fn new() -> Self {
+              Self { map: HashMap::new() }
+          }
+
+          pub fn bind(&mut self, iface: &str, impl_name: &str) {
+              self.map.insert(iface.to_string(), impl_name.to_string());
+          }
+
+          pub fn resolve(&self, iface: &str) -> Result<String, String> {
+              self.map.get(iface).cloned()
+                  .ok_or_else(|| format!("no binding for {}", iface))
+          }
+
+          pub fn has_binding(&self, iface: &str) -> bool {
+              self.map.contains_key(iface)
+          }
+      }
+  commit_message: "Change resolve to return Result and add has_binding"
+fragments:
+- id: bindings_resolve_result
+  selector:
+    path: src/di_config/bindings.rs
+    anchor: "Result<String, String>"
+- id: bindings_error_msg
+  selector:
+    path: src/di_config/bindings.rs
+    anchor: "no binding for"
+- id: bindings_has
+  selector:
+    path: src/di_config/bindings.rs
+    anchor: "pub fn has_binding"
+- id: factory_create
+  selector:
+    path: src/factory/factory.rs
+    anchor: "pub fn create"
+- id: registry_get
+  selector:
+    path: src/di_registry/registry.rs
+    anchor: "pub fn get"
+- id: resolver_resolve
+  selector:
+    path: src/resolver/resolver.rs
+    anchor: "pub fn resolve"
+- id: no_scope
+  selector:
+    path: src/scope/scope.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_027_SCOPE_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_027_LIFETIME_MARKER_B
+oracle:
+  required:
+  - bindings_resolve_result
+  - bindings_error_msg
+  - bindings_has
+  - factory_create
+  - registry_get
+  - resolver_resolve
+  allowed: []
+  forbidden:
+  - no_scope
+  - no_global_0
+  - no_global_1

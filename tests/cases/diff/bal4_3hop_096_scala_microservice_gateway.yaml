@@ -1,0 +1,170 @@
+name: bal4_3hop_096_scala_microservice_gateway
+tags:
+- lang:scala
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/proto/Message.scala: |
+      package proto
+
+      sealed trait Message
+      case class Request(path: String, headers: Map[String, String], body: String) extends Message
+      case class Response(status: Int, headers: Map[String, String], body: String) extends Message
+    src/main/scala/routing/Route.scala: |
+      package routing
+
+      import proto.{Request, Response}
+
+      case class Route(method: String, path: String, handler: Request => Response)
+
+      object Route {
+        def get(path: String)(handler: Request => Response): Route = Route("GET", path, handler)
+        def post(path: String)(handler: Request => Response): Route = Route("POST", path, handler)
+      }
+    src/main/scala/routing/Router.scala: |
+      package routing
+
+      import proto.{Request, Response}
+      import routing.Route
+
+      class Router(routes: Seq[Route]) {
+        def dispatch(req: Request): Response = {
+          routes.find(_.path == req.path) match {
+            case Some(route) => route.handler(req)
+            case None => Response(404, Map.empty, "Not Found")
+          }
+        }
+      }
+    src/main/scala/middleware/Filter.scala: |
+      package middleware
+
+      import proto.{Request, Response}
+
+      trait Filter {
+        def apply(req: Request, next: Request => Response): Response
+      }
+    src/main/scala/middleware/AuthFilter.scala: |
+      package middleware
+
+      import proto.{Request, Response}
+      import middleware.Filter
+
+      class AuthFilter(validTokens: Set[String]) extends Filter {
+        override def apply(req: Request, next: Request => Response): Response = {
+          req.headers.get("Authorization") match {
+            case Some(token) if validTokens.contains(token) => next(req)
+            case _ => Response(401, Map.empty, "Unauthorized")
+          }
+        }
+      }
+    src/main/scala/gateway/Gateway.scala: |
+      package gateway
+
+      import proto.{Request, Response}
+      import routing.Router
+      import middleware.Filter
+
+      class Gateway(router: Router, filters: Seq[Filter]) {
+        def handle(req: Request): Response = {
+          val chain = filters.foldRight(router.dispatch _) { (filter, next) =>
+            (r: Request) => filter.apply(r, next)
+          }
+          chain(req)
+        }
+      }
+    src/main/scala/util/HttpParser.scala: |
+      package util
+
+      object HttpParser {
+        val GARBAGE_096_HTTP_A = "chunked"
+        val GARBAGE_096_HTTP_B = "gzip"
+
+        def parseQuery(raw: String): Map[String, String] = Map.empty
+      }
+    src/main/scala/util/TlsConfig.scala: |
+      package util
+
+      object TlsConfig {
+        val GARBAGE_096_TLS_C = "tls12"
+        val GARBAGE_096_TLS_D = "tls13"
+
+        def defaultPort: Int = 443
+      }
+  changed_files:
+    src/main/scala/middleware/Filter.scala: |
+      package middleware
+
+      import proto.{Request, Response}
+
+      trait Filter {
+        def apply(req: Request, next: Request => Response): Response
+        def priority: Int = 0
+      }
+    src/main/scala/middleware/AuthFilter.scala: |
+      package middleware
+
+      import proto.{Request, Response}
+      import middleware.Filter
+
+      class AuthFilter(validTokens: Set[String]) extends Filter {
+        override def apply(req: Request, next: Request => Response): Response = {
+          req.headers.get("Authorization") match {
+            case Some(token) if validTokens.contains(token) => next(req)
+            case _ => Response(401, Map.empty, "Unauthorized")
+          }
+        }
+
+        override def priority: Int = 100
+      }
+  commit_message: "feat: add priority ordering to middleware filters"
+fragments:
+- id: filter_priority
+  selector:
+    path: src/main/scala/middleware/Filter.scala
+    anchor: "def priority"
+- id: auth_filter_priority
+  selector:
+    path: src/main/scala/middleware/AuthFilter.scala
+    anchor: "override def priority"
+- id: message_types
+  selector:
+    path: src/main/scala/proto/Message.scala
+    anchor: "sealed trait Message"
+- id: gateway_chain
+  selector:
+    path: src/main/scala/gateway/Gateway.scala
+    anchor: "import middleware.Filter"
+- id: router_dispatch
+  selector:
+    path: src/main/scala/routing/Router.scala
+    anchor: "import routing.Route"
+- id: no_http_parser
+  selector:
+    path: src/main/scala/util/HttpParser.scala
+    anchor: "GARBAGE_096_HTTP_A"
+- id: no_tls_config
+  selector:
+    path: src/main/scala/util/TlsConfig.scala
+    anchor: "GARBAGE_096_TLS_C"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_096_HTTP_B
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_096_TLS_D
+oracle:
+  required:
+  - filter_priority
+  - auth_filter_priority
+  - gateway_chain
+  - message_types
+  allowed:
+  - router_dispatch
+  forbidden:
+  - no_http_parser
+  - no_tls_config
+  - no_global_0
+  - no_global_1

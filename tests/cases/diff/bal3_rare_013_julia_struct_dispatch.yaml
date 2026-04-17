@@ -1,0 +1,196 @@
+name: bal3_rare_013_julia_struct_dispatch
+tags:
+- lang:typescript
+- change:multi_file
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/components/Table.tsx: |
+      import React from 'react';
+
+      interface Column<T> {
+        key: keyof T;
+        header: string;
+      }
+
+      interface TableProps<T> {
+        rows: T[];
+        columns: Column<T>[];
+      }
+
+      export function Table<T extends object>({ rows, columns }: TableProps<T>) {
+        return (
+          <table>
+            <thead>
+              <tr>{columns.map((c) => <th key={String(c.key)}>{c.header}</th>)}</tr>
+            </thead>
+            <tbody>
+              {rows.map((row, i) => (
+                <tr key={i}>
+                  {columns.map((c) => <td key={String(c.key)}>{String(row[c.key])}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        );
+      }
+    src/components/Pagination.tsx: |
+      import React from 'react';
+
+      interface PaginationProps {
+        page: number;
+        totalPages: number;
+        onPageChange: (p: number) => void;
+      }
+
+      export const Pagination: React.FC<PaginationProps> = ({ page, totalPages, onPageChange }) => (
+        <div className="pagination">
+          <button disabled={page <= 1} onClick={() => onPageChange(page - 1)}>Prev</button>
+          <span>{page} / {totalPages}</span>
+          <button disabled={page >= totalPages} onClick={() => onPageChange(page + 1)}>Next</button>
+        </div>
+      );
+    garbage/filters.ts: |
+      const GARBAGE_JUL013_FILTERS_A = "filters_marker";
+      export function applyFilter<T>(items: T[], fn: (x: T) => boolean): T[] { return items.filter(fn); }
+    garbage/sort.ts: |
+      const GARBAGE_JUL013_SORT_B = "sort_marker";
+      export function sortBy<T>(items: T[], key: keyof T): T[] { return [...items]; }
+    garbage/export.ts: |
+      const GARBAGE_JUL013_EXPORT_C = "export_marker";
+      export function toCsv<T>(rows: T[]): string { return ''; }
+  changed_files:
+    src/components/Table.tsx: |
+      import React from 'react';
+
+      interface Column<T> {
+        key: keyof T;
+        header: string;
+        sortable?: boolean;
+        render?: (value: T[keyof T], row: T) => React.ReactNode;
+      }
+
+      interface TableProps<T> {
+        rows: T[];
+        columns: Column<T>[];
+        onSort?: (key: keyof T) => void;
+        striped?: boolean;
+        stickyHeader?: boolean;
+      }
+
+      export function Table<T extends object>({
+        rows,
+        columns,
+        onSort,
+        striped = false,
+        stickyHeader = false,
+      }: TableProps<T>) {
+        return (
+          <table className={striped ? 'table-striped' : undefined}>
+            <thead className={stickyHeader ? 'sticky' : undefined}>
+              <tr>
+                {columns.map((c) => (
+                  <th
+                    key={String(c.key)}
+                    onClick={c.sortable && onSort ? () => onSort(c.key) : undefined}
+                    style={c.sortable ? { cursor: 'pointer' } : undefined}
+                  >
+                    {c.header}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, i) => (
+                <tr key={i}>
+                  {columns.map((c) => (
+                    <td key={String(c.key)}>
+                      {c.render ? c.render(row[c.key], row) : String(row[c.key])}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        );
+      }
+    src/components/Pagination.tsx: |
+      import React from 'react';
+
+      interface PaginationProps {
+        page: number;
+        totalPages: number;
+        onPageChange: (p: number) => void;
+        pageSize?: number;
+        onPageSizeChange?: (size: number) => void;
+        pageSizeOptions?: number[];
+      }
+
+      export const Pagination: React.FC<PaginationProps> = ({
+        page,
+        totalPages,
+        onPageChange,
+        pageSize,
+        onPageSizeChange,
+        pageSizeOptions = [10, 25, 50],
+      }) => (
+        <div className="pagination">
+          <button disabled={page <= 1} onClick={() => onPageChange(page - 1)}>Prev</button>
+          <span>{page} / {totalPages}</span>
+          <button disabled={page >= totalPages} onClick={() => onPageChange(page + 1)}>Next</button>
+          {onPageSizeChange && (
+            <select value={pageSize} onChange={(e) => onPageSizeChange(Number(e.target.value))}>
+              {pageSizeOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          )}
+        </div>
+      );
+    garbage/filters.ts: |
+      const GARBAGE_JUL013_FILTERS_A = "filters_marker";
+      export function applyFilter<T>(items: T[], fn: (x: T) => boolean): T[] { return items.filter(fn); }
+    garbage/sort.ts: |
+      const GARBAGE_JUL013_SORT_B = "sort_marker";
+      export function sortBy<T>(items: T[], key: keyof T): T[] { return [...items]; }
+    garbage/export.ts: |
+      const GARBAGE_JUL013_EXPORT_C = "export_marker";
+      export function toCsv<T>(rows: T[]): string { return ''; }
+  commit_message: "feat: add sorting/striped/sticky to Table and pageSize to Pagination"
+fragments:
+- id: table_sortable_column
+  selector:
+    path: src/components/Table.tsx
+    anchor: "sortable?: boolean"
+- id: table_striped_prop
+  selector:
+    path: src/components/Table.tsx
+    anchor: "striped?: boolean"
+- id: pagination_page_size_prop
+  selector:
+    path: src/components/Pagination.tsx
+    anchor: "pageSize?: number"
+- id: pagination_size_options
+  selector:
+    path: src/components/Pagination.tsx
+    anchor: "pageSizeOptions"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_JUL013_FILTERS_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_JUL013_SORT_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_JUL013_EXPORT_C
+oracle:
+  required:
+  - table_sortable_column
+  - table_striped_prop
+  - pagination_page_size_prop
+  - pagination_size_options
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

@@ -1,104 +1,125 @@
 name: internals_009_emoji_adjacent_to_identifier
+tags:
+- lang:python
+- change:bug_fix
+- change:multi_file
+- context:test_file
+- distance:1hop
+- difficulty:medium
 repo:
   initial_files:
-    src/badges/manager.py: |
-      from src.badges.renderer import render_badge
-      def assign_badge(user_id: int, badge_type: str) -> dict:
-          rendered = render_badge(badge_type)
-          return {"user_id": user_id, "badge": rendered}
-      def list_badges(user_id: int) -> list:
-          return []
-    src/badges/renderer.py: |
-      BADGE_ICONS = {"gold": "*", "silver": "-"}
-      def render_badge(badge_type: str) -> str:
-          icon = BADGE_ICONS.get(badge_type, "?")
-          return "[" + icon + "]"
-    garbage_badge_store.py: |
-      GARBAGE_INT_009_STORE_MARKER_A = "bdb"
-      GARBAGE_INT_009_QUERY_MARKER_B = "lookup"
+    src/pricing/engine.py: |
+      from src.pricing.rules import apply_tax
 
-      class GarbageBadgeStore:
-          def noop(self):
-              pass
-    garbage_achievement_tracker.py: |
-      GARBAGE_INT_009_ACHIEVE_MARKER_C = "progress"
-      GARBAGE_INT_009_UNLOCK_MARKER_D = "threshold"
+      def compute_price(base: float, tax_code: str) -> float:
+          # BUG: negative base price not rejected
+          return apply_tax(base, tax_code)
 
-      class GarbageAchievementTracker:
-          def noop(self):
-              pass
+      def format_price(amount: float, currency: str = "USD") -> str:
+          return f"{currency} {amount:.2f}"
+    src/pricing/rules.py: |
+      TAX_RATES = {
+          "standard": 0.20,
+          "reduced": 0.05,
+          "exempt": 0.0,
+      }
+
+      def apply_tax(amount: float, code: str) -> float:
+          rate = TAX_RATES.get(code, 0.20)
+          return amount * (1 + rate)
+    tests/test_pricing.py: |
+      from src.pricing.engine import compute_price, format_price
+
+      def test_standard_tax():
+          assert abs(compute_price(100.0, "standard") - 120.0) < 0.001
+
+      def test_exempt_tax():
+          assert compute_price(50.0, "exempt") == 50.0
+    garbage/coupon.py: |
+      # GARBAGE_PENG_A = "coupon_marker"
+      def validate_coupon(code: str) -> bool:
+          return len(code) > 3
+    garbage/loyalty.py: |
+      # GARBAGE_PENG_B = "loyalty_marker"
+      def get_points(user_id: int) -> int:
+          return 0
+    garbage/audit.py: |
+      # GARBAGE_PENG_C = "audit_marker"
+      def log_price_event(event: str) -> None:
+          pass
   changed_files:
-    src/badges/manager.py: |
-      from src.badges.renderer import render_badge
-      def assign_badge(user_id: int, badge_type: str) -> dict:
-          status = "🔥"
-          handler_name = "fire"
-          rendered = render_badge(badge_type)
-          return {"user_id": user_id, "badge": rendered, "status": status, "handler": handler_name}
-      def list_badges(user_id: int) -> list:
-          return []
-    src/badges/renderer.py: |
-      BADGE_ICONS = {"gold": "*", "silver": "-", "fire": "🔥"}
-      def render_badge(badge_type: str) -> str:
-          icon = BADGE_ICONS.get(badge_type, "?")
-          return "[" + icon + "]"
-    garbage_badge_store.py: |
-      GARBAGE_INT_009_STORE_MARKER_A = "bdb"
-      GARBAGE_INT_009_QUERY_MARKER_B = "lookup"
+    src/pricing/engine.py: |
+      from src.pricing.rules import apply_tax
 
-      class GarbageBadgeStore:
-          def noop(self):
-              pass
-    garbage_achievement_tracker.py: |
-      GARBAGE_INT_009_ACHIEVE_MARKER_C = "progress"
-      GARBAGE_INT_009_UNLOCK_MARKER_D = "threshold"
+      def compute_price(base: float, tax_code: str) -> float:
+          if base < 0:
+              raise ValueError(f"base price must be non-negative, got {base}")
+          return apply_tax(base, tax_code)
 
-      class GarbageAchievementTracker:
-          def noop(self):
-              pass
-  commit_message: Update files
+      def format_price(amount: float, currency: str = "USD") -> str:
+          return f"{currency} {amount:.2f}"
+    src/pricing/rules.py: |
+      TAX_RATES = {
+          "standard": 0.20,
+          "reduced": 0.05,
+          "exempt": 0.0,
+      }
+
+      def apply_tax(amount: float, code: str) -> float:
+          rate = TAX_RATES.get(code, 0.20)
+          return amount * (1 + rate)
+    tests/test_pricing.py: |
+      import pytest
+      from src.pricing.engine import compute_price, format_price
+
+      def test_standard_tax():
+          assert abs(compute_price(100.0, "standard") - 120.0) < 0.001
+
+      def test_exempt_tax():
+          assert compute_price(50.0, "exempt") == 50.0
+
+      def test_negative_base_raises():
+          with pytest.raises(ValueError, match="non-negative"):
+              compute_price(-10.0, "standard")
+    garbage/coupon.py: |
+      # GARBAGE_PENG_A = "coupon_marker"
+      def validate_coupon(code: str) -> bool:
+          return len(code) > 3
+    garbage/loyalty.py: |
+      # GARBAGE_PENG_B = "loyalty_marker"
+      def get_points(user_id: int) -> int:
+          return 0
+    garbage/audit.py: |
+      # GARBAGE_PENG_C = "audit_marker"
+      def log_price_event(event: str) -> None:
+          pass
+  commit_message: "fix: raise ValueError for negative base price in compute_price"
 fragments:
-- id: manager_file
+- id: negative_guard
   selector:
-    path: src/badges/manager.py
-- id: renderer_file
+    anchor: "if base < 0"
+- id: test_negative_raises
   selector:
-    path: src/badges/renderer.py
-- id: req_global_0
+    anchor: "def test_negative_base_raises()"
+- id: apply_tax_func
   selector:
-    anchor: handler_name = "fire"
-- id: req_global_1
+    anchor: "def apply_tax(amount: float, code: str) -> float"
+- id: no_garbage_a
   selector:
-    anchor: 'BADGE_ICONS = {"gold": "*", "silver": "-", "fire": "🔥"}'
-- id: no_global_0
+    anchor: GARBAGE_PENG_A
+- id: no_garbage_b
   selector:
-    anchor: GARBAGE_INT_009_ACHIEVE_MARKER_C
-- id: no_global_1
+    anchor: GARBAGE_PENG_B
+- id: no_garbage_c
   selector:
-    anchor: GARBAGE_INT_009_QUERY_MARKER_B
-- id: no_global_2
-  selector:
-    anchor: GARBAGE_INT_009_STORE_MARKER_A
-- id: no_global_3
-  selector:
-    anchor: GARBAGE_INT_009_UNLOCK_MARKER_D
-- id: no_global_4
-  selector:
-    anchor: garbage_achievement_tracker.py
-- id: no_global_5
-  selector:
-    anchor: garbage_badge_store.py
+    anchor: GARBAGE_PENG_C
 oracle:
   required:
-  - manager_file
-  - renderer_file
-  - req_global_0
-  - req_global_1
-  allowed: []
+  - negative_guard
+  - test_negative_raises
+  allowed:
+  - apply_tax_func
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

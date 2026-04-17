@@ -1,24 +1,162 @@
 name: internals_032_thai_in_diff
+tags:
+- lang:ruby
+- change:bug_fix
+- change:single_file
+- context:same_file
+- distance:0hop
+- difficulty:trivial
 repo:
   initial_files:
-    thai_diff.py: |
-      x = 0
+    app/validators/user_validator.rb: |
+      class UserValidator
+        EMAIL_PATTERN = /\A[^@\s]+@[^@\s]+\.[^@\s]+\z/
+        MIN_PASSWORD_LENGTH = 8
+
+        attr_reader :errors
+
+        def initialize(params)
+          @params = params
+          @errors = []
+        end
+
+        def valid?
+          @errors = []
+          validate_email
+          validate_password
+          validate_username
+          @errors.empty?
+        end
+
+        private
+
+        def validate_email
+          email = @params[:email]
+          @errors << "email is required" if email.nil? || email.empty?
+          @errors << "email format is invalid" unless EMAIL_PATTERN.match?(email.to_s)
+        end
+
+        def validate_password
+          pw = @params[:password]
+          @errors << "password is required" if pw.nil? || pw.empty?
+          @errors << "password too short" if pw.to_s.length < MIN_PASSWORD_LENGTH
+        end
+
+        def validate_username
+          username = @params[:username]
+          @errors << "username is required" if username.nil? || username.empty?
+        end
+      end
+    garbage/lib/encryptor.rb: |
+      # GARBAGE_THAI32_A = "encryptor_unrelated"
+      class Encryptor
+        def encrypt(data)
+          data.reverse
+        end
+      end
+    garbage/lib/tokenizer.rb: |
+      # GARBAGE_THAI32_B = "tokenizer_unrelated"
+      class Tokenizer
+        def tokenize(text)
+          text.split
+        end
+      end
+    garbage/lib/compressor.rb: |
+      # GARBAGE_THAI32_C = "compressor_unrelated"
+      class Compressor
+        def compress(data)
+          data
+        end
+      end
   changed_files:
-    thai_diff.py: |
-      # ภาษาไทยไม่มีช่องว่าง
-      result = calculate_sum(values)
-      output = format_result(result)
-  commit_message: Update files
+    app/validators/user_validator.rb: |
+      class UserValidator
+        EMAIL_PATTERN = /\A[^@\s]+@[^@\s]+\.[^@\s]+\z/
+        MIN_PASSWORD_LENGTH = 8
+        USERNAME_PATTERN = /\A[a-zA-Z0-9_]{3,30}\z/
+
+        attr_reader :errors
+
+        def initialize(params)
+          @params = params
+          @errors = []
+        end
+
+        def valid?
+          @errors = []
+          validate_email
+          validate_password
+          validate_username
+          @errors.empty?
+        end
+
+        private
+
+        def validate_email
+          email = @params[:email]
+          @errors << "email is required" if email.nil? || email.empty?
+          @errors << "email format is invalid" unless EMAIL_PATTERN.match?(email.to_s)
+        end
+
+        def validate_password
+          pw = @params[:password]
+          @errors << "password is required" if pw.nil? || pw.empty?
+          @errors << "password too short" if pw.to_s.length < MIN_PASSWORD_LENGTH
+          @errors << "password must contain a digit" unless pw.to_s.match?(/\d/)
+        end
+
+        def validate_username
+          username = @params[:username]
+          @errors << "username is required" if username.nil? || username.empty?
+          @errors << "username format is invalid" unless USERNAME_PATTERN.match?(username.to_s)
+        end
+      end
+    garbage/lib/encryptor.rb: |
+      # GARBAGE_THAI32_A = "encryptor_unrelated"
+      class Encryptor
+        def encrypt(data)
+          data.reverse
+        end
+      end
+    garbage/lib/tokenizer.rb: |
+      # GARBAGE_THAI32_B = "tokenizer_unrelated"
+      class Tokenizer
+        def tokenize(text)
+          text.split
+        end
+      end
+    garbage/lib/compressor.rb: |
+      # GARBAGE_THAI32_C = "compressor_unrelated"
+      class Compressor
+        def compress(data)
+          data
+        end
+      end
+  commit_message: "fix: require digit in password and pattern-validate username in UserValidator"
 fragments:
-- id: thai_diff_file
+- id: password_digit_check
   selector:
-    path: thai_diff.py
-- id: req_global_0
+    path: app/validators/user_validator.rb
+    anchor: "password must contain a digit"
+- id: username_pattern
   selector:
-    anchor: result = calculate_sum(values)
+    path: app/validators/user_validator.rb
+    anchor: "USERNAME_PATTERN"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_THAI32_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_THAI32_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_THAI32_C
 oracle:
   required:
-  - thai_diff_file
-  - req_global_0
+  - password_digit_check
+  - username_pattern
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

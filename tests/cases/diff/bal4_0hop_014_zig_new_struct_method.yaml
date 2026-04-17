@@ -1,0 +1,92 @@
+name: bal4_0hop_014_zig_new_struct_method
+tags:
+- lang:zig
+- change:single_file
+- change:new_function
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/vec2.zig: |
+      const std = @import("std");
+
+      pub const Vec2 = struct {
+          x: f32,
+          y: f32,
+
+          pub fn init(x: f32, y: f32) Vec2 {
+              return .{ .x = x, .y = y };
+          }
+      };
+    src/garbage_mat.zig: |
+      const GARBAGE_B4Z014_MAT_A: []const u8 = "matrix";
+      const GARBAGE_B4Z014_MAT_B: f32 = 1.0;
+
+      pub fn garbageMat() void {}
+    src/garbage_quat.zig: |
+      const GARBAGE_B4Z014_QUA_C: []const u8 = "quat";
+      const GARBAGE_B4Z014_QUA_D: bool = false;
+
+      pub fn garbageQuat() void {}
+  changed_files:
+    src/vec2.zig: |
+      const std = @import("std");
+
+      pub const Vec2 = struct {
+          x: f32,
+          y: f32,
+
+          pub fn init(x: f32, y: f32) Vec2 {
+              return .{ .x = x, .y = y };
+          }
+
+          pub fn length(self: Vec2) f32 {
+              return @sqrt(self.x * self.x + self.y * self.y);
+          }
+      };
+    src/garbage_mat.zig: |
+      const GARBAGE_B4Z014_MAT_A: []const u8 = "matrix";
+      const GARBAGE_B4Z014_MAT_B: f32 = 1.0;
+
+      pub fn garbageMat() void {}
+    src/garbage_quat.zig: |
+      const GARBAGE_B4Z014_QUA_C: []const u8 = "quat";
+      const GARBAGE_B4Z014_QUA_D: bool = false;
+
+      pub fn garbageQuat() void {}
+  commit_message: "feat: add length method to Vec2"
+fragments:
+- id: new_length
+  selector:
+    path: src/vec2.zig
+    anchor: "pub fn length(self: Vec2) f32 {"
+- id: no_garbage_mat
+  selector:
+    path: src/garbage_mat.zig
+- id: no_garbage_quat
+  selector:
+    path: src/garbage_quat.zig
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_B4Z014_MAT_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_B4Z014_MAT_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_B4Z014_QUA_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_B4Z014_QUA_D
+oracle:
+  required:
+  - new_length
+  allowed: []
+  forbidden:
+  - no_garbage_mat
+  - no_garbage_quat
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

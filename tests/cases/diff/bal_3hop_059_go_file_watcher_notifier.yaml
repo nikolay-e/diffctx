@@ -1,0 +1,264 @@
+name: bal_3hop_059_go_file_watcher_notifier
+tags:
+- lang:go
+- change:multi_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    pkg/watcher/event.go: |
+      package watcher
+
+      type EventKind string
+
+      const (
+        EventCreate EventKind = "create"
+        EventModify EventKind = "modify"
+        EventDelete EventKind = "delete"
+      )
+
+      type FileEvent struct {
+        Path string
+        Kind EventKind
+      }
+    pkg/watcher/watcher.go: |
+      package watcher
+
+      type FileWatcher struct {
+        paths    []string
+        handlers []func(FileEvent)
+      }
+
+      func NewFileWatcher(paths []string) *FileWatcher {
+        return &FileWatcher{paths: paths}
+      }
+
+      func (w *FileWatcher) OnEvent(handler func(FileEvent)) {
+        w.handlers = append(w.handlers, handler)
+      }
+
+      func (w *FileWatcher) Notify(event FileEvent) {
+        for _, h := range w.handlers {
+          h(event)
+        }
+      }
+    pkg/service/hotreload.go: |
+      package service
+
+      import (
+        "fmt"
+        "pkg/watcher"
+      )
+
+      type HotReloader struct {
+        watcher *watcher.FileWatcher
+      }
+
+      func NewHotReloader(w *watcher.FileWatcher) *HotReloader {
+        hr := &HotReloader{watcher: w}
+        w.OnEvent(func(e watcher.FileEvent) {
+          hr.reload(e)
+        })
+        return hr
+      }
+
+      func (hr *HotReloader) reload(e watcher.FileEvent) {
+        fmt.Printf("Reloading due to %s: %s\n", e.Kind, e.Path)
+      }
+    cmd/devserver/main.go: |
+      package main
+
+      import (
+        "pkg/watcher"
+        "pkg/service"
+      )
+
+      func main() {
+        fw := watcher.NewFileWatcher([]string{"./src"})
+        service.NewHotReloader(fw)
+        fw.Notify(watcher.FileEvent{Path: "main.go", Kind: watcher.EventModify})
+      }
+    pkg/util/glob.go: |
+      package util
+
+      var GARBAGE_059_GLOB_MARKER_A = "glob"
+      var GARBAGE_059_PATTERN_MARKER_B = "*"
+
+      func MatchGlob(pattern string, path string) bool { return true }
+    pkg/util/debounce.go: |
+      package util
+
+      var GARBAGE_059_DEBOUNCE_MARKER_C = "debounce"
+      var GARBAGE_059_WAIT_MARKER_D = 300
+
+      func Debounce(fn func(), ms int) func() { return fn }
+  changed_files:
+    pkg/watcher/event.go: |
+      package watcher
+
+      import "time"
+
+      type EventKind string
+
+      const (
+        EventCreate EventKind = "create"
+        EventModify EventKind = "modify"
+        EventDelete EventKind = "delete"
+        EventRename EventKind = "rename"
+      )
+
+      type FileEvent struct {
+        Path      string
+        Kind      EventKind
+        Timestamp time.Time
+      }
+
+      func NewFileEvent(path string, kind EventKind) FileEvent {
+        return FileEvent{Path: path, Kind: kind, Timestamp: time.Now()}
+      }
+    pkg/watcher/watcher.go: |
+      package watcher
+
+      type FilterFunc func(FileEvent) bool
+
+      type FileWatcher struct {
+        paths    []string
+        handlers []func(FileEvent)
+        filters  []FilterFunc
+      }
+
+      func NewFileWatcher(paths []string) *FileWatcher {
+        return &FileWatcher{paths: paths}
+      }
+
+      func (w *FileWatcher) AddFilter(f FilterFunc) {
+        w.filters = append(w.filters, f)
+      }
+
+      func (w *FileWatcher) OnEvent(handler func(FileEvent)) {
+        w.handlers = append(w.handlers, handler)
+      }
+
+      func (w *FileWatcher) Notify(event FileEvent) {
+        for _, f := range w.filters {
+          if !f(event) {
+            return
+          }
+        }
+        for _, h := range w.handlers {
+          h(event)
+        }
+      }
+    pkg/service/hotreload.go: |
+      package service
+
+      import (
+        "fmt"
+        "pkg/watcher"
+      )
+
+      type HotReloader struct {
+        watcher  *watcher.FileWatcher
+        reloads  int
+      }
+
+      func NewHotReloader(w *watcher.FileWatcher) *HotReloader {
+        hr := &HotReloader{watcher: w}
+        w.OnEvent(func(e watcher.FileEvent) {
+          hr.reload(e)
+        })
+        return hr
+      }
+
+      func (hr *HotReloader) reload(e watcher.FileEvent) {
+        hr.reloads++
+        fmt.Printf("Reload #%d due to %s: %s at %s\n", hr.reloads, e.Kind, e.Path, e.Timestamp)
+      }
+
+      func (hr *HotReloader) ReloadCount() int {
+        return hr.reloads
+      }
+    cmd/devserver/main.go: |
+      package main
+
+      import (
+        "fmt"
+        "pkg/watcher"
+        "pkg/service"
+      )
+
+      func main() {
+        fw := watcher.NewFileWatcher([]string{"./src"})
+        fw.AddFilter(func(e watcher.FileEvent) bool {
+          return e.Kind != watcher.EventRename
+        })
+        hr := service.NewHotReloader(fw)
+        fw.Notify(watcher.NewFileEvent("main.go", watcher.EventModify))
+        fmt.Printf("Total reloads: %d\n", hr.ReloadCount())
+      }
+    pkg/util/glob.go: |
+      package util
+
+      var GARBAGE_059_GLOB_MARKER_A = "glob"
+      var GARBAGE_059_PATTERN_MARKER_B = "*"
+
+      func MatchGlob(pattern string, path string) bool { return true }
+    pkg/util/debounce.go: |
+      package util
+
+      var GARBAGE_059_DEBOUNCE_MARKER_C = "debounce"
+      var GARBAGE_059_WAIT_MARKER_D = 300
+
+      func Debounce(fn func(), ms int) func() { return fn }
+  commit_message: "feat: add event filtering, rename event, and reload counter"
+fragments:
+- id: event_rename_kind
+  selector:
+    path: pkg/watcher/event.go
+    anchor: 'EventRename EventKind = "rename"'
+- id: event_timestamp_field
+  selector:
+    path: pkg/watcher/event.go
+    anchor: "Timestamp time.Time"
+- id: new_file_event_fn
+  selector:
+    path: pkg/watcher/event.go
+    anchor: "func NewFileEvent"
+- id: watcher_filter_func
+  selector:
+    path: pkg/watcher/watcher.go
+    anchor: "type FilterFunc"
+- id: watcher_add_filter
+  selector:
+    path: pkg/watcher/watcher.go
+    anchor: "func (w *FileWatcher) AddFilter"
+- id: reloader_reload_count
+  selector:
+    path: pkg/service/hotreload.go
+    anchor: "func (hr *HotReloader) ReloadCount"
+- id: main_adds_filter
+  selector:
+    path: cmd/devserver/main.go
+    anchor: "fw.AddFilter"
+- id: no_glob
+  selector:
+    path: pkg/util/glob.go
+    anchor: "GARBAGE_059_GLOB_MARKER_A"
+- id: no_debounce
+  selector:
+    path: pkg/util/debounce.go
+    anchor: "GARBAGE_059_DEBOUNCE_MARKER_C"
+oracle:
+  required:
+  - event_rename_kind
+  - event_timestamp_field
+  - new_file_event_fn
+  - watcher_filter_func
+  - watcher_add_filter
+  - reloader_reload_count
+  - main_adds_filter
+  allowed: []
+  forbidden:
+  - no_glob
+  - no_debounce

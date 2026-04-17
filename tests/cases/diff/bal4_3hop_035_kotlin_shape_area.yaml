@@ -1,0 +1,119 @@
+name: bal4_3hop_035_kotlin_shape_area
+tags:
+- lang:kotlin
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:trivial
+repo:
+  initial_files:
+    src/math/Constants.kt: |
+      package math
+
+      const val PI = 3.14159
+    src/geo/Circle.kt: |
+      package geo
+
+      import math.PI
+
+      fun circleArea(radius: Double): Double = PI * radius * radius
+    src/calc/ShapeCalc.kt: |
+      package calc
+
+      import geo.circleArea
+
+      fun totalArea(radii: List<Double>): Double =
+          radii.sumOf { circleArea(it) }
+    src/api/AreaApi.kt: |
+      package api
+
+      import calc.totalArea
+
+      fun compute(radii: List<Double>): String =
+          "Total: ${totalArea(radii)}"
+    src/utils/Rand.kt: |
+      package utils
+      val GARBAGE_035_RAND_A = "rand"
+      val GARBAGE_035_SEED_B = 99
+    src/utils/Clamp.kt: |
+      package utils
+      val GARBAGE_035_CLAMP_C = "clamp"
+      val GARBAGE_035_MAX_D = 100
+  changed_files:
+    src/math/Constants.kt: |
+      package math
+
+      const val PI = 3.14159
+      const val TAU = 6.28318
+    src/geo/Circle.kt: |
+      package geo
+
+      import math.PI
+
+      fun circleArea(radius: Double): Double = PI * radius * radius
+    src/calc/ShapeCalc.kt: |
+      package calc
+
+      import geo.circleArea
+
+      fun totalArea(radii: List<Double>): Double =
+          radii.sumOf { circleArea(it) }
+    src/api/AreaApi.kt: |
+      package api
+
+      import calc.totalArea
+
+      fun compute(radii: List<Double>): String =
+          "Total: ${totalArea(radii)}"
+    src/utils/Rand.kt: |
+      package utils
+      val GARBAGE_035_RAND_A = "rand"
+      val GARBAGE_035_SEED_B = 99
+    src/utils/Clamp.kt: |
+      package utils
+      val GARBAGE_035_CLAMP_C = "clamp"
+      val GARBAGE_035_MAX_D = 100
+  commit_message: "feat: add TAU constant"
+fragments:
+- id: tau_const
+  selector:
+    path: src/math/Constants.kt
+    anchor: "TAU"
+- id: circle_import
+  selector:
+    path: src/geo/Circle.kt
+    anchor: "import math.PI"
+- id: shapecalc_import
+  selector:
+    path: src/calc/ShapeCalc.kt
+    anchor: "import geo.circleArea"
+- id: areaapi_import
+  selector:
+    path: src/api/AreaApi.kt
+    anchor: "import calc.totalArea"
+- id: no_rand
+  selector:
+    path: src/utils/Rand.kt
+    anchor: "GARBAGE_035_RAND_A"
+- id: no_clamp
+  selector:
+    path: src/utils/Clamp.kt
+    anchor: "GARBAGE_035_CLAMP_C"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_035_SEED_B
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_035_MAX_D
+oracle:
+  required:
+  - tau_const
+  - circle_import
+  - shapecalc_import
+  - areaapi_import
+  allowed: []
+  forbidden:
+  - no_rand
+  - no_clamp
+  - no_global_0
+  - no_global_1

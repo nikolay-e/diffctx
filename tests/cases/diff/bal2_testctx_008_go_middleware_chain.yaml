@@ -1,0 +1,248 @@
+name: bal2_testctx_008_go_middleware_chain
+tags:
+- lang:go
+- change:single_file
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    middleware/auth.go: |
+      package middleware
+
+      import "net/http"
+
+      func AuthMiddleware(next http.Handler) http.Handler {
+          return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              token := r.Header.Get("Authorization")
+              if token == "" {
+                  http.Error(w, "unauthorized", http.StatusUnauthorized)
+                  return
+              }
+              next.ServeHTTP(w, r)
+          })
+      }
+    middleware/auth_test.go: |
+      package middleware
+
+      import (
+          "net/http"
+          "net/http/httptest"
+          "testing"
+      )
+
+      func TestAuthMiddlewareNoToken(t *testing.T) {
+          handler := AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              w.WriteHeader(http.StatusOK)
+          }))
+          req := httptest.NewRequest("GET", "/", nil)
+          w := httptest.NewRecorder()
+          handler.ServeHTTP(w, req)
+          if w.Code != http.StatusUnauthorized {
+              t.Fatalf("expected 401, got %d", w.Code)
+          }
+      }
+
+      func TestAuthMiddlewareWithToken(t *testing.T) {
+          handler := AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              w.WriteHeader(http.StatusOK)
+          }))
+          req := httptest.NewRequest("GET", "/", nil)
+          req.Header.Set("Authorization", "Bearer test-token")
+          w := httptest.NewRecorder()
+          handler.ServeHTTP(w, req)
+          if w.Code != http.StatusOK {
+              t.Fatalf("expected 200, got %d", w.Code)
+          }
+      }
+    middleware/cors.go: |
+      package middleware
+
+      GARBAGE_BAL2_008_CORS_A = "cors"
+      GARBAGE_BAL2_008_CORS_MARKER_B = true
+
+      import "net/http"
+
+      func CORSMiddleware(next http.Handler) http.Handler {
+          return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              w.Header().Set("Access-Control-Allow-Origin", "*")
+              next.ServeHTTP(w, r)
+          })
+      }
+    middleware/ratelimit.go: |
+      package middleware
+
+      GARBAGE_BAL2_008_RATE_C = "ratelimit"
+
+      import "net/http"
+
+      func RateLimitMiddleware(next http.Handler) http.Handler {
+          return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              next.ServeHTTP(w, r)
+          })
+      }
+    handler/api.go: |
+      package handler
+
+      GARBAGE_BAL2_008_API_D = "api"
+      GARBAGE_BAL2_008_HANDLER_E = true
+
+      import "net/http"
+
+      func APIHandler(w http.ResponseWriter, r *http.Request) {
+          w.Write([]byte("api response"))
+      }
+  changed_files:
+    middleware/auth.go: |
+      package middleware
+
+      import (
+          "net/http"
+          "strings"
+      )
+
+      func AuthMiddleware(next http.Handler) http.Handler {
+          return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              token := r.Header.Get("Authorization")
+              if token == "" {
+                  http.Error(w, "unauthorized", http.StatusUnauthorized)
+                  return
+              }
+              if !strings.HasPrefix(token, "Bearer ") {
+                  http.Error(w, "invalid token format", http.StatusUnauthorized)
+                  return
+              }
+              next.ServeHTTP(w, r)
+          })
+      }
+    middleware/auth_test.go: |
+      package middleware
+
+      import (
+          "net/http"
+          "net/http/httptest"
+          "testing"
+      )
+
+      func TestAuthMiddlewareNoToken(t *testing.T) {
+          handler := AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              w.WriteHeader(http.StatusOK)
+          }))
+          req := httptest.NewRequest("GET", "/", nil)
+          w := httptest.NewRecorder()
+          handler.ServeHTTP(w, req)
+          if w.Code != http.StatusUnauthorized {
+              t.Fatalf("expected 401, got %d", w.Code)
+          }
+      }
+
+      func TestAuthMiddlewareWithToken(t *testing.T) {
+          handler := AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              w.WriteHeader(http.StatusOK)
+          }))
+          req := httptest.NewRequest("GET", "/", nil)
+          req.Header.Set("Authorization", "Bearer test-token")
+          w := httptest.NewRecorder()
+          handler.ServeHTTP(w, req)
+          if w.Code != http.StatusOK {
+              t.Fatalf("expected 200, got %d", w.Code)
+          }
+      }
+
+      func TestAuthMiddlewareInvalidFormat(t *testing.T) {
+          handler := AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              w.WriteHeader(http.StatusOK)
+          }))
+          req := httptest.NewRequest("GET", "/", nil)
+          req.Header.Set("Authorization", "Basic abc123")
+          w := httptest.NewRecorder()
+          handler.ServeHTTP(w, req)
+          if w.Code != http.StatusUnauthorized {
+              t.Fatalf("expected 401 for non-Bearer token, got %d", w.Code)
+          }
+      }
+    middleware/cors.go: |
+      package middleware
+
+      GARBAGE_BAL2_008_CORS_A = "cors"
+      GARBAGE_BAL2_008_CORS_MARKER_B = true
+
+      import "net/http"
+
+      func CORSMiddleware(next http.Handler) http.Handler {
+          return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              w.Header().Set("Access-Control-Allow-Origin", "*")
+              next.ServeHTTP(w, r)
+          })
+      }
+    middleware/ratelimit.go: |
+      package middleware
+
+      GARBAGE_BAL2_008_RATE_C = "ratelimit"
+
+      import "net/http"
+
+      func RateLimitMiddleware(next http.Handler) http.Handler {
+          return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              next.ServeHTTP(w, r)
+          })
+      }
+    handler/api.go: |
+      package handler
+
+      GARBAGE_BAL2_008_API_D = "api"
+      GARBAGE_BAL2_008_HANDLER_E = true
+
+      import "net/http"
+
+      func APIHandler(w http.ResponseWriter, r *http.Request) {
+          w.Write([]byte("api response"))
+      }
+  commit_message: "Require Bearer prefix in auth middleware"
+fragments:
+- id: auth_bearer_check
+  selector:
+    path: middleware/auth.go
+    anchor: "strings.HasPrefix(token, \"Bearer \")"
+- id: auth_test_invalid
+  selector:
+    path: middleware/auth_test.go
+    anchor: "func TestAuthMiddlewareInvalidFormat"
+- id: no_cors
+  selector:
+    path: middleware/cors.go
+- id: no_ratelimit
+  selector:
+    path: middleware/ratelimit.go
+- id: no_api
+  selector:
+    path: handler/api.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL2_008_CORS_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL2_008_CORS_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL2_008_RATE_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL2_008_API_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL2_008_HANDLER_E
+oracle:
+  required:
+  - auth_bearer_check
+  - auth_test_invalid
+  allowed: []
+  forbidden:
+  - no_cors
+  - no_ratelimit
+  - no_api
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

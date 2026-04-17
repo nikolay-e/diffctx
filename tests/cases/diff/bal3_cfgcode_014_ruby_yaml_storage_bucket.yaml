@@ -1,0 +1,145 @@
+name: bal3_cfgcode_014_ruby_yaml_storage_bucket
+tags:
+- lang:python
+- change:bug_fix
+- change:multi_file
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/validation/schema.py: |
+      from src.validation.rules import validate_field
+
+      class SchemaValidator:
+          def __init__(self, schema: dict) -> None:
+              self._schema = schema
+
+          def validate(self, data: dict) -> list[str]:
+              errors = []
+              for field, rules in self._schema.items():
+                  # BUG: missing required fields not detected when data key absent
+                  value = data.get(field)
+                  field_errors = validate_field(field, value, rules)
+                  errors.extend(field_errors)
+              return errors
+    src/validation/rules.py: |
+      def validate_field(name: str, value, rules: dict) -> list[str]:
+          errors = []
+          if rules.get("type") == "string" and not isinstance(value, str):
+              errors.append(f"{name}: expected string")
+          if rules.get("min_length") and isinstance(value, str):
+              if len(value) < rules["min_length"]:
+                  errors.append(f"{name}: too short")
+          return errors
+    tests/test_schema.py: |
+      from src.validation.schema import SchemaValidator
+
+      def test_valid_data():
+          schema = {"name": {"type": "string", "min_length": 2}}
+          v = SchemaValidator(schema)
+          assert v.validate({"name": "Alice"}) == []
+
+      def test_wrong_type():
+          schema = {"age": {"type": "string"}}
+          v = SchemaValidator(schema)
+          assert len(v.validate({"age": 42})) == 1
+    garbage/sanitizer.py: |
+      # GARBAGE_SCHM_A = "sanitizer_marker"
+      def sanitize(val: str) -> str:
+          return val.strip()
+    garbage/transformer.py: |
+      # GARBAGE_SCHM_B = "transformer_marker"
+      def transform(data: dict) -> dict:
+          return data
+    garbage/coercer.py: |
+      # GARBAGE_SCHM_C = "coercer_marker"
+      def coerce_int(val: str) -> int:
+          return int(val)
+  changed_files:
+    src/validation/schema.py: |
+      from src.validation.rules import validate_field
+
+      class SchemaValidator:
+          def __init__(self, schema: dict) -> None:
+              self._schema = schema
+
+          def validate(self, data: dict) -> list[str]:
+              errors = []
+              for field, rules in self._schema.items():
+                  if rules.get("required") and field not in data:
+                      errors.append(f"{field}: required field missing")
+                      continue
+                  value = data.get(field)
+                  field_errors = validate_field(field, value, rules)
+                  errors.extend(field_errors)
+              return errors
+    src/validation/rules.py: |
+      def validate_field(name: str, value, rules: dict) -> list[str]:
+          errors = []
+          if rules.get("type") == "string" and not isinstance(value, str):
+              errors.append(f"{name}: expected string")
+          if rules.get("min_length") and isinstance(value, str):
+              if len(value) < rules["min_length"]:
+                  errors.append(f"{name}: too short")
+          return errors
+    tests/test_schema.py: |
+      from src.validation.schema import SchemaValidator
+
+      def test_valid_data():
+          schema = {"name": {"type": "string", "min_length": 2}}
+          v = SchemaValidator(schema)
+          assert v.validate({"name": "Alice"}) == []
+
+      def test_wrong_type():
+          schema = {"age": {"type": "string"}}
+          v = SchemaValidator(schema)
+          assert len(v.validate({"age": 42})) == 1
+
+      def test_required_field_missing():
+          schema = {"email": {"type": "string", "required": True}}
+          v = SchemaValidator(schema)
+          errors = v.validate({})
+          assert any("required field missing" in e for e in errors)
+    garbage/sanitizer.py: |
+      # GARBAGE_SCHM_A = "sanitizer_marker"
+      def sanitize(val: str) -> str:
+          return val.strip()
+    garbage/transformer.py: |
+      # GARBAGE_SCHM_B = "transformer_marker"
+      def transform(data: dict) -> dict:
+          return data
+    garbage/coercer.py: |
+      # GARBAGE_SCHM_C = "coercer_marker"
+      def coerce_int(val: str) -> int:
+          return int(val)
+  commit_message: "fix: detect missing required fields in SchemaValidator.validate"
+fragments:
+- id: required_check
+  selector:
+    anchor: "if rules.get(\"required\") and field not in data"
+- id: test_required_missing
+  selector:
+    anchor: "def test_required_field_missing()"
+- id: validate_field_func
+  selector:
+    anchor: "def validate_field(name: str, value, rules: dict) -> list[str]"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_SCHM_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_SCHM_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_SCHM_C
+oracle:
+  required:
+  - required_check
+  - test_required_missing
+  allowed:
+  - validate_field_func
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

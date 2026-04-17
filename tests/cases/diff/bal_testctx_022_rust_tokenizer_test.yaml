@@ -1,0 +1,144 @@
+name: bal_testctx_022_rust_tokenizer_test
+tags:
+- lang:rust
+- change:single_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/tokenizer.rs: |
+      #[derive(Debug, PartialEq)]
+      pub enum Token {
+          Word(String),
+          Number(f64),
+          Whitespace,
+      }
+
+      pub fn tokenize(input: &str) -> Vec<Token> {
+          let mut tokens = Vec::new();
+          for word in input.split_whitespace() {
+              if let Ok(num) = word.parse::<f64>() {
+                  tokens.push(Token::Number(num));
+              } else {
+                  tokens.push(Token::Word(word.to_string()));
+              }
+          }
+          tokens
+      }
+    tests/test_tokenizer.rs: |
+      use crate::tokenizer::{tokenize, Token};
+
+      #[test]
+      fn test_tokenize_words() {
+          let tokens = tokenize("hello world");
+          assert_eq!(tokens, vec![Token::Word("hello".into()), Token::Word("world".into())]);
+      }
+
+      #[test]
+      fn test_tokenize_numbers() {
+          let tokens = tokenize("42 3.14");
+          assert_eq!(tokens, vec![Token::Number(42.0), Token::Number(3.14)]);
+      }
+
+      #[test]
+      fn test_tokenize_mixed() {
+          let tokens = tokenize("count 5");
+          assert_eq!(tokens, vec![Token::Word("count".into()), Token::Number(5.0)]);
+      }
+    src/ast.rs: |
+      #[derive(Debug)]
+      pub enum AstNode {
+          Literal(String),
+          BinaryOp { op: String, left: Box<AstNode>, right: Box<AstNode> },
+      }
+
+      pub fn make_literal(value: &str) -> AstNode {
+          AstNode::Literal(value.to_string())
+      }
+  changed_files:
+    src/tokenizer.rs: |
+      #[derive(Debug, PartialEq)]
+      pub enum Token {
+          Word(String),
+          Number(f64),
+          Punctuation(char),
+          Whitespace,
+      }
+
+      pub fn tokenize(input: &str) -> Vec<Token> {
+          let mut tokens = Vec::new();
+          for word in input.split_whitespace() {
+              if let Ok(num) = word.parse::<f64>() {
+                  tokens.push(Token::Number(num));
+              } else {
+                  tokens.push(Token::Word(word.to_string()));
+              }
+          }
+          tokens
+      }
+
+      pub fn tokenize_with_punctuation(input: &str) -> Vec<Token> {
+          let mut tokens = Vec::new();
+          let mut current = String::new();
+          for ch in input.chars() {
+              if ch.is_alphanumeric() || ch == '.' {
+                  current.push(ch);
+              } else if ch.is_whitespace() {
+                  if !current.is_empty() {
+                      tokens.push(classify(&current));
+                      current.clear();
+                  }
+              } else {
+                  if !current.is_empty() {
+                      tokens.push(classify(&current));
+                      current.clear();
+                  }
+                  tokens.push(Token::Punctuation(ch));
+              }
+          }
+          if !current.is_empty() {
+              tokens.push(classify(&current));
+          }
+          tokens
+      }
+
+      fn classify(word: &str) -> Token {
+          if let Ok(num) = word.parse::<f64>() {
+              Token::Number(num)
+          } else {
+              Token::Word(word.to_string())
+          }
+      }
+  commit_message: "feat: add punctuation token and advanced tokenizer"
+fragments:
+- id: punctuation_variant
+  selector:
+    path: src/tokenizer.rs
+    anchor: "Punctuation(char)"
+- id: tokenize_with_punct_fn
+  selector:
+    path: src/tokenizer.rs
+    anchor: "pub fn tokenize_with_punctuation"
+- id: test_imports_tokenizer
+  selector:
+    path: tests/test_tokenizer.rs
+    anchor: "use crate::tokenizer"
+- id: test_tokenize_words
+  selector:
+    path: tests/test_tokenizer.rs
+    anchor: "fn test_tokenize_words"
+- id: no_ast
+  selector:
+    path: src/ast.rs
+    anchor: "pub enum AstNode"
+oracle:
+  required:
+  - tokenize_with_punct_fn
+  - test_imports_tokenizer
+  allowed:
+  - punctuation_variant
+  - test_tokenize_words
+  forbidden:
+  - no_ast

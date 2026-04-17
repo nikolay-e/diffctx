@@ -1,0 +1,133 @@
+name: bal4_crossmod_012_rust_const_change_cross_mod
+tags:
+- lang:rust
+- change:single_file
+- context:cross_module
+- distance:2hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/config/limits.rs: |
+      pub const MAX_CONNECTIONS: u32 = 100;
+      pub const REQUEST_TIMEOUT_MS: u64 = 5000;
+    src/net/pool.rs: |
+      use crate::config::limits;
+
+      pub struct ConnPool {
+          pub size: u32,
+      }
+
+      impl ConnPool {
+          pub fn new() -> Self {
+              ConnPool { size: limits::MAX_CONNECTIONS }
+          }
+      }
+    src/server/http.rs: |
+      use crate::net::pool::ConnPool;
+
+      pub fn start_server() -> ConnPool {
+          ConnPool::new()
+      }
+    src/cache/store.rs: |
+      use crate::config::limits;
+
+      pub fn get_timeout() -> u64 {
+          limits::REQUEST_TIMEOUT_MS
+      }
+    src/queue/worker.rs: |
+      pub const GARBAGE_012_BATCH_A: u32 = 50;
+      pub const GARBAGE_012_DELAY_B: u64 = 100;
+
+      pub fn process_batch() {}
+    garbage_fixtures.rs: |
+      pub const GARBAGE_012_FIX_C: &str = "test";
+      pub const GARBAGE_012_SEED_D: u64 = 99;
+
+      pub fn setup() {}
+  changed_files:
+    src/config/limits.rs: |
+      pub const MAX_CONNECTIONS: u32 = 200;
+      pub const REQUEST_TIMEOUT_MS: u64 = 5000;
+    src/net/pool.rs: |
+      use crate::config::limits;
+
+      pub struct ConnPool {
+          pub size: u32,
+      }
+
+      impl ConnPool {
+          pub fn new() -> Self {
+              ConnPool { size: limits::MAX_CONNECTIONS }
+          }
+      }
+    src/server/http.rs: |
+      use crate::net::pool::ConnPool;
+
+      pub fn start_server() -> ConnPool {
+          ConnPool::new()
+      }
+    src/cache/store.rs: |
+      use crate::config::limits;
+
+      pub fn get_timeout() -> u64 {
+          limits::REQUEST_TIMEOUT_MS
+      }
+    src/queue/worker.rs: |
+      pub const GARBAGE_012_BATCH_A: u32 = 50;
+      pub const GARBAGE_012_DELAY_B: u64 = 100;
+
+      pub fn process_batch() {}
+    garbage_fixtures.rs: |
+      pub const GARBAGE_012_FIX_C: &str = "test";
+      pub const GARBAGE_012_SEED_D: u64 = 99;
+
+      pub fn setup() {}
+  commit_message: "increase MAX_CONNECTIONS to 200"
+fragments:
+- id: pool_new
+  selector:
+    path: src/net/pool.rs
+    anchor: "pub fn new() -> Self"
+- id: server_start
+  selector:
+    path: src/server/http.rs
+    anchor: "pub fn start_server()"
+- id: pool_uses_limit
+  selector:
+    path: src/net/pool.rs
+    anchor: "limits::MAX_CONNECTIONS"
+- id: no_cache
+  selector:
+    path: src/cache/store.rs
+- id: no_worker
+  selector:
+    path: src/queue/worker.rs
+- id: no_garbage_fixtures
+  selector:
+    path: garbage_fixtures.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_012_BATCH_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_012_DELAY_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_012_FIX_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_012_SEED_D
+oracle:
+  required:
+  - pool_new
+  - server_start
+  - pool_uses_limit
+  allowed: []
+  forbidden:
+  - no_cache
+  - no_worker
+  - no_garbage_fixtures
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

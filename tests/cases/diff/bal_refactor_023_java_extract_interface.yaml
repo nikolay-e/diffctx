@@ -1,0 +1,268 @@
+name: bal_refactor_023_java_extract_interface
+tags:
+- lang:java
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/main/java/com/app/notification/EmailSender.java: |
+      package com.app.notification;
+
+      public class EmailSender {
+          private final String smtpHost;
+
+          public EmailSender(String smtpHost) {
+              this.smtpHost = smtpHost;
+          }
+
+          public void send(String to, String subject, String body) {
+              System.out.println("Email to " + to + " via " + smtpHost);
+          }
+
+          public void sendBulk(String[] recipients, String subject, String body) {
+              for (String to : recipients) {
+                  send(to, subject, body);
+              }
+          }
+      }
+    src/main/java/com/app/notification/SmsSender.java: |
+      package com.app.notification;
+
+      public class SmsSender {
+          private final String apiKey;
+
+          public SmsSender(String apiKey) {
+              this.apiKey = apiKey;
+          }
+
+          public void send(String to, String subject, String body) {
+              System.out.println("SMS to " + to);
+          }
+
+          public void sendBulk(String[] recipients, String subject, String body) {
+              for (String to : recipients) {
+                  send(to, subject, body);
+              }
+          }
+      }
+    src/main/java/com/app/service/AlertService.java: |
+      package com.app.service;
+
+      import com.app.notification.EmailSender;
+
+      public class AlertService {
+          private final EmailSender sender;
+
+          public AlertService(EmailSender sender) {
+              this.sender = sender;
+          }
+
+          public void sendAlert(String to, String message) {
+              sender.send(to, "Alert", message);
+          }
+      }
+    src/main/java/com/app/controller/AlertController.java: |
+      package com.app.controller;
+
+      import com.app.service.AlertService;
+
+      public class AlertController {
+          private final AlertService alertService;
+
+          public AlertController(AlertService alertService) {
+              this.alertService = alertService;
+          }
+
+          public void handleAlert(String to, String message) {
+              alertService.sendAlert(to, message);
+          }
+      }
+    src/main/java/com/app/GarbageMetrics.java: |
+      package com.app;
+
+      public class GarbageMetrics {
+          public static final String GARBAGE_REFACTOR_023_METRICS_A = "metrics";
+          public static final int GARBAGE_REFACTOR_023_INTERVAL_B = 30;
+          public static final boolean GARBAGE_REFACTOR_023_ENABLED_C = true;
+
+          public void record(String name, double value) {}
+      }
+    src/main/java/com/app/GarbageAudit.java: |
+      package com.app;
+
+      public class GarbageAudit {
+          public static final String GARBAGE_REFACTOR_023_AUDIT_D = "audit";
+          public static final boolean GARBAGE_REFACTOR_023_VERBOSE_E = false;
+
+          public void log(String action) {}
+      }
+  changed_files:
+    src/main/java/com/app/notification/MessageSender.java: |
+      package com.app.notification;
+
+      public interface MessageSender {
+          void send(String to, String subject, String body);
+          void sendBulk(String[] recipients, String subject, String body);
+      }
+    src/main/java/com/app/notification/EmailSender.java: |
+      package com.app.notification;
+
+      public class EmailSender implements MessageSender {
+          private final String smtpHost;
+
+          public EmailSender(String smtpHost) {
+              this.smtpHost = smtpHost;
+          }
+
+          @Override
+          public void send(String to, String subject, String body) {
+              System.out.println("Email to " + to + " via " + smtpHost);
+          }
+
+          @Override
+          public void sendBulk(String[] recipients, String subject, String body) {
+              for (String to : recipients) {
+                  send(to, subject, body);
+              }
+          }
+      }
+    src/main/java/com/app/notification/SmsSender.java: |
+      package com.app.notification;
+
+      public class SmsSender implements MessageSender {
+          private final String apiKey;
+
+          public SmsSender(String apiKey) {
+              this.apiKey = apiKey;
+          }
+
+          @Override
+          public void send(String to, String subject, String body) {
+              System.out.println("SMS to " + to);
+          }
+
+          @Override
+          public void sendBulk(String[] recipients, String subject, String body) {
+              for (String to : recipients) {
+                  send(to, subject, body);
+              }
+          }
+      }
+    src/main/java/com/app/service/AlertService.java: |
+      package com.app.service;
+
+      import com.app.notification.MessageSender;
+
+      public class AlertService {
+          private final MessageSender sender;
+
+          public AlertService(MessageSender sender) {
+              this.sender = sender;
+          }
+
+          public void sendAlert(String to, String message) {
+              sender.send(to, "Alert", message);
+          }
+      }
+    src/main/java/com/app/controller/AlertController.java: |
+      package com.app.controller;
+
+      import com.app.service.AlertService;
+
+      public class AlertController {
+          private final AlertService alertService;
+
+          public AlertController(AlertService alertService) {
+              this.alertService = alertService;
+          }
+
+          public void handleAlert(String to, String message) {
+              alertService.sendAlert(to, message);
+          }
+      }
+    src/main/java/com/app/GarbageMetrics.java: |
+      package com.app;
+
+      public class GarbageMetrics {
+          public static final String GARBAGE_REFACTOR_023_METRICS_A = "metrics";
+          public static final int GARBAGE_REFACTOR_023_INTERVAL_B = 30;
+          public static final boolean GARBAGE_REFACTOR_023_ENABLED_C = true;
+
+          public void record(String name, double value) {}
+      }
+    src/main/java/com/app/GarbageAudit.java: |
+      package com.app;
+
+      public class GarbageAudit {
+          public static final String GARBAGE_REFACTOR_023_AUDIT_D = "audit";
+          public static final boolean GARBAGE_REFACTOR_023_VERBOSE_E = false;
+
+          public void log(String action) {}
+      }
+  commit_message: "refactor: extract MessageSender interface for polymorphic dispatch"
+fragments:
+- id: new_interface
+  selector:
+    path: src/main/java/com/app/notification/MessageSender.java
+    anchor: "public interface MessageSender"
+- id: email_implements
+  selector:
+    path: src/main/java/com/app/notification/EmailSender.java
+    anchor: "implements MessageSender"
+- id: sms_implements
+  selector:
+    path: src/main/java/com/app/notification/SmsSender.java
+    anchor: "implements MessageSender"
+- id: alert_uses_interface
+  selector:
+    path: src/main/java/com/app/service/AlertService.java
+    anchor: "import com.app.notification.MessageSender"
+- id: alert_field_type
+  selector:
+    path: src/main/java/com/app/service/AlertService.java
+    anchor: "private final MessageSender sender"
+- id: controller_uses_service
+  selector:
+    path: src/main/java/com/app/controller/AlertController.java
+    anchor: "import com.app.service.AlertService"
+- id: no_garbage_metrics
+  selector:
+    path: src/main/java/com/app/GarbageMetrics.java
+- id: no_garbage_audit
+  selector:
+    path: src/main/java/com/app/GarbageAudit.java
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_REFACTOR_023_METRICS_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_REFACTOR_023_INTERVAL_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_REFACTOR_023_ENABLED_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_REFACTOR_023_AUDIT_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_REFACTOR_023_VERBOSE_E
+oracle:
+  required:
+  - new_interface
+  - email_implements
+  - sms_implements
+  - alert_uses_interface
+  - alert_field_type
+  - controller_uses_service
+  allowed: []
+  forbidden:
+  - no_garbage_metrics
+  - no_garbage_audit
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

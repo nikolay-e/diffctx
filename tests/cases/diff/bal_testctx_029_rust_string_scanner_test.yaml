@@ -1,0 +1,173 @@
+name: bal_testctx_029_rust_string_scanner_test
+tags:
+- lang:rust
+- change:single_file
+- change:signature
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/scanner.rs: |
+      pub struct Scanner {
+          input: Vec<char>,
+          pos: usize,
+      }
+
+      impl Scanner {
+          pub fn new(input: &str) -> Self {
+              Scanner {
+                  input: input.chars().collect(),
+                  pos: 0,
+              }
+          }
+
+          pub fn peek(&self) -> Option<char> {
+              self.input.get(self.pos).copied()
+          }
+
+          pub fn advance(&mut self) -> Option<char> {
+              let ch = self.input.get(self.pos).copied();
+              if ch.is_some() {
+                  self.pos += 1;
+              }
+              ch
+          }
+
+          pub fn is_at_end(&self) -> bool {
+              self.pos >= self.input.len()
+          }
+      }
+    tests/test_scanner.rs: |
+      use crate::scanner::Scanner;
+
+      #[test]
+      fn test_peek_and_advance() {
+          let mut scanner = Scanner::new("abc");
+          assert_eq!(scanner.peek(), Some('a'));
+          assert_eq!(scanner.advance(), Some('a'));
+          assert_eq!(scanner.peek(), Some('b'));
+      }
+
+      #[test]
+      fn test_is_at_end() {
+          let mut scanner = Scanner::new("x");
+          assert!(!scanner.is_at_end());
+          scanner.advance();
+          assert!(scanner.is_at_end());
+      }
+
+      #[test]
+      fn test_empty_input() {
+          let scanner = Scanner::new("");
+          assert!(scanner.is_at_end());
+          assert_eq!(scanner.peek(), None);
+      }
+    src/regex_engine.rs: |
+      pub fn is_match(pattern: &str, text: &str) -> bool {
+          text.contains(pattern)
+      }
+
+      pub fn find_all(pattern: &str, text: &str) -> Vec<usize> {
+          text.match_indices(pattern).map(|(i, _)| i).collect()
+      }
+  changed_files:
+    src/scanner.rs: |
+      pub struct Scanner {
+          input: Vec<char>,
+          pos: usize,
+          line: usize,
+          col: usize,
+      }
+
+      impl Scanner {
+          pub fn new(input: &str) -> Self {
+              Scanner {
+                  input: input.chars().collect(),
+                  pos: 0,
+                  line: 1,
+                  col: 1,
+              }
+          }
+
+          pub fn peek(&self) -> Option<char> {
+              self.input.get(self.pos).copied()
+          }
+
+          pub fn peek_ahead(&self, offset: usize) -> Option<char> {
+              self.input.get(self.pos + offset).copied()
+          }
+
+          pub fn advance(&mut self) -> Option<char> {
+              let ch = self.input.get(self.pos).copied();
+              if let Some(c) = ch {
+                  self.pos += 1;
+                  if c == '\n' {
+                      self.line += 1;
+                      self.col = 1;
+                  } else {
+                      self.col += 1;
+                  }
+              }
+              ch
+          }
+
+          pub fn position(&self) -> (usize, usize) {
+              (self.line, self.col)
+          }
+
+          pub fn is_at_end(&self) -> bool {
+              self.pos >= self.input.len()
+          }
+
+          pub fn skip_while<F: Fn(char) -> bool>(&mut self, predicate: F) {
+              while let Some(ch) = self.peek() {
+                  if predicate(ch) {
+                      self.advance();
+                  } else {
+                      break;
+                  }
+              }
+          }
+      }
+  commit_message: "feat: track line/col position, add peek_ahead and skip_while"
+fragments:
+- id: scanner_struct
+  selector:
+    path: src/scanner.rs
+    anchor: "pub struct Scanner"
+- id: peek_ahead_fn
+  selector:
+    path: src/scanner.rs
+    anchor: "pub fn peek_ahead"
+- id: position_fn
+  selector:
+    path: src/scanner.rs
+    anchor: "pub fn position"
+- id: skip_while_fn
+  selector:
+    path: src/scanner.rs
+    anchor: "pub fn skip_while"
+- id: test_imports_scanner
+  selector:
+    path: tests/test_scanner.rs
+    anchor: "use crate::scanner::Scanner"
+- id: test_peek_advance
+  selector:
+    path: tests/test_scanner.rs
+    anchor: "fn test_peek_and_advance"
+- id: no_regex
+  selector:
+    path: src/regex_engine.rs
+    anchor: "pub fn is_match"
+oracle:
+  required:
+  - scanner_struct
+  - peek_ahead_fn
+  - skip_while_fn
+  - test_imports_scanner
+  allowed:
+  - position_fn
+  - test_peek_advance
+  forbidden:
+  - no_regex

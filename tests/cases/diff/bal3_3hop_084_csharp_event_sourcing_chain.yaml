@@ -1,0 +1,328 @@
+name: bal3_3hop_084_csharp_event_sourcing_chain
+tags:
+- lang:csharp
+- change:multi_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/Events/DomainEvent.cs: |
+      using System;
+
+      namespace App.Events
+      {
+          public abstract class DomainEvent
+          {
+              public Guid EventId { get; } = Guid.NewGuid();
+              public DateTime OccurredAt { get; } = DateTime.UtcNow;
+          }
+      }
+    src/Events/AccountCreatedEvent.cs: |
+      using System;
+      using App.Events;
+
+      namespace App.Events
+      {
+          public class AccountCreatedEvent : DomainEvent
+          {
+              public string AccountId { get; set; }
+              public string OwnerName { get; set; }
+          }
+      }
+    src/Store/EventStore.cs: |
+      using System;
+      using System.Collections.Generic;
+      using App.Events;
+
+      namespace App.Store
+      {
+          public class EventStore
+          {
+              private readonly List<DomainEvent> _events = new();
+              public void Append(DomainEvent domainEvent)
+              {
+                  _events.Add(domainEvent);
+              }
+              public IReadOnlyList<DomainEvent> GetAll()
+              {
+                  return _events.AsReadOnly();
+              }
+          }
+      }
+    src/Aggregates/AccountAggregate.cs: |
+      using System;
+      using App.Store;
+      using App.Events;
+
+      namespace App.Aggregates
+      {
+          public class AccountAggregate
+          {
+              private readonly EventStore _store;
+              public AccountAggregate(EventStore store)
+              {
+                  _store = store;
+              }
+              public void CreateAccount(string id, string owner)
+              {
+                  _store.Append(new AccountCreatedEvent { AccountId = id, OwnerName = owner });
+              }
+          }
+      }
+    src/Services/AccountService.cs: |
+      using System;
+      using App.Aggregates;
+
+      namespace App.Services
+      {
+          public class AccountService
+          {
+              private readonly AccountAggregate _aggregate;
+              public AccountService(AccountAggregate aggregate)
+              {
+                  _aggregate = aggregate;
+              }
+              public void OpenAccount(string id, string owner)
+              {
+                  _aggregate.CreateAccount(id, owner);
+              }
+          }
+      }
+    src/Controllers/AccountController.cs: |
+      using System;
+      using App.Services;
+
+      namespace App.Controllers
+      {
+          public class AccountController
+          {
+              private readonly AccountService _service;
+              public AccountController(AccountService service)
+              {
+                  _service = service;
+              }
+              public string Open(string id, string owner)
+              {
+                  _service.OpenAccount(id, owner);
+                  return "Account opened";
+              }
+          }
+      }
+    src/Projections/BalanceProjection.cs: |
+      using System;
+      // GARBAGE_084_BALANCE_A = "projection"
+      // GARBAGE_084_TOTAL_B = 0
+
+      namespace App.Projections
+      {
+          public class BalanceProjection
+          {
+              public decimal Balance { get; set; }
+          }
+      }
+    src/Projections/TransactionProjection.cs: |
+      using System;
+      // GARBAGE_084_TRANSACTION_C = "projection"
+      // GARBAGE_084_COUNT_D = 0
+
+      namespace App.Projections
+      {
+          public class TransactionProjection
+          {
+              public int Count { get; set; }
+          }
+      }
+  changed_files:
+    src/Events/DomainEvent.cs: |
+      using System;
+
+      namespace App.Events
+      {
+          public abstract class DomainEvent
+          {
+              public Guid EventId { get; } = Guid.NewGuid();
+              public DateTime OccurredAt { get; } = DateTime.UtcNow;
+              public string AggregateId { get; set; }
+              public int Version { get; set; }
+          }
+      }
+    src/Events/AccountCreatedEvent.cs: |
+      using System;
+      using App.Events;
+
+      namespace App.Events
+      {
+          public class AccountCreatedEvent : DomainEvent
+          {
+              public string AccountId { get; set; }
+              public string OwnerName { get; set; }
+              public string Email { get; set; }
+          }
+      }
+    src/Store/EventStore.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Linq;
+      using App.Events;
+
+      namespace App.Store
+      {
+          public class EventStore
+          {
+              private readonly List<DomainEvent> _events = new();
+              public void Append(DomainEvent domainEvent)
+              {
+                  domainEvent.Version = _events.Count(e => e.AggregateId == domainEvent.AggregateId) + 1;
+                  _events.Add(domainEvent);
+              }
+              public IReadOnlyList<DomainEvent> GetAll()
+              {
+                  return _events.AsReadOnly();
+              }
+              public IReadOnlyList<DomainEvent> GetByAggregate(string aggregateId)
+              {
+                  return _events.Where(e => e.AggregateId == aggregateId).ToList().AsReadOnly();
+              }
+          }
+      }
+    src/Aggregates/AccountAggregate.cs: |
+      using System;
+      using App.Store;
+      using App.Events;
+
+      namespace App.Aggregates
+      {
+          public class AccountAggregate
+          {
+              private readonly EventStore _store;
+              public AccountAggregate(EventStore store)
+              {
+                  _store = store;
+              }
+              public void CreateAccount(string id, string owner, string email)
+              {
+                  _store.Append(new AccountCreatedEvent
+                  {
+                      AccountId = id,
+                      OwnerName = owner,
+                      Email = email,
+                      AggregateId = id
+                  });
+              }
+          }
+      }
+    src/Services/AccountService.cs: |
+      using System;
+      using App.Aggregates;
+
+      namespace App.Services
+      {
+          public class AccountService
+          {
+              private readonly AccountAggregate _aggregate;
+              public AccountService(AccountAggregate aggregate)
+              {
+                  _aggregate = aggregate;
+              }
+              public void OpenAccount(string id, string owner, string email)
+              {
+                  _aggregate.CreateAccount(id, owner, email);
+              }
+          }
+      }
+    src/Controllers/AccountController.cs: |
+      using System;
+      using App.Services;
+
+      namespace App.Controllers
+      {
+          public class AccountController
+          {
+              private readonly AccountService _service;
+              public AccountController(AccountService service)
+              {
+                  _service = service;
+              }
+              public string Open(string id, string owner, string email)
+              {
+                  _service.OpenAccount(id, owner, email);
+                  return "Account opened";
+              }
+          }
+      }
+    src/Projections/BalanceProjection.cs: |
+      using System;
+      // GARBAGE_084_BALANCE_A = "projection"
+      // GARBAGE_084_TOTAL_B = 0
+
+      namespace App.Projections
+      {
+          public class BalanceProjection
+          {
+              public decimal Balance { get; set; }
+          }
+      }
+    src/Projections/TransactionProjection.cs: |
+      using System;
+      // GARBAGE_084_TRANSACTION_C = "projection"
+      // GARBAGE_084_COUNT_D = 0
+
+      namespace App.Projections
+      {
+          public class TransactionProjection
+          {
+              public int Count { get; set; }
+          }
+      }
+  commit_message: "feat: add aggregate versioning and email to account events"
+fragments:
+- id: domain_event_version
+  selector:
+    path: src/Events/DomainEvent.cs
+    anchor: "int Version"
+- id: domain_event_aggregate_id
+  selector:
+    path: src/Events/DomainEvent.cs
+    anchor: "AggregateId"
+- id: account_event_email
+  selector:
+    path: src/Events/AccountCreatedEvent.cs
+    anchor: "string Email"
+- id: store_version_tracking
+  selector:
+    path: src/Store/EventStore.cs
+    anchor: "domainEvent.Version"
+- id: aggregate_uses_store
+  selector:
+    path: src/Aggregates/AccountAggregate.cs
+    anchor: "using App.Store"
+- id: service_uses_aggregate
+  selector:
+    path: src/Services/AccountService.cs
+    anchor: "using App.Aggregates"
+- id: controller_uses_service
+  selector:
+    path: src/Controllers/AccountController.cs
+    anchor: "using App.Services"
+- id: no_balance
+  selector:
+    path: src/Projections/BalanceProjection.cs
+    anchor: "GARBAGE_084_BALANCE_A"
+- id: no_transaction
+  selector:
+    path: src/Projections/TransactionProjection.cs
+    anchor: "GARBAGE_084_TRANSACTION_C"
+oracle:
+  required:
+  - domain_event_version
+  - store_version_tracking
+  - aggregate_uses_store
+  - service_uses_aggregate
+  - controller_uses_service
+  allowed:
+  - domain_event_aggregate_id
+  - account_event_email
+  forbidden:
+  - no_balance
+  - no_transaction

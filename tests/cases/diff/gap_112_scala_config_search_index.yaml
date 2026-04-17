@@ -1,0 +1,130 @@
+name: gap_112_scala_config_search_index
+tags:
+- lang:scala
+- change:single_file
+- context:config_to_code
+- difficulty:medium
+- distance:2hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/main/scala/search/Indexer.scala: |
+      package search
+
+      import config.IndexConfig
+
+      class Indexer(config: IndexConfig) {
+        private var documents: Map[String, Vector[String]] = Map.empty
+
+        def index(docId: String, content: String): Unit = {
+          val tokens = tokenize(content)
+          documents = documents.updated(docId, tokens)
+        }
+
+        def search(query: String): List[String] = {
+          val queryTokens = tokenize(query)
+          documents.collect {
+            case (docId, tokens) if queryTokens.exists(tokens.contains) => docId
+          }.toList
+        }
+
+        private def tokenize(text: String): Vector[String] = {
+          text.toLowerCase.split("\\W+").filter(_.length >= config.minTokenLength).toVector
+        }
+      }
+    src/main/scala/config/IndexConfig.scala: |
+      package config
+
+      case class IndexConfig(
+        minTokenLength: Int,
+        maxDocuments: Int
+      )
+    src/main/resources/index.conf: |
+      index {
+        min-token-length = 3
+        max-documents = 100000
+      }
+    src/main/scala/auth/TokenValidator.scala: |
+      package auth
+
+      class TokenValidator(secret: String) {
+        def validate(token: String): Boolean = {
+          token.nonEmpty && token.startsWith("tk_")
+        }
+
+        def decode(token: String): Option[String] = {
+          if (validate(token)) Some(token.drop(3))
+          else None
+        }
+      }
+  changed_files:
+    src/main/resources/index.conf: |
+      index {
+        min-token-length = 3
+        max-documents = 100000
+        stopwords = ["the", "a", "an", "is", "are", "was"]
+      }
+    src/main/scala/config/IndexConfig.scala: |
+      package config
+
+      case class IndexConfig(
+        minTokenLength: Int,
+        maxDocuments: Int,
+        stopwords: Set[String]
+      )
+    src/main/scala/search/Indexer.scala: |
+      package search
+
+      import config.IndexConfig
+
+      class Indexer(config: IndexConfig) {
+        private var documents: Map[String, Vector[String]] = Map.empty
+
+        def index(docId: String, content: String): Unit = {
+          val tokens = tokenize(content)
+          documents = documents.updated(docId, tokens)
+        }
+
+        def search(query: String): List[String] = {
+          val queryTokens = tokenize(query)
+          documents.collect {
+            case (docId, tokens) if queryTokens.exists(tokens.contains) => docId
+          }.toList
+        }
+
+        private def tokenize(text: String): Vector[String] = {
+          text.toLowerCase
+            .split("\\W+")
+            .filter(_.length >= config.minTokenLength)
+            .filterNot(config.stopwords.contains)
+            .toVector
+        }
+      }
+fragments:
+- id: indexer_tokenize
+  selector:
+    path: src/main/scala/search/Indexer.scala
+    anchor: "def tokenize"
+- id: config_stopwords
+  selector:
+    path: src/main/scala/config/IndexConfig.scala
+    anchor: "stopwords: Set[String]"
+- id: conf_stopwords
+  selector:
+    path: src/main/resources/index.conf
+    anchor: "stopwords"
+- id: no_auth
+  selector:
+    path: src/main/scala/auth/TokenValidator.scala
+- id: no_token_validator
+  selector:
+    anchor: TokenValidator
+oracle:
+  required:
+  - indexer_tokenize
+  - config_stopwords
+  - conf_stopwords
+  forbidden:
+  - no_auth
+  - no_token_validator

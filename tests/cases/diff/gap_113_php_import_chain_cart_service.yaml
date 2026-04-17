@@ -1,0 +1,140 @@
+name: gap_113_php_import_chain_cart_service
+tags:
+- lang:elixir
+- change:new_function
+- change:single_file
+- context:import_chain
+- distance:2hop
+- difficulty:medium
+repo:
+  initial_files:
+    lib/supply/warehouse.ex: |
+      defmodule Supply.Warehouse do
+        defstruct [:id, :location, :capacity_m3, :available_m3]
+
+        def has_space?(%__MODULE__{available_m3: avail}, volume_m3) do
+          avail >= volume_m3
+        end
+
+        def reserve(%__MODULE__{} = wh, volume_m3) do
+          %{wh | available_m3: wh.available_m3 - volume_m3}
+        end
+      end
+    lib/supply/allocation_service.ex: |
+      defmodule Supply.AllocationService do
+        alias Supply.Warehouse
+
+        def allocate(warehouse, volume_m3) do
+          if Warehouse.has_space?(warehouse, volume_m3) do
+            updated = Warehouse.reserve(warehouse, volume_m3)
+            {:ok, updated}
+          else
+            {:error, :insufficient_space}
+          end
+        end
+      end
+    lib/supply/fulfillment.ex: |
+      defmodule Supply.Fulfillment do
+        alias Supply.AllocationService
+
+        def fulfill_order(warehouse, order_volume_m3) do
+          case AllocationService.allocate(warehouse, order_volume_m3) do
+            {:ok, updated_wh} -> {:ok, updated_wh}
+            {:error, reason} -> {:error, reason}
+          end
+        end
+      end
+    garbage/Receiving.ex: |
+      # GARBAGE_SUP_A = "receiving_marker"
+    garbage/Shipping.ex: |
+      # GARBAGE_SUP_B = "shipping_marker"
+    garbage/Inventory.ex: |
+      # GARBAGE_SUP_C = "inventory_marker"
+    garbage/Scheduling.ex: |
+      # GARBAGE_SUP_D = "scheduling_marker"
+  changed_files:
+    lib/supply/warehouse.ex: |
+      defmodule Supply.Warehouse do
+        defstruct [:id, :location, :capacity_m3, :available_m3]
+
+        def has_space?(%__MODULE__{available_m3: avail}, volume_m3) do
+          avail >= volume_m3
+        end
+
+        def reserve(%__MODULE__{} = wh, volume_m3) do
+          %{wh | available_m3: wh.available_m3 - volume_m3}
+        end
+
+        def utilization_percent(%__MODULE__{capacity_m3: cap, available_m3: avail}) do
+          used = cap - avail
+          Float.round(used / cap * 100, 2)
+        end
+      end
+    lib/supply/allocation_service.ex: |
+      defmodule Supply.AllocationService do
+        alias Supply.Warehouse
+
+        def allocate(warehouse, volume_m3) do
+          if Warehouse.has_space?(warehouse, volume_m3) do
+            updated = Warehouse.reserve(warehouse, volume_m3)
+            {:ok, updated}
+          else
+            {:error, :insufficient_space}
+          end
+        end
+      end
+    lib/supply/fulfillment.ex: |
+      defmodule Supply.Fulfillment do
+        alias Supply.AllocationService
+
+        def fulfill_order(warehouse, order_volume_m3) do
+          case AllocationService.allocate(warehouse, order_volume_m3) do
+            {:ok, updated_wh} -> {:ok, updated_wh}
+            {:error, reason} -> {:error, reason}
+          end
+        end
+      end
+    garbage/Receiving.ex: |
+      # GARBAGE_SUP_A = "receiving_marker"
+    garbage/Shipping.ex: |
+      # GARBAGE_SUP_B = "shipping_marker"
+    garbage/Inventory.ex: |
+      # GARBAGE_SUP_C = "inventory_marker"
+    garbage/Scheduling.ex: |
+      # GARBAGE_SUP_D = "scheduling_marker"
+  commit_message: "feat: add utilization_percent to Supply.Warehouse"
+fragments:
+- id: utilization_percent
+  selector:
+    anchor: "def utilization_percent"
+- id: allocation_uses_warehouse
+  selector:
+    path: lib/supply/allocation_service.ex
+    anchor: "Warehouse.has_space?"
+- id: fulfillment_uses_allocation
+  selector:
+    path: lib/supply/fulfillment.ex
+    anchor: "AllocationService.allocate"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_SUP_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_SUP_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_SUP_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_SUP_D
+oracle:
+  required:
+  - utilization_percent
+  allowed:
+  - allocation_uses_warehouse
+  - fulfillment_uses_allocation
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

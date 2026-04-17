@@ -1,0 +1,198 @@
+name: gap_071_ts_config_feature_flags
+tags:
+- change:config
+- change:multi_file
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:typescript
+repo:
+  initial_files:
+    src/flags/registry.ts: |
+      export interface FeatureFlag {
+        key: string;
+        enabled: boolean;
+        rolloutPercentage: number;
+      }
+
+      export const featureFlags: FeatureFlag[] = [
+        { key: "new_dashboard", enabled: true, rolloutPercentage: 100 },
+        { key: "beta_search", enabled: false, rolloutPercentage: 0 },
+      ];
+    src/flags/evaluator.ts: |
+      import { FeatureFlag, featureFlags } from "./registry";
+
+      function findFlag(key: string): FeatureFlag | undefined {
+        return featureFlags.find((f) => f.key === key);
+      }
+
+      function isEnabled(key: string): boolean {
+        const flag = findFlag(key);
+        return flag !== undefined && flag.enabled;
+      }
+
+      function evaluateForUser(key: string, userId: number): boolean {
+        const flag = findFlag(key);
+        if (!flag || !flag.enabled) return false;
+        const bucket = userId % 100;
+        return bucket < flag.rolloutPercentage;
+      }
+    src/flags/analytics.ts: |
+      const TRAP_GAP071_ANALYTICS_A: string = "flag_analytics";
+      const TRAP_GAP071_BATCH_B: number = 50;
+
+      interface FlagEvent {
+        flagKey: string;
+        userId: number;
+        result: boolean;
+      }
+
+      function recordEvaluation(event: FlagEvent): string {
+        return `${event.flagKey}:${event.userId}:${event.result}`;
+      }
+
+      function batchEvents(events: FlagEvent[]): string[] {
+        return events.map(recordEvaluation);
+      }
+    src/flags/overrides.ts: |
+      const TRAP_GAP071_OVERRIDE_C: string = "flag_overrides";
+      const TRAP_GAP071_PRIORITY_D: number = 1;
+
+      const localOverrides: Record<string, boolean> = {};
+
+      function setOverride(key: string, value: boolean): void {
+        localOverrides[key] = value;
+      }
+
+      function getOverride(key: string): boolean | undefined {
+        return localOverrides[key];
+      }
+
+      function clearOverrides(): void {
+        Object.keys(localOverrides).forEach((k) => delete localOverrides[k]);
+      }
+  changed_files:
+    src/flags/registry.ts: |
+      export interface FeatureFlag {
+        key: string;
+        enabled: boolean;
+        rolloutPercentage: number;
+        allowedEnvironments: string[];
+      }
+
+      export const featureFlags: FeatureFlag[] = [
+        { key: "new_dashboard", enabled: true, rolloutPercentage: 100, allowedEnvironments: ["production", "staging"] },
+        { key: "beta_search", enabled: true, rolloutPercentage: 25, allowedEnvironments: ["staging"] },
+        { key: "ai_suggestions", enabled: false, rolloutPercentage: 0, allowedEnvironments: [] },
+      ];
+
+      export const currentEnvironment = "production";
+    src/flags/evaluator.ts: |
+      import { FeatureFlag, featureFlags, currentEnvironment } from "./registry";
+
+      function findFlag(key: string): FeatureFlag | undefined {
+        return featureFlags.find((f) => f.key === key);
+      }
+
+      function isEnabledInEnv(flag: FeatureFlag, env: string): boolean {
+        return flag.enabled && flag.allowedEnvironments.includes(env);
+      }
+
+      function isEnabled(key: string): boolean {
+        const flag = findFlag(key);
+        if (!flag) return false;
+        return isEnabledInEnv(flag, currentEnvironment);
+      }
+
+      function evaluateForUser(key: string, userId: number): boolean {
+        const flag = findFlag(key);
+        if (!flag || !isEnabledInEnv(flag, currentEnvironment)) return false;
+        const bucket = userId % 100;
+        return bucket < flag.rolloutPercentage;
+      }
+    src/flags/analytics.ts: |
+      const TRAP_GAP071_ANALYTICS_A: string = "flag_analytics";
+      const TRAP_GAP071_BATCH_B: number = 50;
+
+      interface FlagEvent {
+        flagKey: string;
+        userId: number;
+        result: boolean;
+      }
+
+      function recordEvaluation(event: FlagEvent): string {
+        return `${event.flagKey}:${event.userId}:${event.result}`;
+      }
+
+      function batchEvents(events: FlagEvent[]): string[] {
+        return events.map(recordEvaluation);
+      }
+    src/flags/overrides.ts: |
+      const TRAP_GAP071_OVERRIDE_C: string = "flag_overrides";
+      const TRAP_GAP071_PRIORITY_D: number = 1;
+
+      const localOverrides: Record<string, boolean> = {};
+
+      function setOverride(key: string, value: boolean): void {
+        localOverrides[key] = value;
+      }
+
+      function getOverride(key: string): boolean | undefined {
+        return localOverrides[key];
+      }
+
+      function clearOverrides(): void {
+        Object.keys(localOverrides).forEach((k) => delete localOverrides[k]);
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: registry_environments
+  selector:
+    path: src/flags/registry.ts
+    anchor: 'allowedEnvironments: string[];'
+- id: registry_ai_suggestions
+  selector:
+    path: src/flags/registry.ts
+    anchor: 'key: "ai_suggestions"'
+- id: evaluator_env_check
+  selector:
+    path: src/flags/evaluator.ts
+    anchor: 'function isEnabledInEnv(flag: FeatureFlag, env: string): boolean'
+- id: evaluator_current_env
+  selector:
+    path: src/flags/evaluator.ts
+    anchor: isEnabledInEnv(flag, currentEnvironment)
+- id: no_analytics
+  selector:
+    path: src/flags/analytics.ts
+- id: no_overrides
+  selector:
+    path: src/flags/overrides.ts
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP071_ANALYTICS_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP071_BATCH_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP071_OVERRIDE_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP071_PRIORITY_D
+oracle:
+  required:
+  - registry_environments
+  - registry_ai_suggestions
+  - evaluator_env_check
+  - evaluator_current_env
+  allowed: []
+  forbidden:
+  - no_analytics
+  - no_overrides
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

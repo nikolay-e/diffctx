@@ -1,0 +1,237 @@
+name: bal3_3hop_028_rust_gateway_breaker_pool_transport
+tags:
+- lang:rust
+- change:multi_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/transport/tcp.rs: |
+      pub struct TcpTransport {
+          addr: String,
+          connected: bool,
+      }
+
+      impl TcpTransport {
+          pub fn new(addr: &str) -> Self {
+              Self { addr: addr.to_string(), connected: false }
+          }
+
+          pub fn connect(&mut self) {
+              self.connected = true;
+          }
+
+          pub fn send(&self, data: &[u8]) -> Result<(), String> {
+              if !self.connected {
+                  return Err("not connected".to_string());
+              }
+              Ok(())
+          }
+
+          pub fn addr(&self) -> &str {
+              &self.addr
+          }
+      }
+    src/transport/mod.rs: |
+      pub mod tcp;
+    src/pool/conn_pool.rs: |
+      use crate::transport::tcp::TcpTransport;
+
+      pub struct ConnPool {
+          transports: Vec<TcpTransport>,
+          max_size: usize,
+      }
+
+      impl ConnPool {
+          pub fn new(max_size: usize) -> Self {
+              Self { transports: Vec::new(), max_size }
+          }
+
+          pub fn add(&mut self, transport: TcpTransport) -> bool {
+              if self.transports.len() >= self.max_size {
+                  return false;
+              }
+              self.transports.push(transport);
+              true
+          }
+
+          pub fn acquire(&mut self) -> Option<TcpTransport> {
+              self.transports.pop()
+          }
+      }
+    src/pool/mod.rs: |
+      pub mod conn_pool;
+    src/breaker/circuit.rs: |
+      use crate::pool::conn_pool::ConnPool;
+
+      pub struct CircuitBreaker {
+          pool: ConnPool,
+          failures: u32,
+          max_failures: u32,
+          open: bool,
+      }
+
+      impl CircuitBreaker {
+          pub fn new(pool: ConnPool, max_failures: u32) -> Self {
+              Self { pool, failures: 0, max_failures, open: false }
+          }
+
+          pub fn call(&mut self, data: &[u8]) -> Result<(), String> {
+              if self.open {
+                  return Err("circuit open".to_string());
+              }
+              match self.pool.acquire() {
+                  Some(t) => t.send(data),
+                  None => {
+                      self.failures += 1;
+                      if self.failures >= self.max_failures {
+                          self.open = true;
+                      }
+                      Err("no connection".to_string())
+                  }
+              }
+          }
+      }
+    src/breaker/mod.rs: |
+      pub mod circuit;
+    src/gateway/gateway.rs: |
+      use crate::breaker::circuit::CircuitBreaker;
+
+      pub struct Gateway {
+          breaker: CircuitBreaker,
+          name: String,
+      }
+
+      impl Gateway {
+          pub fn new(name: &str, breaker: CircuitBreaker) -> Self {
+              Self { breaker, name: name.to_string() }
+          }
+
+          pub fn forward(&mut self, data: &[u8]) -> Result<(), String> {
+              self.breaker.call(data)
+          }
+      }
+    src/gateway/mod.rs: |
+      pub mod gateway;
+    src/dns/lookup.rs: |
+      pub static GARBAGE_BAL3_028_DNS_MARKER_A: &str = "dns";
+      pub static GARBAGE_BAL3_028_CACHE_MARKER_B: usize = 500;
+
+      pub struct DnsLookup;
+      impl DnsLookup {
+          pub fn resolve(&self, _host: &str) -> String { String::new() }
+      }
+    src/dns/mod.rs: |
+      pub mod lookup;
+    src/lib.rs: |
+      pub mod transport;
+      pub mod pool;
+      pub mod breaker;
+      pub mod gateway;
+      pub mod dns;
+  changed_files:
+    src/transport/tcp.rs: |
+      pub struct TcpTransport {
+          addr: String,
+          connected: bool,
+          retries: u32,
+      }
+
+      impl TcpTransport {
+          pub fn new(addr: &str) -> Self {
+              Self { addr: addr.to_string(), connected: false, retries: 0 }
+          }
+
+          pub fn connect(&mut self) {
+              self.connected = true;
+              self.retries = 0;
+          }
+
+          pub fn send(&mut self, data: &[u8]) -> Result<(), String> {
+              if !self.connected {
+                  self.retries += 1;
+                  return Err(format!("not connected (retry {})", self.retries));
+              }
+              Ok(())
+          }
+
+          pub fn addr(&self) -> &str {
+              &self.addr
+          }
+
+          pub fn retry_count(&self) -> u32 {
+              self.retries
+          }
+      }
+    src/gateway/gateway.rs: |
+      use crate::breaker::circuit::CircuitBreaker;
+
+      pub struct Gateway {
+          breaker: CircuitBreaker,
+          name: String,
+          max_retries: u32,
+      }
+
+      impl Gateway {
+          pub fn new(name: &str, breaker: CircuitBreaker, max_retries: u32) -> Self {
+              Self { breaker, name: name.to_string(), max_retries }
+          }
+
+          pub fn forward(&mut self, data: &[u8]) -> Result<(), String> {
+              for _ in 0..=self.max_retries {
+                  if self.breaker.call(data).is_ok() {
+                      return Ok(());
+                  }
+              }
+              Err(format!("{}: all retries exhausted", self.name))
+          }
+      }
+  commit_message: "Add retry tracking to transport and gateway retry loop"
+fragments:
+- id: transport_retries
+  selector:
+    path: src/transport/tcp.rs
+    anchor: "retries: u32"
+- id: transport_retry_count
+  selector:
+    path: src/transport/tcp.rs
+    anchor: "pub fn retry_count"
+- id: pool_acquire
+  selector:
+    path: src/pool/conn_pool.rs
+    anchor: "pub fn acquire"
+- id: breaker_call
+  selector:
+    path: src/breaker/circuit.rs
+    anchor: "pub fn call"
+- id: gateway_max_retries
+  selector:
+    path: src/gateway/gateway.rs
+    anchor: "max_retries: u32"
+- id: gateway_forward
+  selector:
+    path: src/gateway/gateway.rs
+    anchor: "all retries exhausted"
+- id: no_dns
+  selector:
+    path: src/dns/lookup.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_028_DNS_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_028_CACHE_MARKER_B
+oracle:
+  required:
+  - transport_retries
+  - transport_retry_count
+  - pool_acquire
+  - breaker_call
+  - gateway_max_retries
+  - gateway_forward
+  allowed: []
+  forbidden:
+  - no_dns
+  - no_global_0
+  - no_global_1

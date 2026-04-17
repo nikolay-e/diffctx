@@ -1,0 +1,108 @@
+name: gap2_124_markdown_same_file_adr_record
+tags:
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+- lang:markdown
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    docs/adr/001-use-postgresql.md: |
+      # ADR 001: Use PostgreSQL for Primary Storage
+
+      ## Status
+
+      Accepted
+
+      ## Context
+
+      The application requires ACID transactions and complex queries.
+      We evaluated PostgreSQL, MySQL, and CockroachDB.
+
+      ## Decision
+
+      Use PostgreSQL 16 as the primary relational database.
+
+      ## Consequences
+
+      Operations team must maintain PostgreSQL expertise.
+      Backup strategy uses pg_basebackup with WAL archiving.
+    docs/adr/002-use-redis.md: |
+      # ADR 002: Use Redis for Caching
+
+      TRAP_GAP2_124_REDIS_A noise content.
+
+      ## Status
+
+      Accepted
+
+      ## Decision
+
+      Use Redis for session storage and query caching.
+    docs/adr/003-use-kafka.md: |
+      # ADR 003: Use Kafka for Event Streaming
+
+      TRAP_GAP2_124_KAFKA_B noise content.
+
+      ## Status
+
+      Proposed
+
+      ## Decision
+
+      Use Kafka for asynchronous event processing.
+  changed_files:
+    docs/adr/001-use-postgresql.md: |
+      # ADR 001: Use PostgreSQL for Primary Storage
+
+      ## Status
+
+      Accepted
+
+      ## Context
+
+      The application requires ACID transactions and complex queries.
+      We evaluated PostgreSQL, MySQL, and CockroachDB.
+
+      ## Decision
+
+      Use PostgreSQL 16 as the primary relational database.
+      Enable logical replication for downstream analytics feeds.
+
+      ## Consequences
+
+      Operations team must maintain PostgreSQL expertise.
+      Backup strategy uses pg_basebackup with WAL archiving.
+      Logical replication slots must be monitored for lag.
+fragments:
+- id: logical_replication
+  selector:
+    path: docs/adr/001-use-postgresql.md
+    anchor: Enable logical replication for downstream analytics feeds
+- id: replication_lag
+  selector:
+    path: docs/adr/001-use-postgresql.md
+    anchor: Logical replication slots must be monitored for lag
+- id: no_redis
+  selector:
+    path: docs/adr/002-use-redis.md
+- id: no_kafka
+  selector:
+    path: docs/adr/003-use-kafka.md
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_124_REDIS_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_124_KAFKA_B
+oracle:
+  required:
+  - logical_replication
+  - replication_lag
+  forbidden:
+  - no_redis
+  - no_kafka
+  - no_global_0
+  - no_global_1

@@ -1,0 +1,212 @@
+name: bal3_3hop_023_rust_server_logic_repo_model
+tags:
+- lang:rust
+- change:multi_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/model/product.rs: |
+      #[derive(Clone)]
+      pub struct Product {
+          pub id: String,
+          pub name: String,
+          pub price: f64,
+      }
+
+      impl Product {
+          pub fn new(id: &str, name: &str, price: f64) -> Self {
+              Self {
+                  id: id.to_string(),
+                  name: name.to_string(),
+                  price,
+              }
+          }
+
+          pub fn is_valid(&self) -> bool {
+              !self.name.is_empty() && self.price > 0.0
+          }
+      }
+    src/model/mod.rs: |
+      pub mod product;
+    src/repo/product_repo.rs: |
+      use crate::model::product::Product;
+      use std::collections::HashMap;
+
+      pub struct ProductRepo {
+          items: HashMap<String, Product>,
+      }
+
+      impl ProductRepo {
+          pub fn new() -> Self {
+              Self { items: HashMap::new() }
+          }
+
+          pub fn save(&mut self, product: Product) {
+              self.items.insert(product.id.clone(), product);
+          }
+
+          pub fn find_by_id(&self, id: &str) -> Option<&Product> {
+              self.items.get(id)
+          }
+      }
+    src/repo/mod.rs: |
+      pub mod product_repo;
+    src/logic/product_logic.rs: |
+      use crate::repo::product_repo::ProductRepo;
+      use crate::model::product::Product;
+
+      pub struct ProductLogic {
+          repo: ProductRepo,
+      }
+
+      impl ProductLogic {
+          pub fn new(repo: ProductRepo) -> Self {
+              Self { repo }
+          }
+
+          pub fn create(&mut self, id: &str, name: &str, price: f64) -> Result<(), String> {
+              let product = Product::new(id, name, price);
+              if !product.is_valid() {
+                  return Err("invalid product".to_string());
+              }
+              self.repo.save(product);
+              Ok(())
+          }
+
+          pub fn get(&self, id: &str) -> Option<&Product> {
+              self.repo.find_by_id(id)
+          }
+      }
+    src/logic/mod.rs: |
+      pub mod product_logic;
+    src/server/grpc_server.rs: |
+      use crate::logic::product_logic::ProductLogic;
+
+      pub struct GrpcServer {
+          logic: ProductLogic,
+      }
+
+      impl GrpcServer {
+          pub fn new(logic: ProductLogic) -> Self {
+              Self { logic }
+          }
+
+          pub fn handle_create(&mut self, id: &str, name: &str, price: f64) -> Result<(), String> {
+              self.logic.create(id, name, price)
+          }
+
+          pub fn handle_get(&self, id: &str) -> Option<String> {
+              self.logic.get(id).map(|p| format!("{}: ${:.2}", p.name, p.price))
+          }
+      }
+    src/server/mod.rs: |
+      pub mod grpc_server;
+    src/cache/lru.rs: |
+      pub static GARBAGE_BAL3_023_LRU_MARKER_A: &str = "lru";
+      pub static GARBAGE_BAL3_023_CAP_MARKER_B: usize = 100;
+
+      pub struct LruCache;
+      impl LruCache {
+          pub fn get(&self, _key: &str) -> Option<String> { None }
+      }
+    src/cache/mod.rs: |
+      pub mod lru;
+    src/lib.rs: |
+      pub mod model;
+      pub mod repo;
+      pub mod logic;
+      pub mod server;
+      pub mod cache;
+  changed_files:
+    src/model/product.rs: |
+      #[derive(Clone)]
+      pub struct Product {
+          pub id: String,
+          pub name: String,
+          pub price: f64,
+          pub currency: String,
+      }
+
+      impl Product {
+          pub fn new(id: &str, name: &str, price: f64) -> Self {
+              Self {
+                  id: id.to_string(),
+                  name: name.to_string(),
+                  price,
+                  currency: "USD".to_string(),
+              }
+          }
+
+          pub fn is_valid(&self) -> bool {
+              !self.name.is_empty() && self.price > 0.0
+          }
+
+          pub fn display_price(&self) -> String {
+              format!("{} {:.2}", self.currency, self.price)
+          }
+      }
+    src/server/grpc_server.rs: |
+      use crate::logic::product_logic::ProductLogic;
+
+      pub struct GrpcServer {
+          logic: ProductLogic,
+      }
+
+      impl GrpcServer {
+          pub fn new(logic: ProductLogic) -> Self {
+              Self { logic }
+          }
+
+          pub fn handle_create(&mut self, id: &str, name: &str, price: f64) -> Result<(), String> {
+              self.logic.create(id, name, price)
+          }
+
+          pub fn handle_get(&self, id: &str) -> Option<String> {
+              self.logic.get(id).map(|p| format!("{}: {}", p.name, p.display_price()))
+          }
+      }
+  commit_message: "Add currency to product model and use display_price in server"
+fragments:
+- id: model_currency
+  selector:
+    path: src/model/product.rs
+    anchor: "pub currency: String"
+- id: model_display_price
+  selector:
+    path: src/model/product.rs
+    anchor: "pub fn display_price"
+- id: repo_save
+  selector:
+    path: src/repo/product_repo.rs
+    anchor: "pub fn save"
+- id: logic_create
+  selector:
+    path: src/logic/product_logic.rs
+    anchor: "pub fn create"
+- id: server_get
+  selector:
+    path: src/server/grpc_server.rs
+    anchor: "pub fn handle_get"
+- id: no_lru
+  selector:
+    path: src/cache/lru.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_023_LRU_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_023_CAP_MARKER_B
+oracle:
+  required:
+  - model_currency
+  - model_display_price
+  - repo_save
+  - logic_create
+  - server_get
+  allowed: []
+  forbidden:
+  - no_lru
+  - no_global_0
+  - no_global_1

@@ -1,0 +1,140 @@
+name: bal_crossmod_025_kotlin_event_to_listener
+tags:
+- lang:kotlin
+- change:single_file
+- change:signature
+- context:cross_module
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/main/kotlin/event/DomainEvent.kt: |
+      package event
+
+      sealed class DomainEvent {
+          abstract val timestamp: Long
+      }
+
+      data class UserRegistered(
+          val userId: Long,
+          val email: String,
+          override val timestamp: Long = System.currentTimeMillis()
+      ) : DomainEvent()
+
+      data class OrderPlaced(
+          val orderId: Long,
+          val total: Double,
+          override val timestamp: Long = System.currentTimeMillis()
+      ) : DomainEvent()
+    src/main/kotlin/listener/EmailListener.kt: |
+      package listener
+
+      import event.UserRegistered
+
+      class EmailListener {
+          fun onUserRegistered(event: UserRegistered) {
+              println("Sending welcome email to ${event.email}")
+          }
+      }
+    src/main/kotlin/listener/AnalyticsListener.kt: |
+      package listener
+
+      import event.OrderPlaced
+
+      class AnalyticsListener {
+          fun onOrderPlaced(event: OrderPlaced) {
+              println("Tracking order ${event.orderId} total=${event.total}")
+          }
+      }
+    src/main/kotlin/util/DateFormatter.kt: |
+      package util
+
+      import java.text.SimpleDateFormat
+      import java.util.Date
+
+      object DateFormatter {
+          fun format(timestamp: Long): String {
+              val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+              return sdf.format(Date(timestamp))
+          }
+      }
+  changed_files:
+    src/main/kotlin/event/DomainEvent.kt: |
+      package event
+
+      sealed class DomainEvent {
+          abstract val timestamp: Long
+          abstract val source: String
+      }
+
+      data class UserRegistered(
+          val userId: Long,
+          val email: String,
+          override val timestamp: Long = System.currentTimeMillis(),
+          override val source: String = "user-service"
+      ) : DomainEvent()
+
+      data class OrderPlaced(
+          val orderId: Long,
+          val total: Double,
+          override val timestamp: Long = System.currentTimeMillis(),
+          override val source: String = "order-service"
+      ) : DomainEvent()
+    src/main/kotlin/listener/EmailListener.kt: |
+      package listener
+
+      import event.UserRegistered
+
+      class EmailListener {
+          fun onUserRegistered(event: UserRegistered) {
+              println("Sending welcome email to ${event.email}")
+          }
+      }
+    src/main/kotlin/listener/AnalyticsListener.kt: |
+      package listener
+
+      import event.OrderPlaced
+
+      class AnalyticsListener {
+          fun onOrderPlaced(event: OrderPlaced) {
+              println("Tracking order ${event.orderId} total=${event.total}")
+          }
+      }
+    src/main/kotlin/util/DateFormatter.kt: |
+      package util
+
+      import java.text.SimpleDateFormat
+      import java.util.Date
+
+      object DateFormatter {
+          fun format(timestamp: Long): String {
+              val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+              return sdf.format(Date(timestamp))
+          }
+      }
+  commit_message: "feat: add source field to domain events"
+fragments:
+- id: event_source_field
+  selector:
+    path: src/main/kotlin/event/DomainEvent.kt
+    anchor: "abstract val source: String"
+- id: email_listener_uses_event
+  selector:
+    path: src/main/kotlin/listener/EmailListener.kt
+    anchor: "fun onUserRegistered(event: UserRegistered)"
+- id: analytics_listener_uses_event
+  selector:
+    path: src/main/kotlin/listener/AnalyticsListener.kt
+    anchor: "fun onOrderPlaced(event: OrderPlaced)"
+- id: no_date_formatter
+  selector:
+    path: src/main/kotlin/util/DateFormatter.kt
+    anchor: "object DateFormatter"
+oracle:
+  required:
+  - event_source_field
+  - email_listener_uses_event
+  - analytics_listener_uses_event
+  allowed: []
+  forbidden:
+  - no_date_formatter

@@ -1,0 +1,99 @@
+name: toml_005_pyproject_tool_ruff
+tags:
+- lang:toml
+- change:single_file
+- change:config
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    pyproject.toml: |
+      [project]
+      name = "dataproc"
+      version = "1.0.0"
+      requires-python = ">=3.11"
+      dependencies = [
+          "pandas>=2.0",
+          "numpy>=1.26",
+      ]
+
+      [build-system]
+      requires = ["hatchling"]
+      build-backend = "hatchling.build"
+
+      [tool.mypy]
+      strict = true
+      python_version = "3.11"
+    src/dataproc/pipeline.py: |
+      import pandas as pd
+      import numpy as np
+
+      def normalize(df: pd.DataFrame) -> pd.DataFrame:
+          return (df - df.mean()) / df.std()
+    src/dataproc/__init__.py: |
+      from .pipeline import normalize
+    TOML_NOISE_005_storage.toml: |
+      [TOML_NOISE_005_s3]
+      TOML_NOISE_005_bucket = "data-archive"
+      TOML_NOISE_005_region = "us-east-1"
+      TOML_NOISE_005_prefix = "exports/"
+
+      [TOML_NOISE_005_lifecycle]
+      TOML_NOISE_005_expiry_days = 90
+    src/dataproc/toml_noise_005_legacy.py: |
+      # TOML_NOISE_005_legacy placeholder
+      TOML_NOISE_005_MARKER = "legacy_pipeline_v1"
+  changed_files:
+    pyproject.toml: |
+      [project]
+      name = "dataproc"
+      version = "1.0.0"
+      requires-python = ">=3.11"
+      dependencies = [
+          "pandas>=2.0",
+          "numpy>=1.26",
+      ]
+
+      [build-system]
+      requires = ["hatchling"]
+      build-backend = "hatchling.build"
+
+      [tool.mypy]
+      strict = true
+      python_version = "3.11"
+
+      [tool.ruff]
+      line-length = 100
+      target-version = "py311"
+
+      [tool.ruff.lint]
+      select = ["E", "F", "I", "UP"]
+      ignore = ["E501"]
+  commit_message: "chore: add ruff linter configuration to pyproject.toml"
+fragments:
+- id: pyproject_ruff_section
+  selector:
+    path: pyproject.toml
+    anchor: "[tool.ruff]"
+- id: no_noise_toml
+  selector:
+    path: TOML_NOISE_005_storage.toml
+- id: no_legacy_py
+  selector:
+    path: src/dataproc/toml_noise_005_legacy.py
+- id: no_global_0
+  selector:
+    anchor: TOML_NOISE_005_bucket
+- id: no_global_1
+  selector:
+    anchor: TOML_NOISE_005_MARKER
+oracle:
+  required:
+  - pyproject_ruff_section
+  allowed: []
+  forbidden:
+  - no_noise_toml
+  - no_legacy_py
+  - no_global_0
+  - no_global_1

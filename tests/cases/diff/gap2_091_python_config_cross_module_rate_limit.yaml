@@ -1,0 +1,70 @@
+name: gap2_091_python_config_cross_module_rate_limit
+tags:
+- change:config
+- change:single_file
+- context:cross_module
+- difficulty:easy
+- distance:0hop
+- lang:python
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    config/rate_limits.py: |
+      DEFAULT_RATE = 100
+      DEFAULT_WINDOW_SEC = 60
+      BURST_MULTIPLIER = 2
+      EXEMPT_PATHS = ["/health", "/metrics"]
+      RATE_LIMIT_HEADER = "X-RateLimit-Remaining"
+    middleware/throttle.py: |
+      from config.rate_limits import DEFAULT_RATE, DEFAULT_WINDOW_SEC
+
+      class ThrottleMiddleware:
+          def __init__(self):
+              self.rate = DEFAULT_RATE
+              self.window = DEFAULT_WINDOW_SEC
+
+          def check(self, client_ip: str) -> bool:
+              return True
+    utils/geo_lookup.py: |
+      TRAP_GAP2_091_GEO_A = "geo_noise"
+      TRAP_GAP2_091_GEO_B = 90.0
+
+      class GeoLookup:
+          def locate(self, ip: str) -> str:
+              return "US"
+  changed_files:
+    config/rate_limits.py: |
+      DEFAULT_RATE = 200
+      DEFAULT_WINDOW_SEC = 30
+      BURST_MULTIPLIER = 3
+      EXEMPT_PATHS = ["/health", "/metrics", "/ready"]
+      RATE_LIMIT_HEADER = "X-RateLimit-Remaining"
+      RATE_LIMIT_RETRY_HEADER = "Retry-After"
+  commit_message: Update files
+fragments:
+- id: default_rate
+  selector:
+    path: config/rate_limits.py
+    anchor: "DEFAULT_RATE = 200"
+- id: retry_header
+  selector:
+    path: config/rate_limits.py
+    anchor: RATE_LIMIT_RETRY_HEADER
+- id: no_geo
+  selector:
+    path: utils/geo_lookup.py
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_091_GEO_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_091_GEO_B
+oracle:
+  required:
+  - default_rate
+  - retry_header
+  forbidden:
+  - no_geo
+  - no_global_0
+  - no_global_1

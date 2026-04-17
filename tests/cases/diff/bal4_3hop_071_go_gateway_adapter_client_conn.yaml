@@ -1,0 +1,201 @@
+name: bal4_3hop_071_go_gateway_adapter_client_conn
+tags:
+- lang:go
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:easy
+repo:
+  initial_files:
+    pkg/conn/pool.go: |
+      package conn
+
+      type Pool struct {
+          Max int
+      }
+
+      func NewPool(max int) *Pool {
+          return &Pool{Max: max}
+      }
+
+      func (p *Pool) Acquire() string {
+          return "conn-1"
+      }
+    pkg/client/http_client.go: |
+      package client
+
+      import "myapp/pkg/conn"
+
+      type HTTPClient struct {
+          pool *conn.Pool
+      }
+
+      func NewHTTPClient(p *conn.Pool) *HTTPClient {
+          return &HTTPClient{pool: p}
+      }
+
+      func (c *HTTPClient) Get(url string) string {
+          cn := c.pool.Acquire()
+          return cn + ":" + url
+      }
+    pkg/adapter/rest.go: |
+      package adapter
+
+      import "myapp/pkg/client"
+
+      type RestAdapter struct {
+          cl *client.HTTPClient
+      }
+
+      func NewRestAdapter(cl *client.HTTPClient) *RestAdapter {
+          return &RestAdapter{cl: cl}
+      }
+
+      func (a *RestAdapter) Fetch(path string) string {
+          return a.cl.Get(path)
+      }
+    pkg/gateway/api_gw.go: |
+      package gateway
+
+      import "myapp/pkg/adapter"
+
+      type APIGateway struct {
+          rest *adapter.RestAdapter
+      }
+
+      func NewAPIGateway(r *adapter.RestAdapter) *APIGateway {
+          return &APIGateway{rest: r}
+      }
+
+      func (g *APIGateway) Route(path string) string {
+          return g.rest.Fetch(path)
+      }
+    pkg/garbage/net_noise.go: |
+      package garbage
+
+      var GARBAGE_071_NET_A = "net"
+      var GARBAGE_071_NET_B = 443
+
+      type GarbageConn struct {
+          GARBAGE_071_NET_C string
+      }
+
+      func GarbageDialer() {}
+  changed_files:
+    pkg/conn/pool.go: |
+      package conn
+
+      type Pool struct {
+          Max     int
+          Timeout int
+      }
+
+      func NewPool(max int, timeout int) *Pool {
+          return &Pool{Max: max, Timeout: timeout}
+      }
+
+      func (p *Pool) Acquire() string {
+          return "conn-1"
+      }
+    pkg/client/http_client.go: |
+      package client
+
+      import "myapp/pkg/conn"
+
+      type HTTPClient struct {
+          pool *conn.Pool
+      }
+
+      func NewHTTPClient(p *conn.Pool) *HTTPClient {
+          return &HTTPClient{pool: p}
+      }
+
+      func (c *HTTPClient) Get(url string) string {
+          cn := c.pool.Acquire()
+          return cn + ":" + url
+      }
+    pkg/adapter/rest.go: |
+      package adapter
+
+      import "myapp/pkg/client"
+
+      type RestAdapter struct {
+          cl *client.HTTPClient
+      }
+
+      func NewRestAdapter(cl *client.HTTPClient) *RestAdapter {
+          return &RestAdapter{cl: cl}
+      }
+
+      func (a *RestAdapter) Fetch(path string) string {
+          return a.cl.Get(path)
+      }
+    pkg/gateway/api_gw.go: |
+      package gateway
+
+      import "myapp/pkg/adapter"
+
+      type APIGateway struct {
+          rest *adapter.RestAdapter
+      }
+
+      func NewAPIGateway(r *adapter.RestAdapter) *APIGateway {
+          return &APIGateway{rest: r}
+      }
+
+      func (g *APIGateway) Route(path string) string {
+          return g.rest.Fetch(path)
+      }
+    pkg/garbage/net_noise.go: |
+      package garbage
+
+      var GARBAGE_071_NET_A = "net"
+      var GARBAGE_071_NET_B = 443
+
+      type GarbageConn struct {
+          GARBAGE_071_NET_C string
+      }
+
+      func GarbageDialer() {}
+  commit_message: "add timeout to connection pool"
+fragments:
+- id: pool_struct
+  selector:
+    path: pkg/conn/pool.go
+    anchor: "type Pool struct"
+- id: new_pool
+  selector:
+    path: pkg/conn/pool.go
+    anchor: "func NewPool"
+- id: acquire
+  selector:
+    path: pkg/conn/pool.go
+    anchor: "func (p *Pool) Acquire"
+- id: new_http_client
+  selector:
+    path: pkg/client/http_client.go
+    anchor: "func NewHTTPClient"
+- id: no_garbage_net
+  selector:
+    path: pkg/garbage/net_noise.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_071_NET_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_071_NET_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_071_NET_C
+oracle:
+  required:
+  - pool_struct
+  - new_pool
+  - acquire
+  - new_http_client
+  allowed: []
+  forbidden:
+  - no_garbage_net
+  - no_global_0
+  - no_global_1
+  - no_global_2

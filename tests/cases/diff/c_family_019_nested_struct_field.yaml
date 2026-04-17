@@ -1,0 +1,125 @@
+name: c_family_019_nested_struct_field
+tags:
+- lang:c
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    config.h: |
+      #ifndef CONFIG_H
+      #define CONFIG_H
+      typedef struct {
+          int port;
+          const char *host;
+      } ServerConfig;
+      typedef struct {
+          ServerConfig server;
+          int debug;
+      } AppConfig;
+      AppConfig config_load(const char *path);
+      #endif
+    config.c: |
+      #include "config.h"
+      AppConfig config_load(const char *path) {
+          AppConfig cfg;
+          cfg.server.port = 8080;
+          cfg.server.host = "localhost";
+          cfg.debug = 0;
+          return cfg;
+      }
+    app.c: |
+      #include "config.h"
+      #include <stdio.h>
+      void app_start(const char *cfg_path) {
+          AppConfig cfg = config_load(cfg_path);
+          printf("starting on %s:%d\n", cfg.server.host, cfg.server.port);
+      }
+    C_NOISE_019_led.h: |
+      #ifndef C_NOISE_019_LED_H
+      #define C_NOISE_019_LED_H
+      void C_NOISE_019_led_on(int pin);
+      void C_NOISE_019_led_off(int pin);
+      #endif
+    C_NOISE_019_led.c: |
+      #include "C_NOISE_019_led.h"
+      void C_NOISE_019_led_on(int pin) {}
+      void C_NOISE_019_led_off(int pin) {}
+  changed_files:
+    config.h: |
+      #ifndef CONFIG_H
+      #define CONFIG_H
+      typedef struct {
+          int port;
+          const char *host;
+          int max_connections;
+      } ServerConfig;
+      typedef struct {
+          ServerConfig server;
+          int debug;
+      } AppConfig;
+      AppConfig config_load(const char *path);
+      #endif
+    config.c: |
+      #include "config.h"
+      AppConfig config_load(const char *path) {
+          AppConfig cfg;
+          cfg.server.port = 8080;
+          cfg.server.host = "localhost";
+          cfg.server.max_connections = 100;
+          cfg.debug = 0;
+          return cfg;
+      }
+    app.c: |
+      #include "config.h"
+      #include <stdio.h>
+      void app_start(const char *cfg_path) {
+          AppConfig cfg = config_load(cfg_path);
+          printf("starting on %s:%d (max %d)\n",
+                 cfg.server.host, cfg.server.port, cfg.server.max_connections);
+      }
+    C_NOISE_019_led.h: |
+      #ifndef C_NOISE_019_LED_H
+      #define C_NOISE_019_LED_H
+      void C_NOISE_019_led_on(int pin);
+      void C_NOISE_019_led_off(int pin);
+      #endif
+    C_NOISE_019_led.c: |
+      #include "C_NOISE_019_led.h"
+      void C_NOISE_019_led_on(int pin) {}
+      void C_NOISE_019_led_off(int pin) {}
+  commit_message: "feat: add max_connections field to ServerConfig and print it in app_start"
+fragments:
+- id: config_h
+  selector:
+    path: config.h
+    anchor: "int max_connections;"
+- id: config_c
+  selector:
+    path: config.c
+    anchor: "max_connections = 100"
+- id: app_c
+  selector:
+    path: app.c
+    anchor: "server.max_connections"
+- id: no_led_h
+  selector:
+    anchor: C_NOISE_019_led_on
+- id: no_led_c
+  selector:
+    path: C_NOISE_019_led.c
+- id: no_global_off
+  selector:
+    anchor: C_NOISE_019_led_off
+oracle:
+  required:
+  - config_h
+  - config_c
+  - app_c
+  allowed: []
+  forbidden:
+  - no_led_h
+  - no_led_c
+  - no_global_off

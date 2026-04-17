@@ -1,0 +1,208 @@
+name: bal_refactor_016_typescript_class_to_functions
+tags:
+- lang:cpp
+- change:single_file
+- context:cross_module
+- distance:2hop
+- difficulty:medium
+repo:
+  initial_files:
+    include/db/connection_pool.h: |
+      #pragma once
+      #include <string>
+      #include <memory>
+
+      namespace db {
+
+      struct PoolConfig {
+          std::string dsn;
+          int min_connections;
+          int max_connections;
+          int idle_timeout_ms;
+      };
+
+      class ConnectionPool {
+      public:
+          explicit ConnectionPool(const PoolConfig& cfg);
+          ~ConnectionPool();
+          struct Connection* acquire();
+          void release(struct Connection* conn);
+          int active_count() const;
+      private:
+          PoolConfig cfg_;
+      };
+
+      }
+    src/services/user_service.cpp: |
+      #include "db/connection_pool.h"
+      #include <string>
+
+      namespace services {
+
+      class UserService {
+          db::ConnectionPool& pool_;
+      public:
+          explicit UserService(db::ConnectionPool& pool) : pool_(pool) {}
+
+          std::string find_by_id(int id) {
+              auto* conn = pool_.acquire();
+              // query
+              pool_.release(conn);
+              return "";
+          }
+      };
+
+      }
+    src/services/order_service.cpp: |
+      #include "db/connection_pool.h"
+      #include <vector>
+
+      namespace services {
+
+      class OrderService {
+          db::ConnectionPool& pool_;
+      public:
+          explicit OrderService(db::ConnectionPool& pool) : pool_(pool) {}
+
+          std::vector<int> list_orders(int user_id) {
+              auto* conn = pool_.acquire();
+              // query
+              pool_.release(conn);
+              return {};
+          }
+      };
+
+      }
+    garbage/cache.cpp: |
+      // GARBAGE_TS016_CACHE_A = "cache_marker"
+      namespace cache { void invalidate(const char* key) {} }
+    garbage/metrics.cpp: |
+      // GARBAGE_TS016_METRICS_B = "metrics_marker"
+      namespace metrics { void record(const char* name, double v) {} }
+    garbage/config.cpp: |
+      // GARBAGE_TS016_CONFIG_C = "config_marker"
+      namespace config { const char* get(const char* key) { return ""; } }
+  changed_files:
+    include/db/connection_pool.h: |
+      #pragma once
+      #include <string>
+      #include <memory>
+      #include <chrono>
+
+      namespace db {
+
+      struct PoolConfig {
+          std::string dsn;
+          int min_connections;
+          int max_connections;
+          int idle_timeout_ms;
+          int acquire_timeout_ms;
+          bool health_check_enabled;
+      };
+
+      class ConnectionPool {
+      public:
+          explicit ConnectionPool(const PoolConfig& cfg);
+          ~ConnectionPool();
+          struct Connection* acquire();
+          void release(struct Connection* conn);
+          int active_count() const;
+          int idle_count() const;
+          bool is_healthy() const;
+      private:
+          PoolConfig cfg_;
+      };
+
+      }
+    src/services/user_service.cpp: |
+      #include "db/connection_pool.h"
+      #include <string>
+
+      namespace services {
+
+      class UserService {
+          db::ConnectionPool& pool_;
+      public:
+          explicit UserService(db::ConnectionPool& pool) : pool_(pool) {}
+
+          std::string find_by_id(int id) {
+              auto* conn = pool_.acquire();
+              // query
+              pool_.release(conn);
+              return "";
+          }
+      };
+
+      }
+    src/services/order_service.cpp: |
+      #include "db/connection_pool.h"
+      #include <vector>
+
+      namespace services {
+
+      class OrderService {
+          db::ConnectionPool& pool_;
+      public:
+          explicit OrderService(db::ConnectionPool& pool) : pool_(pool) {}
+
+          std::vector<int> list_orders(int user_id) {
+              auto* conn = pool_.acquire();
+              // query
+              pool_.release(conn);
+              return {};
+          }
+      };
+
+      }
+    garbage/cache.cpp: |
+      // GARBAGE_TS016_CACHE_A = "cache_marker"
+      namespace cache { void invalidate(const char* key) {} }
+    garbage/metrics.cpp: |
+      // GARBAGE_TS016_METRICS_B = "metrics_marker"
+      namespace metrics { void record(const char* name, double v) {} }
+    garbage/config.cpp: |
+      // GARBAGE_TS016_CONFIG_C = "config_marker"
+      namespace config { const char* get(const char* key) { return ""; } }
+  commit_message: "feat: add acquire_timeout, health_check, idle_count and is_healthy to pool"
+fragments:
+- id: pool_acquire_timeout
+  selector:
+    path: include/db/connection_pool.h
+    anchor: "acquire_timeout_ms"
+- id: pool_health_check_field
+  selector:
+    path: include/db/connection_pool.h
+    anchor: "health_check_enabled"
+- id: pool_is_healthy_method
+  selector:
+    path: include/db/connection_pool.h
+    anchor: "bool is_healthy"
+- id: user_service_uses_pool
+  selector:
+    path: src/services/user_service.cpp
+    anchor: "db::ConnectionPool"
+- id: order_service_uses_pool
+  selector:
+    path: src/services/order_service.cpp
+    anchor: "db::ConnectionPool"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_TS016_CACHE_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_TS016_METRICS_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_TS016_CONFIG_C
+oracle:
+  required:
+  - pool_acquire_timeout
+  - pool_health_check_field
+  - pool_is_healthy_method
+  - user_service_uses_pool
+  - order_service_uses_pool
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

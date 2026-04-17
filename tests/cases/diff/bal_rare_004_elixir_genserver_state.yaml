@@ -1,0 +1,228 @@
+name: bal_rare_004_elixir_genserver_state
+tags:
+- lang:elixir
+- change:single_file
+- change:new_function
+- context:same_file
+- distance:0hop
+- difficulty:easy
+repo:
+  initial_files:
+    lib/counter/server.ex: |
+      defmodule Counter.Server do
+        use GenServer
+
+        def start_link(initial_count) do
+          GenServer.start_link(__MODULE__, initial_count, name: __MODULE__)
+        end
+
+        def increment do
+          GenServer.call(__MODULE__, :increment)
+        end
+
+        def get_count do
+          GenServer.call(__MODULE__, :get_count)
+        end
+
+        @impl true
+        def init(initial_count) do
+          {:ok, %{count: initial_count}}
+        end
+
+        @impl true
+        def handle_call(:increment, _from, state) do
+          new_state = %{state | count: state.count + 1}
+          {:reply, new_state.count, new_state}
+        end
+
+        @impl true
+        def handle_call(:get_count, _from, state) do
+          {:reply, state.count, state}
+        end
+      end
+    lib/counter/application.ex: |
+      defmodule Counter.Application do
+        use Application
+
+        def start(_type, _args) do
+          children = [
+            {Counter.Server, 0}
+          ]
+          Supervisor.start_link(children, strategy: :one_for_one)
+        end
+      end
+    garbage_reporter.ex: |
+      defmodule GarbageReporter do
+        @garbage_rare_004_interval_a 5000
+        @garbage_rare_004_format_b :json
+
+        def report(data) do
+          @garbage_rare_004_interval_a
+        end
+
+        @garbage_rare_004_sink_c "stdout"
+      end
+    garbage_scheduler.ex: |
+      defmodule GarbageScheduler do
+        @garbage_rare_004_cron_d "*/5 * * * *"
+        @garbage_rare_004_timezone_e "UTC"
+
+        def schedule(job) do
+          @garbage_rare_004_cron_d
+        end
+
+        @garbage_rare_004_max_jobs_f 100
+      end
+  changed_files:
+    lib/counter/server.ex: |
+      defmodule Counter.Server do
+        use GenServer
+
+        def start_link(initial_count) do
+          GenServer.start_link(__MODULE__, initial_count, name: __MODULE__)
+        end
+
+        def increment do
+          GenServer.call(__MODULE__, :increment)
+        end
+
+        def decrement do
+          GenServer.call(__MODULE__, :decrement)
+        end
+
+        def reset do
+          GenServer.call(__MODULE__, :reset)
+        end
+
+        def get_count do
+          GenServer.call(__MODULE__, :get_count)
+        end
+
+        @impl true
+        def init(initial_count) do
+          {:ok, %{count: initial_count, initial: initial_count}}
+        end
+
+        @impl true
+        def handle_call(:increment, _from, state) do
+          new_state = %{state | count: state.count + 1}
+          {:reply, new_state.count, new_state}
+        end
+
+        @impl true
+        def handle_call(:decrement, _from, state) do
+          new_state = %{state | count: max(state.count - 1, 0)}
+          {:reply, new_state.count, new_state}
+        end
+
+        @impl true
+        def handle_call(:reset, _from, state) do
+          new_state = %{state | count: state.initial}
+          {:reply, :ok, new_state}
+        end
+
+        @impl true
+        def handle_call(:get_count, _from, state) do
+          {:reply, state.count, state}
+        end
+      end
+    lib/counter/application.ex: |
+      defmodule Counter.Application do
+        use Application
+
+        def start(_type, _args) do
+          children = [
+            {Counter.Server, 0}
+          ]
+          Supervisor.start_link(children, strategy: :one_for_one)
+        end
+      end
+    garbage_reporter.ex: |
+      defmodule GarbageReporter do
+        @garbage_rare_004_interval_a 5000
+        @garbage_rare_004_format_b :json
+
+        def report(data) do
+          @garbage_rare_004_interval_a
+        end
+
+        @garbage_rare_004_sink_c "stdout"
+      end
+    garbage_scheduler.ex: |
+      defmodule GarbageScheduler do
+        @garbage_rare_004_cron_d "*/5 * * * *"
+        @garbage_rare_004_timezone_e "UTC"
+
+        def schedule(job) do
+          @garbage_rare_004_cron_d
+        end
+
+        @garbage_rare_004_max_jobs_f 100
+      end
+  commit_message: "feat: add decrement and reset to counter GenServer"
+fragments:
+- id: decrement_api
+  selector:
+    path: lib/counter/server.ex
+    anchor: "def decrement do"
+- id: reset_api
+  selector:
+    path: lib/counter/server.ex
+    anchor: "def reset do"
+- id: handle_decrement
+  selector:
+    path: lib/counter/server.ex
+    anchor: "handle_call(:decrement"
+- id: handle_reset
+  selector:
+    path: lib/counter/server.ex
+    anchor: "handle_call(:reset"
+- id: init_with_initial
+  selector:
+    path: lib/counter/server.ex
+    anchor: "count: initial_count, initial: initial_count"
+- id: no_application
+  selector:
+    path: lib/counter/application.ex
+- id: no_garbage_reporter
+  selector:
+    path: garbage_reporter.ex
+- id: no_garbage_scheduler
+  selector:
+    path: garbage_scheduler.ex
+- id: no_global_0
+  selector:
+    anchor: garbage_rare_004_interval_a
+- id: no_global_1
+  selector:
+    anchor: garbage_rare_004_format_b
+- id: no_global_2
+  selector:
+    anchor: garbage_rare_004_sink_c
+- id: no_global_3
+  selector:
+    anchor: garbage_rare_004_cron_d
+- id: no_global_4
+  selector:
+    anchor: garbage_rare_004_timezone_e
+- id: no_global_5
+  selector:
+    anchor: garbage_rare_004_max_jobs_f
+oracle:
+  required:
+  - decrement_api
+  - reset_api
+  - handle_decrement
+  - handle_reset
+  - init_with_initial
+  allowed: []
+  forbidden:
+  - no_application
+  - no_garbage_reporter
+  - no_garbage_scheduler
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

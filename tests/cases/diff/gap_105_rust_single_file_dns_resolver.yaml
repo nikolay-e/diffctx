@@ -1,0 +1,165 @@
+name: gap_105_rust_single_file_dns_resolver
+tags:
+- lang:rust
+- change:single_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/dns/resolver.rs: |
+      use crate::dns::cache::DnsCache;
+      use crate::dns::record::DnsRecord;
+
+      pub struct Resolver {
+          cache: DnsCache,
+          upstream: String,
+      }
+
+      impl Resolver {
+          pub fn new(upstream: &str) -> Self {
+              Self {
+                  cache: DnsCache::new(300),
+                  upstream: upstream.to_string(),
+              }
+          }
+
+          pub fn lookup(&mut self, domain: &str) -> Option<DnsRecord> {
+              if let Some(cached) = self.cache.get(domain) {
+                  return Some(cached);
+              }
+              None
+          }
+      }
+    src/dns/cache.rs: |
+      use std::collections::HashMap;
+      use crate::dns::record::DnsRecord;
+
+      pub struct DnsCache {
+          entries: HashMap<String, DnsRecord>,
+          ttl_seconds: u64,
+      }
+
+      impl DnsCache {
+          pub fn new(ttl_seconds: u64) -> Self {
+              Self {
+                  entries: HashMap::new(),
+                  ttl_seconds,
+              }
+          }
+
+          pub fn get(&self, domain: &str) -> Option<DnsRecord> {
+              self.entries.get(domain).cloned()
+          }
+
+          pub fn insert(&mut self, domain: &str, record: DnsRecord) {
+              self.entries.insert(domain.to_string(), record);
+          }
+      }
+    src/dns/record.rs: |
+      #[derive(Debug, Clone)]
+      pub enum RecordType {
+          A,
+          AAAA,
+          CNAME,
+          MX,
+      }
+
+      #[derive(Debug, Clone)]
+      pub struct DnsRecord {
+          pub domain: String,
+          pub rtype: RecordType,
+          pub value: String,
+          pub ttl: u64,
+      }
+
+      impl DnsRecord {
+          pub fn a_record(domain: &str, ip: &str, ttl: u64) -> Self {
+              Self {
+                  domain: domain.to_string(),
+                  rtype: RecordType::A,
+                  value: ip.to_string(),
+                  ttl,
+              }
+          }
+      }
+    src/dns/metrics.rs: |
+      pub struct DnsMetrics {
+          total_queries: u64,
+          cache_hits: u64,
+      }
+
+      impl DnsMetrics {
+          pub fn new() -> Self {
+              Self { total_queries: 0, cache_hits: 0 }
+          }
+
+          pub fn record_query(&mut self) {
+              self.total_queries += 1;
+          }
+
+          pub fn hit_ratio(&self) -> f64 {
+              if self.total_queries == 0 { return 0.0; }
+              self.cache_hits as f64 / self.total_queries as f64
+          }
+      }
+  changed_files:
+    src/dns/resolver.rs: |
+      use crate::dns::cache::DnsCache;
+      use crate::dns::record::DnsRecord;
+
+      pub struct Resolver {
+          cache: DnsCache,
+          upstream: String,
+      }
+
+      impl Resolver {
+          pub fn new(upstream: &str) -> Self {
+              Self {
+                  cache: DnsCache::new(300),
+                  upstream: upstream.to_string(),
+              }
+          }
+
+          pub fn lookup(&mut self, domain: &str) -> Option<DnsRecord> {
+              if let Some(cached) = self.cache.get(domain) {
+                  return Some(cached);
+              }
+              None
+          }
+
+          pub fn resolve_and_cache(&mut self, domain: &str, ip: &str) -> DnsRecord {
+              let record = DnsRecord::a_record(domain, ip, 300);
+              self.cache.insert(domain, record.clone());
+              record
+          }
+      }
+fragments:
+- id: resolve_and_cache
+  selector:
+    path: src/dns/resolver.rs
+    anchor: "pub fn resolve_and_cache"
+- id: cache_insert
+  selector:
+    path: src/dns/cache.rs
+    anchor: "pub fn insert"
+- id: record_a_record
+  selector:
+    path: src/dns/record.rs
+    anchor: "pub fn a_record"
+- id: no_metrics
+  selector:
+    path: src/dns/metrics.rs
+- id: no_dns_metrics
+  selector:
+    anchor: DnsMetrics
+oracle:
+  required:
+  - resolve_and_cache
+  - cache_insert
+  - record_a_record
+  forbidden:
+  - no_metrics
+  - no_dns_metrics

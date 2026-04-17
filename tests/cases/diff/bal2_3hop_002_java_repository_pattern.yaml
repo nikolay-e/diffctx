@@ -1,0 +1,197 @@
+name: bal2_3hop_002_java_repository_pattern
+tags:
+- lang:java
+- change:single_file
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/app/model/Product.java: |
+      package com.app.model;
+
+      public class Product {
+          private String id;
+          private String name;
+          private double price;
+          public Product(String id, String name, double price) {
+              this.id = id;
+              this.name = name;
+              this.price = price;
+          }
+          public String getId() { return id; }
+          public String getName() { return name; }
+          public double getPrice() { return price; }
+      }
+    src/main/java/com/app/repository/ProductRepository.java: |
+      package com.app.repository;
+
+      import com.app.model.Product;
+      import java.util.List;
+
+      public class ProductRepository {
+          public List<Product> findAll() {
+              return List.of();
+          }
+          public Product findById(String id) {
+              return null;
+          }
+      }
+    src/main/java/com/app/service/ProductService.java: |
+      package com.app.service;
+
+      import com.app.repository.ProductRepository;
+      import com.app.model.Product;
+      import java.util.List;
+
+      public class ProductService {
+          private final ProductRepository repository;
+          public ProductService(ProductRepository repository) {
+              this.repository = repository;
+          }
+          public List<Product> listProducts() {
+              return repository.findAll();
+          }
+      }
+    src/main/java/com/app/controller/ProductController.java: |
+      package com.app.controller;
+
+      import com.app.service.ProductService;
+
+      public class ProductController {
+          private final ProductService productService;
+          public ProductController(ProductService productService) {
+              this.productService = productService;
+          }
+          public Object listAll() {
+              return productService.listProducts();
+          }
+      }
+    src/main/java/com/app/util/MathHelper.java: |
+      package com.app.util;
+
+      public class MathHelper {
+          public static int clamp(int value, int min, int max) {
+              return Math.max(min, Math.min(max, value));
+          }
+      }
+    src/main/java/com/app/config/AppConfig.java: |
+      package com.app.config;
+
+      public class AppConfig {
+          private String dbUrl = "jdbc:h2:mem:test";
+          public String getDbUrl() { return dbUrl; }
+      }
+  changed_files:
+    src/main/java/com/app/model/Product.java: |
+      package com.app.model;
+
+      public class Product {
+          private String id;
+          private String name;
+          private double price;
+          public Product(String id, String name, double price) {
+              this.id = id;
+              this.name = name;
+              this.price = Math.max(0, price);
+          }
+          public String getId() { return id; }
+          public String getName() { return name; }
+          public double getPrice() { return price; }
+      }
+    src/main/java/com/app/repository/ProductRepository.java: |
+      package com.app.repository;
+
+      import com.app.model.Product;
+      import java.util.List;
+
+      public class ProductRepository {
+          public List<Product> findAll() {
+              return List.of();
+          }
+          public Product findById(String id) {
+              return null;
+          }
+      }
+    src/main/java/com/app/service/ProductService.java: |
+      package com.app.service;
+
+      import com.app.repository.ProductRepository;
+      import com.app.model.Product;
+      import java.util.List;
+
+      public class ProductService {
+          private final ProductRepository repository;
+          public ProductService(ProductRepository repository) {
+              this.repository = repository;
+          }
+          public List<Product> listProducts() {
+              return repository.findAll();
+          }
+      }
+    src/main/java/com/app/controller/ProductController.java: |
+      package com.app.controller;
+
+      import com.app.service.ProductService;
+
+      public class ProductController {
+          private final ProductService productService;
+          public ProductController(ProductService productService) {
+              this.productService = productService;
+          }
+          public Object listAll() {
+              return productService.listProducts();
+          }
+      }
+    src/main/java/com/app/util/MathHelper.java: |
+      package com.app.util;
+
+      public class MathHelper {
+          public static int clamp(int value, int min, int max) {
+              return Math.max(min, Math.min(max, value));
+          }
+      }
+    src/main/java/com/app/config/AppConfig.java: |
+      package com.app.config;
+
+      public class AppConfig {
+          private String dbUrl = "jdbc:h2:mem:test";
+          public String getDbUrl() { return dbUrl; }
+      }
+  commit_message: "fix: prevent negative product price"
+fragments:
+- id: product_price_fix
+  selector:
+    path: src/main/java/com/app/model/Product.java
+    anchor: "Math.max(0, price)"
+- id: repo_imports_product
+  selector:
+    path: src/main/java/com/app/repository/ProductRepository.java
+    anchor: "import com.app.model.Product"
+- id: service_imports_repo
+  selector:
+    path: src/main/java/com/app/service/ProductService.java
+    anchor: "import com.app.repository.ProductRepository"
+- id: controller_imports_service
+  selector:
+    path: src/main/java/com/app/controller/ProductController.java
+    anchor: "import com.app.service.ProductService"
+- id: no_math_helper
+  selector:
+    path: src/main/java/com/app/util/MathHelper.java
+    anchor: "class MathHelper"
+- id: no_app_config
+  selector:
+    path: src/main/java/com/app/config/AppConfig.java
+    anchor: "class AppConfig"
+oracle:
+  required:
+  - product_price_fix
+  - repo_imports_product
+  - service_imports_repo
+  - controller_imports_service
+  allowed: []
+  forbidden:
+  - no_math_helper
+  - no_app_config

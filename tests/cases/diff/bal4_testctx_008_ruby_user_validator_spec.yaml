@@ -1,0 +1,74 @@
+name: bal4_testctx_008_ruby_user_validator_spec
+tags:
+- lang:ruby
+- change:single_file
+- change:bug_fix
+- context:test_file
+- distance:1hop
+- difficulty:trivial
+repo:
+  initial_files:
+    lib/user_validator.rb: |
+      class UserValidator
+        def valid_name?(name)
+          name.length >= 2
+        end
+
+        def valid_age?(age)
+          age > 0
+        end
+      end
+    spec/user_validator_spec.rb: |
+      require_relative '../lib/user_validator'
+
+      RSpec.describe UserValidator do
+        subject { described_class.new }
+
+        describe '#valid_name?' do
+          it 'accepts names with 2+ chars' do
+            expect(subject.valid_name?('Jo')).to be true
+          end
+
+          it 'rejects single char names' do
+            expect(subject.valid_name?('J')).to be false
+          end
+        end
+      end
+    lib/address_formatter.rb: |
+      class AddressFormatter
+        def format(city, zip)
+          "#{city}, #{zip}"
+        end
+      end
+  changed_files:
+    lib/user_validator.rb: |
+      class UserValidator
+        def valid_name?(name)
+          name.is_a?(String) && name.strip.length >= 2
+        end
+
+        def valid_age?(age)
+          age.is_a?(Integer) && age > 0
+        end
+      end
+  commit_message: "fix: add type checks to validators"
+fragments:
+- id: valid_name
+  selector:
+    path: lib/user_validator.rb
+    anchor: "def valid_name?(name)"
+- id: spec_valid_name
+  selector:
+    path: spec/user_validator_spec.rb
+    anchor: "describe '#valid_name?'"
+- id: no_address
+  selector:
+    path: lib/address_formatter.rb
+    anchor: "class AddressFormatter"
+oracle:
+  required:
+  - valid_name
+  - spec_valid_name
+  allowed: []
+  forbidden:
+  - no_address

@@ -1,0 +1,102 @@
+name: bal4_testctx_010_ruby_config_parser_spec
+tags:
+- lang:ruby
+- change:single_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    lib/config_parser.rb: |
+      require 'json'
+
+      class ConfigParser
+        def parse_json(str)
+          JSON.parse(str)
+        end
+
+        def stringify(hash)
+          JSON.generate(hash)
+        end
+      end
+    spec/config_parser_spec.rb: |
+      require_relative '../lib/config_parser'
+
+      RSpec.describe ConfigParser do
+        subject { described_class.new }
+
+        describe '#parse_json' do
+          it 'parses valid JSON' do
+            result = subject.parse_json('{"key":"val"}')
+            expect(result['key']).to eq('val')
+          end
+        end
+
+        describe '#stringify' do
+          it 'converts hash to JSON' do
+            result = subject.stringify({ a: 1 })
+            expect(result).to include('"a"')
+          end
+        end
+      end
+    lib/yaml_loader.rb: |
+      class YamlLoader
+        def load(path)
+          "loaded: #{path}"
+        end
+      end
+    lib/env_reader.rb: |
+      class EnvReader
+        def get(key)
+          ENV[key]
+        end
+      end
+  changed_files:
+    lib/config_parser.rb: |
+      require 'json'
+
+      class ConfigParser
+        def parse_json(str)
+          JSON.parse(str)
+        end
+
+        def stringify(hash)
+          JSON.generate(hash)
+        end
+
+        def merge(base, override)
+          base.merge(override)
+        end
+      end
+  commit_message: "feat: add merge method to ConfigParser"
+fragments:
+- id: merge_method
+  selector:
+    path: lib/config_parser.rb
+    anchor: "def merge(base, override)"
+- id: spec_parse
+  selector:
+    path: spec/config_parser_spec.rb
+    anchor: "describe '#parse_json'"
+- id: spec_require
+  selector:
+    path: spec/config_parser_spec.rb
+    anchor: "require_relative '../lib/config_parser'"
+- id: no_yaml_loader
+  selector:
+    path: lib/yaml_loader.rb
+    anchor: "class YamlLoader"
+- id: no_env_reader
+  selector:
+    path: lib/env_reader.rb
+    anchor: "class EnvReader"
+oracle:
+  required:
+  - merge_method
+  - spec_parse
+  - spec_require
+  allowed: []
+  forbidden:
+  - no_yaml_loader
+  - no_env_reader

@@ -1,0 +1,139 @@
+name: xml_009_xslt_template_added
+tags:
+- lang:xml
+- change:single_file
+- change:config
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    xslt/transform.xsl: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <xsl:stylesheet version="1.0"
+          xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+        <xsl:output method="html" indent="yes"/>
+        <xsl:template match="/">
+          <html>
+            <body>
+              <xsl:apply-templates select="catalog/book"/>
+            </body>
+          </html>
+        </xsl:template>
+        <xsl:template match="book">
+          <div class="book">
+            <h2><xsl:value-of select="title"/></h2>
+            <p><xsl:value-of select="author"/></p>
+          </div>
+        </xsl:template>
+      </xsl:stylesheet>
+    data/catalog.xml: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <catalog>
+        <book id="bk101">
+          <title>Clean Code</title>
+          <author>Robert C. Martin</author>
+          <price>35.99</price>
+          <genre>Programming</genre>
+        </book>
+        <book id="bk102">
+          <title>Design Patterns</title>
+          <author>Gang of Four</author>
+          <price>44.99</price>
+          <genre>Programming</genre>
+        </book>
+      </catalog>
+    XML_NOISE_009_invoice-template.xsl: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <xsl:stylesheet version="1.0"
+          xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+        <!-- XML_NOISE_009_INVOICE_TEMPLATE -->
+        <xsl:template match="XML_NOISE_009_invoice">
+          <div class="invoice">
+            <xsl:value-of select="total"/>
+          </div>
+        </xsl:template>
+      </xsl:stylesheet>
+    XML_NOISE_009_report-layout.xml: |
+      <report-layout>
+        <!-- XML_NOISE_009_REPORT_LAYOUT -->
+        <header>XML_NOISE_009_ReportHeader</header>
+        <footer>Page <pagenumber/> of <totalpages/></footer>
+      </report-layout>
+    garbage/EmailLayout.xml: |
+      <!-- XML_NOISE_009_EmailLayout = "email_layout_template_marker" -->
+      <email-layout><body>XML_NOISE_009_EmailBody</body></email-layout>
+  changed_files:
+    xslt/transform.xsl: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <xsl:stylesheet version="1.0"
+          xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+        <xsl:output method="html" indent="yes"/>
+        <xsl:template match="/">
+          <html>
+            <body>
+              <xsl:apply-templates select="catalog/book"/>
+            </body>
+          </html>
+        </xsl:template>
+        <xsl:template match="book">
+          <div class="book">
+            <h2><xsl:value-of select="title"/></h2>
+            <p><xsl:value-of select="author"/></p>
+            <span class="price"><xsl:value-of select="price"/></span>
+            <span class="genre"><xsl:value-of select="genre"/></span>
+          </div>
+        </xsl:template>
+      </xsl:stylesheet>
+    data/catalog.xml: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <catalog>
+        <book id="bk101">
+          <title>Clean Code</title>
+          <author>Robert C. Martin</author>
+          <price>35.99</price>
+          <genre>Programming</genre>
+        </book>
+        <book id="bk102">
+          <title>Design Patterns</title>
+          <author>Gang of Four</author>
+          <price>44.99</price>
+          <genre>Programming</genre>
+        </book>
+      </catalog>
+  commit_message: "feat: render price and genre fields in book XSLT template"
+fragments:
+- id: xslt_price_genre
+  selector:
+    path: xslt/transform.xsl
+    anchor: "class=\"price\""
+- id: catalog_xml
+  selector:
+    path: data/catalog.xml
+    anchor: price
+- id: no_invoice_template
+  selector:
+    path: XML_NOISE_009_invoice-template.xsl
+- id: no_report_layout
+  selector:
+    path: XML_NOISE_009_report-layout.xml
+- id: no_global_0
+  selector:
+    anchor: XML_NOISE_009_INVOICE_TEMPLATE
+- id: no_global_1
+  selector:
+    anchor: XML_NOISE_009_invoice
+- id: no_global_2
+  selector:
+    anchor: XML_NOISE_009_REPORT_LAYOUT
+oracle:
+  required:
+  - xslt_price_genre
+  - catalog_xml
+  allowed: []
+  forbidden:
+  - no_invoice_template
+  - no_report_layout
+  - no_global_0
+  - no_global_1
+  - no_global_2

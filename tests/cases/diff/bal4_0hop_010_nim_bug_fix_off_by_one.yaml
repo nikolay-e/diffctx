@@ -1,0 +1,93 @@
+name: bal4_0hop_010_nim_bug_fix_off_by_one
+tags:
+- lang:nim
+- change:single_file
+- change:bug_fix
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/range.nim: |
+      proc rangeSum(lo, hi: int): int =
+        var total = 0
+        for i in lo ..< hi:
+          total += i
+        total
+
+      proc rangeCount(lo, hi: int): int =
+        hi - lo
+    src/garbage_iter.nim: |
+      const GARBAGE_B4N010_ITER_A = "iter"
+      const GARBAGE_B4N010_ITER_B = 100
+
+      proc garbageIter(n: int): int =
+        n
+    src/garbage_acc.nim: |
+      const GARBAGE_B4N010_ACC_C = "acc"
+      const GARBAGE_B4N010_ACC_D = false
+
+      proc garbageAccum(x: int): int =
+        x + 1
+  changed_files:
+    src/range.nim: |
+      proc rangeSum(lo, hi: int): int =
+        var total = 0
+        for i in lo .. hi:
+          total += i
+        total
+
+      proc rangeCount(lo, hi: int): int =
+        hi - lo + 1
+    src/garbage_iter.nim: |
+      const GARBAGE_B4N010_ITER_A = "iter"
+      const GARBAGE_B4N010_ITER_B = 100
+
+      proc garbageIter(n: int): int =
+        n
+    src/garbage_acc.nim: |
+      const GARBAGE_B4N010_ACC_C = "acc"
+      const GARBAGE_B4N010_ACC_D = false
+
+      proc garbageAccum(x: int): int =
+        x + 1
+  commit_message: "fix: include upper bound in range (off-by-one)"
+fragments:
+- id: fixed_range
+  selector:
+    path: src/range.nim
+    anchor: "for i in lo .. hi:"
+- id: fixed_count
+  selector:
+    path: src/range.nim
+    anchor: "hi - lo + 1"
+- id: no_garbage_iter
+  selector:
+    path: src/garbage_iter.nim
+- id: no_garbage_acc
+  selector:
+    path: src/garbage_acc.nim
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_B4N010_ITER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_B4N010_ITER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_B4N010_ACC_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_B4N010_ACC_D
+oracle:
+  required:
+  - fixed_range
+  - fixed_count
+  allowed: []
+  forbidden:
+  - no_garbage_iter
+  - no_garbage_acc
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

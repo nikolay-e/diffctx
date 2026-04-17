@@ -1,0 +1,170 @@
+name: gap_177_typescript_event_bus_import_chain
+tags:
+- change:multi_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:typescript
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/events/bus.ts: |
+      import { EventSchema, validateEvent } from "./schema";
+
+      type Handler = (payload: unknown) => void;
+
+      export class EventBus {
+        private handlers: Map<string, Handler[]> = new Map();
+
+        on(eventType: string, handler: Handler): void {
+          const existing = this.handlers.get(eventType) || [];
+          existing.push(handler);
+          this.handlers.set(eventType, existing);
+        }
+
+        emit(eventType: string, payload: unknown): void {
+          const handlers = this.handlers.get(eventType) || [];
+          for (const handler of handlers) {
+            handler(payload);
+          }
+        }
+      }
+    src/events/schema.ts: |
+      export interface EventSchema {
+        type: string;
+        version: number;
+        payload: Record<string, unknown>;
+      }
+
+      export function validateEvent(event: unknown): event is EventSchema {
+        if (typeof event !== "object" || event === null) return false;
+        const e = event as Record<string, unknown>;
+        return typeof e.type === "string" && typeof e.version === "number";
+      }
+    src/handlers/orderHandler.ts: |
+      import { EventBus } from "../events/bus";
+
+      export class OrderHandler {
+        constructor(private bus: EventBus) {
+          this.bus.on("order.created", this.handleCreated.bind(this));
+          this.bus.on("order.cancelled", this.handleCancelled.bind(this));
+        }
+
+        private handleCreated(payload: unknown): void {
+          console.log("Order created", payload);
+        }
+
+        private handleCancelled(payload: unknown): void {
+          console.log("Order cancelled", payload);
+        }
+      }
+    src/handlers/notificationHandler.ts: |
+      import { EventBus } from "../events/bus";
+
+      export class NotificationHandler {
+        constructor(private bus: EventBus) {
+          this.bus.on("notification.send", this.handle.bind(this));
+        }
+
+        private handle(payload: unknown): void {
+          console.log("Sending notification", payload);
+        }
+      }
+    src/utils/retry.ts: |
+      export async function withRetry<T>(
+        fn: () => Promise<T>,
+        maxAttempts: number = 3
+      ): Promise<T> {
+        let lastError: Error | undefined;
+        for (let i = 0; i < maxAttempts; i++) {
+          try {
+            return await fn();
+          } catch (err) {
+            lastError = err as Error;
+          }
+        }
+        throw lastError;
+      }
+  changed_files:
+    src/events/bus.ts: |
+      import { EventSchema, validateEvent } from "./schema";
+
+      type Handler = (payload: unknown) => void;
+
+      export class EventBus {
+        private handlers: Map<string, Handler[]> = new Map();
+
+        on(eventType: string, handler: Handler): void {
+          const existing = this.handlers.get(eventType) || [];
+          existing.push(handler);
+          this.handlers.set(eventType, existing);
+        }
+
+        emit(eventType: string, payload: unknown): void {
+          if (!validateEvent({ type: eventType, version: 1, payload })) {
+            throw new Error(`Invalid event: ${eventType}`);
+          }
+          const handlers = this.handlers.get(eventType) || [];
+          for (const handler of handlers) {
+            handler(payload);
+          }
+        }
+
+        off(eventType: string, handler: Handler): void {
+          const existing = this.handlers.get(eventType) || [];
+          this.handlers.set(
+            eventType,
+            existing.filter((h) => h !== handler)
+          );
+        }
+      }
+    src/handlers/orderHandler.ts: |
+      import { EventBus } from "../events/bus";
+
+      export class OrderHandler {
+        constructor(private bus: EventBus) {
+          this.bus.on("order.created", this.handleCreated.bind(this));
+          this.bus.on("order.cancelled", this.handleCancelled.bind(this));
+          this.bus.on("order.refunded", this.handleRefunded.bind(this));
+        }
+
+        private handleCreated(payload: unknown): void {
+          console.log("Order created", payload);
+        }
+
+        private handleCancelled(payload: unknown): void {
+          console.log("Order cancelled", payload);
+        }
+
+        private handleRefunded(payload: unknown): void {
+          console.log("Order refunded", payload);
+        }
+      }
+fragments:
+- id: bus_validate
+  selector:
+    path: src/events/bus.ts
+    anchor: validateEvent
+- id: schema_validate_fn
+  selector:
+    path: src/events/schema.ts
+    anchor: "function validateEvent"
+- id: order_refunded
+  selector:
+    path: src/handlers/orderHandler.ts
+    anchor: handleRefunded
+- id: no_notification
+  selector:
+    path: src/handlers/notificationHandler.ts
+- id: no_retry
+  selector:
+    path: src/utils/retry.ts
+oracle:
+  required:
+  - bus_validate
+  - schema_validate_fn
+  - order_refunded
+  forbidden:
+  - no_notification
+  - no_retry

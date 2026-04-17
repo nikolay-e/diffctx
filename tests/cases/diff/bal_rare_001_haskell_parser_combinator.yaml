@@ -1,0 +1,156 @@
+name: bal_rare_001_haskell_parser_combinator
+tags:
+- lang:haskell
+- change:single_file
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/Parser.hs: |
+      module Parser where
+
+      data Token = TNum Int | TOp Char | TEnd deriving (Show)
+
+      tokenize :: String -> [Token]
+      tokenize [] = [TEnd]
+      tokenize (c:cs)
+        | c `elem` "+-*/" = TOp c : tokenize cs
+        | c >= '0' && c <= '9' = TNum (read [c]) : tokenize cs
+        | otherwise = tokenize cs
+    src/Evaluator.hs: |
+      module Evaluator where
+      import Parser (Token(..), tokenize)
+
+      evaluate :: String -> Int
+      evaluate input = eval' (tokenize input) 0
+        where
+          eval' (TNum n : rest) acc = eval' rest (acc + n)
+          eval' (TEnd : _) acc = acc
+          eval' _ acc = acc
+    src/Logger.hs: |
+      module Logger where
+      logMsg :: String -> IO ()
+      logMsg msg = putStrLn $ "[LOG] " ++ msg
+    garbage_cache.hs: |
+      module GarbageCache where
+      GARBAGE_RARE_001_CACHE_A = "cache"
+      GARBAGE_RARE_001_STORE_B = True
+
+      cacheGet :: String -> Maybe String
+      cacheGet _ = Nothing
+
+      GARBAGE_RARE_001_TTL_C = 3600
+    garbage_metrics.hs: |
+      module GarbageMetrics where
+      GARBAGE_RARE_001_METRIC_D = "counter"
+      GARBAGE_RARE_001_GAUGE_E = 0
+
+      recordMetric :: String -> Int -> IO ()
+      recordMetric _ _ = return ()
+
+      GARBAGE_RARE_001_HIST_F = "histogram"
+  changed_files:
+    src/Parser.hs: |
+      module Parser where
+
+      data Token = TNum Int | TOp Char | TLParen | TRParen | TEnd deriving (Show)
+
+      tokenize :: String -> [Token]
+      tokenize [] = [TEnd]
+      tokenize ('(':cs) = TLParen : tokenize cs
+      tokenize (')':cs) = TRParen : tokenize cs
+      tokenize (c:cs)
+        | c `elem` "+-*/" = TOp c : tokenize cs
+        | c >= '0' && c <= '9' = TNum (read [c]) : tokenize cs
+        | otherwise = tokenize cs
+    src/Evaluator.hs: |
+      module Evaluator where
+      import Parser (Token(..), tokenize)
+
+      evaluate :: String -> Int
+      evaluate input = eval' (tokenize input) 0
+        where
+          eval' (TNum n : rest) acc = eval' rest (acc + n)
+          eval' (TEnd : _) acc = acc
+          eval' _ acc = acc
+    src/Logger.hs: |
+      module Logger where
+      logMsg :: String -> IO ()
+      logMsg msg = putStrLn $ "[LOG] " ++ msg
+    garbage_cache.hs: |
+      module GarbageCache where
+      GARBAGE_RARE_001_CACHE_A = "cache"
+      GARBAGE_RARE_001_STORE_B = True
+
+      cacheGet :: String -> Maybe String
+      cacheGet _ = Nothing
+
+      GARBAGE_RARE_001_TTL_C = 3600
+    garbage_metrics.hs: |
+      module GarbageMetrics where
+      GARBAGE_RARE_001_METRIC_D = "counter"
+      GARBAGE_RARE_001_GAUGE_E = 0
+
+      recordMetric :: String -> Int -> IO ()
+      recordMetric _ _ = return ()
+
+      GARBAGE_RARE_001_HIST_F = "histogram"
+  commit_message: "feat: add parenthesis tokens to parser"
+fragments:
+- id: parser_token_type
+  selector:
+    path: src/Parser.hs
+    anchor: "TLParen | TRParen"
+- id: parser_lparen_case
+  selector:
+    path: src/Parser.hs
+    anchor: "tokenize ('(':cs) = TLParen"
+- id: evaluator_imports_parser
+  selector:
+    path: src/Evaluator.hs
+    anchor: "import Parser (Token(..), tokenize)"
+- id: no_logger
+  selector:
+    path: src/Logger.hs
+- id: no_garbage_cache
+  selector:
+    path: garbage_cache.hs
+- id: no_garbage_metrics
+  selector:
+    path: garbage_metrics.hs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_RARE_001_CACHE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_RARE_001_STORE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_RARE_001_TTL_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_RARE_001_METRIC_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_RARE_001_GAUGE_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_RARE_001_HIST_F
+oracle:
+  required:
+  - parser_token_type
+  - parser_lparen_case
+  - evaluator_imports_parser
+  allowed: []
+  forbidden:
+  - no_logger
+  - no_garbage_cache
+  - no_garbage_metrics
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

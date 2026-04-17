@@ -1,0 +1,137 @@
+name: c_family_014_pthread_api_wrap
+tags:
+- lang:c
+- change:multi_file
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    thread.h: |
+      #ifndef THREAD_H
+      #define THREAD_H
+      #include <pthread.h>
+      typedef struct {
+          pthread_t tid;
+          const char *name;
+      } Thread;
+      int thread_start(Thread *t, void *(*fn)(void *), void *arg);
+      void thread_join(Thread *t);
+      #endif
+    thread.c: |
+      #include "thread.h"
+      int thread_start(Thread *t, void *(*fn)(void *), void *arg) {
+          return pthread_create(&t->tid, 0, fn, arg);
+      }
+      void thread_join(Thread *t) { pthread_join(t->tid, 0); }
+    worker.c: |
+      #include "thread.h"
+      #include <stdio.h>
+      static void *worker_fn(void *arg) {
+          printf("worker running\n");
+          return 0;
+      }
+      void worker_spawn(void) {
+          Thread t = { .name = "worker" };
+          thread_start(&t, worker_fn, 0);
+          thread_join(&t);
+      }
+    C_NOISE_014_sensor.h: |
+      #ifndef C_NOISE_014_SENSOR_H
+      #define C_NOISE_014_SENSOR_H
+      float C_NOISE_014_sensor_read_temp(void);
+      float C_NOISE_014_sensor_read_humidity(void);
+      #endif
+    C_NOISE_014_sensor.c: |
+      #include "C_NOISE_014_sensor.h"
+      float C_NOISE_014_sensor_read_temp(void) { return 0.0f; }
+      float C_NOISE_014_sensor_read_humidity(void) { return 0.0f; }
+  changed_files:
+    thread.h: |
+      #ifndef THREAD_H
+      #define THREAD_H
+      #include <pthread.h>
+      typedef struct {
+          pthread_t tid;
+          const char *name;
+          int priority;
+      } Thread;
+      int thread_start(Thread *t, void *(*fn)(void *), void *arg);
+      void thread_join(Thread *t);
+      int thread_set_priority(Thread *t, int priority);
+      #endif
+    thread.c: |
+      #include "thread.h"
+      #include <sched.h>
+      int thread_start(Thread *t, void *(*fn)(void *), void *arg) {
+          t->priority = 0;
+          return pthread_create(&t->tid, 0, fn, arg);
+      }
+      void thread_join(Thread *t) { pthread_join(t->tid, 0); }
+      int thread_set_priority(Thread *t, int priority) {
+          struct sched_param sp = { .sched_priority = priority };
+          t->priority = priority;
+          return pthread_setschedparam(t->tid, SCHED_FIFO, &sp);
+      }
+    worker.c: |
+      #include "thread.h"
+      #include <stdio.h>
+      static void *worker_fn(void *arg) {
+          printf("worker running\n");
+          return 0;
+      }
+      void worker_spawn(void) {
+          Thread t = { .name = "worker", .priority = 0 };
+          thread_start(&t, worker_fn, 0);
+          thread_set_priority(&t, 10);
+          thread_join(&t);
+      }
+    C_NOISE_014_sensor.h: |
+      #ifndef C_NOISE_014_SENSOR_H
+      #define C_NOISE_014_SENSOR_H
+      float C_NOISE_014_sensor_read_temp(void);
+      float C_NOISE_014_sensor_read_humidity(void);
+      #endif
+    C_NOISE_014_sensor.c: |
+      #include "C_NOISE_014_sensor.h"
+      float C_NOISE_014_sensor_read_temp(void) { return 0.0f; }
+      float C_NOISE_014_sensor_read_humidity(void) { return 0.0f; }
+  commit_message: "feat: add priority field to Thread and thread_set_priority function"
+fragments:
+- id: thread_h_priority
+  selector:
+    path: thread.h
+    anchor: "int priority;"
+- id: thread_h_set_priority
+  selector:
+    path: thread.h
+    anchor: thread_set_priority
+- id: thread_c_set_priority
+  selector:
+    path: thread.c
+    anchor: "int thread_set_priority"
+- id: worker_c
+  selector:
+    path: worker.c
+    anchor: "thread_set_priority(&t, 10)"
+- id: no_sensor_h
+  selector:
+    anchor: C_NOISE_014_sensor_read_temp
+- id: no_sensor_c
+  selector:
+    path: C_NOISE_014_sensor.c
+- id: no_global_humidity
+  selector:
+    anchor: C_NOISE_014_sensor_read_humidity
+oracle:
+  required:
+  - thread_h_priority
+  - thread_h_set_priority
+  - thread_c_set_priority
+  - worker_c
+  allowed: []
+  forbidden:
+  - no_sensor_h
+  - no_sensor_c
+  - no_global_humidity

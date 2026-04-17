@@ -1,0 +1,171 @@
+name: bal_3hop_013_python_cache_invalidation
+tags:
+- lang:python
+- change:single_file
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    cache/entry.py: |
+      import time
+      class CacheEntry:
+          def __init__(self, key: str, value: str, ttl: int = 300):
+              self.key = key
+              self.value = value
+              self.ttl = ttl
+              self.created_at = time.time()
+          def is_expired(self) -> bool:
+              return time.time() - self.created_at > self.ttl
+    cache/store.py: |
+      from cache.entry import CacheEntry
+      class CacheStore:
+          def __init__(self):
+              self.entries: dict[str, CacheEntry] = {}
+          def put(self, key: str, value: str, ttl: int = 300):
+              self.entries[key] = CacheEntry(key, value, ttl)
+          def get(self, key: str) -> str:
+              entry = self.entries.get(key)
+              if entry and not entry.is_expired():
+                  return entry.value
+              return ""
+    cache/manager.py: |
+      from cache.store import CacheStore
+      class CacheManager:
+          def __init__(self):
+              self.store = CacheStore()
+              self.hits = 0
+              self.misses = 0
+          def fetch(self, key: str) -> str:
+              val = self.store.get(key)
+              if val:
+                  self.hits += 1
+              else:
+                  self.misses += 1
+              return val
+          def cache(self, key: str, value: str, ttl: int = 300):
+              self.store.put(key, value, ttl)
+    api/cached_endpoint.py: |
+      from cache.manager import CacheManager
+      class CachedEndpoint:
+          def __init__(self):
+              self.cache = CacheManager()
+          def get_data(self, resource_id: str) -> dict:
+              cached = self.cache.fetch(resource_id)
+              if cached:
+                  return {"source": "cache", "data": cached}
+              data = f"resource_{resource_id}"
+              self.cache.cache(resource_id, data)
+              return {"source": "origin", "data": data}
+    utils/hashing.py: |
+      import hashlib
+      def md5(data: str) -> str:
+          return hashlib.md5(data.encode()).hexdigest()
+    monitoring/stats.py: |
+      class StatsCollector:
+          def __init__(self):
+              self.counters: dict[str, int] = {}
+          def inc(self, name: str):
+              self.counters[name] = self.counters.get(name, 0) + 1
+  changed_files:
+    cache/entry.py: |
+      import time
+      class CacheEntry:
+          def __init__(self, key: str, value: str, ttl: int = 300):
+              self.key = key
+              self.value = value
+              self.ttl = ttl
+              self.created_at = time.time()
+              self.access_count = 0
+          def is_expired(self) -> bool:
+              return time.time() - self.created_at > self.ttl
+          def touch(self):
+              self.access_count += 1
+              self.created_at = time.time()
+    cache/store.py: |
+      from cache.entry import CacheEntry
+      class CacheStore:
+          def __init__(self):
+              self.entries: dict[str, CacheEntry] = {}
+          def put(self, key: str, value: str, ttl: int = 300):
+              self.entries[key] = CacheEntry(key, value, ttl)
+          def get(self, key: str) -> str:
+              entry = self.entries.get(key)
+              if entry and not entry.is_expired():
+                  return entry.value
+              return ""
+    cache/manager.py: |
+      from cache.store import CacheStore
+      class CacheManager:
+          def __init__(self):
+              self.store = CacheStore()
+              self.hits = 0
+              self.misses = 0
+          def fetch(self, key: str) -> str:
+              val = self.store.get(key)
+              if val:
+                  self.hits += 1
+              else:
+                  self.misses += 1
+              return val
+          def cache(self, key: str, value: str, ttl: int = 300):
+              self.store.put(key, value, ttl)
+    api/cached_endpoint.py: |
+      from cache.manager import CacheManager
+      class CachedEndpoint:
+          def __init__(self):
+              self.cache = CacheManager()
+          def get_data(self, resource_id: str) -> dict:
+              cached = self.cache.fetch(resource_id)
+              if cached:
+                  return {"source": "cache", "data": cached}
+              data = f"resource_{resource_id}"
+              self.cache.cache(resource_id, data)
+              return {"source": "origin", "data": data}
+    utils/hashing.py: |
+      import hashlib
+      def md5(data: str) -> str:
+          return hashlib.md5(data.encode()).hexdigest()
+    monitoring/stats.py: |
+      class StatsCollector:
+          def __init__(self):
+              self.counters: dict[str, int] = {}
+          def inc(self, name: str):
+              self.counters[name] = self.counters.get(name, 0) + 1
+  commit_message: "fix: add touch method to refresh TTL on cache access"
+fragments:
+- id: entry_touch_method
+  selector:
+    path: cache/entry.py
+    anchor: "def touch(self)"
+- id: store_uses_entry
+  selector:
+    path: cache/store.py
+    anchor: "from cache.entry import CacheEntry"
+- id: manager_uses_store
+  selector:
+    path: cache/manager.py
+    anchor: "from cache.store import CacheStore"
+- id: endpoint_uses_manager
+  selector:
+    path: api/cached_endpoint.py
+    anchor: "from cache.manager import CacheManager"
+- id: no_hashing
+  selector:
+    path: utils/hashing.py
+    anchor: "def md5"
+- id: no_stats
+  selector:
+    path: monitoring/stats.py
+    anchor: "class StatsCollector"
+oracle:
+  required:
+  - entry_touch_method
+  - store_uses_entry
+  - manager_uses_store
+  - endpoint_uses_manager
+  allowed: []
+  forbidden:
+  - no_hashing
+  - no_stats

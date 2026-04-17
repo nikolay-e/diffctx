@@ -1,0 +1,158 @@
+name: gap_002_python_csv_pipeline_encoding_fix
+tags:
+- lang:python
+- change:bug_fix
+- change:multi_file
+- context:import_chain
+- difficulty:hard
+- distance:1hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    etl/readers/csv_reader.py: |
+      from etl.readers.encoding import detect_encoding, normalize_line_endings
+
+      class CsvReader:
+          def __init__(self, delimiter: str = ","):
+              self._delimiter = delimiter
+
+          def read(self, path: str) -> list[list[str]]:
+              encoding = detect_encoding(path)
+              with open(path, "r", encoding=encoding) as f:
+                  raw = f.read()
+              normalized = normalize_line_endings(raw)
+              rows = []
+              for line in normalized.split("\n"):
+                  if line.strip():
+                      rows.append(line.split(self._delimiter))
+              return rows
+
+          def read_header(self, path: str) -> list[str]:
+              rows = self.read(path)
+              return rows[0] if rows else []
+    etl/readers/encoding.py: |
+      import codecs
+
+      BOM_MAP = {
+          codecs.BOM_UTF8: "utf-8-sig",
+          codecs.BOM_UTF16_LE: "utf-16-le",
+          codecs.BOM_UTF16_BE: "utf-16-be",
+      }
+
+      def detect_encoding(path: str) -> str:
+          with open(path, "rb") as f:
+              head = f.read(4)
+          for bom, enc in BOM_MAP.items():
+              if head.startswith(bom):
+                  return enc
+          return "utf-8"
+
+      def normalize_line_endings(text: str) -> str:
+          return text.replace("\r\n", "\n").replace("\r", "\n")
+    etl/writers/json_writer.py: |
+      import json
+
+      class JsonWriter:
+          def __init__(self, indent: int = 2):
+              self._indent = indent
+
+          def write(self, data: list[dict], path: str) -> None:
+              with open(path, "w") as f:
+                  json.dump(data, f, indent=self._indent)
+
+          def write_lines(self, data: list[dict], path: str) -> None:
+              with open(path, "w") as f:
+                  for item in data:
+                      f.write(json.dumps(item) + "\n")
+    etl/transforms/cleaner.py: |
+      class DataCleaner:
+          def strip_whitespace(self, rows: list[list[str]]) -> list[list[str]]:
+              return [[cell.strip() for cell in row] for row in rows]
+
+          def drop_empty_rows(self, rows: list[list[str]]) -> list[list[str]]:
+              return [row for row in rows if any(cell.strip() for cell in row)]
+  changed_files:
+    etl/readers/csv_reader.py: |
+      from etl.readers.encoding import detect_encoding, normalize_line_endings
+
+      class CsvReader:
+          def __init__(self, delimiter: str = ",", quotechar: str = '"'):
+              self._delimiter = delimiter
+              self._quotechar = quotechar
+
+          def read(self, path: str) -> list[list[str]]:
+              encoding = detect_encoding(path)
+              with open(path, "r", encoding=encoding, errors="replace") as f:
+                  raw = f.read()
+              normalized = normalize_line_endings(raw)
+              rows = []
+              for line in normalized.split("\n"):
+                  if line.strip():
+                      rows.append(self._split_row(line))
+              return rows
+
+          def _split_row(self, line: str) -> list[str]:
+              fields = []
+              current = []
+              in_quotes = False
+              for ch in line:
+                  if ch == self._quotechar:
+                      in_quotes = not in_quotes
+                  elif ch == self._delimiter and not in_quotes:
+                      fields.append("".join(current))
+                      current = []
+                  else:
+                      current.append(ch)
+              fields.append("".join(current))
+              return fields
+
+          def read_header(self, path: str) -> list[str]:
+              rows = self.read(path)
+              return rows[0] if rows else []
+    etl/readers/encoding.py: |
+      import codecs
+
+      BOM_MAP = {
+          codecs.BOM_UTF8: "utf-8-sig",
+          codecs.BOM_UTF16_LE: "utf-16-le",
+          codecs.BOM_UTF16_BE: "utf-16-be",
+      }
+
+      def detect_encoding(path: str) -> str:
+          with open(path, "rb") as f:
+              head = f.read(4)
+          for bom, enc in BOM_MAP.items():
+              if head.startswith(bom):
+                  return enc
+          return "utf-8"
+
+      def normalize_line_endings(text: str) -> str:
+          return text.replace("\r\n", "\n").replace("\r", "\n")
+fragments:
+- id: csv_read
+  selector:
+    path: etl/readers/csv_reader.py
+    anchor: "def read"
+- id: encoding_detect
+  selector:
+    path: etl/readers/encoding.py
+    anchor: "def detect_encoding"
+- id: normalize_endings
+  selector:
+    path: etl/readers/encoding.py
+    anchor: "def normalize_line_endings"
+- id: no_json_writer
+  selector:
+    path: etl/writers/json_writer.py
+- id: no_cleaner
+  selector:
+    path: etl/transforms/cleaner.py
+oracle:
+  required:
+  - csv_read
+  - encoding_detect
+  - normalize_endings
+  forbidden:
+  - no_json_writer
+  - no_cleaner

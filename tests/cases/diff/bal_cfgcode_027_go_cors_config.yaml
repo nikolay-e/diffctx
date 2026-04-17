@@ -1,0 +1,270 @@
+name: bal_cfgcode_027_go_cors_config
+tags:
+- lang:go
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    config/cors.json: |
+      {
+        "allowed_origins": ["http://localhost:3000"],
+        "allowed_methods": ["GET", "POST"],
+        "allow_credentials": false,
+        "max_age": 3600
+      }
+    internal/middleware/cors.go: |
+      package middleware
+
+      import (
+        "encoding/json"
+        "os"
+        "strings"
+      )
+
+      type CORSConfig struct {
+        AllowedOrigins   []string `json:"allowed_origins"`
+        AllowedMethods   []string `json:"allowed_methods"`
+        AllowCredentials bool     `json:"allow_credentials"`
+        MaxAge           int      `json:"max_age"`
+      }
+
+      func LoadCORSConfig() (*CORSConfig, error) {
+        data, err := os.ReadFile("config/cors.json")
+        if err != nil {
+          return nil, err
+        }
+        var cfg CORSConfig
+        json.Unmarshal(data, &cfg)
+        return &cfg, nil
+      }
+
+      func (c *CORSConfig) IsOriginAllowed(origin string) bool {
+        for _, o := range c.AllowedOrigins {
+          if o == origin {
+            return true
+          }
+        }
+        return false
+      }
+
+      func (c *CORSConfig) MethodsHeader() string {
+        return strings.Join(c.AllowedMethods, ", ")
+      }
+    internal/router/router.go: |
+      package router
+
+      import (
+        "encoding/json"
+        "os"
+      )
+
+      type corsCfg struct {
+        AllowedOrigins []string `json:"allowed_origins"`
+      }
+
+      func AllowedOrigins() []string {
+        data, _ := os.ReadFile("config/cors.json")
+        var cfg corsCfg
+        json.Unmarshal(data, &cfg)
+        return cfg.AllowedOrigins
+      }
+    internal/database/pool.go: |
+      package database
+
+      var GARBAGE_CFGCODE_027_DB_A = "postgres"
+      var GARBAGE_CFGCODE_027_DB_B = 25
+
+      func GetPool() int {
+        return 25
+      }
+    internal/auth/token.go: |
+      package auth
+
+      var GARBAGE_CFGCODE_027_TOKEN_C = "HS256"
+      var GARBAGE_CFGCODE_027_TOKEN_D = "secret"
+
+      func Sign(payload string) string {
+        return payload
+      }
+    garbage_migration.go: |
+      package main
+
+      var GARBAGE_CFGCODE_027_MIG_E = "v3"
+      var GARBAGE_CFGCODE_027_MIG_F = true
+
+      func runMigration() {}
+  changed_files:
+    config/cors.json: |
+      {
+        "allowed_origins": [
+          "http://localhost:3000",
+          "https://app.example.com",
+          "https://admin.example.com"
+        ],
+        "allowed_methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_credentials": true,
+        "max_age": 86400,
+        "exposed_headers": ["X-Request-Id", "X-Trace-Id"],
+        "allowed_headers": ["Authorization", "Content-Type"]
+      }
+    internal/middleware/cors.go: |
+      package middleware
+
+      import (
+        "encoding/json"
+        "os"
+        "strings"
+      )
+
+      type CORSConfig struct {
+        AllowedOrigins   []string `json:"allowed_origins"`
+        AllowedMethods   []string `json:"allowed_methods"`
+        AllowCredentials bool     `json:"allow_credentials"`
+        MaxAge           int      `json:"max_age"`
+      }
+
+      func LoadCORSConfig() (*CORSConfig, error) {
+        data, err := os.ReadFile("config/cors.json")
+        if err != nil {
+          return nil, err
+        }
+        var cfg CORSConfig
+        json.Unmarshal(data, &cfg)
+        return &cfg, nil
+      }
+
+      func (c *CORSConfig) IsOriginAllowed(origin string) bool {
+        for _, o := range c.AllowedOrigins {
+          if o == origin {
+            return true
+          }
+        }
+        return false
+      }
+
+      func (c *CORSConfig) MethodsHeader() string {
+        return strings.Join(c.AllowedMethods, ", ")
+      }
+    internal/router/router.go: |
+      package router
+
+      import (
+        "encoding/json"
+        "os"
+      )
+
+      type corsCfg struct {
+        AllowedOrigins []string `json:"allowed_origins"`
+      }
+
+      func AllowedOrigins() []string {
+        data, _ := os.ReadFile("config/cors.json")
+        var cfg corsCfg
+        json.Unmarshal(data, &cfg)
+        return cfg.AllowedOrigins
+      }
+    internal/database/pool.go: |
+      package database
+
+      var GARBAGE_CFGCODE_027_DB_A = "postgres"
+      var GARBAGE_CFGCODE_027_DB_B = 25
+
+      func GetPool() int {
+        return 25
+      }
+    internal/auth/token.go: |
+      package auth
+
+      var GARBAGE_CFGCODE_027_TOKEN_C = "HS256"
+      var GARBAGE_CFGCODE_027_TOKEN_D = "secret"
+
+      func Sign(payload string) string {
+        return payload
+      }
+    garbage_migration.go: |
+      package main
+
+      var GARBAGE_CFGCODE_027_MIG_E = "v3"
+      var GARBAGE_CFGCODE_027_MIG_F = true
+
+      func runMigration() {}
+  commit_message: "config: production CORS with credentials and exposed headers"
+fragments:
+- id: config_origins
+  selector:
+    path: config/cors.json
+    anchor: "app.example.com"
+- id: config_credentials
+  selector:
+    path: config/cors.json
+    anchor: '"allow_credentials": true'
+- id: config_exposed
+  selector:
+    path: config/cors.json
+    anchor: "X-Trace-Id"
+- id: config_allowed_headers
+  selector:
+    path: config/cors.json
+    anchor: "allowed_headers"
+- id: cors_reads_config
+  selector:
+    path: internal/middleware/cors.go
+    anchor: 'os.ReadFile("config/cors.json")'
+- id: cors_checks_origin
+  selector:
+    path: internal/middleware/cors.go
+    anchor: "c.AllowedOrigins"
+- id: router_reads_origins
+  selector:
+    path: internal/router/router.go
+    anchor: 'os.ReadFile("config/cors.json")'
+- id: no_database
+  selector:
+    path: internal/database/pool.go
+- id: no_auth
+  selector:
+    path: internal/auth/token.go
+- id: no_migration
+  selector:
+    path: garbage_migration.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_027_DB_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_027_DB_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_027_TOKEN_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_027_TOKEN_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CFGCODE_027_MIG_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CFGCODE_027_MIG_F
+oracle:
+  required:
+  - config_origins
+  - config_credentials
+  - config_exposed
+  - config_allowed_headers
+  - cors_reads_config
+  - cors_checks_origin
+  - router_reads_origins
+  allowed: []
+  forbidden:
+  - no_database
+  - no_auth
+  - no_migration
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

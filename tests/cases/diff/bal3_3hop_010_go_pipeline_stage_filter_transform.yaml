@@ -1,0 +1,216 @@
+name: bal3_3hop_010_go_pipeline_stage_filter_transform
+tags:
+- lang:go
+- change:multi_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    pipeline/transform/mapper.go: |
+      package transform
+
+      type Mapper struct {
+          prefix string
+      }
+
+      func NewMapper(prefix string) *Mapper {
+          return &Mapper{prefix: prefix}
+      }
+
+      func (m *Mapper) Map(input string) string {
+          return m.prefix + input
+      }
+    pipeline/filter/predicate.go: |
+      package filter
+
+      import "myapp/pipeline/transform"
+
+      type Predicate struct {
+          mapper  *transform.Mapper
+          minLen  int
+      }
+
+      func NewPredicate(mapper *transform.Mapper, minLen int) *Predicate {
+          return &Predicate{mapper: mapper, minLen: minLen}
+      }
+
+      func (p *Predicate) Test(input string) bool {
+          mapped := p.mapper.Map(input)
+          return len(mapped) >= p.minLen
+      }
+    pipeline/stage/processor.go: |
+      package stage
+
+      import "myapp/pipeline/filter"
+
+      type Processor struct {
+          pred *filter.Predicate
+      }
+
+      func NewProcessor(pred *filter.Predicate) *Processor {
+          return &Processor{pred: pred}
+      }
+
+      func (p *Processor) Process(items []string) []string {
+          var result []string
+          for _, item := range items {
+              if p.pred.Test(item) {
+                  result = append(result, item)
+              }
+          }
+          return result
+      }
+    pipeline/engine/engine.go: |
+      package engine
+
+      import "myapp/pipeline/stage"
+
+      type Engine struct {
+          stages []*stage.Processor
+      }
+
+      func NewEngine() *Engine {
+          return &Engine{}
+      }
+
+      func (e *Engine) AddStage(s *stage.Processor) {
+          e.stages = append(e.stages, s)
+      }
+
+      func (e *Engine) Run(items []string) []string {
+          result := items
+          for _, s := range e.stages {
+              result = s.Process(result)
+          }
+          return result
+      }
+    pipeline/sink/console.go: |
+      package sink
+
+      var GARBAGE_BAL3_010_CONSOLE_MARKER_A = "console"
+      var GARBAGE_BAL3_010_FLUSH_MARKER_B = true
+
+      type ConsoleSink struct{}
+
+      func (s *ConsoleSink) Write(items []string) {}
+    pipeline/sink/file.go: |
+      package sink
+
+      var GARBAGE_BAL3_010_FILE_MARKER_C = "file"
+      var GARBAGE_BAL3_010_APPEND_MARKER_D = false
+
+      type FileSink struct{}
+
+      func (s *FileSink) Write(items []string) {}
+  changed_files:
+    pipeline/transform/mapper.go: |
+      package transform
+
+      import "strings"
+
+      type Mapper struct {
+          prefix string
+          upper  bool
+      }
+
+      func NewMapper(prefix string, upper bool) *Mapper {
+          return &Mapper{prefix: prefix, upper: upper}
+      }
+
+      func (m *Mapper) Map(input string) string {
+          result := m.prefix + input
+          if m.upper {
+              result = strings.ToUpper(result)
+          }
+          return result
+      }
+    pipeline/engine/engine.go: |
+      package engine
+
+      import "myapp/pipeline/stage"
+
+      type Engine struct {
+          stages []*stage.Processor
+          name   string
+      }
+
+      func NewEngine(name string) *Engine {
+          return &Engine{name: name}
+      }
+
+      func (e *Engine) AddStage(s *stage.Processor) {
+          e.stages = append(e.stages, s)
+      }
+
+      func (e *Engine) Run(items []string) []string {
+          result := items
+          for _, s := range e.stages {
+              result = s.Process(result)
+          }
+          return result
+      }
+
+      func (e *Engine) StageCount() int {
+          return len(e.stages)
+      }
+  commit_message: "Add uppercase option to mapper and engine name"
+fragments:
+- id: mapper_upper
+  selector:
+    path: pipeline/transform/mapper.go
+    anchor: "upper  bool"
+- id: mapper_to_upper
+  selector:
+    path: pipeline/transform/mapper.go
+    anchor: "strings.ToUpper"
+- id: filter_test
+  selector:
+    path: pipeline/filter/predicate.go
+    anchor: "func (p *Predicate) Test"
+- id: stage_process
+  selector:
+    path: pipeline/stage/processor.go
+    anchor: "func (p *Processor) Process"
+- id: engine_name
+  selector:
+    path: pipeline/engine/engine.go
+    anchor: "name   string"
+- id: engine_stage_count
+  selector:
+    path: pipeline/engine/engine.go
+    anchor: "func (e *Engine) StageCount"
+- id: no_console
+  selector:
+    path: pipeline/sink/console.go
+- id: no_file
+  selector:
+    path: pipeline/sink/file.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_010_CONSOLE_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_010_FLUSH_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_010_FILE_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_010_APPEND_MARKER_D
+oracle:
+  required:
+  - mapper_upper
+  - mapper_to_upper
+  - filter_test
+  - stage_process
+  - engine_name
+  - engine_stage_count
+  allowed: []
+  forbidden:
+  - no_console
+  - no_file
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

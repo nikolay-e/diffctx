@@ -1,0 +1,164 @@
+name: gap2_132_nix_cross_module_mail_relay
+tags:
+- change:single_file
+- context:cross_module
+- difficulty:medium
+- distance:2hop
+- lang:nix
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    modules/postfix.nix: |
+      { config, lib, pkgs, ... }:
+
+      {
+        options.mail.postfix.relayHost = lib.mkOption {
+          type = lib.types.str;
+          default = "smtp.mailgun.org";
+        };
+
+        options.mail.postfix.myDomain = lib.mkOption {
+          type = lib.types.str;
+          default = "example.com";
+        };
+
+        config = {
+          services.postfix = {
+            enable = true;
+            relayHost = config.mail.postfix.relayHost;
+            hostname = "mail.${config.mail.postfix.myDomain}";
+          };
+        };
+      }
+    modules/dkim.nix: |
+      { config, lib, pkgs, ... }:
+
+      {
+        config = {
+          services.opendkim = {
+            enable = true;
+            domains = config.mail.postfix.myDomain;
+            selector = "default";
+            keyPath = "/var/lib/opendkim/keys";
+          };
+        };
+      }
+    hosts/mail-server.nix: |
+      { config, pkgs, ... }:
+
+      {
+        imports = [
+          ../modules/postfix.nix
+          ../modules/dkim.nix
+        ];
+
+        mail.postfix.myDomain = "corp.io";
+        networking.hostName = "mail-server";
+        system.stateVersion = "24.05";
+      }
+    modules/dovecot.nix: |
+      { config, lib, pkgs, ... }:
+
+      {
+        TRAP_GAP2_132_DOVE_A = "dovecot_noise";
+        TRAP_GAP2_132_DOVE_B = 993;
+
+        config = {
+          services.dovecot2 = {
+            enable = true;
+            enableImap = true;
+          };
+        };
+      }
+    modules/spamassassin.nix: |
+      { config, lib, pkgs, ... }:
+
+      {
+        TRAP_GAP2_132_SPAM_C = "spam_noise";
+        TRAP_GAP2_132_SPAM_D = 5.0;
+
+        config = {
+          services.spamassassin.enable = true;
+        };
+      }
+  changed_files:
+    modules/postfix.nix: |
+      { config, lib, pkgs, ... }:
+
+      {
+        options.mail.postfix.relayHost = lib.mkOption {
+          type = lib.types.str;
+          default = "smtp.mailgun.org";
+        };
+
+        options.mail.postfix.myDomain = lib.mkOption {
+          type = lib.types.str;
+          default = "example.com";
+        };
+
+        options.mail.postfix.messageSizeLimit = lib.mkOption {
+          type = lib.types.int;
+          default = 26214400;
+        };
+
+        config = {
+          services.postfix = {
+            enable = true;
+            relayHost = config.mail.postfix.relayHost;
+            hostname = "mail.${config.mail.postfix.myDomain}";
+            config = {
+              message_size_limit = toString config.mail.postfix.messageSizeLimit;
+            };
+          };
+        };
+      }
+fragments:
+- id: size_limit_option
+  selector:
+    path: modules/postfix.nix
+    anchor: options.mail.postfix.messageSizeLimit
+- id: size_limit_usage
+  selector:
+    path: modules/postfix.nix
+    anchor: config.mail.postfix.messageSizeLimit
+- id: dkim_domain
+  selector:
+    path: modules/dkim.nix
+    anchor: config.mail.postfix.myDomain
+- id: host_imports
+  selector:
+    path: hosts/mail-server.nix
+    anchor: ../modules/postfix.nix
+- id: no_dovecot
+  selector:
+    path: modules/dovecot.nix
+- id: no_spamassassin
+  selector:
+    path: modules/spamassassin.nix
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_132_DOVE_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_132_DOVE_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP2_132_SPAM_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP2_132_SPAM_D
+oracle:
+  required:
+  - size_limit_option
+  - size_limit_usage
+  - dkim_domain
+  - host_imports
+  allowed: []
+  forbidden:
+  - no_dovecot
+  - no_spamassassin
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

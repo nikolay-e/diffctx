@@ -1,0 +1,196 @@
+name: bal_refactor_013_typescript_extract_interface
+tags:
+- lang:kotlin
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:easy
+repo:
+  initial_files:
+    common/src/main/kotlin/com/messaging/format/MessageFormat.kt: |
+      package com.messaging.format
+
+      enum class MessageFormat {
+          JSON,
+          PROTOBUF,
+          AVRO;
+
+          fun contentType(): String = when (this) {
+              JSON -> "application/json"
+              PROTOBUF -> "application/x-protobuf"
+              AVRO -> "application/avro"
+          }
+      }
+    common/src/main/kotlin/com/messaging/envelope/Envelope.kt: |
+      package com.messaging.envelope
+
+      import com.messaging.format.MessageFormat
+
+      data class Envelope(
+          val id: String,
+          val topic: String,
+          val payload: ByteArray,
+          val format: MessageFormat,
+          val timestamp: Long = System.currentTimeMillis(),
+      )
+    producer/src/main/kotlin/com/messaging/producer/MessageProducer.kt: |
+      package com.messaging.producer
+
+      import com.messaging.envelope.Envelope
+
+      interface MessageProducer {
+          fun send(envelope: Envelope): Boolean
+          fun close()
+      }
+    consumer/src/main/kotlin/com/messaging/consumer/MessageConsumer.kt: |
+      package com.messaging.consumer
+
+      import com.messaging.envelope.Envelope
+      import com.messaging.format.MessageFormat
+
+      class MessageConsumer(private val supportedFormats: Set<MessageFormat>) {
+          fun accept(envelope: Envelope): Boolean {
+              return envelope.format in supportedFormats
+          }
+
+          fun process(envelope: Envelope): ByteArray {
+              if (!accept(envelope)) {
+                  error("unsupported format: ${envelope.format}")
+              }
+              return envelope.payload
+          }
+      }
+    garbage/src/main/kotlin/com/messaging/retry/RetryPolicy.kt: |
+      package com.messaging.retry
+
+      // GARBAGE_RF13_A = "retry_policy_unrelated"
+      data class RetryPolicy(val maxAttempts: Int, val delayMs: Long)
+    garbage/src/main/kotlin/com/messaging/dlq/DeadLetterQueue.kt: |
+      package com.messaging.dlq
+
+      // GARBAGE_RF13_B = "dead_letter_queue_unrelated"
+      class DeadLetterQueue {
+          fun enqueue(topic: String, payload: ByteArray) {}
+          fun drain(): List<Pair<String, ByteArray>> = emptyList()
+      }
+    garbage/src/main/kotlin/com/messaging/metrics/ProducerMetrics.kt: |
+      package com.messaging.metrics
+
+      // GARBAGE_RF13_C = "producer_metrics_unrelated"
+      object ProducerMetrics {
+          fun recordSent(topic: String, sizeBytes: Int) {}
+          fun recordFailed(topic: String) {}
+      }
+  changed_files:
+    common/src/main/kotlin/com/messaging/format/MessageFormat.kt: |
+      package com.messaging.format
+
+      enum class MessageFormat {
+          JSON,
+          PROTOBUF,
+          AVRO;
+
+          fun contentType(): String = when (this) {
+              JSON -> "application/json"
+              PROTOBUF -> "application/x-protobuf"
+              AVRO -> "application/avro"
+          }
+
+          fun isStructured(): Boolean = this == JSON || this == AVRO
+      }
+    common/src/main/kotlin/com/messaging/envelope/Envelope.kt: |
+      package com.messaging.envelope
+
+      import com.messaging.format.MessageFormat
+
+      data class Envelope(
+          val id: String,
+          val topic: String,
+          val payload: ByteArray,
+          val format: MessageFormat,
+          val timestamp: Long = System.currentTimeMillis(),
+          val headers: Map<String, String> = emptyMap(),
+      ) {
+          fun isStructured(): Boolean = format.isStructured()
+      }
+    producer/src/main/kotlin/com/messaging/producer/MessageProducer.kt: |
+      package com.messaging.producer
+
+      import com.messaging.envelope.Envelope
+
+      interface MessageProducer {
+          fun send(envelope: Envelope): Boolean
+          fun close()
+      }
+    consumer/src/main/kotlin/com/messaging/consumer/MessageConsumer.kt: |
+      package com.messaging.consumer
+
+      import com.messaging.envelope.Envelope
+      import com.messaging.format.MessageFormat
+
+      class MessageConsumer(private val supportedFormats: Set<MessageFormat>) {
+          fun accept(envelope: Envelope): Boolean {
+              return envelope.format in supportedFormats
+          }
+
+          fun process(envelope: Envelope): ByteArray {
+              if (!accept(envelope)) {
+                  error("unsupported format: ${envelope.format}")
+              }
+              return envelope.payload
+          }
+      }
+    garbage/src/main/kotlin/com/messaging/retry/RetryPolicy.kt: |
+      package com.messaging.retry
+
+      // GARBAGE_RF13_A = "retry_policy_unrelated"
+      data class RetryPolicy(val maxAttempts: Int, val delayMs: Long)
+    garbage/src/main/kotlin/com/messaging/dlq/DeadLetterQueue.kt: |
+      package com.messaging.dlq
+
+      // GARBAGE_RF13_B = "dead_letter_queue_unrelated"
+      class DeadLetterQueue {
+          fun enqueue(topic: String, payload: ByteArray) {}
+          fun drain(): List<Pair<String, ByteArray>> = emptyList()
+      }
+    garbage/src/main/kotlin/com/messaging/metrics/ProducerMetrics.kt: |
+      package com.messaging.metrics
+
+      // GARBAGE_RF13_C = "producer_metrics_unrelated"
+      object ProducerMetrics {
+          fun recordSent(topic: String, sizeBytes: Int) {}
+          fun recordFailed(topic: String) {}
+      }
+  commit_message: "fix: add isStructured to MessageFormat and propagate to Envelope"
+fragments:
+- id: is_structured_format
+  selector:
+    path: common/src/main/kotlin/com/messaging/format/MessageFormat.kt
+    anchor: "fun isStructured"
+- id: envelope_is_structured
+  selector:
+    path: common/src/main/kotlin/com/messaging/envelope/Envelope.kt
+    anchor: "fun isStructured"
+- id: envelope_headers
+  selector:
+    path: common/src/main/kotlin/com/messaging/envelope/Envelope.kt
+    anchor: "val headers"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_RF13_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_RF13_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_RF13_C
+oracle:
+  required:
+  - is_structured_format
+  - envelope_is_structured
+  allowed:
+  - envelope_headers
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

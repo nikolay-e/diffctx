@@ -1,0 +1,158 @@
+name: gap_107_rust_single_file_pixel_filter
+tags:
+- lang:rust
+- change:single_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/image/pipeline.rs: |
+      use crate::image::filter::Filter;
+      use crate::image::pixel::Pixel;
+
+      pub struct Pipeline {
+          filters: Vec<Box<dyn Filter>>,
+      }
+
+      impl Pipeline {
+          pub fn new() -> Self {
+              Self { filters: Vec::new() }
+          }
+
+          pub fn add_filter(&mut self, filter: Box<dyn Filter>) {
+              self.filters.push(filter);
+          }
+
+          pub fn apply(&self, image: &mut Vec<Pixel>) {
+              for filter in &self.filters {
+                  for pixel in image.iter_mut() {
+                      filter.transform(pixel);
+                  }
+              }
+          }
+      }
+    src/image/filter.rs: |
+      use crate::image::pixel::Pixel;
+
+      pub trait Filter {
+          fn transform(&self, pixel: &mut Pixel);
+      }
+
+      pub struct BrightnessFilter {
+          amount: f32,
+      }
+
+      impl BrightnessFilter {
+          pub fn new(amount: f32) -> Self {
+              Self { amount }
+          }
+      }
+
+      impl Filter for BrightnessFilter {
+          fn transform(&self, pixel: &mut Pixel) {
+              pixel.r = (pixel.r as f32 * self.amount).min(255.0) as u8;
+              pixel.g = (pixel.g as f32 * self.amount).min(255.0) as u8;
+              pixel.b = (pixel.b as f32 * self.amount).min(255.0) as u8;
+          }
+      }
+    src/image/pixel.rs: |
+      #[derive(Debug, Clone, Copy)]
+      pub struct Pixel {
+          pub r: u8,
+          pub g: u8,
+          pub b: u8,
+          pub a: u8,
+      }
+
+      impl Pixel {
+          pub fn rgb(r: u8, g: u8, b: u8) -> Self {
+              Self { r, g, b, a: 255 }
+          }
+
+          pub fn luminance(&self) -> f32 {
+              0.299 * self.r as f32 + 0.587 * self.g as f32 + 0.114 * self.b as f32
+          }
+      }
+    src/image/histogram.rs: |
+      pub struct Histogram {
+          bins: [u32; 256],
+      }
+
+      impl Histogram {
+          pub fn new() -> Self {
+              Self { bins: [0; 256] }
+          }
+
+          pub fn add(&mut self, value: u8) {
+              self.bins[value as usize] += 1;
+          }
+
+          pub fn max_bin(&self) -> u32 {
+              *self.bins.iter().max().unwrap_or(&0)
+          }
+      }
+  changed_files:
+    src/image/pipeline.rs: |
+      use crate::image::filter::Filter;
+      use crate::image::pixel::Pixel;
+
+      pub struct Pipeline {
+          filters: Vec<Box<dyn Filter>>,
+      }
+
+      impl Pipeline {
+          pub fn new() -> Self {
+              Self { filters: Vec::new() }
+          }
+
+          pub fn add_filter(&mut self, filter: Box<dyn Filter>) {
+              self.filters.push(filter);
+          }
+
+          pub fn apply(&self, image: &mut Vec<Pixel>) {
+              for filter in &self.filters {
+                  for pixel in image.iter_mut() {
+                      filter.transform(pixel);
+                  }
+              }
+          }
+
+          pub fn apply_region(&self, image: &mut Vec<Pixel>, start: usize, end: usize) {
+              let clamped_end = end.min(image.len());
+              for filter in &self.filters {
+                  for pixel in image[start..clamped_end].iter_mut() {
+                      filter.transform(pixel);
+                  }
+              }
+          }
+      }
+fragments:
+- id: apply_region
+  selector:
+    path: src/image/pipeline.rs
+    anchor: "pub fn apply_region"
+- id: filter_trait
+  selector:
+    path: src/image/filter.rs
+    anchor: "pub trait Filter"
+- id: pixel_struct
+  selector:
+    path: src/image/pixel.rs
+    anchor: "pub struct Pixel"
+- id: no_histogram
+  selector:
+    path: src/image/histogram.rs
+- id: no_histogram_struct
+  selector:
+    anchor: Histogram
+oracle:
+  required:
+  - apply_region
+  - filter_trait
+  - pixel_struct
+  forbidden:
+  - no_histogram
+  - no_histogram_struct

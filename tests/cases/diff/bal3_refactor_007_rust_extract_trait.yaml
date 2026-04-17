@@ -1,0 +1,219 @@
+name: bal3_refactor_007_rust_extract_trait
+tags:
+- lang:typescript
+- change:multi_file
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/reports/generator.ts: |
+      import { DataSource } from './data_source';
+      import { ReportFormat } from './format';
+
+      export class ReportGenerator {
+          constructor(private source: DataSource) {}
+
+          async generate(reportType: string, format: ReportFormat): Promise<Buffer> {
+              const data = await this.source.fetch(reportType);
+              return format.render(data);
+          }
+      }
+    src/reports/data_source.ts: |
+      export interface DataSource {
+          fetch(reportType: string): Promise<Record<string, unknown>[]>;
+      }
+
+      export class DatabaseDataSource implements DataSource {
+          constructor(private connectionString: string) {}
+
+          async fetch(reportType: string): Promise<Record<string, unknown>[]> {
+              console.log(`Fetching ${reportType} from DB`);
+              return [];
+          }
+      }
+    src/reports/format.ts: |
+      export interface ReportFormat {
+          render(data: Record<string, unknown>[]): Buffer;
+      }
+
+      export class CsvFormat implements ReportFormat {
+          render(data: Record<string, unknown>[]): Buffer {
+              const csv = data.map(row => Object.values(row).join(',')).join('\n');
+              return Buffer.from(csv);
+          }
+      }
+
+      export class JsonFormat implements ReportFormat {
+          render(data: Record<string, unknown>[]): Buffer {
+              return Buffer.from(JSON.stringify(data, null, 2));
+          }
+      }
+    src/api/report_endpoint.ts: |
+      import { ReportGenerator } from '../reports/generator';
+      import { CsvFormat } from '../reports/format';
+
+      export class ReportEndpoint {
+          constructor(private generator: ReportGenerator) {}
+
+          async handleRequest(reportType: string): Promise<{ contentType: string; body: Buffer }> {
+              const format = new CsvFormat();
+              const body = await this.generator.generate(reportType, format);
+              return { contentType: 'text/csv', body };
+          }
+      }
+    src/auth/permissions.ts: |
+      export const GARBAGE_BAL3R007_A = 'report_read_permission';
+
+      export function hasPermission(userId: string, perm: string): boolean { return true; }
+    src/email/attachment.ts: |
+      export const GARBAGE_BAL3R007_B = 'email_attachment_max_size';
+      export const GARBAGE_BAL3R007_C = 10485760;
+
+      export function createAttachment(name: string, data: Buffer) {
+          return { name, data, size: data.length };
+      }
+    src/storage/s3.ts: |
+      export const GARBAGE_BAL3R007_D = 's3_bucket_reports';
+
+      export class S3Client {
+          async upload(key: string, data: Buffer): Promise<string> { return `s3://${key}`; }
+      }
+  changed_files:
+    src/reports/generator.ts: |
+      import { DataSource } from './data_source';
+      import { ReportFormat, RenderOptions } from './format';
+
+      export class ReportGenerator {
+          constructor(private source: DataSource) {}
+
+          async generate(reportType: string, format: ReportFormat, options?: RenderOptions): Promise<Buffer> {
+              const data = await this.source.fetch(reportType);
+              return format.render(data, options);
+          }
+      }
+    src/reports/data_source.ts: |
+      export interface DataSource {
+          fetch(reportType: string): Promise<Record<string, unknown>[]>;
+      }
+
+      export class DatabaseDataSource implements DataSource {
+          constructor(private connectionString: string) {}
+
+          async fetch(reportType: string): Promise<Record<string, unknown>[]> {
+              console.log(`Fetching ${reportType} from DB`);
+              return [];
+          }
+      }
+    src/reports/format.ts: |
+      export interface RenderOptions {
+          includeHeaders?: boolean;
+          maxRows?: number;
+      }
+
+      export interface ReportFormat {
+          render(data: Record<string, unknown>[], options?: RenderOptions): Buffer;
+      }
+
+      export class CsvFormat implements ReportFormat {
+          render(data: Record<string, unknown>[], options?: RenderOptions): Buffer {
+              const rows = options?.maxRows ? data.slice(0, options.maxRows) : data;
+              const header = options?.includeHeaders !== false
+                  ? Object.keys(rows[0] ?? {}).join(',') + '\n'
+                  : '';
+              const csv = header + rows.map(row => Object.values(row).join(',')).join('\n');
+              return Buffer.from(csv);
+          }
+      }
+
+      export class JsonFormat implements ReportFormat {
+          render(data: Record<string, unknown>[], options?: RenderOptions): Buffer {
+              const rows = options?.maxRows ? data.slice(0, options.maxRows) : data;
+              return Buffer.from(JSON.stringify(rows, null, 2));
+          }
+      }
+    src/api/report_endpoint.ts: |
+      import { ReportGenerator } from '../reports/generator';
+      import { CsvFormat, RenderOptions } from '../reports/format';
+
+      export class ReportEndpoint {
+          constructor(private generator: ReportGenerator) {}
+
+          async handleRequest(reportType: string, options?: RenderOptions): Promise<{ contentType: string; body: Buffer }> {
+              const format = new CsvFormat();
+              const body = await this.generator.generate(reportType, format, options);
+              return { contentType: 'text/csv', body };
+          }
+      }
+    src/auth/permissions.ts: |
+      export const GARBAGE_BAL3R007_A = 'report_read_permission';
+
+      export function hasPermission(userId: string, perm: string): boolean { return true; }
+    src/email/attachment.ts: |
+      export const GARBAGE_BAL3R007_B = 'email_attachment_max_size';
+      export const GARBAGE_BAL3R007_C = 10485760;
+
+      export function createAttachment(name: string, data: Buffer) {
+          return { name, data, size: data.length };
+      }
+    src/storage/s3.ts: |
+      export const GARBAGE_BAL3R007_D = 's3_bucket_reports';
+
+      export class S3Client {
+          async upload(key: string, data: Buffer): Promise<string> { return `s3://${key}`; }
+      }
+  commit_message: "feat: add RenderOptions to ReportFormat.render and ReportGenerator.generate"
+fragments:
+- id: render_options_interface
+  selector:
+    path: src/reports/format.ts
+    anchor: "export interface RenderOptions"
+- id: report_format_render_signature
+  selector:
+    path: src/reports/format.ts
+    anchor: "render(data: Record<string, unknown>[], options?: RenderOptions): Buffer"
+- id: generator_generate_options
+  selector:
+    path: src/reports/generator.ts
+    anchor: "async generate(reportType: string, format: ReportFormat, options?: RenderOptions)"
+- id: endpoint_handle_options
+  selector:
+    path: src/api/report_endpoint.ts
+    anchor: "async handleRequest(reportType: string, options?: RenderOptions)"
+- id: no_permissions
+  selector:
+    path: src/auth/permissions.ts
+- id: no_attachment
+  selector:
+    path: src/email/attachment.ts
+- id: no_s3
+  selector:
+    path: src/storage/s3.ts
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3R007_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3R007_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3R007_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3R007_D
+oracle:
+  required:
+  - render_options_interface
+  - report_format_render_signature
+  - generator_generate_options
+  - endpoint_handle_options
+  allowed: []
+  forbidden:
+  - no_permissions
+  - no_attachment
+  - no_s3
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

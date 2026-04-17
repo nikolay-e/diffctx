@@ -1,0 +1,181 @@
+name: gap_100_rust_same_file_easy_histogram_bucketer
+tags:
+- lang:rust
+- change:new_function
+- change:signature
+- change:single_file
+- context:same_file
+- difficulty:easy
+- distance:0hop
+repo:
+  initial_files:
+    src/histogram.rs: |
+      pub struct Histogram {
+          buckets: Vec<u64>,
+          boundaries: Vec<f64>,
+      }
+
+      impl Histogram {
+          pub fn new(boundaries: Vec<f64>) -> Self {
+              let bucket_count = boundaries.len() + 1;
+              Histogram {
+                  buckets: vec![0; bucket_count],
+                  boundaries,
+              }
+          }
+
+          pub fn observe(&mut self, value: f64) {
+              let idx = self.boundaries.iter()
+                  .position(|&b| value < b)
+                  .unwrap_or(self.boundaries.len());
+              self.buckets[idx] += 1;
+          }
+
+          pub fn count(&self) -> u64 {
+              self.buckets.iter().sum()
+          }
+
+          pub fn buckets(&self) -> &[u64] {
+              &self.buckets
+          }
+      }
+    src/counter.rs: |
+      pub struct Counter {
+          value: u64,
+          name: String,
+      }
+
+      impl Counter {
+          pub fn new(name: &str) -> Self {
+              Counter { value: 0, name: name.to_string() }
+          }
+
+          pub fn increment(&mut self) {
+              self.value += 1;
+          }
+
+          pub fn increment_by(&mut self, n: u64) {
+              self.value += n;
+          }
+
+          pub fn get(&self) -> u64 {
+              self.value
+          }
+
+          pub fn name(&self) -> &str {
+              &self.name
+          }
+      }
+    src/gauge.rs: |
+      pub struct Gauge {
+          value: f64,
+          name: String,
+      }
+
+      impl Gauge {
+          pub fn new(name: &str) -> Self {
+              Gauge { value: 0.0, name: name.to_string() }
+          }
+
+          pub fn set(&mut self, val: f64) {
+              self.value = val;
+          }
+
+          pub fn inc(&mut self) {
+              self.value += 1.0;
+          }
+
+          pub fn dec(&mut self) {
+              self.value -= 1.0;
+          }
+
+          pub fn get(&self) -> f64 {
+              self.value
+          }
+      }
+  changed_files:
+    src/histogram.rs: |
+      pub struct Histogram {
+          buckets: Vec<u64>,
+          boundaries: Vec<f64>,
+          sum: f64,
+      }
+
+      impl Histogram {
+          pub fn new(boundaries: Vec<f64>) -> Self {
+              let bucket_count = boundaries.len() + 1;
+              Histogram {
+                  buckets: vec![0; bucket_count],
+                  boundaries,
+                  sum: 0.0,
+              }
+          }
+
+          pub fn exponential(start: f64, factor: f64, count: usize) -> Self {
+              let boundaries: Vec<f64> = (0..count)
+                  .map(|i| start * factor.powi(i as i32))
+                  .collect();
+              Self::new(boundaries)
+          }
+
+          pub fn observe(&mut self, value: f64) {
+              let idx = self.boundaries.iter()
+                  .position(|&b| value < b)
+                  .unwrap_or(self.boundaries.len());
+              self.buckets[idx] += 1;
+              self.sum += value;
+          }
+
+          pub fn count(&self) -> u64 {
+              self.buckets.iter().sum()
+          }
+
+          pub fn mean(&self) -> f64 {
+              let total = self.count();
+              if total == 0 { 0.0 } else { self.sum / total as f64 }
+          }
+
+          pub fn buckets(&self) -> &[u64] {
+              &self.buckets
+          }
+      }
+  commit_message: "feat(histogram): add exponential buckets and mean"
+fixtures:
+  auto_garbage: true
+fragments:
+- id: histogram_sum_field
+  selector:
+    path: src/histogram.rs
+    anchor: "sum: f64"
+- id: histogram_exponential
+  selector:
+    path: src/histogram.rs
+    anchor: "pub fn exponential"
+- id: histogram_mean
+  selector:
+    path: src/histogram.rs
+    anchor: "pub fn mean(&self)"
+- id: histogram_struct
+  selector:
+    path: src/histogram.rs
+    anchor: "pub struct Histogram"
+- id: no_counter
+  selector:
+    path: src/counter.rs
+- id: no_gauge
+  selector:
+    path: src/gauge.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_100_A
+oracle:
+  required:
+  - histogram_sum_field
+  - histogram_exponential
+  - histogram_mean
+  - histogram_struct
+  allowed: []
+  forbidden:
+  - no_counter
+  - no_gauge
+  - no_global_0

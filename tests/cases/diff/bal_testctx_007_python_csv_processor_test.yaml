@@ -1,0 +1,114 @@
+name: bal_testctx_007_python_csv_processor_test
+tags:
+- lang:python
+- change:single_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/csv_processor.py: |
+      import csv
+      from io import StringIO
+      from typing import Dict, List
+
+      def parse_csv(content: str) -> List[Dict[str, str]]:
+          reader = csv.DictReader(StringIO(content))
+          return list(reader)
+    tests/test_csv_processor.py: |
+      from src.csv_processor import parse_csv
+
+      def test_parse_simple_csv():
+          csv_data = "name,age\nAlice,30\nBob,25"
+          result = parse_csv(csv_data)
+          assert len(result) == 2
+          assert result[0]["name"] == "Alice"
+          assert result[1]["age"] == "25"
+
+      def test_parse_empty_csv():
+          csv_data = "name,age"
+          result = parse_csv(csv_data)
+          assert result == []
+    src/excel_exporter.py: |
+      from typing import Any, Dict, List
+
+      def to_excel_rows(data: List[Dict[str, Any]]) -> List[List[Any]]:
+          if not data:
+              return []
+          headers = list(data[0].keys())
+          rows = [headers]
+          for item in data:
+              rows.append([item.get(h, "") for h in headers])
+          return rows
+    src/file_utils.py: |
+      import os
+
+      def read_file(path: str) -> str:
+          with open(path, "r") as f:
+              return f.read()
+
+      def file_exists(path: str) -> bool:
+          return os.path.isfile(path)
+  changed_files:
+    src/csv_processor.py: |
+      import csv
+      from io import StringIO
+      from typing import Any, Callable, Dict, List, Optional
+
+      def parse_csv(content: str) -> List[Dict[str, str]]:
+          reader = csv.DictReader(StringIO(content))
+          return list(reader)
+
+      def filter_rows(
+          rows: List[Dict[str, str]],
+          predicate: Callable[[Dict[str, str]], bool],
+      ) -> List[Dict[str, str]]:
+          return [row for row in rows if predicate(row)]
+
+      def aggregate_column(
+          rows: List[Dict[str, str]],
+          column: str,
+          converter: Callable[[str], Any] = float,
+      ) -> Optional[float]:
+          values = []
+          for row in rows:
+              if column in row and row[column]:
+                  values.append(converter(row[column]))
+          return sum(values) if values else None
+  commit_message: "feat: add filter_rows and aggregate_column for CSV data"
+fragments:
+- id: filter_rows_fn
+  selector:
+    path: src/csv_processor.py
+    anchor: "def filter_rows"
+- id: aggregate_column_fn
+  selector:
+    path: src/csv_processor.py
+    anchor: "def aggregate_column"
+- id: test_imports_csv
+  selector:
+    path: tests/test_csv_processor.py
+    anchor: "from src.csv_processor import parse_csv"
+- id: test_parse_simple
+  selector:
+    path: tests/test_csv_processor.py
+    anchor: "def test_parse_simple_csv"
+- id: no_excel
+  selector:
+    path: src/excel_exporter.py
+    anchor: "def to_excel_rows"
+- id: no_file_utils
+  selector:
+    path: src/file_utils.py
+    anchor: "def read_file"
+oracle:
+  required:
+  - filter_rows_fn
+  - aggregate_column_fn
+  - test_imports_csv
+  allowed:
+  - test_parse_simple
+  forbidden:
+  - no_excel
+  - no_file_utils

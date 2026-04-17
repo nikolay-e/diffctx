@@ -1,0 +1,132 @@
+name: gap_090_rust_import_chain_event_dispatcher
+tags:
+- lang:rust
+- change:new_function
+- change:signature
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:2hop
+repo:
+  initial_files:
+    src/event.rs: |
+      #[derive(Clone, Debug)]
+      pub struct Event {
+          pub kind: String,
+          pub payload: String,
+      }
+
+      impl Event {
+          pub fn new(kind: &str, payload: &str) -> Self {
+              Event {
+                  kind: kind.to_string(),
+                  payload: payload.to_string(),
+              }
+          }
+      }
+    src/dispatcher.rs: |
+      use crate::event::Event;
+
+      pub struct Dispatcher {
+          handlers: Vec<fn(&Event)>,
+      }
+
+      impl Dispatcher {
+          pub fn new() -> Self {
+              Dispatcher { handlers: Vec::new() }
+          }
+
+          pub fn register(&mut self, handler: fn(&Event)) {
+              self.handlers.push(handler);
+          }
+
+          pub fn dispatch(&self, event: &Event) {
+              for handler in &self.handlers {
+                  handler(event);
+              }
+          }
+      }
+    src/logger.rs: |
+      use std::fs::OpenOptions;
+      use std::io::Write;
+
+      pub struct FileLogger {
+          path: String,
+      }
+
+      impl FileLogger {
+          pub fn new(path: &str) -> Self {
+              FileLogger { path: path.to_string() }
+          }
+
+          pub fn log(&self, message: &str) {
+              if let Ok(mut file) = OpenOptions::new()
+                  .create(true)
+                  .append(true)
+                  .open(&self.path)
+              {
+                  let _ = writeln!(file, "{}", message);
+              }
+          }
+      }
+  changed_files:
+    src/event.rs: |
+      #[derive(Clone, Debug)]
+      pub struct Event {
+          pub kind: String,
+          pub payload: String,
+          pub priority: u8,
+      }
+
+      impl Event {
+          pub fn new(kind: &str, payload: &str) -> Self {
+              Event {
+                  kind: kind.to_string(),
+                  payload: payload.to_string(),
+                  priority: 0,
+              }
+          }
+
+          pub fn with_priority(kind: &str, payload: &str, priority: u8) -> Self {
+              Event {
+                  kind: kind.to_string(),
+                  payload: payload.to_string(),
+                  priority,
+              }
+          }
+
+          pub fn is_high_priority(&self) -> bool {
+              self.priority >= 8
+          }
+      }
+  commit_message: "feat(event): add priority field"
+fixtures:
+  auto_garbage: true
+fragments:
+- id: event_priority_field
+  selector:
+    path: src/event.rs
+    anchor: "priority: u8"
+- id: event_with_priority
+  selector:
+    path: src/event.rs
+    anchor: "pub fn with_priority"
+- id: dispatcher_uses_event
+  selector:
+    path: src/dispatcher.rs
+    anchor: "use crate::event::Event"
+- id: no_logger
+  selector:
+    path: src/logger.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_090_A
+oracle:
+  required:
+  - event_priority_field
+  - event_with_priority
+  - dispatcher_uses_event
+  allowed: []
+  forbidden:
+  - no_logger
+  - no_global_0

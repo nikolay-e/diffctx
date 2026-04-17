@@ -1,0 +1,192 @@
+name: bal3_refactor_019_scala_extract_type_class
+tags:
+- lang:scala
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/main/scala/serializers/UserSerializer.scala: |
+      package serializers
+
+      import models.User
+
+      object UserSerializer {
+        def toJson(user: User): String =
+          s"""{"id":${user.id},"name":"${user.name}"}"""
+      }
+    src/main/scala/serializers/OrderSerializer.scala: |
+      package serializers
+
+      import models.Order
+
+      object OrderSerializer {
+        def toJson(order: Order): String =
+          s"""{"id":${order.id},"total":${order.total}}"""
+      }
+    src/main/scala/models/User.scala: |
+      package models
+
+      case class User(id: Long, name: String, email: String)
+    src/main/scala/models/Order.scala: |
+      package models
+
+      case class Order(id: Long, userId: Long, total: Double)
+    src/main/scala/api/ApiController.scala: |
+      package api
+
+      import models.{User, Order}
+      import serializers.{UserSerializer, OrderSerializer}
+
+      class ApiController {
+        def getUser(id: Long): String = {
+          val user = User(id, "Alice", "alice@example.com")
+          UserSerializer.toJson(user)
+        }
+
+        def getOrder(id: Long): String = {
+          val order = Order(id, 1L, 99.99)
+          OrderSerializer.toJson(order)
+        }
+      }
+    src/main/scala/utils/DateHelper.scala: |
+      package utils
+
+      val GARBAGE_R019_DATE_A: String = "date_helper"
+
+      object DateHelper {
+        def now(): String = "2024-01-01"
+      }
+    src/main/scala/utils/MathHelper.scala: |
+      package utils
+
+      val GARBAGE_R019_MATH_B: String = "math_helper"
+
+      object MathHelper {
+        def round(v: Double): Long = Math.round(v)
+      }
+    src/main/scala/utils/StringHelper.scala: |
+      package utils
+
+      val GARBAGE_R019_STR_C: String = "string_helper"
+
+      object StringHelper {
+        def capitalize(s: String): String = s.capitalize
+      }
+  changed_files:
+    src/main/scala/serializers/JsonSerializable.scala: |
+      package serializers
+
+      trait JsonSerializable[A] {
+        def toJson(value: A): String
+      }
+    src/main/scala/serializers/UserSerializer.scala: |
+      package serializers
+
+      import models.User
+
+      implicit object UserSerializer extends JsonSerializable[User] {
+        def toJson(user: User): String =
+          s"""{"id":${user.id},"name":"${user.name}"}"""
+      }
+    src/main/scala/serializers/OrderSerializer.scala: |
+      package serializers
+
+      import models.Order
+
+      implicit object OrderSerializer extends JsonSerializable[Order] {
+        def toJson(order: Order): String =
+          s"""{"id":${order.id},"total":${order.total}}"""
+      }
+    src/main/scala/api/ApiController.scala: |
+      package api
+
+      import models.{User, Order}
+      import serializers._
+
+      class ApiController {
+        def serialize[A](value: A)(implicit s: JsonSerializable[A]): String =
+          s.toJson(value)
+
+        def getUser(id: Long): String = {
+          val user = User(id, "Alice", "alice@example.com")
+          serialize(user)
+        }
+
+        def getOrder(id: Long): String = {
+          val order = Order(id, 1L, 99.99)
+          serialize(order)
+        }
+      }
+    src/main/scala/models/User.scala: |
+      package models
+
+      case class User(id: Long, name: String, email: String)
+    src/main/scala/models/Order.scala: |
+      package models
+
+      case class Order(id: Long, userId: Long, total: Double)
+    src/main/scala/utils/DateHelper.scala: |
+      package utils
+
+      val GARBAGE_R019_DATE_A: String = "date_helper"
+
+      object DateHelper {
+        def now(): String = "2024-01-01"
+      }
+    src/main/scala/utils/MathHelper.scala: |
+      package utils
+
+      val GARBAGE_R019_MATH_B: String = "math_helper"
+
+      object MathHelper {
+        def round(v: Double): Long = Math.round(v)
+      }
+    src/main/scala/utils/StringHelper.scala: |
+      package utils
+
+      val GARBAGE_R019_STR_C: String = "string_helper"
+
+      object StringHelper {
+        def capitalize(s: String): String = s.capitalize
+      }
+  commit_message: "refactor: extract JsonSerializable type class from concrete serializers"
+fragments:
+- id: json_serializable_trait
+  selector:
+    path: src/main/scala/serializers/JsonSerializable.scala
+    anchor: "trait JsonSerializable[A]"
+- id: user_extends_trait
+  selector:
+    path: src/main/scala/serializers/UserSerializer.scala
+    anchor: "extends JsonSerializable[User]"
+- id: order_extends_trait
+  selector:
+    path: src/main/scala/serializers/OrderSerializer.scala
+    anchor: "extends JsonSerializable[Order]"
+- id: api_uses_generic
+  selector:
+    path: src/main/scala/api/ApiController.scala
+    anchor: "def serialize[A](value: A)(implicit s: JsonSerializable[A])"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_R019_DATE_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_R019_MATH_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_R019_STR_C
+oracle:
+  required:
+  - json_serializable_trait
+  - user_extends_trait
+  - order_extends_trait
+  - api_uses_generic
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

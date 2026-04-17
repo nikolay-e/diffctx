@@ -1,0 +1,179 @@
+name: bal3_1hop_052_scala_signature_serializer
+tags:
+- lang:scala
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/serial/Serializer.scala: |
+      package serial
+
+      object Serializer {
+        def toJson(data: Map[String, Any]): String = {
+          data.map { case (k, v) => s""""$k":"$v"""" }.mkString("{", ",", "}")
+        }
+
+        def fromJson(json: String): Map[String, String] = {
+          Map("raw" -> json)
+        }
+      }
+    src/main/scala/api/ResponseBuilder.scala: |
+      package api
+
+      import serial.Serializer
+
+      class ResponseBuilder {
+        def success(data: Map[String, Any]): String = {
+          Serializer.toJson(data + ("status" -> "ok"))
+        }
+
+        def error(message: String): String = {
+          Serializer.toJson(Map("status" -> "error", "message" -> message))
+        }
+      }
+    src/main/scala/api/RequestParser.scala: |
+      package api
+
+      import serial.Serializer
+
+      class RequestParser {
+        def parse(body: String): Map[String, String] = {
+          Serializer.fromJson(body)
+        }
+      }
+    src/main/scala/export/DataExporter.scala: |
+      package export
+
+      import serial.Serializer
+
+      class DataExporter {
+        def exportRecords(records: List[Map[String, Any]]): List[String] = {
+          records.map(Serializer.toJson)
+        }
+      }
+    src/main/scala/importer/DataImporter.scala: |
+      package importer
+
+      import serial.Serializer
+
+      class DataImporter {
+        def importRecords(jsons: List[String]): List[Map[String, String]] = {
+          jsons.map(Serializer.fromJson)
+        }
+      }
+    src/main/scala/logging/LogSink.scala: |
+      package logging
+
+      object LogSink {
+        val GARBAGE_BAL3_052_SINK_A = "sink"
+        val GARBAGE_BAL3_052_DEST_B = "stdout"
+
+        def write(entry: String): Unit = ()
+      }
+    src/main/scala/logging/LogFilter.scala: |
+      package logging
+
+      object LogFilter {
+        val GARBAGE_BAL3_052_FILTER_C = "filter"
+        val GARBAGE_BAL3_052_MINLVL_D = "INFO"
+
+        def shouldLog(level: String): Boolean = true
+      }
+    src/main/scala/logging/LogRotator.scala: |
+      package logging
+
+      object LogRotator {
+        val GARBAGE_BAL3_052_ROT_E = "rotator"
+        val GARBAGE_BAL3_052_MAXSIZE_F = 10485760
+
+        def rotate(path: String): Unit = ()
+      }
+  changed_files:
+    src/main/scala/serial/Serializer.scala: |
+      package serial
+
+      object Serializer {
+        def toJson(data: Map[String, Any], pretty: Boolean = false): String = {
+          val pairs = data.map { case (k, v) => s""""$k":"$v"""" }
+          if (pretty) pairs.mkString("{\n  ", ",\n  ", "\n}")
+          else pairs.mkString("{", ",", "}")
+        }
+
+        def fromJson(json: String, strict: Boolean = true): Map[String, String] = {
+          if (strict && json.trim.isEmpty) throw new IllegalArgumentException("Empty JSON")
+          Map("raw" -> json)
+        }
+
+        def toJsonArray(items: List[Map[String, Any]]): String = {
+          items.map(toJson(_)).mkString("[", ",", "]")
+        }
+      }
+  commit_message: "Add pretty print, strict mode, and array serialization"
+fragments:
+- id: response_builder
+  selector:
+    path: src/main/scala/api/ResponseBuilder.scala
+    anchor: "import serial.Serializer"
+- id: response_to_json
+  selector:
+    path: src/main/scala/api/ResponseBuilder.scala
+    anchor: "Serializer.toJson"
+- id: request_parser
+  selector:
+    path: src/main/scala/api/RequestParser.scala
+    anchor: "import serial.Serializer"
+- id: data_exporter
+  selector:
+    path: src/main/scala/export/DataExporter.scala
+    anchor: "import serial.Serializer"
+- id: data_importer
+  selector:
+    path: src/main/scala/importer/DataImporter.scala
+    anchor: "import serial.Serializer"
+- id: no_log_sink
+  selector:
+    path: src/main/scala/logging/LogSink.scala
+- id: no_log_filter
+  selector:
+    path: src/main/scala/logging/LogFilter.scala
+- id: no_log_rotator
+  selector:
+    path: src/main/scala/logging/LogRotator.scala
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_052_SINK_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_052_DEST_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_052_FILTER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_052_MINLVL_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL3_052_ROT_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL3_052_MAXSIZE_F
+oracle:
+  required:
+  - response_builder
+  - response_to_json
+  - request_parser
+  - data_exporter
+  - data_importer
+  allowed: []
+  forbidden:
+  - no_log_sink
+  - no_log_filter
+  - no_log_rotator
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

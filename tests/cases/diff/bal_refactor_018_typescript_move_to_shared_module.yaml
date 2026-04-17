@@ -1,0 +1,199 @@
+name: bal_refactor_018_typescript_move_to_shared_module
+tags:
+- lang:typescript
+- change:multi_file
+- change:refactor
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/features/billing/validateCard.ts: |
+      export function validateCard(number: string): boolean {
+          const digits = number.replace(/\s/g, '');
+          if (digits.length < 13 || digits.length > 19) return false;
+          let sum = 0;
+          let alternate = false;
+          for (let i = digits.length - 1; i >= 0; i--) {
+              let n = parseInt(digits[i], 10);
+              if (alternate) {
+                  n *= 2;
+                  if (n > 9) n -= 9;
+              }
+              sum += n;
+              alternate = !alternate;
+          }
+          return sum % 10 === 0;
+      }
+    src/features/billing/billingForm.ts: |
+      import { validateCard } from './validateCard';
+
+      export function processBillingForm(cardNumber: string, amount: number) {
+          if (!validateCard(cardNumber)) {
+              throw new Error('Invalid card number');
+          }
+          return { cardNumber, amount, status: 'pending' };
+      }
+    src/features/subscription/subscriptionForm.ts: |
+      function validateCard(number: string): boolean {
+          const digits = number.replace(/\s/g, '');
+          if (digits.length < 13 || digits.length > 19) return false;
+          let sum = 0;
+          let alternate = false;
+          for (let i = digits.length - 1; i >= 0; i--) {
+              let n = parseInt(digits[i], 10);
+              if (alternate) {
+                  n *= 2;
+                  if (n > 9) n -= 9;
+              }
+              sum += n;
+              alternate = !alternate;
+          }
+          return sum % 10 === 0;
+      }
+
+      export function processSubscription(cardNumber: string, plan: string) {
+          if (!validateCard(cardNumber)) {
+              throw new Error('Invalid card number');
+          }
+          return { cardNumber, plan, status: 'active' };
+      }
+    src/features/checkout/checkoutPage.ts: |
+      import { processBillingForm } from '../billing/billingForm';
+
+      export function handleCheckout(cardNumber: string, total: number) {
+          return processBillingForm(cardNumber, total);
+      }
+    src/features/settings/preferences.ts: |
+      const GARBAGE_REFACTOR_018_PREFS_A = 'preferences';
+      const GARBAGE_REFACTOR_018_LANG_B = 'en';
+
+      export function getPreferences() {
+          return { language: 'en', currency: 'USD' };
+      }
+    garbage_analytics.ts: |
+      const GARBAGE_REFACTOR_018_ANALYTICS_C = 'analytics';
+      const GARBAGE_REFACTOR_018_TRACK_D = true;
+
+      export class Analytics {
+          static GARBAGE_REFACTOR_018_CLASS_E = true;
+
+          track(event: string): void {}
+      }
+  changed_files:
+    src/shared/validation/cardValidator.ts: |
+      export function validateCard(number: string): boolean {
+          const digits = number.replace(/\s/g, '');
+          if (digits.length < 13 || digits.length > 19) return false;
+          let sum = 0;
+          let alternate = false;
+          for (let i = digits.length - 1; i >= 0; i--) {
+              let n = parseInt(digits[i], 10);
+              if (alternate) {
+                  n *= 2;
+                  if (n > 9) n -= 9;
+              }
+              sum += n;
+              alternate = !alternate;
+          }
+          return sum % 10 === 0;
+      }
+    src/features/billing/billingForm.ts: |
+      import { validateCard } from '../../shared/validation/cardValidator';
+
+      export function processBillingForm(cardNumber: string, amount: number) {
+          if (!validateCard(cardNumber)) {
+              throw new Error('Invalid card number');
+          }
+          return { cardNumber, amount, status: 'pending' };
+      }
+    src/features/subscription/subscriptionForm.ts: |
+      import { validateCard } from '../../shared/validation/cardValidator';
+
+      export function processSubscription(cardNumber: string, plan: string) {
+          if (!validateCard(cardNumber)) {
+              throw new Error('Invalid card number');
+          }
+          return { cardNumber, plan, status: 'active' };
+      }
+    src/features/checkout/checkoutPage.ts: |
+      import { processBillingForm } from '../billing/billingForm';
+
+      export function handleCheckout(cardNumber: string, total: number) {
+          return processBillingForm(cardNumber, total);
+      }
+    src/features/settings/preferences.ts: |
+      const GARBAGE_REFACTOR_018_PREFS_A = 'preferences';
+      const GARBAGE_REFACTOR_018_LANG_B = 'en';
+
+      export function getPreferences() {
+          return { language: 'en', currency: 'USD' };
+      }
+    garbage_analytics.ts: |
+      const GARBAGE_REFACTOR_018_ANALYTICS_C = 'analytics';
+      const GARBAGE_REFACTOR_018_TRACK_D = true;
+
+      export class Analytics {
+          static GARBAGE_REFACTOR_018_CLASS_E = true;
+
+          track(event: string): void {}
+      }
+  commit_message: "refactor: move duplicate card validation to shared module"
+fragments:
+- id: shared_validator
+  selector:
+    path: src/shared/validation/cardValidator.ts
+    anchor: "export function validateCard"
+- id: billing_imports_shared
+  selector:
+    path: src/features/billing/billingForm.ts
+    anchor: "from '../../shared/validation/cardValidator'"
+- id: subscription_imports_shared
+  selector:
+    path: src/features/subscription/subscriptionForm.ts
+    anchor: "from '../../shared/validation/cardValidator'"
+- id: subscription_uses_validator
+  selector:
+    path: src/features/subscription/subscriptionForm.ts
+    anchor: "validateCard(cardNumber)"
+- id: checkout_uses_billing
+  selector:
+    path: src/features/checkout/checkoutPage.ts
+    anchor: "from '../billing/billingForm'"
+- id: no_preferences
+  selector:
+    path: src/features/settings/preferences.ts
+- id: no_garbage_analytics
+  selector:
+    path: garbage_analytics.ts
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_REFACTOR_018_PREFS_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_REFACTOR_018_LANG_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_REFACTOR_018_ANALYTICS_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_REFACTOR_018_TRACK_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_REFACTOR_018_CLASS_E
+oracle:
+  required:
+  - shared_validator
+  - billing_imports_shared
+  - subscription_imports_shared
+  - subscription_uses_validator
+  - checkout_uses_billing
+  allowed: []
+  forbidden:
+  - no_preferences
+  - no_garbage_analytics
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

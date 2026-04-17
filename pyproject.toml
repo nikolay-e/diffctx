@@ -55,6 +55,7 @@ classifiers = [
 dynamic = [ "version" ]  # Version is still managed in version.py
 dependencies = [
   "networkx>=3.0,<4.0",
+  "numpy>=1.24,<3.0",
   "pathspec>=0.11,<2.0",
   "tiktoken>=0.8,<1.0",
 ]
@@ -79,6 +80,7 @@ optional-dependencies.dev = [
   "pytest-xdist>=3.0,<4.0",
   "pyyaml>=6.0.2,<8.0",
   "radon>=6.0,<7.0",
+  "rank-bm25>=0.2,<1.0",
   "ruamel-yaml>=0.18,<1.0",
   # Quality checks
   "ruff>=0.4,<1.0",
@@ -152,6 +154,7 @@ ini_options.testpaths = [ "tests" ]
 ini_options.pythonpath = [ "src" ]
 ini_options.norecursedirs = [ "mutants", ".git", ".mypy_cache", ".pytest_cache", "__pycache__", ".hypothesis" ]
 ini_options.addopts = "-n auto --dist worksteal"
+ini_options.truncation_limit_lines = 100
 ini_options.timeout = 10
 
 [tool.coverage]

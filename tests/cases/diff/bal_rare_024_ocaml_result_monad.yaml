@@ -1,0 +1,205 @@
+name: bal_rare_024_ocaml_result_monad
+tags:
+- lang:ruby
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:easy
+repo:
+  initial_files:
+    lib/ml/model.rb: |
+      module Ml
+        class Model
+          attr_reader :name, :version
+
+          def initialize(name, version)
+            @name = name
+            @version = version
+          end
+
+          def predict(features)
+            raise NotImplementedError
+          end
+        end
+      end
+    lib/ml/classifier.rb: |
+      require_relative 'model'
+
+      module Ml
+        class Classifier < Model
+          def predict(features)
+            features.values.sum > 0.5 ? 'positive' : 'negative'
+          end
+        end
+      end
+    lib/inference/pipeline.rb: |
+      require_relative '../ml/classifier'
+
+      module Inference
+        class Pipeline
+          def initialize(model)
+            @model = model
+          end
+
+          def run(features)
+            @model.predict(features)
+          end
+        end
+      end
+    lib/inference/batch_runner.rb: |
+      require_relative 'pipeline'
+
+      module Inference
+        class BatchRunner
+          def initialize(pipeline)
+            @pipeline = pipeline
+          end
+
+          def run_batch(records)
+            records.map { |r| { id: r[:id], label: @pipeline.run(r[:features]) } }
+          end
+        end
+      end
+    lib/api/prediction_controller.rb: |
+      require_relative '../inference/batch_runner'
+
+      module Api
+        class PredictionController
+          def initialize(runner)
+            @runner = runner
+          end
+
+          def predict_batch(records)
+            @runner.run_batch(records)
+          end
+        end
+      end
+    garbage/trainer.rb: |
+      # GARBAGE_OCAMLRES_A = "model_trainer_marker"
+    garbage/evaluator.rb: |
+      # GARBAGE_OCAMLRES_B = "model_evaluator_marker"
+    garbage/registry.rb: |
+      # GARBAGE_OCAMLRES_C = "model_registry_marker"
+  changed_files:
+    lib/ml/model.rb: |
+      module Ml
+        class Model
+          attr_reader :name, :version, :threshold
+
+          def initialize(name, version, threshold: 0.5)
+            @name = name
+            @version = version
+            @threshold = threshold
+          end
+
+          def predict(features, context: {})
+            raise NotImplementedError
+          end
+
+          def metadata
+            { name: @name, version: @version, threshold: @threshold }
+          end
+        end
+      end
+    lib/ml/classifier.rb: |
+      require_relative 'model'
+
+      module Ml
+        class Classifier < Model
+          def predict(features, context: {})
+            score = features.values.sum
+            score > @threshold ? 'positive' : 'negative'
+          end
+        end
+      end
+    lib/inference/pipeline.rb: |
+      require_relative '../ml/classifier'
+
+      module Inference
+        class Pipeline
+          def initialize(model)
+            @model = model
+          end
+
+          def run(features, context: {})
+            @model.predict(features, context: context)
+          end
+        end
+      end
+    lib/inference/batch_runner.rb: |
+      require_relative 'pipeline'
+
+      module Inference
+        class BatchRunner
+          def initialize(pipeline)
+            @pipeline = pipeline
+          end
+
+          def run_batch(records, context: {})
+            records.map { |r| { id: r[:id], label: @pipeline.run(r[:features], context: context) } }
+          end
+        end
+      end
+    lib/api/prediction_controller.rb: |
+      require_relative '../inference/batch_runner'
+
+      module Api
+        class PredictionController
+          def initialize(runner)
+            @runner = runner
+          end
+
+          def predict_batch(records, context: {})
+            @runner.run_batch(records, context: context)
+          end
+        end
+      end
+    garbage/trainer.rb: |
+      # GARBAGE_OCAMLRES_A = "model_trainer_marker"
+    garbage/evaluator.rb: |
+      # GARBAGE_OCAMLRES_B = "model_evaluator_marker"
+    garbage/registry.rb: |
+      # GARBAGE_OCAMLRES_C = "model_registry_marker"
+  commit_message: "feat: propagate context hash through predict/run/batch chain"
+fragments:
+- id: model_context_sig
+  selector:
+    path: lib/ml/model.rb
+    anchor: "def predict(features, context: {})"
+- id: threshold_field
+  selector:
+    path: lib/ml/model.rb
+    anchor: "attr_reader :name, :version, :threshold"
+- id: classifier_uses_threshold
+  selector:
+    path: lib/ml/classifier.rb
+    anchor: "score > @threshold"
+- id: pipeline_passes_context
+  selector:
+    path: lib/inference/pipeline.rb
+    anchor: "@model.predict(features, context: context)"
+- id: batch_runner_passes_context
+  selector:
+    path: lib/inference/batch_runner.rb
+    anchor: "@pipeline.run(r[:features], context: context)"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_OCAMLRES_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_OCAMLRES_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_OCAMLRES_C
+oracle:
+  required:
+  - model_context_sig
+  - threshold_field
+  - classifier_uses_threshold
+  - pipeline_passes_context
+  - batch_runner_passes_context
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

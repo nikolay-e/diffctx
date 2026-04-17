@@ -1,0 +1,105 @@
+name: toml_009_app_config_server_port
+tags:
+- lang:toml
+- lang:rust
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    config.toml: |
+      [server]
+      host = "127.0.0.1"
+      port = 3000
+      workers = 4
+
+      [logging]
+      level = "info"
+    src/server.rs: |
+      use std::fs;
+
+      #[derive(Debug)]
+      pub struct Config {
+          pub host: String,
+          pub port: u16,
+          pub workers: u32,
+      }
+
+      impl Config {
+          pub fn from_toml(path: &str) -> Self {
+              let content = fs::read_to_string(path).expect("missing config");
+              let value: toml::Value = content.parse().unwrap();
+              let server = &value["server"];
+              Config {
+                  host: server["host"].as_str().unwrap().to_string(),
+                  port: server["port"].as_integer().unwrap() as u16,
+                  workers: server["workers"].as_integer().unwrap() as u32,
+              }
+          }
+      }
+
+      pub fn bind_address(cfg: &Config) -> String {
+          format!("{}:{}", cfg.host, cfg.port)
+      }
+    src/main.rs: |
+      mod server;
+
+      fn main() {
+          let cfg = server::Config::from_toml("config.toml");
+          let addr = server::bind_address(&cfg);
+          println!("Listening on {addr}");
+      }
+    TOML_NOISE_009_cache.toml: |
+      [TOML_NOISE_009_redis]
+      TOML_NOISE_009_host = "redis.internal"
+      TOML_NOISE_009_port = 6379
+      TOML_NOISE_009_ttl_seconds = 300
+
+      [TOML_NOISE_009_eviction]
+      TOML_NOISE_009_policy = "allkeys-lru"
+    src/toml_noise_009_unused.rs: |
+      // TOML_NOISE_009_legacy server stub
+      pub fn toml_noise_009_old_bind() -> &'static str { "0.0.0.0:8888" }
+  changed_files:
+    config.toml: |
+      [server]
+      host = "0.0.0.0"
+      port = 8443
+      workers = 8
+
+      [logging]
+      level = "warn"
+  commit_message: "config: bind server to all interfaces on port 8443 and double worker count"
+fragments:
+- id: config_server_port
+  selector:
+    path: config.toml
+    anchor: "port = 8443"
+- id: server_rs_from_toml
+  selector:
+    path: src/server.rs
+    anchor: from_toml
+- id: no_noise_toml
+  selector:
+    path: TOML_NOISE_009_cache.toml
+- id: no_unused_rs
+  selector:
+    path: src/toml_noise_009_unused.rs
+- id: no_global_0
+  selector:
+    anchor: TOML_NOISE_009_host
+- id: no_global_1
+  selector:
+    anchor: toml_noise_009_old_bind
+oracle:
+  required:
+  - config_server_port
+  - server_rs_from_toml
+  allowed: []
+  forbidden:
+  - no_noise_toml
+  - no_unused_rs
+  - no_global_0
+  - no_global_1

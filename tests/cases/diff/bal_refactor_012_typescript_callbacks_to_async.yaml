@@ -1,0 +1,170 @@
+name: bal_refactor_012_typescript_callbacks_to_async
+tags:
+- lang:ruby
+- change:bug_fix
+- change:single_file
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    app/services/subscription_service.rb: |
+      class SubscriptionService
+        PLANS = {
+          "basic"    => { price: 9.99,  features: %w[read] },
+          "pro"      => { price: 29.99, features: %w[read write export] },
+          "enterprise" => { price: 99.99, features: %w[read write export admin api] },
+        }.freeze
+
+        attr_reader :subscription
+
+        def initialize(subscription)
+          @subscription = subscription
+        end
+
+        def upgrade_to(new_plan)
+          unless PLANS.key?(new_plan)
+            raise ArgumentError, "unknown plan: #{new_plan}"
+          end
+          @subscription.plan = new_plan
+          @subscription.save
+        end
+
+        def has_feature?(feature)
+          plan_config = PLANS[@subscription.plan]
+          plan_config && plan_config[:features].include?(feature)
+        end
+
+        def monthly_price
+          PLANS.dig(@subscription.plan, :price) || 0.0
+        end
+
+        def active?
+          @subscription.status == "active"
+        end
+      end
+    garbage/workers/renewal.rb: |
+      # GARBAGE_RF12_A = "renewal_worker_unrelated"
+      class RenewalWorker
+        def perform(subscription_id)
+          nil
+        end
+      end
+    garbage/workers/invoice.rb: |
+      # GARBAGE_RF12_B = "invoice_worker_unrelated"
+      class InvoiceWorker
+        def perform(subscription_id)
+          nil
+        end
+      end
+    garbage/workers/notification.rb: |
+      # GARBAGE_RF12_C = "notification_worker_unrelated"
+      class NotificationWorker
+        def perform(user_id, template)
+          nil
+        end
+      end
+  changed_files:
+    app/services/subscription_service.rb: |
+      class SubscriptionService
+        PLANS = {
+          "basic"    => { price: 9.99,  features: %w[read] },
+          "pro"      => { price: 29.99, features: %w[read write export] },
+          "enterprise" => { price: 99.99, features: %w[read write export admin api] },
+        }.freeze
+
+        attr_reader :subscription
+
+        def initialize(subscription)
+          @subscription = subscription
+        end
+
+        def upgrade_to(new_plan)
+          unless PLANS.key?(new_plan)
+            raise ArgumentError, "unknown plan: #{new_plan}"
+          end
+          current_price = monthly_price
+          new_price = PLANS.dig(new_plan, :price)
+          if new_price < current_price
+            raise ArgumentError, "cannot downgrade via upgrade_to; use downgrade_to instead"
+          end
+          @subscription.plan = new_plan
+          @subscription.save
+        end
+
+        def downgrade_to(new_plan)
+          unless PLANS.key?(new_plan)
+            raise ArgumentError, "unknown plan: #{new_plan}"
+          end
+          @subscription.plan = new_plan
+          @subscription.save
+        end
+
+        def has_feature?(feature)
+          return false unless active?
+          plan_config = PLANS[@subscription.plan]
+          plan_config && plan_config[:features].include?(feature)
+        end
+
+        def monthly_price
+          PLANS.dig(@subscription.plan, :price) || 0.0
+        end
+
+        def active?
+          @subscription.status == "active"
+        end
+      end
+    garbage/workers/renewal.rb: |
+      # GARBAGE_RF12_A = "renewal_worker_unrelated"
+      class RenewalWorker
+        def perform(subscription_id)
+          nil
+        end
+      end
+    garbage/workers/invoice.rb: |
+      # GARBAGE_RF12_B = "invoice_worker_unrelated"
+      class InvoiceWorker
+        def perform(subscription_id)
+          nil
+        end
+      end
+    garbage/workers/notification.rb: |
+      # GARBAGE_RF12_C = "notification_worker_unrelated"
+      class NotificationWorker
+        def perform(user_id, template)
+          nil
+        end
+      end
+  commit_message: "fix: guard downgrade in upgrade_to and require active in has_feature?"
+fragments:
+- id: upgrade_downgrade_guard
+  selector:
+    path: app/services/subscription_service.rb
+    anchor: "cannot downgrade via upgrade_to"
+- id: has_feature_active_guard
+  selector:
+    path: app/services/subscription_service.rb
+    anchor: "return false unless active?"
+- id: downgrade_to_method
+  selector:
+    path: app/services/subscription_service.rb
+    anchor: "def downgrade_to"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_RF12_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_RF12_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_RF12_C
+oracle:
+  required:
+  - upgrade_downgrade_guard
+  - has_feature_active_guard
+  allowed:
+  - downgrade_to_method
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

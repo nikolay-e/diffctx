@@ -1,0 +1,95 @@
+name: powershell_007_dot_source_dependency
+tags:
+- lang:powershell
+- change:single_file
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    helpers.ps1: |
+      function Format-ByteSize {
+          param([long]$Bytes)
+          if ($Bytes -ge 1GB) { return "{0:N2} GB" -f ($Bytes / 1GB) }
+          if ($Bytes -ge 1MB) { return "{0:N2} MB" -f ($Bytes / 1MB) }
+          return "{0:N2} KB" -f ($Bytes / 1KB)
+      }
+
+      function Get-FileAge {
+          param([string]$FilePath)
+          $file = Get-Item $FilePath
+          return (Get-Date) - $file.LastWriteTime
+      }
+    main.ps1: |
+      . ./helpers.ps1
+
+      $file = "C:\Logs\app.log"
+      $size = (Get-Item $file).Length
+      Write-Output "Size: $(Format-ByteSize -Bytes $size)"
+      $age = Get-FileAge -FilePath $file
+      Write-Output "Age: $($age.Days) days"
+    PS_NOISE_007_WmiHelpers.psm1: |
+      function PS_NOISE_007_Get-CpuLoadPercent {
+          $cpu = Get-WmiObject Win32_Processor
+          return $cpu.LoadPercentage
+      }
+      Export-ModuleMember -Function PS_NOISE_007_Get-CpuLoadPercent
+    PS_NOISE_007_EventLogUtils.psm1: |
+      function PS_NOISE_007_Get-RecentErrors {
+          param([int]$Count = 10)
+          Get-EventLog -LogName Application -EntryType Error -Newest $Count
+      }
+      Export-ModuleMember -Function PS_NOISE_007_Get-RecentErrors
+  changed_files:
+    helpers.ps1: |
+      function Format-ByteSize {
+          param([long]$Bytes)
+          if ($Bytes -ge 1GB) { return "{0:N2} GB" -f ($Bytes / 1GB) }
+          if ($Bytes -ge 1MB) { return "{0:N2} MB" -f ($Bytes / 1MB) }
+          return "{0:N2} KB" -f ($Bytes / 1KB)
+      }
+
+      function Get-FileAge {
+          param([string]$FilePath)
+          $file = Get-Item $FilePath
+          return (Get-Date) - $file.LastWriteTime
+      }
+
+      function Test-FileStale {
+          param([string]$FilePath, [int]$ThresholdDays = 7)
+          $age = Get-FileAge -FilePath $FilePath
+          return $age.TotalDays -gt $ThresholdDays
+      }
+  commit_message: "feat: add Test-FileStale helper using Get-FileAge"
+fragments:
+- id: helpers_new_function
+  selector:
+    path: helpers.ps1
+    anchor: Test-FileStale
+- id: main_dot_source
+  selector:
+    path: main.ps1
+    anchor: ". ./helpers.ps1"
+- id: no_wmi_helpers
+  selector:
+    path: PS_NOISE_007_WmiHelpers.psm1
+- id: no_event_log_utils
+  selector:
+    path: PS_NOISE_007_EventLogUtils.psm1
+- id: no_global_0
+  selector:
+    anchor: PS_NOISE_007_Get-CpuLoadPercent
+- id: no_global_1
+  selector:
+    anchor: PS_NOISE_007_Get-RecentErrors
+oracle:
+  required:
+  - helpers_new_function
+  - main_dot_source
+  allowed: []
+  forbidden:
+  - no_wmi_helpers
+  - no_event_log_utils
+  - no_global_0
+  - no_global_1

@@ -1,0 +1,177 @@
+name: bal4_bugfix_005_swift_empty_check_boundary
+tags:
+- lang:swift
+- change:single_file
+- change:bug_fix
+- context:cross_module
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    Sources/Models/Order.swift: |
+      struct OrderItem {
+          let productId: Int
+          let quantity: Int
+          let unitPrice: Double
+      }
+
+      struct Order {
+          let id: Int
+          var items: [OrderItem]
+
+          func totalPrice() -> Double {
+              return items.reduce(0) { $0 + $1.unitPrice * Double($1.quantity) }
+          }
+      }
+    Sources/Services/OrderService.swift: |
+      class OrderService {
+          func averageItemPrice(order: Order) -> Double {
+              let total = order.totalPrice()
+              return total / Double(order.items.count)
+          }
+
+          func hasItems(_ order: Order) -> Bool {
+              return order.items.count > 0
+          }
+      }
+    Sources/Views/OrderSummary.swift: |
+      class OrderSummaryView {
+          let service: OrderService
+
+          init(service: OrderService) {
+              self.service = service
+          }
+
+          func display(order: Order) -> String {
+              let avg = service.averageItemPrice(order: order)
+              return "Average: \(avg)"
+          }
+      }
+    garbage_bal4_005_export.swift: |
+      GARBAGE_BAL4_005_EXPORT_A = "pdf"
+      GARBAGE_BAL4_005_FORMAT_B = "a4"
+
+      class ExportService {
+          let GARBAGE_BAL4_005_DPI_C = 300
+          func export() {}
+      }
+    garbage_bal4_005_queue.swift: |
+      GARBAGE_BAL4_005_QUEUE_D = "fifo"
+      GARBAGE_BAL4_005_MAX_E = 100
+
+      class TaskQueue {
+          let GARBAGE_BAL4_005_WORKERS_F = 4
+          func enqueue() {}
+      }
+  changed_files:
+    Sources/Models/Order.swift: |
+      struct OrderItem {
+          let productId: Int
+          let quantity: Int
+          let unitPrice: Double
+      }
+
+      struct Order {
+          let id: Int
+          var items: [OrderItem]
+
+          func totalPrice() -> Double {
+              return items.reduce(0) { $0 + $1.unitPrice * Double($1.quantity) }
+          }
+      }
+    Sources/Services/OrderService.swift: |
+      class OrderService {
+          func averageItemPrice(order: Order) -> Double {
+              guard !order.items.isEmpty else {
+                  return 0.0
+              }
+              let total = order.totalPrice()
+              return total / Double(order.items.count)
+          }
+
+          func hasItems(_ order: Order) -> Bool {
+              return order.items.count > 0
+          }
+      }
+    Sources/Views/OrderSummary.swift: |
+      class OrderSummaryView {
+          let service: OrderService
+
+          init(service: OrderService) {
+              self.service = service
+          }
+
+          func display(order: Order) -> String {
+              let avg = service.averageItemPrice(order: order)
+              return "Average: \(avg)"
+          }
+      }
+    garbage_bal4_005_export.swift: |
+      GARBAGE_BAL4_005_EXPORT_A = "pdf"
+      GARBAGE_BAL4_005_FORMAT_B = "a4"
+
+      class ExportService {
+          let GARBAGE_BAL4_005_DPI_C = 300
+          func export() {}
+      }
+    garbage_bal4_005_queue.swift: |
+      GARBAGE_BAL4_005_QUEUE_D = "fifo"
+      GARBAGE_BAL4_005_MAX_E = 100
+
+      class TaskQueue {
+          let GARBAGE_BAL4_005_WORKERS_F = 4
+          func enqueue() {}
+      }
+  commit_message: "fix: guard against division by zero on empty order"
+fragments:
+- id: averageItemPrice_func
+  selector:
+    path: Sources/Services/OrderService.swift
+    anchor: "func averageItemPrice(order: Order) -> Double"
+- id: empty_guard
+  selector:
+    path: Sources/Services/OrderService.swift
+    anchor: "guard !order.items.isEmpty"
+- id: order_struct
+  selector:
+    path: Sources/Models/Order.swift
+    anchor: "struct Order"
+- id: no_garbage_export
+  selector:
+    path: garbage_bal4_005_export.swift
+- id: no_garbage_queue
+  selector:
+    path: garbage_bal4_005_queue.swift
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL4_005_EXPORT_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL4_005_FORMAT_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL4_005_DPI_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL4_005_QUEUE_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL4_005_MAX_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL4_005_WORKERS_F
+oracle:
+  required:
+  - averageItemPrice_func
+  - empty_guard
+  - order_struct
+  allowed: []
+  forbidden:
+  - no_garbage_export
+  - no_garbage_queue
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

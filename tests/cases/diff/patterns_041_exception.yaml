@@ -1,224 +1,224 @@
 name: patterns_041_exception
+tags:
+- lang:java
+- change:multi_file
+- change:refactor
+- context:cross_module
+- distance:1hop
+- difficulty:medium
 repo:
   initial_files:
-    src/exceptions.py: |
-      class ValidationError(Exception):
-          def __init__(self, field: str, message: str):
-              self.field = field
-              self.message = message
-              super().__init__(f"{field}: {message}")
+    src/main/java/com/devops/DeploymentService.java: |
+      package com.devops;
 
-      class NotFoundError(Exception):
-          def __init__(self, resource: str, identifier: str):
-              self.resource = resource
-              self.identifier = identifier
-              super().__init__(f"{resource} with id {identifier} not found")
-    src/user_repository.py: |
-      from src.exceptions import NotFoundError, ValidationError
+      import java.util.Map;
 
-      class UserRepository:
-          def __init__(self):
-              self.users = {}
+      public class DeploymentService {
+          private final ArtifactRegistry registry;
 
-          def get(self, user_id: int):
-              if user_id not in self.users:
-                  raise NotFoundError("User", str(user_id))
-              return self.users[user_id]
+          public DeploymentService(ArtifactRegistry registry) {
+              this.registry = registry;
+          }
 
-          def create(self, data: dict):
-              if "email" not in data:
-                  raise ValidationError("email", "is required")
-              user_id = len(self.users) + 1
-              self.users[user_id] = {**data, "id": user_id}
-              return self.users[user_id]
-    tests/test_user_repository.py: |
-      from src.user_repository import UserRepository
+          public void deploy(String appName, String version, String environment) {
+              if (appName == null || appName.isBlank()) {
+                  throw new IllegalArgumentException("App name required");
+              }
+              if (version == null || version.isBlank()) {
+                  throw new IllegalArgumentException("Version required");
+              }
+              if (!isValidEnvironment(environment)) {
+                  throw new IllegalArgumentException("Invalid environment: " + environment);
+              }
+              Artifact artifact = registry.find(appName, version);
+              System.out.println("Deploying " + appName + ":" + version + " to " + environment);
+          }
 
-      def test_create_user():
-          repo = UserRepository()
-          user = repo.create({"name": "Test", "email": "test@example.com"})
-          assert user["name"] == "Test"
-    src/auth_errors.py: |
-      class AuthenticationError(Exception):
-          pass
+          private boolean isValidEnvironment(String env) {
+              return "staging".equals(env) || "production".equals(env);
+          }
+      }
+    src/main/java/com/devops/RollbackService.java: |
+      package com.devops;
 
-      class TokenExpiredError(AuthenticationError):
-          def __init__(self, token_id: str):
-              self.token_id = token_id
-              super().__init__(f"Token {token_id} expired")
+      public class RollbackService {
+          private final ArtifactRegistry registry;
 
-      class InvalidCredentialsError(AuthenticationError):
-          def __init__(self, username: str):
-              self.username = username
-              super().__init__(f"Invalid credentials for {username}")
-    src/product_repository.py: |
-      from src.exceptions import NotFoundError, ValidationError
+          public RollbackService(ArtifactRegistry registry) {
+              this.registry = registry;
+          }
 
-      class ProductRepository:
-          def __init__(self):
-              self.products = {}
+          public void rollback(String appName, String targetVersion, String environment) {
+              if (appName == null || appName.isBlank()) {
+                  throw new IllegalArgumentException("App name required");
+              }
+              if (!isValidEnvironment(environment)) {
+                  throw new IllegalArgumentException("Invalid environment: " + environment);
+              }
+              Artifact artifact = registry.find(appName, targetVersion);
+              System.out.println("Rolling back " + appName + " to " + targetVersion);
+          }
 
-          def get(self, product_id: int):
-              if product_id not in self.products:
-                  raise NotFoundError("Product", str(product_id))
-              return self.products[product_id]
+          private boolean isValidEnvironment(String env) {
+              return "staging".equals(env) || "production".equals(env);
+          }
+      }
+    src/main/java/com/devops/ArtifactRegistry.java: |
+      package com.devops;
 
-          def create(self, data: dict):
-              if "name" not in data:
-                  raise ValidationError("name", "is required")
-              product_id = len(self.products) + 1
-              self.products[product_id] = {**data, "id": product_id}
-              return self.products[product_id]
+      public interface ArtifactRegistry {
+          Artifact find(String appName, String version);
+      }
+    src/main/java/com/devops/Artifact.java: |
+      package com.devops;
+
+      public class Artifact {
+          private final String name;
+          private final String version;
+
+          public Artifact(String name, String version) {
+              this.name = name;
+              this.version = version;
+          }
+
+          public String getName() { return name; }
+          public String getVersion() { return version; }
+      }
+    garbage/MonitoringAgent.java: |
+      // GARBAGE_PATT41_MON_A = "monitoring_agent_marker"
+    garbage/AlertManager.java: |
+      // GARBAGE_PATT41_ALERT_B = "alert_manager_marker"
+    garbage/SecretRotator.java: |
+      // GARBAGE_PATT41_SECRET_C = "secret_rotator_marker"
   changed_files:
-    src/exceptions.py: |
-      class ValidationError(Exception):
-          def __init__(self, field: str, message: str):
-              self.field = field
-              self.message = message
-              super().__init__(f"{field}: {message}")
+    src/main/java/com/devops/DeploymentService.java: |
+      package com.devops;
 
-      class NotFoundError(Exception):
-          def __init__(self, resource: str, identifier: str):
-              self.resource = resource
-              self.identifier = identifier
-              super().__init__(f"{resource} with id {identifier} not found")
+      import com.devops.validation.DeploymentValidator;
 
-      class PermissionDeniedError(Exception):
-          def __init__(self, action: str, resource: str):
-              self.action = action
-              self.resource = resource
-              super().__init__(f"Permission denied: cannot {action} {resource}")
-    src/user_repository.py: |
-      from src.exceptions import NotFoundError, ValidationError
+      public class DeploymentService {
+          private final ArtifactRegistry registry;
+          private final DeploymentValidator validator;
 
-      class UserRepository:
-          def __init__(self):
-              self.users = {}
+          public DeploymentService(ArtifactRegistry registry, DeploymentValidator validator) {
+              this.registry = registry;
+              this.validator = validator;
+          }
 
-          def get(self, user_id: int):
-              if user_id not in self.users:
-                  raise NotFoundError("User", str(user_id))
-              return self.users[user_id]
+          public void deploy(String appName, String version, String environment) {
+              validator.validate(appName, version, environment);
+              Artifact artifact = registry.find(appName, version);
+              System.out.println("Deploying " + appName + ":" + version + " to " + environment);
+          }
+      }
+    src/main/java/com/devops/RollbackService.java: |
+      package com.devops;
 
-          def create(self, data: dict):
-              if "email" not in data:
-                  raise ValidationError("email", "is required")
-              if "name" not in data:
-                  raise ValidationError("name", "is required")
-              user_id = len(self.users) + 1
-              self.users[user_id] = {**data, "id": user_id}
-              return self.users[user_id]
-    tests/test_user_repository.py: |
-      import pytest
-      from src.user_repository import UserRepository
-      from src.exceptions import NotFoundError, ValidationError
+      import com.devops.validation.DeploymentValidator;
 
-      def test_create_user():
-          repo = UserRepository()
-          user = repo.create({"name": "Test", "email": "test@example.com"})
-          assert user["name"] == "Test"
+      public class RollbackService {
+          private final ArtifactRegistry registry;
+          private final DeploymentValidator validator;
 
-      def test_get_nonexistent_raises_not_found():
-          repo = UserRepository()
-          with pytest.raises(NotFoundError) as exc_info:
-              repo.get(999)
-          assert exc_info.value.resource == "User"
-          assert exc_info.value.identifier == "999"
+          public RollbackService(ArtifactRegistry registry, DeploymentValidator validator) {
+              this.registry = registry;
+              this.validator = validator;
+          }
 
-      def test_create_without_email_raises_validation_error():
-          repo = UserRepository()
-          with pytest.raises(ValidationError) as exc_info:
-              repo.create({"name": "Test"})
-          assert exc_info.value.field == "email"
-          assert "required" in exc_info.value.message
+          public void rollback(String appName, String targetVersion, String environment) {
+              validator.validate(appName, targetVersion, environment);
+              Artifact artifact = registry.find(appName, targetVersion);
+              System.out.println("Rolling back " + appName + " to " + targetVersion);
+          }
+      }
+    src/main/java/com/devops/validation/DeploymentValidator.java: |
+      package com.devops.validation;
 
-      def test_create_without_name_raises_validation_error():
-          repo = UserRepository()
-          with pytest.raises(ValidationError) as exc_info:
-              repo.create({"email": "test@example.com"})
-          assert exc_info.value.field == "name"
-    src/auth_errors.py: |
-      class AuthenticationError(Exception):
-          pass
+      public class DeploymentValidator {
+          public void validate(String appName, String version, String environment) {
+              if (appName == null || appName.isBlank()) {
+                  throw new IllegalArgumentException("App name required");
+              }
+              if (version == null || version.isBlank()) {
+                  throw new IllegalArgumentException("Version required");
+              }
+              if (!"staging".equals(environment) && !"production".equals(environment)) {
+                  throw new IllegalArgumentException("Invalid environment: " + environment);
+              }
+          }
+      }
+    src/main/java/com/devops/ArtifactRegistry.java: |
+      package com.devops;
 
-      class TokenExpiredError(AuthenticationError):
-          def __init__(self, token_id: str):
-              self.token_id = token_id
-              super().__init__(f"Token {token_id} expired")
+      public interface ArtifactRegistry {
+          Artifact find(String appName, String version);
+      }
+    src/main/java/com/devops/Artifact.java: |
+      package com.devops;
 
-      class InvalidCredentialsError(AuthenticationError):
-          def __init__(self, username: str):
-              self.username = username
-              super().__init__(f"Invalid credentials for {username}")
-    src/product_repository.py: |
-      from src.exceptions import NotFoundError, ValidationError
+      public class Artifact {
+          private final String name;
+          private final String version;
 
-      class ProductRepository:
-          def __init__(self):
-              self.products = {}
+          public Artifact(String name, String version) {
+              this.name = name;
+              this.version = version;
+          }
 
-          def get(self, product_id: int):
-              if product_id not in self.products:
-                  raise NotFoundError("Product", str(product_id))
-              return self.products[product_id]
-
-          def create(self, data: dict):
-              if "name" not in data:
-                  raise ValidationError("name", "is required")
-              product_id = len(self.products) + 1
-              self.products[product_id] = {**data, "id": product_id}
-              return self.products[product_id]
-  commit_message: Update files
+          public String getName() { return name; }
+          public String getVersion() { return version; }
+      }
+    garbage/MonitoringAgent.java: |
+      // GARBAGE_PATT41_MON_A = "monitoring_agent_marker"
+    garbage/AlertManager.java: |
+      // GARBAGE_PATT41_ALERT_B = "alert_manager_marker"
+    garbage/SecretRotator.java: |
+      // GARBAGE_PATT41_SECRET_C = "secret_rotator_marker"
+  commit_message: "refactor: extract DeploymentValidator used by DeploymentService and RollbackService"
 fragments:
-- id: exceptions
+- id: deploy_validator_field
   selector:
-    path: src/exceptions.py
-    anchor: 'class PermissionDeniedError(Exception):'
-- id: test_user_repository
+    path: src/main/java/com/devops/DeploymentService.java
+    anchor: "private final DeploymentValidator validator;"
+- id: deploy_validate_call
   selector:
-    path: tests/test_user_repository.py
-    anchor: import pytest
-- id: test_user_repository_1
+    path: src/main/java/com/devops/DeploymentService.java
+    anchor: "validator.validate(appName, version, environment);"
+- id: rollback_uses_validator
   selector:
-    path: tests/test_user_repository.py
-    anchor: pytest.raises(NotFoundError)
-- id: user_repository
+    path: src/main/java/com/devops/RollbackService.java
+    anchor: "import com.devops.validation.DeploymentValidator;"
+- id: validator_class
   selector:
-    path: src/user_repository.py
-    anchor: raise ValidationError("name", "is required")
-- id: no_auth_errors
+    path: src/main/java/com/devops/validation/DeploymentValidator.java
+    anchor: "public class DeploymentValidator {"
+- id: validator_validate_method
   selector:
-    path: src/auth_errors.py
-- id: no_product_repository
+    path: src/main/java/com/devops/validation/DeploymentValidator.java
+    anchor: "public void validate(String appName, String version, String environment) {"
+- id: unrelated_artifact
   selector:
-    path: src/product_repository.py
-- id: no_global_0
+    path: src/main/java/com/devops/Artifact.java
+    anchor: "public String getName()"
+- id: no_garbage_a
   selector:
-    anchor: class AuthenticationError
-- id: no_global_1
+    anchor: GARBAGE_PATT41_MON_A
+- id: no_garbage_b
   selector:
-    anchor: TokenExpiredError
-- id: no_global_2
+    anchor: GARBAGE_PATT41_ALERT_B
+- id: no_garbage_c
   selector:
-    anchor: InvalidCredentialsError
-- id: no_global_3
-  selector:
-    anchor: class ProductRepository
-- id: no_global_4
-  selector:
-    anchor: '"Product"'
+    anchor: GARBAGE_PATT41_SECRET_C
 oracle:
   required:
-  - exceptions
-  - test_user_repository
-  - test_user_repository_1
-  - user_repository
-  allowed: []
+  - deploy_validator_field
+  - deploy_validate_call
+  - validator_class
+  - validator_validate_method
+  allowed:
+  - rollback_uses_validator
   forbidden:
-  - no_auth_errors
-  - no_product_repository
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
+  - unrelated_artifact
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

@@ -1,0 +1,107 @@
+name: bal_hard_001_scala_actor_system
+tags:
+- lang:scala
+- change:multi_file
+- change:signature
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/models/Message.scala: |
+      package models
+      case class Message(id: String, content: String, sender: String)
+    src/main/scala/actors/Processor.scala: |
+      package actors
+      import models.Message
+      class Processor {
+        def process(msg: Message): String = {
+          s"Processed: ${msg.content}"
+        }
+      }
+    src/main/scala/services/Router.scala: |
+      package services
+      import actors.Processor
+      import models.Message
+      class Router {
+        private val processor = new Processor()
+        def route(msg: Message): String = processor.process(msg)
+      }
+    src/main/scala/api/Controller.scala: |
+      package api
+      import services.Router
+      import models.Message
+      class Controller {
+        private val router = new Router()
+        def handle(id: String, content: String): String = {
+          val msg = Message(id, content, "system")
+          router.route(msg)
+        }
+      }
+    src/main/scala/util/Logging.scala: |
+      package util
+      object Logging {
+        def info(msg: String): Unit = println(s"[INFO] $msg")
+      }
+    src/main/scala/util/Metrics.scala: |
+      package util
+      object Metrics {
+        var counter: Int = 0
+        def increment(): Unit = { counter += 1 }
+      }
+  changed_files:
+    src/main/scala/models/Message.scala: |
+      package models
+      import java.time.Instant
+      case class Message(id: String, content: String, sender: String, timestamp: Instant = Instant.now())
+    src/main/scala/actors/Processor.scala: |
+      package actors
+      import models.Message
+      class Processor {
+        def process(msg: Message): String = {
+          s"Processed at ${msg.timestamp}: ${msg.content}"
+        }
+      }
+  commit_message: "feat: add timestamp to Message"
+fragments:
+- id: message_timestamp
+  selector:
+    path: Message.scala
+    anchor: "timestamp: Instant"
+- id: processor_uses_timestamp
+  selector:
+    path: Processor.scala
+    anchor: "msg.timestamp"
+- id: router_uses_processor
+  selector:
+    path: Router.scala
+    anchor: "processor.process(msg)"
+- id: controller_uses_router
+  selector:
+    path: Controller.scala
+    anchor: "router.route(msg)"
+- id: controller_creates_msg
+  selector:
+    path: Controller.scala
+    anchor: 'Message(id, content, "system")'
+- id: no_logging
+  selector:
+    path: util/Logging.scala
+- id: no_metrics
+  selector:
+    path: util/Metrics.scala
+- id: no_info_method
+  selector:
+    anchor: "def info(msg: String)"
+oracle:
+  required:
+  - message_timestamp
+  - processor_uses_timestamp
+  - router_uses_processor
+  - controller_uses_router
+  - controller_creates_msg
+  allowed: []
+  forbidden:
+  - no_logging
+  - no_metrics
+  - no_info_method

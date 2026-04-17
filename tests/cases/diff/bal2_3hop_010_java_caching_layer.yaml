@@ -1,0 +1,206 @@
+name: bal2_3hop_010_java_caching_layer
+tags:
+- lang:java
+- change:single_file
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/app/cache/CacheEntry.java: |
+      package com.app.cache;
+
+      public class CacheEntry {
+          private final String key;
+          private final Object value;
+          public CacheEntry(String key, Object value) {
+              this.key = key;
+              this.value = value;
+          }
+          public String getKey() { return key; }
+          public Object getValue() { return value; }
+      }
+    src/main/java/com/app/cache/CacheStore.java: |
+      package com.app.cache;
+
+      import com.app.cache.CacheEntry;
+      import java.util.HashMap;
+      import java.util.Map;
+
+      public class CacheStore {
+          private final Map<String, CacheEntry> store = new HashMap<>();
+          public void put(CacheEntry entry) {
+              store.put(entry.getKey(), entry);
+          }
+          public CacheEntry get(String key) {
+              return store.get(key);
+          }
+      }
+    src/main/java/com/app/service/CachedUserService.java: |
+      package com.app.service;
+
+      import com.app.cache.CacheStore;
+      import com.app.cache.CacheEntry;
+
+      public class CachedUserService {
+          private final CacheStore cache;
+          public CachedUserService(CacheStore cache) {
+              this.cache = cache;
+          }
+          public String getUser(String id) {
+              CacheEntry entry = cache.get(id);
+              if (entry != null) {
+                  return (String) entry.getValue();
+              }
+              String user = "user-" + id;
+              cache.put(new CacheEntry(id, user));
+              return user;
+          }
+      }
+    src/main/java/com/app/api/UserEndpoint.java: |
+      package com.app.api;
+
+      import com.app.service.CachedUserService;
+
+      public class UserEndpoint {
+          private final CachedUserService userService;
+          public UserEndpoint(CachedUserService userService) {
+              this.userService = userService;
+          }
+          public String fetchUser(String id) {
+              return userService.getUser(id);
+          }
+      }
+    src/main/java/com/app/util/Compression.java: |
+      package com.app.util;
+
+      public class Compression {
+          public static byte[] compress(byte[] data) { return data; }
+      }
+    src/main/java/com/app/util/NetworkUtils.java: |
+      package com.app.util;
+
+      public class NetworkUtils {
+          public static boolean ping(String host) { return true; }
+      }
+  changed_files:
+    src/main/java/com/app/cache/CacheEntry.java: |
+      package com.app.cache;
+
+      public class CacheEntry {
+          private final String key;
+          private final Object value;
+          private final long createdAt;
+          private final long ttlMillis;
+          public CacheEntry(String key, Object value, long ttlMillis) {
+              this.key = key;
+              this.value = value;
+              this.createdAt = System.currentTimeMillis();
+              this.ttlMillis = ttlMillis;
+          }
+          public String getKey() { return key; }
+          public Object getValue() { return value; }
+          public boolean isExpired() {
+              return System.currentTimeMillis() - createdAt > ttlMillis;
+          }
+      }
+    src/main/java/com/app/cache/CacheStore.java: |
+      package com.app.cache;
+
+      import com.app.cache.CacheEntry;
+      import java.util.HashMap;
+      import java.util.Map;
+
+      public class CacheStore {
+          private final Map<String, CacheEntry> store = new HashMap<>();
+          public void put(CacheEntry entry) {
+              store.put(entry.getKey(), entry);
+          }
+          public CacheEntry get(String key) {
+              return store.get(key);
+          }
+      }
+    src/main/java/com/app/service/CachedUserService.java: |
+      package com.app.service;
+
+      import com.app.cache.CacheStore;
+      import com.app.cache.CacheEntry;
+
+      public class CachedUserService {
+          private final CacheStore cache;
+          public CachedUserService(CacheStore cache) {
+              this.cache = cache;
+          }
+          public String getUser(String id) {
+              CacheEntry entry = cache.get(id);
+              if (entry != null) {
+                  return (String) entry.getValue();
+              }
+              String user = "user-" + id;
+              cache.put(new CacheEntry(id, user, 60000));
+              return user;
+          }
+      }
+    src/main/java/com/app/api/UserEndpoint.java: |
+      package com.app.api;
+
+      import com.app.service.CachedUserService;
+
+      public class UserEndpoint {
+          private final CachedUserService userService;
+          public UserEndpoint(CachedUserService userService) {
+              this.userService = userService;
+          }
+          public String fetchUser(String id) {
+              return userService.getUser(id);
+          }
+      }
+    src/main/java/com/app/util/Compression.java: |
+      package com.app.util;
+
+      public class Compression {
+          public static byte[] compress(byte[] data) { return data; }
+      }
+    src/main/java/com/app/util/NetworkUtils.java: |
+      package com.app.util;
+
+      public class NetworkUtils {
+          public static boolean ping(String host) { return true; }
+      }
+  commit_message: "feat: add TTL expiration to CacheEntry"
+fragments:
+- id: cache_ttl
+  selector:
+    path: src/main/java/com/app/cache/CacheEntry.java
+    anchor: "private final long ttlMillis"
+- id: store_imports_entry
+  selector:
+    path: src/main/java/com/app/cache/CacheStore.java
+    anchor: "import com.app.cache.CacheEntry"
+- id: user_service_imports_store
+  selector:
+    path: src/main/java/com/app/service/CachedUserService.java
+    anchor: "import com.app.cache.CacheStore"
+- id: endpoint_imports_service
+  selector:
+    path: src/main/java/com/app/api/UserEndpoint.java
+    anchor: "import com.app.service.CachedUserService"
+- id: no_compression
+  selector:
+    path: src/main/java/com/app/util/Compression.java
+    anchor: "class Compression"
+- id: no_network
+  selector:
+    path: src/main/java/com/app/util/NetworkUtils.java
+    anchor: "class NetworkUtils"
+oracle:
+  required:
+  - cache_ttl
+  - store_imports_entry
+  - user_service_imports_store
+  - endpoint_imports_service
+  allowed: []
+  forbidden:
+  - no_compression
+  - no_network

@@ -1,0 +1,159 @@
+name: bal2_testctx_041_csharp_url_builder
+tags:
+- lang:csharp
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/Http/UrlBuilder.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.Http
+      {
+          public class UrlBuilder
+          {
+              private string _baseUrl;
+              private readonly Dictionary<string, string> _queryParams = new();
+
+              public UrlBuilder(string baseUrl)
+              {
+                  _baseUrl = baseUrl;
+              }
+
+              public UrlBuilder AddParam(string key, string value)
+              {
+                  _queryParams[key] = value;
+                  return this;
+              }
+
+              public string Build()
+              {
+                  if (_queryParams.Count == 0) return _baseUrl;
+                  var query = string.Join("&", _queryParams.Select(kv => $"{kv.Key}={kv.Value}"));
+                  return $"{_baseUrl}?{query}";
+              }
+          }
+      }
+    Tests/UrlBuilderTests.cs: |
+      using Xunit;
+      using App.Http;
+
+      namespace App.Tests
+      {
+          public class UrlBuilderTests
+          {
+              [Fact]
+              public void Build_NoParams_ReturnsBaseUrl()
+              {
+                  var url = new UrlBuilder("https://api.example.com").Build();
+                  Assert.Equal("https://api.example.com", url);
+              }
+
+              [Fact]
+              public void Build_WithParams_AppendsQueryString()
+              {
+                  var url = new UrlBuilder("https://api.example.com")
+                      .AddParam("page", "1")
+                      .Build();
+                  Assert.Contains("page=1", url);
+              }
+          }
+      }
+    src/Http/ResponseParser.cs: |
+      using System;
+
+      namespace App.Http
+      {
+          public class ResponseParser
+          {
+              public int ExtractStatusCode(string rawResponse)
+              {
+                  return 200;
+              }
+          }
+      }
+  changed_files:
+    src/Http/UrlBuilder.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Linq;
+
+      namespace App.Http
+      {
+          public class UrlBuilder
+          {
+              private string _baseUrl;
+              private string _fragment;
+              private readonly Dictionary<string, string> _queryParams = new();
+              private readonly List<string> _pathSegments = new();
+
+              public UrlBuilder(string baseUrl)
+              {
+                  _baseUrl = baseUrl;
+              }
+
+              public UrlBuilder AddParam(string key, string value)
+              {
+                  _queryParams[key] = value;
+                  return this;
+              }
+
+              public UrlBuilder AddPath(string segment)
+              {
+                  _pathSegments.Add(segment.Trim('/'));
+                  return this;
+              }
+
+              public UrlBuilder SetFragment(string fragment)
+              {
+                  _fragment = fragment;
+                  return this;
+              }
+
+              public string Build()
+              {
+                  var url = _baseUrl.TrimEnd('/');
+                  if (_pathSegments.Count > 0)
+                      url += "/" + string.Join("/", _pathSegments);
+                  if (_queryParams.Count > 0)
+                      url += "?" + string.Join("&", _queryParams.Select(kv => $"{kv.Key}={kv.Value}"));
+                  if (!string.IsNullOrEmpty(_fragment))
+                      url += "#" + _fragment;
+                  return url;
+              }
+          }
+      }
+  commit_message: "feat: add path segments and fragment support to URL builder"
+fragments:
+- id: add_path
+  selector:
+    path: src/Http/UrlBuilder.cs
+    anchor: "public UrlBuilder AddPath(string segment)"
+- id: set_fragment
+  selector:
+    path: src/Http/UrlBuilder.cs
+    anchor: "public UrlBuilder SetFragment(string fragment)"
+- id: test_imports
+  selector:
+    path: Tests/UrlBuilderTests.cs
+    anchor: "using App.Http"
+- id: test_class
+  selector:
+    path: Tests/UrlBuilderTests.cs
+    anchor: "public class UrlBuilderTests"
+- id: no_response_parser
+  selector:
+    path: src/Http/ResponseParser.cs
+    anchor: "class ResponseParser"
+oracle:
+  required:
+  - add_path
+  - set_fragment
+  - test_imports
+  allowed:
+  - test_class
+  forbidden:
+  - no_response_parser

@@ -1,0 +1,96 @@
+name: bal4_testctx_004_go_validator_test
+tags:
+- lang:go
+- change:single_file
+- change:bug_fix
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    validation/email.go: |
+      package validation
+
+      import "strings"
+
+      func IsValidEmail(email string) bool {
+          return strings.Contains(email, "@")
+      }
+    validation/email_test.go: |
+      package validation
+
+      import "testing"
+
+      func TestIsValidEmail(t *testing.T) {
+          if !IsValidEmail("user@example.com") {
+              t.Fatal("expected valid")
+          }
+      }
+
+      func TestInvalidEmail(t *testing.T) {
+          if IsValidEmail("notanemail") {
+              t.Fatal("expected invalid")
+          }
+      }
+    validation/phone.go: |
+      package validation
+
+      import "regexp"
+
+      var phoneRe = regexp.MustCompile(`^\+\d{10,15}$`)
+
+      func IsValidPhone(phone string) bool {
+          return phoneRe.MatchString(phone)
+      }
+    config/settings.go: |
+      package config
+
+      type Settings struct {
+          AppName string
+          Debug   bool
+      }
+  changed_files:
+    validation/email.go: |
+      package validation
+
+      import "strings"
+
+      func IsValidEmail(email string) bool {
+          at := strings.Index(email, "@")
+          if at < 1 {
+              return false
+          }
+          dot := strings.LastIndex(email, ".")
+          return dot > at+1 && dot < len(email)-1
+      }
+  commit_message: "fix: stricter email validation with dot check"
+fragments:
+- id: email_fn
+  selector:
+    path: validation/email.go
+    anchor: "func IsValidEmail(email string) bool"
+- id: test_valid_email
+  selector:
+    path: validation/email_test.go
+    anchor: "func TestIsValidEmail(t *testing.T)"
+- id: test_invalid_email
+  selector:
+    path: validation/email_test.go
+    anchor: "func TestInvalidEmail(t *testing.T)"
+- id: no_phone
+  selector:
+    path: validation/phone.go
+    anchor: "func IsValidPhone"
+- id: no_config
+  selector:
+    path: config/settings.go
+    anchor: "type Settings struct"
+oracle:
+  required:
+  - email_fn
+  - test_valid_email
+  - test_invalid_email
+  allowed: []
+  forbidden:
+  - no_phone
+  - no_config

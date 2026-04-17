@@ -1,0 +1,239 @@
+name: bal_crossmod_012_cpp_physics_to_entity
+tags:
+- lang:cpp
+- change:single_file
+- change:new_function
+- context:cross_module
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/physics/rigid_body.hpp: |
+      #pragma once
+
+      namespace physics {
+
+      struct Vector3 {
+          float x, y, z;
+      };
+
+      class RigidBody {
+      public:
+          RigidBody(float mass, Vector3 position);
+          void apply_force(Vector3 force);
+          void update(float dt);
+          Vector3 get_position() const;
+      private:
+          float mass_;
+          Vector3 position_;
+          Vector3 velocity_;
+      };
+
+      }
+    src/physics/rigid_body.cpp: |
+      #include "rigid_body.hpp"
+
+      namespace physics {
+
+      RigidBody::RigidBody(float mass, Vector3 position)
+          : mass_(mass), position_(position), velocity_{0, 0, 0} {}
+
+      void RigidBody::apply_force(Vector3 force) {
+          velocity_.x += force.x / mass_;
+          velocity_.y += force.y / mass_;
+          velocity_.z += force.z / mass_;
+      }
+
+      void RigidBody::update(float dt) {
+          position_.x += velocity_.x * dt;
+          position_.y += velocity_.y * dt;
+          position_.z += velocity_.z * dt;
+      }
+
+      Vector3 RigidBody::get_position() const {
+          return position_;
+      }
+
+      }
+    src/entity/game_object.hpp: |
+      #pragma once
+      #include <string>
+      #include "../physics/rigid_body.hpp"
+
+      namespace entity {
+
+      class GameObject {
+      public:
+          GameObject(const std::string& name, physics::RigidBody body);
+          void tick(float dt);
+          const std::string& name() const;
+      private:
+          std::string name_;
+          physics::RigidBody body_;
+      };
+
+      }
+    src/entity/game_object.cpp: |
+      #include "game_object.hpp"
+
+      namespace entity {
+
+      GameObject::GameObject(const std::string& name, physics::RigidBody body)
+          : name_(name), body_(std::move(body)) {}
+
+      void GameObject::tick(float dt) {
+          body_.update(dt);
+      }
+
+      const std::string& GameObject::name() const {
+          return name_;
+      }
+
+      }
+    src/audio/sound_manager.hpp: |
+      #pragma once
+      #include <string>
+
+      namespace audio {
+
+      class SoundManager {
+      public:
+          void play(const std::string& clip_name);
+          void stop_all();
+      };
+
+      }
+  changed_files:
+    src/physics/rigid_body.hpp: |
+      #pragma once
+
+      namespace physics {
+
+      struct Vector3 {
+          float x, y, z;
+      };
+
+      class RigidBody {
+      public:
+          RigidBody(float mass, Vector3 position);
+          void apply_force(Vector3 force);
+          void apply_impulse(Vector3 impulse);
+          void update(float dt);
+          Vector3 get_position() const;
+          Vector3 get_velocity() const;
+      private:
+          float mass_;
+          Vector3 position_;
+          Vector3 velocity_;
+      };
+
+      }
+    src/physics/rigid_body.cpp: |
+      #include "rigid_body.hpp"
+
+      namespace physics {
+
+      RigidBody::RigidBody(float mass, Vector3 position)
+          : mass_(mass), position_(position), velocity_{0, 0, 0} {}
+
+      void RigidBody::apply_force(Vector3 force) {
+          velocity_.x += force.x / mass_;
+          velocity_.y += force.y / mass_;
+          velocity_.z += force.z / mass_;
+      }
+
+      void RigidBody::apply_impulse(Vector3 impulse) {
+          velocity_.x += impulse.x;
+          velocity_.y += impulse.y;
+          velocity_.z += impulse.z;
+      }
+
+      void RigidBody::update(float dt) {
+          position_.x += velocity_.x * dt;
+          position_.y += velocity_.y * dt;
+          position_.z += velocity_.z * dt;
+      }
+
+      Vector3 RigidBody::get_position() const {
+          return position_;
+      }
+
+      Vector3 RigidBody::get_velocity() const {
+          return velocity_;
+      }
+
+      }
+    src/entity/game_object.hpp: |
+      #pragma once
+      #include <string>
+      #include "../physics/rigid_body.hpp"
+
+      namespace entity {
+
+      class GameObject {
+      public:
+          GameObject(const std::string& name, physics::RigidBody body);
+          void tick(float dt);
+          const std::string& name() const;
+      private:
+          std::string name_;
+          physics::RigidBody body_;
+      };
+
+      }
+    src/entity/game_object.cpp: |
+      #include "game_object.hpp"
+
+      namespace entity {
+
+      GameObject::GameObject(const std::string& name, physics::RigidBody body)
+          : name_(name), body_(std::move(body)) {}
+
+      void GameObject::tick(float dt) {
+          body_.update(dt);
+      }
+
+      const std::string& GameObject::name() const {
+          return name_;
+      }
+
+      }
+    src/audio/sound_manager.hpp: |
+      #pragma once
+      #include <string>
+
+      namespace audio {
+
+      class SoundManager {
+      public:
+          void play(const std::string& clip_name);
+          void stop_all();
+      };
+
+      }
+  commit_message: "feat: add impulse and velocity getter to RigidBody"
+fragments:
+- id: apply_impulse_decl
+  selector:
+    path: src/physics/rigid_body.hpp
+    anchor: "void apply_impulse(Vector3 impulse)"
+- id: apply_impulse_impl
+  selector:
+    path: src/physics/rigid_body.cpp
+    anchor: "void RigidBody::apply_impulse"
+- id: entity_uses_rigidbody
+  selector:
+    path: src/entity/game_object.hpp
+    anchor: "physics::RigidBody body_"
+- id: no_sound_manager
+  selector:
+    path: src/audio/sound_manager.hpp
+    anchor: "class SoundManager"
+oracle:
+  required:
+  - apply_impulse_decl
+  - apply_impulse_impl
+  - entity_uses_rigidbody
+  allowed: []
+  forbidden:
+  - no_sound_manager

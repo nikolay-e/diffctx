@@ -1,0 +1,208 @@
+name: bal_hard_021_php_event_dispatcher
+tags:
+- lang:php
+- change:multi_file
+- change:signature
+- context:cross_module
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/Event/EventInterface.php: |
+      <?php
+      namespace App\Event;
+      interface EventInterface {
+          public function getName(): string;
+      }
+    src/Event/Dispatcher.php: |
+      <?php
+      namespace App\Event;
+      class Dispatcher {
+          private array $listeners = [];
+          public function listen(string $eventName, callable $listener): void {
+              $this->listeners[$eventName][] = $listener;
+          }
+          public function dispatch(EventInterface $event): void {
+              $name = $event->getName();
+              foreach ($this->listeners[$name] ?? [] as $listener) {
+                  $listener($event);
+              }
+          }
+      }
+    src/Event/UserRegisteredEvent.php: |
+      <?php
+      namespace App\Event;
+      class UserRegisteredEvent implements EventInterface {
+          public string $userId;
+          public string $email;
+          public function __construct(string $userId, string $email) {
+              $this->userId = $userId;
+              $this->email = $email;
+          }
+          public function getName(): string { return 'user.registered'; }
+      }
+    src/Listener/WelcomeEmailListener.php: |
+      <?php
+      namespace App\Listener;
+      use App\Event\UserRegisteredEvent;
+      class WelcomeEmailListener {
+          public function __invoke(UserRegisteredEvent $event): void {
+              echo "Welcome email to {$event->email}\n";
+          }
+      }
+    src/Listener/AuditLogListener.php: |
+      <?php
+      namespace App\Listener;
+      use App\Event\EventInterface;
+      class AuditLogListener {
+          public function __invoke(EventInterface $event): void {
+              echo "Audit: {$event->getName()}\n";
+          }
+      }
+    src/Service/UserService.php: |
+      <?php
+      namespace App\Service;
+      use App\Event\Dispatcher;
+      use App\Event\UserRegisteredEvent;
+      class UserService {
+          private Dispatcher $dispatcher;
+          public function __construct(Dispatcher $dispatcher) {
+              $this->dispatcher = $dispatcher;
+          }
+          public function register(string $userId, string $email): void {
+              $this->dispatcher->dispatch(new UserRegisteredEvent($userId, $email));
+          }
+      }
+    src/Controller/UserController.php: |
+      <?php
+      namespace App\Controller;
+      use App\Service\UserService;
+      class UserController {
+          private UserService $userService;
+          public function __construct(UserService $userService) {
+              $this->userService = $userService;
+          }
+          public function register(string $userId, string $email): string {
+              $this->userService->register($userId, $email);
+              return "User $userId registered";
+          }
+      }
+    src/Helpers/Mailer.php: |
+      <?php
+      namespace App\Helpers;
+      class Mailer {
+          public static function send(string $to, string $subject, string $body): bool {
+              return true;
+          }
+      }
+  changed_files:
+    src/Event/Dispatcher.php: |
+      <?php
+      namespace App\Event;
+      class Dispatcher {
+          private array $listeners = [];
+          private array $subscribers = [];
+          public function listen(string $eventName, callable $listener): void {
+              $this->listeners[$eventName][] = $listener;
+          }
+          public function subscribe(SubscriberInterface $subscriber): void {
+              foreach ($subscriber->getSubscribedEvents() as $eventName => $method) {
+                  $this->listen($eventName, [$subscriber, $method]);
+              }
+              $this->subscribers[] = $subscriber;
+          }
+          public function dispatch(EventInterface $event): void {
+              $name = $event->getName();
+              foreach ($this->listeners[$name] ?? [] as $listener) {
+                  $listener($event);
+              }
+          }
+      }
+    src/Event/SubscriberInterface.php: |
+      <?php
+      namespace App\Event;
+      interface SubscriberInterface {
+          public function getSubscribedEvents(): array;
+      }
+    src/Listener/NotificationSubscriber.php: |
+      <?php
+      namespace App\Listener;
+      use App\Event\SubscriberInterface;
+      use App\Event\UserRegisteredEvent;
+      class NotificationSubscriber implements SubscriberInterface {
+          public function getSubscribedEvents(): array {
+              return ['user.registered' => 'onUserRegistered'];
+          }
+          public function onUserRegistered(UserRegisteredEvent $event): void {
+              echo "Push notification for {$event->userId}\n";
+          }
+      }
+    src/App/EventBootstrap.php: |
+      <?php
+      namespace App\App;
+      use App\Event\Dispatcher;
+      use App\Listener\WelcomeEmailListener;
+      use App\Listener\AuditLogListener;
+      use App\Listener\NotificationSubscriber;
+      class EventBootstrap {
+          public static function configure(Dispatcher $dispatcher): void {
+              $dispatcher->listen('user.registered', new WelcomeEmailListener());
+              $dispatcher->listen('user.registered', new AuditLogListener());
+              $dispatcher->subscribe(new NotificationSubscriber());
+          }
+      }
+  commit_message: "feat: add subscriber pattern to event dispatcher"
+fragments:
+- id: dispatcher_subscribe
+  selector:
+    path: Dispatcher.php
+    anchor: "public function subscribe(SubscriberInterface $subscriber)"
+- id: subscriber_interface
+  selector:
+    path: SubscriberInterface.php
+    anchor: "interface SubscriberInterface"
+- id: notification_subscriber
+  selector:
+    path: NotificationSubscriber.php
+    anchor: "class NotificationSubscriber"
+- id: notification_subscribed_events
+  selector:
+    path: NotificationSubscriber.php
+    anchor: "public function getSubscribedEvents()"
+- id: bootstrap_subscribes
+  selector:
+    path: EventBootstrap.php
+    anchor: "$dispatcher->subscribe(new NotificationSubscriber())"
+- id: event_interface
+  selector:
+    path: EventInterface.php
+    anchor: "interface EventInterface"
+- id: user_service_dispatches
+  selector:
+    path: UserService.php
+    anchor: "$this->dispatcher->dispatch"
+- id: no_mailer
+  selector:
+    path: Helpers/Mailer.php
+- id: no_welcome_body
+  selector:
+    path: WelcomeEmailListener.php
+    anchor: "Welcome email to"
+- id: no_audit_body
+  selector:
+    path: AuditLogListener.php
+    anchor: "Audit:"
+oracle:
+  required:
+  - dispatcher_subscribe
+  - subscriber_interface
+  - notification_subscriber
+  - notification_subscribed_events
+  - bootstrap_subscribes
+  - event_interface
+  - user_service_dispatches
+  allowed: []
+  forbidden:
+  - no_mailer
+  - no_welcome_body
+  - no_audit_body

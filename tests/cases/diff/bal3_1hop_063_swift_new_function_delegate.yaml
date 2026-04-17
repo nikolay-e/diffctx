@@ -1,0 +1,377 @@
+name: bal3_1hop_063_swift_new_function_delegate
+tags:
+- lang:swift
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    Sources/Auth/AuthManager.swift: |
+      import Foundation
+
+      protocol AuthDelegate: AnyObject {
+          func authDidLogin(user: String)
+          func authDidLogout()
+      }
+
+      class AuthManager {
+          weak var delegate: AuthDelegate?
+          private var currentUser: String?
+
+          func login(username: String, password: String) {
+              currentUser = username
+              delegate?.authDidLogin(user: username)
+          }
+
+          func logout() {
+              currentUser = nil
+              delegate?.authDidLogout()
+          }
+      }
+    Sources/Controllers/DashboardController.swift: |
+      import Foundation
+      import Auth
+
+      class DashboardController: AuthDelegate {
+          private let authManager: AuthManager
+
+          init(authManager: AuthManager) {
+              self.authManager = authManager
+              self.authManager.delegate = self
+          }
+
+          func authDidLogin(user: String) {
+              refreshDashboard(for: user)
+          }
+
+          func authDidLogout() {
+              clearDashboard()
+          }
+
+          func refreshDashboard(for user: String) {}
+          func clearDashboard() {}
+      }
+    Sources/Controllers/ProfileController.swift: |
+      import Foundation
+      import Auth
+
+      class ProfileController: AuthDelegate {
+          private let authManager: AuthManager
+
+          init(authManager: AuthManager) {
+              self.authManager = authManager
+          }
+
+          func authDidLogin(user: String) {
+              loadProfile(for: user)
+          }
+
+          func authDidLogout() {
+              clearProfile()
+          }
+
+          func loadProfile(for user: String) {}
+          func clearProfile() {}
+      }
+    Sources/Controllers/NotificationController.swift: |
+      import Foundation
+      import Auth
+
+      class NotificationController: AuthDelegate {
+          private let authManager: AuthManager
+
+          init(authManager: AuthManager) {
+              self.authManager = authManager
+          }
+
+          func authDidLogin(user: String) {
+              subscribeToNotifications(user: user)
+          }
+
+          func authDidLogout() {
+              unsubscribeAll()
+          }
+
+          func subscribeToNotifications(user: String) {}
+          func unsubscribeAll() {}
+      }
+    Sources/Controllers/SettingsController.swift: |
+      import Foundation
+      import Auth
+
+      class SettingsController: AuthDelegate {
+          private let authManager: AuthManager
+
+          init(authManager: AuthManager) {
+              self.authManager = authManager
+          }
+
+          func authDidLogin(user: String) {
+              loadSettings(for: user)
+          }
+
+          func authDidLogout() {
+              resetSettings()
+          }
+
+          func loadSettings(for user: String) {}
+          func resetSettings() {}
+      }
+    Sources/Networking/WebSocket.swift: |
+      import Foundation
+      GARBAGE_063_WEBSOCKET_URL_A = "wss://example.com"
+      GARBAGE_063_RECONNECT_DELAY_B = 3.0
+
+      class WebSocketClient {
+          func connect() {}
+          func disconnect() {}
+      }
+    Sources/Storage/FileManager+Ext.swift: |
+      import Foundation
+      GARBAGE_063_TEMP_DIR_C = "/tmp"
+      GARBAGE_063_MAX_FILE_SIZE_D = 10485760
+
+      extension FileManager {
+          func documentsDirectory() -> URL {
+              return urls(for: .documentDirectory, in: .userDomainMask).first!
+          }
+      }
+    Sources/Analytics/Tracker.swift: |
+      import Foundation
+      GARBAGE_063_TRACKER_ID_E = "UA-000000"
+      GARBAGE_063_BATCH_SIZE_F = 50
+
+      class AnalyticsTracker {
+          func track(event: String) {}
+      }
+  changed_files:
+    Sources/Auth/AuthManager.swift: |
+      import Foundation
+
+      protocol AuthDelegate: AnyObject {
+          func authDidLogin(user: String)
+          func authDidLogout()
+          func authDidRefreshToken(user: String, newExpiry: Date)
+      }
+
+      class AuthManager {
+          weak var delegate: AuthDelegate?
+          private var currentUser: String?
+          private var tokenExpiry: Date?
+
+          func login(username: String, password: String) {
+              currentUser = username
+              tokenExpiry = Date().addingTimeInterval(3600)
+              delegate?.authDidLogin(user: username)
+          }
+
+          func logout() {
+              currentUser = nil
+              tokenExpiry = nil
+              delegate?.authDidLogout()
+          }
+
+          func refreshToken() {
+              guard let user = currentUser else { return }
+              let newExpiry = Date().addingTimeInterval(3600)
+              tokenExpiry = newExpiry
+              delegate?.authDidRefreshToken(user: user, newExpiry: newExpiry)
+          }
+      }
+    Sources/Controllers/DashboardController.swift: |
+      import Foundation
+      import Auth
+
+      class DashboardController: AuthDelegate {
+          private let authManager: AuthManager
+
+          init(authManager: AuthManager) {
+              self.authManager = authManager
+              self.authManager.delegate = self
+          }
+
+          func authDidLogin(user: String) {
+              refreshDashboard(for: user)
+          }
+
+          func authDidLogout() {
+              clearDashboard()
+          }
+
+          func authDidRefreshToken(user: String, newExpiry: Date) {}
+
+          func refreshDashboard(for user: String) {}
+          func clearDashboard() {}
+      }
+    Sources/Controllers/ProfileController.swift: |
+      import Foundation
+      import Auth
+
+      class ProfileController: AuthDelegate {
+          private let authManager: AuthManager
+
+          init(authManager: AuthManager) {
+              self.authManager = authManager
+          }
+
+          func authDidLogin(user: String) {
+              loadProfile(for: user)
+          }
+
+          func authDidLogout() {
+              clearProfile()
+          }
+
+          func authDidRefreshToken(user: String, newExpiry: Date) {}
+
+          func loadProfile(for user: String) {}
+          func clearProfile() {}
+      }
+    Sources/Controllers/NotificationController.swift: |
+      import Foundation
+      import Auth
+
+      class NotificationController: AuthDelegate {
+          private let authManager: AuthManager
+
+          init(authManager: AuthManager) {
+              self.authManager = authManager
+          }
+
+          func authDidLogin(user: String) {
+              subscribeToNotifications(user: user)
+          }
+
+          func authDidLogout() {
+              unsubscribeAll()
+          }
+
+          func authDidRefreshToken(user: String, newExpiry: Date) {}
+
+          func subscribeToNotifications(user: String) {}
+          func unsubscribeAll() {}
+      }
+    Sources/Controllers/SettingsController.swift: |
+      import Foundation
+      import Auth
+
+      class SettingsController: AuthDelegate {
+          private let authManager: AuthManager
+
+          init(authManager: AuthManager) {
+              self.authManager = authManager
+          }
+
+          func authDidLogin(user: String) {
+              loadSettings(for: user)
+          }
+
+          func authDidLogout() {
+              resetSettings()
+          }
+
+          func authDidRefreshToken(user: String, newExpiry: Date) {}
+
+          func loadSettings(for user: String) {}
+          func resetSettings() {}
+      }
+    Sources/Networking/WebSocket.swift: |
+      import Foundation
+      GARBAGE_063_WEBSOCKET_URL_A = "wss://example.com"
+      GARBAGE_063_RECONNECT_DELAY_B = 3.0
+
+      class WebSocketClient {
+          func connect() {}
+          func disconnect() {}
+      }
+    Sources/Storage/FileManager+Ext.swift: |
+      import Foundation
+      GARBAGE_063_TEMP_DIR_C = "/tmp"
+      GARBAGE_063_MAX_FILE_SIZE_D = 10485760
+
+      extension FileManager {
+          func documentsDirectory() -> URL {
+              return urls(for: .documentDirectory, in: .userDomainMask).first!
+          }
+      }
+    Sources/Analytics/Tracker.swift: |
+      import Foundation
+      GARBAGE_063_TRACKER_ID_E = "UA-000000"
+      GARBAGE_063_BATCH_SIZE_F = 50
+
+      class AnalyticsTracker {
+          func track(event: String) {}
+      }
+  commit_message: "feat: add token refresh delegate method to AuthManager"
+fragments:
+- id: dashboard_auth_delegate
+  selector:
+    path: Sources/Controllers/DashboardController.swift
+    anchor: "class DashboardController: AuthDelegate"
+- id: dashboard_refresh_token
+  selector:
+    path: Sources/Controllers/DashboardController.swift
+    anchor: "func authDidRefreshToken"
+- id: profile_auth_delegate
+  selector:
+    path: Sources/Controllers/ProfileController.swift
+    anchor: "class ProfileController: AuthDelegate"
+- id: profile_refresh_token
+  selector:
+    path: Sources/Controllers/ProfileController.swift
+    anchor: "func authDidRefreshToken"
+- id: notification_auth_delegate
+  selector:
+    path: Sources/Controllers/NotificationController.swift
+    anchor: "class NotificationController: AuthDelegate"
+- id: settings_auth_delegate
+  selector:
+    path: Sources/Controllers/SettingsController.swift
+    anchor: "class SettingsController: AuthDelegate"
+- id: no_websocket
+  selector:
+    path: Sources/Networking/WebSocket.swift
+- id: no_filemanager
+  selector:
+    path: Sources/Storage/FileManager+Ext.swift
+- id: no_tracker
+  selector:
+    path: Sources/Analytics/Tracker.swift
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_063_WEBSOCKET_URL_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_063_RECONNECT_DELAY_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_063_TEMP_DIR_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_063_MAX_FILE_SIZE_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_063_TRACKER_ID_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_063_BATCH_SIZE_F
+oracle:
+  required:
+  - dashboard_auth_delegate
+  - dashboard_refresh_token
+  - profile_auth_delegate
+  - profile_refresh_token
+  - notification_auth_delegate
+  - settings_auth_delegate
+  allowed: []
+  forbidden:
+  - no_websocket
+  - no_filemanager
+  - no_tracker
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

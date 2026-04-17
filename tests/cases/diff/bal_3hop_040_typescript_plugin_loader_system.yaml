@@ -1,0 +1,235 @@
+name: bal_3hop_040_typescript_plugin_loader_system
+tags:
+- lang:typescript
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/plugins/types.ts: |
+      export interface Plugin {
+        name: string;
+        version: string;
+        init(): void;
+      }
+
+      export interface PluginManifest {
+        name: string;
+        version: string;
+        entry: string;
+      }
+    src/plugins/loader.ts: |
+      import { Plugin, PluginManifest } from './types';
+
+      export class PluginLoader {
+        load(manifest: PluginManifest): Plugin {
+          return {
+            name: manifest.name,
+            version: manifest.version,
+            init: () => console.log(`Loaded ${manifest.name}`),
+          };
+        }
+      }
+    src/plugins/manager.ts: |
+      import { PluginLoader } from './loader';
+      import { PluginManifest } from './types';
+
+      export class PluginManager {
+        private loader = new PluginLoader();
+        private loaded: string[] = [];
+
+        install(manifest: PluginManifest): void {
+          const plugin = this.loader.load(manifest);
+          plugin.init();
+          this.loaded.push(plugin.name);
+        }
+
+        getInstalled(): string[] {
+          return [...this.loaded];
+        }
+      }
+    src/app.ts: |
+      import { PluginManager } from './plugins/manager';
+
+      export class App {
+        private plugins = new PluginManager();
+
+        bootstrap(manifests: any[]): void {
+          manifests.forEach(m => this.plugins.install(m));
+          console.log(`Loaded ${this.plugins.getInstalled().length} plugins`);
+        }
+
+        start(): void {
+          console.log('App started');
+        }
+      }
+    src/utils/env.ts: |
+      GARBAGE_040_ENV_MARKER_A = "env";
+      GARBAGE_040_DOTENV_MARKER_B = true;
+
+      export function getEnv(key: string): string {
+        return process.env[key] || '';
+      }
+    src/utils/path.ts: |
+      GARBAGE_040_PATH_MARKER_C = "path";
+      GARBAGE_040_RESOLVE_MARKER_D = true;
+
+      export function resolvePath(...segments: string[]): string {
+        return segments.join('/');
+      }
+    src/services/health.ts: |
+      GARBAGE_040_HEALTH_MARKER_E = "health";
+      GARBAGE_040_STATUS_MARKER_F = "ok";
+
+      export function healthCheck(): { status: string } {
+        return { status: 'ok' };
+      }
+  changed_files:
+    src/plugins/types.ts: |
+      export interface Plugin {
+        name: string;
+        version: string;
+        dependencies: string[];
+        init(): void;
+        destroy(): void;
+      }
+
+      export interface PluginManifest {
+        name: string;
+        version: string;
+        entry: string;
+        dependencies: string[];
+      }
+    src/plugins/loader.ts: |
+      import { Plugin, PluginManifest } from './types';
+
+      export class PluginLoader {
+        load(manifest: PluginManifest): Plugin {
+          return {
+            name: manifest.name,
+            version: manifest.version,
+            dependencies: manifest.dependencies || [],
+            init: () => console.log(`Loaded ${manifest.name}`),
+            destroy: () => console.log(`Destroyed ${manifest.name}`),
+          };
+        }
+      }
+    src/plugins/manager.ts: |
+      import { PluginLoader } from './loader';
+      import { Plugin, PluginManifest } from './types';
+
+      export class PluginManager {
+        private loader = new PluginLoader();
+        private plugins: Map<string, Plugin> = new Map();
+
+        install(manifest: PluginManifest): void {
+          for (const dep of manifest.dependencies) {
+            if (!this.plugins.has(dep)) {
+              throw new Error(`Missing dependency: ${dep}`);
+            }
+          }
+          const plugin = this.loader.load(manifest);
+          plugin.init();
+          this.plugins.set(plugin.name, plugin);
+        }
+
+        uninstall(name: string): void {
+          const plugin = this.plugins.get(name);
+          if (plugin) {
+            plugin.destroy();
+            this.plugins.delete(name);
+          }
+        }
+
+        getInstalled(): string[] {
+          return [...this.plugins.keys()];
+        }
+      }
+    src/app.ts: |
+      import { PluginManager } from './plugins/manager';
+
+      export class App {
+        private plugins = new PluginManager();
+
+        bootstrap(manifests: any[]): void {
+          manifests.forEach(m => this.plugins.install(m));
+          console.log(`Loaded ${this.plugins.getInstalled().length} plugins`);
+        }
+
+        start(): void {
+          console.log('App started');
+        }
+      }
+    src/utils/env.ts: |
+      GARBAGE_040_ENV_MARKER_A = "env";
+      GARBAGE_040_DOTENV_MARKER_B = true;
+
+      export function getEnv(key: string): string {
+        return process.env[key] || '';
+      }
+    src/utils/path.ts: |
+      GARBAGE_040_PATH_MARKER_C = "path";
+      GARBAGE_040_RESOLVE_MARKER_D = true;
+
+      export function resolvePath(...segments: string[]): string {
+        return segments.join('/');
+      }
+    src/services/health.ts: |
+      GARBAGE_040_HEALTH_MARKER_E = "health";
+      GARBAGE_040_STATUS_MARKER_F = "ok";
+
+      export function healthCheck(): { status: string } {
+        return { status: 'ok' };
+      }
+  commit_message: "feat: add plugin dependencies and destroy lifecycle"
+fragments:
+- id: plugin_dependencies_field
+  selector:
+    path: src/plugins/types.ts
+    anchor: "dependencies: string[]"
+- id: plugin_destroy_method
+  selector:
+    path: src/plugins/types.ts
+    anchor: "destroy(): void"
+- id: loader_sets_dependencies
+  selector:
+    path: src/plugins/loader.ts
+    anchor: "dependencies: manifest.dependencies"
+- id: manager_checks_deps
+  selector:
+    path: src/plugins/manager.ts
+    anchor: "Missing dependency"
+- id: manager_uninstall
+  selector:
+    path: src/plugins/manager.ts
+    anchor: "uninstall(name: string)"
+- id: app_imports_manager
+  selector:
+    path: src/app.ts
+    anchor: "import { PluginManager } from './plugins/manager'"
+- id: no_env
+  selector:
+    path: src/utils/env.ts
+    anchor: "GARBAGE_040_ENV_MARKER_A"
+- id: no_path
+  selector:
+    path: src/utils/path.ts
+    anchor: "GARBAGE_040_PATH_MARKER_C"
+- id: no_health
+  selector:
+    path: src/services/health.ts
+    anchor: "GARBAGE_040_HEALTH_MARKER_E"
+oracle:
+  required:
+  - plugin_dependencies_field
+  - plugin_destroy_method
+  - loader_sets_dependencies
+  - manager_checks_deps
+  - manager_uninstall
+  - app_imports_manager
+  allowed: []
+  forbidden:
+  - no_env
+  - no_path
+  - no_health

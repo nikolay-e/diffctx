@@ -1,0 +1,97 @@
+name: bal_cfgcode_002_python_api_endpoints
+tags:
+- lang:python
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    config/api.json: |
+      {
+        "base_url": "http://localhost:8000",
+        "timeout": 30,
+        "retry_count": 3
+      }
+    src/client.py: |
+      import json
+
+      with open("config/api.json") as f:
+          api_cfg = json.load(f)
+
+      BASE_URL = api_cfg["base_url"]
+      TIMEOUT = api_cfg["timeout"]
+      RETRY_COUNT = api_cfg["retry_count"]
+
+      def make_request(path):
+          url = f"{BASE_URL}{path}"
+          return url
+    src/models.py: |
+      GARBAGE_CFGCODE_002_MODEL_A = "User"
+      GARBAGE_CFGCODE_002_MODEL_B = 100
+
+      class User:
+          def __init__(self, name):
+              self.name = name
+  changed_files:
+    config/api.json: |
+      {
+        "base_url": "https://api.prod.example.com",
+        "timeout": 10,
+        "retry_count": 5,
+        "api_key_header": "X-Api-Key"
+      }
+    src/client.py: |
+      import json
+
+      with open("config/api.json") as f:
+          api_cfg = json.load(f)
+
+      BASE_URL = api_cfg["base_url"]
+      TIMEOUT = api_cfg["timeout"]
+      RETRY_COUNT = api_cfg["retry_count"]
+
+      def make_request(path):
+          url = f"{BASE_URL}{path}"
+          return url
+    src/models.py: |
+      GARBAGE_CFGCODE_002_MODEL_A = "User"
+      GARBAGE_CFGCODE_002_MODEL_B = 100
+
+      class User:
+          def __init__(self, name):
+              self.name = name
+  commit_message: "config: update API endpoints for production"
+fragments:
+- id: config_base_url
+  selector:
+    path: config/api.json
+    anchor: "api.prod.example.com"
+- id: config_api_key_header
+  selector:
+    path: config/api.json
+    anchor: "X-Api-Key"
+- id: client_reads_config
+  selector:
+    path: src/client.py
+    anchor: 'api_cfg["base_url"]'
+- id: no_models
+  selector:
+    path: src/models.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_002_MODEL_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_002_MODEL_B
+oracle:
+  required:
+  - config_base_url
+  - config_api_key_header
+  - client_reads_config
+  allowed: []
+  forbidden:
+  - no_models
+  - no_global_0
+  - no_global_1

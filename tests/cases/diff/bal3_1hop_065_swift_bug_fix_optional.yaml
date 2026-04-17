@@ -1,0 +1,328 @@
+name: bal3_1hop_065_swift_bug_fix_optional
+tags:
+- lang:swift
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    Sources/Core/ConfigLoader.swift: |
+      import Foundation
+
+      struct AppConfig {
+          let apiKey: String
+          let timeout: Int
+          let retryCount: Int
+      }
+
+      class ConfigLoader {
+          func load(from path: String) -> AppConfig? {
+              guard let data = FileManager.default.contents(atPath: path) else {
+                  return nil
+              }
+              return parseConfig(data: data)
+          }
+
+          private func parseConfig(data: Data) -> AppConfig? {
+              return nil
+          }
+      }
+    Sources/Network/APIRouter.swift: |
+      import Foundation
+      import Core
+
+      class APIRouter {
+          private let config: AppConfig
+
+          init(config: AppConfig) {
+              self.config = config
+          }
+
+          func buildRequest(path: String) -> URLRequest? {
+              guard let url = URL(string: path) else { return nil }
+              var request = URLRequest(url: url)
+              request.setValue(config.apiKey, forHTTPHeaderField: "X-API-Key")
+              request.timeoutInterval = TimeInterval(config.timeout)
+              return request
+          }
+      }
+    Sources/Network/RetryHandler.swift: |
+      import Foundation
+      import Core
+
+      class RetryHandler {
+          private let config: AppConfig
+
+          init(config: AppConfig) {
+              self.config = config
+          }
+
+          func shouldRetry(attempt: Int) -> Bool {
+              return attempt < config.retryCount
+          }
+      }
+    Sources/Network/CachePolicy.swift: |
+      import Foundation
+      import Core
+
+      class CachePolicy {
+          private let config: AppConfig
+
+          init(config: AppConfig) {
+              self.config = config
+          }
+
+          func cacheTimeout() -> TimeInterval {
+              return TimeInterval(config.timeout * 2)
+          }
+      }
+    Sources/App/Bootstrap.swift: |
+      import Foundation
+      import Core
+
+      class Bootstrap {
+          private let loader: ConfigLoader
+
+          init(loader: ConfigLoader) {
+              self.loader = loader
+          }
+
+          func start() {
+              let config = loader.load(from: "config.json")
+              guard let validConfig = config else {
+                  fatalError("Missing configuration")
+              }
+              print("Loaded config with key: \(validConfig.apiKey)")
+          }
+      }
+    Sources/Logging/ConsoleLogger.swift: |
+      import Foundation
+      GARBAGE_065_LOG_FORMAT_A = "[%@] %@"
+      GARBAGE_065_MAX_BUFFER_B = 256
+
+      class ConsoleLogger {
+          func info(_ msg: String) { print(msg) }
+          func error(_ msg: String) { print("ERROR: \(msg)") }
+      }
+    Sources/Metrics/StatsCollector.swift: |
+      import Foundation
+      GARBAGE_065_METRICS_PORT_C = 9090
+      GARBAGE_065_FLUSH_INTERVAL_D = 30
+
+      class StatsCollector {
+          func increment(counter: String) {}
+          func gauge(name: String, value: Double) {}
+      }
+    Sources/Security/Encryption.swift: |
+      import Foundation
+      GARBAGE_065_CIPHER_ALG_E = "AES256"
+      GARBAGE_065_KEY_LENGTH_F = 32
+
+      class Encryption {
+          func encrypt(data: Data) -> Data { return data }
+          func decrypt(data: Data) -> Data { return data }
+      }
+  changed_files:
+    Sources/Core/ConfigLoader.swift: |
+      import Foundation
+
+      struct AppConfig {
+          let apiKey: String
+          let timeout: Int
+          let retryCount: Int
+          let baseURL: String
+      }
+
+      class ConfigLoader {
+          func load(from path: String) throws -> AppConfig {
+              guard let data = FileManager.default.contents(atPath: path) else {
+                  throw ConfigError.fileNotFound(path)
+              }
+              guard let config = parseConfig(data: data) else {
+                  throw ConfigError.invalidFormat
+              }
+              return config
+          }
+
+          private func parseConfig(data: Data) -> AppConfig? {
+              return nil
+          }
+      }
+
+      enum ConfigError: Error {
+          case fileNotFound(String)
+          case invalidFormat
+      }
+    Sources/Network/APIRouter.swift: |
+      import Foundation
+      import Core
+
+      class APIRouter {
+          private let config: AppConfig
+
+          init(config: AppConfig) {
+              self.config = config
+          }
+
+          func buildRequest(path: String) -> URLRequest? {
+              guard let url = URL(string: path) else { return nil }
+              var request = URLRequest(url: url)
+              request.setValue(config.apiKey, forHTTPHeaderField: "X-API-Key")
+              request.timeoutInterval = TimeInterval(config.timeout)
+              return request
+          }
+      }
+    Sources/Network/RetryHandler.swift: |
+      import Foundation
+      import Core
+
+      class RetryHandler {
+          private let config: AppConfig
+
+          init(config: AppConfig) {
+              self.config = config
+          }
+
+          func shouldRetry(attempt: Int) -> Bool {
+              return attempt < config.retryCount
+          }
+      }
+    Sources/Network/CachePolicy.swift: |
+      import Foundation
+      import Core
+
+      class CachePolicy {
+          private let config: AppConfig
+
+          init(config: AppConfig) {
+              self.config = config
+          }
+
+          func cacheTimeout() -> TimeInterval {
+              return TimeInterval(config.timeout * 2)
+          }
+      }
+    Sources/App/Bootstrap.swift: |
+      import Foundation
+      import Core
+
+      class Bootstrap {
+          private let loader: ConfigLoader
+
+          init(loader: ConfigLoader) {
+              self.loader = loader
+          }
+
+          func start() {
+              let config = loader.load(from: "config.json")
+              guard let validConfig = config else {
+                  fatalError("Missing configuration")
+              }
+              print("Loaded config with key: \(validConfig.apiKey)")
+          }
+      }
+    Sources/Logging/ConsoleLogger.swift: |
+      import Foundation
+      GARBAGE_065_LOG_FORMAT_A = "[%@] %@"
+      GARBAGE_065_MAX_BUFFER_B = 256
+
+      class ConsoleLogger {
+          func info(_ msg: String) { print(msg) }
+          func error(_ msg: String) { print("ERROR: \(msg)") }
+      }
+    Sources/Metrics/StatsCollector.swift: |
+      import Foundation
+      GARBAGE_065_METRICS_PORT_C = 9090
+      GARBAGE_065_FLUSH_INTERVAL_D = 30
+
+      class StatsCollector {
+          func increment(counter: String) {}
+          func gauge(name: String, value: Double) {}
+      }
+    Sources/Security/Encryption.swift: |
+      import Foundation
+      GARBAGE_065_CIPHER_ALG_E = "AES256"
+      GARBAGE_065_KEY_LENGTH_F = 32
+
+      class Encryption {
+          func encrypt(data: Data) -> Data { return data }
+          func decrypt(data: Data) -> Data { return data }
+      }
+  commit_message: "fix: make ConfigLoader.load throw instead of returning optional"
+fragments:
+- id: api_router_imports
+  selector:
+    path: Sources/Network/APIRouter.swift
+    anchor: "import Core"
+- id: api_router_config
+  selector:
+    path: Sources/Network/APIRouter.swift
+    anchor: "private let config: AppConfig"
+- id: retry_handler_imports
+  selector:
+    path: Sources/Network/RetryHandler.swift
+    anchor: "import Core"
+- id: retry_handler_config
+  selector:
+    path: Sources/Network/RetryHandler.swift
+    anchor: "config.retryCount"
+- id: cache_policy_imports
+  selector:
+    path: Sources/Network/CachePolicy.swift
+    anchor: "import Core"
+- id: bootstrap_imports
+  selector:
+    path: Sources/App/Bootstrap.swift
+    anchor: "import Core"
+- id: bootstrap_load_call
+  selector:
+    path: Sources/App/Bootstrap.swift
+    anchor: "loader.load(from:"
+- id: no_console_logger
+  selector:
+    path: Sources/Logging/ConsoleLogger.swift
+- id: no_stats_collector
+  selector:
+    path: Sources/Metrics/StatsCollector.swift
+- id: no_encryption
+  selector:
+    path: Sources/Security/Encryption.swift
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_065_LOG_FORMAT_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_065_MAX_BUFFER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_065_METRICS_PORT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_065_FLUSH_INTERVAL_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_065_CIPHER_ALG_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_065_KEY_LENGTH_F
+oracle:
+  required:
+  - api_router_imports
+  - api_router_config
+  - retry_handler_imports
+  - retry_handler_config
+  - cache_policy_imports
+  - bootstrap_imports
+  - bootstrap_load_call
+  allowed: []
+  forbidden:
+  - no_console_logger
+  - no_stats_collector
+  - no_encryption
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

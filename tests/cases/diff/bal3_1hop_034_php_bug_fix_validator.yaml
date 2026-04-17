@@ -1,0 +1,243 @@
+name: bal3_1hop_034_php_bug_fix_validator
+tags:
+- lang:php
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: php-no-tree-sitter
+repo:
+  initial_files:
+    src/Validation/EmailValidator.php: |
+      <?php
+      namespace App\Validation;
+
+      class EmailValidator
+      {
+          public function isValid(string $email): bool
+          {
+              return strpos($email, '@') !== false;
+          }
+
+          public function getDomain(string $email): string
+          {
+              return explode('@', $email)[1];
+          }
+      }
+    src/Services/RegistrationHandler.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Validation\EmailValidator;
+
+      class RegistrationHandler
+      {
+          private EmailValidator $validator;
+
+          public function __construct(EmailValidator $validator)
+          {
+              $this->validator = $validator;
+          }
+
+          public function register(string $email, string $name): array
+          {
+              if (!$this->validator->isValid($email)) {
+                  return ['error' => 'Invalid email'];
+              }
+              $domain = $this->validator->getDomain($email);
+              return ['name' => $name, 'email' => $email, 'domain' => $domain];
+          }
+      }
+    src/Services/NewsletterService.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Validation\EmailValidator;
+
+      class NewsletterService
+      {
+          private EmailValidator $validator;
+
+          public function __construct(EmailValidator $validator)
+          {
+              $this->validator = $validator;
+          }
+
+          public function subscribe(string $email): bool
+          {
+              return $this->validator->isValid($email);
+          }
+      }
+    src/Services/ContactFormHandler.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Validation\EmailValidator;
+
+      class ContactFormHandler
+      {
+          private EmailValidator $validator;
+
+          public function __construct(EmailValidator $validator)
+          {
+              $this->validator = $validator;
+          }
+
+          public function submit(string $email, string $message): array
+          {
+              if (!$this->validator->isValid($email)) {
+                  return ['error' => 'Bad email'];
+              }
+              return ['sent' => true];
+          }
+      }
+    src/Services/InviteService.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Validation\EmailValidator;
+
+      class InviteService
+      {
+          private EmailValidator $validator;
+
+          public function __construct(EmailValidator $validator)
+          {
+              $this->validator = $validator;
+          }
+
+          public function sendInvite(string $email): array
+          {
+              if (!$this->validator->isValid($email)) {
+                  return ['error' => 'Invalid'];
+              }
+              return ['invited' => $email];
+          }
+      }
+    src/Models/Product.php: |
+      <?php
+      namespace App\Models;
+
+      GARBAGE_BAL3_034_PRODUCT_A = 'product';
+      GARBAGE_BAL3_034_SKU_B = 'SKU001';
+
+      class Product
+      {
+          public string $name;
+          public float $price;
+      }
+    src/Models/Order.php: |
+      <?php
+      namespace App\Models;
+
+      GARBAGE_BAL3_034_ORDER_C = 'order';
+      GARBAGE_BAL3_034_STATUS_D = 'pending';
+
+      class Order
+      {
+          public int $id;
+          public float $total;
+      }
+    src/Models/Cart.php: |
+      <?php
+      namespace App\Models;
+
+      GARBAGE_BAL3_034_CART_E = 'cart';
+      GARBAGE_BAL3_034_ITEMS_F = 0;
+
+      class Cart
+      {
+          public array $items = [];
+      }
+  changed_files:
+    src/Validation/EmailValidator.php: |
+      <?php
+      namespace App\Validation;
+
+      class EmailValidator
+      {
+          public function isValid(string $email): bool
+          {
+              if (empty($email)) {
+                  return false;
+              }
+              return filter_var($email, FILTER_VALIDATE_EMAIL) !== false;
+          }
+
+          public function getDomain(string $email): string
+          {
+              $parts = explode('@', $email);
+              if (count($parts) !== 2) {
+                  return '';
+              }
+              return $parts[1];
+          }
+      }
+  commit_message: "Fix email validation to use filter_var and handle edge cases"
+fragments:
+- id: registration_handler
+  selector:
+    path: src/Services/RegistrationHandler.php
+    anchor: "use App\\Validation\\EmailValidator"
+- id: registration_usage
+  selector:
+    path: src/Services/RegistrationHandler.php
+    anchor: "validator->isValid"
+- id: newsletter_service
+  selector:
+    path: src/Services/NewsletterService.php
+    anchor: "use App\\Validation\\EmailValidator"
+- id: contact_handler
+  selector:
+    path: src/Services/ContactFormHandler.php
+    anchor: "use App\\Validation\\EmailValidator"
+- id: invite_service
+  selector:
+    path: src/Services/InviteService.php
+    anchor: "use App\\Validation\\EmailValidator"
+- id: no_product
+  selector:
+    path: src/Models/Product.php
+- id: no_order
+  selector:
+    path: src/Models/Order.php
+- id: no_cart
+  selector:
+    path: src/Models/Cart.php
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_034_PRODUCT_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_034_SKU_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_034_ORDER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_034_STATUS_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL3_034_CART_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL3_034_ITEMS_F
+oracle:
+  required:
+  - registration_handler
+  - registration_usage
+  - newsletter_service
+  - contact_handler
+  - invite_service
+  allowed: []
+  forbidden:
+  - no_product
+  - no_order
+  - no_cart
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

@@ -1,0 +1,164 @@
+name: gap_092_rust_import_chain_cache_store
+tags:
+- lang:rust
+- change:new_function
+- change:signature
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:2hop
+repo:
+  initial_files:
+    src/entry.rs: |
+      pub struct CacheEntry {
+          key: String,
+          value: String,
+          ttl: u64,
+      }
+
+      impl CacheEntry {
+          pub fn new(key: &str, value: &str, ttl: u64) -> Self {
+              CacheEntry {
+                  key: key.to_string(),
+                  value: value.to_string(),
+                  ttl,
+              }
+          }
+
+          pub fn key(&self) -> &str {
+              &self.key
+          }
+
+          pub fn value(&self) -> &str {
+              &self.value
+          }
+
+          pub fn ttl(&self) -> u64 {
+              self.ttl
+          }
+      }
+    src/store.rs: |
+      use crate::entry::CacheEntry;
+      use std::collections::HashMap;
+
+      pub struct Store {
+          entries: HashMap<String, CacheEntry>,
+      }
+
+      impl Store {
+          pub fn new() -> Self {
+              Store { entries: HashMap::new() }
+          }
+
+          pub fn put(&mut self, entry: CacheEntry) {
+              self.entries.insert(entry.key().to_string(), entry);
+          }
+
+          pub fn get(&self, key: &str) -> Option<&CacheEntry> {
+              self.entries.get(key)
+          }
+
+          pub fn remove(&mut self, key: &str) -> bool {
+              self.entries.remove(key).is_some()
+          }
+
+          pub fn size(&self) -> usize {
+              self.entries.len()
+          }
+      }
+    src/serializer.rs: |
+      pub fn to_json(key: &str, value: &str) -> String {
+          format!("{{\"key\":\"{}\",\"value\":\"{}\"}}", key, value)
+      }
+
+      pub fn from_json(json: &str) -> Option<(String, String)> {
+          let trimmed = json.trim_matches(|c| c == '{' || c == '}');
+          let parts: Vec<&str> = trimmed.split(',').collect();
+          if parts.len() == 2 {
+              Some(("key".to_string(), "value".to_string()))
+          } else {
+              None
+          }
+      }
+
+      pub fn to_csv(pairs: &[(String, String)]) -> String {
+          pairs.iter()
+              .map(|(k, v)| format!("{},{}", k, v))
+              .collect::<Vec<_>>()
+              .join("\n")
+      }
+  changed_files:
+    src/entry.rs: |
+      pub struct CacheEntry {
+          key: String,
+          value: String,
+          ttl: u64,
+          tags: Vec<String>,
+      }
+
+      impl CacheEntry {
+          pub fn new(key: &str, value: &str, ttl: u64) -> Self {
+              CacheEntry {
+                  key: key.to_string(),
+                  value: value.to_string(),
+                  ttl,
+                  tags: Vec::new(),
+              }
+          }
+
+          pub fn with_tags(key: &str, value: &str, ttl: u64, tags: Vec<String>) -> Self {
+              CacheEntry {
+                  key: key.to_string(),
+                  value: value.to_string(),
+                  ttl,
+                  tags,
+              }
+          }
+
+          pub fn key(&self) -> &str {
+              &self.key
+          }
+
+          pub fn value(&self) -> &str {
+              &self.value
+          }
+
+          pub fn ttl(&self) -> u64 {
+              self.ttl
+          }
+
+          pub fn has_tag(&self, tag: &str) -> bool {
+              self.tags.iter().any(|t| t == tag)
+          }
+      }
+  commit_message: "feat(entry): add tag support to cache entries"
+fixtures:
+  auto_garbage: true
+fragments:
+- id: entry_tags_field
+  selector:
+    path: src/entry.rs
+    anchor: "tags: Vec<String>"
+- id: entry_with_tags
+  selector:
+    path: src/entry.rs
+    anchor: "pub fn with_tags"
+- id: store_uses_entry
+  selector:
+    path: src/store.rs
+    anchor: "use crate::entry::CacheEntry"
+- id: no_serializer
+  selector:
+    path: src/serializer.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_092_A
+oracle:
+  required:
+  - entry_tags_field
+  - entry_with_tags
+  - store_uses_entry
+  allowed: []
+  forbidden:
+  - no_serializer
+  - no_global_0

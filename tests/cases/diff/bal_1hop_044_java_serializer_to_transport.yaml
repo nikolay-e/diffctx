@@ -1,0 +1,168 @@
+name: bal_1hop_044_java_serializer_to_transport
+tags:
+- lang:java
+- change:signature
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/rpc/serial/MessageSerializer.java: |
+      package com.rpc.serial;
+      public class MessageSerializer {
+          public byte[] serialize(String message) {
+              return message.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+          }
+          public String deserialize(byte[] data) {
+              return new String(data, java.nio.charset.StandardCharsets.UTF_8);
+          }
+      }
+    src/main/java/com/rpc/transport/TcpTransport.java: |
+      package com.rpc.transport;
+      import com.rpc.serial.MessageSerializer;
+      public class TcpTransport {
+          private final MessageSerializer serializer;
+          private final String host;
+          private final int port;
+          public TcpTransport(MessageSerializer serializer, String host, int port) {
+              this.serializer = serializer;
+              this.host = host;
+              this.port = port;
+          }
+          public byte[] send(String message) {
+              byte[] payload = serializer.serialize(message);
+              System.out.println("Sending " + payload.length + " bytes to " + host + ":" + port);
+              return payload;
+          }
+          public String receive(byte[] data) {
+              return serializer.deserialize(data);
+          }
+      }
+    src/main/java/com/rpc/protocol/ProtocolVersion.java: |
+      package com.rpc.protocol;
+      public enum ProtocolVersion {
+          V1("1.0"),
+          V2("2.0");
+          private final String version;
+          ProtocolVersion(String version) { this.version = version; }
+          public String getVersion() { return version; }
+      }
+    src/main/java/com/rpc/discovery/ServiceRegistry.java: |
+      package com.rpc.discovery;
+      import java.util.HashMap;
+      import java.util.Map;
+      public class ServiceRegistry {
+          private final Map<String, String> services = new HashMap<>();
+          public void register(String name, String address) {
+              services.put(name, address);
+          }
+          public String lookup(String name) {
+              return services.get(name);
+          }
+      }
+    src/main/java/com/rpc/retry/RetryPolicy.java: |
+      package com.rpc.retry;
+      public class RetryPolicy {
+          private final int maxRetries;
+          private final long delayMs;
+          public RetryPolicy(int maxRetries, long delayMs) {
+              this.maxRetries = maxRetries;
+              this.delayMs = delayMs;
+          }
+          public int getMaxRetries() { return maxRetries; }
+          public long getDelayMs() { return delayMs; }
+      }
+    src/main/java/com/rpc/compress/GzipCompressor.java: |
+      package com.rpc.compress;
+      public class GzipCompressor {
+          public byte[] compress(byte[] data) {
+              return data;
+          }
+          public byte[] decompress(byte[] data) {
+              return data;
+          }
+      }
+  changed_files:
+    src/main/java/com/rpc/serial/MessageSerializer.java: |
+      package com.rpc.serial;
+      import java.nio.ByteBuffer;
+      import java.nio.charset.StandardCharsets;
+      public class MessageSerializer {
+          private static final byte[] MAGIC = {0x4D, 0x53, 0x47};
+          public byte[] serialize(String message) {
+              byte[] body = message.getBytes(StandardCharsets.UTF_8);
+              ByteBuffer buffer = ByteBuffer.allocate(MAGIC.length + 4 + body.length);
+              buffer.put(MAGIC);
+              buffer.putInt(body.length);
+              buffer.put(body);
+              return buffer.array();
+          }
+          public String deserialize(byte[] data) {
+              ByteBuffer buffer = ByteBuffer.wrap(data);
+              byte[] magic = new byte[MAGIC.length];
+              buffer.get(magic);
+              int length = buffer.getInt();
+              byte[] body = new byte[length];
+              buffer.get(body);
+              return new String(body, StandardCharsets.UTF_8);
+          }
+          public boolean isValid(byte[] data) {
+              if (data.length < MAGIC.length) return false;
+              for (int i = 0; i < MAGIC.length; i++) {
+                  if (data[i] != MAGIC[i]) return false;
+              }
+              return true;
+          }
+      }
+  commit_message: "feat: add framed message format with magic bytes and length prefix"
+fragments:
+- id: serializer_magic_bytes
+  selector:
+    path: MessageSerializer.java
+    anchor: "MAGIC"
+- id: serializer_framed_serialize
+  selector:
+    path: MessageSerializer.java
+    anchor: "ByteBuffer"
+- id: serializer_is_valid
+  selector:
+    path: MessageSerializer.java
+    anchor: "isValid"
+- id: transport_uses_serializer
+  selector:
+    path: TcpTransport.java
+    anchor: "serializer.serialize"
+- id: transport_receive
+  selector:
+    path: TcpTransport.java
+    anchor: "serializer.deserialize"
+- id: no_protocol_version
+  selector:
+    path: ProtocolVersion.java
+    anchor: "ProtocolVersion"
+- id: no_service_registry
+  selector:
+    path: ServiceRegistry.java
+    anchor: "ServiceRegistry"
+- id: no_retry_policy
+  selector:
+    path: RetryPolicy.java
+    anchor: "RetryPolicy"
+- id: no_compressor
+  selector:
+    path: GzipCompressor.java
+    anchor: "GzipCompressor"
+oracle:
+  required:
+  - serializer_magic_bytes
+  - serializer_framed_serialize
+  - transport_uses_serializer
+  - transport_receive
+  allowed:
+  - serializer_is_valid
+  forbidden:
+  - no_protocol_version
+  - no_service_registry
+  - no_retry_policy
+  - no_compressor

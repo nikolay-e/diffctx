@@ -1,177 +1,224 @@
 name: json_007_jest_config
+tags:
+- lang:rust
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:2hop
+- difficulty:hard
 repo:
   initial_files:
-    jest.config.json: |
-      {
-        "testMatch": ["**/*.test.js"],
-        "collectCoverage": false,
-        "testEnvironment": "node",
-        "transform": {
-          "^.+\\.js$": "babel-jest"
-        },
-        "moduleNameMapper": {
-          "^@/(.*)$": "<rootDir>/src/$1"
-        },
-        "setupFilesAfterSetup": ["./tests/setup.js"]
-      }
-    src/math.js: |
-      function add(a, b) {
-          return a + b;
+    src/billing/invoice.rs: |
+      use chrono::NaiveDate;
+
+      #[derive(Debug, Clone)]
+      pub struct Invoice {
+          pub id: String,
+          pub customer_id: String,
+          pub amount_cents: i64,
+          pub due_date: NaiveDate,
       }
 
-      function subtract(a, b) {
-          return a - b;
-      }
-
-      function multiply(a, b) {
-          return a * b;
-      }
-
-      function divide(a, b) {
-          if (b === 0) {
-              throw new Error('Division by zero');
+      impl Invoice {
+          pub fn new(id: &str, customer_id: &str, amount_cents: i64, due_date: NaiveDate) -> Self {
+              Self {
+                  id: id.to_string(),
+                  customer_id: customer_id.to_string(),
+                  amount_cents,
+                  due_date,
+              }
           }
-          return a / b;
+
+          pub fn is_overdue(&self, today: NaiveDate) -> bool {
+              today > self.due_date
+          }
       }
 
-      function average(numbers) {
-          if (numbers.length === 0) return 0;
-          const sum = numbers.reduce((acc, n) => add(acc, n), 0);
-          return divide(sum, numbers.length);
+      pub fn format_amount(cents: i64) -> String {
+          format!("${:.2}", cents as f64 / 100.0)
+      }
+    src/billing/invoice_repo.rs: |
+      use crate::billing::invoice::Invoice;
+      use std::collections::HashMap;
+
+      pub struct InvoiceRepo {
+          store: HashMap<String, Invoice>,
       }
 
-      module.exports = { add, subtract, multiply, divide, average };
-    tests/math.test.js: |
-      const { add, subtract, multiply, divide, average } = require('../src/math');
+      impl InvoiceRepo {
+          pub fn new() -> Self {
+              Self { store: HashMap::new() }
+          }
 
-      test('adds 1 + 2', () => {
-          expect(add(1, 2)).toBe(3);
-      });
+          pub fn save(&mut self, invoice: Invoice) {
+              self.store.insert(invoice.id.clone(), invoice);
+          }
 
-      test('subtracts 5 - 3', () => {
-          expect(subtract(5, 3)).toBe(2);
-      });
-
-      test('multiplies 4 * 3', () => {
-          expect(multiply(4, 3)).toBe(12);
-      });
-
-      test('divides 10 / 2', () => {
-          expect(divide(10, 2)).toBe(5);
-      });
-
-      test('throws on division by zero', () => {
-          expect(() => divide(1, 0)).toThrow('Division by zero');
-      });
-
-      test('calculates average', () => {
-          expect(average([2, 4, 6])).toBe(4);
-      });
-    babel.config.json: |
-      {
-        "presets": ["@babel/preset-env"],
-        "plugins": ["@babel/plugin-transform-runtime"]
+          pub fn find(&self, id: &str) -> Option<&Invoice> {
+              self.store.get(id)
+          }
       }
-    package.json: |
-      {
-        "name": "math-lib",
-        "version": "1.0.0",
-        "scripts": {
-          "test": "jest",
-          "test:watch": "jest --watch",
-          "test:coverage": "jest --coverage"
-        },
-        "devDependencies": {
-          "jest": "^29.6.0",
-          "babel-jest": "^29.6.0",
-          "@babel/preset-env": "^7.22.0"
-        }
+    src/billing/payment_processor.rs: |
+      use crate::billing::invoice_repo::InvoiceRepo;
+      use crate::billing::invoice::format_amount;
+
+      pub struct PaymentProcessor {
+          repo: InvoiceRepo,
       }
-    .github/workflows/test.yml: |
-      name: Tests
-      on: [push, pull_request]
-      jobs:
-        test:
-          runs-on: ubuntu-latest
-          steps:
-            - uses: actions/checkout@v4
-            - uses: actions/setup-node@v4
-              with:
-                node-version: 18
-            - run: npm ci
-            - run: npm test -- --coverage
+
+      impl PaymentProcessor {
+          pub fn new() -> Self {
+              Self { repo: InvoiceRepo::new() }
+          }
+
+          pub fn process_payment(&mut self, invoice_id: &str, amount_cents: i64) -> String {
+              if let Some(inv) = self.repo.find(invoice_id) {
+                  format!("Paid {} for invoice {}", format_amount(amount_cents), inv.id)
+              } else {
+                  format!("Invoice {} not found", invoice_id)
+              }
+          }
+      }
+    garbage/tax_calculator.rs: |
+      // GARBAGE_JESTCFG_A = "vat_calculator_marker"
+    garbage/dunning.rs: |
+      // GARBAGE_JESTCFG_B = "dunning_scheduler_marker"
+    garbage/receipt.rs: |
+      // GARBAGE_JESTCFG_C = "receipt_generator_marker"
   changed_files:
-    jest.config.json: |
-      {
-        "testMatch": ["**/*.test.js", "**/*.spec.js"],
-        "collectCoverage": true,
-        "coverageThreshold": {"global": {"branches": 80, "functions": 80, "lines": 80}},
-        "testEnvironment": "node",
-        "transform": {
-          "^.+\\.js$": "babel-jest"
-        },
-        "moduleNameMapper": {
-          "^@/(.*)$": "<rootDir>/src/$1"
-        },
-        "setupFilesAfterSetup": ["./tests/setup.js"]
+    src/billing/invoice.rs: |
+      use chrono::NaiveDate;
+
+      #[derive(Debug, Clone)]
+      pub struct Invoice {
+          pub id: String,
+          pub customer_id: String,
+          pub amount_cents: i64,
+          pub due_date: NaiveDate,
+          pub paid: bool,
       }
-  commit_message: Update files
+
+      impl Invoice {
+          pub fn new(id: &str, customer_id: &str, amount_cents: i64, due_date: NaiveDate) -> Self {
+              Self {
+                  id: id.to_string(),
+                  customer_id: customer_id.to_string(),
+                  amount_cents,
+                  due_date,
+                  paid: false,
+              }
+          }
+
+          pub fn is_overdue(&self, today: NaiveDate) -> bool {
+              !self.paid && today > self.due_date
+          }
+
+          pub fn mark_paid(&mut self) {
+              self.paid = true;
+          }
+      }
+
+      pub fn format_amount(cents: i64) -> String {
+          format!("${:.2}", cents as f64 / 100.0)
+      }
+    src/billing/invoice_repo.rs: |
+      use crate::billing::invoice::Invoice;
+      use std::collections::HashMap;
+
+      pub struct InvoiceRepo {
+          store: HashMap<String, Invoice>,
+      }
+
+      impl InvoiceRepo {
+          pub fn new() -> Self {
+              Self { store: HashMap::new() }
+          }
+
+          pub fn save(&mut self, invoice: Invoice) {
+              self.store.insert(invoice.id.clone(), invoice);
+          }
+
+          pub fn find(&self, id: &str) -> Option<&Invoice> {
+              self.store.get(id)
+          }
+
+          pub fn find_mut(&mut self, id: &str) -> Option<&mut Invoice> {
+              self.store.get_mut(id)
+          }
+
+          pub fn overdue_ids(&self, today: chrono::NaiveDate) -> Vec<String> {
+              self.store.values()
+                  .filter(|inv| inv.is_overdue(today))
+                  .map(|inv| inv.id.clone())
+                  .collect()
+          }
+      }
+    src/billing/payment_processor.rs: |
+      use crate::billing::invoice_repo::InvoiceRepo;
+      use crate::billing::invoice::format_amount;
+
+      pub struct PaymentProcessor {
+          repo: InvoiceRepo,
+      }
+
+      impl PaymentProcessor {
+          pub fn new() -> Self {
+              Self { repo: InvoiceRepo::new() }
+          }
+
+          pub fn process_payment(&mut self, invoice_id: &str, amount_cents: i64) -> String {
+              if let Some(inv) = self.repo.find_mut(invoice_id) {
+                  inv.mark_paid();
+                  format!("Paid {} for invoice {}", format_amount(amount_cents), inv.id)
+              } else {
+                  format!("Invoice {} not found", invoice_id)
+              }
+          }
+      }
+    garbage/tax_calculator.rs: |
+      // GARBAGE_JESTCFG_A = "vat_calculator_marker"
+    garbage/dunning.rs: |
+      // GARBAGE_JESTCFG_B = "dunning_scheduler_marker"
+    garbage/receipt.rs: |
+      // GARBAGE_JESTCFG_C = "receipt_generator_marker"
+  commit_message: "refactor: add paid flag and mark_paid to Invoice, overdue_ids to repo"
 fragments:
-- id: jest_config
+- id: paid_field_added
   selector:
-    path: jest.config.json
-    anchor: '"collectCoverage": true'
-- id: jest_config_1
+    anchor: "pub paid: bool"
+- id: mark_paid_method
   selector:
-    path: jest.config.json
-    anchor: '"branches": 80'
-- id: no_babel_config
+    anchor: "pub fn mark_paid"
+- id: overdue_excludes_paid
   selector:
-    path: babel.config.json
-- id: no_package
+    path: src/billing/invoice.rs
+    anchor: "!self.paid && today > self.due_date"
+- id: repo_overdue_ids
   selector:
-    path: package.json
-- id: no_test
+    path: src/billing/invoice_repo.rs
+    anchor: "pub fn overdue_ids"
+- id: processor_calls_mark_paid
   selector:
-    path: .github/workflows/test.yml
-- id: no_global_0
+    path: src/billing/payment_processor.rs
+    anchor: "inv.mark_paid()"
+- id: no_garbage_a
   selector:
-    anchor: '@babel/preset-env'
-- id: no_global_1
+    anchor: GARBAGE_JESTCFG_A
+- id: no_garbage_b
   selector:
-    anchor: plugin-transform-runtime
-- id: no_global_2
+    anchor: GARBAGE_JESTCFG_B
+- id: no_garbage_c
   selector:
-    anchor: babel-jest
-- id: no_global_3
-  selector:
-    anchor: "test:watch"
-- id: no_global_4
-  selector:
-    anchor: "test:coverage"
-- id: no_global_5
-  selector:
-    anchor: actions/checkout
-- id: no_global_6
-  selector:
-    anchor: actions/setup-node
-- id: no_global_7
-  selector:
-    anchor: npm test -- --coverage
+    anchor: GARBAGE_JESTCFG_C
 oracle:
   required:
-  - jest_config
-  - jest_config_1
+  - paid_field_added
+  - mark_paid_method
+  - overdue_excludes_paid
+  - repo_overdue_ids
+  - processor_calls_mark_paid
   allowed: []
   forbidden:
-  - no_babel_config
-  - no_package
-  - no_test
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

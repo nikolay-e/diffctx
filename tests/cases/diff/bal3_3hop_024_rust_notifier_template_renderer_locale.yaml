@@ -1,0 +1,203 @@
+name: bal3_3hop_024_rust_notifier_template_renderer_locale
+tags:
+- lang:rust
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/locale/translations.rs: |
+      use std::collections::HashMap;
+
+      pub struct Translations {
+          lang: String,
+          entries: HashMap<String, String>,
+      }
+
+      impl Translations {
+          pub fn new(lang: &str) -> Self {
+              Self {
+                  lang: lang.to_string(),
+                  entries: HashMap::new(),
+              }
+          }
+
+          pub fn set(&mut self, key: &str, value: &str) {
+              self.entries.insert(key.to_string(), value.to_string());
+          }
+
+          pub fn get(&self, key: &str) -> String {
+              self.entries.get(key).cloned().unwrap_or_else(|| key.to_string())
+          }
+      }
+    src/locale/mod.rs: |
+      pub mod translations;
+    src/renderer/text_renderer.rs: |
+      use crate::locale::translations::Translations;
+
+      pub struct TextRenderer {
+          translations: Translations,
+      }
+
+      impl TextRenderer {
+          pub fn new(translations: Translations) -> Self {
+              Self { translations }
+          }
+
+          pub fn render(&self, key: &str, args: &[(&str, &str)]) -> String {
+              let mut result = self.translations.get(key);
+              for (k, v) in args {
+                  result = format!("{} {}={}", result, k, v);
+              }
+              result
+          }
+      }
+    src/renderer/mod.rs: |
+      pub mod text_renderer;
+    src/template/builder.rs: |
+      use crate::renderer::text_renderer::TextRenderer;
+
+      pub struct TemplateBuilder {
+          renderer: TextRenderer,
+      }
+
+      impl TemplateBuilder {
+          pub fn new(renderer: TextRenderer) -> Self {
+              Self { renderer }
+          }
+
+          pub fn build(&self, key: &str, data: &[(&str, &str)]) -> String {
+              self.renderer.render(key, data)
+          }
+      }
+    src/template/mod.rs: |
+      pub mod builder;
+    src/notifier/notifier.rs: |
+      use crate::template::builder::TemplateBuilder;
+
+      pub struct Notifier {
+          builder: TemplateBuilder,
+          channel: String,
+      }
+
+      impl Notifier {
+          pub fn new(builder: TemplateBuilder, channel: &str) -> Self {
+              Self {
+                  builder,
+                  channel: channel.to_string(),
+              }
+          }
+
+          pub fn send(&self, key: &str, data: &[(&str, &str)]) -> String {
+              let msg = self.builder.build(key, data);
+              format!("[{}] {}", self.channel, msg)
+          }
+      }
+    src/notifier/mod.rs: |
+      pub mod notifier;
+    src/audit/logger.rs: |
+      pub static GARBAGE_BAL3_024_AUDIT_MARKER_A: &str = "audit";
+      pub static GARBAGE_BAL3_024_RETAIN_MARKER_B: u32 = 365;
+
+      pub struct AuditLogger;
+      impl AuditLogger {
+          pub fn log(&self, _msg: &str) {}
+      }
+    src/audit/mod.rs: |
+      pub mod logger;
+    src/lib.rs: |
+      pub mod locale;
+      pub mod renderer;
+      pub mod template;
+      pub mod notifier;
+      pub mod audit;
+  changed_files:
+    src/locale/translations.rs: |
+      use std::collections::HashMap;
+
+      pub struct Translations {
+          lang: String,
+          entries: HashMap<String, String>,
+          fallback: Option<Box<Translations>>,
+      }
+
+      impl Translations {
+          pub fn new(lang: &str) -> Self {
+              Self {
+                  lang: lang.to_string(),
+                  entries: HashMap::new(),
+                  fallback: None,
+              }
+          }
+
+          pub fn with_fallback(lang: &str, fallback: Translations) -> Self {
+              Self {
+                  lang: lang.to_string(),
+                  entries: HashMap::new(),
+                  fallback: Some(Box::new(fallback)),
+              }
+          }
+
+          pub fn set(&mut self, key: &str, value: &str) {
+              self.entries.insert(key.to_string(), value.to_string());
+          }
+
+          pub fn get(&self, key: &str) -> String {
+              if let Some(value) = self.entries.get(key) {
+                  return value.clone();
+              }
+              if let Some(ref fb) = self.fallback {
+                  return fb.get(key);
+              }
+              key.to_string()
+          }
+      }
+  commit_message: "Add fallback chain support to translations"
+fragments:
+- id: translations_fallback_field
+  selector:
+    path: src/locale/translations.rs
+    anchor: "fallback: Option<Box<Translations>>"
+- id: translations_with_fallback
+  selector:
+    path: src/locale/translations.rs
+    anchor: "pub fn with_fallback"
+- id: translations_get_fb
+  selector:
+    path: src/locale/translations.rs
+    anchor: "fb.get(key)"
+- id: renderer_render
+  selector:
+    path: src/renderer/text_renderer.rs
+    anchor: "pub fn render"
+- id: builder_build
+  selector:
+    path: src/template/builder.rs
+    anchor: "pub fn build"
+- id: notifier_send
+  selector:
+    path: src/notifier/notifier.rs
+    anchor: "pub fn send"
+- id: no_audit
+  selector:
+    path: src/audit/logger.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_024_AUDIT_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_024_RETAIN_MARKER_B
+oracle:
+  required:
+  - translations_fallback_field
+  - translations_with_fallback
+  - translations_get_fb
+  - renderer_render
+  - builder_build
+  - notifier_send
+  allowed: []
+  forbidden:
+  - no_audit
+  - no_global_0
+  - no_global_1

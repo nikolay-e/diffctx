@@ -1,0 +1,121 @@
+name: gap2_094_yaml_config_import_chain_github_actions
+tags:
+- change:config
+- change:multi_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:yaml
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    .github/workflows/ci.yml: |
+      name: CI
+      on:
+        push:
+          branches: [main]
+      jobs:
+        build:
+          runs-on: ubuntu-latest
+          steps:
+          - uses: actions/checkout@v4
+          - uses: ./.github/actions/setup-env
+          - run: npm test
+    .github/actions/setup-env/action.yml: |
+      name: Setup Environment
+      runs:
+        using: composite
+        steps:
+        - uses: actions/setup-node@v4
+          with:
+            node-version-file: .nvmrc
+        - run: npm ci
+          shell: bash
+    .nvmrc: |
+      18
+    .github/workflows/deploy.yml: |
+      name: Deploy
+      on:
+        workflow_run:
+          workflows: [CI]
+          types: [completed]
+      jobs:
+        deploy:
+          runs-on: ubuntu-latest
+          steps:
+          - uses: actions/checkout@v4
+          - run: echo "deploying"
+    .github/workflows/stale.yml: |
+      name: TRAP_GAP2_094_STALE_A
+      on:
+        schedule:
+          - cron: TRAP_GAP2_094_STALE_B
+      jobs:
+        stale:
+          runs-on: ubuntu-latest
+          steps:
+          - uses: actions/stale@v9
+  changed_files:
+    .github/workflows/ci.yml: |
+      name: CI
+      on:
+        push:
+          branches: [main]
+        pull_request:
+          branches: [main]
+      jobs:
+        build:
+          runs-on: ubuntu-latest
+          steps:
+          - uses: actions/checkout@v4
+          - uses: ./.github/actions/setup-env
+          - run: npm test
+          - run: npm run lint
+    .github/actions/setup-env/action.yml: |
+      name: Setup Environment
+      runs:
+        using: composite
+        steps:
+        - uses: actions/setup-node@v4
+          with:
+            node-version-file: .nvmrc
+            cache: npm
+        - run: npm ci
+          shell: bash
+  commit_message: Update files
+fragments:
+- id: ci_pr_trigger
+  selector:
+    path: .github/workflows/ci.yml
+    anchor: "pull_request:"
+- id: lint_step
+  selector:
+    path: .github/workflows/ci.yml
+    anchor: "npm run lint"
+- id: cache_npm
+  selector:
+    path: .github/actions/setup-env/action.yml
+    anchor: "cache: npm"
+- id: no_deploy
+  selector:
+    path: .github/workflows/deploy.yml
+- id: no_stale
+  selector:
+    path: .github/workflows/stale.yml
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_094_STALE_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_094_STALE_B
+oracle:
+  required:
+  - ci_pr_trigger
+  - lint_step
+  - cache_npm
+  forbidden:
+  - no_deploy
+  - no_stale
+  - no_global_0
+  - no_global_1

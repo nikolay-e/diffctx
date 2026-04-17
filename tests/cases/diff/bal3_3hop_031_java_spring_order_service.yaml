@@ -1,0 +1,143 @@
+name: bal3_3hop_031_java_spring_order_service
+tags:
+- lang:java
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/app/model/Order.java: |
+      package com.app.model;
+
+      public class Order {
+          private String orderId;
+          private double total;
+          public Order(String orderId, double total) {
+              this.orderId = orderId;
+              this.total = total;
+          }
+          public String getOrderId() { return orderId; }
+          public double getTotal() { return total; }
+      }
+    src/main/java/com/app/repository/OrderRepository.java: |
+      package com.app.repository;
+
+      import com.app.model.Order;
+
+      public class OrderRepository {
+          public Order findById(String id) {
+              return new Order(id, 100.0);
+          }
+          public void save(Order order) {
+              System.out.println("Saved: " + order.getOrderId());
+          }
+      }
+    src/main/java/com/app/service/OrderService.java: |
+      package com.app.service;
+
+      import com.app.repository.OrderRepository;
+      import com.app.model.Order;
+
+      public class OrderService {
+          private final OrderRepository repository;
+          public OrderService(OrderRepository repository) {
+              this.repository = repository;
+          }
+          public Order getOrder(String id) {
+              return repository.findById(id);
+          }
+      }
+    src/main/java/com/app/web/OrderController.java: |
+      package com.app.web;
+
+      import com.app.service.OrderService;
+      import com.app.model.Order;
+
+      public class OrderController {
+          private final OrderService orderService;
+          public OrderController(OrderService orderService) {
+              this.orderService = orderService;
+          }
+          public String show(String id) {
+              Order order = orderService.getOrder(id);
+              return "Order: " + order.getOrderId();
+          }
+      }
+    src/main/java/com/app/util/MathHelper.java: |
+      package com.app.util;
+
+      public class MathHelper {
+          public static int GARBAGE_031_MATH_MARKER_A = 42;
+          public static String GARBAGE_031_CALC_MARKER_B = "calc";
+          public static double round(double val) {
+              return Math.round(val * 100.0) / 100.0;
+          }
+      }
+    src/main/java/com/app/util/TimeHelper.java: |
+      package com.app.util;
+
+      public class TimeHelper {
+          public static String GARBAGE_031_TIME_MARKER_C = "time";
+          public static int GARBAGE_031_EPOCH_MARKER_D = 0;
+          public static long now() { return System.currentTimeMillis(); }
+      }
+  changed_files:
+    src/main/java/com/app/model/Order.java: |
+      package com.app.model;
+
+      public class Order {
+          private String orderId;
+          private double total;
+          private String currency;
+          public Order(String orderId, double total, String currency) {
+              this.orderId = orderId;
+              this.total = total;
+              this.currency = currency;
+          }
+          public String getOrderId() { return orderId; }
+          public double getTotal() { return total; }
+          public String getCurrency() { return currency; }
+      }
+  commit_message: "feat: add currency field to Order model"
+fragments:
+- id: order_currency_field
+  selector:
+    path: src/main/java/com/app/model/Order.java
+    anchor: "private String currency"
+- id: order_currency_getter
+  selector:
+    path: src/main/java/com/app/model/Order.java
+    anchor: "getCurrency"
+- id: repo_imports_order
+  selector:
+    path: src/main/java/com/app/repository/OrderRepository.java
+    anchor: "import com.app.model.Order"
+- id: service_imports_repo
+  selector:
+    path: src/main/java/com/app/service/OrderService.java
+    anchor: "import com.app.repository.OrderRepository"
+- id: controller_imports_service
+  selector:
+    path: src/main/java/com/app/web/OrderController.java
+    anchor: "import com.app.service.OrderService"
+- id: no_math_helper
+  selector:
+    path: src/main/java/com/app/util/MathHelper.java
+    anchor: "GARBAGE_031_MATH_MARKER_A"
+- id: no_time_helper
+  selector:
+    path: src/main/java/com/app/util/TimeHelper.java
+    anchor: "GARBAGE_031_TIME_MARKER_C"
+oracle:
+  required:
+  - order_currency_field
+  - order_currency_getter
+  - repo_imports_order
+  - service_imports_repo
+  - controller_imports_service
+  allowed: []
+  forbidden:
+  - no_math_helper
+  - no_time_helper

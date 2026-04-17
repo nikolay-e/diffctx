@@ -1,0 +1,404 @@
+name: bal2_1hop_001_rb_activerecord_model_change
+tags:
+- lang:ruby
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    app/models/order.rb: |
+      require_relative '../lib/pricing_engine'
+      require_relative '../lib/inventory_checker'
+
+      module Commerce
+        class Order < ApplicationRecord
+          belongs_to :customer
+          has_many :line_items, dependent: :destroy
+          has_many :products, through: :line_items
+
+          validates :status, inclusion: { in: %w[pending confirmed shipped delivered cancelled] }
+          validates :total_cents, numericality: { greater_than_or_equal_to: 0 }
+
+          scope :active, -> { where.not(status: 'cancelled') }
+          scope :recent, -> { where('created_at > ?', 30.days.ago) }
+
+          def calculate_total
+            subtotal = line_items.sum(&:subtotal_cents)
+            discount = PricingEngine.apply_discount(self, subtotal)
+            self.total_cents = subtotal - discount
+          end
+
+          def confirm!
+            raise 'Insufficient stock' unless InventoryChecker.available?(self)
+            update!(status: 'confirmed', confirmed_at: Time.current)
+          end
+        end
+      end
+    app/services/order_fulfillment_service.rb: |
+      require_relative '../models/order'
+      require_relative '../lib/shipping_calculator'
+
+      module Commerce
+        class OrderFulfillmentService
+          def initialize(order)
+            @order = order
+          end
+
+          def fulfill
+            validate_order_status!
+            @order.calculate_total
+            shipping = ShippingCalculator.estimate(@order)
+            @order.update!(
+              shipping_cents: shipping,
+              status: 'shipped',
+              shipped_at: Time.current
+            )
+          end
+
+          private
+
+          def validate_order_status!
+            unless @order.status == 'confirmed'
+              raise "Cannot fulfill order in #{@order.status} state"
+            end
+          end
+        end
+      end
+    app/controllers/orders_controller.rb: |
+      require_relative '../models/order'
+      require_relative '../services/order_fulfillment_service'
+
+      module Commerce
+        class OrdersController < ApplicationController
+          before_action :authenticate_user!
+          before_action :set_order, only: [:show, :update, :destroy]
+
+          def index
+            @orders = current_user.orders.active.recent.page(params[:page])
+          end
+
+          def create
+            @order = current_user.orders.build(order_params)
+            @order.calculate_total
+            if @order.save
+              render json: @order, status: :created
+            else
+              render json: @order.errors, status: :unprocessable_entity
+            end
+          end
+
+          private
+
+          def set_order
+            @order = current_user.orders.find(params[:id])
+          end
+
+          def order_params
+            params.require(:order).permit(:address_id, line_items_attributes: [:product_id, :quantity])
+          end
+        end
+      end
+    app/lib/pricing_engine.rb: |
+      module Commerce
+        class PricingEngine
+          VOLUME_THRESHOLD = 10
+          VOLUME_DISCOUNT_RATE = 0.05
+
+          def self.apply_discount(order, subtotal)
+            return 0 if order.line_items.empty?
+            if order.line_items.sum(&:quantity) >= VOLUME_THRESHOLD
+              (subtotal * VOLUME_DISCOUNT_RATE).round
+            else
+              0
+            end
+          end
+        end
+      end
+    app/lib/shipping_calculator.rb: |
+      module Commerce
+        class ShippingCalculator
+          RATES = { standard: 599, express: 1299, overnight: 2499 }.freeze
+
+          def self.estimate(order)
+            base = RATES[:standard]
+            weight_surcharge = order.line_items.sum(&:weight_grams) / 1000 * 150
+            base + weight_surcharge
+          end
+        end
+      end
+    app/mailers/notification_mailer.rb: |
+      module Commerce
+        class NotificationMailer < ApplicationMailer
+          default from: 'noreply@shop.example.com'
+
+          def welcome_email(user)
+            @user = user
+            mail(to: @user.email, subject: 'Welcome to our shop')
+          end
+
+          def password_reset(user, token)
+            @user = user
+            @token = token
+            mail(to: @user.email, subject: 'Password reset')
+          end
+        end
+      end
+    app/serializers/product_serializer.rb: |
+      module Commerce
+        class ProductSerializer
+          def initialize(product)
+            @product = product
+          end
+
+          def as_json
+            {
+              id: @product.id,
+              name: @product.name,
+              price_cents: @product.price_cents,
+              sku: @product.sku,
+              in_stock: @product.stock_count > 0
+            }
+          end
+        end
+      end
+    config/initializers/redis_config.rb: |
+      module Commerce
+        class RedisConfig
+          POOL_SIZE = 5
+          TIMEOUT = 2
+
+          def self.connection_pool
+            ConnectionPool.new(size: POOL_SIZE, timeout: TIMEOUT) do
+              Redis.new(url: ENV.fetch('REDIS_URL', 'redis://localhost:6379'))
+            end
+          end
+        end
+      end
+  changed_files:
+    app/models/order.rb: |
+      require_relative '../lib/pricing_engine'
+      require_relative '../lib/inventory_checker'
+
+      module Commerce
+        class Order < ApplicationRecord
+          belongs_to :customer
+          has_many :line_items, dependent: :destroy
+          has_many :products, through: :line_items
+
+          validates :status, inclusion: { in: %w[pending confirmed shipped delivered cancelled refunded] }
+          validates :total_cents, numericality: { greater_than_or_equal_to: 0 }
+          validates :currency, presence: true
+
+          scope :active, -> { where.not(status: %w[cancelled refunded]) }
+          scope :recent, -> { where('created_at > ?', 30.days.ago) }
+          scope :refundable, -> { where(status: 'delivered').where('delivered_at > ?', 14.days.ago) }
+
+          def calculate_total
+            subtotal = line_items.sum(&:subtotal_cents)
+            discount = PricingEngine.apply_discount(self, subtotal)
+            tax = calculate_tax(subtotal - discount)
+            self.total_cents = subtotal - discount + tax
+          end
+
+          def confirm!
+            raise 'Insufficient stock' unless InventoryChecker.available?(self)
+            update!(status: 'confirmed', confirmed_at: Time.current)
+          end
+
+          def refund!
+            raise 'Only delivered orders can be refunded' unless status == 'delivered'
+            update!(status: 'refunded', refunded_at: Time.current)
+          end
+
+          private
+
+          def calculate_tax(amount)
+            tax_rate = customer.tax_exempt? ? 0 : 0.08
+            (amount * tax_rate).round
+          end
+        end
+      end
+    app/services/order_fulfillment_service.rb: |
+      require_relative '../models/order'
+      require_relative '../lib/shipping_calculator'
+
+      module Commerce
+        class OrderFulfillmentService
+          def initialize(order)
+            @order = order
+          end
+
+          def fulfill
+            validate_order_status!
+            @order.calculate_total
+            shipping = ShippingCalculator.estimate(@order)
+            @order.update!(
+              shipping_cents: shipping,
+              status: 'shipped',
+              shipped_at: Time.current
+            )
+          end
+
+          private
+
+          def validate_order_status!
+            unless @order.status == 'confirmed'
+              raise "Cannot fulfill order in #{@order.status} state"
+            end
+          end
+        end
+      end
+    app/controllers/orders_controller.rb: |
+      require_relative '../models/order'
+      require_relative '../services/order_fulfillment_service'
+
+      module Commerce
+        class OrdersController < ApplicationController
+          before_action :authenticate_user!
+          before_action :set_order, only: [:show, :update, :destroy]
+
+          def index
+            @orders = current_user.orders.active.recent.page(params[:page])
+          end
+
+          def create
+            @order = current_user.orders.build(order_params)
+            @order.calculate_total
+            if @order.save
+              render json: @order, status: :created
+            else
+              render json: @order.errors, status: :unprocessable_entity
+            end
+          end
+
+          private
+
+          def set_order
+            @order = current_user.orders.find(params[:id])
+          end
+
+          def order_params
+            params.require(:order).permit(:address_id, line_items_attributes: [:product_id, :quantity])
+          end
+        end
+      end
+    app/lib/pricing_engine.rb: |
+      module Commerce
+        class PricingEngine
+          VOLUME_THRESHOLD = 10
+          VOLUME_DISCOUNT_RATE = 0.05
+
+          def self.apply_discount(order, subtotal)
+            return 0 if order.line_items.empty?
+            if order.line_items.sum(&:quantity) >= VOLUME_THRESHOLD
+              (subtotal * VOLUME_DISCOUNT_RATE).round
+            else
+              0
+            end
+          end
+        end
+      end
+    app/lib/shipping_calculator.rb: |
+      module Commerce
+        class ShippingCalculator
+          RATES = { standard: 599, express: 1299, overnight: 2499 }.freeze
+
+          def self.estimate(order)
+            base = RATES[:standard]
+            weight_surcharge = order.line_items.sum(&:weight_grams) / 1000 * 150
+            base + weight_surcharge
+          end
+        end
+      end
+    app/mailers/notification_mailer.rb: |
+      module Commerce
+        class NotificationMailer < ApplicationMailer
+          default from: 'noreply@shop.example.com'
+
+          def welcome_email(user)
+            @user = user
+            mail(to: @user.email, subject: 'Welcome to our shop')
+          end
+
+          def password_reset(user, token)
+            @user = user
+            @token = token
+            mail(to: @user.email, subject: 'Password reset')
+          end
+        end
+      end
+    app/serializers/product_serializer.rb: |
+      module Commerce
+        class ProductSerializer
+          def initialize(product)
+            @product = product
+          end
+
+          def as_json
+            {
+              id: @product.id,
+              name: @product.name,
+              price_cents: @product.price_cents,
+              sku: @product.sku,
+              in_stock: @product.stock_count > 0
+            }
+          end
+        end
+      end
+    config/initializers/redis_config.rb: |
+      module Commerce
+        class RedisConfig
+          POOL_SIZE = 5
+          TIMEOUT = 2
+
+          def self.connection_pool
+            ConnectionPool.new(size: POOL_SIZE, timeout: TIMEOUT) do
+              Redis.new(url: ENV.fetch('REDIS_URL', 'redis://localhost:6379'))
+            end
+          end
+        end
+      end
+  commit_message: "feat: add refund support and tax calculation to Order model"
+fragments:
+- id: fulfillment_imports_order
+  selector:
+    path: app/services/order_fulfillment_service.rb
+    anchor: "require_relative '../models/order'"
+- id: fulfillment_calculate_total
+  selector:
+    path: app/services/order_fulfillment_service.rb
+    anchor: "@order.calculate_total"
+- id: controller_imports_order
+  selector:
+    path: app/controllers/orders_controller.rb
+    anchor: "require_relative '../models/order'"
+- id: controller_calculate_total
+  selector:
+    path: app/controllers/orders_controller.rb
+    anchor: "@order.calculate_total"
+- id: controller_active_recent
+  selector:
+    path: app/controllers/orders_controller.rb
+    anchor: "current_user.orders.active.recent"
+- id: no_mailer
+  selector:
+    path: app/mailers/notification_mailer.rb
+- id: no_product_serializer
+  selector:
+    path: app/serializers/product_serializer.rb
+- id: no_redis_config
+  selector:
+    path: config/initializers/redis_config.rb
+oracle:
+  required:
+  - fulfillment_imports_order
+  - fulfillment_calculate_total
+  - controller_imports_order
+  - controller_calculate_total
+  - controller_active_recent
+  allowed: []
+  forbidden:
+  - no_mailer
+  - no_product_serializer
+  - no_redis_config

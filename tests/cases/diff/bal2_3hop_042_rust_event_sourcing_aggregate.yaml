@@ -1,0 +1,171 @@
+name: bal2_3hop_042_rust_event_sourcing_aggregate
+tags:
+- lang:rust
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/event/domain.rs: |
+      #[derive(Debug, Clone)]
+      pub enum DomainEvent {
+          ItemAdded { sku: String, qty: u32 },
+          ItemRemoved { sku: String },
+      }
+
+      impl DomainEvent {
+          pub fn event_type(&self) -> &str {
+              match self {
+                  DomainEvent::ItemAdded { .. } => "item_added",
+                  DomainEvent::ItemRemoved { .. } => "item_removed",
+              }
+          }
+      }
+    src/event/store.rs: |
+      use crate::event::domain::DomainEvent;
+
+      pub struct EventStore {
+          events: Vec<DomainEvent>,
+      }
+
+      impl EventStore {
+          pub fn new() -> Self {
+              Self { events: Vec::new() }
+          }
+
+          pub fn append(&mut self, event: DomainEvent) {
+              self.events.push(event);
+          }
+
+          pub fn replay(&self) -> &[DomainEvent] {
+              &self.events
+          }
+      }
+    src/aggregate/inventory.rs: |
+      use crate::event::store::EventStore;
+      use crate::event::domain::DomainEvent;
+
+      pub struct InventoryAggregate {
+          store: EventStore,
+          items: std::collections::HashMap<String, u32>,
+      }
+
+      impl InventoryAggregate {
+          pub fn new(store: EventStore) -> Self {
+              Self { store, items: std::collections::HashMap::new() }
+          }
+
+          pub fn add_item(&mut self, sku: &str, qty: u32) {
+              let event = DomainEvent::ItemAdded { sku: sku.to_string(), qty };
+              self.apply(&event);
+              self.store.append(event);
+          }
+
+          fn apply(&mut self, event: &DomainEvent) {
+              match event {
+                  DomainEvent::ItemAdded { sku, qty } => {
+                      *self.items.entry(sku.clone()).or_insert(0) += qty;
+                  }
+                  DomainEvent::ItemRemoved { sku } => {
+                      self.items.remove(sku);
+                  }
+              }
+          }
+      }
+    src/api/inventory_handler.rs: |
+      use crate::aggregate::inventory::InventoryAggregate;
+
+      pub struct InventoryHandler {
+          aggregate: InventoryAggregate,
+      }
+
+      impl InventoryHandler {
+          pub fn new(aggregate: InventoryAggregate) -> Self {
+              Self { aggregate }
+          }
+
+          pub fn handle_add(&mut self, sku: &str, qty: u32) {
+              self.aggregate.add_item(sku, qty);
+          }
+      }
+    src/snapshot/serializer.rs: |
+      GARBAGE_042_SNAP_MARKER_A = "snapshot_ser";
+      GARBAGE_042_FORMAT_MARKER_B = "json";
+
+      pub fn serialize_snapshot(data: &str) -> Vec<u8> {
+          data.as_bytes().to_vec()
+      }
+    src/projection/view.rs: |
+      GARBAGE_042_VIEW_MARKER_C = "materialized_view";
+      GARBAGE_042_REFRESH_MARKER_D = 60;
+
+      pub struct MaterializedView {
+          data: Vec<String>,
+      }
+    src/bus/publisher.rs: |
+      GARBAGE_042_PUB_MARKER_E = "event_publisher";
+      GARBAGE_042_TOPIC_MARKER_F = "inventory.events";
+
+      pub struct EventPublisher {
+          topic: String,
+      }
+  changed_files:
+    src/event/domain.rs: |
+      #[derive(Debug, Clone)]
+      pub enum DomainEvent {
+          ItemAdded { sku: String, qty: u32 },
+          ItemRemoved { sku: String },
+          ItemUpdated { sku: String, new_qty: u32 },
+      }
+
+      impl DomainEvent {
+          pub fn event_type(&self) -> &str {
+              match self {
+                  DomainEvent::ItemAdded { .. } => "item_added",
+                  DomainEvent::ItemRemoved { .. } => "item_removed",
+                  DomainEvent::ItemUpdated { .. } => "item_updated",
+              }
+          }
+      }
+  commit_message: "feat: add ItemUpdated event variant"
+fragments:
+- id: event_item_updated
+  selector:
+    path: src/event/domain.rs
+    anchor: "ItemUpdated"
+- id: store_append
+  selector:
+    path: src/event/store.rs
+    anchor: "pub fn append"
+- id: aggregate_apply
+  selector:
+    path: src/aggregate/inventory.rs
+    anchor: "fn apply"
+- id: handler_add
+  selector:
+    path: src/api/inventory_handler.rs
+    anchor: "pub fn handle_add"
+- id: no_snapshot
+  selector:
+    path: src/snapshot/serializer.rs
+    anchor: "GARBAGE_042_SNAP_MARKER_A"
+- id: no_view
+  selector:
+    path: src/projection/view.rs
+    anchor: "GARBAGE_042_VIEW_MARKER_C"
+- id: no_publisher
+  selector:
+    path: src/bus/publisher.rs
+    anchor: "GARBAGE_042_PUB_MARKER_E"
+oracle:
+  required:
+  - event_item_updated
+  - store_append
+  - aggregate_apply
+  - handler_add
+  allowed: []
+  forbidden:
+  - no_snapshot
+  - no_view
+  - no_publisher

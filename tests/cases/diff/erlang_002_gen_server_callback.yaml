@@ -1,0 +1,146 @@
+name: erlang_002_gen_server_callback
+tags:
+- lang:erlang
+- change:single_file
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/counter_server.erl: |
+      -module(counter_server).
+      -behaviour(gen_server).
+      -export([start_link/0, increment/0, get_count/0]).
+      -export([init/1, handle_call/3, handle_cast/2]).
+
+      start_link() ->
+          gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+
+      increment() ->
+          gen_server:cast(?MODULE, increment).
+
+      get_count() ->
+          gen_server:call(?MODULE, get_count).
+
+      init([]) ->
+          {ok, 0}.
+
+      handle_call(get_count, _From, Count) ->
+          {reply, Count, Count};
+      handle_call(_Request, _From, State) ->
+          {reply, ok, State}.
+
+      handle_cast(increment, Count) ->
+          {noreply, Count + 1};
+      handle_cast(_Msg, State) ->
+          {noreply, State}.
+    src/counter_api.erl: |
+      -module(counter_api).
+      -export([handle_request/1]).
+
+      handle_request(<<"increment">>) ->
+          counter_server:increment(),
+          {ok, <<"incremented">>};
+      handle_request(<<"count">>) ->
+          Count = counter_server:get_count(),
+          {ok, integer_to_binary(Count)};
+      handle_request(_) ->
+          {error, <<"unknown">>}.
+    src/logger.erl: |
+      -module(logger).
+      -export([log/2]).
+
+      log(Level, Message) ->
+          io:format("[~s] ~s~n", [Level, Message]).
+  changed_files:
+    src/counter_server.erl: |
+      -module(counter_server).
+      -behaviour(gen_server).
+      -export([start_link/0, increment/0, increment/1, get_count/0, reset/0]).
+      -export([init/1, handle_call/3, handle_cast/2]).
+
+      start_link() ->
+          gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+
+      increment() ->
+          gen_server:cast(?MODULE, increment).
+
+      increment(N) when is_integer(N), N > 0 ->
+          gen_server:cast(?MODULE, {increment, N}).
+
+      get_count() ->
+          gen_server:call(?MODULE, get_count).
+
+      reset() ->
+          gen_server:call(?MODULE, reset).
+
+      init([]) ->
+          {ok, 0}.
+
+      handle_call(get_count, _From, Count) ->
+          {reply, Count, Count};
+      handle_call(reset, _From, _Count) ->
+          {reply, ok, 0};
+      handle_call(_Request, _From, State) ->
+          {reply, ok, State}.
+
+      handle_cast(increment, Count) ->
+          {noreply, Count + 1};
+      handle_cast({increment, N}, Count) ->
+          {noreply, Count + N};
+      handle_cast(_Msg, State) ->
+          {noreply, State}.
+    src/counter_api.erl: |
+      -module(counter_api).
+      -export([handle_request/1]).
+
+      handle_request(<<"increment">>) ->
+          counter_server:increment(),
+          {ok, <<"incremented">>};
+      handle_request(<<"count">>) ->
+          Count = counter_server:get_count(),
+          {ok, integer_to_binary(Count)};
+      handle_request(_) ->
+          {error, <<"unknown">>}.
+    src/logger.erl: |
+      -module(logger).
+      -export([log/2]).
+
+      log(Level, Message) ->
+          io:format("[~s] ~s~n", [Level, Message]).
+  commit_message: "feat(counter): add increment/1 and reset/0"
+fragments:
+- id: increment_n
+  selector:
+    path: src/counter_server.erl
+    anchor: "increment(N) when is_integer(N)"
+- id: reset_export
+  selector:
+    path: src/counter_server.erl
+    anchor: "reset/0"
+- id: handle_call_reset
+  selector:
+    path: src/counter_server.erl
+    anchor: "handle_call(reset, _From, _Count)"
+- id: handle_cast_increment_n
+  selector:
+    path: src/counter_server.erl
+    anchor: "handle_cast({increment, N}, Count)"
+- id: api_calls_server
+  selector:
+    path: src/counter_api.erl
+    anchor: "counter_server:increment()"
+- id: no_logger
+  selector:
+    path: src/logger.erl
+oracle:
+  required:
+  - increment_n
+  - reset_export
+  - handle_call_reset
+  - handle_cast_increment_n
+  - api_calls_server
+  allowed: []
+  forbidden:
+  - no_logger

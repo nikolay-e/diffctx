@@ -1,0 +1,103 @@
+name: bal4_0hop_011_zig_new_fn
+tags:
+- lang:zig
+- change:single_file
+- change:new_function
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/math.zig: |
+      const std = @import("std");
+
+      pub fn add(a: i32, b: i32) i32 {
+          return a + b;
+      }
+
+      pub fn sub(a: i32, b: i32) i32 {
+          return a - b;
+      }
+    src/garbage_log.zig: |
+      const GARBAGE_B4Z011_LOG_A: []const u8 = "log";
+      const GARBAGE_B4Z011_LOG_B: bool = true;
+
+      pub fn garbageLog(msg: []const u8) void {
+          _ = msg;
+      }
+    src/garbage_buf.zig: |
+      const GARBAGE_B4Z011_BUF_C: []const u8 = "buf";
+      const GARBAGE_B4Z011_BUF_D: usize = 1024;
+
+      pub fn garbageBuf(n: usize) usize {
+          return n;
+      }
+  changed_files:
+    src/math.zig: |
+      const std = @import("std");
+
+      pub fn add(a: i32, b: i32) i32 {
+          return a + b;
+      }
+
+      pub fn sub(a: i32, b: i32) i32 {
+          return a - b;
+      }
+
+      pub fn mul(a: i32, b: i32) i32 {
+          return a * b;
+      }
+    src/garbage_log.zig: |
+      const GARBAGE_B4Z011_LOG_A: []const u8 = "log";
+      const GARBAGE_B4Z011_LOG_B: bool = true;
+
+      pub fn garbageLog(msg: []const u8) void {
+          _ = msg;
+      }
+    src/garbage_buf.zig: |
+      const GARBAGE_B4Z011_BUF_C: []const u8 = "buf";
+      const GARBAGE_B4Z011_BUF_D: usize = 1024;
+
+      pub fn garbageBuf(n: usize) usize {
+          return n;
+      }
+  commit_message: "feat: add mul function"
+fragments:
+- id: new_mul
+  selector:
+    path: src/math.zig
+    anchor: "pub fn mul(a: i32, b: i32) i32 {"
+- id: mul_body
+  selector:
+    path: src/math.zig
+    anchor: "return a * b;"
+- id: no_garbage_log
+  selector:
+    path: src/garbage_log.zig
+- id: no_garbage_buf
+  selector:
+    path: src/garbage_buf.zig
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_B4Z011_LOG_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_B4Z011_LOG_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_B4Z011_BUF_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_B4Z011_BUF_D
+oracle:
+  required:
+  - new_mul
+  - mul_body
+  allowed: []
+  forbidden:
+  - no_garbage_log
+  - no_garbage_buf
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

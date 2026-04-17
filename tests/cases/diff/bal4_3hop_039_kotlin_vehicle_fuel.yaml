@@ -1,0 +1,159 @@
+name: bal4_3hop_039_kotlin_vehicle_fuel
+tags:
+- lang:kotlin
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:easy
+repo:
+  initial_files:
+    src/fuel/Tank.kt: |
+      package fuel
+
+      class Tank(var liters: Double = 0.0) {
+          fun fill(amount: Double) {
+              liters += amount
+          }
+          fun consume(amount: Double) {
+              liters = maxOf(0.0, liters - amount)
+          }
+      }
+    src/engine/Engine.kt: |
+      package engine
+
+      import fuel.Tank
+
+      class Engine(private val tank: Tank) {
+          fun drive(km: Double) {
+              tank.consume(km * 0.08)
+          }
+      }
+    src/vehicle/Car.kt: |
+      package vehicle
+
+      import engine.Engine
+
+      class Car(private val engine: Engine) {
+          fun trip(km: Double) {
+              engine.drive(km)
+          }
+      }
+    src/fleet/FleetManager.kt: |
+      package fleet
+
+      import vehicle.Car
+
+      class FleetManager(private val cars: List<Car>) {
+          fun sendAll(km: Double) {
+              cars.forEach { it.trip(km) }
+          }
+      }
+    src/utils/Gps.kt: |
+      package utils
+      val GARBAGE_039_GPS_A = "gps"
+      val GARBAGE_039_LAT_B = 0.0
+    src/utils/Obd.kt: |
+      package utils
+      val GARBAGE_039_OBD_C = "obd"
+      val GARBAGE_039_RPM_D = 800
+  changed_files:
+    src/fuel/Tank.kt: |
+      package fuel
+
+      class Tank(var liters: Double = 0.0, val capacity: Double = 60.0) {
+          fun fill(amount: Double) {
+              liters = minOf(capacity, liters + amount)
+          }
+          fun consume(amount: Double) {
+              liters = maxOf(0.0, liters - amount)
+          }
+          fun fuelLevel(): Double = liters / capacity
+      }
+    src/engine/Engine.kt: |
+      package engine
+
+      import fuel.Tank
+
+      class Engine(private val tank: Tank) {
+          fun drive(km: Double) {
+              tank.consume(km * 0.08)
+          }
+          fun fuelStatus(): Double = tank.fuelLevel()
+      }
+    src/vehicle/Car.kt: |
+      package vehicle
+
+      import engine.Engine
+
+      class Car(private val engine: Engine) {
+          fun trip(km: Double) {
+              engine.drive(km)
+          }
+      }
+    src/fleet/FleetManager.kt: |
+      package fleet
+
+      import vehicle.Car
+
+      class FleetManager(private val cars: List<Car>) {
+          fun sendAll(km: Double) {
+              cars.forEach { it.trip(km) }
+          }
+      }
+    src/utils/Gps.kt: |
+      package utils
+      val GARBAGE_039_GPS_A = "gps"
+      val GARBAGE_039_LAT_B = 0.0
+    src/utils/Obd.kt: |
+      package utils
+      val GARBAGE_039_OBD_C = "obd"
+      val GARBAGE_039_RPM_D = 800
+  commit_message: "feat: add tank capacity and fuel level"
+fragments:
+- id: tank_capacity
+  selector:
+    path: src/fuel/Tank.kt
+    anchor: "capacity: Double = 60.0"
+- id: tank_fuel_level
+  selector:
+    path: src/fuel/Tank.kt
+    anchor: "fun fuelLevel()"
+- id: engine_status
+  selector:
+    path: src/engine/Engine.kt
+    anchor: "fun fuelStatus()"
+- id: car_import
+  selector:
+    path: src/vehicle/Car.kt
+    anchor: "import engine.Engine"
+- id: fleet_import
+  selector:
+    path: src/fleet/FleetManager.kt
+    anchor: "import vehicle.Car"
+- id: no_gps
+  selector:
+    path: src/utils/Gps.kt
+    anchor: "GARBAGE_039_GPS_A"
+- id: no_obd
+  selector:
+    path: src/utils/Obd.kt
+    anchor: "GARBAGE_039_OBD_C"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_039_LAT_B
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_039_RPM_D
+oracle:
+  required:
+  - tank_capacity
+  - tank_fuel_level
+  - engine_status
+  - car_import
+  - fleet_import
+  allowed: []
+  forbidden:
+  - no_gps
+  - no_obd
+  - no_global_0
+  - no_global_1

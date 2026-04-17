@@ -1,0 +1,219 @@
+name: gap_013_python_payment_gateway_refund_flow
+tags:
+- lang:python
+- change:multi_file
+- change:new_function
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    payments/processor.py: |
+      from decimal import Decimal
+
+      class PaymentProcessor:
+          def __init__(self):
+              self._transactions: dict[str, dict] = {}
+
+          def charge(self, tx_id: str, amount: Decimal, currency: str) -> dict:
+              if amount <= 0:
+                  raise ValueError("Amount must be positive")
+              record = {
+                  "id": tx_id,
+                  "amount": amount,
+                  "currency": currency,
+                  "status": "captured",
+              }
+              self._transactions[tx_id] = record
+              return record
+
+          def get_transaction(self, tx_id: str) -> dict | None:
+              return self._transactions.get(tx_id)
+    payments/ledger.py: |
+      from decimal import Decimal
+      from datetime import datetime
+
+      class LedgerEntry:
+          def __init__(self, tx_id: str, amount: Decimal, entry_type: str):
+              self.tx_id = tx_id
+              self.amount = amount
+              self.entry_type = entry_type
+              self.timestamp = datetime.utcnow()
+
+      class Ledger:
+          def __init__(self):
+              self._entries: list[LedgerEntry] = []
+
+          def record_charge(self, tx_id: str, amount: Decimal) -> None:
+              self._entries.append(LedgerEntry(tx_id, amount, "charge"))
+
+          def balance(self) -> Decimal:
+              total = Decimal("0")
+              for entry in self._entries:
+                  if entry.entry_type == "charge":
+                      total += entry.amount
+              return total
+    api/payment_routes.py: |
+      from decimal import Decimal
+      from payments.processor import PaymentProcessor
+      from payments.ledger import Ledger
+
+      class PaymentAPI:
+          def __init__(self):
+              self._processor = PaymentProcessor()
+              self._ledger = Ledger()
+
+          def handle_charge(self, tx_id: str, amount_str: str, currency: str) -> dict:
+              amount = Decimal(amount_str)
+              result = self._processor.charge(tx_id, amount, currency)
+              self._ledger.record_charge(tx_id, amount)
+              return result
+    notifications/email_sender.py: |
+      class EmailSender:
+          def __init__(self, smtp_host: str, smtp_port: int):
+              self._host = smtp_host
+              self._port = smtp_port
+              self._sent: list[dict] = []
+
+          def send(self, to: str, subject: str, body: str) -> bool:
+              self._sent.append({"to": to, "subject": subject})
+              return True
+
+          def sent_count(self) -> int:
+              return len(self._sent)
+    payments/receipt.py: |
+      class ReceiptGenerator:
+          def __init__(self, company_name: str):
+              self._company = company_name
+
+          def generate(self, tx_id: str, amount: str, currency: str) -> str:
+              return f"Receipt from {self._company}: {tx_id} - {amount} {currency}"
+
+          def generate_batch(self, transactions: list[dict]) -> list[str]:
+              return [self.generate(t["id"], str(t["amount"]), t["currency"]) for t in transactions]
+  changed_files:
+    payments/processor.py: |
+      from decimal import Decimal
+
+      class PaymentProcessor:
+          def __init__(self):
+              self._transactions: dict[str, dict] = {}
+
+          def charge(self, tx_id: str, amount: Decimal, currency: str) -> dict:
+              if amount <= 0:
+                  raise ValueError("Amount must be positive")
+              record = {
+                  "id": tx_id,
+                  "amount": amount,
+                  "currency": currency,
+                  "status": "captured",
+              }
+              self._transactions[tx_id] = record
+              return record
+
+          def refund(self, tx_id: str, amount: Decimal | None = None) -> dict:
+              original = self._transactions.get(tx_id)
+              if original is None:
+                  raise KeyError(f"Transaction not found: {tx_id}")
+              if original["status"] == "refunded":
+                  raise ValueError(f"Already refunded: {tx_id}")
+              refund_amount = amount or original["amount"]
+              if refund_amount > original["amount"]:
+                  raise ValueError("Refund exceeds original amount")
+              original["status"] = "refunded"
+              refund_id = f"ref-{tx_id}"
+              refund_record = {
+                  "id": refund_id,
+                  "original_tx": tx_id,
+                  "amount": refund_amount,
+                  "currency": original["currency"],
+                  "status": "refunded",
+              }
+              self._transactions[refund_id] = refund_record
+              return refund_record
+
+          def get_transaction(self, tx_id: str) -> dict | None:
+              return self._transactions.get(tx_id)
+    payments/ledger.py: |
+      from decimal import Decimal
+      from datetime import datetime
+
+      class LedgerEntry:
+          def __init__(self, tx_id: str, amount: Decimal, entry_type: str):
+              self.tx_id = tx_id
+              self.amount = amount
+              self.entry_type = entry_type
+              self.timestamp = datetime.utcnow()
+
+      class Ledger:
+          def __init__(self):
+              self._entries: list[LedgerEntry] = []
+
+          def record_charge(self, tx_id: str, amount: Decimal) -> None:
+              self._entries.append(LedgerEntry(tx_id, amount, "charge"))
+
+          def record_refund(self, tx_id: str, amount: Decimal) -> None:
+              self._entries.append(LedgerEntry(tx_id, -amount, "refund"))
+
+          def balance(self) -> Decimal:
+              total = Decimal("0")
+              for entry in self._entries:
+                  total += entry.amount
+              return total
+
+          def entries_for(self, tx_id: str) -> list[LedgerEntry]:
+              return [e for e in self._entries if e.tx_id == tx_id]
+    api/payment_routes.py: |
+      from decimal import Decimal
+      from payments.processor import PaymentProcessor
+      from payments.ledger import Ledger
+
+      class PaymentAPI:
+          def __init__(self):
+              self._processor = PaymentProcessor()
+              self._ledger = Ledger()
+
+          def handle_charge(self, tx_id: str, amount_str: str, currency: str) -> dict:
+              amount = Decimal(amount_str)
+              result = self._processor.charge(tx_id, amount, currency)
+              self._ledger.record_charge(tx_id, amount)
+              return result
+
+          def handle_refund(self, tx_id: str, amount_str: str | None = None) -> dict:
+              amount = Decimal(amount_str) if amount_str else None
+              result = self._processor.refund(tx_id, amount)
+              self._ledger.record_refund(tx_id, result["amount"])
+              return result
+fragments:
+- id: processor_refund
+  selector:
+    path: payments/processor.py
+    anchor: "def refund"
+- id: ledger_record_refund
+  selector:
+    path: payments/ledger.py
+    anchor: "def record_refund"
+- id: api_handle_refund
+  selector:
+    path: api/payment_routes.py
+    anchor: "def handle_refund"
+- id: ledger_balance
+  selector:
+    path: payments/ledger.py
+    anchor: "def balance"
+- id: no_email_sender
+  selector:
+    path: notifications/email_sender.py
+- id: no_receipt
+  selector:
+    path: payments/receipt.py
+oracle:
+  required:
+  - processor_refund
+  - ledger_record_refund
+  - api_handle_refund
+  forbidden:
+  - no_email_sender
+  - no_receipt

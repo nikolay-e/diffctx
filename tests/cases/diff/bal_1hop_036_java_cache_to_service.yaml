@@ -1,0 +1,118 @@
+name: bal_1hop_036_java_cache_to_service
+tags:
+- lang:java
+- change:signature
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/main/java/com/platform/cache/SessionCache.java: |
+      package com.platform.cache;
+      import java.util.HashMap;
+      import java.util.Map;
+      public class SessionCache {
+          private final Map<String, String> store = new HashMap<>();
+          public void put(String key, String value) {
+              store.put(key, value);
+          }
+          public String get(String key) {
+              return store.get(key);
+          }
+      }
+    src/main/java/com/platform/service/AuthService.java: |
+      package com.platform.service;
+      import com.platform.cache.SessionCache;
+      public class AuthService {
+          private final SessionCache cache;
+          public AuthService(SessionCache cache) { this.cache = cache; }
+          public boolean isAuthenticated(String sessionId) {
+              return cache.get(sessionId) != null;
+          }
+          public void login(String sessionId, String userId) {
+              cache.put(sessionId, userId);
+          }
+      }
+    src/main/java/com/platform/controller/HealthCheckController.java: |
+      package com.platform.controller;
+      public class HealthCheckController {
+          public String health() {
+              return "{\"status\":\"UP\"}";
+          }
+      }
+    src/main/java/com/platform/model/User.java: |
+      package com.platform.model;
+      public class User {
+          private String id;
+          private String username;
+          public User(String id, String username) {
+              this.id = id;
+              this.username = username;
+          }
+          public String getId() { return id; }
+          public String getUsername() { return username; }
+      }
+  changed_files:
+    src/main/java/com/platform/cache/SessionCache.java: |
+      package com.platform.cache;
+      import java.util.HashMap;
+      import java.util.Map;
+      public class SessionCache {
+          private final Map<String, String> store = new HashMap<>();
+          private final long defaultTtlMs;
+          public SessionCache(long defaultTtlMs) {
+              this.defaultTtlMs = defaultTtlMs;
+          }
+          public SessionCache() {
+              this(3600000L);
+          }
+          public void put(String key, String value) {
+              store.put(key, value);
+          }
+          public String get(String key) {
+              return store.get(key);
+          }
+          public void evict(String key) {
+              store.remove(key);
+          }
+          public long getDefaultTtlMs() {
+              return defaultTtlMs;
+          }
+      }
+  commit_message: "feat: add TTL config and evict to SessionCache"
+fragments:
+- id: cache_ttl_constructor
+  selector:
+    path: SessionCache.java
+    anchor: "defaultTtlMs"
+- id: cache_evict
+  selector:
+    path: SessionCache.java
+    anchor: "evict"
+- id: auth_uses_cache
+  selector:
+    path: AuthService.java
+    anchor: "cache.get(sessionId)"
+- id: auth_login
+  selector:
+    path: AuthService.java
+    anchor: "cache.put(sessionId"
+- id: no_health_check
+  selector:
+    path: HealthCheckController.java
+    anchor: "health"
+- id: no_user_model
+  selector:
+    path: User.java
+    anchor: "User"
+oracle:
+  required:
+  - cache_ttl_constructor
+  - cache_evict
+  - auth_uses_cache
+  allowed:
+  - auth_login
+  forbidden:
+  - no_health_check
+  - no_user_model

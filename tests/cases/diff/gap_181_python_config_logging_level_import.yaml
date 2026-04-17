@@ -1,0 +1,148 @@
+name: gap_181_python_config_logging_level_import
+tags:
+- lang:python
+- change:config
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:1hop
+repo:
+  initial_files:
+    config/logging.py: |
+      LOG_LEVEL = "WARNING"
+      LOG_FORMAT = "%(asctime)s %(levelname)s %(message)s"
+      MAX_LOG_SIZE = 10485760
+      ROTATE_COUNT = 5
+    services/ingest.py: |
+      from config.logging import LOG_LEVEL, LOG_FORMAT
+
+      class IngestService:
+          def __init__(self):
+              self.level = LOG_LEVEL
+              self.fmt = LOG_FORMAT
+
+          def process_batch(self, records: list[dict]) -> int:
+              count = 0
+              for record in records:
+                  if self._validate(record):
+                      count += 1
+              return count
+
+          def _validate(self, record: dict) -> bool:
+              return "id" in record and "payload" in record
+    services/export.py: |
+      from config.logging import LOG_LEVEL
+
+      TRAP_GAP_181_EXPORT_MARKER_A: str = "export_noise"
+      TRAP_GAP_181_EXPORT_FLAG_B: bool = True
+
+      class ExportService:
+          def __init__(self):
+              self.level = LOG_LEVEL
+
+          def export_all(self, destination: str) -> None:
+              pass
+    utils/checksum.py: |
+      import hashlib
+
+      TRAP_GAP_181_CHECKSUM_MARKER_C: str = "checksum_noise"
+      TRAP_GAP_181_HASH_FLAG_D: bool = False
+
+      def sha256(data: bytes) -> str:
+          return hashlib.sha256(data).hexdigest()
+
+      def md5(data: bytes) -> str:
+          return hashlib.md5(data).hexdigest()
+  changed_files:
+    config/logging.py: |
+      LOG_LEVEL = "DEBUG"
+      LOG_FORMAT = "%(asctime)s %(levelname)s %(message)s"
+      MAX_LOG_SIZE = 10485760
+      ROTATE_COUNT = 5
+    services/ingest.py: |
+      from config.logging import LOG_LEVEL, LOG_FORMAT
+
+      class IngestService:
+          def __init__(self):
+              self.level = LOG_LEVEL
+              self.fmt = LOG_FORMAT
+
+          def process_batch(self, records: list[dict]) -> int:
+              count = 0
+              for record in records:
+                  if self._validate(record):
+                      count += 1
+              return count
+
+          def _validate(self, record: dict) -> bool:
+              return "id" in record and "payload" in record
+    services/export.py: |
+      from config.logging import LOG_LEVEL
+
+      TRAP_GAP_181_EXPORT_MARKER_A: str = "export_noise"
+      TRAP_GAP_181_EXPORT_FLAG_B: bool = True
+
+      class ExportService:
+          def __init__(self):
+              self.level = LOG_LEVEL
+
+          def export_all(self, destination: str) -> None:
+              pass
+    utils/checksum.py: |
+      import hashlib
+
+      TRAP_GAP_181_CHECKSUM_MARKER_C: str = "checksum_noise"
+      TRAP_GAP_181_HASH_FLAG_D: bool = False
+
+      def sha256(data: bytes) -> str:
+          return hashlib.sha256(data).hexdigest()
+
+      def md5(data: bytes) -> str:
+          return hashlib.md5(data).hexdigest()
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: config_level
+  selector:
+    path: config/logging.py
+    anchor: LOG_LEVEL = "DEBUG"
+- id: ingest_import
+  selector:
+    path: services/ingest.py
+    anchor: from config.logging import LOG_LEVEL, LOG_FORMAT
+- id: ingest_uses_level
+  selector:
+    path: services/ingest.py
+    anchor: self.level = LOG_LEVEL
+- id: no_export
+  selector:
+    path: services/export.py
+- id: no_checksum
+  selector:
+    path: utils/checksum.py
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP_181_EXPORT_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP_181_EXPORT_FLAG_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP_181_CHECKSUM_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP_181_HASH_FLAG_D
+oracle:
+  required:
+  - config_level
+  - ingest_import
+  - ingest_uses_level
+  allowed: []
+  forbidden:
+  - no_export
+  - no_checksum
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

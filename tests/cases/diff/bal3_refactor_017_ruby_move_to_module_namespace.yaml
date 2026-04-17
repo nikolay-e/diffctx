@@ -1,0 +1,207 @@
+name: bal3_refactor_017_ruby_move_to_module_namespace
+tags:
+- lang:ruby
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    lib/csv_parser.rb: |
+      class CsvParser
+        def parse(input)
+          input.split("\n").map { |line| line.split(",") }
+        end
+      end
+    lib/json_parser.rb: |
+      class JsonParser
+        def parse(input)
+          { raw: input }
+        end
+      end
+    lib/xml_parser.rb: |
+      class XmlParser
+        def parse(input)
+          { xml: input }
+        end
+      end
+    app/services/import_service.rb: |
+      require_relative '../../lib/csv_parser'
+      require_relative '../../lib/json_parser'
+
+      class ImportService
+        def import_csv(data)
+          CsvParser.new.parse(data)
+        end
+
+        def import_json(data)
+          JsonParser.new.parse(data)
+        end
+      end
+    app/controllers/import_controller.rb: |
+      require_relative '../services/import_service'
+
+      class ImportController
+        def initialize
+          @service = ImportService.new
+        end
+
+        def handle_csv(data)
+          @service.import_csv(data)
+        end
+
+        def handle_json(data)
+          @service.import_json(data)
+        end
+      end
+    lib/auth/token.rb: |
+      GARBAGE_R017_TOKEN_A = "token"
+
+      class AuthToken
+        def generate
+          "tok_123"
+        end
+      end
+    lib/auth/session.rb: |
+      GARBAGE_R017_SESSION_B = "session"
+
+      class SessionStore
+        def find(id)
+          nil
+        end
+      end
+    lib/auth/password.rb: |
+      GARBAGE_R017_PASSWORD_C = "password"
+
+      class PasswordHasher
+        def hash(pwd)
+          pwd
+        end
+      end
+  changed_files:
+    lib/parsers/csv.rb: |
+      module Parsers
+        class Csv
+          def parse(input)
+            input.split("\n").map { |line| line.split(",") }
+          end
+        end
+      end
+    lib/parsers/json.rb: |
+      module Parsers
+        class Json
+          def parse(input)
+            { raw: input }
+          end
+        end
+      end
+    lib/parsers/xml.rb: |
+      module Parsers
+        class Xml
+          def parse(input)
+            { xml: input }
+          end
+        end
+      end
+    app/services/import_service.rb: |
+      require_relative '../../lib/parsers/csv'
+      require_relative '../../lib/parsers/json'
+
+      class ImportService
+        def import_csv(data)
+          Parsers::Csv.new.parse(data)
+        end
+
+        def import_json(data)
+          Parsers::Json.new.parse(data)
+        end
+      end
+    app/controllers/import_controller.rb: |
+      require_relative '../services/import_service'
+
+      class ImportController
+        def initialize
+          @service = ImportService.new
+        end
+
+        def handle_csv(data)
+          @service.import_csv(data)
+        end
+
+        def handle_json(data)
+          @service.import_json(data)
+        end
+      end
+    lib/auth/token.rb: |
+      GARBAGE_R017_TOKEN_A = "token"
+
+      class AuthToken
+        def generate
+          "tok_123"
+        end
+      end
+    lib/auth/session.rb: |
+      GARBAGE_R017_SESSION_B = "session"
+
+      class SessionStore
+        def find(id)
+          nil
+        end
+      end
+    lib/auth/password.rb: |
+      GARBAGE_R017_PASSWORD_C = "password"
+
+      class PasswordHasher
+        def hash(pwd)
+          pwd
+        end
+      end
+  commit_message: "refactor: move parsers into Parsers module namespace"
+fragments:
+- id: parsers_csv_class
+  selector:
+    path: lib/parsers/csv.rb
+    anchor: "module Parsers"
+- id: parsers_json_class
+  selector:
+    path: lib/parsers/json.rb
+    anchor: "module Parsers"
+- id: parsers_xml_class
+  selector:
+    path: lib/parsers/xml.rb
+    anchor: "module Parsers"
+- id: service_uses_parsers_csv
+  selector:
+    path: app/services/import_service.rb
+    anchor: "Parsers::Csv.new.parse"
+- id: service_uses_parsers_json
+  selector:
+    path: app/services/import_service.rb
+    anchor: "Parsers::Json.new.parse"
+- id: controller_context
+  selector:
+    path: app/controllers/import_controller.rb
+    anchor: "ImportService.new"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_R017_TOKEN_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_R017_SESSION_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_R017_PASSWORD_C
+oracle:
+  required:
+  - parsers_csv_class
+  - parsers_json_class
+  - service_uses_parsers_csv
+  - service_uses_parsers_json
+  allowed:
+  - parsers_xml_class
+  - controller_context
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

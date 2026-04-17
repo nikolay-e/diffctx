@@ -1,0 +1,228 @@
+name: bal_refactor_026_java_move_to_separate_package
+tags:
+- lang:java
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:2hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/main/java/com/app/service/PaymentService.java: |
+      package com.app.service;
+
+      import java.time.LocalDateTime;
+
+      public class PaymentService {
+          public double calculateTax(double amount, String region) {
+              switch (region) {
+                  case "US": return amount * 0.08;
+                  case "EU": return amount * 0.20;
+                  case "UK": return amount * 0.20;
+                  default: return 0;
+              }
+          }
+
+          public String processPayment(double amount, String region) {
+              double tax = calculateTax(amount, region);
+              double total = amount + tax;
+              return String.format("Charged %.2f at %s", total, LocalDateTime.now());
+          }
+      }
+    src/main/java/com/app/service/InvoiceService.java: |
+      package com.app.service;
+
+      public class InvoiceService {
+          private final PaymentService paymentService;
+
+          public InvoiceService(PaymentService paymentService) {
+              this.paymentService = paymentService;
+          }
+
+          public double getInvoiceTax(double subtotal, String region) {
+              return paymentService.calculateTax(subtotal, region);
+          }
+      }
+    src/main/java/com/app/controller/CheckoutController.java: |
+      package com.app.controller;
+
+      import com.app.service.PaymentService;
+
+      public class CheckoutController {
+          private final PaymentService paymentService;
+
+          public CheckoutController(PaymentService paymentService) {
+              this.paymentService = paymentService;
+          }
+
+          public String checkout(double amount, String region) {
+              return paymentService.processPayment(amount, region);
+          }
+      }
+    src/main/java/com/app/GarbageNotify.java: |
+      package com.app;
+
+      public class GarbageNotify {
+          public static final String GARBAGE_REFACTOR_026_NOTIFY_A = "notify";
+          public static final int GARBAGE_REFACTOR_026_RETRY_B = 3;
+          public static final boolean GARBAGE_REFACTOR_026_ASYNC_C = true;
+
+          public void notify(String msg) {}
+      }
+    src/main/java/com/app/GarbageFileStore.java: |
+      package com.app;
+
+      public class GarbageFileStore {
+          public static final String GARBAGE_REFACTOR_026_STORE_D = "filestore";
+          public static final boolean GARBAGE_REFACTOR_026_COMPRESS_E = false;
+
+          public void store(String path, byte[] data) {}
+      }
+  changed_files:
+    src/main/java/com/app/tax/TaxCalculator.java: |
+      package com.app.tax;
+
+      public class TaxCalculator {
+          public double calculateTax(double amount, String region) {
+              switch (region) {
+                  case "US": return amount * 0.08;
+                  case "EU": return amount * 0.20;
+                  case "UK": return amount * 0.20;
+                  default: return 0;
+              }
+          }
+      }
+    src/main/java/com/app/service/PaymentService.java: |
+      package com.app.service;
+
+      import com.app.tax.TaxCalculator;
+      import java.time.LocalDateTime;
+
+      public class PaymentService {
+          private final TaxCalculator taxCalculator;
+
+          public PaymentService(TaxCalculator taxCalculator) {
+              this.taxCalculator = taxCalculator;
+          }
+
+          public String processPayment(double amount, String region) {
+              double tax = taxCalculator.calculateTax(amount, region);
+              double total = amount + tax;
+              return String.format("Charged %.2f at %s", total, LocalDateTime.now());
+          }
+      }
+    src/main/java/com/app/service/InvoiceService.java: |
+      package com.app.service;
+
+      import com.app.tax.TaxCalculator;
+
+      public class InvoiceService {
+          private final TaxCalculator taxCalculator;
+
+          public InvoiceService(TaxCalculator taxCalculator) {
+              this.taxCalculator = taxCalculator;
+          }
+
+          public double getInvoiceTax(double subtotal, String region) {
+              return taxCalculator.calculateTax(subtotal, region);
+          }
+      }
+    src/main/java/com/app/controller/CheckoutController.java: |
+      package com.app.controller;
+
+      import com.app.service.PaymentService;
+
+      public class CheckoutController {
+          private final PaymentService paymentService;
+
+          public CheckoutController(PaymentService paymentService) {
+              this.paymentService = paymentService;
+          }
+
+          public String checkout(double amount, String region) {
+              return paymentService.processPayment(amount, region);
+          }
+      }
+    src/main/java/com/app/GarbageNotify.java: |
+      package com.app;
+
+      public class GarbageNotify {
+          public static final String GARBAGE_REFACTOR_026_NOTIFY_A = "notify";
+          public static final int GARBAGE_REFACTOR_026_RETRY_B = 3;
+          public static final boolean GARBAGE_REFACTOR_026_ASYNC_C = true;
+
+          public void notify(String msg) {}
+      }
+    src/main/java/com/app/GarbageFileStore.java: |
+      package com.app;
+
+      public class GarbageFileStore {
+          public static final String GARBAGE_REFACTOR_026_STORE_D = "filestore";
+          public static final boolean GARBAGE_REFACTOR_026_COMPRESS_E = false;
+
+          public void store(String path, byte[] data) {}
+      }
+  commit_message: "refactor: move tax calculation to dedicated package"
+fragments:
+- id: new_tax_calculator
+  selector:
+    path: src/main/java/com/app/tax/TaxCalculator.java
+    anchor: "public class TaxCalculator"
+- id: tax_calculate_method
+  selector:
+    path: src/main/java/com/app/tax/TaxCalculator.java
+    anchor: "public double calculateTax"
+- id: payment_imports_tax
+  selector:
+    path: src/main/java/com/app/service/PaymentService.java
+    anchor: "import com.app.tax.TaxCalculator"
+- id: payment_uses_tax
+  selector:
+    path: src/main/java/com/app/service/PaymentService.java
+    anchor: "taxCalculator.calculateTax"
+- id: invoice_imports_tax
+  selector:
+    path: src/main/java/com/app/service/InvoiceService.java
+    anchor: "import com.app.tax.TaxCalculator"
+- id: controller_uses_payment
+  selector:
+    path: src/main/java/com/app/controller/CheckoutController.java
+    anchor: "import com.app.service.PaymentService"
+- id: no_garbage_notify
+  selector:
+    path: src/main/java/com/app/GarbageNotify.java
+- id: no_garbage_filestore
+  selector:
+    path: src/main/java/com/app/GarbageFileStore.java
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_REFACTOR_026_NOTIFY_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_REFACTOR_026_RETRY_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_REFACTOR_026_ASYNC_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_REFACTOR_026_STORE_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_REFACTOR_026_COMPRESS_E
+oracle:
+  required:
+  - new_tax_calculator
+  - tax_calculate_method
+  - payment_imports_tax
+  - payment_uses_tax
+  - invoice_imports_tax
+  - controller_uses_payment
+  allowed: []
+  forbidden:
+  - no_garbage_notify
+  - no_garbage_filestore
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

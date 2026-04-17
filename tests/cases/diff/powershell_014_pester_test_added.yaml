@@ -1,0 +1,124 @@
+name: powershell_014_pester_test_added
+tags:
+- lang:powershell
+- change:multi_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    MyModule.psm1: |
+      function ConvertTo-TitleCase {
+          param([string]$InputString)
+          return (Get-Culture).TextInfo.ToTitleCase($InputString.ToLower())
+      }
+      Export-ModuleMember -Function ConvertTo-TitleCase
+    MyModule.Tests.ps1: |
+      BeforeAll {
+          Import-Module $PSScriptRoot/MyModule.psm1 -Force
+      }
+
+      Describe "ConvertTo-TitleCase" {
+          It "converts lowercase string to title case" {
+              ConvertTo-TitleCase -InputString "hello world" | Should -Be "Hello World"
+          }
+
+          It "handles already uppercase input" {
+              ConvertTo-TitleCase -InputString "HELLO" | Should -Be "Hello"
+          }
+      }
+    noise/ps_014_queue_client.py: |
+      class PS_NOISE_014_QueueClient:
+          def __init__(self, connection_string: str, queue_name: str):
+              self.connection_string = connection_string
+              self.queue_name = queue_name
+
+          def ps_noise_014_send_message(self, body: str) -> None:
+              pass
+
+          def ps_noise_014_receive_message(self) -> str:
+              return ""
+    noise/ps_014_web_admin.py: |
+      def ps_noise_014_restart_app_pool(app_pool_name: str) -> bool:
+          return True
+
+      def ps_noise_014_stop_site(site_name: str) -> None:
+          pass
+
+      def ps_noise_014_get_pool_state(app_pool_name: str) -> str:
+          return "Started"
+  changed_files:
+    MyModule.psm1: |
+      function ConvertTo-TitleCase {
+          param([string]$InputString)
+          return (Get-Culture).TextInfo.ToTitleCase($InputString.ToLower())
+      }
+
+      function Remove-ExtraWhitespace {
+          param([string]$InputString)
+          return $InputString -replace '\s+', ' ' | ForEach-Object { $_.Trim() }
+      }
+
+      Export-ModuleMember -Function ConvertTo-TitleCase, Remove-ExtraWhitespace
+    MyModule.Tests.ps1: |
+      BeforeAll {
+          Import-Module $PSScriptRoot/MyModule.psm1 -Force
+      }
+
+      Describe "ConvertTo-TitleCase" {
+          It "converts lowercase string to title case" {
+              ConvertTo-TitleCase -InputString "hello world" | Should -Be "Hello World"
+          }
+
+          It "handles already uppercase input" {
+              ConvertTo-TitleCase -InputString "HELLO" | Should -Be "Hello"
+          }
+      }
+
+      Describe "Remove-ExtraWhitespace" {
+          It "collapses multiple spaces into one" {
+              Remove-ExtraWhitespace -InputString "hello   world" | Should -Be "hello world"
+          }
+
+          It "trims leading and trailing whitespace" {
+              Remove-ExtraWhitespace -InputString "  trim me  " | Should -Be "trim me"
+          }
+      }
+  commit_message: "feat: add Remove-ExtraWhitespace function and Pester tests"
+fragments:
+- id: module_new_function
+  selector:
+    path: MyModule.psm1
+    anchor: Remove-ExtraWhitespace
+- id: module_export
+  selector:
+    path: MyModule.psm1
+    anchor: Export-ModuleMember
+- id: test_new_describe
+  selector:
+    path: MyModule.Tests.ps1
+    anchor: "Describe \"Remove-ExtraWhitespace\""
+- id: no_queue_client
+  selector:
+    path: noise/ps_014_queue_client.py
+- id: no_web_admin
+  selector:
+    path: noise/ps_014_web_admin.py
+- id: no_global_0
+  selector:
+    anchor: PS_NOISE_014_QueueClient
+- id: no_global_1
+  selector:
+    anchor: ps_noise_014_restart_app_pool
+oracle:
+  required:
+  - module_new_function
+  - module_export
+  - test_new_describe
+  allowed: []
+  forbidden:
+  - no_queue_client
+  - no_web_admin
+  - no_global_0
+  - no_global_1

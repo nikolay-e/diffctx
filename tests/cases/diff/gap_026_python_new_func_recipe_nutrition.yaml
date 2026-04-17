@@ -1,0 +1,123 @@
+name: gap_026_python_new_func_recipe_nutrition
+tags:
+- change:new_function
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:1hop
+- lang:python
+repo:
+  initial_files:
+    recipes/ingredients.py: |
+      from dataclasses import dataclass
+
+      @dataclass
+      class Ingredient:
+          name: str
+          calories_per_gram: float
+          protein_per_gram: float
+          fat_per_gram: float
+
+      PANTRY = {
+          "chicken": Ingredient("chicken", 2.39, 0.27, 0.14),
+          "rice": Ingredient("rice", 1.30, 0.027, 0.003),
+          "broccoli": Ingredient("broccoli", 0.34, 0.028, 0.004),
+          "olive_oil": Ingredient("olive_oil", 8.84, 0.0, 1.0),
+      }
+
+      def lookup(name: str) -> Ingredient:
+          return PANTRY[name]
+    recipes/builder.py: |
+      from recipes.ingredients import Ingredient, lookup
+
+      class RecipeBuilder:
+          def __init__(self, name: str):
+              self.name = name
+              self.items: list[tuple[str, float]] = []
+
+          def add(self, ingredient_name: str, grams: float):
+              self.items.append((ingredient_name, grams))
+              return self
+
+          def total_calories(self) -> float:
+              return sum(lookup(n).calories_per_gram * g for n, g in self.items)
+    recipes/export.py: |
+      GARBAGE_GAP_026_EXPORT_A = "pdf_marker"
+      GARBAGE_GAP_026_LAYOUT_B = "a4"
+
+      def to_pdf(recipe_name: str, lines: list[str]) -> bytes:
+          return b"%PDF-fake"
+    recipes/scraper.py: |
+      GARBAGE_GAP_026_SCRAPE_C = "html_marker"
+      GARBAGE_GAP_026_PARSER_D = "beautifulsoup"
+
+      def scrape_url(url: str) -> dict:
+          return {"title": "Unknown", "ingredients": []}
+  changed_files:
+    recipes/builder.py: |
+      from recipes.ingredients import Ingredient, lookup
+
+      class RecipeBuilder:
+          def __init__(self, name: str):
+              self.name = name
+              self.items: list[tuple[str, float]] = []
+
+          def add(self, ingredient_name: str, grams: float):
+              self.items.append((ingredient_name, grams))
+              return self
+
+          def total_calories(self) -> float:
+              return sum(lookup(n).calories_per_gram * g for n, g in self.items)
+
+          def macro_breakdown(self) -> dict[str, float]:
+              protein = sum(lookup(n).protein_per_gram * g for n, g in self.items)
+              fat = sum(lookup(n).fat_per_gram * g for n, g in self.items)
+              carbs = self.total_calories() - (protein * 4 + fat * 9)
+              return {"protein_g": protein, "fat_g": fat, "carbs_kcal": max(carbs, 0)}
+  commit_message: "add macro breakdown calculation to RecipeBuilder"
+fixtures:
+  auto_garbage: true
+fragments:
+- id: builder_macro
+  selector:
+    path: recipes/builder.py
+    anchor: "def macro_breakdown"
+- id: ingredient_class
+  selector:
+    path: recipes/ingredients.py
+    anchor: "class Ingredient"
+- id: ingredient_lookup
+  selector:
+    path: recipes/ingredients.py
+    anchor: "def lookup"
+- id: no_export
+  selector:
+    path: recipes/export.py
+- id: no_scraper
+  selector:
+    path: recipes/scraper.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_026_EXPORT_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GAP_026_LAYOUT_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GAP_026_SCRAPE_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GAP_026_PARSER_D
+oracle:
+  required:
+  - builder_macro
+  - ingredient_class
+  allowed:
+  - ingredient_lookup
+  forbidden:
+  - no_export
+  - no_scraper
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

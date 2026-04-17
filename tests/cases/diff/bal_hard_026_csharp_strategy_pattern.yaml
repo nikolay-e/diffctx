@@ -1,0 +1,224 @@
+name: bal_hard_026_csharp_strategy_pattern
+tags:
+- lang:csharp
+- change:multi_file
+- change:new_function
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/Pricing/IPricingStrategy.cs: |
+      namespace App.Pricing
+      {
+          public interface IPricingStrategy
+          {
+              decimal Calculate(decimal basePrice, int quantity);
+          }
+      }
+    src/Pricing/StandardPricing.cs: |
+      namespace App.Pricing
+      {
+          public class StandardPricing : IPricingStrategy
+          {
+              public decimal Calculate(decimal basePrice, int quantity)
+              {
+                  return basePrice * quantity;
+              }
+          }
+      }
+    src/Pricing/BulkPricing.cs: |
+      namespace App.Pricing
+      {
+          public class BulkPricing : IPricingStrategy
+          {
+              private readonly int _threshold;
+              private readonly decimal _discount;
+              public BulkPricing(int threshold, decimal discount)
+              {
+                  _threshold = threshold;
+                  _discount = discount;
+              }
+              public decimal Calculate(decimal basePrice, int quantity)
+              {
+                  if (quantity >= _threshold)
+                      return basePrice * quantity * (1 - _discount);
+                  return basePrice * quantity;
+              }
+          }
+      }
+    src/Models/CartItem.cs: |
+      namespace App.Models
+      {
+          public class CartItem
+          {
+              public string ProductId { get; set; }
+              public string ProductName { get; set; }
+              public decimal Price { get; set; }
+              public int Quantity { get; set; }
+          }
+      }
+    src/Service/PricingService.cs: |
+      namespace App.Service
+      {
+          using App.Pricing;
+          using App.Models;
+          public class PricingService
+          {
+              private readonly IPricingStrategy _strategy;
+              public PricingService(IPricingStrategy strategy) { _strategy = strategy; }
+              public decimal CalculateItemTotal(CartItem item)
+              {
+                  return _strategy.Calculate(item.Price, item.Quantity);
+              }
+          }
+      }
+    src/Service/CheckoutService.cs: |
+      namespace App.Service
+      {
+          using System.Collections.Generic;
+          using System.Linq;
+          using App.Models;
+          public class CheckoutService
+          {
+              private readonly PricingService _pricing;
+              public CheckoutService(PricingService pricing) { _pricing = pricing; }
+              public decimal CalculateTotal(List<CartItem> items)
+              {
+                  return items.Sum(i => _pricing.CalculateItemTotal(i));
+              }
+          }
+      }
+    src/Controllers/CheckoutController.cs: |
+      namespace App.Controllers
+      {
+          using System.Collections.Generic;
+          using App.Models;
+          using App.Service;
+          public class CheckoutController
+          {
+              private readonly CheckoutService _checkout;
+              public CheckoutController(CheckoutService checkout) { _checkout = checkout; }
+              public string Process(List<CartItem> items)
+              {
+                  var total = _checkout.CalculateTotal(items);
+                  return $"Total: {total:C}";
+              }
+          }
+      }
+    src/Helpers/TaxCalculator.cs: |
+      namespace App.Helpers
+      {
+          public static class TaxCalculator
+          {
+              public static decimal WithTax(decimal amount, decimal rate = 0.2m) => amount * (1 + rate);
+          }
+      }
+  changed_files:
+    src/Pricing/TieredPricing.cs: |
+      namespace App.Pricing
+      {
+          using System.Collections.Generic;
+          using System.Linq;
+          public class TieredPricing : IPricingStrategy
+          {
+              private readonly List<(int MaxQty, decimal Multiplier)> _tiers;
+              public TieredPricing(List<(int MaxQty, decimal Multiplier)> tiers)
+              {
+                  _tiers = tiers.OrderBy(t => t.MaxQty).ToList();
+              }
+              public decimal Calculate(decimal basePrice, int quantity)
+              {
+                  var tier = _tiers.LastOrDefault(t => quantity <= t.MaxQty);
+                  var multiplier = tier.Multiplier > 0 ? tier.Multiplier : 1.0m;
+                  return basePrice * quantity * multiplier;
+              }
+          }
+      }
+    src/Pricing/PricingStrategyFactory.cs: |
+      namespace App.Pricing
+      {
+          using System.Collections.Generic;
+          public static class PricingStrategyFactory
+          {
+              public static IPricingStrategy Create(string strategyName)
+              {
+                  return strategyName switch
+                  {
+                      "standard" => new StandardPricing(),
+                      "bulk" => new BulkPricing(10, 0.15m),
+                      "tiered" => new TieredPricing(new List<(int, decimal)>
+                      {
+                          (5, 1.0m), (20, 0.9m), (100, 0.8m)
+                      }),
+                      _ => new StandardPricing()
+                  };
+              }
+          }
+      }
+    src/Service/PricingService.cs: |
+      namespace App.Service
+      {
+          using App.Pricing;
+          using App.Models;
+          public class PricingService
+          {
+              private IPricingStrategy _strategy;
+              public PricingService(IPricingStrategy strategy) { _strategy = strategy; }
+              public void SetStrategy(IPricingStrategy strategy) { _strategy = strategy; }
+              public decimal CalculateItemTotal(CartItem item)
+              {
+                  return _strategy.Calculate(item.Price, item.Quantity);
+              }
+          }
+      }
+  commit_message: "feat: add tiered pricing strategy and factory"
+fragments:
+- id: tiered_pricing_class
+  selector:
+    path: TieredPricing.cs
+    anchor: "class TieredPricing : IPricingStrategy"
+- id: tiered_calculate
+  selector:
+    path: TieredPricing.cs
+    anchor: "public decimal Calculate(decimal basePrice, int quantity)"
+- id: factory_creates_tiered
+  selector:
+    path: PricingStrategyFactory.cs
+    anchor: "new TieredPricing"
+- id: service_set_strategy
+  selector:
+    path: PricingService.cs
+    anchor: "public void SetStrategy"
+- id: pricing_interface
+  selector:
+    path: IPricingStrategy.cs
+    anchor: "public interface IPricingStrategy"
+- id: checkout_uses_pricing
+  selector:
+    path: CheckoutService.cs
+    anchor: "_pricing.CalculateItemTotal"
+- id: cart_item_model
+  selector:
+    path: CartItem.cs
+    anchor: "public class CartItem"
+- id: no_tax_calculator
+  selector:
+    path: Helpers/TaxCalculator.cs
+- id: no_bulk_pricing_body
+  selector:
+    path: BulkPricing.cs
+    anchor: "quantity >= _threshold"
+oracle:
+  required:
+  - tiered_pricing_class
+  - tiered_calculate
+  - factory_creates_tiered
+  - service_set_strategy
+  - pricing_interface
+  - checkout_uses_pricing
+  - cart_item_model
+  allowed: []
+  forbidden:
+  - no_tax_calculator
+  - no_bulk_pricing_body

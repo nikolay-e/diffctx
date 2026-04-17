@@ -1,0 +1,176 @@
+name: gap_087_rust_test_file_matrix_ops
+tags:
+- lang:rust
+- change:new_function
+- change:signature
+- change:single_file
+- context:test_file
+- difficulty:medium
+- distance:2hop
+repo:
+  initial_files:
+    src/matrix.rs: |
+      pub struct Matrix {
+          rows: usize,
+          cols: usize,
+          data: Vec<f64>,
+      }
+
+      impl Matrix {
+          pub fn zeros(rows: usize, cols: usize) -> Self {
+              Matrix {
+                  rows,
+                  cols,
+                  data: vec![0.0; rows * cols],
+              }
+          }
+
+          pub fn get(&self, row: usize, col: usize) -> f64 {
+              self.data[row * self.cols + col]
+          }
+
+          pub fn set(&mut self, row: usize, col: usize, value: f64) {
+              self.data[row * self.cols + col] = value;
+          }
+
+          pub fn rows(&self) -> usize {
+              self.rows
+          }
+
+          pub fn cols(&self) -> usize {
+              self.cols
+          }
+      }
+    tests/test_matrix.rs: |
+      use crate::matrix::Matrix;
+
+      #[cfg(test)]
+      mod tests {
+          use super::*;
+
+          #[test]
+          fn test_zeros() {
+              let m = Matrix::zeros(3, 3);
+              assert_eq!(m.get(0, 0), 0.0);
+              assert_eq!(m.rows(), 3);
+          }
+
+          #[test]
+          fn test_set_get() {
+              let mut m = Matrix::zeros(2, 2);
+              m.set(1, 0, 7.5);
+              assert_eq!(m.get(1, 0), 7.5);
+          }
+      }
+    src/vector.rs: |
+      pub struct Vector {
+          data: Vec<f64>,
+      }
+
+      impl Vector {
+          pub fn new(data: Vec<f64>) -> Self {
+              Vector { data }
+          }
+
+          pub fn dot(&self, other: &Vector) -> f64 {
+              self.data.iter()
+                  .zip(other.data.iter())
+                  .map(|(a, b)| a * b)
+                  .sum()
+          }
+
+          pub fn magnitude(&self) -> f64 {
+              self.data.iter().map(|x| x * x).sum::<f64>().sqrt()
+          }
+
+          pub fn len(&self) -> usize {
+              self.data.len()
+          }
+      }
+  changed_files:
+    src/matrix.rs: |
+      pub struct Matrix {
+          rows: usize,
+          cols: usize,
+          data: Vec<f64>,
+      }
+
+      impl Matrix {
+          pub fn zeros(rows: usize, cols: usize) -> Self {
+              Matrix {
+                  rows,
+                  cols,
+                  data: vec![0.0; rows * cols],
+              }
+          }
+
+          pub fn identity(size: usize) -> Self {
+              let mut m = Self::zeros(size, size);
+              for i in 0..size {
+                  m.set(i, i, 1.0);
+              }
+              m
+          }
+
+          pub fn get(&self, row: usize, col: usize) -> f64 {
+              self.data[row * self.cols + col]
+          }
+
+          pub fn set(&mut self, row: usize, col: usize, value: f64) {
+              self.data[row * self.cols + col] = value;
+          }
+
+          pub fn transpose(&self) -> Self {
+              let mut result = Matrix::zeros(self.cols, self.rows);
+              for r in 0..self.rows {
+                  for c in 0..self.cols {
+                      result.set(c, r, self.get(r, c));
+                  }
+              }
+              result
+          }
+
+          pub fn rows(&self) -> usize {
+              self.rows
+          }
+
+          pub fn cols(&self) -> usize {
+              self.cols
+          }
+      }
+  commit_message: "feat(matrix): add identity and transpose"
+fixtures:
+  auto_garbage: true
+fragments:
+- id: matrix_identity
+  selector:
+    path: src/matrix.rs
+    anchor: "pub fn identity(size: usize)"
+- id: matrix_transpose
+  selector:
+    path: src/matrix.rs
+    anchor: "pub fn transpose(&self)"
+- id: matrix_struct
+  selector:
+    path: src/matrix.rs
+    anchor: "pub struct Matrix"
+- id: test_uses_matrix
+  selector:
+    path: tests/test_matrix.rs
+    anchor: "Matrix::zeros(3, 3)"
+- id: no_vector
+  selector:
+    path: src/vector.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_087_A
+oracle:
+  required:
+  - matrix_identity
+  - matrix_transpose
+  - matrix_struct
+  - test_uses_matrix
+  allowed: []
+  forbidden:
+  - no_vector
+  - no_global_0

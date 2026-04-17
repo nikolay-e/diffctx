@@ -1,0 +1,149 @@
+name: bal2_1hop_034_scala_stream_pipeline
+tags:
+- lang:scala
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/pipeline/Transform.scala: |
+      package pipeline
+
+      trait Transform[A, B] {
+        def apply(input: A): B
+        def name: String
+      }
+    src/main/scala/pipeline/Pipeline.scala: |
+      package pipeline
+
+      class Pipeline[A](transforms: List[Transform[A, A]]) {
+        def run(input: A): A = transforms.foldLeft(input)((acc, t) => t.apply(acc))
+        def stages: List[String] = transforms.map(_.name)
+      }
+    src/main/scala/etl/Normalizer.scala: |
+      package etl
+
+      import pipeline.Transform
+
+      class Normalizer extends Transform[String, String] {
+        def apply(input: String): String = input.trim.toLowerCase
+        def name: String = "normalizer"
+      }
+    src/main/scala/etl/Deduplicator.scala: |
+      package etl
+
+      import pipeline.Transform
+
+      class Deduplicator extends Transform[String, String] {
+        def apply(input: String): String = input.split(",").distinct.mkString(",")
+        def name: String = "deduplicator"
+      }
+    src/main/scala/etl/Runner.scala: |
+      package etl
+
+      import pipeline.{Pipeline, Transform}
+
+      object Runner {
+        def buildPipeline(steps: List[Transform[String, String]]): Pipeline[String] = {
+          new Pipeline(steps)
+        }
+      }
+    src/main/scala/storage/BlobStore.scala: |
+      package storage
+
+      GARBAGE_034_BLOB_STORE_A = "blob"
+
+      class BlobStore(bucket: String) {
+        def upload(key: String, data: Array[Byte]): Unit = ()
+        def download(key: String): Array[Byte] = Array.empty
+      }
+    src/main/scala/auth/TokenValidator.scala: |
+      package auth
+
+      GARBAGE_034_TOKEN_VALIDATOR_B = "token"
+
+      class TokenValidator(secret: String) {
+        def validate(token: String): Boolean = token.nonEmpty
+      }
+    src/main/scala/monitoring/Alerter.scala: |
+      package monitoring
+
+      GARBAGE_034_ALERTER_C = "alert"
+
+      object Alerter {
+        def fire(msg: String): Unit = println(s"ALERT: $msg")
+      }
+  changed_files:
+    src/main/scala/pipeline/Transform.scala: |
+      package pipeline
+
+      trait Transform[A, B] {
+        def apply(input: A): B
+        def name: String
+        def andThen[C](next: Transform[B, C]): Transform[A, C] = {
+          val self = this
+          new Transform[A, C] {
+            def apply(input: A): C = next.apply(self.apply(input))
+            def name: String = s"${self.name} -> ${next.name}"
+          }
+        }
+      }
+  commit_message: "feat: add andThen combinator to Transform trait"
+fragments:
+- id: transform_and_then
+  selector:
+    path: src/main/scala/pipeline/Transform.scala
+    anchor: "def andThen"
+- id: pipeline_uses_transform
+  selector:
+    path: src/main/scala/pipeline/Pipeline.scala
+    anchor: "transforms: List[Transform[A, A]]"
+- id: normalizer_extends_transform
+  selector:
+    path: src/main/scala/etl/Normalizer.scala
+    anchor: "extends Transform[String, String]"
+- id: deduplicator_extends_transform
+  selector:
+    path: src/main/scala/etl/Deduplicator.scala
+    anchor: "extends Transform[String, String]"
+- id: runner_imports_transform
+  selector:
+    path: src/main/scala/etl/Runner.scala
+    anchor: "import pipeline.{Pipeline, Transform}"
+- id: unrelated_blob
+  selector:
+    path: src/main/scala/storage/BlobStore.scala
+    anchor: "class BlobStore"
+- id: unrelated_token
+  selector:
+    path: src/main/scala/auth/TokenValidator.scala
+    anchor: "class TokenValidator"
+- id: unrelated_alerter
+  selector:
+    path: src/main/scala/monitoring/Alerter.scala
+    anchor: "object Alerter"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_034_BLOB_STORE_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_034_TOKEN_VALIDATOR_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_034_ALERTER_C
+oracle:
+  required:
+  - transform_and_then
+  - pipeline_uses_transform
+  - normalizer_extends_transform
+  - deduplicator_extends_transform
+  allowed:
+  - runner_imports_transform
+  forbidden:
+  - unrelated_blob
+  - unrelated_token
+  - unrelated_alerter
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

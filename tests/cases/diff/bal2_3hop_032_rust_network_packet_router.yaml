@@ -1,0 +1,218 @@
+name: bal2_3hop_032_rust_network_packet_router
+tags:
+- lang:rust
+- change:multi_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/net/packet.rs: |
+      #[derive(Debug, Clone)]
+      pub struct Packet {
+          pub src: u32,
+          pub dst: u32,
+          pub payload: Vec<u8>,
+      }
+
+      impl Packet {
+          pub fn new(src: u32, dst: u32, payload: Vec<u8>) -> Self {
+              Self { src, dst, payload }
+          }
+
+          pub fn size(&self) -> usize {
+              self.payload.len() + 8
+          }
+      }
+    src/net/filter.rs: |
+      use crate::net::packet::Packet;
+
+      pub struct PacketFilter {
+          blocked_sources: Vec<u32>,
+      }
+
+      impl PacketFilter {
+          pub fn new() -> Self {
+              Self { blocked_sources: Vec::new() }
+          }
+
+          pub fn block(&mut self, src: u32) {
+              self.blocked_sources.push(src);
+          }
+
+          pub fn allow(&self, pkt: &Packet) -> bool {
+              !self.blocked_sources.contains(&pkt.src)
+          }
+      }
+    src/net/router.rs: |
+      use crate::net::filter::PacketFilter;
+      use crate::net::packet::Packet;
+
+      pub struct Router {
+          filter: PacketFilter,
+      }
+
+      impl Router {
+          pub fn new(filter: PacketFilter) -> Self {
+              Self { filter }
+          }
+
+          pub fn route(&self, pkt: &Packet) -> Option<u32> {
+              if self.filter.allow(pkt) {
+                  Some(pkt.dst)
+              } else {
+                  None
+              }
+          }
+      }
+    src/server/handler.rs: |
+      use crate::net::router::Router;
+      use crate::net::packet::Packet;
+
+      pub struct ConnectionHandler {
+          router: Router,
+      }
+
+      impl ConnectionHandler {
+          pub fn new(router: Router) -> Self {
+              Self { router }
+          }
+
+          pub fn handle(&self, pkt: Packet) {
+              if let Some(dst) = self.router.route(&pkt) {
+                  println!("Routing to {}", dst);
+              }
+          }
+      }
+    src/logging/file_logger.rs: |
+      GARBAGE_032_LOGGER_MARKER_A = "file_logger";
+      GARBAGE_032_ROTATE_MARKER_B = 1024;
+
+      pub struct FileLogger {
+          path: String,
+      }
+
+      impl FileLogger {
+          pub fn new(path: &str) -> Self {
+              Self { path: path.to_string() }
+          }
+      }
+    src/config/env.rs: |
+      GARBAGE_032_ENV_MARKER_C = "env_config";
+      GARBAGE_032_PORT_MARKER_D = 8080;
+
+      pub struct EnvConfig {
+          pub port: u16,
+      }
+
+      impl EnvConfig {
+          pub fn load() -> Self {
+              Self { port: 8080 }
+          }
+      }
+    src/metrics/counter.rs: |
+      GARBAGE_032_COUNTER_MARKER_E = "metrics";
+      GARBAGE_032_INCR_MARKER_F = 0;
+
+      pub struct Counter {
+          value: u64,
+      }
+
+      impl Counter {
+          pub fn increment(&mut self) {
+              self.value += 1;
+          }
+      }
+  changed_files:
+    src/net/packet.rs: |
+      #[derive(Debug, Clone)]
+      pub struct Packet {
+          pub src: u32,
+          pub dst: u32,
+          pub payload: Vec<u8>,
+          pub ttl: u8,
+      }
+
+      impl Packet {
+          pub fn new(src: u32, dst: u32, payload: Vec<u8>) -> Self {
+              Self { src, dst, payload, ttl: 64 }
+          }
+
+          pub fn size(&self) -> usize {
+              self.payload.len() + 9
+          }
+
+          pub fn decrement_ttl(&mut self) -> bool {
+              if self.ttl == 0 {
+                  return false;
+              }
+              self.ttl -= 1;
+              true
+          }
+      }
+    src/net/filter.rs: |
+      use crate::net::packet::Packet;
+
+      pub struct PacketFilter {
+          blocked_sources: Vec<u32>,
+      }
+
+      impl PacketFilter {
+          pub fn new() -> Self {
+              Self { blocked_sources: Vec::new() }
+          }
+
+          pub fn block(&mut self, src: u32) {
+              self.blocked_sources.push(src);
+          }
+
+          pub fn allow(&self, pkt: &Packet) -> bool {
+              !self.blocked_sources.contains(&pkt.src) && pkt.ttl > 0
+          }
+      }
+  commit_message: "feat: add TTL field to Packet and enforce in filter"
+fragments:
+- id: packet_ttl_field
+  selector:
+    path: src/net/packet.rs
+    anchor: "pub ttl: u8"
+- id: packet_decrement_ttl
+  selector:
+    path: src/net/packet.rs
+    anchor: "pub fn decrement_ttl"
+- id: filter_ttl_check
+  selector:
+    path: src/net/filter.rs
+    anchor: "pkt.ttl > 0"
+- id: router_uses_filter
+  selector:
+    path: src/net/router.rs
+    anchor: "use crate::net::filter::PacketFilter"
+- id: handler_uses_router
+  selector:
+    path: src/server/handler.rs
+    anchor: "use crate::net::router::Router"
+- id: no_logger
+  selector:
+    path: src/logging/file_logger.rs
+    anchor: "GARBAGE_032_LOGGER_MARKER_A"
+- id: no_env
+  selector:
+    path: src/config/env.rs
+    anchor: "GARBAGE_032_ENV_MARKER_C"
+- id: no_counter
+  selector:
+    path: src/metrics/counter.rs
+    anchor: "GARBAGE_032_COUNTER_MARKER_E"
+oracle:
+  required:
+  - packet_ttl_field
+  - packet_decrement_ttl
+  - filter_ttl_check
+  - router_uses_filter
+  - handler_uses_router
+  allowed: []
+  forbidden:
+  - no_logger
+  - no_env
+  - no_counter

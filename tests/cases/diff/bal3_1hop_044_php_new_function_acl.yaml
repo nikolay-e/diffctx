@@ -1,0 +1,256 @@
+name: bal3_1hop_044_php_new_function_acl
+tags:
+- lang:php
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+xfail:
+  category: php-no-tree-sitter
+repo:
+  initial_files:
+    src/Auth/AccessControl.php: |
+      <?php
+      namespace App\Auth;
+
+      class AccessControl
+      {
+          private array $permissions = [];
+
+          public function grant(string $role, string $resource): void
+          {
+              $this->permissions[$role][] = $resource;
+          }
+
+          public function isAllowed(string $role, string $resource): bool
+          {
+              return in_array($resource, $this->permissions[$role] ?? []);
+          }
+      }
+    src/Controllers/AdminPanelController.php: |
+      <?php
+      namespace App\Controllers;
+
+      use App\Auth\AccessControl;
+
+      class AdminPanelController
+      {
+          private AccessControl $acl;
+
+          public function __construct(AccessControl $acl)
+          {
+              $this->acl = $acl;
+          }
+
+          public function canAccess(string $role): bool
+          {
+              return $this->acl->isAllowed($role, 'admin_panel');
+          }
+      }
+    src/Controllers/ReportController.php: |
+      <?php
+      namespace App\Controllers;
+
+      use App\Auth\AccessControl;
+
+      class ReportController
+      {
+          private AccessControl $acl;
+
+          public function __construct(AccessControl $acl)
+          {
+              $this->acl = $acl;
+          }
+
+          public function viewReport(string $role): bool
+          {
+              return $this->acl->isAllowed($role, 'reports');
+          }
+      }
+    src/Controllers/SettingsController.php: |
+      <?php
+      namespace App\Controllers;
+
+      use App\Auth\AccessControl;
+
+      class SettingsController
+      {
+          private AccessControl $acl;
+
+          public function __construct(AccessControl $acl)
+          {
+              $this->acl = $acl;
+          }
+
+          public function canEdit(string $role): bool
+          {
+              return $this->acl->isAllowed($role, 'settings');
+          }
+      }
+    src/Middleware/AclMiddleware.php: |
+      <?php
+      namespace App\Middleware;
+
+      use App\Auth\AccessControl;
+
+      class AclMiddleware
+      {
+          private AccessControl $acl;
+
+          public function __construct(AccessControl $acl)
+          {
+              $this->acl = $acl;
+          }
+
+          public function check(string $role, string $resource): bool
+          {
+              return $this->acl->isAllowed($role, $resource);
+          }
+      }
+    src/Formatters/HtmlFormatter.php: |
+      <?php
+      namespace App\Formatters;
+
+      GARBAGE_BAL3_044_HTML_A = 'html';
+      GARBAGE_BAL3_044_ESCAPE_B = true;
+
+      class HtmlFormatter
+      {
+          public function format(string $text): string
+          {
+              return htmlspecialchars($text);
+          }
+      }
+    src/Formatters/MarkdownFormatter.php: |
+      <?php
+      namespace App\Formatters;
+
+      GARBAGE_BAL3_044_MD_C = 'markdown';
+      GARBAGE_BAL3_044_GFM_D = true;
+
+      class MarkdownFormatter
+      {
+          public function format(string $text): string
+          {
+              return $text;
+          }
+      }
+    src/Formatters/PlainTextFormatter.php: |
+      <?php
+      namespace App\Formatters;
+
+      GARBAGE_BAL3_044_PLAIN_E = 'plain';
+      GARBAGE_BAL3_044_WRAP_F = 80;
+
+      class PlainTextFormatter
+      {
+          public function format(string $text): string
+          {
+              return strip_tags($text);
+          }
+      }
+  changed_files:
+    src/Auth/AccessControl.php: |
+      <?php
+      namespace App\Auth;
+
+      class AccessControl
+      {
+          private array $permissions = [];
+          private array $denied = [];
+
+          public function grant(string $role, string $resource): void
+          {
+              $this->permissions[$role][] = $resource;
+          }
+
+          public function deny(string $role, string $resource): void
+          {
+              $this->denied[$role][] = $resource;
+          }
+
+          public function isAllowed(string $role, string $resource): bool
+          {
+              if (in_array($resource, $this->denied[$role] ?? [])) {
+                  return false;
+              }
+              return in_array($resource, $this->permissions[$role] ?? []);
+          }
+
+          public function getRolePermissions(string $role): array
+          {
+              return $this->permissions[$role] ?? [];
+          }
+
+          public function revokeAll(string $role): void
+          {
+              unset($this->permissions[$role], $this->denied[$role]);
+          }
+      }
+  commit_message: "Add deny, list, and revoke methods to AccessControl"
+fragments:
+- id: admin_panel
+  selector:
+    path: src/Controllers/AdminPanelController.php
+    anchor: "use App\\Auth\\AccessControl"
+- id: admin_allowed
+  selector:
+    path: src/Controllers/AdminPanelController.php
+    anchor: "acl->isAllowed"
+- id: report_controller
+  selector:
+    path: src/Controllers/ReportController.php
+    anchor: "use App\\Auth\\AccessControl"
+- id: settings_controller
+  selector:
+    path: src/Controllers/SettingsController.php
+    anchor: "use App\\Auth\\AccessControl"
+- id: acl_middleware
+  selector:
+    path: src/Middleware/AclMiddleware.php
+    anchor: "use App\\Auth\\AccessControl"
+- id: no_html
+  selector:
+    path: src/Formatters/HtmlFormatter.php
+- id: no_markdown
+  selector:
+    path: src/Formatters/MarkdownFormatter.php
+- id: no_plaintext
+  selector:
+    path: src/Formatters/PlainTextFormatter.php
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_044_HTML_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_044_ESCAPE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_044_MD_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_044_GFM_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL3_044_PLAIN_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL3_044_WRAP_F
+oracle:
+  required:
+  - admin_panel
+  - admin_allowed
+  - report_controller
+  - settings_controller
+  - acl_middleware
+  allowed: []
+  forbidden:
+  - no_html
+  - no_markdown
+  - no_plaintext
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

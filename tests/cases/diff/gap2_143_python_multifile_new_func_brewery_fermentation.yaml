@@ -1,0 +1,116 @@
+name: gap2_143_python_multifile_new_func_brewery_fermentation
+tags:
+- change:multi_file
+- change:new_function
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:python
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    brewery/fermentation.py: |
+      from brewery.instruments import read_gravity
+
+      class FermentationTracker:
+          def __init__(self, batch_id: str):
+              self.batch_id = batch_id
+              self._gravity_log: list[float] = []
+
+          def measure_gravity(self) -> float:
+              reading = read_gravity(self.batch_id)
+              self._gravity_log.append(reading)
+              return reading
+
+          def attenuation_percent(self) -> float:
+              if len(self._gravity_log) < 2:
+                  return 0.0
+              og = self._gravity_log[0]
+              fg = self._gravity_log[-1]
+              return round((og - fg) / (og - 1.0) * 100, 1)
+    brewery/instruments.py: |
+      import random
+
+      def read_gravity(batch_id: str) -> float:
+          return round(random.uniform(1.010, 1.080), 3)
+
+      def read_brix(batch_id: str) -> float:
+          return round(random.uniform(5.0, 20.0), 1)
+    brewery/packaging.py: |
+      BOTTLE_VOLUME_ML = 330
+      CAN_VOLUME_ML = 500
+
+      class PackagingLine:
+          def __init__(self):
+              self._queue: list[str] = []
+
+          def enqueue_batch(self, batch_id: str) -> None:
+              self._queue.append(batch_id)
+
+          def next_batch(self) -> str:
+              return self._queue.pop(0) if self._queue else ""
+  changed_files:
+    brewery/fermentation.py: |
+      from brewery.instruments import read_gravity, read_brix
+
+      class FermentationTracker:
+          def __init__(self, batch_id: str):
+              self.batch_id = batch_id
+              self._gravity_log: list[float] = []
+
+          def measure_gravity(self) -> float:
+              reading = read_gravity(self.batch_id)
+              self._gravity_log.append(reading)
+              return reading
+
+          def attenuation_percent(self) -> float:
+              if len(self._gravity_log) < 2:
+                  return 0.0
+              og = self._gravity_log[0]
+              fg = self._gravity_log[-1]
+              return round((og - fg) / (og - 1.0) * 100, 1)
+
+          def estimate_abv(self) -> float:
+              brix = read_brix(self.batch_id)
+              return round(brix * 0.55, 1)
+    brewery/instruments.py: |
+      import random
+
+      def read_gravity(batch_id: str) -> float:
+          return round(random.uniform(1.010, 1.080), 3)
+
+      def read_brix(batch_id: str) -> float:
+          return round(random.uniform(5.0, 20.0), 1)
+
+      def read_dissolved_co2(batch_id: str) -> float:
+          return round(random.uniform(2.0, 6.0), 2)
+  commit_message: "feat: add ABV estimation and CO2 measurement"
+fragments:
+- id: ferment_estimate_abv
+  selector:
+    path: brewery/fermentation.py
+    anchor: "def estimate_abv(self) -> float:"
+- id: ferment_import_brix
+  selector:
+    path: brewery/fermentation.py
+    anchor: "from brewery.instruments import read_gravity, read_brix"
+- id: instrument_co2
+  selector:
+    path: brewery/instruments.py
+    anchor: "def read_dissolved_co2(batch_id: str) -> float:"
+- id: no_packaging
+  selector:
+    path: brewery/packaging.py
+- id: no_bottle_volume
+  selector:
+    anchor: BOTTLE_VOLUME_ML
+oracle:
+  required:
+  - ferment_estimate_abv
+  - ferment_import_brix
+  - instrument_co2
+  allowed: []
+  forbidden:
+  - no_packaging
+  - no_bottle_volume

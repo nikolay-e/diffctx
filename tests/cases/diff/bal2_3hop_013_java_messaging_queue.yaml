@@ -1,0 +1,206 @@
+name: bal2_3hop_013_java_messaging_queue
+tags:
+- lang:java
+- change:single_file
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/app/msg/Message.java: |
+      package com.app.msg;
+
+      public class Message {
+          private final String topic;
+          private final String body;
+          public Message(String topic, String body) {
+              this.topic = topic;
+              this.body = body;
+          }
+          public String getTopic() { return topic; }
+          public String getBody() { return body; }
+      }
+    src/main/java/com/app/msg/MessageQueue.java: |
+      package com.app.msg;
+
+      import com.app.msg.Message;
+      import java.util.LinkedList;
+      import java.util.Queue;
+
+      public class MessageQueue {
+          private final Queue<Message> queue = new LinkedList<>();
+          public void enqueue(Message msg) {
+              queue.add(msg);
+          }
+          public Message dequeue() {
+              return queue.poll();
+          }
+          public int size() { return queue.size(); }
+      }
+    src/main/java/com/app/worker/MessageConsumer.java: |
+      package com.app.worker;
+
+      import com.app.msg.MessageQueue;
+      import com.app.msg.Message;
+
+      public class MessageConsumer {
+          private final MessageQueue queue;
+          public MessageConsumer(MessageQueue queue) {
+              this.queue = queue;
+          }
+          public String consume() {
+              Message msg = queue.dequeue();
+              return msg != null ? msg.getBody() : null;
+          }
+      }
+    src/main/java/com/app/scheduler/TaskScheduler.java: |
+      package com.app.scheduler;
+
+      import com.app.worker.MessageConsumer;
+
+      public class TaskScheduler {
+          private final MessageConsumer consumer;
+          public TaskScheduler(MessageConsumer consumer) {
+              this.consumer = consumer;
+          }
+          public void processBatch(int count) {
+              for (int i = 0; i < count; i++) {
+                  consumer.consume();
+              }
+          }
+      }
+    src/main/java/com/app/util/RetryPolicy.java: |
+      package com.app.util;
+
+      public class RetryPolicy {
+          private final int maxRetries;
+          public RetryPolicy(int maxRetries) { this.maxRetries = maxRetries; }
+          public int getMaxRetries() { return maxRetries; }
+      }
+    src/main/java/com/app/util/CircuitBreaker.java: |
+      package com.app.util;
+
+      public class CircuitBreaker {
+          private boolean open = false;
+          public boolean isOpen() { return open; }
+          public void trip() { open = true; }
+      }
+  changed_files:
+    src/main/java/com/app/msg/Message.java: |
+      package com.app.msg;
+
+      public class Message {
+          private final String topic;
+          private final String body;
+          private final int priority;
+          public Message(String topic, String body, int priority) {
+              this.topic = topic;
+              this.body = body;
+              this.priority = Math.max(0, Math.min(priority, 10));
+          }
+          public String getTopic() { return topic; }
+          public String getBody() { return body; }
+          public int getPriority() { return priority; }
+      }
+    src/main/java/com/app/msg/MessageQueue.java: |
+      package com.app.msg;
+
+      import com.app.msg.Message;
+      import java.util.LinkedList;
+      import java.util.Queue;
+
+      public class MessageQueue {
+          private final Queue<Message> queue = new LinkedList<>();
+          public void enqueue(Message msg) {
+              queue.add(msg);
+          }
+          public Message dequeue() {
+              return queue.poll();
+          }
+          public int size() { return queue.size(); }
+      }
+    src/main/java/com/app/worker/MessageConsumer.java: |
+      package com.app.worker;
+
+      import com.app.msg.MessageQueue;
+      import com.app.msg.Message;
+
+      public class MessageConsumer {
+          private final MessageQueue queue;
+          public MessageConsumer(MessageQueue queue) {
+              this.queue = queue;
+          }
+          public String consume() {
+              Message msg = queue.dequeue();
+              return msg != null ? msg.getBody() : null;
+          }
+      }
+    src/main/java/com/app/scheduler/TaskScheduler.java: |
+      package com.app.scheduler;
+
+      import com.app.worker.MessageConsumer;
+
+      public class TaskScheduler {
+          private final MessageConsumer consumer;
+          public TaskScheduler(MessageConsumer consumer) {
+              this.consumer = consumer;
+          }
+          public void processBatch(int count) {
+              for (int i = 0; i < count; i++) {
+                  consumer.consume();
+              }
+          }
+      }
+    src/main/java/com/app/util/RetryPolicy.java: |
+      package com.app.util;
+
+      public class RetryPolicy {
+          private final int maxRetries;
+          public RetryPolicy(int maxRetries) { this.maxRetries = maxRetries; }
+          public int getMaxRetries() { return maxRetries; }
+      }
+    src/main/java/com/app/util/CircuitBreaker.java: |
+      package com.app.util;
+
+      public class CircuitBreaker {
+          private boolean open = false;
+          public boolean isOpen() { return open; }
+          public void trip() { open = true; }
+      }
+  commit_message: "fix: add bounded priority to Message"
+fragments:
+- id: message_priority
+  selector:
+    path: src/main/java/com/app/msg/Message.java
+    anchor: "private final int priority"
+- id: queue_imports_message
+  selector:
+    path: src/main/java/com/app/msg/MessageQueue.java
+    anchor: "import com.app.msg.Message"
+- id: consumer_imports_queue
+  selector:
+    path: src/main/java/com/app/worker/MessageConsumer.java
+    anchor: "import com.app.msg.MessageQueue"
+- id: scheduler_imports_consumer
+  selector:
+    path: src/main/java/com/app/scheduler/TaskScheduler.java
+    anchor: "import com.app.worker.MessageConsumer"
+- id: no_retry_policy
+  selector:
+    path: src/main/java/com/app/util/RetryPolicy.java
+    anchor: "class RetryPolicy"
+- id: no_circuit_breaker
+  selector:
+    path: src/main/java/com/app/util/CircuitBreaker.java
+    anchor: "class CircuitBreaker"
+oracle:
+  required:
+  - message_priority
+  - queue_imports_message
+  - consumer_imports_queue
+  - scheduler_imports_consumer
+  allowed: []
+  forbidden:
+  - no_retry_policy
+  - no_circuit_breaker

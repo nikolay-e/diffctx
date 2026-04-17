@@ -1,0 +1,141 @@
+name: gap2_031_ts_bugfix_pagination_offset
+tags:
+- lang:rust
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/db/query_builder.rs: |
+      use std::fmt;
+
+      #[derive(Debug, Clone)]
+      pub struct PaginationParams {
+          pub page: u32,
+          pub page_size: u32,
+      }
+
+      impl PaginationParams {
+          pub fn new(page: u32, page_size: u32) -> Self {
+              Self { page, page_size }
+          }
+
+          pub fn offset(&self) -> u32 {
+              self.page * self.page_size
+          }
+
+          pub fn limit(&self) -> u32 {
+              self.page_size
+          }
+      }
+
+      impl fmt::Display for PaginationParams {
+          fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+              write!(f, "LIMIT {} OFFSET {}", self.limit(), self.offset())
+          }
+      }
+    src/api/listing_handler.rs: |
+      use crate::db::query_builder::PaginationParams;
+
+      pub struct ListingQuery {
+          pub category: String,
+          pub pagination: PaginationParams,
+      }
+
+      pub fn build_listing_sql(query: &ListingQuery) -> String {
+          format!(
+              "SELECT * FROM listings WHERE category = '{}' {}",
+              query.category,
+              query.pagination,
+          )
+      }
+    garbage/metrics.rs: |
+      // GARBAGE_PGOFF_A = "prometheus_metrics_marker"
+    garbage/cache.rs: |
+      // GARBAGE_PGOFF_B = "redis_cache_marker"
+    garbage/auth.rs: |
+      // GARBAGE_PGOFF_C = "jwt_auth_marker"
+  changed_files:
+    src/db/query_builder.rs: |
+      use std::fmt;
+
+      #[derive(Debug, Clone)]
+      pub struct PaginationParams {
+          pub page: u32,
+          pub page_size: u32,
+      }
+
+      impl PaginationParams {
+          pub fn new(page: u32, page_size: u32) -> Self {
+              Self { page, page_size }
+          }
+
+          pub fn offset(&self) -> u32 {
+              self.page.saturating_sub(1) * self.page_size
+          }
+
+          pub fn limit(&self) -> u32 {
+              self.page_size
+          }
+      }
+
+      impl fmt::Display for PaginationParams {
+          fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+              write!(f, "LIMIT {} OFFSET {}", self.limit(), self.offset())
+          }
+      }
+    src/api/listing_handler.rs: |
+      use crate::db::query_builder::PaginationParams;
+
+      pub struct ListingQuery {
+          pub category: String,
+          pub pagination: PaginationParams,
+      }
+
+      pub fn build_listing_sql(query: &ListingQuery) -> String {
+          format!(
+              "SELECT * FROM listings WHERE category = '{}' {}",
+              query.category,
+              query.pagination,
+          )
+      }
+    garbage/metrics.rs: |
+      // GARBAGE_PGOFF_A = "prometheus_metrics_marker"
+    garbage/cache.rs: |
+      // GARBAGE_PGOFF_B = "redis_cache_marker"
+    garbage/auth.rs: |
+      // GARBAGE_PGOFF_C = "jwt_auth_marker"
+  commit_message: "fix: correct 1-based page offset calculation with saturating_sub"
+fragments:
+- id: offset_fix
+  selector:
+    path: src/db/query_builder.rs
+    anchor: "self.page.saturating_sub(1) * self.page_size"
+- id: listing_handler_context
+  selector:
+    path: src/api/listing_handler.rs
+    anchor: "use crate::db::query_builder::PaginationParams"
+- id: build_sql_uses_pagination
+  selector:
+    path: src/api/listing_handler.rs
+    anchor: "build_listing_sql"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_PGOFF_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_PGOFF_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_PGOFF_C
+oracle:
+  required:
+  - offset_fix
+  - listing_handler_context
+  - build_sql_uses_pagination
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

@@ -1,0 +1,201 @@
+name: bal3_3hop_013_go_exporter_formatter_aggregator_collector
+tags:
+- lang:go
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    metrics/collector/collector.go: |
+      package collector
+
+      type Metric struct {
+          Name  string
+          Value float64
+      }
+
+      type Collector struct {
+          metrics []Metric
+      }
+
+      func NewCollector() *Collector {
+          return &Collector{}
+      }
+
+      func (c *Collector) Record(name string, value float64) {
+          c.metrics = append(c.metrics, Metric{Name: name, Value: value})
+      }
+
+      func (c *Collector) All() []Metric {
+          return c.metrics
+      }
+    metrics/aggregator/aggregator.go: |
+      package aggregator
+
+      import "myapp/metrics/collector"
+
+      type Aggregator struct {
+          col *collector.Collector
+      }
+
+      func NewAggregator(col *collector.Collector) *Aggregator {
+          return &Aggregator{col: col}
+      }
+
+      func (a *Aggregator) Sum() float64 {
+          var total float64
+          for _, m := range a.col.All() {
+              total += m.Value
+          }
+          return total
+      }
+
+      func (a *Aggregator) Count() int {
+          return len(a.col.All())
+      }
+    metrics/formatter/formatter.go: |
+      package formatter
+
+      import (
+          "fmt"
+          "myapp/metrics/aggregator"
+      )
+
+      type Formatter struct {
+          agg *aggregator.Aggregator
+      }
+
+      func NewFormatter(agg *aggregator.Aggregator) *Formatter {
+          return &Formatter{agg: agg}
+      }
+
+      func (f *Formatter) Format() string {
+          return fmt.Sprintf("sum=%.2f count=%d", f.agg.Sum(), f.agg.Count())
+      }
+    metrics/exporter/exporter.go: |
+      package exporter
+
+      import "myapp/metrics/formatter"
+
+      type Exporter struct {
+          fmt *formatter.Formatter
+      }
+
+      func NewExporter(fmt *formatter.Formatter) *Exporter {
+          return &Exporter{fmt: fmt}
+      }
+
+      func (e *Exporter) Export() string {
+          return e.fmt.Format()
+      }
+    metrics/dashboard/widget.go: |
+      package dashboard
+
+      var GARBAGE_BAL3_013_WIDGET_MARKER_A = "widget"
+      var GARBAGE_BAL3_013_CHART_MARKER_B = "bar"
+
+      type Widget struct{}
+
+      func (w *Widget) Render() string { return "" }
+    metrics/dashboard/layout.go: |
+      package dashboard
+
+      var GARBAGE_BAL3_013_LAYOUT_MARKER_C = "layout"
+      var GARBAGE_BAL3_013_GRID_MARKER_D = 12
+
+      type Layout struct{}
+
+      func (l *Layout) Arrange() {}
+  changed_files:
+    metrics/collector/collector.go: |
+      package collector
+
+      import "time"
+
+      type Metric struct {
+          Name      string
+          Value     float64
+          Timestamp time.Time
+      }
+
+      type Collector struct {
+          metrics []Metric
+      }
+
+      func NewCollector() *Collector {
+          return &Collector{}
+      }
+
+      func (c *Collector) Record(name string, value float64) {
+          c.metrics = append(c.metrics, Metric{Name: name, Value: value, Timestamp: time.Now()})
+      }
+
+      func (c *Collector) All() []Metric {
+          return c.metrics
+      }
+
+      func (c *Collector) Since(t time.Time) []Metric {
+          var filtered []Metric
+          for _, m := range c.metrics {
+              if m.Timestamp.After(t) {
+                  filtered = append(filtered, m)
+              }
+          }
+          return filtered
+      }
+  commit_message: "Add timestamp to metrics and time-based filtering"
+fragments:
+- id: metric_timestamp
+  selector:
+    path: metrics/collector/collector.go
+    anchor: "Timestamp time.Time"
+- id: collector_since
+  selector:
+    path: metrics/collector/collector.go
+    anchor: "func (c *Collector) Since"
+- id: aggregator_sum
+  selector:
+    path: metrics/aggregator/aggregator.go
+    anchor: "func (a *Aggregator) Sum"
+- id: formatter_format
+  selector:
+    path: metrics/formatter/formatter.go
+    anchor: "func (f *Formatter) Format"
+- id: exporter_export
+  selector:
+    path: metrics/exporter/exporter.go
+    anchor: "func (e *Exporter) Export"
+- id: no_widget
+  selector:
+    path: metrics/dashboard/widget.go
+- id: no_layout
+  selector:
+    path: metrics/dashboard/layout.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_013_WIDGET_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_013_CHART_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_013_LAYOUT_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_013_GRID_MARKER_D
+oracle:
+  required:
+  - metric_timestamp
+  - collector_since
+  - aggregator_sum
+  - formatter_format
+  - exporter_export
+  allowed: []
+  forbidden:
+  - no_widget
+  - no_layout
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

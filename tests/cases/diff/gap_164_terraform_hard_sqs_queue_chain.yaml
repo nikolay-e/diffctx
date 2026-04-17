@@ -1,0 +1,151 @@
+name: gap_164_terraform_hard_sqs_queue_chain
+tags:
+- change:config
+- change:multi_file
+- context:import_chain
+- difficulty:hard
+- distance:2hop
+- lang:terraform
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    platform/envs/staging/main.tf: |
+      module "queue" {
+        source             = "../../modules/sqs"
+        queue_name         = "order-events"
+        dlq_max_receive    = 3
+      }
+
+      module "worker" {
+        source    = "../../modules/lambda-worker"
+        queue_arn = module.queue.queue_arn
+      }
+    platform/envs/staging/variables.tf: |
+      variable "stage" {
+        type    = string
+        default = "staging"
+      }
+
+      variable "retention_days" {
+        type    = number
+        default = 7
+      }
+    platform/modules/sqs/main.tf: |
+      resource "aws_sqs_queue" "main" {
+        name                       = var.queue_name
+        message_retention_seconds  = 345600
+        visibility_timeout_seconds = 60
+      }
+
+      resource "aws_sqs_queue" "dlq" {
+        name                      = "${var.queue_name}-dlq"
+        message_retention_seconds = 1209600
+      }
+    platform/modules/sqs/variables.tf: |
+      variable "queue_name" {
+        type = string
+      }
+
+      variable "dlq_max_receive" {
+        type    = number
+        default = 5
+      }
+    platform/modules/sqs/outputs.tf: |
+      output "queue_arn" {
+        value = aws_sqs_queue.main.arn
+      }
+
+      output "dlq_arn" {
+        value = aws_sqs_queue.dlq.arn
+      }
+    platform/modules/lambda-worker/main.tf: |
+      resource "aws_lambda_function" "worker" {
+        function_name = "queue-worker"
+        runtime       = "python3.12"
+        handler       = "handler.main"
+        filename      = "worker.zip"
+      }
+
+      resource "aws_lambda_event_source_mapping" "sqs" {
+        event_source_arn = var.queue_arn
+        function_name    = aws_lambda_function.worker.arn
+        batch_size       = 10
+      }
+    platform/modules/lambda-worker/variables.tf: |
+      variable "queue_arn" {
+        type = string
+      }
+    platform/modules/sns/main.tf: |
+      resource "aws_sns_topic" "alerts" {
+        name = "system-alerts"
+      }
+  changed_files:
+    platform/envs/staging/main.tf: |
+      module "queue" {
+        source             = "../../modules/sqs"
+        queue_name         = "order-events"
+        dlq_max_receive    = 3
+        enable_encryption  = true
+      }
+
+      module "worker" {
+        source    = "../../modules/lambda-worker"
+        queue_arn = module.queue.queue_arn
+      }
+    platform/modules/sqs/main.tf: |
+      resource "aws_sqs_queue" "main" {
+        name                       = var.queue_name
+        message_retention_seconds  = 345600
+        visibility_timeout_seconds = 60
+
+        sqs_managed_sse_enabled = var.enable_encryption
+      }
+
+      resource "aws_sqs_queue" "dlq" {
+        name                      = "${var.queue_name}-dlq"
+        message_retention_seconds = 1209600
+
+        sqs_managed_sse_enabled = var.enable_encryption
+      }
+    platform/modules/sqs/variables.tf: |
+      variable "queue_name" {
+        type = string
+      }
+
+      variable "dlq_max_receive" {
+        type    = number
+        default = 5
+      }
+
+      variable "enable_encryption" {
+        type    = bool
+        default = false
+      }
+fragments:
+- id: staging_encryption
+  selector:
+    path: platform/envs/staging/main.tf
+    anchor: enable_encryption
+- id: sqs_sse
+  selector:
+    path: platform/modules/sqs/main.tf
+    anchor: sqs_managed_sse_enabled
+- id: sqs_encrypt_var
+  selector:
+    path: platform/modules/sqs/variables.tf
+    anchor: enable_encryption
+- id: no_sns
+  selector:
+    path: platform/modules/sns/main.tf
+- id: no_lambda
+  selector:
+    path: platform/modules/lambda-worker/main.tf
+oracle:
+  required:
+  - staging_encryption
+  - sqs_sse
+  - sqs_encrypt_var
+  forbidden:
+  - no_sns
+  - no_lambda

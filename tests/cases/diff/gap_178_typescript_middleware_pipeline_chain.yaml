@@ -1,0 +1,150 @@
+name: gap_178_typescript_middleware_pipeline_chain
+tags:
+- change:multi_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:typescript
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/pipeline/runner.ts: |
+      import { Middleware, Context } from "./types";
+
+      export class PipelineRunner {
+        private middlewares: Middleware[] = [];
+
+        use(middleware: Middleware): this {
+          this.middlewares.push(middleware);
+          return this;
+        }
+
+        async execute(ctx: Context): Promise<Context> {
+          let current = ctx;
+          for (const mw of this.middlewares) {
+            current = await mw.process(current);
+          }
+          return current;
+        }
+      }
+    src/pipeline/types.ts: |
+      export interface Context {
+        requestId: string;
+        headers: Record<string, string>;
+        body: unknown;
+        metadata: Record<string, unknown>;
+      }
+
+      export interface Middleware {
+        name: string;
+        process(ctx: Context): Promise<Context>;
+      }
+    src/middlewares/auth.ts: |
+      import { Middleware, Context } from "../pipeline/types";
+
+      export class AuthMiddleware implements Middleware {
+        name = "auth";
+
+        async process(ctx: Context): Promise<Context> {
+          const token = ctx.headers["authorization"];
+          if (!token) throw new Error("Unauthorized");
+          return { ...ctx, metadata: { ...ctx.metadata, authenticated: true } };
+        }
+      }
+    src/middlewares/rateLimit.ts: |
+      import { Middleware, Context } from "../pipeline/types";
+
+      export class RateLimitMiddleware implements Middleware {
+        name = "rateLimit";
+        private counts: Map<string, number> = new Map();
+
+        async process(ctx: Context): Promise<Context> {
+          const ip = ctx.headers["x-forwarded-for"] || "unknown";
+          const count = (this.counts.get(ip) || 0) + 1;
+          this.counts.set(ip, count);
+          if (count > 100) throw new Error("Rate limit exceeded");
+          return ctx;
+        }
+      }
+    src/utils/uuid.ts: |
+      export function generateUUID(): string {
+        return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(
+          /[xy]/g,
+          (c) => {
+            const r = (Math.random() * 16) | 0;
+            const v = c === "x" ? r : (r & 0x3) | 0x8;
+            return v.toString(16);
+          }
+        );
+      }
+  changed_files:
+    src/pipeline/runner.ts: |
+      import { Middleware, Context } from "./types";
+
+      export class PipelineRunner {
+        private middlewares: Middleware[] = [];
+
+        use(middleware: Middleware): this {
+          this.middlewares.push(middleware);
+          return this;
+        }
+
+        async execute(ctx: Context): Promise<Context> {
+          let current = ctx;
+          for (const mw of this.middlewares) {
+            current = await mw.process(current);
+            if (current.metadata["__halt"]) break;
+          }
+          return current;
+        }
+
+        remove(name: string): this {
+          this.middlewares = this.middlewares.filter((m) => m.name !== name);
+          return this;
+        }
+      }
+    src/middlewares/auth.ts: |
+      import { Middleware, Context } from "../pipeline/types";
+
+      export class AuthMiddleware implements Middleware {
+        name = "auth";
+
+        async process(ctx: Context): Promise<Context> {
+          const token = ctx.headers["authorization"];
+          if (!token) {
+            return {
+              ...ctx,
+              metadata: { ...ctx.metadata, __halt: true, authError: "missing_token" },
+            };
+          }
+          return { ...ctx, metadata: { ...ctx.metadata, authenticated: true } };
+        }
+      }
+fragments:
+- id: runner_halt
+  selector:
+    path: src/pipeline/runner.ts
+    anchor: __halt
+- id: types_context
+  selector:
+    path: src/pipeline/types.ts
+    anchor: interface Context
+- id: auth_halt
+  selector:
+    path: src/middlewares/auth.ts
+    anchor: __halt
+- id: no_rate_limit
+  selector:
+    path: src/middlewares/rateLimit.ts
+- id: no_uuid
+  selector:
+    path: src/utils/uuid.ts
+oracle:
+  required:
+  - runner_halt
+  - types_context
+  - auth_halt
+  forbidden:
+  - no_rate_limit
+  - no_uuid

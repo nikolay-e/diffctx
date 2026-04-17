@@ -1,0 +1,111 @@
+name: gap_146_python_terraform_flask_config_same_file
+tags:
+- change:config
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+- lang:python
+- lang:terraform
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/config.py: |
+      import os
+
+      class AppConfig:
+          SECRET_KEY = os.getenv("SECRET_KEY", "dev-only-key")
+          SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL", "sqlite:///local.db")
+          SQLALCHEMY_TRACK_MODIFICATIONS = False
+          MAX_CONTENT_LENGTH = 16 * 1024 * 1024
+          UPLOAD_FOLDER = "/tmp/uploads"
+
+          REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+          CELERY_BROKER_URL = os.getenv("CELERY_BROKER", "redis://localhost:6379/1")
+
+          RATE_LIMIT_DEFAULT = "100/hour"
+          CORS_ORIGINS = ["http://localhost:3000"]
+    terraform/elasticache.tf: |
+      resource "aws_elasticache_cluster" "sessions" {
+        cluster_id           = "session-cache"
+        engine               = "redis"
+        node_type            = "cache.t3.micro"
+        num_cache_nodes      = 1
+        parameter_group_name = "default.redis7"
+        port                 = 6379
+      }
+
+      output "redis_endpoint" {
+        value = aws_elasticache_cluster.sessions.cache_nodes[0].address
+      }
+    terraform/ecr.tf: |
+      resource "aws_ecr_repository" "app" {
+        name                 = "flask-app"
+        image_tag_mutability = "MUTABLE"
+
+        image_scanning_configuration {
+          scan_on_push = true
+        }
+      }
+
+      resource "aws_ecr_lifecycle_policy" "cleanup" {
+        repository = aws_ecr_repository.app.name
+        policy = jsonencode({
+          rules = [{
+            rulePriority = 1
+            selection = {
+              tagStatus   = "untagged"
+              countType   = "sinceImagePushed"
+              countUnit   = "days"
+              countNumber = 14
+            }
+            action = { type = "expire" }
+          }]
+        })
+      }
+  changed_files:
+    src/config.py: |
+      import os
+
+      class AppConfig:
+          SECRET_KEY = os.getenv("SECRET_KEY", "dev-only-key")
+          SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL", "sqlite:///local.db")
+          SQLALCHEMY_TRACK_MODIFICATIONS = False
+          SQLALCHEMY_POOL_SIZE = int(os.getenv("DB_POOL_SIZE", "5"))
+          SQLALCHEMY_POOL_RECYCLE = 3600
+          MAX_CONTENT_LENGTH = 16 * 1024 * 1024
+          UPLOAD_FOLDER = "/tmp/uploads"
+
+          REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+          CELERY_BROKER_URL = os.getenv("CELERY_BROKER", "redis://localhost:6379/1")
+
+          RATE_LIMIT_DEFAULT = "200/hour"
+          CORS_ORIGINS = ["http://localhost:3000"]
+fragments:
+- id: pool_size
+  selector:
+    path: src/config.py
+    anchor: SQLALCHEMY_POOL_SIZE
+- id: pool_recycle
+  selector:
+    path: src/config.py
+    anchor: SQLALCHEMY_POOL_RECYCLE
+- id: rate_limit
+  selector:
+    path: src/config.py
+    anchor: RATE_LIMIT_DEFAULT
+- id: no_elasticache
+  selector:
+    path: terraform/elasticache.tf
+- id: no_ecr
+  selector:
+    path: terraform/ecr.tf
+oracle:
+  required:
+  - pool_size
+  - pool_recycle
+  - rate_limit
+  forbidden:
+  - no_elasticache
+  - no_ecr

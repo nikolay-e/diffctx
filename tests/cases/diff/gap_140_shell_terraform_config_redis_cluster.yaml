@@ -1,0 +1,106 @@
+name: gap_140_shell_terraform_config_redis_cluster
+tags:
+- lang:shell
+- lang:terraform
+- change:config
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:1hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    config/cache.env: |
+      REDIS_NODE_TYPE=cache.t3.micro
+      REDIS_NUM_NODES=2
+      REDIS_ENGINE_VERSION=7.0
+      REDIS_PORT=6379
+      REDIS_SNAPSHOT_WINDOW=05:00-06:00
+    terraform/cache/main.tf: |
+      resource "aws_elasticache_replication_group" "redis" {
+        replication_group_id = "${var.project}-redis"
+        description          = "Redis cluster for ${var.project}"
+        node_type            = var.redis_node_type
+        num_cache_clusters   = var.redis_num_nodes
+        port                 = var.redis_port
+        engine_version       = var.redis_engine_version
+
+        snapshot_window          = var.redis_snapshot_window
+        automatic_failover_enabled = var.redis_num_nodes > 1
+
+        subnet_group_name  = aws_elasticache_subnet_group.redis.name
+        security_group_ids = [var.redis_security_group_id]
+
+        tags = {
+          Project     = var.project
+          Environment = var.environment
+        }
+      }
+
+      resource "aws_elasticache_subnet_group" "redis" {
+        name       = "${var.project}-redis-subnets"
+        subnet_ids = var.private_subnet_ids
+      }
+    scripts/warm-cache.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      source config/cache.env
+
+      REDIS_HOST="${1:?Usage: warm-cache.sh <redis_host>}"
+
+      redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" ping
+      echo "Redis at $REDIS_HOST:$REDIS_PORT is responsive"
+
+      redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" info memory | grep used_memory_human
+    terraform/queue/main.tf: |
+      resource "aws_sqs_queue" "tasks" {
+        name                       = "${var.project}-tasks"
+        delay_seconds              = 0
+        max_message_size           = 262144
+        message_retention_seconds  = 86400
+        visibility_timeout_seconds = 60
+
+        tags = {
+          Project = var.project
+        }
+      }
+
+      resource "aws_sqs_queue" "deadletter" {
+        name = "${var.project}-tasks-dlq"
+
+        tags = {
+          Project = var.project
+        }
+      }
+  changed_files:
+    config/cache.env: |
+      REDIS_NODE_TYPE=cache.t3.small
+      REDIS_NUM_NODES=3
+      REDIS_ENGINE_VERSION=7.1
+      REDIS_PORT=6379
+      REDIS_SNAPSHOT_WINDOW=03:00-04:00
+      REDIS_MAX_MEMORY_POLICY=allkeys-lru
+fragments:
+- id: cache_config
+  selector:
+    path: config/cache.env
+    anchor: REDIS_NUM_NODES=3
+- id: replication_group
+  selector:
+    path: terraform/cache/main.tf
+    anchor: aws_elasticache_replication_group
+- id: no_queue
+  selector:
+    path: terraform/queue/main.tf
+- id: no_sqs
+  selector:
+    anchor: aws_sqs_queue
+oracle:
+  required:
+  - cache_config
+  - replication_group
+  forbidden:
+  - no_queue
+  - no_sqs

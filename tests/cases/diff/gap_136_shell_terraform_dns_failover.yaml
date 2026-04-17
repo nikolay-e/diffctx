@@ -1,0 +1,164 @@
+name: gap_136_shell_terraform_dns_failover
+tags:
+- lang:shell
+- lang:terraform
+- change:multi_file
+- context:same_file
+- difficulty:medium
+- distance:0hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    terraform/dns/main.tf: |
+      resource "aws_route53_zone" "primary" {
+        name = var.domain_name
+      }
+
+      resource "aws_route53_record" "app" {
+        zone_id = aws_route53_zone.primary.zone_id
+        name    = "app.${var.domain_name}"
+        type    = "A"
+        ttl     = 300
+        records = [var.primary_ip]
+      }
+
+      resource "aws_route53_record" "api" {
+        zone_id = aws_route53_zone.primary.zone_id
+        name    = "api.${var.domain_name}"
+        type    = "A"
+        ttl     = 300
+        records = [var.primary_ip]
+      }
+    scripts/dns-check.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      DOMAIN="${1:?Usage: dns-check.sh <domain>}"
+
+      check_record() {
+          local fqdn="$1"
+          local resolved
+          resolved=$(dig +short "$fqdn" A)
+          if [[ -z "$resolved" ]]; then
+              echo "FAIL: $fqdn - no A record"
+              return 1
+          fi
+          echo "OK: $fqdn -> $resolved"
+      }
+
+      check_record "app.$DOMAIN"
+      check_record "api.$DOMAIN"
+    terraform/monitoring/main.tf: |
+      resource "aws_cloudwatch_metric_alarm" "cpu_high" {
+        alarm_name          = "${var.project}-cpu-high"
+        comparison_operator = "GreaterThanThreshold"
+        evaluation_periods  = 2
+        metric_name         = "CPUUtilization"
+        namespace           = "AWS/EC2"
+        period              = 300
+        statistic           = "Average"
+        threshold           = 80
+
+        alarm_actions = [var.sns_topic_arn]
+      }
+  changed_files:
+    terraform/dns/main.tf: |
+      resource "aws_route53_zone" "primary" {
+        name = var.domain_name
+      }
+
+      resource "aws_route53_record" "app" {
+        zone_id = aws_route53_zone.primary.zone_id
+        name    = "app.${var.domain_name}"
+        type    = "A"
+        ttl     = 300
+        records = [var.primary_ip]
+      }
+
+      resource "aws_route53_record" "api" {
+        zone_id = aws_route53_zone.primary.zone_id
+        name    = "api.${var.domain_name}"
+        type    = "A"
+        ttl     = 300
+        records = [var.primary_ip]
+      }
+
+      resource "aws_route53_health_check" "app" {
+        fqdn              = "app.${var.domain_name}"
+        port              = 443
+        type              = "HTTPS"
+        resource_path     = "/healthz"
+        failure_threshold = 3
+        request_interval  = 30
+
+        tags = {
+          Name = "app-health-check"
+        }
+      }
+
+      resource "aws_route53_record" "app_failover" {
+        zone_id = aws_route53_zone.primary.zone_id
+        name    = "app.${var.domain_name}"
+        type    = "A"
+
+        failover_routing_policy {
+          type = "SECONDARY"
+        }
+
+        set_identifier  = "secondary"
+        ttl             = 60
+        records         = [var.failover_ip]
+        health_check_id = aws_route53_health_check.app.id
+      }
+    scripts/dns-check.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      DOMAIN="${1:?Usage: dns-check.sh <domain>}"
+      EXPECTED_IP="${2:-}"
+
+      check_record() {
+          local fqdn="$1"
+          local resolved
+          resolved=$(dig +short "$fqdn" A)
+          if [[ -z "$resolved" ]]; then
+              echo "FAIL: $fqdn - no A record"
+              return 1
+          fi
+          if [[ -n "$EXPECTED_IP" && "$resolved" != "$EXPECTED_IP" ]]; then
+              echo "WARN: $fqdn -> $resolved (expected $EXPECTED_IP)"
+              return 2
+          fi
+          echo "OK: $fqdn -> $resolved"
+      }
+
+      check_record "app.$DOMAIN" "$EXPECTED_IP"
+      check_record "api.$DOMAIN"
+fragments:
+- id: health_check
+  selector:
+    path: terraform/dns/main.tf
+    anchor: aws_route53_health_check
+- id: failover_record
+  selector:
+    path: terraform/dns/main.tf
+    anchor: app_failover
+- id: dns_expected_ip
+  selector:
+    path: scripts/dns-check.sh
+    anchor: EXPECTED_IP
+- id: no_monitoring
+  selector:
+    path: terraform/monitoring/main.tf
+- id: no_cloudwatch
+  selector:
+    anchor: aws_cloudwatch_metric_alarm
+oracle:
+  required:
+  - health_check
+  - failover_record
+  - dns_expected_ip
+  forbidden:
+  - no_monitoring
+  - no_cloudwatch

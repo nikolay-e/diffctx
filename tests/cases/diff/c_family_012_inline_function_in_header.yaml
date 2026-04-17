@@ -1,0 +1,99 @@
+name: c_family_012_inline_function_in_header
+tags:
+- lang:c
+- change:single_file
+- change:new_function
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    mathutils.h: |
+      #ifndef MATHUTILS_H
+      #define MATHUTILS_H
+      static inline int min(int a, int b) { return a < b ? a : b; }
+      static inline int max(int a, int b) { return a > b ? a : b; }
+      #endif
+    physics.c: |
+      #include "mathutils.h"
+      float clamp_velocity(float v, float lo, float hi) {
+          int iv = (int)v;
+          iv = max(min(iv, (int)hi), (int)lo);
+          return (float)iv;
+      }
+    animation.c: |
+      #include "mathutils.h"
+      int lerp_frame(int from, int to, int count) {
+          return min(from + count, to);
+      }
+    C_NOISE_012_disk.h: |
+      #ifndef C_NOISE_012_DISK_H
+      #define C_NOISE_012_DISK_H
+      long C_NOISE_012_disk_free_bytes(const char *path);
+      int C_NOISE_012_disk_exists(const char *path);
+      #endif
+    C_NOISE_012_disk.c: |
+      #include "C_NOISE_012_disk.h"
+      long C_NOISE_012_disk_free_bytes(const char *path) { return 0L; }
+      int C_NOISE_012_disk_exists(const char *path) { return 0; }
+  changed_files:
+    mathutils.h: |
+      #ifndef MATHUTILS_H
+      #define MATHUTILS_H
+      static inline int min(int a, int b) { return a < b ? a : b; }
+      static inline int max(int a, int b) { return a > b ? a : b; }
+      static inline int clamp(int v, int lo, int hi) { return min(max(v, lo), hi); }
+      #endif
+    physics.c: |
+      #include "mathutils.h"
+      float clamp_velocity(float v, float lo, float hi) {
+          return (float)clamp((int)v, (int)lo, (int)hi);
+      }
+    animation.c: |
+      #include "mathutils.h"
+      int lerp_frame(int from, int to, int count) {
+          return clamp(from + count, from, to);
+      }
+    C_NOISE_012_disk.h: |
+      #ifndef C_NOISE_012_DISK_H
+      #define C_NOISE_012_DISK_H
+      long C_NOISE_012_disk_free_bytes(const char *path);
+      int C_NOISE_012_disk_exists(const char *path);
+      #endif
+    C_NOISE_012_disk.c: |
+      #include "C_NOISE_012_disk.h"
+      long C_NOISE_012_disk_free_bytes(const char *path) { return 0L; }
+      int C_NOISE_012_disk_exists(const char *path) { return 0; }
+  commit_message: "feat: add inline clamp() to mathutils.h and use it in physics and animation"
+fragments:
+- id: mathutils_h_clamp
+  selector:
+    path: mathutils.h
+    anchor: "int clamp(int v, int lo, int hi)"
+- id: physics_c
+  selector:
+    path: physics.c
+    anchor: "clamp((int)v"
+- id: animation_c
+  selector:
+    path: animation.c
+    anchor: "clamp(from + count"
+- id: no_disk_h
+  selector:
+    anchor: C_NOISE_012_disk_free_bytes
+- id: no_disk_c
+  selector:
+    path: C_NOISE_012_disk.c
+- id: no_global_exists
+  selector:
+    anchor: C_NOISE_012_disk_exists
+oracle:
+  required:
+  - mathutils_h_clamp
+  - physics_c
+  - animation_c
+  allowed: []
+  forbidden:
+  - no_disk_h
+  - no_disk_c
+  - no_global_exists

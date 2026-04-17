@@ -1,0 +1,237 @@
+name: gap_116_php_import_chain_image_resizer
+tags:
+- lang:rust
+- change:bug_fix
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/auth/session.rs: |
+      use crate::crypto::token::TokenService;
+
+      pub struct SessionManager {
+          token_service: TokenService,
+          max_age_secs: u64,
+      }
+
+      impl SessionManager {
+          pub fn new(token_service: TokenService, max_age_secs: u64) -> Self {
+              SessionManager { token_service, max_age_secs }
+          }
+
+          pub fn create_session(&self, user_id: &str) -> String {
+              self.token_service.sign(user_id, self.max_age_secs)
+          }
+
+          pub fn validate_session(&self, token: &str) -> Option<String> {
+              self.token_service.verify(token)
+              // BUG: does not check if token is in revocation list
+          }
+      }
+    src/crypto/token.rs: |
+      use hmac::{Hmac, Mac};
+      use sha2::Sha256;
+
+      pub struct TokenService {
+          secret: Vec<u8>,
+      }
+
+      impl TokenService {
+          pub fn new(secret: Vec<u8>) -> Self {
+              TokenService { secret }
+          }
+
+          pub fn sign(&self, subject: &str, max_age: u64) -> String {
+              let payload = format!("{}:{}", subject, max_age);
+              let mut mac = Hmac::<Sha256>::new_from_slice(&self.secret).unwrap();
+              mac.update(payload.as_bytes());
+              let result = mac.finalize();
+              let sig = hex::encode(result.into_bytes());
+              format!("{}.{}", payload, sig)
+          }
+
+          pub fn verify(&self, token: &str) -> Option<String> {
+              let parts: Vec<&str> = token.rsplitn(2, '.').collect();
+              if parts.len() != 2 { return None; }
+              let (sig, payload) = (parts[0], parts[1]);
+              let expected = self.sign_raw(payload);
+              if sig == expected { Some(payload.split(':').next()?.to_string()) } else { None }
+          }
+
+          fn sign_raw(&self, payload: &str) -> String {
+              let mut mac = Hmac::<Sha256>::new_from_slice(&self.secret).unwrap();
+              mac.update(payload.as_bytes());
+              hex::encode(mac.finalize().into_bytes())
+          }
+      }
+    src/auth/revocation.rs: |
+      use std::collections::HashSet;
+
+      pub struct RevocationList {
+          revoked: HashSet<String>,
+      }
+
+      impl RevocationList {
+          pub fn new() -> Self {
+              RevocationList { revoked: HashSet::new() }
+          }
+
+          pub fn revoke(&mut self, token: &str) {
+              self.revoked.insert(token.to_string());
+          }
+
+          pub fn is_revoked(&self, token: &str) -> bool {
+              self.revoked.contains(token)
+          }
+      }
+    garbage/audit.rs: |
+      // GARBAGE_GAP116_AUDIT_A = "audit_marker"
+    garbage/rate_limit.rs: |
+      // GARBAGE_GAP116_RATE_B = "rate_limit_marker"
+    garbage/2fa.rs: |
+      // GARBAGE_GAP116_2FA_C = "2fa_marker"
+    garbage/captcha.rs: |
+      // GARBAGE_GAP116_CAPT_D = "captcha_marker"
+  changed_files:
+    src/auth/session.rs: |
+      use crate::crypto::token::TokenService;
+      use crate::auth::revocation::RevocationList;
+
+      pub struct SessionManager {
+          token_service: TokenService,
+          max_age_secs: u64,
+          revocation: RevocationList,
+      }
+
+      impl SessionManager {
+          pub fn new(token_service: TokenService, max_age_secs: u64, revocation: RevocationList) -> Self {
+              SessionManager { token_service, max_age_secs, revocation }
+          }
+
+          pub fn create_session(&self, user_id: &str) -> String {
+              self.token_service.sign(user_id, self.max_age_secs)
+          }
+
+          pub fn validate_session(&self, token: &str) -> Option<String> {
+              if self.revocation.is_revoked(token) {
+                  return None;
+              }
+              self.token_service.verify(token)
+          }
+
+          pub fn revoke_session(&mut self, token: &str) {
+              self.revocation.revoke(token);
+          }
+      }
+    src/crypto/token.rs: |
+      use hmac::{Hmac, Mac};
+      use sha2::Sha256;
+
+      pub struct TokenService {
+          secret: Vec<u8>,
+      }
+
+      impl TokenService {
+          pub fn new(secret: Vec<u8>) -> Self {
+              TokenService { secret }
+          }
+
+          pub fn sign(&self, subject: &str, max_age: u64) -> String {
+              let payload = format!("{}:{}", subject, max_age);
+              let mut mac = Hmac::<Sha256>::new_from_slice(&self.secret).unwrap();
+              mac.update(payload.as_bytes());
+              let result = mac.finalize();
+              let sig = hex::encode(result.into_bytes());
+              format!("{}.{}", payload, sig)
+          }
+
+          pub fn verify(&self, token: &str) -> Option<String> {
+              let parts: Vec<&str> = token.rsplitn(2, '.').collect();
+              if parts.len() != 2 { return None; }
+              let (sig, payload) = (parts[0], parts[1]);
+              let expected = self.sign_raw(payload);
+              if sig == expected { Some(payload.split(':').next()?.to_string()) } else { None }
+          }
+
+          fn sign_raw(&self, payload: &str) -> String {
+              let mut mac = Hmac::<Sha256>::new_from_slice(&self.secret).unwrap();
+              mac.update(payload.as_bytes());
+              hex::encode(mac.finalize().into_bytes())
+          }
+      }
+    src/auth/revocation.rs: |
+      use std::collections::HashSet;
+
+      pub struct RevocationList {
+          revoked: HashSet<String>,
+      }
+
+      impl RevocationList {
+          pub fn new() -> Self {
+              RevocationList { revoked: HashSet::new() }
+          }
+
+          pub fn revoke(&mut self, token: &str) {
+              self.revoked.insert(token.to_string());
+          }
+
+          pub fn is_revoked(&self, token: &str) -> bool {
+              self.revoked.contains(token)
+          }
+      }
+    garbage/audit.rs: |
+      // GARBAGE_GAP116_AUDIT_A = "audit_marker"
+    garbage/rate_limit.rs: |
+      // GARBAGE_GAP116_RATE_B = "rate_limit_marker"
+    garbage/2fa.rs: |
+      // GARBAGE_GAP116_2FA_C = "2fa_marker"
+    garbage/captcha.rs: |
+      // GARBAGE_GAP116_CAPT_D = "captcha_marker"
+  commit_message: "fix: check revocation list before validating session token"
+fragments:
+- id: session_revocation_field
+  selector:
+    path: src/auth/session.rs
+    anchor: "revocation: RevocationList,"
+- id: session_revocation_check
+  selector:
+    path: src/auth/session.rs
+    anchor: "if self.revocation.is_revoked(token) {"
+- id: session_revoke_method
+  selector:
+    path: src/auth/session.rs
+    anchor: "pub fn revoke_session(&mut self, token: &str) {"
+- id: revocation_is_revoked
+  selector:
+    path: src/auth/revocation.rs
+    anchor: "pub fn is_revoked(&self, token: &str) -> bool {"
+- id: token_verify
+  selector:
+    path: src/crypto/token.rs
+    anchor: "pub fn verify(&self, token: &str) -> Option<String> {"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_GAP116_AUDIT_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_GAP116_RATE_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_GAP116_2FA_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_GAP116_CAPT_D
+oracle:
+  required:
+  - session_revocation_field
+  - session_revocation_check
+  - revocation_is_revoked
+  allowed:
+  - session_revoke_method
+  - token_verify
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

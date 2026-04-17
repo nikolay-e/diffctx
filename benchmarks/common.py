@@ -34,6 +34,12 @@ def run_cmd(
     return subprocess.run(cmd, cwd=cwd, text=True, capture_output=True, check=check, timeout=timeout)
 
 
+def _parse_diff_path(raw: str, prefix: str) -> str | None:
+    if raw == "/dev/null":
+        return None
+    return raw[len(prefix) :] if raw.startswith(prefix) else raw
+
+
 def patch_files_detailed(patch: str) -> tuple[set[str], set[str], set[str]]:
     added: set[str] = set()
     deleted: set[str] = set()
@@ -43,11 +49,9 @@ def patch_files_detailed(patch: str) -> tuple[set[str], set[str], set[str]]:
         if line.startswith("diff --git "):
             cur_a = cur_b = None
         elif line.startswith("--- "):
-            p = line[4:]
-            cur_a = None if p == "/dev/null" else (p[2:] if p.startswith("a/") else p)
+            cur_a = _parse_diff_path(line[4:], "a/")
         elif line.startswith("+++ "):
-            p = line[4:]
-            cur_b = None if p == "/dev/null" else (p[2:] if p.startswith("b/") else p)
+            cur_b = _parse_diff_path(line[4:], "b/")
             if cur_a is None and cur_b is not None:
                 added.add(cur_b)
             elif cur_a is not None and cur_b is None:
@@ -182,10 +186,45 @@ def parse_lines_field(lines_str: str) -> tuple[int, int] | None:
     return (s, e)
 
 
-def save_results(results: list, tag: str, output_dir: Path = RESULTS_DIR) -> Path:
+def load_results(path: Path) -> list[dict]:
+    data = json.loads(path.read_text())
+    if isinstance(data, dict) and "results" in data:
+        return data["results"]
+    return data
+
+
+def _git_commit_sha() -> str:
+    try:
+        r = subprocess.run(
+            ["git", "rev-parse", "--short=7", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        return r.stdout.strip() or "unknown"
+    except Exception:
+        return "unknown"
+
+
+def save_results(results: list, tag: str, output_dir: Path = RESULTS_DIR, **meta) -> Path:
+    import platform
+    import sys
+    from datetime import datetime, timezone
+
+    envelope = {
+        "meta": {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "command": " ".join(sys.argv),
+            "python_version": sys.version.split()[0],
+            "platform": platform.platform(),
+            "git_commit": _git_commit_sha(),
+            **meta,
+        },
+        "results": results,
+    }
     output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / f"{tag}.json"
-    path.write_text(json.dumps(results, indent=2))
+    path.write_text(json.dumps(envelope, indent=2))
     print(f"\nResults saved to {path}")
     return path
 

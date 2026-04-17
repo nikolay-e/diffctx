@@ -1,0 +1,234 @@
+name: bal_crossmod_018_cpp_input_to_controller
+tags:
+- lang:cpp
+- change:single_file
+- change:new_function
+- context:cross_module
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/input/keyboard.hpp: |
+      #pragma once
+      #include <unordered_set>
+
+      namespace input {
+
+      enum class Key {
+          W, A, S, D, Space, Escape, Shift
+      };
+
+      class Keyboard {
+      public:
+          void press(Key key);
+          void release(Key key);
+          bool is_pressed(Key key) const;
+      private:
+          std::unordered_set<int> pressed_;
+      };
+
+      }
+    src/input/keyboard.cpp: |
+      #include "keyboard.hpp"
+
+      namespace input {
+
+      void Keyboard::press(Key key) {
+          pressed_.insert(static_cast<int>(key));
+      }
+
+      void Keyboard::release(Key key) {
+          pressed_.erase(static_cast<int>(key));
+      }
+
+      bool Keyboard::is_pressed(Key key) const {
+          return pressed_.count(static_cast<int>(key)) > 0;
+      }
+
+      }
+    src/controller/player_controller.hpp: |
+      #pragma once
+      #include "../input/keyboard.hpp"
+
+      namespace controller {
+
+      class PlayerController {
+      public:
+          explicit PlayerController(input::Keyboard& kb);
+          void update(float dt);
+          float x() const;
+          float y() const;
+      private:
+          input::Keyboard& kb_;
+          float x_, y_;
+          float speed_;
+      };
+
+      }
+    src/controller/player_controller.cpp: |
+      #include "player_controller.hpp"
+
+      namespace controller {
+
+      PlayerController::PlayerController(input::Keyboard& kb)
+          : kb_(kb), x_(0), y_(0), speed_(100.0f) {}
+
+      void PlayerController::update(float dt) {
+          if (kb_.is_pressed(input::Key::W)) y_ += speed_ * dt;
+          if (kb_.is_pressed(input::Key::S)) y_ -= speed_ * dt;
+          if (kb_.is_pressed(input::Key::A)) x_ -= speed_ * dt;
+          if (kb_.is_pressed(input::Key::D)) x_ += speed_ * dt;
+      }
+
+      float PlayerController::x() const { return x_; }
+      float PlayerController::y() const { return y_; }
+
+      }
+    src/hud/health_bar.hpp: |
+      #pragma once
+
+      namespace hud {
+
+      class HealthBar {
+      public:
+          HealthBar(int max_hp);
+          void set_current(int hp);
+          float percentage() const;
+      private:
+          int max_hp_;
+          int current_hp_;
+      };
+
+      }
+  changed_files:
+    src/input/keyboard.hpp: |
+      #pragma once
+      #include <unordered_set>
+
+      namespace input {
+
+      enum class Key {
+          W, A, S, D, Space, Escape, Shift
+      };
+
+      class Keyboard {
+      public:
+          void press(Key key);
+          void release(Key key);
+          bool is_pressed(Key key) const;
+          bool was_just_pressed(Key key);
+      private:
+          std::unordered_set<int> pressed_;
+          std::unordered_set<int> just_pressed_;
+      };
+
+      }
+    src/input/keyboard.cpp: |
+      #include "keyboard.hpp"
+
+      namespace input {
+
+      void Keyboard::press(Key key) {
+          int k = static_cast<int>(key);
+          if (pressed_.count(k) == 0) {
+              just_pressed_.insert(k);
+          }
+          pressed_.insert(k);
+      }
+
+      void Keyboard::release(Key key) {
+          pressed_.erase(static_cast<int>(key));
+      }
+
+      bool Keyboard::is_pressed(Key key) const {
+          return pressed_.count(static_cast<int>(key)) > 0;
+      }
+
+      bool Keyboard::was_just_pressed(Key key) {
+          int k = static_cast<int>(key);
+          bool result = just_pressed_.count(k) > 0;
+          just_pressed_.erase(k);
+          return result;
+      }
+
+      }
+    src/controller/player_controller.hpp: |
+      #pragma once
+      #include "../input/keyboard.hpp"
+
+      namespace controller {
+
+      class PlayerController {
+      public:
+          explicit PlayerController(input::Keyboard& kb);
+          void update(float dt);
+          float x() const;
+          float y() const;
+      private:
+          input::Keyboard& kb_;
+          float x_, y_;
+          float speed_;
+      };
+
+      }
+    src/controller/player_controller.cpp: |
+      #include "player_controller.hpp"
+
+      namespace controller {
+
+      PlayerController::PlayerController(input::Keyboard& kb)
+          : kb_(kb), x_(0), y_(0), speed_(100.0f) {}
+
+      void PlayerController::update(float dt) {
+          if (kb_.is_pressed(input::Key::W)) y_ += speed_ * dt;
+          if (kb_.is_pressed(input::Key::S)) y_ -= speed_ * dt;
+          if (kb_.is_pressed(input::Key::A)) x_ -= speed_ * dt;
+          if (kb_.is_pressed(input::Key::D)) x_ += speed_ * dt;
+      }
+
+      float PlayerController::x() const { return x_; }
+      float PlayerController::y() const { return y_; }
+
+      }
+    src/hud/health_bar.hpp: |
+      #pragma once
+
+      namespace hud {
+
+      class HealthBar {
+      public:
+          HealthBar(int max_hp);
+          void set_current(int hp);
+          float percentage() const;
+      private:
+          int max_hp_;
+          int current_hp_;
+      };
+
+      }
+  commit_message: "feat: add just-pressed detection to Keyboard"
+fragments:
+- id: just_pressed_decl
+  selector:
+    path: src/input/keyboard.hpp
+    anchor: "bool was_just_pressed(Key key)"
+- id: just_pressed_impl
+  selector:
+    path: src/input/keyboard.cpp
+    anchor: "bool Keyboard::was_just_pressed"
+- id: controller_uses_keyboard
+  selector:
+    path: src/controller/player_controller.cpp
+    anchor: "kb_.is_pressed"
+- id: no_health_bar
+  selector:
+    path: src/hud/health_bar.hpp
+    anchor: "class HealthBar"
+oracle:
+  required:
+  - just_pressed_decl
+  - controller_uses_keyboard
+  allowed:
+  - just_pressed_impl
+  forbidden:
+  - no_health_bar

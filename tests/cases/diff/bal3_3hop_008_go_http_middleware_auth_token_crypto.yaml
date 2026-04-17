@@ -1,0 +1,215 @@
+name: bal3_3hop_008_go_http_middleware_auth_token_crypto
+tags:
+- lang:go
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    lib/crypto/hasher.go: |
+      package crypto
+
+      import "crypto/sha256"
+
+      type Hasher struct {
+          salt string
+      }
+
+      func NewHasher(salt string) *Hasher {
+          return &Hasher{salt: salt}
+      }
+
+      func (h *Hasher) Hash(input string) []byte {
+          sum := sha256.Sum256([]byte(h.salt + input))
+          return sum[:]
+      }
+
+      func (h *Hasher) Verify(input string, expected []byte) bool {
+          actual := h.Hash(input)
+          if len(actual) != len(expected) {
+              return false
+          }
+          for i := range actual {
+              if actual[i] != expected[i] {
+                  return false
+              }
+          }
+          return true
+      }
+    lib/token/manager.go: |
+      package token
+
+      import (
+          "encoding/hex"
+          "myapp/lib/crypto"
+      )
+
+      type Manager struct {
+          hasher *crypto.Hasher
+      }
+
+      func NewManager(hasher *crypto.Hasher) *Manager {
+          return &Manager{hasher: hasher}
+      }
+
+      func (m *Manager) Generate(userID string) string {
+          h := m.hasher.Hash(userID)
+          return hex.EncodeToString(h)
+      }
+
+      func (m *Manager) Validate(userID, tok string) bool {
+          expected, _ := hex.DecodeString(tok)
+          return m.hasher.Verify(userID, expected)
+      }
+    lib/auth/authenticator.go: |
+      package auth
+
+      import "myapp/lib/token"
+
+      type Authenticator struct {
+          mgr *token.Manager
+      }
+
+      func NewAuthenticator(mgr *token.Manager) *Authenticator {
+          return &Authenticator{mgr: mgr}
+      }
+
+      func (a *Authenticator) Authenticate(userID, tok string) bool {
+          return a.mgr.Validate(userID, tok)
+      }
+
+      func (a *Authenticator) IssueToken(userID string) string {
+          return a.mgr.Generate(userID)
+      }
+    lib/middleware/auth_middleware.go: |
+      package middleware
+
+      import (
+          "myapp/lib/auth"
+          "net/http"
+      )
+
+      type AuthMiddleware struct {
+          auth *auth.Authenticator
+      }
+
+      func NewAuthMiddleware(a *auth.Authenticator) *AuthMiddleware {
+          return &AuthMiddleware{auth: a}
+      }
+
+      func (m *AuthMiddleware) Wrap(next http.Handler) http.Handler {
+          return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              tok := r.Header.Get("Authorization")
+              uid := r.Header.Get("X-User-ID")
+              if !m.auth.Authenticate(uid, tok) {
+                  http.Error(w, "unauthorized", 401)
+                  return
+              }
+              next.ServeHTTP(w, r)
+          })
+      }
+    lib/ratelimit/limiter.go: |
+      package ratelimit
+
+      var GARBAGE_BAL3_008_RATE_MARKER_A = "rate"
+      var GARBAGE_BAL3_008_WINDOW_MARKER_B = 60
+
+      type Limiter struct {
+          max int
+      }
+
+      func (l *Limiter) Allow() bool { return true }
+    lib/ratelimit/bucket.go: |
+      package ratelimit
+
+      var GARBAGE_BAL3_008_BUCKET_MARKER_C = "bucket"
+      var GARBAGE_BAL3_008_REFILL_MARKER_D = 10
+
+      type Bucket struct {
+          tokens int
+      }
+
+      func (b *Bucket) Take() bool { return true }
+  changed_files:
+    lib/crypto/hasher.go: |
+      package crypto
+
+      import (
+          "crypto/hmac"
+          "crypto/sha256"
+      )
+
+      type Hasher struct {
+          salt string
+      }
+
+      func NewHasher(salt string) *Hasher {
+          return &Hasher{salt: salt}
+      }
+
+      func (h *Hasher) Hash(input string) []byte {
+          mac := hmac.New(sha256.New, []byte(h.salt))
+          mac.Write([]byte(input))
+          return mac.Sum(nil)
+      }
+
+      func (h *Hasher) Verify(input string, expected []byte) bool {
+          actual := h.Hash(input)
+          return hmac.Equal(actual, expected)
+      }
+  commit_message: "Fix timing-safe comparison using HMAC instead of SHA256"
+fragments:
+- id: hasher_hmac
+  selector:
+    path: lib/crypto/hasher.go
+    anchor: "hmac.New(sha256.New"
+- id: hasher_verify
+  selector:
+    path: lib/crypto/hasher.go
+    anchor: "hmac.Equal"
+- id: token_validate
+  selector:
+    path: lib/token/manager.go
+    anchor: "func (m *Manager) Validate"
+- id: auth_authenticate
+  selector:
+    path: lib/auth/authenticator.go
+    anchor: "func (a *Authenticator) Authenticate"
+- id: middleware_wrap
+  selector:
+    path: lib/middleware/auth_middleware.go
+    anchor: "func (m *AuthMiddleware) Wrap"
+- id: no_limiter
+  selector:
+    path: lib/ratelimit/limiter.go
+- id: no_bucket
+  selector:
+    path: lib/ratelimit/bucket.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_008_RATE_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_008_WINDOW_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_008_BUCKET_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_008_REFILL_MARKER_D
+oracle:
+  required:
+  - hasher_hmac
+  - hasher_verify
+  - token_validate
+  - auth_authenticate
+  - middleware_wrap
+  allowed: []
+  forbidden:
+  - no_limiter
+  - no_bucket
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

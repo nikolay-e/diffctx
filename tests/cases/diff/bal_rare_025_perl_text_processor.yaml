@@ -1,0 +1,207 @@
+name: bal_rare_025_perl_text_processor
+tags:
+- lang:perl
+- change:single_file
+- change:new_function
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    lib/TextUtil.pm: |
+      package TextUtil;
+      use strict;
+      use warnings;
+      use Exporter 'import';
+      our @EXPORT_OK = qw(word_count strip_html trim);
+
+      sub word_count {
+          my ($text) = @_;
+          my @words = split /\s+/, $text;
+          return scalar @words;
+      }
+
+      sub strip_html {
+          my ($html) = @_;
+          $html =~ s/<[^>]*>//g;
+          return $html;
+      }
+
+      sub trim {
+          my ($str) = @_;
+          $str =~ s/^\s+|\s+$//g;
+          return $str;
+      }
+
+      1;
+    lib/Report.pm: |
+      package Report;
+      use strict;
+      use warnings;
+      use TextUtil qw(word_count trim);
+
+      sub generate {
+          my ($title, $body) = @_;
+          my $clean_title = trim($title);
+          my $count = word_count($body);
+          return "$clean_title ($count words)";
+      }
+
+      1;
+    garbage_mailer.pm: |
+      package GarbageMailer;
+      our $GARBAGE_RARE_025_SMTP_A = "smtp.test.com";
+      our $GARBAGE_RARE_025_PORT_B = 587;
+
+      sub garbage_send {
+          return $GARBAGE_RARE_025_SMTP_A;
+      }
+
+      our $GARBAGE_RARE_025_TLS_C = 1;
+      1;
+    garbage_cache.pm: |
+      package GarbageCache;
+      our $GARBAGE_RARE_025_TTL_D = 300;
+      our $GARBAGE_RARE_025_MAX_E = 1000;
+
+      sub garbage_get {
+          return $GARBAGE_RARE_025_TTL_D;
+      }
+
+      our $GARBAGE_RARE_025_EVICT_F = "lru";
+      1;
+  changed_files:
+    lib/TextUtil.pm: |
+      package TextUtil;
+      use strict;
+      use warnings;
+      use Exporter 'import';
+      our @EXPORT_OK = qw(word_count strip_html trim truncate_text slugify);
+
+      sub word_count {
+          my ($text) = @_;
+          my @words = split /\s+/, $text;
+          return scalar @words;
+      }
+
+      sub strip_html {
+          my ($html) = @_;
+          $html =~ s/<[^>]*>//g;
+          return $html;
+      }
+
+      sub trim {
+          my ($str) = @_;
+          $str =~ s/^\s+|\s+$//g;
+          return $str;
+      }
+
+      sub truncate_text {
+          my ($text, $max_len) = @_;
+          $max_len //= 100;
+          return $text if length($text) <= $max_len;
+          return substr($text, 0, $max_len - 3) . "...";
+      }
+
+      sub slugify {
+          my ($text) = @_;
+          $text = lc($text);
+          $text =~ s/[^a-z0-9\s-]//g;
+          $text =~ s/\s+/-/g;
+          return $text;
+      }
+
+      1;
+    lib/Report.pm: |
+      package Report;
+      use strict;
+      use warnings;
+      use TextUtil qw(word_count trim);
+
+      sub generate {
+          my ($title, $body) = @_;
+          my $clean_title = trim($title);
+          my $count = word_count($body);
+          return "$clean_title ($count words)";
+      }
+
+      1;
+    garbage_mailer.pm: |
+      package GarbageMailer;
+      our $GARBAGE_RARE_025_SMTP_A = "smtp.test.com";
+      our $GARBAGE_RARE_025_PORT_B = 587;
+
+      sub garbage_send {
+          return $GARBAGE_RARE_025_SMTP_A;
+      }
+
+      our $GARBAGE_RARE_025_TLS_C = 1;
+      1;
+    garbage_cache.pm: |
+      package GarbageCache;
+      our $GARBAGE_RARE_025_TTL_D = 300;
+      our $GARBAGE_RARE_025_MAX_E = 1000;
+
+      sub garbage_get {
+          return $GARBAGE_RARE_025_TTL_D;
+      }
+
+      our $GARBAGE_RARE_025_EVICT_F = "lru";
+      1;
+  commit_message: "feat: add truncate_text and slugify utilities"
+fragments:
+- id: truncate_fn
+  selector:
+    path: lib/TextUtil.pm
+    anchor: "sub truncate_text"
+- id: slugify_fn
+  selector:
+    path: lib/TextUtil.pm
+    anchor: "sub slugify"
+- id: export_updated
+  selector:
+    path: lib/TextUtil.pm
+    anchor: "truncate_text slugify"
+- id: no_report
+  selector:
+    path: lib/Report.pm
+- id: no_garbage_mailer
+  selector:
+    path: garbage_mailer.pm
+- id: no_garbage_cache
+  selector:
+    path: garbage_cache.pm
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_RARE_025_SMTP_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_RARE_025_PORT_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_RARE_025_TLS_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_RARE_025_TTL_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_RARE_025_MAX_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_RARE_025_EVICT_F
+oracle:
+  required:
+  - truncate_fn
+  - slugify_fn
+  - export_updated
+  allowed: []
+  forbidden:
+  - no_report
+  - no_garbage_mailer
+  - no_garbage_cache
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

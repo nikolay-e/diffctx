@@ -1,0 +1,233 @@
+name: bal_3hop_043_typescript_cache_strategy_layer
+tags:
+- lang:typescript
+- change:multi_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/cache/types.ts: |
+      export interface CacheEntry<T> {
+        value: T;
+        expiresAt: number;
+      }
+
+      export interface CacheStrategy {
+        get<T>(key: string): T | null;
+        set<T>(key: string, value: T, ttl: number): void;
+      }
+    src/cache/memory.ts: |
+      import { CacheEntry, CacheStrategy } from './types';
+
+      export class MemoryCache implements CacheStrategy {
+        private store: Map<string, CacheEntry<any>> = new Map();
+
+        get<T>(key: string): T | null {
+          const entry = this.store.get(key);
+          if (!entry || entry.expiresAt < Date.now()) {
+            this.store.delete(key);
+            return null;
+          }
+          return entry.value;
+        }
+
+        set<T>(key: string, value: T, ttl: number): void {
+          this.store.set(key, { value, expiresAt: Date.now() + ttl });
+        }
+      }
+    src/services/cacheService.ts: |
+      import { MemoryCache } from '../cache/memory';
+      import { CacheStrategy } from '../cache/types';
+
+      export class CacheService {
+        private strategy: CacheStrategy;
+
+        constructor(strategy?: CacheStrategy) {
+          this.strategy = strategy || new MemoryCache();
+        }
+
+        getCached<T>(key: string, fetcher: () => T, ttl: number): T {
+          const cached = this.strategy.get<T>(key);
+          if (cached !== null) return cached;
+          const value = fetcher();
+          this.strategy.set(key, value, ttl);
+          return value;
+        }
+      }
+    src/api/products.ts: |
+      import { CacheService } from '../services/cacheService';
+
+      const cache = new CacheService();
+
+      export function getProductList(req: any, res: any): void {
+        const products = cache.getCached('products', () => [
+          { id: '1', name: 'Widget' },
+          { id: '2', name: 'Gadget' },
+        ], 60000);
+        res.json(products);
+      }
+
+      export function getProductDetail(req: any, res: any): void {
+        const key = `product:${req.params.id}`;
+        const product = cache.getCached(key, () => ({ id: req.params.id, name: 'Item' }), 30000);
+        res.json(product);
+      }
+    src/utils/base64.ts: |
+      GARBAGE_043_BASE64_MARKER_A = "base64";
+      GARBAGE_043_ENCODE_MARKER_B = true;
+
+      export function encode(data: string): string {
+        return Buffer.from(data).toString('base64');
+      }
+    src/utils/random.ts: |
+      GARBAGE_043_RANDOM_MARKER_C = "random";
+      GARBAGE_043_SEED_MARKER_D = 42;
+
+      export function randomInt(min: number, max: number): number {
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+      }
+  changed_files:
+    src/cache/types.ts: |
+      export interface CacheEntry<T> {
+        value: T;
+        expiresAt: number;
+        tags: string[];
+      }
+
+      export interface CacheStrategy {
+        get<T>(key: string): T | null;
+        set<T>(key: string, value: T, ttl: number, tags?: string[]): void;
+        invalidateByTag(tag: string): void;
+      }
+    src/cache/memory.ts: |
+      import { CacheEntry, CacheStrategy } from './types';
+
+      export class MemoryCache implements CacheStrategy {
+        private store: Map<string, CacheEntry<any>> = new Map();
+
+        get<T>(key: string): T | null {
+          const entry = this.store.get(key);
+          if (!entry || entry.expiresAt < Date.now()) {
+            this.store.delete(key);
+            return null;
+          }
+          return entry.value;
+        }
+
+        set<T>(key: string, value: T, ttl: number, tags: string[] = []): void {
+          this.store.set(key, { value, expiresAt: Date.now() + ttl, tags });
+        }
+
+        invalidateByTag(tag: string): void {
+          for (const [key, entry] of this.store) {
+            if (entry.tags.includes(tag)) this.store.delete(key);
+          }
+        }
+      }
+    src/services/cacheService.ts: |
+      import { MemoryCache } from '../cache/memory';
+      import { CacheStrategy } from '../cache/types';
+
+      export class CacheService {
+        private strategy: CacheStrategy;
+
+        constructor(strategy?: CacheStrategy) {
+          this.strategy = strategy || new MemoryCache();
+        }
+
+        getCached<T>(key: string, fetcher: () => T, ttl: number, tags?: string[]): T {
+          const cached = this.strategy.get<T>(key);
+          if (cached !== null) return cached;
+          const value = fetcher();
+          this.strategy.set(key, value, ttl, tags);
+          return value;
+        }
+
+        invalidate(tag: string): void {
+          this.strategy.invalidateByTag(tag);
+        }
+      }
+    src/api/products.ts: |
+      import { CacheService } from '../services/cacheService';
+
+      const cache = new CacheService();
+
+      export function getProductList(req: any, res: any): void {
+        const products = cache.getCached('products', () => [
+          { id: '1', name: 'Widget' },
+          { id: '2', name: 'Gadget' },
+        ], 60000, ['products']);
+        res.json(products);
+      }
+
+      export function getProductDetail(req: any, res: any): void {
+        const key = `product:${req.params.id}`;
+        const product = cache.getCached(key, () => ({ id: req.params.id, name: 'Item' }), 30000, ['products']);
+        res.json(product);
+      }
+
+      export function invalidateProducts(req: any, res: any): void {
+        cache.invalidate('products');
+        res.status(204).send();
+      }
+    src/utils/base64.ts: |
+      GARBAGE_043_BASE64_MARKER_A = "base64";
+      GARBAGE_043_ENCODE_MARKER_B = true;
+
+      export function encode(data: string): string {
+        return Buffer.from(data).toString('base64');
+      }
+    src/utils/random.ts: |
+      GARBAGE_043_RANDOM_MARKER_C = "random";
+      GARBAGE_043_SEED_MARKER_D = 42;
+
+      export function randomInt(min: number, max: number): number {
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+      }
+  commit_message: "feat: add tag-based cache invalidation"
+fragments:
+- id: cache_entry_tags
+  selector:
+    path: src/cache/types.ts
+    anchor: "tags: string[]"
+- id: invalidate_by_tag_interface
+  selector:
+    path: src/cache/types.ts
+    anchor: "invalidateByTag(tag: string): void"
+- id: memory_invalidate_impl
+  selector:
+    path: src/cache/memory.ts
+    anchor: "invalidateByTag(tag: string)"
+- id: service_invalidate
+  selector:
+    path: src/services/cacheService.ts
+    anchor: "invalidate(tag: string)"
+- id: api_imports_cache
+  selector:
+    path: src/api/products.ts
+    anchor: "import { CacheService } from '../services/cacheService'"
+- id: api_invalidate_handler
+  selector:
+    path: src/api/products.ts
+    anchor: "export function invalidateProducts"
+- id: no_base64
+  selector:
+    path: src/utils/base64.ts
+    anchor: "GARBAGE_043_BASE64_MARKER_A"
+- id: no_random
+  selector:
+    path: src/utils/random.ts
+    anchor: "GARBAGE_043_RANDOM_MARKER_C"
+oracle:
+  required:
+  - cache_entry_tags
+  - invalidate_by_tag_interface
+  - memory_invalidate_impl
+  - service_invalidate
+  - api_imports_cache
+  - api_invalidate_handler
+  allowed: []
+  forbidden:
+  - no_base64
+  - no_random

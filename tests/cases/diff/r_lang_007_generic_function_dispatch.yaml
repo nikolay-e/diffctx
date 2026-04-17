@@ -1,0 +1,101 @@
+name: r_lang_007_generic_function_dispatch
+tags:
+- lang:r
+- change:multi_file
+- change:new_function
+- context:cross_module
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    R/generics.R: |
+      serialize_record <- function(x, ...) UseMethod("serialize_record")
+
+      serialize_record.default <- function(x, ...) {
+        stop("No serialize_record method for class: ", class(x)[1])
+      }
+    R/user_record.R: |
+      source("R/generics.R")
+
+      new_user_record <- function(id, name, email) {
+        structure(list(id = id, name = name, email = email), class = "UserRecord")
+      }
+
+      serialize_record.UserRecord <- function(x, ...) {
+        jsonlite::toJSON(list(type = "user", id = x$id, name = x$name, email = x$email),
+                         auto_unbox = TRUE)
+      }
+    R/R_NOISE_007_pagination.R: |
+      R_NOISE_007_paginate <- function(items, page, per_page = 20) {
+        start <- (page - 1) * per_page + 1
+        end <- min(page * per_page, length(items))
+        list(items = items[start:end], total = length(items), page = page)
+      }
+    R/R_NOISE_007_hash_utils.R: |
+      R_NOISE_007_md5_file <- function(path) {
+        digest::digest(file = path, algo = "md5")
+      }
+      R_NOISE_007_sha256_string <- function(s) {
+        digest::digest(s, algo = "sha256", serialize = FALSE)
+      }
+  changed_files:
+    R/generics.R: |
+      serialize_record <- function(x, ...) UseMethod("serialize_record")
+
+      serialize_record.default <- function(x, ...) {
+        stop("No serialize_record method for class: ", class(x)[1])
+      }
+
+      deserialize_record <- function(x, ...) UseMethod("deserialize_record")
+
+      deserialize_record.default <- function(x, ...) {
+        stop("No deserialize_record method for class: ", class(x)[1])
+      }
+    R/user_record.R: |
+      source("R/generics.R")
+
+      new_user_record <- function(id, name, email) {
+        structure(list(id = id, name = name, email = email), class = "UserRecord")
+      }
+
+      serialize_record.UserRecord <- function(x, ...) {
+        jsonlite::toJSON(list(type = "user", id = x$id, name = x$name, email = x$email),
+                         auto_unbox = TRUE)
+      }
+
+      deserialize_record.UserRecord <- function(x, ...) {
+        parsed <- jsonlite::fromJSON(x)
+        new_user_record(id = parsed$id, name = parsed$name, email = parsed$email)
+      }
+  commit_message: "Update files"
+fragments:
+- id: generics_new_dispatch
+  selector:
+    path: R/generics.R
+    anchor: deserialize_record
+- id: user_record_new_method
+  selector:
+    path: R/user_record.R
+    anchor: deserialize_record.UserRecord
+- id: no_pagination
+  selector:
+    path: R/R_NOISE_007_pagination.R
+- id: no_hash_utils
+  selector:
+    path: R/R_NOISE_007_hash_utils.R
+- id: no_global_0
+  selector:
+    anchor: R_NOISE_007_paginate
+- id: no_global_1
+  selector:
+    anchor: R_NOISE_007_md5_file
+oracle:
+  required:
+  - generics_new_dispatch
+  - user_record_new_method
+  allowed: []
+  forbidden:
+  - no_pagination
+  - no_hash_utils
+  - no_global_0
+  - no_global_1

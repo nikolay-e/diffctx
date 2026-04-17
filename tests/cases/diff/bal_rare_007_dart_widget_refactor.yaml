@@ -1,0 +1,217 @@
+name: bal_rare_007_dart_widget_refactor
+tags:
+- lang:dart
+- change:single_file
+- change:bug_fix
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    lib/widgets/counter_widget.dart: |
+      import 'package:flutter/material.dart';
+
+      class CounterWidget extends StatefulWidget {
+        final int initialValue;
+
+        const CounterWidget({Key? key, this.initialValue = 0}) : super(key: key);
+
+        @override
+        _CounterWidgetState createState() => _CounterWidgetState();
+      }
+
+      class _CounterWidgetState extends State<CounterWidget> {
+        late int _count;
+
+        @override
+        void initState() {
+          super.initState();
+          _count = widget.initialValue;
+        }
+
+        void _increment() {
+          setState(() {
+            _count++;
+          });
+        }
+
+        @override
+        Widget build(BuildContext context) {
+          return Column(
+            children: [
+              Text('Count: $_count'),
+              ElevatedButton(
+                onPressed: _increment,
+                child: const Text('Increment'),
+              ),
+            ],
+          );
+        }
+      }
+    lib/screens/home_screen.dart: |
+      import 'package:flutter/material.dart';
+      import '../widgets/counter_widget.dart';
+
+      class HomeScreen extends StatelessWidget {
+        const HomeScreen({Key? key}) : super(key: key);
+
+        @override
+        Widget build(BuildContext context) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Home')),
+            body: const Center(child: CounterWidget()),
+          );
+        }
+      }
+    garbage_theme.dart: |
+      const GARBAGE_RARE_007_PRIMARY_A = 0xFF6200EE;
+      const GARBAGE_RARE_007_SECONDARY_B = 0xFF03DAC6;
+
+      class GarbageTheme {
+        static const GARBAGE_RARE_007_FONT_C = 'Roboto';
+      }
+    garbage_routes.dart: |
+      const GARBAGE_RARE_007_HOME_D = '/home';
+      const GARBAGE_RARE_007_SETTINGS_E = '/settings';
+
+      class GarbageRouter {
+        static const GARBAGE_RARE_007_PREFIX_F = '/api';
+      }
+  changed_files:
+    lib/widgets/counter_widget.dart: |
+      import 'package:flutter/material.dart';
+
+      class CounterWidget extends StatefulWidget {
+        final int initialValue;
+
+        const CounterWidget({Key? key, this.initialValue = 0}) : super(key: key);
+
+        @override
+        _CounterWidgetState createState() => _CounterWidgetState();
+      }
+
+      class _CounterWidgetState extends State<CounterWidget> {
+        late int _count;
+
+        @override
+        void initState() {
+          super.initState();
+          _count = widget.initialValue;
+        }
+
+        void _increment() {
+          setState(() {
+            _count++;
+          });
+        }
+
+        void _decrement() {
+          setState(() {
+            if (_count > 0) _count--;
+          });
+        }
+
+        @override
+        Widget build(BuildContext context) {
+          return Column(
+            children: [
+              Text('Count: $_count'),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  ElevatedButton(
+                    onPressed: _decrement,
+                    child: const Text('-'),
+                  ),
+                  const SizedBox(width: 16),
+                  ElevatedButton(
+                    onPressed: _increment,
+                    child: const Text('+'),
+                  ),
+                ],
+              ),
+            ],
+          );
+        }
+      }
+    lib/screens/home_screen.dart: |
+      import 'package:flutter/material.dart';
+      import '../widgets/counter_widget.dart';
+
+      class HomeScreen extends StatelessWidget {
+        const HomeScreen({Key? key}) : super(key: key);
+
+        @override
+        Widget build(BuildContext context) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Home')),
+            body: const Center(child: CounterWidget()),
+          );
+        }
+      }
+    garbage_theme.dart: |
+      const GARBAGE_RARE_007_PRIMARY_A = 0xFF6200EE;
+      const GARBAGE_RARE_007_SECONDARY_B = 0xFF03DAC6;
+
+      class GarbageTheme {
+        static const GARBAGE_RARE_007_FONT_C = 'Roboto';
+      }
+    garbage_routes.dart: |
+      const GARBAGE_RARE_007_HOME_D = '/home';
+      const GARBAGE_RARE_007_SETTINGS_E = '/settings';
+
+      class GarbageRouter {
+        static const GARBAGE_RARE_007_PREFIX_F = '/api';
+      }
+  commit_message: "feat: add decrement button to counter widget"
+fragments:
+- id: decrement_method
+  selector:
+    path: lib/widgets/counter_widget.dart
+    anchor: "void _decrement()"
+- id: build_row
+  selector:
+    path: lib/widgets/counter_widget.dart
+    anchor: "onPressed: _decrement"
+- id: no_home_screen
+  selector:
+    path: lib/screens/home_screen.dart
+- id: no_garbage_theme
+  selector:
+    path: garbage_theme.dart
+- id: no_garbage_routes
+  selector:
+    path: garbage_routes.dart
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_RARE_007_PRIMARY_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_RARE_007_SECONDARY_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_RARE_007_FONT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_RARE_007_HOME_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_RARE_007_SETTINGS_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_RARE_007_PREFIX_F
+oracle:
+  required:
+  - decrement_method
+  - build_row
+  allowed: []
+  forbidden:
+  - no_home_screen
+  - no_garbage_theme
+  - no_garbage_routes
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

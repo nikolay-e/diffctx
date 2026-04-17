@@ -1,0 +1,230 @@
+name: bal_testctx_004_python_json_parser_test
+tags:
+- lang:typescript
+- change:multi_file
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/queue/worker.ts: |
+      import { TaskQueue } from './task_queue';
+      import { Task } from './task';
+
+      export class QueueWorker {
+          constructor(private queue: TaskQueue) {}
+
+          async processNext(): Promise<boolean> {
+              const task = await this.queue.dequeue();
+              if (!task) return false;
+              await task.execute();
+              return true;
+          }
+      }
+    src/queue/task_queue.ts: |
+      import { Task } from './task';
+
+      export class TaskQueue {
+          private items: Task[] = [];
+
+          enqueue(task: Task): void {
+              this.items.push(task);
+          }
+
+          async dequeue(): Promise<Task | null> {
+              return this.items.shift() ?? null;
+          }
+
+          get size(): number {
+              return this.items.length;
+          }
+      }
+    src/queue/task.ts: |
+      export interface Task {
+          id: string;
+          execute(): Promise<void>;
+      }
+    src/jobs/email_job.ts: |
+      import { Task } from '../queue/task';
+
+      export class EmailJob implements Task {
+          id: string;
+
+          constructor(id: string, private recipient: string) {
+              this.id = id;
+          }
+
+          async execute(): Promise<void> {
+              console.log(`Sending email to ${this.recipient}`);
+          }
+      }
+    src/metrics/gauge.ts: |
+      export const GARBAGE_TESTCTX004_A = 'queue_depth_gauge';
+
+      export class Gauge {
+          private value = 0;
+          set(v: number): void { this.value = v; }
+          get(): number { return this.value; }
+      }
+    src/config/queue_config.ts: |
+      export const GARBAGE_TESTCTX004_B = 'queue_config_defaults';
+      export const GARBAGE_TESTCTX004_C = 10;
+
+      export interface QueueConfig {
+          maxSize: number;
+          retries: number;
+      }
+    src/storage/dead_letter.ts: |
+      export const GARBAGE_TESTCTX004_D = 'dead_letter_queue';
+
+      export class DeadLetterQueue {
+          private failed: string[] = [];
+          push(id: string): void { this.failed.push(id); }
+      }
+  changed_files:
+    src/queue/worker.ts: |
+      import { TaskQueue } from './task_queue';
+      import { Task, TaskResult } from './task';
+
+      export class QueueWorker {
+          constructor(private queue: TaskQueue) {}
+
+          async processNext(): Promise<TaskResult | null> {
+              const task = await this.queue.dequeue();
+              if (!task) return null;
+              return task.execute();
+          }
+
+          async processBatch(limit: number): Promise<TaskResult[]> {
+              const results: TaskResult[] = [];
+              for (let i = 0; i < limit; i++) {
+                  const result = await this.processNext();
+                  if (!result) break;
+                  results.push(result);
+              }
+              return results;
+          }
+      }
+    src/queue/task_queue.ts: |
+      import { Task } from './task';
+
+      export class TaskQueue {
+          private items: Task[] = [];
+
+          enqueue(task: Task): void {
+              this.items.push(task);
+          }
+
+          async dequeue(): Promise<Task | null> {
+              return this.items.shift() ?? null;
+          }
+
+          get size(): number {
+              return this.items.length;
+          }
+      }
+    src/queue/task.ts: |
+      export interface TaskResult {
+          taskId: string;
+          success: boolean;
+          durationMs: number;
+      }
+
+      export interface Task {
+          id: string;
+          execute(): Promise<TaskResult>;
+      }
+    src/jobs/email_job.ts: |
+      import { Task, TaskResult } from '../queue/task';
+
+      export class EmailJob implements Task {
+          id: string;
+
+          constructor(id: string, private recipient: string) {
+              this.id = id;
+          }
+
+          async execute(): Promise<TaskResult> {
+              const start = Date.now();
+              console.log(`Sending email to ${this.recipient}`);
+              return { taskId: this.id, success: true, durationMs: Date.now() - start };
+          }
+      }
+    src/metrics/gauge.ts: |
+      export const GARBAGE_TESTCTX004_A = 'queue_depth_gauge';
+
+      export class Gauge {
+          private value = 0;
+          set(v: number): void { this.value = v; }
+          get(): number { return this.value; }
+      }
+    src/config/queue_config.ts: |
+      export const GARBAGE_TESTCTX004_B = 'queue_config_defaults';
+      export const GARBAGE_TESTCTX004_C = 10;
+
+      export interface QueueConfig {
+          maxSize: number;
+          retries: number;
+      }
+    src/storage/dead_letter.ts: |
+      export const GARBAGE_TESTCTX004_D = 'dead_letter_queue';
+
+      export class DeadLetterQueue {
+          private failed: string[] = [];
+          push(id: string): void { this.failed.push(id); }
+      }
+  commit_message: "feat: return TaskResult from task execute and worker processNext"
+fragments:
+- id: task_result_interface
+  selector:
+    path: src/queue/task.ts
+    anchor: "export interface TaskResult"
+- id: task_execute_signature
+  selector:
+    path: src/queue/task.ts
+    anchor: "execute(): Promise<TaskResult>"
+- id: worker_process_next
+  selector:
+    path: src/queue/worker.ts
+    anchor: "async processNext(): Promise<TaskResult | null>"
+- id: email_job_execute
+  selector:
+    path: src/jobs/email_job.ts
+    anchor: "async execute(): Promise<TaskResult>"
+- id: no_gauge
+  selector:
+    path: src/metrics/gauge.ts
+- id: no_config
+  selector:
+    path: src/config/queue_config.ts
+- id: no_dead_letter
+  selector:
+    path: src/storage/dead_letter.ts
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_TESTCTX004_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_TESTCTX004_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_TESTCTX004_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_TESTCTX004_D
+oracle:
+  required:
+  - task_result_interface
+  - task_execute_signature
+  - worker_process_next
+  - email_job_execute
+  allowed: []
+  forbidden:
+  - no_gauge
+  - no_config
+  - no_dead_letter
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

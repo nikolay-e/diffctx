@@ -1,0 +1,121 @@
+name: gap2_142_python_multifile_new_func_aquarium_monitor
+tags:
+- change:multi_file
+- change:new_function
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:python
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    aquarium/monitor.py: |
+      from aquarium.probes import measure_ph
+
+      class TankMonitor:
+          def __init__(self, tank_id: str):
+              self.tank_id = tank_id
+              self._ph_log: list[float] = []
+
+          def check_ph(self) -> float:
+              value = measure_ph(self.tank_id)
+              self._ph_log.append(value)
+              return value
+
+          def ph_trend(self) -> str:
+              if len(self._ph_log) < 2:
+                  return "stable"
+              delta = self._ph_log[-1] - self._ph_log[-2]
+              if delta > 0.3:
+                  return "rising"
+              if delta < -0.3:
+                  return "falling"
+              return "stable"
+    aquarium/probes.py: |
+      import random
+
+      def measure_ph(tank_id: str) -> float:
+          return round(random.uniform(6.0, 8.5), 2)
+
+      def measure_salinity(tank_id: str) -> float:
+          return round(random.uniform(1.020, 1.026), 3)
+    aquarium/feeding.py: |
+      FEEDING_INTERVAL_HOURS = 12
+
+      class FeedingSchedule:
+          def __init__(self):
+              self._schedule: dict[str, list[str]] = {}
+
+          def add_feeding(self, tank_id: str, time_slot: str) -> None:
+              self._schedule.setdefault(tank_id, []).append(time_slot)
+
+          def next_feeding(self, tank_id: str) -> str:
+              slots = self._schedule.get(tank_id, [])
+              return slots[0] if slots else "unscheduled"
+  changed_files:
+    aquarium/monitor.py: |
+      from aquarium.probes import measure_ph, measure_salinity
+
+      class TankMonitor:
+          def __init__(self, tank_id: str):
+              self.tank_id = tank_id
+              self._ph_log: list[float] = []
+
+          def check_ph(self) -> float:
+              value = measure_ph(self.tank_id)
+              self._ph_log.append(value)
+              return value
+
+          def ph_trend(self) -> str:
+              if len(self._ph_log) < 2:
+                  return "stable"
+              delta = self._ph_log[-1] - self._ph_log[-2]
+              if delta > 0.3:
+                  return "rising"
+              if delta < -0.3:
+                  return "falling"
+              return "stable"
+
+          def check_salinity(self) -> float:
+              return measure_salinity(self.tank_id)
+    aquarium/probes.py: |
+      import random
+
+      def measure_ph(tank_id: str) -> float:
+          return round(random.uniform(6.0, 8.5), 2)
+
+      def measure_salinity(tank_id: str) -> float:
+          return round(random.uniform(1.020, 1.026), 3)
+
+      def measure_dissolved_oxygen(tank_id: str) -> float:
+          return round(random.uniform(5.0, 9.0), 1)
+  commit_message: "feat: add salinity monitoring and dissolved oxygen probe"
+fragments:
+- id: monitor_check_salinity
+  selector:
+    path: aquarium/monitor.py
+    anchor: "def check_salinity(self) -> float:"
+- id: monitor_import_salinity
+  selector:
+    path: aquarium/monitor.py
+    anchor: "from aquarium.probes import measure_ph, measure_salinity"
+- id: probe_dissolved_oxygen
+  selector:
+    path: aquarium/probes.py
+    anchor: "def measure_dissolved_oxygen(tank_id: str) -> float:"
+- id: no_feeding
+  selector:
+    path: aquarium/feeding.py
+- id: no_feeding_interval
+  selector:
+    anchor: FEEDING_INTERVAL_HOURS
+oracle:
+  required:
+  - monitor_check_salinity
+  - monitor_import_salinity
+  - probe_dissolved_oxygen
+  allowed: []
+  forbidden:
+  - no_feeding
+  - no_feeding_interval

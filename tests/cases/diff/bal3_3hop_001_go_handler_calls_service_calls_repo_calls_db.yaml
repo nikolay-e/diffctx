@@ -1,0 +1,211 @@
+name: bal3_3hop_001_go_handler_calls_service_calls_repo_calls_db
+tags:
+- lang:go
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    pkg/db/connection.go: |
+      package db
+
+      import "database/sql"
+
+      type Connection struct {
+          pool *sql.DB
+      }
+
+      func NewConnection(dsn string) (*Connection, error) {
+          pool, err := sql.Open("postgres", dsn)
+          if err != nil {
+              return nil, err
+          }
+          return &Connection{pool: pool}, nil
+      }
+
+      func (c *Connection) Query(query string, args ...interface{}) (*sql.Rows, error) {
+          return c.pool.Query(query, args...)
+      }
+    pkg/repo/user_repo.go: |
+      package repo
+
+      import "myapp/pkg/db"
+
+      type UserRepo struct {
+          conn *db.Connection
+      }
+
+      func NewUserRepo(conn *db.Connection) *UserRepo {
+          return &UserRepo{conn: conn}
+      }
+
+      func (r *UserRepo) FindByID(id int) (string, error) {
+          rows, err := r.conn.Query("SELECT name FROM users WHERE id=$1", id)
+          if err != nil {
+              return "", err
+          }
+          defer rows.Close()
+          var name string
+          if rows.Next() {
+              rows.Scan(&name)
+          }
+          return name, nil
+      }
+    pkg/service/user_service.go: |
+      package service
+
+      import "myapp/pkg/repo"
+
+      type UserService struct {
+          repo *repo.UserRepo
+      }
+
+      func NewUserService(repo *repo.UserRepo) *UserService {
+          return &UserService{repo: repo}
+      }
+
+      func (s *UserService) GetUserName(id int) (string, error) {
+          return s.repo.FindByID(id)
+      }
+    pkg/handler/user_handler.go: |
+      package handler
+
+      import (
+          "myapp/pkg/service"
+          "net/http"
+          "strconv"
+      )
+
+      type UserHandler struct {
+          svc *service.UserService
+      }
+
+      func NewUserHandler(svc *service.UserService) *UserHandler {
+          return &UserHandler{svc: svc}
+      }
+
+      func (h *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
+          idStr := r.URL.Query().Get("id")
+          id, _ := strconv.Atoi(idStr)
+          name, err := h.svc.GetUserName(id)
+          if err != nil {
+              http.Error(w, "not found", 404)
+              return
+          }
+          w.Write([]byte(name))
+      }
+    pkg/middleware/logging.go: |
+      package middleware
+
+      import "net/http"
+
+      var GARBAGE_BAL3_001_LOG_MARKER_A = "logging"
+      var GARBAGE_BAL3_001_TRACE_MARKER_B = true
+
+      func LoggingMiddleware(next http.Handler) http.Handler {
+          return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              next.ServeHTTP(w, r)
+          })
+      }
+    pkg/middleware/auth.go: |
+      package middleware
+
+      import "net/http"
+
+      var GARBAGE_BAL3_001_AUTH_MARKER_C = "auth"
+      var GARBAGE_BAL3_001_TOKEN_MARKER_D = "bearer"
+
+      func AuthMiddleware(next http.Handler) http.Handler {
+          return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              next.ServeHTTP(w, r)
+          })
+      }
+  changed_files:
+    pkg/db/connection.go: |
+      package db
+
+      import "database/sql"
+
+      type Connection struct {
+          pool    *sql.DB
+          maxIdle int
+      }
+
+      func NewConnection(dsn string) (*Connection, error) {
+          pool, err := sql.Open("postgres", dsn)
+          if err != nil {
+              return nil, err
+          }
+          pool.SetMaxIdleConns(10)
+          return &Connection{pool: pool, maxIdle: 10}, nil
+      }
+
+      func (c *Connection) Query(query string, args ...interface{}) (*sql.Rows, error) {
+          return c.pool.Query(query, args...)
+      }
+
+      func (c *Connection) SetMaxIdle(n int) {
+          c.maxIdle = n
+          c.pool.SetMaxIdleConns(n)
+      }
+  commit_message: "Add connection pool idle limit to db layer"
+fragments:
+- id: db_connection_struct
+  selector:
+    path: pkg/db/connection.go
+    anchor: "maxIdle int"
+- id: db_new_connection
+  selector:
+    path: pkg/db/connection.go
+    anchor: "SetMaxIdleConns(10)"
+- id: db_set_max_idle
+  selector:
+    path: pkg/db/connection.go
+    anchor: "func (c *Connection) SetMaxIdle"
+- id: repo_user_repo
+  selector:
+    path: pkg/repo/user_repo.go
+    anchor: "func NewUserRepo"
+- id: service_user_service
+  selector:
+    path: pkg/service/user_service.go
+    anchor: "func NewUserService"
+- id: handler_user_handler
+  selector:
+    path: pkg/handler/user_handler.go
+    anchor: "func NewUserHandler"
+- id: no_logging
+  selector:
+    path: pkg/middleware/logging.go
+- id: no_auth
+  selector:
+    path: pkg/middleware/auth.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_001_LOG_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_001_TRACE_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_001_AUTH_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_001_TOKEN_MARKER_D
+oracle:
+  required:
+  - db_connection_struct
+  - db_new_connection
+  - db_set_max_idle
+  - repo_user_repo
+  - service_user_service
+  - handler_user_handler
+  allowed: []
+  forbidden:
+  - no_logging
+  - no_auth
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

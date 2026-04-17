@@ -1,0 +1,176 @@
+name: gap_108_rust_single_file_event_bus
+tags:
+- lang:rust
+- change:single_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/events/bus.rs: |
+      use crate::events::handler::EventHandler;
+      use crate::events::envelope::Envelope;
+
+      pub struct EventBus {
+          handlers: Vec<Box<dyn EventHandler>>,
+      }
+
+      impl EventBus {
+          pub fn new() -> Self {
+              Self { handlers: Vec::new() }
+          }
+
+          pub fn subscribe(&mut self, handler: Box<dyn EventHandler>) {
+              self.handlers.push(handler);
+          }
+
+          pub fn publish(&self, envelope: &Envelope) {
+              for handler in &self.handlers {
+                  handler.handle(envelope);
+              }
+          }
+      }
+    src/events/handler.rs: |
+      use crate::events::envelope::Envelope;
+
+      pub trait EventHandler {
+          fn handle(&self, envelope: &Envelope);
+          fn event_type(&self) -> &str;
+      }
+
+      pub struct LoggingHandler {
+          prefix: String,
+      }
+
+      impl LoggingHandler {
+          pub fn new(prefix: &str) -> Self {
+              Self { prefix: prefix.to_string() }
+          }
+      }
+
+      impl EventHandler for LoggingHandler {
+          fn handle(&self, envelope: &Envelope) {
+              let _ = format!("{}: {}", self.prefix, envelope.event_name());
+          }
+
+          fn event_type(&self) -> &str {
+              "*"
+          }
+      }
+    src/events/envelope.rs: |
+      use std::collections::HashMap;
+
+      pub struct Envelope {
+          name: String,
+          metadata: HashMap<String, String>,
+          payload: Vec<u8>,
+      }
+
+      impl Envelope {
+          pub fn new(name: &str, payload: Vec<u8>) -> Self {
+              Self {
+                  name: name.to_string(),
+                  metadata: HashMap::new(),
+                  payload,
+              }
+          }
+
+          pub fn event_name(&self) -> &str {
+              &self.name
+          }
+
+          pub fn with_meta(mut self, key: &str, value: &str) -> Self {
+              self.metadata.insert(key.to_string(), value.to_string());
+              self
+          }
+      }
+    src/events/replay.rs: |
+      pub struct ReplayBuffer {
+          events: Vec<Vec<u8>>,
+          max_size: usize,
+      }
+
+      impl ReplayBuffer {
+          pub fn new(max_size: usize) -> Self {
+              Self { events: Vec::new(), max_size }
+          }
+
+          pub fn record(&mut self, data: Vec<u8>) {
+              if self.events.len() >= self.max_size {
+                  self.events.remove(0);
+              }
+              self.events.push(data);
+          }
+
+          pub fn replay_all(&self) -> &[Vec<u8>] {
+              &self.events
+          }
+      }
+  changed_files:
+    src/events/bus.rs: |
+      use crate::events::handler::EventHandler;
+      use crate::events::envelope::Envelope;
+
+      pub struct EventBus {
+          handlers: Vec<Box<dyn EventHandler>>,
+      }
+
+      impl EventBus {
+          pub fn new() -> Self {
+              Self { handlers: Vec::new() }
+          }
+
+          pub fn subscribe(&mut self, handler: Box<dyn EventHandler>) {
+              self.handlers.push(handler);
+          }
+
+          pub fn publish(&self, envelope: &Envelope) {
+              for handler in &self.handlers {
+                  if handler.event_type() == "*" || handler.event_type() == envelope.event_name() {
+                      handler.handle(envelope);
+                  }
+              }
+          }
+
+          pub fn publish_filtered(&self, envelope: &Envelope, filter: &str) {
+              for handler in &self.handlers {
+                  if handler.event_type() == filter {
+                      handler.handle(envelope);
+                  }
+              }
+          }
+      }
+fragments:
+- id: bus_publish
+  selector:
+    path: src/events/bus.rs
+    anchor: "pub fn publish("
+- id: bus_publish_filtered
+  selector:
+    path: src/events/bus.rs
+    anchor: "pub fn publish_filtered"
+- id: handler_event_type
+  selector:
+    path: src/events/handler.rs
+    anchor: "fn event_type"
+- id: envelope_event_name
+  selector:
+    path: src/events/envelope.rs
+    anchor: "pub fn event_name"
+- id: no_replay
+  selector:
+    path: src/events/replay.rs
+- id: no_replay_buffer
+  selector:
+    anchor: ReplayBuffer
+oracle:
+  required:
+  - bus_publish
+  - bus_publish_filtered
+  - handler_event_type
+  - envelope_event_name
+  forbidden:
+  - no_replay
+  - no_replay_buffer

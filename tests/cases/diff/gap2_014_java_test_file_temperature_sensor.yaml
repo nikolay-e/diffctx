@@ -1,0 +1,163 @@
+name: gap2_014_java_test_file_temperature_sensor
+tags:
+- lang:java
+- change:single_file
+- context:test_file
+- distance:2hop
+- difficulty:easy
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/main/java/com/iot/sensor/TemperatureSensor.java: |
+      package com.iot.sensor;
+
+      import java.util.ArrayList;
+      import java.util.List;
+
+      public class TemperatureSensor {
+          private final String sensorId;
+          private final List<Double> readings;
+
+          public TemperatureSensor(String sensorId) {
+              this.sensorId = sensorId;
+              this.readings = new ArrayList<>();
+          }
+
+          public void record(double celsius) {
+              readings.add(celsius);
+          }
+
+          public double average() {
+              if (readings.isEmpty()) return 0.0;
+              return readings.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+          }
+
+          public String getSensorId() {
+              return sensorId;
+          }
+      }
+    src/main/java/com/iot/alert/AlertThreshold.java: |
+      package com.iot.alert;
+
+      public class AlertThreshold {
+          private final double minCelsius;
+          private final double maxCelsius;
+
+          public AlertThreshold(double minCelsius, double maxCelsius) {
+              this.minCelsius = minCelsius;
+              this.maxCelsius = maxCelsius;
+          }
+
+          public boolean isBreached(double value) {
+              return value < minCelsius || value > maxCelsius;
+          }
+
+          public double getMinCelsius() { return minCelsius; }
+          public double getMaxCelsius() { return maxCelsius; }
+      }
+    src/test/java/com/iot/sensor/TemperatureSensorTest.java: |
+      package com.iot.sensor;
+
+      import org.junit.jupiter.api.Test;
+      import static org.junit.jupiter.api.Assertions.*;
+
+      class TemperatureSensorTest {
+          @Test
+          void averageOfEmptyReturnsZero() {
+              TemperatureSensor sensor = new TemperatureSensor("S1");
+              assertEquals(0.0, sensor.average());
+          }
+
+          @Test
+          void averageComputesCorrectly() {
+              TemperatureSensor sensor = new TemperatureSensor("S1");
+              sensor.record(20.0);
+              sensor.record(30.0);
+              assertEquals(25.0, sensor.average(), 0.001);
+          }
+      }
+    src/main/java/com/iot/network/MqttPublisher.java: |
+      package com.iot.network;
+
+      public class MqttPublisher {
+          private final String brokerUrl;
+
+          public MqttPublisher(String brokerUrl) {
+              this.brokerUrl = brokerUrl;
+          }
+
+          public boolean publish(String topic, String payload) {
+              return true;
+          }
+
+          public String getBrokerUrl() {
+              return brokerUrl;
+          }
+      }
+  changed_files:
+    src/main/java/com/iot/sensor/TemperatureSensor.java: |
+      package com.iot.sensor;
+
+      import java.util.ArrayList;
+      import java.util.List;
+
+      public class TemperatureSensor {
+          private final String sensorId;
+          private final List<Double> readings;
+
+          public TemperatureSensor(String sensorId) {
+              this.sensorId = sensorId;
+              this.readings = new ArrayList<>();
+          }
+
+          public void record(double celsius) {
+              readings.add(celsius);
+          }
+
+          public double average() {
+              if (readings.isEmpty()) return 0.0;
+              return readings.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+          }
+
+          public double max() {
+              return readings.stream().mapToDouble(Double::doubleValue).max().orElse(0.0);
+          }
+
+          public double min() {
+              return readings.stream().mapToDouble(Double::doubleValue).min().orElse(0.0);
+          }
+
+          public String getSensorId() {
+              return sensorId;
+          }
+      }
+  commit_message: "feat: add max and min methods to temperature sensor"
+fragments:
+- id: sensor_max
+  selector:
+    path: src/main/java/com/iot/sensor/TemperatureSensor.java
+    anchor: "public double max()"
+- id: sensor_min
+  selector:
+    path: src/main/java/com/iot/sensor/TemperatureSensor.java
+    anchor: "public double min()"
+- id: test_uses_sensor
+  selector:
+    path: src/test/java/com/iot/sensor/TemperatureSensorTest.java
+    anchor: "new TemperatureSensor"
+- id: no_mqtt
+  selector:
+    path: src/main/java/com/iot/network/MqttPublisher.java
+- id: no_mqtt_class
+  selector:
+    anchor: MqttPublisher
+oracle:
+  required:
+  - sensor_max
+  - sensor_min
+  - test_uses_sensor
+  allowed: []
+  forbidden:
+  - no_mqtt
+  - no_mqtt_class

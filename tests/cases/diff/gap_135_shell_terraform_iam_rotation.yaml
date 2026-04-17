@@ -1,0 +1,157 @@
+name: gap_135_shell_terraform_iam_rotation
+tags:
+- lang:shell
+- lang:terraform
+- change:multi_file
+- context:same_file
+- difficulty:medium
+- distance:0hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    infra/iam/main.tf: |
+      resource "aws_iam_user" "deploy" {
+        name = "${var.project}-deployer"
+        path = "/system/"
+
+        tags = {
+          Project = var.project
+          Role    = "deployer"
+        }
+      }
+
+      resource "aws_iam_access_key" "deploy" {
+        user = aws_iam_user.deploy.name
+      }
+
+      resource "aws_iam_user_policy" "deploy" {
+        name   = "deploy-policy"
+        user   = aws_iam_user.deploy.name
+        policy = data.aws_iam_policy_document.deploy.json
+      }
+
+      data "aws_iam_policy_document" "deploy" {
+        statement {
+          actions   = ["s3:PutObject", "s3:GetObject", "s3:ListBucket"]
+          resources = ["arn:aws:s3:::${var.project}-*"]
+        }
+      }
+    scripts/rotate-keys.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      USERNAME="${1:?Usage: rotate-keys.sh <iam_username>}"
+
+      OLD_KEYS=$(aws iam list-access-keys --user-name "$USERNAME" --query 'AccessKeyMetadata[].AccessKeyId' --output text)
+
+      NEW_KEY=$(aws iam create-access-key --user-name "$USERNAME" --query 'AccessKey.[AccessKeyId,SecretAccessKey]' --output text)
+      echo "Created new key for $USERNAME"
+
+      for KEY_ID in $OLD_KEYS; do
+          aws iam delete-access-key --user-name "$USERNAME" --access-key-id "$KEY_ID"
+          echo "Deleted old key: $KEY_ID"
+      done
+    infra/lambda/main.tf: |
+      resource "aws_lambda_function" "processor" {
+        function_name = "${var.project}-processor"
+        runtime       = "python3.11"
+        handler       = "handler.main"
+        role          = aws_iam_role.lambda_exec.arn
+
+        filename         = "lambda.zip"
+        source_code_hash = filebase64sha256("lambda.zip")
+
+        environment {
+          variables = {
+            STAGE = var.environment
+          }
+        }
+      }
+
+      resource "aws_iam_role" "lambda_exec" {
+        name = "${var.project}-lambda-exec"
+
+        assume_role_policy = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Action    = "sts:AssumeRole"
+            Effect    = "Allow"
+            Principal = { Service = "lambda.amazonaws.com" }
+          }]
+        })
+      }
+  changed_files:
+    infra/iam/main.tf: |
+      resource "aws_iam_user" "deploy" {
+        name = "${var.project}-deployer"
+        path = "/system/"
+
+        tags = {
+          Project = var.project
+          Role    = "deployer"
+        }
+      }
+
+      resource "aws_iam_access_key" "deploy" {
+        user = aws_iam_user.deploy.name
+      }
+
+      resource "aws_iam_user_policy" "deploy" {
+        name   = "deploy-policy"
+        user   = aws_iam_user.deploy.name
+        policy = data.aws_iam_policy_document.deploy.json
+      }
+
+      data "aws_iam_policy_document" "deploy" {
+        statement {
+          actions   = ["s3:PutObject", "s3:GetObject", "s3:ListBucket"]
+          resources = ["arn:aws:s3:::${var.project}-*"]
+        }
+
+        statement {
+          actions   = ["ecr:GetAuthorizationToken", "ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer"]
+          resources = ["*"]
+        }
+      }
+    scripts/rotate-keys.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      USERNAME="${1:?Usage: rotate-keys.sh <iam_username>}"
+      MAX_KEY_AGE_DAYS="${2:-90}"
+
+      OLD_KEYS=$(aws iam list-access-keys --user-name "$USERNAME" --query 'AccessKeyMetadata[].AccessKeyId' --output text)
+
+      NEW_KEY=$(aws iam create-access-key --user-name "$USERNAME" --query 'AccessKey.[AccessKeyId,SecretAccessKey]' --output text)
+      echo "Created new key for $USERNAME"
+
+      for KEY_ID in $OLD_KEYS; do
+          KEY_DATE=$(aws iam list-access-keys --user-name "$USERNAME" --query "AccessKeyMetadata[?AccessKeyId=='$KEY_ID'].CreateDate" --output text)
+          aws iam delete-access-key --user-name "$USERNAME" --access-key-id "$KEY_ID"
+          echo "Deleted old key: $KEY_ID (created: $KEY_DATE)"
+      done
+
+      echo "Next rotation due in $MAX_KEY_AGE_DAYS days"
+fragments:
+- id: ecr_statement
+  selector:
+    path: infra/iam/main.tf
+    anchor: ecr:GetAuthorizationToken
+- id: rotate_age
+  selector:
+    path: scripts/rotate-keys.sh
+    anchor: MAX_KEY_AGE_DAYS
+- id: no_lambda
+  selector:
+    path: infra/lambda/main.tf
+- id: no_lambda_fn
+  selector:
+    anchor: aws_lambda_function
+oracle:
+  required:
+  - ecr_statement
+  - rotate_age
+  forbidden:
+  - no_lambda
+  - no_lambda_fn

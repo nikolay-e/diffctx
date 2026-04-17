@@ -1,0 +1,151 @@
+name: bal2_1hop_033_scala_case_class_codec
+tags:
+- lang:scala
+- change:multi_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/model/User.scala: |
+      package model
+
+      case class User(id: String, name: String, email: String)
+    src/main/scala/codec/UserCodec.scala: |
+      package codec
+
+      import model.User
+      import io.circe._
+      import io.circe.generic.semiauto._
+
+      object UserCodec {
+        implicit val userEncoder: Encoder[User] = deriveEncoder[User]
+        implicit val userDecoder: Decoder[User] = deriveDecoder[User]
+      }
+    src/main/scala/api/UserEndpoint.scala: |
+      package api
+
+      import model.User
+      import codec.UserCodec._
+
+      class UserEndpoint {
+        def getUser(id: String): User = User(id, "Alice", "alice@example.com")
+        def encodeUser(u: User): String = userEncoder(u).noSpaces
+      }
+    src/main/scala/repo/UserRepo.scala: |
+      package repo
+
+      import model.User
+
+      class UserRepo {
+        private var users: Map[String, User] = Map.empty
+        def save(u: User): Unit = users += (u.id -> u)
+        def find(id: String): Option[User] = users.get(id)
+      }
+    src/main/scala/notification/Mailer.scala: |
+      package notification
+
+      GARBAGE_033_MAILER_A = "mailer"
+
+      class Mailer(smtpHost: String) {
+        def send(to: String, subject: String, body: String): Unit = ()
+      }
+    src/main/scala/cache/RedisClient.scala: |
+      package cache
+
+      GARBAGE_033_REDIS_B = "redis"
+
+      class RedisClient(host: String) {
+        def get(key: String): Option[String] = None
+        def set(key: String, value: String): Unit = ()
+      }
+    src/main/scala/scheduler/CronJob.scala: |
+      package scheduler
+
+      GARBAGE_033_CRON_C = "cron"
+
+      trait CronJob {
+        def schedule: String
+        def execute(): Unit
+      }
+  changed_files:
+    src/main/scala/model/User.scala: |
+      package model
+
+      case class User(id: String, name: String, email: String, role: String, active: Boolean)
+    src/main/scala/codec/UserCodec.scala: |
+      package codec
+
+      import model.User
+      import io.circe._
+      import io.circe.generic.semiauto._
+
+      object UserCodec {
+        implicit val userEncoder: Encoder[User] = deriveEncoder[User]
+        implicit val userDecoder: Decoder[User] = deriveDecoder[User]
+
+        def withDefaults(json: Json): Json = {
+          json.mapObject(obj =>
+            obj.add("role", obj("role").getOrElse(Json.fromString("viewer")))
+              .add("active", obj("active").getOrElse(Json.fromBoolean(true)))
+          )
+        }
+      }
+  commit_message: "feat: add role and active fields to User with codec defaults"
+fragments:
+- id: user_new_fields
+  selector:
+    path: src/main/scala/model/User.scala
+    anchor: "role: String, active: Boolean"
+- id: codec_with_defaults
+  selector:
+    path: src/main/scala/codec/UserCodec.scala
+    anchor: "def withDefaults"
+- id: endpoint_imports_user
+  selector:
+    path: src/main/scala/api/UserEndpoint.scala
+    anchor: "import model.User"
+- id: endpoint_creates_user
+  selector:
+    path: src/main/scala/api/UserEndpoint.scala
+    anchor: "def getUser"
+- id: repo_imports_user
+  selector:
+    path: src/main/scala/repo/UserRepo.scala
+    anchor: "import model.User"
+- id: unrelated_mailer
+  selector:
+    path: src/main/scala/notification/Mailer.scala
+    anchor: "class Mailer"
+- id: unrelated_redis
+  selector:
+    path: src/main/scala/cache/RedisClient.scala
+    anchor: "class RedisClient"
+- id: unrelated_cron
+  selector:
+    path: src/main/scala/scheduler/CronJob.scala
+    anchor: "trait CronJob"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_033_MAILER_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_033_REDIS_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_033_CRON_C
+oracle:
+  required:
+  - user_new_fields
+  - codec_with_defaults
+  - endpoint_imports_user
+  - endpoint_creates_user
+  allowed:
+  - repo_imports_user
+  forbidden:
+  - unrelated_mailer
+  - unrelated_redis
+  - unrelated_cron
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

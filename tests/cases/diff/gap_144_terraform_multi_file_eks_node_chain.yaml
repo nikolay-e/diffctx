@@ -1,0 +1,211 @@
+name: gap_144_terraform_multi_file_eks_node_chain
+tags:
+- change:config
+- change:multi_file
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+- lang:terraform
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    eks/cluster.tf: |
+      variable "cluster_name" {
+        type    = string
+        default = "prod-cluster"
+      }
+
+      variable "k8s_version" {
+        type    = string
+        default = "1.28"
+      }
+
+      resource "aws_eks_cluster" "main" {
+        name     = var.cluster_name
+        role_arn = var.cluster_role_arn
+        version  = var.k8s_version
+
+        vpc_config {
+          subnet_ids = var.subnet_ids
+        }
+      }
+
+      output "cluster_endpoint" {
+        value = aws_eks_cluster.main.endpoint
+      }
+
+      output "cluster_ca" {
+        value = aws_eks_cluster.main.certificate_authority[0].data
+      }
+    eks/nodes.tf: |
+      variable "cluster_name" {
+        type = string
+      }
+
+      variable "node_instance_types" {
+        type    = list(string)
+        default = ["t3.medium"]
+      }
+
+      resource "aws_eks_node_group" "workers" {
+        cluster_name    = var.cluster_name
+        node_group_name = "workers"
+        node_role_arn   = var.node_role_arn
+        subnet_ids      = var.subnet_ids
+        instance_types  = var.node_instance_types
+
+        scaling_config {
+          desired_size = 2
+          max_size     = 4
+          min_size     = 1
+        }
+      }
+    eks/iam.tf: |
+      variable "cluster_role_arn" {
+        type = string
+      }
+
+      variable "node_role_arn" {
+        type = string
+      }
+
+      variable "subnet_ids" {
+        type = list(string)
+      }
+
+      resource "aws_iam_role" "eks_cluster" {
+        name = "eks-cluster-role"
+        assume_role_policy = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Action = "sts:AssumeRole"
+            Effect = "Allow"
+            Principal = { Service = "eks.amazonaws.com" }
+          }]
+        })
+      }
+
+      resource "aws_iam_role" "eks_nodes" {
+        name = "eks-node-role"
+        assume_role_policy = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Action = "sts:AssumeRole"
+            Effect = "Allow"
+            Principal = { Service = "ec2.amazonaws.com" }
+          }]
+        })
+      }
+    ci/pipeline.tf: |
+      resource "aws_codepipeline" "app" {
+        name     = "app-pipeline"
+        role_arn = "arn:aws:iam::role/codepipeline"
+
+        artifact_store {
+          location = "pipeline-artifacts"
+          type     = "S3"
+        }
+
+        stage {
+          name = "Source"
+          action {
+            name     = "Source"
+            category = "Source"
+            owner    = "AWS"
+            provider = "CodeCommit"
+            version  = "1"
+            output_artifacts = ["source_output"]
+            configuration = {
+              RepositoryName = "app-repo"
+              BranchName     = "main"
+            }
+          }
+        }
+      }
+  changed_files:
+    eks/cluster.tf: |
+      variable "cluster_name" {
+        type    = string
+        default = "prod-cluster"
+      }
+
+      variable "k8s_version" {
+        type    = string
+        default = "1.29"
+      }
+
+      resource "aws_eks_cluster" "main" {
+        name     = var.cluster_name
+        role_arn = var.cluster_role_arn
+        version  = var.k8s_version
+
+        vpc_config {
+          subnet_ids              = var.subnet_ids
+          endpoint_private_access = true
+          endpoint_public_access  = false
+        }
+      }
+
+      output "cluster_endpoint" {
+        value = aws_eks_cluster.main.endpoint
+      }
+
+      output "cluster_ca" {
+        value = aws_eks_cluster.main.certificate_authority[0].data
+      }
+    eks/nodes.tf: |
+      variable "cluster_name" {
+        type = string
+      }
+
+      variable "node_instance_types" {
+        type    = list(string)
+        default = ["t3.large"]
+      }
+
+      resource "aws_eks_node_group" "workers" {
+        cluster_name    = var.cluster_name
+        node_group_name = "workers"
+        node_role_arn   = var.node_role_arn
+        subnet_ids      = var.subnet_ids
+        instance_types  = var.node_instance_types
+
+        scaling_config {
+          desired_size = 3
+          max_size     = 6
+          min_size     = 2
+        }
+      }
+fragments:
+- id: cluster_version
+  selector:
+    path: eks/cluster.tf
+    anchor: k8s_version
+- id: cluster_vpc_config
+  selector:
+    path: eks/cluster.tf
+    anchor: endpoint_private_access
+- id: nodes_scaling
+  selector:
+    path: eks/nodes.tf
+    anchor: scaling_config
+- id: iam_node_role
+  selector:
+    path: eks/iam.tf
+    anchor: eks-node-role
+- id: no_pipeline
+  selector:
+    path: ci/pipeline.tf
+- id: no_codepipeline
+  selector:
+    anchor: aws_codepipeline
+oracle:
+  required:
+  - cluster_version
+  - cluster_vpc_config
+  - nodes_scaling
+  - iam_node_role
+  forbidden:
+  - no_pipeline
+  - no_codepipeline

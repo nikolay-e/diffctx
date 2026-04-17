@@ -1,24 +1,162 @@
 name: internals_023_cyrillic_in_diff
+tags:
+- lang:typescript
+- change:bug_fix
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
 repo:
   initial_files:
-    cyrillic_diff.py: |
-      x = 0
+    src/utils/validation.ts: |
+      export function isValidEmail(email: string): boolean {
+        const re = /^[^@]+@[^@]+\.[^@]+$/;
+        return re.test(email);
+      }
+
+      export function isValidPhone(phone: string): boolean {
+        return /^\+?[\d\s\-()]{7,15}$/.test(phone);
+      }
+    src/forms/contactForm.ts: |
+      import { isValidEmail, isValidPhone } from '../utils/validation';
+
+      export interface ContactFormData {
+        name: string;
+        email: string;
+        phone: string;
+      }
+
+      export function validateContactForm(data: ContactFormData): string[] {
+        const errors: string[] = [];
+        if (!data.name.trim()) errors.push('Name is required');
+        if (!isValidEmail(data.email)) errors.push('Invalid email');
+        if (data.phone && !isValidPhone(data.phone)) errors.push('Invalid phone');
+        return errors;
+      }
+    src/checkout/orderForm.ts: |
+      import { validateContactForm, ContactFormData } from '../forms/contactForm';
+
+      export interface OrderFormData extends ContactFormData {
+        address: string;
+        quantity: number;
+      }
+
+      export function validateOrderForm(data: OrderFormData): string[] {
+        const errors = validateContactForm(data);
+        if (!data.address.trim()) errors.push('Address is required');
+        if (data.quantity < 1) errors.push('Quantity must be at least 1');
+        return errors;
+      }
+    src/api/orderEndpoint.ts: |
+      import { validateOrderForm, OrderFormData } from '../checkout/orderForm';
+
+      export function submitOrder(data: OrderFormData): { ok: boolean; errors: string[] } {
+        const errors = validateOrderForm(data);
+        if (errors.length > 0) return { ok: false, errors };
+        return { ok: true, errors: [] };
+      }
+    garbage/analytics.ts: |
+      const GARBAGE_CYR023_ANALYTICS_A = "analytics_marker";
+      export function track(event: string): void {}
+    garbage/storage.ts: |
+      const GARBAGE_CYR023_STORAGE_B = "storage_marker";
+      export function save(key: string, value: unknown): void {}
+    garbage/i18n.ts: |
+      const GARBAGE_CYR023_I18N_C = "i18n_marker";
+      export function t(key: string): string { return key; }
   changed_files:
-    cyrillic_diff.py: |
-      # Cyrillic а vs Latin a
-      vаr_cyrillic = 1
-      var_latin = 2
-  commit_message: Update files
+    src/utils/validation.ts: |
+      export function isValidEmail(email: string): boolean {
+        if (!email || email.trim() !== email) return false;
+        const re = /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/;
+        return re.test(email);
+      }
+
+      export function isValidPhone(phone: string): boolean {
+        return /^\+?[\d\s\-()]{7,15}$/.test(phone);
+      }
+    src/forms/contactForm.ts: |
+      import { isValidEmail, isValidPhone } from '../utils/validation';
+
+      export interface ContactFormData {
+        name: string;
+        email: string;
+        phone: string;
+      }
+
+      export function validateContactForm(data: ContactFormData): string[] {
+        const errors: string[] = [];
+        if (!data.name.trim()) errors.push('Name is required');
+        if (!isValidEmail(data.email)) errors.push('Invalid email');
+        if (data.phone && !isValidPhone(data.phone)) errors.push('Invalid phone');
+        return errors;
+      }
+    src/checkout/orderForm.ts: |
+      import { validateContactForm, ContactFormData } from '../forms/contactForm';
+
+      export interface OrderFormData extends ContactFormData {
+        address: string;
+        quantity: number;
+      }
+
+      export function validateOrderForm(data: OrderFormData): string[] {
+        const errors = validateContactForm(data);
+        if (!data.address.trim()) errors.push('Address is required');
+        if (data.quantity < 1) errors.push('Quantity must be at least 1');
+        return errors;
+      }
+    src/api/orderEndpoint.ts: |
+      import { validateOrderForm, OrderFormData } from '../checkout/orderForm';
+
+      export function submitOrder(data: OrderFormData): { ok: boolean; errors: string[] } {
+        const errors = validateOrderForm(data);
+        if (errors.length > 0) return { ok: false, errors };
+        return { ok: true, errors: [] };
+      }
+    garbage/analytics.ts: |
+      const GARBAGE_CYR023_ANALYTICS_A = "analytics_marker";
+      export function track(event: string): void {}
+    garbage/storage.ts: |
+      const GARBAGE_CYR023_STORAGE_B = "storage_marker";
+      export function save(key: string, value: unknown): void {}
+    garbage/i18n.ts: |
+      const GARBAGE_CYR023_I18N_C = "i18n_marker";
+      export function t(key: string): string { return key; }
+  commit_message: "fix: tighten email regex to reject whitespace and short TLDs"
 fragments:
-- id: cyrillic_diff_file
+- id: is_valid_email_fix
   selector:
-    path: cyrillic_diff.py
-- id: req_global_0
+    path: src/utils/validation.ts
+    anchor: "if (!email || email.trim() !== email)"
+- id: contact_form_calls_validate_email
   selector:
-    anchor: vаr_cyrillic = 1
+    path: src/forms/contactForm.ts
+    anchor: "isValidEmail(data.email)"
+- id: order_form_calls_contact
+  selector:
+    path: src/checkout/orderForm.ts
+    anchor: "validateContactForm(data)"
+- id: endpoint_calls_order_form
+  selector:
+    path: src/api/orderEndpoint.ts
+    anchor: "validateOrderForm(data)"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_CYR023_ANALYTICS_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_CYR023_STORAGE_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_CYR023_I18N_C
 oracle:
   required:
-  - cyrillic_diff_file
-  - req_global_0
+  - is_valid_email_fix
+  - contact_form_calls_validate_email
+  - order_form_calls_contact
+  - endpoint_calls_order_form
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

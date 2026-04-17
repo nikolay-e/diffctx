@@ -1,0 +1,187 @@
+name: bal3_1hop_051_scala_single_file_http_client
+tags:
+- lang:scala
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/http/HttpClient.scala: |
+      package http
+
+      class HttpClient(baseUrl: String) {
+        def get(path: String): Map[String, Any] = {
+          Map("method" -> "GET", "url" -> s"$baseUrl$path")
+        }
+
+        def post(path: String, body: Map[String, Any]): Map[String, Any] = {
+          Map("method" -> "POST", "url" -> s"$baseUrl$path", "body" -> body)
+        }
+      }
+    src/main/scala/service/WeatherClient.scala: |
+      package service
+
+      import http.HttpClient
+
+      class WeatherClient(client: HttpClient) {
+        def getForecast(city: String): Map[String, Any] = {
+          client.get(s"/weather/$city")
+        }
+      }
+    src/main/scala/service/GeoClient.scala: |
+      package service
+
+      import http.HttpClient
+
+      class GeoClient(client: HttpClient) {
+        def geocode(address: String): Map[String, Any] = {
+          client.get(s"/geocode?q=$address")
+        }
+      }
+    src/main/scala/service/PaymentClient.scala: |
+      package service
+
+      import http.HttpClient
+
+      class PaymentClient(client: HttpClient) {
+        def charge(amount: Double): Map[String, Any] = {
+          client.post("/charges", Map("amount" -> amount))
+        }
+      }
+    src/main/scala/service/SlackClient.scala: |
+      package service
+
+      import http.HttpClient
+
+      class SlackClient(client: HttpClient) {
+        def sendMessage(channel: String, text: String): Map[String, Any] = {
+          client.post("/chat.postMessage", Map("channel" -> channel, "text" -> text))
+        }
+      }
+    src/main/scala/security/Encryptor.scala: |
+      package security
+
+      object Encryptor {
+        val GARBAGE_BAL3_051_ENC_A = "encrypt"
+        val GARBAGE_BAL3_051_ALGO_B = "AES"
+
+        def encrypt(data: String): String = data.reverse
+      }
+    src/main/scala/security/TokenGenerator.scala: |
+      package security
+
+      object TokenGenerator {
+        val GARBAGE_BAL3_051_TOKEN_C = "token"
+        val GARBAGE_BAL3_051_LEN_D = 32
+
+        def generate(): String = java.util.UUID.randomUUID().toString
+      }
+    src/main/scala/security/HashUtil.scala: |
+      package security
+
+      object HashUtil {
+        val GARBAGE_BAL3_051_HASH_E = "hash"
+        val GARBAGE_BAL3_051_SALT_F = "default"
+
+        def sha256(input: String): String = input
+      }
+  changed_files:
+    src/main/scala/http/HttpClient.scala: |
+      package http
+
+      class HttpClient(baseUrl: String, defaultHeaders: Map[String, String] = Map.empty, timeoutMs: Int = 30000) {
+        def get(path: String, headers: Map[String, String] = Map.empty): Map[String, Any] = {
+          Map(
+            "method" -> "GET",
+            "url" -> s"$baseUrl$path",
+            "headers" -> (defaultHeaders ++ headers),
+            "timeout" -> timeoutMs
+          )
+        }
+
+        def post(path: String, body: Map[String, Any], headers: Map[String, String] = Map.empty): Map[String, Any] = {
+          Map(
+            "method" -> "POST",
+            "url" -> s"$baseUrl$path",
+            "body" -> body,
+            "headers" -> (defaultHeaders ++ headers),
+            "timeout" -> timeoutMs
+          )
+        }
+
+        def put(path: String, body: Map[String, Any]): Map[String, Any] = {
+          Map("method" -> "PUT", "url" -> s"$baseUrl$path", "body" -> body, "headers" -> defaultHeaders)
+        }
+
+        def delete(path: String): Map[String, Any] = {
+          Map("method" -> "DELETE", "url" -> s"$baseUrl$path", "headers" -> defaultHeaders)
+        }
+      }
+  commit_message: "Add headers, timeout, PUT and DELETE to HttpClient"
+fragments:
+- id: weather_client
+  selector:
+    path: src/main/scala/service/WeatherClient.scala
+    anchor: "import http.HttpClient"
+- id: weather_get
+  selector:
+    path: src/main/scala/service/WeatherClient.scala
+    anchor: "client.get"
+- id: geo_client
+  selector:
+    path: src/main/scala/service/GeoClient.scala
+    anchor: "import http.HttpClient"
+- id: payment_client
+  selector:
+    path: src/main/scala/service/PaymentClient.scala
+    anchor: "import http.HttpClient"
+- id: slack_client
+  selector:
+    path: src/main/scala/service/SlackClient.scala
+    anchor: "import http.HttpClient"
+- id: no_encryptor
+  selector:
+    path: src/main/scala/security/Encryptor.scala
+- id: no_token_gen
+  selector:
+    path: src/main/scala/security/TokenGenerator.scala
+- id: no_hash_util
+  selector:
+    path: src/main/scala/security/HashUtil.scala
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_051_ENC_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_051_ALGO_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_051_TOKEN_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_051_LEN_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL3_051_HASH_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL3_051_SALT_F
+oracle:
+  required:
+  - weather_client
+  - weather_get
+  - geo_client
+  - payment_client
+  - slack_client
+  allowed: []
+  forbidden:
+  - no_encryptor
+  - no_token_gen
+  - no_hash_util
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

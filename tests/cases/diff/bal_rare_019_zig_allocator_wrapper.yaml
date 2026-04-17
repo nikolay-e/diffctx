@@ -1,0 +1,133 @@
+name: bal_rare_019_zig_allocator_wrapper
+tags:
+- lang:erlang
+- change:new_function
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/shipping_cost.erl: |
+      -module(shipping_cost).
+      -export([flat_rate/1, zone_rate/2]).
+
+      flat_rate(WeightGrams) when WeightGrams =< 500 -> 5.00;
+      flat_rate(WeightGrams) when WeightGrams =< 2000 -> 9.00;
+      flat_rate(_) -> 15.00.
+
+      zone_rate(Zone, WeightGrams) ->
+          Base = flat_rate(WeightGrams),
+          Multiplier = zone_multiplier(Zone),
+          Base * Multiplier.
+
+      zone_multiplier(domestic) -> 1.0;
+      zone_multiplier(europe) -> 1.8;
+      zone_multiplier(global) -> 2.5;
+      zone_multiplier(_) -> 3.0.
+    src/order_fulfillment.erl: |
+      -module(order_fulfillment).
+      -export([calculate_total/3]).
+
+      calculate_total(ItemPrice, WeightGrams, Zone) ->
+          Shipping = shipping_cost:zone_rate(Zone, WeightGrams),
+          ItemPrice + Shipping.
+    src/warehouse.erl: |
+      -module(warehouse).
+      -export([locate_item/1]).
+
+      locate_item(Sku) ->
+          io:format("Locating SKU: ~p~n", [Sku]).
+    garbage/returns.erl: |
+      % GARBAGE_RARE019_RET_A = "returns_marker"
+    garbage/customs.erl: |
+      % GARBAGE_RARE019_CUST_B = "customs_marker"
+    garbage/packaging.erl: |
+      % GARBAGE_RARE019_PACK_C = "packaging_marker"
+  changed_files:
+    src/shipping_cost.erl: |
+      -module(shipping_cost).
+      -export([flat_rate/1, zone_rate/2, express_rate/2]).
+
+      flat_rate(WeightGrams) when WeightGrams =< 500 -> 5.00;
+      flat_rate(WeightGrams) when WeightGrams =< 2000 -> 9.00;
+      flat_rate(_) -> 15.00.
+
+      zone_rate(Zone, WeightGrams) ->
+          Base = flat_rate(WeightGrams),
+          Multiplier = zone_multiplier(Zone),
+          Base * Multiplier.
+
+      express_rate(Zone, WeightGrams) ->
+          zone_rate(Zone, WeightGrams) * 1.5 + 3.00.
+
+      zone_multiplier(domestic) -> 1.0;
+      zone_multiplier(europe) -> 1.8;
+      zone_multiplier(global) -> 2.5;
+      zone_multiplier(_) -> 3.0.
+    src/order_fulfillment.erl: |
+      -module(order_fulfillment).
+      -export([calculate_total/3, calculate_express_total/3]).
+
+      calculate_total(ItemPrice, WeightGrams, Zone) ->
+          Shipping = shipping_cost:zone_rate(Zone, WeightGrams),
+          ItemPrice + Shipping.
+
+      calculate_express_total(ItemPrice, WeightGrams, Zone) ->
+          Shipping = shipping_cost:express_rate(Zone, WeightGrams),
+          ItemPrice + Shipping.
+    src/warehouse.erl: |
+      -module(warehouse).
+      -export([locate_item/1]).
+
+      locate_item(Sku) ->
+          io:format("Locating SKU: ~p~n", [Sku]).
+    garbage/returns.erl: |
+      % GARBAGE_RARE019_RET_A = "returns_marker"
+    garbage/customs.erl: |
+      % GARBAGE_RARE019_CUST_B = "customs_marker"
+    garbage/packaging.erl: |
+      % GARBAGE_RARE019_PACK_C = "packaging_marker"
+  commit_message: "feat: add express_rate/2 to shipping_cost and expose via order_fulfillment"
+fragments:
+- id: express_rate_func
+  selector:
+    path: src/shipping_cost.erl
+    anchor: "express_rate(Zone, WeightGrams) ->"
+- id: express_rate_export
+  selector:
+    path: src/shipping_cost.erl
+    anchor: "-export([flat_rate/1, zone_rate/2, express_rate/2])."
+- id: fulfillment_calls_express
+  selector:
+    path: src/order_fulfillment.erl
+    anchor: "shipping_cost:express_rate(Zone, WeightGrams)"
+- id: fulfillment_express_total
+  selector:
+    path: src/order_fulfillment.erl
+    anchor: "calculate_express_total(ItemPrice, WeightGrams, Zone) ->"
+- id: unrelated_warehouse
+  selector:
+    path: src/warehouse.erl
+    anchor: "locate_item(Sku) ->"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_RARE019_RET_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_RARE019_CUST_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_RARE019_PACK_C
+oracle:
+  required:
+  - express_rate_func
+  - fulfillment_calls_express
+  allowed:
+  - express_rate_export
+  - fulfillment_express_total
+  forbidden:
+  - unrelated_warehouse
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

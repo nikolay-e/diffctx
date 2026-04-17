@@ -1,0 +1,150 @@
+name: bal4_cfgcode_004_ruby_rate_limit
+tags:
+- lang:ruby
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    config/rate_limits.yml: |
+      api:
+        requests_per_minute: 60
+        burst: 10
+        window: 60
+        ban_duration: 3600
+    app/middleware/rate_limiter.rb: |
+      require 'yaml'
+      module Middleware
+        class RateLimiter
+          def initialize(app)
+            @app = app
+            @limits = YAML.load_file('config/rate_limits.yml')['api']
+          end
+          def call(env)
+            return too_many if over_limit?(env)
+            @app.call(env)
+          end
+          def rpm
+            @limits['requests_per_minute']
+          end
+          def burst_limit
+            @limits['burst']
+          end
+        end
+      end
+    app/controllers/api_controller.rb: |
+      require 'yaml'
+      class ApiController
+        RATE_CFG = YAML.load_file('config/rate_limits.yml')['api']
+        def throttle_info
+          {
+            limit: RATE_CFG['requests_per_minute'],
+            window: RATE_CFG['window'],
+            ban: RATE_CFG['ban_duration']
+          }
+        end
+      end
+    garbage_upload.rb: |
+      GARBAGE_CFGCODE_004_UPLOAD_A = "s3"
+      GARBAGE_CFGCODE_004_UPLOAD_B = 10485760
+      class Uploader
+        GARBAGE_CFGCODE_004_UPLOAD_C = "images/"
+        def store(file)
+          GARBAGE_CFGCODE_004_UPLOAD_D = file
+        end
+      end
+    garbage_notification.rb: |
+      GARBAGE_CFGCODE_004_NOTIF_E = "push"
+      GARBAGE_CFGCODE_004_NOTIF_F = true
+      class Notifier
+        GARBAGE_CFGCODE_004_NOTIF_G = "apns"
+        def send(msg)
+          GARBAGE_CFGCODE_004_NOTIF_H = msg
+        end
+      end
+    garbage_migration.rb: |
+      GARBAGE_CFGCODE_004_MIG_I = "20240101"
+      GARBAGE_CFGCODE_004_MIG_J = "users"
+  changed_files:
+    config/rate_limits.yml: |
+      api:
+        requests_per_minute: 120
+        burst: 20
+        window: 60
+        ban_duration: 7200
+        whitelist_enabled: true
+  commit_message: "double rate limits and add whitelist flag"
+fragments:
+- id: rate_config
+  selector:
+    path: config/rate_limits.yml
+    anchor: "requests_per_minute: 120"
+- id: rate_limiter
+  selector:
+    path: app/middleware/rate_limiter.rb
+    anchor: "requests_per_minute"
+- id: api_controller
+  selector:
+    path: app/controllers/api_controller.rb
+    anchor: "RATE_CFG"
+- id: no_upload
+  selector:
+    path: garbage_upload.rb
+- id: no_notification
+  selector:
+    path: garbage_notification.rb
+- id: no_migration
+  selector:
+    path: garbage_migration.rb
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_004_UPLOAD_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_004_UPLOAD_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_004_NOTIF_E
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_004_NOTIF_F
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CFGCODE_004_MIG_I
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CFGCODE_004_MIG_J
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_CFGCODE_004_UPLOAD_C
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_CFGCODE_004_UPLOAD_D
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_CFGCODE_004_NOTIF_G
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_CFGCODE_004_NOTIF_H
+oracle:
+  required:
+  - rate_config
+  - rate_limiter
+  - api_controller
+  allowed: []
+  forbidden:
+  - no_upload
+  - no_notification
+  - no_migration
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

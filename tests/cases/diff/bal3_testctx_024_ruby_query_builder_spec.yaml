@@ -1,0 +1,240 @@
+name: bal3_testctx_024_ruby_query_builder_spec
+tags:
+- lang:ruby
+- change:single_file
+- change:refactor
+- context:test_file
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    lib/query_builder.rb: |
+      class QueryBuilder
+        def initialize(table)
+          @table = table
+          @conditions = []
+          @order = nil
+          @limit_val = nil
+        end
+
+        def where(condition)
+          @conditions << condition
+          self
+        end
+
+        def order_by(column, direction = 'ASC')
+          @order = "#{column} #{direction}"
+          self
+        end
+
+        def limit(n)
+          @limit_val = n
+          self
+        end
+
+        def to_sql
+          sql = "SELECT * FROM #{@table}"
+          sql += " WHERE #{@conditions.join(' AND ')}" unless @conditions.empty?
+          sql += " ORDER BY #{@order}" if @order
+          sql += " LIMIT #{@limit_val}" if @limit_val
+          sql
+        end
+      end
+    spec/query_builder_spec.rb: |
+      require_relative '../lib/query_builder'
+
+      RSpec.describe QueryBuilder do
+        describe '#to_sql' do
+          it 'builds simple select' do
+            sql = described_class.new('users').to_sql
+            expect(sql).to eq('SELECT * FROM users')
+          end
+
+          it 'builds select with where' do
+            sql = described_class.new('users').where('age > 18').to_sql
+            expect(sql).to include('WHERE age > 18')
+          end
+
+          it 'builds select with order' do
+            sql = described_class.new('users').order_by('name').to_sql
+            expect(sql).to include('ORDER BY name ASC')
+          end
+
+          it 'builds select with limit' do
+            sql = described_class.new('users').limit(10).to_sql
+            expect(sql).to include('LIMIT 10')
+          end
+
+          it 'chains all clauses' do
+            sql = described_class.new('users')
+              .where('active = true')
+              .order_by('created_at', 'DESC')
+              .limit(5)
+              .to_sql
+            expect(sql).to include('WHERE')
+            expect(sql).to include('ORDER BY')
+            expect(sql).to include('LIMIT')
+          end
+        end
+      end
+    lib/connection_pool.rb: |
+      class ConnectionPool
+        def initialize(size: 5)
+          @size = size
+          @connections = []
+        end
+
+        def checkout
+          @connections.pop || create_connection
+        end
+
+        def checkin(conn)
+          @connections.push(conn)
+        end
+
+        private
+
+        def create_connection
+          Object.new
+        end
+      end
+    lib/migration.rb: |
+      class Migration
+        def self.run(version)
+          puts "Running migration #{version}"
+        end
+      end
+    lib/schema.rb: |
+      class Schema
+        def self.tables
+          %w[users orders products]
+        end
+      end
+  changed_files:
+    lib/query_builder.rb: |
+      class QueryBuilder
+        def initialize(table)
+          @table = table
+          @select_cols = ['*']
+          @conditions = []
+          @joins = []
+          @group_col = nil
+          @having_cond = nil
+          @order = nil
+          @limit_val = nil
+          @offset_val = nil
+        end
+
+        def select(*columns)
+          @select_cols = columns.map(&:to_s)
+          self
+        end
+
+        def where(condition)
+          @conditions << condition
+          self
+        end
+
+        def join(table, on_clause)
+          @joins << "JOIN #{table} ON #{on_clause}"
+          self
+        end
+
+        def group_by(column)
+          @group_col = column
+          self
+        end
+
+        def having(condition)
+          @having_cond = condition
+          self
+        end
+
+        def order_by(column, direction = 'ASC')
+          @order = "#{column} #{direction}"
+          self
+        end
+
+        def limit(n)
+          @limit_val = n
+          self
+        end
+
+        def offset(n)
+          @offset_val = n
+          self
+        end
+
+        def to_sql
+          parts = ["SELECT #{@select_cols.join(', ')} FROM #{@table}"]
+          @joins.each { |j| parts << j }
+          parts << "WHERE #{@conditions.join(' AND ')}" unless @conditions.empty?
+          parts << "GROUP BY #{@group_col}" if @group_col
+          parts << "HAVING #{@having_cond}" if @having_cond
+          parts << "ORDER BY #{@order}" if @order
+          parts << "LIMIT #{@limit_val}" if @limit_val
+          parts << "OFFSET #{@offset_val}" if @offset_val
+          parts.join(' ')
+        end
+      end
+  commit_message: "refactor: add select, join, group_by, having, offset to QueryBuilder"
+fragments:
+- id: select_method
+  selector:
+    path: lib/query_builder.rb
+    anchor: "def select(*columns)"
+- id: join_method
+  selector:
+    path: lib/query_builder.rb
+    anchor: "def join(table, on_clause)"
+- id: group_by_method
+  selector:
+    path: lib/query_builder.rb
+    anchor: "def group_by(column)"
+- id: having_method
+  selector:
+    path: lib/query_builder.rb
+    anchor: "def having(condition)"
+- id: offset_method
+  selector:
+    path: lib/query_builder.rb
+    anchor: "def offset(n)"
+- id: spec_simple_select
+  selector:
+    path: spec/query_builder_spec.rb
+    anchor: "it 'builds simple select'"
+- id: spec_where
+  selector:
+    path: spec/query_builder_spec.rb
+    anchor: "it 'builds select with where'"
+- id: spec_chains_all
+  selector:
+    path: spec/query_builder_spec.rb
+    anchor: "it 'chains all clauses'"
+- id: no_connection_pool
+  selector:
+    path: lib/connection_pool.rb
+    anchor: "class ConnectionPool"
+- id: no_migration
+  selector:
+    path: lib/migration.rb
+    anchor: "class Migration"
+- id: no_schema
+  selector:
+    path: lib/schema.rb
+    anchor: "class Schema"
+oracle:
+  required:
+  - select_method
+  - join_method
+  - group_by_method
+  - spec_simple_select
+  - spec_where
+  allowed:
+  - having_method
+  - offset_method
+  - spec_chains_all
+  forbidden:
+  - no_connection_pool
+  - no_migration
+  - no_schema

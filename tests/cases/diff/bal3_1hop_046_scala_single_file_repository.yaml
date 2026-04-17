@@ -1,0 +1,185 @@
+name: bal3_1hop_046_scala_single_file_repository
+tags:
+- lang:scala
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/repo/UserRepository.scala: |
+      package repo
+
+      class UserRepository {
+        def findById(id: Long): Option[Map[String, Any]] = {
+          Some(Map("id" -> id, "name" -> "User"))
+        }
+
+        def findByEmail(email: String): Option[Map[String, Any]] = {
+          Some(Map("email" -> email))
+        }
+
+        def save(data: Map[String, Any]): Boolean = true
+      }
+    src/main/scala/service/AuthService.scala: |
+      package service
+
+      import repo.UserRepository
+
+      class AuthService(userRepo: UserRepository) {
+        def authenticate(email: String, password: String): Option[Map[String, Any]] = {
+          userRepo.findByEmail(email)
+        }
+
+        def validateSession(userId: Long): Boolean = {
+          userRepo.findById(userId).isDefined
+        }
+      }
+    src/main/scala/service/ProfileService.scala: |
+      package service
+
+      import repo.UserRepository
+
+      class ProfileService(userRepo: UserRepository) {
+        def getProfile(userId: Long): Option[Map[String, Any]] = {
+          userRepo.findById(userId)
+        }
+
+        def updateProfile(data: Map[String, Any]): Boolean = {
+          userRepo.save(data)
+        }
+      }
+    src/main/scala/service/AdminService.scala: |
+      package service
+
+      import repo.UserRepository
+
+      class AdminService(userRepo: UserRepository) {
+        def lookupUser(id: Long): Option[Map[String, Any]] = {
+          userRepo.findById(id)
+        }
+      }
+    src/main/scala/service/RegistrationService.scala: |
+      package service
+
+      import repo.UserRepository
+
+      class RegistrationService(userRepo: UserRepository) {
+        def register(data: Map[String, Any]): Boolean = {
+          userRepo.save(data)
+        }
+      }
+    src/main/scala/util/StringUtil.scala: |
+      package util
+
+      object StringUtil {
+        val GARBAGE_BAL3_046_STRUTIL_A = "strutil"
+        val GARBAGE_BAL3_046_SLUG_B = true
+
+        def slugify(text: String): String = text.toLowerCase.replaceAll(" ", "-")
+      }
+    src/main/scala/util/MathUtil.scala: |
+      package util
+
+      object MathUtil {
+        val GARBAGE_BAL3_046_MATHUTIL_C = "mathutil"
+        val GARBAGE_BAL3_046_PREC_D = 2
+
+        def round(value: Double, places: Int): Double =
+          BigDecimal(value).setScale(places, BigDecimal.RoundingMode.HALF_UP).toDouble
+      }
+    src/main/scala/util/DateUtil.scala: |
+      package util
+
+      object DateUtil {
+        val GARBAGE_BAL3_046_DATEUTIL_E = "dateutil"
+        val GARBAGE_BAL3_046_FORMAT_F = "yyyy-MM-dd"
+
+        def now(): String = java.time.LocalDate.now().toString
+      }
+  changed_files:
+    src/main/scala/repo/UserRepository.scala: |
+      package repo
+
+      class UserRepository {
+        def findById(id: Long, includeDeleted: Boolean = false): Option[Map[String, Any]] = {
+          Some(Map("id" -> id, "name" -> "User", "includeDeleted" -> includeDeleted))
+        }
+
+        def findByEmail(email: String, includeDeleted: Boolean = false): Option[Map[String, Any]] = {
+          Some(Map("email" -> email, "includeDeleted" -> includeDeleted))
+        }
+
+        def save(data: Map[String, Any]): Boolean = true
+
+        def softDelete(id: Long): Boolean = true
+
+        def count(): Long = 0L
+      }
+  commit_message: "Add soft delete and count to UserRepository"
+fragments:
+- id: auth_service
+  selector:
+    path: src/main/scala/service/AuthService.scala
+    anchor: "import repo.UserRepository"
+- id: auth_find
+  selector:
+    path: src/main/scala/service/AuthService.scala
+    anchor: "userRepo.findByEmail"
+- id: profile_service
+  selector:
+    path: src/main/scala/service/ProfileService.scala
+    anchor: "import repo.UserRepository"
+- id: admin_service
+  selector:
+    path: src/main/scala/service/AdminService.scala
+    anchor: "import repo.UserRepository"
+- id: registration_service
+  selector:
+    path: src/main/scala/service/RegistrationService.scala
+    anchor: "import repo.UserRepository"
+- id: no_string_util
+  selector:
+    path: src/main/scala/util/StringUtil.scala
+- id: no_math_util
+  selector:
+    path: src/main/scala/util/MathUtil.scala
+- id: no_date_util
+  selector:
+    path: src/main/scala/util/DateUtil.scala
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_046_STRUTIL_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_046_SLUG_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_046_MATHUTIL_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_046_PREC_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL3_046_DATEUTIL_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL3_046_FORMAT_F
+oracle:
+  required:
+  - auth_service
+  - auth_find
+  - profile_service
+  - admin_service
+  - registration_service
+  allowed: []
+  forbidden:
+  - no_string_util
+  - no_math_util
+  - no_date_util
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

@@ -1,0 +1,443 @@
+name: bal3_1hop_090_csharp_multi_file_dependency
+tags:
+- lang:csharp
+- change:multi_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/DI/ServiceContainer.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.DI
+      {
+          public class ServiceContainer
+          {
+              private readonly Dictionary<Type, Func<object>> _registrations = new Dictionary<Type, Func<object>>();
+
+              public void Register<T>(Func<T> factory) where T : class
+              {
+                  _registrations[typeof(T)] = () => factory();
+              }
+
+              public T Resolve<T>() where T : class
+              {
+                  if (_registrations.TryGetValue(typeof(T), out var factory))
+                      return (T)factory();
+                  throw new InvalidOperationException($"No registration for {typeof(T)}");
+              }
+          }
+      }
+    src/DI/ServiceScope.cs: |
+      using System;
+
+      namespace App.DI
+      {
+          public class ServiceScope
+          {
+              private readonly ServiceContainer _container;
+
+              public ServiceScope(ServiceContainer container)
+              {
+                  _container = container;
+              }
+
+              public T Get<T>() where T : class
+              {
+                  return _container.Resolve<T>();
+              }
+          }
+      }
+    src/Startup/AppBootstrap.cs: |
+      using System;
+      using App.DI;
+
+      namespace App.Startup
+      {
+          public class AppBootstrap
+          {
+              private readonly ServiceContainer _container;
+
+              public AppBootstrap(ServiceContainer container)
+              {
+                  _container = container;
+              }
+
+              public void Configure()
+              {
+                  Console.WriteLine("Configuring services");
+              }
+          }
+      }
+    src/Startup/WebHostBuilder.cs: |
+      using System;
+      using App.DI;
+
+      namespace App.Startup
+      {
+          public class WebHostBuilder
+          {
+              private readonly ServiceContainer _container;
+
+              public WebHostBuilder(ServiceContainer container)
+              {
+                  _container = container;
+              }
+
+              public void Build()
+              {
+                  Console.WriteLine("Building web host");
+              }
+          }
+      }
+    src/Startup/WorkerHostBuilder.cs: |
+      using System;
+      using App.DI;
+
+      namespace App.Startup
+      {
+          public class WorkerHostBuilder
+          {
+              private readonly ServiceContainer _container;
+
+              public WorkerHostBuilder(ServiceContainer container)
+              {
+                  _container = container;
+              }
+
+              public void Build()
+              {
+                  Console.WriteLine("Building worker host");
+              }
+          }
+      }
+    src/Testing/TestContainer.cs: |
+      using System;
+      using App.DI;
+
+      namespace App.Testing
+      {
+          public class TestContainer
+          {
+              private readonly ServiceContainer _container;
+
+              public TestContainer(ServiceContainer container)
+              {
+                  _container = container;
+              }
+
+              public T GetService<T>() where T : class
+              {
+                  return _container.Resolve<T>();
+              }
+          }
+      }
+    src/Localization/TranslationService.cs: |
+      using System;
+      GARBAGE_090_LOCALE_DIR_A = "locales/";
+      GARBAGE_090_DEFAULT_LOCALE_B = "en";
+
+      namespace App.Localization
+      {
+          public class TranslationService
+          {
+              public string Translate(string key) { return key; }
+          }
+      }
+    src/Localization/CurrencyFormatter.cs: |
+      using System;
+      GARBAGE_090_CURRENCY_FMT_C = "C2";
+      GARBAGE_090_GROUPING_D = true;
+
+      namespace App.Localization
+      {
+          public class CurrencyFormatter
+          {
+              public string Format(decimal amount) { return amount.ToString("C2"); }
+          }
+      }
+    src/Analytics/EventTracker.cs: |
+      using System;
+      GARBAGE_090_TRACKER_ENDPOINT_E = "https://analytics.example.com";
+      GARBAGE_090_BATCH_FLUSH_F = 60;
+
+      namespace App.Analytics
+      {
+          public class EventTracker
+          {
+              public void Track(string eventName) { }
+          }
+      }
+  changed_files:
+    src/DI/ServiceContainer.cs: |
+      using System;
+      using System.Collections.Generic;
+
+      namespace App.DI
+      {
+          public enum ServiceLifetime
+          {
+              Transient,
+              Singleton,
+              Scoped
+          }
+
+          public class ServiceContainer
+          {
+              private readonly Dictionary<Type, (Func<object> Factory, ServiceLifetime Lifetime)> _registrations
+                  = new Dictionary<Type, (Func<object>, ServiceLifetime)>();
+              private readonly Dictionary<Type, object> _singletons = new Dictionary<Type, object>();
+
+              public void Register<T>(Func<T> factory, ServiceLifetime lifetime = ServiceLifetime.Transient) where T : class
+              {
+                  _registrations[typeof(T)] = (() => factory(), lifetime);
+              }
+
+              public T Resolve<T>() where T : class
+              {
+                  if (!_registrations.TryGetValue(typeof(T), out var reg))
+                      throw new InvalidOperationException($"No registration for {typeof(T)}");
+
+                  if (reg.Lifetime == ServiceLifetime.Singleton)
+                  {
+                      if (!_singletons.TryGetValue(typeof(T), out var instance))
+                      {
+                          instance = reg.Factory();
+                          _singletons[typeof(T)] = instance;
+                      }
+                      return (T)instance;
+                  }
+                  return (T)reg.Factory();
+              }
+
+              public bool IsRegistered<T>() where T : class
+              {
+                  return _registrations.ContainsKey(typeof(T));
+              }
+          }
+      }
+    src/DI/ServiceScope.cs: |
+      using System;
+
+      namespace App.DI
+      {
+          public class ServiceScope : IDisposable
+          {
+              private readonly ServiceContainer _container;
+              private bool _disposed;
+
+              public ServiceScope(ServiceContainer container)
+              {
+                  _container = container;
+              }
+
+              public T Get<T>() where T : class
+              {
+                  return _container.Resolve<T>();
+              }
+
+              public void Dispose()
+              {
+                  _disposed = true;
+              }
+          }
+      }
+    src/Startup/AppBootstrap.cs: |
+      using System;
+      using App.DI;
+
+      namespace App.Startup
+      {
+          public class AppBootstrap
+          {
+              private readonly ServiceContainer _container;
+
+              public AppBootstrap(ServiceContainer container)
+              {
+                  _container = container;
+              }
+
+              public void Configure()
+              {
+                  Console.WriteLine("Configuring services");
+              }
+          }
+      }
+    src/Startup/WebHostBuilder.cs: |
+      using System;
+      using App.DI;
+
+      namespace App.Startup
+      {
+          public class WebHostBuilder
+          {
+              private readonly ServiceContainer _container;
+
+              public WebHostBuilder(ServiceContainer container)
+              {
+                  _container = container;
+              }
+
+              public void Build()
+              {
+                  Console.WriteLine("Building web host");
+              }
+          }
+      }
+    src/Startup/WorkerHostBuilder.cs: |
+      using System;
+      using App.DI;
+
+      namespace App.Startup
+      {
+          public class WorkerHostBuilder
+          {
+              private readonly ServiceContainer _container;
+
+              public WorkerHostBuilder(ServiceContainer container)
+              {
+                  _container = container;
+              }
+
+              public void Build()
+              {
+                  Console.WriteLine("Building worker host");
+              }
+          }
+      }
+    src/Testing/TestContainer.cs: |
+      using System;
+      using App.DI;
+
+      namespace App.Testing
+      {
+          public class TestContainer
+          {
+              private readonly ServiceContainer _container;
+
+              public TestContainer(ServiceContainer container)
+              {
+                  _container = container;
+              }
+
+              public T GetService<T>() where T : class
+              {
+                  return _container.Resolve<T>();
+              }
+          }
+      }
+    src/Localization/TranslationService.cs: |
+      using System;
+      GARBAGE_090_LOCALE_DIR_A = "locales/";
+      GARBAGE_090_DEFAULT_LOCALE_B = "en";
+
+      namespace App.Localization
+      {
+          public class TranslationService
+          {
+              public string Translate(string key) { return key; }
+          }
+      }
+    src/Localization/CurrencyFormatter.cs: |
+      using System;
+      GARBAGE_090_CURRENCY_FMT_C = "C2";
+      GARBAGE_090_GROUPING_D = true;
+
+      namespace App.Localization
+      {
+          public class CurrencyFormatter
+          {
+              public string Format(decimal amount) { return amount.ToString("C2"); }
+          }
+      }
+    src/Analytics/EventTracker.cs: |
+      using System;
+      GARBAGE_090_TRACKER_ENDPOINT_E = "https://analytics.example.com";
+      GARBAGE_090_BATCH_FLUSH_F = 60;
+
+      namespace App.Analytics
+      {
+          public class EventTracker
+          {
+              public void Track(string eventName) { }
+          }
+      }
+  commit_message: "feat: add ServiceLifetime, singleton support and IDisposable scope"
+fragments:
+- id: scope_using
+  selector:
+    path: src/DI/ServiceScope.cs
+    anchor: "class ServiceScope"
+- id: bootstrap_using
+  selector:
+    path: src/Startup/AppBootstrap.cs
+    anchor: "using App.DI"
+- id: bootstrap_container
+  selector:
+    path: src/Startup/AppBootstrap.cs
+    anchor: "ServiceContainer _container"
+- id: webhost_using
+  selector:
+    path: src/Startup/WebHostBuilder.cs
+    anchor: "using App.DI"
+- id: worker_using
+  selector:
+    path: src/Startup/WorkerHostBuilder.cs
+    anchor: "using App.DI"
+- id: test_using
+  selector:
+    path: src/Testing/TestContainer.cs
+    anchor: "using App.DI"
+- id: test_resolve
+  selector:
+    path: src/Testing/TestContainer.cs
+    anchor: "_container.Resolve<T>()"
+- id: no_translation
+  selector:
+    path: src/Localization/TranslationService.cs
+- id: no_currency
+  selector:
+    path: src/Localization/CurrencyFormatter.cs
+- id: no_tracker
+  selector:
+    path: src/Analytics/EventTracker.cs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_090_LOCALE_DIR_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_090_DEFAULT_LOCALE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_090_CURRENCY_FMT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_090_GROUPING_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_090_TRACKER_ENDPOINT_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_090_BATCH_FLUSH_F
+oracle:
+  required:
+  - scope_using
+  - bootstrap_using
+  - bootstrap_container
+  - webhost_using
+  - worker_using
+  - test_using
+  - test_resolve
+  allowed: []
+  forbidden:
+  - no_translation
+  - no_currency
+  - no_tracker
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

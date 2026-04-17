@@ -1,0 +1,98 @@
+name: gap2_001_python_pharmacy_dosage_rounding_fix
+tags:
+- lang:python
+- change:bug_fix
+- change:multi_file
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    pharmacy/dosage.py: |
+      from pharmacy.formulas import weight_based_dose
+
+      class DosageCalculator:
+          def __init__(self, patient_weight_kg: float):
+              self.patient_weight_kg = patient_weight_kg
+
+          def calculate_dose_mg(self, mg_per_kg: float) -> float:
+              raw = weight_based_dose(self.patient_weight_kg, mg_per_kg)
+              return int(raw)
+
+          def split_doses(self, total_mg: float, frequency: int) -> list[float]:
+              per_dose = total_mg / frequency
+              return [per_dose] * frequency
+    pharmacy/formulas.py: |
+      def weight_based_dose(weight_kg: float, mg_per_kg: float) -> float:
+          return weight_kg * mg_per_kg
+
+      def body_surface_area(height_cm: float, weight_kg: float) -> float:
+          return 0.007184 * (height_cm ** 0.725) * (weight_kg ** 0.425)
+    pharmacy/inventory.py: |
+      class MedicationStock:
+          def __init__(self):
+              self._stock: dict[str, int] = {}
+
+          def add(self, medication: str, quantity: int) -> None:
+              self._stock[medication] = self._stock.get(medication, 0) + quantity
+
+          def available(self, medication: str) -> int:
+              return self._stock.get(medication, 0)
+
+          def dispense(self, medication: str, quantity: int) -> bool:
+              if self.available(medication) < quantity:
+                  return False
+              self._stock[medication] -= quantity
+              return True
+  changed_files:
+    pharmacy/dosage.py: |
+      from pharmacy.formulas import weight_based_dose
+
+      class DosageCalculator:
+          def __init__(self, patient_weight_kg: float):
+              self.patient_weight_kg = patient_weight_kg
+
+          def calculate_dose_mg(self, mg_per_kg: float) -> float:
+              raw = weight_based_dose(self.patient_weight_kg, mg_per_kg)
+              return round(raw, 1)
+
+          def split_doses(self, total_mg: float, frequency: int) -> list[float]:
+              per_dose = total_mg / frequency
+              return [round(per_dose, 1)] * frequency
+    pharmacy/formulas.py: |
+      def weight_based_dose(weight_kg: float, mg_per_kg: float) -> float:
+          return weight_kg * mg_per_kg
+
+      def body_surface_area(height_cm: float, weight_kg: float) -> float:
+          return 0.007184 * (height_cm ** 0.725) * (weight_kg ** 0.425)
+  commit_message: "fix: use round instead of int truncation for dosage"
+fragments:
+- id: dosage_calculate
+  selector:
+    path: pharmacy/dosage.py
+    anchor: "def calculate_dose_mg"
+- id: dosage_round
+  selector:
+    path: pharmacy/dosage.py
+    anchor: "return round(raw, 1)"
+- id: dosage_split
+  selector:
+    path: pharmacy/dosage.py
+    anchor: "def split_doses"
+- id: no_inventory
+  selector:
+    path: pharmacy/inventory.py
+- id: no_stock_class
+  selector:
+    anchor: MedicationStock
+oracle:
+  required:
+  - dosage_calculate
+  - dosage_round
+  - dosage_split
+  allowed: []
+  forbidden:
+  - no_inventory
+  - no_stock_class

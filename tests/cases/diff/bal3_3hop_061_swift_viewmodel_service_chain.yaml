@@ -1,0 +1,185 @@
+name: bal3_3hop_061_swift_viewmodel_service_chain
+tags:
+- lang:swift
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    Sources/Networking/APIClient.swift: |
+      import Foundation
+
+      struct APIClient {
+          let baseURL: URL
+          func fetchData(endpoint: String) -> Data? {
+              return nil
+          }
+      }
+    Sources/Services/UserService.swift: |
+      import Foundation
+      import Networking
+
+      class UserService {
+          private let client: APIClient
+          init(client: APIClient) {
+              self.client = client
+          }
+          func getUser(id: String) -> User? {
+              let data = client.fetchData(endpoint: "/users/\(id)")
+              return nil
+          }
+      }
+    Sources/Repositories/UserRepository.swift: |
+      import Foundation
+      import Services
+
+      class UserRepository {
+          private let userService: UserService
+          init(userService: UserService) {
+              self.userService = userService
+          }
+          func findUser(id: String) -> User? {
+              return userService.getUser(id: id)
+          }
+      }
+    Sources/ViewModels/ProfileViewModel.swift: |
+      import Foundation
+      import Repositories
+
+      class ProfileViewModel {
+          private let repository: UserRepository
+          init(repository: UserRepository) {
+              self.repository = repository
+          }
+          func loadProfile(userId: String) {
+              let user = repository.findUser(id: userId)
+          }
+      }
+    Sources/Helpers/StringFormatter.swift: |
+      import Foundation
+      GARBAGE_061_STRING_FMT_A = "formatter"
+
+      struct StringFormatter {
+          static func capitalize(_ s: String) -> String {
+              return s.capitalized
+          }
+      }
+    Sources/Helpers/DateFormatter.swift: |
+      import Foundation
+      GARBAGE_061_DATE_FMT_B = "date"
+
+      struct AppDateFormatter {
+          static func format(_ date: Date) -> String {
+              return "\(date)"
+          }
+      }
+  changed_files:
+    Sources/Networking/APIClient.swift: |
+      import Foundation
+
+      struct APIClient {
+          let baseURL: URL
+          let timeoutInterval: TimeInterval
+          init(baseURL: URL, timeoutInterval: TimeInterval = 30) {
+              self.baseURL = baseURL
+              self.timeoutInterval = timeoutInterval
+          }
+          func fetchData(endpoint: String) -> Data? {
+              return nil
+          }
+      }
+    Sources/Services/UserService.swift: |
+      import Foundation
+      import Networking
+
+      class UserService {
+          private let client: APIClient
+          init(client: APIClient) {
+              self.client = client
+          }
+          func getUser(id: String) -> User? {
+              let data = client.fetchData(endpoint: "/users/\(id)")
+              return nil
+          }
+      }
+    Sources/Repositories/UserRepository.swift: |
+      import Foundation
+      import Services
+
+      class UserRepository {
+          private let userService: UserService
+          init(userService: UserService) {
+              self.userService = userService
+          }
+          func findUser(id: String) -> User? {
+              return userService.getUser(id: id)
+          }
+      }
+    Sources/ViewModels/ProfileViewModel.swift: |
+      import Foundation
+      import Repositories
+
+      class ProfileViewModel {
+          private let repository: UserRepository
+          init(repository: UserRepository) {
+              self.repository = repository
+          }
+          func loadProfile(userId: String) {
+              let user = repository.findUser(id: userId)
+          }
+      }
+    Sources/Helpers/StringFormatter.swift: |
+      import Foundation
+      GARBAGE_061_STRING_FMT_A = "formatter"
+
+      struct StringFormatter {
+          static func capitalize(_ s: String) -> String {
+              return s.capitalized
+          }
+      }
+    Sources/Helpers/DateFormatter.swift: |
+      import Foundation
+      GARBAGE_061_DATE_FMT_B = "date"
+
+      struct AppDateFormatter {
+          static func format(_ date: Date) -> String {
+              return "\(date)"
+          }
+      }
+  commit_message: "feat: add timeout interval to APIClient"
+fragments:
+- id: api_timeout
+  selector:
+    path: Sources/Networking/APIClient.swift
+    anchor: "let timeoutInterval: TimeInterval"
+- id: service_imports_networking
+  selector:
+    path: Sources/Services/UserService.swift
+    anchor: "import Networking"
+- id: repo_imports_services
+  selector:
+    path: Sources/Repositories/UserRepository.swift
+    anchor: "import Services"
+- id: vm_imports_repositories
+  selector:
+    path: Sources/ViewModels/ProfileViewModel.swift
+    anchor: "import Repositories"
+- id: no_string_formatter
+  selector:
+    path: Sources/Helpers/StringFormatter.swift
+    anchor: "GARBAGE_061_STRING_FMT_A"
+- id: no_date_formatter
+  selector:
+    path: Sources/Helpers/DateFormatter.swift
+    anchor: "GARBAGE_061_DATE_FMT_B"
+oracle:
+  required:
+  - api_timeout
+  - service_imports_networking
+  - repo_imports_services
+  - vm_imports_repositories
+  allowed: []
+  forbidden:
+  - no_string_formatter
+  - no_date_formatter

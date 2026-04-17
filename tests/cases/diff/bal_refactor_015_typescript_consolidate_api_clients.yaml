@@ -1,0 +1,312 @@
+name: bal_refactor_015_typescript_consolidate_api_clients
+tags:
+- lang:rust
+- change:bug_fix
+- change:multi_file
+- context:test_file
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/net/connection.rs: |
+      use std::io::{self, Read, Write};
+      use std::net::TcpStream;
+      use std::time::Duration;
+
+      pub struct Connection {
+          stream: TcpStream,
+          timeout_ms: u64,
+      }
+
+      impl Connection {
+          pub fn connect(addr: &str, timeout_ms: u64) -> io::Result<Self> {
+              let stream = TcpStream::connect(addr)?;
+              stream.set_read_timeout(Some(Duration::from_millis(timeout_ms)))?;
+              Ok(Connection { stream, timeout_ms })
+          }
+
+          pub fn send(&mut self, data: &[u8]) -> io::Result<usize> {
+              self.stream.write(data)
+          }
+
+          pub fn recv(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+              self.stream.read(buf)
+          }
+      }
+    src/net/pool.rs: |
+      use crate::net::connection::Connection;
+      use std::collections::VecDeque;
+      use std::io;
+      use std::sync::{Arc, Mutex};
+
+      pub struct ConnectionPool {
+          addr: String,
+          timeout_ms: u64,
+          idle: Arc<Mutex<VecDeque<Connection>>>,
+          max_size: usize,
+      }
+
+      impl ConnectionPool {
+          pub fn new(addr: &str, timeout_ms: u64, max_size: usize) -> Self {
+              ConnectionPool {
+                  addr: addr.to_string(),
+                  timeout_ms,
+                  idle: Arc::new(Mutex::new(VecDeque::new())),
+                  max_size,
+              }
+          }
+
+          pub fn acquire(&self) -> io::Result<Connection> {
+              let mut idle = self.idle.lock().unwrap();
+              if let Some(conn) = idle.pop_front() {
+                  return Ok(conn);
+              }
+              Connection::connect(&self.addr, self.timeout_ms)
+          }
+
+          pub fn release(&self, conn: Connection) {
+              let mut idle = self.idle.lock().unwrap();
+              if idle.len() < self.max_size {
+                  idle.push_back(conn);
+              }
+          }
+      }
+    src/client/http.rs: |
+      use crate::net::pool::ConnectionPool;
+      use std::io;
+
+      pub struct HttpClient {
+          pool: ConnectionPool,
+      }
+
+      impl HttpClient {
+          pub fn new(addr: &str) -> Self {
+              HttpClient {
+                  pool: ConnectionPool::new(addr, 5000, 10),
+              }
+          }
+
+          pub fn get(&self, path: &str) -> io::Result<Vec<u8>> {
+              let mut conn = self.pool.acquire()?;
+              let request = format!("GET {} HTTP/1.0\r\n\r\n", path);
+              conn.send(request.as_bytes())?;
+              let mut buf = vec![0u8; 4096];
+              let n = conn.recv(&mut buf)?;
+              self.pool.release(conn);
+              Ok(buf[..n].to_vec())
+          }
+      }
+    tests/net_integration.rs: |
+      use crate::net::connection::Connection;
+      use crate::net::pool::ConnectionPool;
+
+      #[test]
+      fn pool_returns_cached_connection() {
+          let pool = ConnectionPool::new("127.0.0.1:9999", 100, 5);
+          assert_eq!(pool.max_size, 5);
+      }
+
+      #[test]
+      fn pool_max_size_limits_idle() {
+          let pool = ConnectionPool::new("127.0.0.1:9999", 100, 2);
+          assert_eq!(pool.max_size, 2);
+      }
+    src/logging/structured.rs: |
+      // GARBAGE_RF15_A = "structured_logging_unrelated"
+      pub fn log_event(level: &str, message: &str) {
+          eprintln!("[{}] {}", level, message);
+      }
+    src/config/env.rs: |
+      // GARBAGE_RF15_B = "env_config_unrelated"
+      pub fn get_env(key: &str) -> Option<String> {
+          std::env::var(key).ok()
+      }
+    src/crypto/hmac.rs: |
+      // GARBAGE_RF15_C = "hmac_crypto_unrelated"
+      pub fn compute_hmac(key: &[u8], data: &[u8]) -> Vec<u8> {
+          vec![0u8; 32]
+      }
+    src/storage/file.rs: |
+      // GARBAGE_RF15_D = "file_storage_unrelated"
+      pub fn write_file(path: &str, data: &[u8]) -> std::io::Result<()> {
+          std::fs::write(path, data)
+      }
+  changed_files:
+    src/net/connection.rs: |
+      use std::io::{self, Read, Write};
+      use std::net::TcpStream;
+      use std::time::Duration;
+
+      pub struct Connection {
+          stream: TcpStream,
+          timeout_ms: u64,
+      }
+
+      impl Connection {
+          pub fn connect(addr: &str, timeout_ms: u64) -> io::Result<Self> {
+              let stream = TcpStream::connect(addr)?;
+              stream.set_read_timeout(Some(Duration::from_millis(timeout_ms)))?;
+              stream.set_write_timeout(Some(Duration::from_millis(timeout_ms)))?;
+              Ok(Connection { stream, timeout_ms })
+          }
+
+          pub fn send(&mut self, data: &[u8]) -> io::Result<usize> {
+              self.stream.write_all(data)?;
+              Ok(data.len())
+          }
+
+          pub fn recv(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+              self.stream.read(buf)
+          }
+
+          pub fn timeout_ms(&self) -> u64 {
+              self.timeout_ms
+          }
+      }
+    src/net/pool.rs: |
+      use crate::net::connection::Connection;
+      use std::collections::VecDeque;
+      use std::io;
+      use std::sync::{Arc, Mutex};
+
+      pub struct ConnectionPool {
+          addr: String,
+          timeout_ms: u64,
+          idle: Arc<Mutex<VecDeque<Connection>>>,
+          max_size: usize,
+      }
+
+      impl ConnectionPool {
+          pub fn new(addr: &str, timeout_ms: u64, max_size: usize) -> Self {
+              ConnectionPool {
+                  addr: addr.to_string(),
+                  timeout_ms,
+                  idle: Arc::new(Mutex::new(VecDeque::new())),
+                  max_size,
+              }
+          }
+
+          pub fn acquire(&self) -> io::Result<Connection> {
+              let mut idle = self.idle.lock().unwrap();
+              if let Some(conn) = idle.pop_front() {
+                  return Ok(conn);
+              }
+              Connection::connect(&self.addr, self.timeout_ms)
+          }
+
+          pub fn release(&self, conn: Connection) {
+              let mut idle = self.idle.lock().unwrap();
+              if idle.len() < self.max_size {
+                  idle.push_back(conn);
+              }
+          }
+      }
+    src/client/http.rs: |
+      use crate::net::pool::ConnectionPool;
+      use std::io;
+
+      pub struct HttpClient {
+          pool: ConnectionPool,
+      }
+
+      impl HttpClient {
+          pub fn new(addr: &str) -> Self {
+              HttpClient {
+                  pool: ConnectionPool::new(addr, 5000, 10),
+              }
+          }
+
+          pub fn get(&self, path: &str) -> io::Result<Vec<u8>> {
+              let mut conn = self.pool.acquire()?;
+              let request = format!("GET {} HTTP/1.0\r\n\r\n", path);
+              conn.send(request.as_bytes())?;
+              let mut buf = vec![0u8; 4096];
+              let n = conn.recv(&mut buf)?;
+              self.pool.release(conn);
+              Ok(buf[..n].to_vec())
+          }
+      }
+    tests/net_integration.rs: |
+      use crate::net::connection::Connection;
+      use crate::net::pool::ConnectionPool;
+
+      #[test]
+      fn pool_returns_cached_connection() {
+          let pool = ConnectionPool::new("127.0.0.1:9999", 100, 5);
+          assert_eq!(pool.max_size, 5);
+      }
+
+      #[test]
+      fn pool_max_size_limits_idle() {
+          let pool = ConnectionPool::new("127.0.0.1:9999", 100, 2);
+          assert_eq!(pool.max_size, 2);
+      }
+
+      #[test]
+      fn connection_write_timeout_set() {
+          // verifies write_timeout is now configured alongside read_timeout
+          let pool = ConnectionPool::new("127.0.0.1:9999", 50, 1);
+          assert_eq!(pool.timeout_ms, 50);
+      }
+    src/logging/structured.rs: |
+      // GARBAGE_RF15_A = "structured_logging_unrelated"
+      pub fn log_event(level: &str, message: &str) {
+          eprintln!("[{}] {}", level, message);
+      }
+    src/config/env.rs: |
+      // GARBAGE_RF15_B = "env_config_unrelated"
+      pub fn get_env(key: &str) -> Option<String> {
+          std::env::var(key).ok()
+      }
+    src/crypto/hmac.rs: |
+      // GARBAGE_RF15_C = "hmac_crypto_unrelated"
+      pub fn compute_hmac(key: &[u8], data: &[u8]) -> Vec<u8> {
+          vec![0u8; 32]
+      }
+    src/storage/file.rs: |
+      // GARBAGE_RF15_D = "file_storage_unrelated"
+      pub fn write_file(path: &str, data: &[u8]) -> std::io::Result<()> {
+          std::fs::write(path, data)
+      }
+  commit_message: "fix: use write_all and set write_timeout in Connection::connect and send"
+fragments:
+- id: connection_send
+  selector:
+    path: src/net/connection.rs
+    anchor: "pub fn send"
+- id: connection_connect_write_timeout
+  selector:
+    path: src/net/connection.rs
+    anchor: "set_write_timeout"
+- id: test_write_timeout
+  selector:
+    path: tests/net_integration.rs
+    anchor: "connection_write_timeout_set"
+- id: test_pool_max_size
+  selector:
+    path: tests/net_integration.rs
+    anchor: "pool_max_size_limits_idle"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_RF15_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_RF15_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_RF15_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_RF15_D
+oracle:
+  required:
+  - connection_send
+  - connection_connect_write_timeout
+  - test_write_timeout
+  allowed:
+  - test_pool_max_size
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

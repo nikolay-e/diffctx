@@ -1,0 +1,208 @@
+name: bal2_3hop_038_rust_protocol_codec_transport
+tags:
+- lang:rust
+- change:multi_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/proto/message.rs: |
+      #[derive(Debug, Clone)]
+      pub struct Message {
+          pub msg_type: MessageType,
+          pub body: Vec<u8>,
+      }
+
+      #[derive(Debug, Clone, Copy, PartialEq)]
+      pub enum MessageType {
+          Request,
+          Response,
+      }
+
+      impl Message {
+          pub fn new(msg_type: MessageType, body: Vec<u8>) -> Self {
+              Self { msg_type, body }
+          }
+
+          pub fn encode(&self) -> Vec<u8> {
+              let mut buf = vec![self.msg_type as u8];
+              buf.extend_from_slice(&(self.body.len() as u32).to_be_bytes());
+              buf.extend_from_slice(&self.body);
+              buf
+          }
+      }
+    src/proto/codec.rs: |
+      use crate::proto::message::{Message, MessageType};
+
+      pub struct Codec;
+
+      impl Codec {
+          pub fn decode(data: &[u8]) -> Option<Message> {
+              if data.len() < 5 { return None; }
+              let msg_type = match data[0] {
+                  0 => MessageType::Request,
+                  1 => MessageType::Response,
+                  _ => return None,
+              };
+              let len = u32::from_be_bytes([data[1], data[2], data[3], data[4]]) as usize;
+              if data.len() < 5 + len { return None; }
+              Some(Message::new(msg_type, data[5..5 + len].to_vec()))
+          }
+      }
+    src/transport/connection.rs: |
+      use crate::proto::codec::Codec;
+      use crate::proto::message::Message;
+
+      pub struct Connection {
+          buffer: Vec<u8>,
+      }
+
+      impl Connection {
+          pub fn new() -> Self {
+              Self { buffer: Vec::new() }
+          }
+
+          pub fn receive(&mut self, data: &[u8]) -> Option<Message> {
+              self.buffer.extend_from_slice(data);
+              Codec::decode(&self.buffer)
+          }
+
+          pub fn send(&self, msg: &Message) -> Vec<u8> {
+              msg.encode()
+          }
+      }
+    src/server/session.rs: |
+      use crate::transport::connection::Connection;
+      use crate::proto::message::Message;
+
+      pub struct Session {
+          conn: Connection,
+          id: u64,
+      }
+
+      impl Session {
+          pub fn new(id: u64) -> Self {
+              Self { conn: Connection::new(), id }
+          }
+
+          pub fn process(&mut self, data: &[u8]) -> Option<Message> {
+              self.conn.receive(data)
+          }
+      }
+    src/crypto/tls.rs: |
+      GARBAGE_038_TLS_MARKER_A = "tls_config";
+      GARBAGE_038_CERT_MARKER_B = "cert.pem";
+
+      pub struct TlsConfig {
+          cert_path: String,
+      }
+    src/dns/resolver.rs: |
+      GARBAGE_038_DNS_MARKER_C = "resolver";
+      GARBAGE_038_HOST_MARKER_D = "localhost";
+
+      pub struct DnsResolver;
+
+      impl DnsResolver {
+          pub fn resolve(host: &str) -> Option<String> {
+              Some(host.to_string())
+          }
+      }
+    src/http/headers.rs: |
+      GARBAGE_038_HDR_MARKER_E = "http_headers";
+      GARBAGE_038_CONTENT_MARKER_F = "application/json";
+
+      pub struct Headers {
+          pairs: Vec<(String, String)>,
+      }
+  changed_files:
+    src/proto/message.rs: |
+      #[derive(Debug, Clone)]
+      pub struct Message {
+          pub msg_type: MessageType,
+          pub body: Vec<u8>,
+      }
+
+      #[derive(Debug, Clone, Copy, PartialEq)]
+      pub enum MessageType {
+          Request,
+          Response,
+          Heartbeat,
+      }
+
+      impl Message {
+          pub fn new(msg_type: MessageType, body: Vec<u8>) -> Self {
+              Self { msg_type, body }
+          }
+
+          pub fn heartbeat() -> Self {
+              Self { msg_type: MessageType::Heartbeat, body: Vec::new() }
+          }
+
+          pub fn encode(&self) -> Vec<u8> {
+              let mut buf = vec![self.msg_type as u8];
+              buf.extend_from_slice(&(self.body.len() as u32).to_be_bytes());
+              buf.extend_from_slice(&self.body);
+              buf
+          }
+      }
+    src/proto/codec.rs: |
+      use crate::proto::message::{Message, MessageType};
+
+      pub struct Codec;
+
+      impl Codec {
+          pub fn decode(data: &[u8]) -> Option<Message> {
+              if data.len() < 5 { return None; }
+              let msg_type = match data[0] {
+                  0 => MessageType::Request,
+                  1 => MessageType::Response,
+                  2 => MessageType::Heartbeat,
+                  _ => return None,
+              };
+              let len = u32::from_be_bytes([data[1], data[2], data[3], data[4]]) as usize;
+              if data.len() < 5 + len { return None; }
+              Some(Message::new(msg_type, data[5..5 + len].to_vec()))
+          }
+      }
+  commit_message: "feat: add Heartbeat message type to protocol"
+fragments:
+- id: message_heartbeat_type
+  selector:
+    path: src/proto/message.rs
+    anchor: "Heartbeat"
+- id: codec_heartbeat_decode
+  selector:
+    path: src/proto/codec.rs
+    anchor: "MessageType::Heartbeat"
+- id: connection_receive
+  selector:
+    path: src/transport/connection.rs
+    anchor: "pub fn receive"
+- id: session_process
+  selector:
+    path: src/server/session.rs
+    anchor: "pub fn process"
+- id: no_tls
+  selector:
+    path: src/crypto/tls.rs
+    anchor: "GARBAGE_038_TLS_MARKER_A"
+- id: no_dns
+  selector:
+    path: src/dns/resolver.rs
+    anchor: "GARBAGE_038_DNS_MARKER_C"
+- id: no_headers
+  selector:
+    path: src/http/headers.rs
+    anchor: "GARBAGE_038_HDR_MARKER_E"
+oracle:
+  required:
+  - message_heartbeat_type
+  - codec_heartbeat_decode
+  - connection_receive
+  - session_process
+  allowed: []
+  forbidden:
+  - no_tls
+  - no_dns
+  - no_headers

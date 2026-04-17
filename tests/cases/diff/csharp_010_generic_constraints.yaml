@@ -1,128 +1,123 @@
 name: csharp_010_generic_constraints
+tags:
+- lang:rust
+- change:bug_fix
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
 repo:
   initial_files:
-    Services/Factory.cs: |
-      namespace MyApp.Services;
+    src/auth/validator.rs: |
+      pub struct TokenValidator {
+          secret: String,
+      }
 
-      public class Factory
-      {
-          public static T Create<T>() where T : class, new()
-          {
-              return new T();
+      impl TokenValidator {
+          pub fn new(secret: &str) -> Self {
+              TokenValidator { secret: secret.to_string() }
           }
 
-          public static T CreateWithInit<T>(Action<T> initializer) where T : class, new()
-          {
-              var instance = new T();
-              initializer(instance);
-              return instance;
+          pub fn validate(&self, token: &str) -> bool {
+              // BUG: empty token passes validation
+              token.contains(&self.secret)
           }
       }
-    Program.cs: |
-      using System;
+    src/middleware/auth_guard.rs: |
+      use crate::auth::validator::TokenValidator;
 
-      class Program
-      {
-          static void Main() { }
+      pub struct AuthGuard {
+          validator: TokenValidator,
       }
-    Unrelated/EncryptionHelper.cs: |
-      namespace MyApp.Unrelated;
 
-      public class EncryptionHelper
-      {
-          private const string GARBAGE_CS_010_ENCRYPTION_A = "encryption_helper_marker";
+      impl AuthGuard {
+          pub fn new(secret: &str) -> Self {
+              AuthGuard { validator: TokenValidator::new(secret) }
+          }
 
-          public string Encrypt(string data) => GARBAGE_CS_010_ENCRYPTION_A + data;
+          pub fn check_request(&self, token: &str) -> bool {
+              self.validator.validate(token)
+          }
       }
-    Unrelated/CompressionHelper.cs: |
-      namespace MyApp.Unrelated;
-
-      public class CompressionHelper
-      {
-          public const string GARBAGE_CS_010_COMPRESSION_B = "compression_helper_marker";
-
-          public byte[] Compress(byte[] data) => data;
-      }
+    garbage/mailer.rs: |
+      // GARBAGE_GCON_A = "mailer_marker"
+      pub fn send_email(_to: &str, _body: &str) {}
+    garbage/scheduler.rs: |
+      // GARBAGE_GCON_B = "scheduler_marker"
+      pub fn schedule_job(_cron: &str) {}
+    garbage/storage.rs: |
+      // GARBAGE_GCON_C = "storage_marker"
+      pub struct BlobStore { pub bucket: String }
   changed_files:
-    Services/Factory.cs: |
-      namespace MyApp.Services;
+    src/auth/validator.rs: |
+      pub struct TokenValidator {
+          secret: String,
+      }
 
-      public class Factory
-      {
-          public static T Create<T>() where T : class, new()
-          {
-              return new T();
+      impl TokenValidator {
+          pub fn new(secret: &str) -> Self {
+              TokenValidator { secret: secret.to_string() }
           }
 
-          public static T CreateWithInit<T>(Action<T> initializer) where T : class, new()
-          {
-              var instance = new T();
-              initializer(instance);
-              return instance;
+          pub fn validate(&self, token: &str) -> bool {
+              if token.is_empty() {
+                  return false;
+              }
+              token.contains(&self.secret)
           }
       }
-    Program.cs: |
-      using System;
-      using MyApp.Services;
-      using MyApp.Models;
+    src/middleware/auth_guard.rs: |
+      use crate::auth::validator::TokenValidator;
 
-      class Program
-      {
-          static void Main()
-          {
-              var user = Factory.Create<User>();
-              var initializedUser = Factory.CreateWithInit<User>(u => u.Name = "John");
+      pub struct AuthGuard {
+          validator: TokenValidator,
+      }
+
+      impl AuthGuard {
+          pub fn new(secret: &str) -> Self {
+              AuthGuard { validator: TokenValidator::new(secret) }
+          }
+
+          pub fn check_request(&self, token: &str) -> bool {
+              self.validator.validate(token)
           }
       }
-    Unrelated/EncryptionHelper.cs: |
-      namespace MyApp.Unrelated;
-
-      public class EncryptionHelper
-      {
-          private const string GARBAGE_CS_010_ENCRYPTION_A = "encryption_helper_marker";
-
-          public string Encrypt(string data) => GARBAGE_CS_010_ENCRYPTION_A + data;
-      }
-    Unrelated/CompressionHelper.cs: |
-      namespace MyApp.Unrelated;
-
-      public class CompressionHelper
-      {
-          public const string GARBAGE_CS_010_COMPRESSION_B = "compression_helper_marker";
-
-          public byte[] Compress(byte[] data) => data;
-      }
-  commit_message: Update files
+    garbage/mailer.rs: |
+      // GARBAGE_GCON_A = "mailer_marker"
+      pub fn send_email(_to: &str, _body: &str) {}
+    garbage/scheduler.rs: |
+      // GARBAGE_GCON_B = "scheduler_marker"
+      pub fn schedule_job(_cron: &str) {}
+    garbage/storage.rs: |
+      // GARBAGE_GCON_C = "storage_marker"
+      pub struct BlobStore { pub bucket: String }
+  commit_message: "fix: reject empty token in TokenValidator::validate"
 fragments:
-- id: program_file
+- id: validate_func
   selector:
-    path: Program.cs
-- id: req_global_0
+    anchor: "pub fn validate(&self, token: &str) -> bool"
+- id: empty_check
   selector:
-    anchor: using MyApp.Services;
-- id: req_global_1
+    anchor: "if token.is_empty()"
+- id: guard_uses_validator
   selector:
-    anchor: static void Main()
-- id: no_global_0
+    anchor: "use crate::auth::validator::TokenValidator"
+- id: no_garbage_a
   selector:
-    anchor: GARBAGE_CS_010_COMPRESSION_B
-- id: no_global_1
+    anchor: GARBAGE_GCON_A
+- id: no_garbage_b
   selector:
-    anchor: GARBAGE_CS_010_ENCRYPTION_A
-- id: no_global_2
+    anchor: GARBAGE_GCON_B
+- id: no_garbage_c
   selector:
-    anchor: CompressionHelper.cs
-- id: no_global_3
-  selector:
-    anchor: EncryptionHelper.cs
+    anchor: GARBAGE_GCON_C
 oracle:
   required:
-  - program_file
-  - req_global_0
-  - req_global_1
+  - validate_func
+  - empty_check
+  - guard_uses_validator
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

@@ -1,0 +1,198 @@
+name: gap2_074_java_signature_cross_module_validator
+tags:
+- change:signature
+- change:single_file
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+- lang:java
+repo:
+  initial_files:
+    src/main/java/validation/Validator.java: |
+      package validation;
+
+      public interface Validator<T> {
+          boolean validate(T input);
+      }
+    src/main/java/validation/EmailValidator.java: |
+      package validation;
+
+      public class EmailValidator implements Validator<String> {
+          public boolean validate(String input) {
+              return input != null && input.contains("@");
+          }
+      }
+    src/main/java/registration/SignupHandler.java: |
+      package registration;
+
+      import validation.Validator;
+
+      public class SignupHandler {
+          private final Validator<String> emailValidator;
+
+          public SignupHandler(Validator<String> emailValidator) {
+              this.emailValidator = emailValidator;
+          }
+
+          public boolean register(String email, String password) {
+              if (!emailValidator.validate(email)) return false;
+              return true;
+          }
+      }
+    src/main/java/payment/RefundProcessor.java: |
+      package payment;
+      static final String TRAP_GAP2_074_REFUND_A = "refund_noise";
+      static final double TRAP_GAP2_074_REFUND_B = 0.15;
+
+      public class RefundProcessor {
+          public boolean process(String transactionId, double amount) { return true; }
+      }
+    src/main/java/inventory/WarehouseManager.java: |
+      package inventory;
+      static final String TRAP_GAP2_074_WH_C = "warehouse_noise";
+      static final int TRAP_GAP2_074_WH_D = 500;
+
+      public class WarehouseManager {
+          public int checkStock(String sku) { return 0; }
+      }
+    src/main/java/analytics/FunnelTracker.java: |
+      package analytics;
+      static final String TRAP_GAP2_074_FUNNEL_E = "funnel_noise";
+      static final boolean TRAP_GAP2_074_FUNNEL_F = false;
+
+      public class FunnelTracker {
+          public void trackStep(String userId, String step) { }
+      }
+  changed_files:
+    src/main/java/validation/Validator.java: |
+      package validation;
+
+      import java.util.List;
+
+      public interface Validator<T> {
+          boolean validate(T input);
+          List<String> getErrors(T input);
+      }
+    src/main/java/validation/EmailValidator.java: |
+      package validation;
+
+      import java.util.ArrayList;
+      import java.util.List;
+
+      public class EmailValidator implements Validator<String> {
+          public boolean validate(String input) {
+              return getErrors(input).isEmpty();
+          }
+
+          public List<String> getErrors(String input) {
+              List<String> errors = new ArrayList<>();
+              if (input == null) errors.add("email is null");
+              else if (!input.contains("@")) errors.add("missing @ symbol");
+              return errors;
+          }
+      }
+    src/main/java/registration/SignupHandler.java: |
+      package registration;
+
+      import validation.Validator;
+
+      public class SignupHandler {
+          private final Validator<String> emailValidator;
+
+          public SignupHandler(Validator<String> emailValidator) {
+              this.emailValidator = emailValidator;
+          }
+
+          public boolean register(String email, String password) {
+              if (!emailValidator.validate(email)) return false;
+              return true;
+          }
+      }
+    src/main/java/payment/RefundProcessor.java: |
+      package payment;
+      static final String TRAP_GAP2_074_REFUND_A = "refund_noise";
+      static final double TRAP_GAP2_074_REFUND_B = 0.15;
+
+      public class RefundProcessor {
+          public boolean process(String transactionId, double amount) { return true; }
+      }
+    src/main/java/inventory/WarehouseManager.java: |
+      package inventory;
+      static final String TRAP_GAP2_074_WH_C = "warehouse_noise";
+      static final int TRAP_GAP2_074_WH_D = 500;
+
+      public class WarehouseManager {
+          public int checkStock(String sku) { return 0; }
+      }
+    src/main/java/analytics/FunnelTracker.java: |
+      package analytics;
+      static final String TRAP_GAP2_074_FUNNEL_E = "funnel_noise";
+      static final boolean TRAP_GAP2_074_FUNNEL_F = false;
+
+      public class FunnelTracker {
+          public void trackStep(String userId, String step) { }
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: get_errors_sig
+  selector:
+    path: src/main/java/validation/Validator.java
+    anchor: "List<String> getErrors(T input)"
+- id: validator_interface
+  selector:
+    path: src/main/java/validation/Validator.java
+    anchor: "public interface Validator<T>"
+- id: email_get_errors
+  selector:
+    path: src/main/java/validation/EmailValidator.java
+    anchor: "public List<String> getErrors(String input)"
+- id: signup_uses_validator
+  selector:
+    path: src/main/java/registration/SignupHandler.java
+    anchor: "emailValidator.validate(email)"
+- id: no_refund
+  selector:
+    path: src/main/java/payment/RefundProcessor.java
+- id: no_warehouse
+  selector:
+    path: src/main/java/inventory/WarehouseManager.java
+- id: no_funnel
+  selector:
+    path: src/main/java/analytics/FunnelTracker.java
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP2_074_REFUND_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP2_074_REFUND_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP2_074_WH_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP2_074_WH_D
+- id: no_global_4
+  selector:
+    anchor: TRAP_GAP2_074_FUNNEL_E
+- id: no_global_5
+  selector:
+    anchor: TRAP_GAP2_074_FUNNEL_F
+oracle:
+  required:
+  - get_errors_sig
+  - validator_interface
+  - email_get_errors
+  - signup_uses_validator
+  allowed: []
+  forbidden:
+  - no_refund
+  - no_warehouse
+  - no_funnel
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

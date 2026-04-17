@@ -1,0 +1,115 @@
+name: bal4_refactor_006_go_rename_method
+tags:
+- lang:go
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:1hop
+- difficulty:trivial
+repo:
+  initial_files:
+    pkg/repo/repo.go: |
+      package repo
+
+      type UserRepo struct{}
+
+      func (r *UserRepo) GetAll() []string {
+          return []string{"alice", "bob"}
+      }
+    pkg/service/service.go: |
+      package service
+
+      import "app/pkg/repo"
+
+      func ListUsers(r *repo.UserRepo) []string {
+          return r.GetAll()
+      }
+    garbage_notify.go: |
+      package garbage
+
+      GARBAGE_BAL4R006_NOTIFY_A = "notify"
+      GARBAGE_BAL4R006_EMAIL_B = "smtp"
+
+      type Notifier struct {
+          GARBAGE_BAL4R006_NOT_C bool
+      }
+    garbage_storage.go: |
+      package garbage
+
+      GARBAGE_BAL4R006_STORE_D = "storage"
+      GARBAGE_BAL4R006_DISK_E = "/tmp"
+  changed_files:
+    pkg/repo/repo.go: |
+      package repo
+
+      type UserRepo struct{}
+
+      func (r *UserRepo) FindAll() []string {
+          return []string{"alice", "bob"}
+      }
+    pkg/service/service.go: |
+      package service
+
+      import "app/pkg/repo"
+
+      func ListUsers(r *repo.UserRepo) []string {
+          return r.FindAll()
+      }
+    garbage_notify.go: |
+      package garbage
+
+      GARBAGE_BAL4R006_NOTIFY_A = "notify"
+      GARBAGE_BAL4R006_EMAIL_B = "smtp"
+
+      type Notifier struct {
+          GARBAGE_BAL4R006_NOT_C bool
+      }
+    garbage_storage.go: |
+      package garbage
+
+      GARBAGE_BAL4R006_STORE_D = "storage"
+      GARBAGE_BAL4R006_DISK_E = "/tmp"
+  commit_message: "refactor: rename GetAll to FindAll"
+fragments:
+- id: renamed_method
+  selector:
+    path: pkg/repo/repo.go
+    anchor: "func (r *UserRepo) FindAll()"
+- id: caller_updated
+  selector:
+    path: pkg/service/service.go
+    anchor: "r.FindAll()"
+- id: no_garbage_notify
+  selector:
+    path: garbage_notify.go
+- id: no_garbage_storage
+  selector:
+    path: garbage_storage.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL4R006_NOTIFY_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL4R006_EMAIL_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL4R006_NOT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL4R006_STORE_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL4R006_DISK_E
+oracle:
+  required:
+  - renamed_method
+  - caller_updated
+  allowed: []
+  forbidden:
+  - no_garbage_notify
+  - no_garbage_storage
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

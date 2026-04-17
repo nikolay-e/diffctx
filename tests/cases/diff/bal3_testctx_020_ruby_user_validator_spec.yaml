@@ -1,0 +1,98 @@
+name: bal3_testctx_020_ruby_user_validator_spec
+tags:
+- lang:ruby
+- change:single_file
+- change:signature
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    lib/user_validator.rb: |
+      class UserValidator
+        def valid_email?(email)
+          email.match?(/\A[\w+\-.]+@[a-z\d\-]+(\.[a-z\d\-]+)*\.[a-z]+\z/i)
+        end
+
+        def valid_name?(name)
+          name.is_a?(String) && name.length >= 2
+        end
+      end
+    spec/user_validator_spec.rb: |
+      require_relative '../lib/user_validator'
+
+      RSpec.describe UserValidator do
+        subject { described_class.new }
+
+        describe '#valid_email?' do
+          it 'accepts valid email' do
+            expect(subject.valid_email?('user@example.com')).to be true
+          end
+
+          it 'rejects invalid email' do
+            expect(subject.valid_email?('notanemail')).to be false
+          end
+        end
+
+        describe '#valid_name?' do
+          it 'accepts valid name' do
+            expect(subject.valid_name?('Alice')).to be true
+          end
+
+          it 'rejects short name' do
+            expect(subject.valid_name?('A')).to be false
+          end
+        end
+      end
+    lib/mailer.rb: |
+      class Mailer
+        def send(to, subject, body)
+          puts "Sending to #{to}: #{subject}"
+        end
+      end
+  changed_files:
+    lib/user_validator.rb: |
+      class UserValidator
+        def valid_email?(email)
+          email.match?(/\A[\w+\-.]+@[a-z\d\-]+(\.[a-z\d\-]+)*\.[a-z]+\z/i)
+        end
+
+        def valid_name?(name, min_length: 2, max_length: 50)
+          name.is_a?(String) && name.length >= min_length && name.length <= max_length
+        end
+
+        def valid_age?(age)
+          age.is_a?(Integer) && age >= 0 && age <= 150
+        end
+      end
+  commit_message: "feat: add min/max length to valid_name?, add valid_age?"
+fragments:
+- id: name_with_bounds
+  selector:
+    path: lib/user_validator.rb
+    anchor: "def valid_name?(name, min_length: 2, max_length: 50)"
+- id: valid_age_method
+  selector:
+    path: lib/user_validator.rb
+    anchor: "def valid_age?(age)"
+- id: spec_require
+  selector:
+    path: spec/user_validator_spec.rb
+    anchor: "require_relative '../lib/user_validator'"
+- id: spec_valid_name
+  selector:
+    path: spec/user_validator_spec.rb
+    anchor: "describe '#valid_name?'"
+- id: no_mailer
+  selector:
+    path: lib/mailer.rb
+    anchor: "class Mailer"
+oracle:
+  required:
+  - name_with_bounds
+  - valid_age_method
+  - spec_require
+  allowed:
+  - spec_valid_name
+  forbidden:
+  - no_mailer

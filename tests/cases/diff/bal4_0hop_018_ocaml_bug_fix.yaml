@@ -1,0 +1,84 @@
+name: bal4_0hop_018_ocaml_bug_fix
+tags:
+- lang:ocaml
+- change:single_file
+- change:bug_fix
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    src/safediv.ml: |
+      let divide a b =
+        a / b
+
+      let modulo a b =
+        a mod b
+    src/garbage_round.ml: |
+      let garbage_b4o018_rnd_a = "round"
+      let garbage_b4o018_rnd_b = 3.14
+
+      let garbage_round x = x
+    src/garbage_trunc.ml: |
+      let garbage_b4o018_trn_c = "trunc"
+      let garbage_b4o018_trn_d = true
+
+      let garbage_trunc x = x
+  changed_files:
+    src/safediv.ml: |
+      let divide a b =
+        if b = 0 then None
+        else Some (a / b)
+
+      let modulo a b =
+        a mod b
+    src/garbage_round.ml: |
+      let garbage_b4o018_rnd_a = "round"
+      let garbage_b4o018_rnd_b = 3.14
+
+      let garbage_round x = x
+    src/garbage_trunc.ml: |
+      let garbage_b4o018_trn_c = "trunc"
+      let garbage_b4o018_trn_d = true
+
+      let garbage_trunc x = x
+  commit_message: "fix: return option on division by zero"
+fragments:
+- id: zero_guard
+  selector:
+    path: src/safediv.ml
+    anchor: "if b = 0 then None"
+- id: some_result
+  selector:
+    path: src/safediv.ml
+    anchor: "else Some (a / b)"
+- id: no_garbage_round
+  selector:
+    path: src/garbage_round.ml
+- id: no_garbage_trunc
+  selector:
+    path: src/garbage_trunc.ml
+- id: no_global_0
+  selector:
+    anchor: garbage_b4o018_rnd_a
+- id: no_global_1
+  selector:
+    anchor: garbage_b4o018_rnd_b
+- id: no_global_2
+  selector:
+    anchor: garbage_b4o018_trn_c
+- id: no_global_3
+  selector:
+    anchor: garbage_b4o018_trn_d
+oracle:
+  required:
+  - zero_guard
+  - some_result
+  allowed: []
+  forbidden:
+  - no_garbage_round
+  - no_garbage_trunc
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

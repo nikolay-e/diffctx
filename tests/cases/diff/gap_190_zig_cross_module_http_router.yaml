@@ -1,0 +1,256 @@
+name: gap_190_zig_cross_module_http_router
+tags:
+- lang:zig
+- change:multi_file
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+repo:
+  initial_files:
+    src/http/handler.zig: |
+      const std = @import("std");
+      const resp = @import("response.zig");
+
+      pub const Handler = struct {
+          path: []const u8,
+
+          pub fn handle(self: Handler, body: []const u8) resp.Response {
+              _ = self;
+              return resp.Response{
+                  .status = 200,
+                  .body = body,
+                  .content_type = "text/plain",
+              };
+          }
+      };
+
+      pub fn notFoundHandler() resp.Response {
+          return resp.Response{
+              .status = 404,
+              .body = "Not Found",
+              .content_type = "text/plain",
+          };
+      }
+    src/http/response.zig: |
+      const encode = @import("encode.zig");
+
+      pub const Response = struct {
+          status: u16,
+          body: []const u8,
+          content_type: []const u8,
+
+          pub fn toBytes(self: Response) []const u8 {
+              return encode.formatResponse(self.status, self.body, self.content_type);
+          }
+      };
+    src/http/encode.zig: |
+      pub fn formatResponse(status: u16, body: []const u8, content_type: []const u8) []const u8 {
+          _ = status;
+          _ = content_type;
+          return body;
+      }
+
+      pub fn urlEncode(input: []const u8) []const u8 {
+          return input;
+      }
+
+      pub fn urlDecode(input: []const u8) []const u8 {
+          return input;
+      }
+    src/http/router.zig: |
+      const handler_mod = @import("handler.zig");
+
+      pub const Router = struct {
+          handlers: [16]?handler_mod.Handler,
+          count: usize,
+
+          pub fn init() Router {
+              return Router{
+                  .handlers = [_]?handler_mod.Handler{null} ** 16,
+                  .count = 0,
+              };
+          }
+
+          pub fn addRoute(self: *Router, path: []const u8) void {
+              self.handlers[self.count] = handler_mod.Handler{ .path = path };
+              self.count += 1;
+          }
+      };
+    src/db/migration.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_190_MIGRATE_MARKER_A: []const u8 = "migration_noise";
+      const TRAP_GAP_190_MIGRATE_FLAG_B: u32 = 1;
+
+      pub fn runMigrations(version: u32) void {
+          _ = version;
+      }
+
+      pub fn rollback(version: u32) void {
+          _ = version;
+      }
+    src/auth/token.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_190_TOKEN_MARKER_C: []const u8 = "token_noise";
+      const TRAP_GAP_190_TOKEN_FLAG_D: u64 = 3600;
+
+      pub fn generateToken(user_id: u64) []const u8 {
+          _ = user_id;
+          return "placeholder";
+      }
+
+      pub fn validateToken(token: []const u8) bool {
+          return token.len > 0;
+      }
+  changed_files:
+    src/http/handler.zig: |
+      const std = @import("std");
+      const resp = @import("response.zig");
+
+      pub const Handler = struct {
+          path: []const u8,
+          method: []const u8,
+
+          pub fn handle(self: Handler, body: []const u8) resp.Response {
+              _ = self;
+              return resp.Response{
+                  .status = 200,
+                  .body = body,
+                  .content_type = "application/json",
+                  .headers = &[_][]const u8{},
+              };
+          }
+      };
+
+      pub fn notFoundHandler() resp.Response {
+          return resp.Response{
+              .status = 404,
+              .body = "{\"error\":\"not found\"}",
+              .content_type = "application/json",
+              .headers = &[_][]const u8{},
+          };
+      }
+    src/http/response.zig: |
+      const encode = @import("encode.zig");
+
+      pub const Response = struct {
+          status: u16,
+          body: []const u8,
+          content_type: []const u8,
+          headers: []const []const u8,
+
+          pub fn toBytes(self: Response) []const u8 {
+              return encode.formatResponse(self.status, self.body, self.content_type);
+          }
+      };
+    src/http/encode.zig: |
+      pub fn formatResponse(status: u16, body: []const u8, content_type: []const u8) []const u8 {
+          _ = status;
+          _ = content_type;
+          return body;
+      }
+
+      pub fn urlEncode(input: []const u8) []const u8 {
+          return input;
+      }
+
+      pub fn urlDecode(input: []const u8) []const u8 {
+          return input;
+      }
+    src/http/router.zig: |
+      const handler_mod = @import("handler.zig");
+
+      pub const Router = struct {
+          handlers: [16]?handler_mod.Handler,
+          count: usize,
+
+          pub fn init() Router {
+              return Router{
+                  .handlers = [_]?handler_mod.Handler{null} ** 16,
+                  .count = 0,
+              };
+          }
+
+          pub fn addRoute(self: *Router, path: []const u8) void {
+              self.handlers[self.count] = handler_mod.Handler{ .path = path };
+              self.count += 1;
+          }
+      };
+    src/db/migration.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_190_MIGRATE_MARKER_A: []const u8 = "migration_noise";
+      const TRAP_GAP_190_MIGRATE_FLAG_B: u32 = 1;
+
+      pub fn runMigrations(version: u32) void {
+          _ = version;
+      }
+
+      pub fn rollback(version: u32) void {
+          _ = version;
+      }
+    src/auth/token.zig: |
+      const std = @import("std");
+
+      const TRAP_GAP_190_TOKEN_MARKER_C: []const u8 = "token_noise";
+      const TRAP_GAP_190_TOKEN_FLAG_D: u64 = 3600;
+
+      pub fn generateToken(user_id: u64) []const u8 {
+          _ = user_id;
+          return "placeholder";
+      }
+
+      pub fn validateToken(token: []const u8) bool {
+          return token.len > 0;
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: handler_method_field
+  selector:
+    path: src/http/handler.zig
+    anchor: "method: []const u8"
+- id: handler_json_type
+  selector:
+    path: src/http/handler.zig
+    anchor: application/json
+- id: response_headers_field
+  selector:
+    path: src/http/response.zig
+    anchor: "headers: []const []const u8"
+- id: encode_format
+  selector:
+    path: src/http/encode.zig
+    anchor: "pub fn formatResponse"
+- id: no_migration
+  selector:
+    path: src/db/migration.zig
+- id: no_token
+  selector:
+    path: src/auth/token.zig
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP_190_MIGRATE_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP_190_MIGRATE_FLAG_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP_190_TOKEN_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP_190_TOKEN_FLAG_D
+oracle:
+  required:
+  - handler_method_field
+  - response_headers_field
+  allowed: []
+  forbidden:
+  - no_migration
+  - no_token
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

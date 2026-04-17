@@ -1,0 +1,232 @@
+name: bal3_refactor_009_rust_consolidate_error_types
+tags:
+- lang:typescript
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/forms/validator.ts: |
+      import { ValidationRule } from './rules';
+      import { FieldError } from './field_error';
+
+      export class FormValidator {
+          private rules: Map<string, ValidationRule[]> = new Map();
+
+          addRule(field: string, rule: ValidationRule): this {
+              const existing = this.rules.get(field) ?? [];
+              this.rules.set(field, [...existing, rule]);
+              return this;
+          }
+
+          validate(data: Record<string, unknown>): FieldError[] {
+              const errors: FieldError[] = [];
+              this.rules.forEach((fieldRules, field) => {
+                  const value = data[field];
+                  fieldRules.forEach(rule => {
+                      if (!rule.check(value)) {
+                          errors.push({ field, message: rule.message });
+                      }
+                  });
+              });
+              return errors;
+          }
+      }
+    src/forms/rules.ts: |
+      export interface ValidationRule {
+          check(value: unknown): boolean;
+          message: string;
+      }
+
+      export const required: ValidationRule = {
+          check: (v) => v !== null && v !== undefined && v !== '',
+          message: 'This field is required',
+      };
+
+      export const minLength = (n: number): ValidationRule => ({
+          check: (v) => typeof v === 'string' && v.length >= n,
+          message: `Minimum length is ${n}`,
+      });
+    src/forms/field_error.ts: |
+      export interface FieldError {
+          field: string;
+          message: string;
+      }
+    src/ui/registration_form.ts: |
+      import { FormValidator } from '../forms/validator';
+      import { required, minLength } from '../forms/rules';
+      import { FieldError } from '../forms/field_error';
+
+      export class RegistrationForm {
+          private validator: FormValidator;
+
+          constructor() {
+              this.validator = new FormValidator()
+                  .addRule('username', required)
+                  .addRule('username', minLength(3))
+                  .addRule('password', required)
+                  .addRule('password', minLength(8));
+          }
+
+          submit(data: Record<string, unknown>): { success: boolean; errors: FieldError[] } {
+              const errors = this.validator.validate(data);
+              return { success: errors.length === 0, errors };
+          }
+      }
+    src/analytics/funnel.ts: |
+      export const GARBAGE_BAL3R009_A = 'registration_funnel';
+
+      export class FunnelTracker {
+          track(step: string): void { console.log(`Funnel: ${step}`); }
+      }
+    src/session/cookie.ts: |
+      export const GARBAGE_BAL3R009_B = 'session_cookie_name';
+      export const GARBAGE_BAL3R009_C = 7;
+
+      export function setCookie(name: string, value: string): void {
+          document.cookie = `${name}=${value}`;
+      }
+    src/config/feature_flags.ts: |
+      export const GARBAGE_BAL3R009_D = 'feature_flag_registration_v2';
+
+      export function isEnabled(flag: string): boolean { return false; }
+  changed_files:
+    src/forms/validator.ts: |
+      import { ValidationRule } from './rules';
+      import { ValidationResult, FieldError } from './field_error';
+
+      export class FormValidator {
+          private rules: Map<string, ValidationRule[]> = new Map();
+
+          addRule(field: string, rule: ValidationRule): this {
+              const existing = this.rules.get(field) ?? [];
+              this.rules.set(field, [...existing, rule]);
+              return this;
+          }
+
+          validate(data: Record<string, unknown>): ValidationResult {
+              const errors: FieldError[] = [];
+              this.rules.forEach((fieldRules, field) => {
+                  const value = data[field];
+                  fieldRules.forEach(rule => {
+                      if (!rule.check(value)) {
+                          errors.push({ field, message: rule.message });
+                      }
+                  });
+              });
+              return { valid: errors.length === 0, errors };
+          }
+      }
+    src/forms/rules.ts: |
+      export interface ValidationRule {
+          check(value: unknown): boolean;
+          message: string;
+      }
+
+      export const required: ValidationRule = {
+          check: (v) => v !== null && v !== undefined && v !== '',
+          message: 'This field is required',
+      };
+
+      export const minLength = (n: number): ValidationRule => ({
+          check: (v) => typeof v === 'string' && v.length >= n,
+          message: `Minimum length is ${n}`,
+      });
+    src/forms/field_error.ts: |
+      export interface FieldError {
+          field: string;
+          message: string;
+      }
+
+      export interface ValidationResult {
+          valid: boolean;
+          errors: FieldError[];
+      }
+    src/ui/registration_form.ts: |
+      import { FormValidator } from '../forms/validator';
+      import { required, minLength } from '../forms/rules';
+      import { ValidationResult } from '../forms/field_error';
+
+      export class RegistrationForm {
+          private validator: FormValidator;
+
+          constructor() {
+              this.validator = new FormValidator()
+                  .addRule('username', required)
+                  .addRule('username', minLength(3))
+                  .addRule('password', required)
+                  .addRule('password', minLength(8));
+          }
+
+          submit(data: Record<string, unknown>): ValidationResult {
+              return this.validator.validate(data);
+          }
+      }
+    src/analytics/funnel.ts: |
+      export const GARBAGE_BAL3R009_A = 'registration_funnel';
+
+      export class FunnelTracker {
+          track(step: string): void { console.log(`Funnel: ${step}`); }
+      }
+    src/session/cookie.ts: |
+      export const GARBAGE_BAL3R009_B = 'session_cookie_name';
+      export const GARBAGE_BAL3R009_C = 7;
+
+      export function setCookie(name: string, value: string): void {
+          document.cookie = `${name}=${value}`;
+      }
+    src/config/feature_flags.ts: |
+      export const GARBAGE_BAL3R009_D = 'feature_flag_registration_v2';
+
+      export function isEnabled(flag: string): boolean { return false; }
+  commit_message: "refactor: introduce ValidationResult type to replace bare FieldError array"
+fragments:
+- id: validation_result_type
+  selector:
+    path: src/forms/field_error.ts
+    anchor: "export interface ValidationResult"
+- id: validator_validate_result
+  selector:
+    path: src/forms/validator.ts
+    anchor: "validate(data: Record<string, unknown>): ValidationResult"
+- id: registration_form_submit
+  selector:
+    path: src/ui/registration_form.ts
+    anchor: "submit(data: Record<string, unknown>): ValidationResult"
+- id: no_funnel
+  selector:
+    path: src/analytics/funnel.ts
+- id: no_cookie
+  selector:
+    path: src/session/cookie.ts
+- id: no_feature_flags
+  selector:
+    path: src/config/feature_flags.ts
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3R009_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3R009_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3R009_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3R009_D
+oracle:
+  required:
+  - validation_result_type
+  - validator_validate_result
+  - registration_form_submit
+  allowed: []
+  forbidden:
+  - no_funnel
+  - no_cookie
+  - no_feature_flags
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

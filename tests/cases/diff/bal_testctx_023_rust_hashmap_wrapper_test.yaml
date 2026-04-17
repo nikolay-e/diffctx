@@ -1,0 +1,145 @@
+name: bal_testctx_023_rust_hashmap_wrapper_test
+tags:
+- lang:rust
+- change:single_file
+- change:bug_fix
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/kv_store.rs: |
+      use std::collections::HashMap;
+
+      pub struct KvStore {
+          data: HashMap<String, String>,
+      }
+
+      impl KvStore {
+          pub fn new() -> Self {
+              KvStore { data: HashMap::new() }
+          }
+
+          pub fn set(&mut self, key: &str, value: &str) {
+              self.data.insert(key.to_string(), value.to_string());
+          }
+
+          pub fn get(&self, key: &str) -> Option<&String> {
+              self.data.get(key)
+          }
+
+          pub fn delete(&mut self, key: &str) -> bool {
+              self.data.remove(key).is_some()
+          }
+      }
+    tests/test_kv_store.rs: |
+      use crate::kv_store::KvStore;
+
+      #[test]
+      fn test_set_and_get() {
+          let mut store = KvStore::new();
+          store.set("name", "Alice");
+          assert_eq!(store.get("name"), Some(&"Alice".to_string()));
+      }
+
+      #[test]
+      fn test_get_missing_key() {
+          let store = KvStore::new();
+          assert_eq!(store.get("missing"), None);
+      }
+
+      #[test]
+      fn test_delete() {
+          let mut store = KvStore::new();
+          store.set("key", "val");
+          assert!(store.delete("key"));
+          assert_eq!(store.get("key"), None);
+      }
+    src/serializer.rs: |
+      use std::collections::HashMap;
+
+      pub fn to_json_string(data: &HashMap<String, String>) -> String {
+          let pairs: Vec<String> = data
+              .iter()
+              .map(|(k, v)| format!("\"{}\":\"{}\"", k, v))
+              .collect();
+          format!("{{{}}}", pairs.join(","))
+      }
+  changed_files:
+    src/kv_store.rs: |
+      use std::collections::HashMap;
+
+      pub struct KvStore {
+          data: HashMap<String, String>,
+          max_key_len: usize,
+      }
+
+      impl KvStore {
+          pub fn new() -> Self {
+              KvStore { data: HashMap::new(), max_key_len: 256 }
+          }
+
+          pub fn with_max_key_len(max_key_len: usize) -> Self {
+              KvStore { data: HashMap::new(), max_key_len }
+          }
+
+          pub fn set(&mut self, key: &str, value: &str) -> Result<(), String> {
+              if key.len() > self.max_key_len {
+                  return Err(format!("Key exceeds max length of {}", self.max_key_len));
+              }
+              self.data.insert(key.to_string(), value.to_string());
+              Ok(())
+          }
+
+          pub fn get(&self, key: &str) -> Option<&String> {
+              self.data.get(key)
+          }
+
+          pub fn delete(&mut self, key: &str) -> bool {
+              self.data.remove(key).is_some()
+          }
+
+          pub fn len(&self) -> usize {
+              self.data.len()
+          }
+
+          pub fn keys(&self) -> Vec<&String> {
+              self.data.keys().collect()
+          }
+      }
+  commit_message: "fix: validate key length in KvStore, add len and keys"
+fragments:
+- id: set_validation
+  selector:
+    path: src/kv_store.rs
+    anchor: "pub fn set(&mut self, key: &str, value: &str) -> Result"
+- id: with_max_key_len
+  selector:
+    path: src/kv_store.rs
+    anchor: "pub fn with_max_key_len"
+- id: keys_fn
+  selector:
+    path: src/kv_store.rs
+    anchor: "pub fn keys"
+- id: test_imports_kv
+  selector:
+    path: tests/test_kv_store.rs
+    anchor: "use crate::kv_store::KvStore"
+- id: test_set_and_get
+  selector:
+    path: tests/test_kv_store.rs
+    anchor: "fn test_set_and_get"
+- id: no_serializer
+  selector:
+    path: src/serializer.rs
+    anchor: "pub fn to_json_string"
+oracle:
+  required:
+  - set_validation
+  - test_imports_kv
+  allowed:
+  - with_max_key_len
+  - keys_fn
+  - test_set_and_get
+  forbidden:
+  - no_serializer

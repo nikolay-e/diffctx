@@ -1,0 +1,142 @@
+name: gap_089_rust_import_chain_codec_pipeline
+tags:
+- lang:rust
+- change:new_function
+- change:signature
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:2hop
+repo:
+  initial_files:
+    src/codec.rs: |
+      pub trait Codec {
+          fn encode(&self, data: &[u8]) -> Vec<u8>;
+          fn decode(&self, data: &[u8]) -> Vec<u8>;
+      }
+
+      pub struct Base64Codec;
+
+      impl Codec for Base64Codec {
+          fn encode(&self, data: &[u8]) -> Vec<u8> {
+              data.iter().map(|b| b.wrapping_add(1)).collect()
+          }
+
+          fn decode(&self, data: &[u8]) -> Vec<u8> {
+              data.iter().map(|b| b.wrapping_sub(1)).collect()
+          }
+      }
+    src/pipeline.rs: |
+      use crate::codec::Codec;
+
+      pub struct Pipeline {
+          codecs: Vec<Box<dyn Codec>>,
+      }
+
+      impl Pipeline {
+          pub fn new() -> Self {
+              Pipeline { codecs: Vec::new() }
+          }
+
+          pub fn add(&mut self, codec: Box<dyn Codec>) {
+              self.codecs.push(codec);
+          }
+
+          pub fn encode_all(&self, data: &[u8]) -> Vec<u8> {
+              let mut result = data.to_vec();
+              for codec in &self.codecs {
+                  result = codec.encode(&result);
+              }
+              result
+          }
+      }
+    src/compressor.rs: |
+      pub struct Compressor {
+          level: u8,
+      }
+
+      impl Compressor {
+          pub fn new(level: u8) -> Self {
+              Compressor { level: level.min(9) }
+          }
+
+          pub fn compress(&self, data: &[u8]) -> Vec<u8> {
+              data.to_vec()
+          }
+
+          pub fn decompress(&self, data: &[u8]) -> Vec<u8> {
+              data.to_vec()
+          }
+      }
+  changed_files:
+    src/codec.rs: |
+      pub trait Codec {
+          fn encode(&self, data: &[u8]) -> Vec<u8>;
+          fn decode(&self, data: &[u8]) -> Vec<u8>;
+          fn name(&self) -> &str;
+      }
+
+      pub struct Base64Codec;
+
+      impl Codec for Base64Codec {
+          fn encode(&self, data: &[u8]) -> Vec<u8> {
+              data.iter().map(|b| b.wrapping_add(1)).collect()
+          }
+
+          fn decode(&self, data: &[u8]) -> Vec<u8> {
+              data.iter().map(|b| b.wrapping_sub(1)).collect()
+          }
+
+          fn name(&self) -> &str {
+              "base64"
+          }
+      }
+
+      pub struct HexCodec;
+
+      impl Codec for HexCodec {
+          fn encode(&self, data: &[u8]) -> Vec<u8> {
+              data.iter().flat_map(|b| format!("{:02x}", b).into_bytes()).collect()
+          }
+
+          fn decode(&self, data: &[u8]) -> Vec<u8> {
+              data.chunks(2)
+                  .filter_map(|c| u8::from_str_radix(&String::from_utf8_lossy(c), 16).ok())
+                  .collect()
+          }
+
+          fn name(&self) -> &str {
+              "hex"
+          }
+      }
+  commit_message: "feat(codec): add name method and HexCodec"
+fixtures:
+  auto_garbage: true
+fragments:
+- id: codec_name_method
+  selector:
+    path: src/codec.rs
+    anchor: "fn name(&self) -> &str"
+- id: hex_codec_struct
+  selector:
+    path: src/codec.rs
+    anchor: "pub struct HexCodec"
+- id: pipeline_uses_codec
+  selector:
+    path: src/pipeline.rs
+    anchor: "use crate::codec::Codec"
+- id: no_compressor
+  selector:
+    path: src/compressor.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_089_A
+oracle:
+  required:
+  - codec_name_method
+  - hex_codec_struct
+  - pipeline_uses_codec
+  allowed: []
+  forbidden:
+  - no_compressor
+  - no_global_0

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from ...config.weights import EDGE_WEIGHTS
 from ...types import Fragment, FragmentId
-from ..base import EdgeBuilder, EdgeDict, discover_files_by_refs
+from ..base import EdgeBuilder, EdgeDict, read_cached
 
 _CSHARP_EXTS = {".cs"}
 _FSHARP_EXTS = {".fs", ".fsi", ".fsx"}
@@ -88,6 +88,9 @@ def _extract_attributes(content: str) -> set[str]:
     return {m.group(1) for m in _ATTRIBUTE_RE.finditer(content)}
 
 
+_DISCOVERY_MAX_DEPTH = 2
+
+
 class DotNetEdgeBuilder(EdgeBuilder):
     weight = 0.70
     using_weight = EDGE_WEIGHTS["dotnet_using"].forward
@@ -109,23 +112,86 @@ class DotNetEdgeBuilder(EdgeBuilder):
         if not dotnet_changed:
             return []
 
-        refs: set[str] = set()
-        for f in dotnet_changed:
-            try:
-                content = f.read_text(encoding="utf-8")
-                for using in _extract_usings(content, f):
-                    refs.add(using.split(".")[-1].lower())
-                    refs.add(using.replace(".", "/").lower())
-                ns = _extract_namespace(content, f)
-                if ns:
-                    for part in ns.split("."):
-                        refs.add(part.lower())
-                for t in _extract_types(content, f):
-                    refs.add(t.lower())
-            except (OSError, UnicodeDecodeError):
-                continue
+        fc = kwargs.get("file_cache")
+        cache: dict[Path, str] | None = fc if isinstance(fc, dict) else None
 
-        return discover_files_by_refs(refs, changed_files, all_candidate_files, repo_root)
+        dotnet_candidates = [f for f in all_candidate_files if _is_dotnet_file(f)]
+        file_types: dict[Path, set[str]] = {}
+        file_usings_full: dict[Path, set[str]] = {}
+        file_type_refs: dict[Path, set[str]] = {}
+        file_namespaces: dict[Path, str | None] = {}
+
+        for candidate in dotnet_candidates:
+            content = read_cached(candidate, cache)
+            if content is None:
+                continue
+            file_types[candidate] = {t.lower() for t in _extract_types(content, candidate)}
+            file_usings_full[candidate] = {u.lower() for u in _extract_usings(content, candidate)}
+            file_type_refs[candidate] = {t.lower() for t in _extract_type_refs(content)}
+            file_namespaces[candidate] = _extract_namespace(content, candidate)
+
+        changed_set = set(changed_files)
+        discovered: set[Path] = set()
+        frontier = set(dotnet_changed)
+
+        for _depth in range(_DISCOVERY_MAX_DEPTH):
+            frontier_types, frontier_ns = self._collect_frontier_refs(frontier, cache)
+            frontier = self._discover_one_hop(
+                dotnet_candidates,
+                changed_set | discovered,
+                frontier_types,
+                frontier_ns,
+                file_usings_full,
+                file_type_refs,
+                file_namespaces,
+            )
+            discovered.update(frontier)
+            if not frontier:
+                break
+
+        return list(discovered)
+
+    @staticmethod
+    def _collect_frontier_refs(
+        frontier: set[Path],
+        cache: dict[Path, str] | None,
+    ) -> tuple[set[str], set[str]]:
+        types: set[str] = set()
+        namespaces: set[str] = set()
+        for f in frontier:
+            content = read_cached(f, cache)
+            if content is None:
+                continue
+            types.update(t.lower() for t in _extract_types(content, f))
+            ns = _extract_namespace(content, f)
+            if ns:
+                namespaces.add(ns.lower())
+        return types, namespaces
+
+    @staticmethod
+    def _discover_one_hop(
+        candidates: list[Path],
+        skip: set[Path],
+        frontier_types: set[str],
+        frontier_ns: set[str],
+        file_usings: dict[Path, set[str]],
+        file_type_refs: dict[Path, set[str]],
+        file_namespaces: dict[Path, str | None],
+    ) -> set[Path]:
+        found: set[Path] = set()
+        for candidate in candidates:
+            if candidate in skip:
+                continue
+            if file_usings.get(candidate, set()) & frontier_ns:
+                found.add(candidate)
+                continue
+            if file_type_refs.get(candidate, set()) & frontier_types:
+                found.add(candidate)
+                continue
+            cand_ns = file_namespaces.get(candidate)
+            if cand_ns and cand_ns.lower() in frontier_ns:
+                found.add(candidate)
+        return found
 
     def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:
         dotnet_frags = [f for f in fragments if _is_dotnet_file(f.path)]

@@ -1,129 +1,225 @@
 name: csharp_011_generic_method
+tags:
+- lang:scala
+- change:multi_file
+- change:new_function
+- context:cross_module
+- distance:3hop+
+- difficulty:hard
 repo:
   initial_files:
-    Services/Serializer.cs: |
-      using System.Text.Json;
+    src/main/scala/trading/Trade.scala: |
+      package trading
 
-      namespace MyApp.Services;
+      case class Trade(
+        id: String,
+        symbol: String,
+        quantity: Int,
+        price: Double,
+        side: String
+      )
+    src/main/scala/trading/TradeRepository.scala: |
+      package trading
 
-      public static class Serializer
-      {
-          public static string ToJson<T>(T obj)
-          {
-              return JsonSerializer.Serialize(obj);
+      class TradeRepository {
+        private var store: List[Trade] = List.empty
+
+        def save(t: Trade): Unit = {
+          store = t :: store
+        }
+
+        def findBySymbol(symbol: String): List[Trade] =
+          store.filter(_.symbol == symbol)
+
+        def all(): List[Trade] = store
+      }
+    src/main/scala/trading/PositionService.scala: |
+      package trading
+
+      class PositionService(repo: TradeRepository) {
+        def netPosition(symbol: String): Int = {
+          repo.findBySymbol(symbol).foldLeft(0) { (acc, t) =>
+            if (t.side == "buy") acc + t.quantity else acc - t.quantity
           }
-
-          public static T? FromJson<T>(string json)
-          {
-              return JsonSerializer.Deserialize<T>(json);
-          }
+        }
       }
-    Program.cs: |
-      using System;
+    src/main/scala/trading/api/TradingController.scala: |
+      package trading.api
 
-      class Program
-      {
-          static void Main() { }
+      import trading.{PositionService, TradeRepository, Trade}
+
+      class TradingController(service: PositionService) {
+        def handlePosition(symbol: String): String = {
+          val pos = service.netPosition(symbol)
+          s"Net position for $symbol: $pos"
+        }
       }
-    Unrelated/TemplateEngine.cs: |
-      namespace MyApp.Unrelated;
+    src/main/scala/CS011_MarketData.scala: |
+      package marketdata
 
-      public class TemplateEngine
-      {
-          private const string GARBAGE_CS_011_TEMPLATE_ENGINE_A = "template_engine_marker";
+      object CS011_MarketData {
+        val CS011_GARBAGE_A = "marketdata_marker"
+        val CS011_GARBAGE_B = "feed_url"
 
-          public string Render(string template) => GARBAGE_CS_011_TEMPLATE_ENGINE_A + template;
+        def getLastPrice(symbol: String): Double = 0.0
       }
-    Unrelated/LocalizationService.cs: |
-      namespace MyApp.Unrelated;
+    src/main/scala/CS011_Compliance.scala: |
+      package compliance
 
-      public class LocalizationService
-      {
-          public const string GARBAGE_CS_011_LOCALIZATION_B = "localization_marker";
+      object CS011_Compliance {
+        val CS011_GARBAGE_C = "compliance_marker"
+        val CS011_GARBAGE_D = "ruleset_version"
 
-          public string Translate(string key) => GARBAGE_CS_011_LOCALIZATION_B + key;
+        def checkTrade(tradeId: String): Boolean = true
+      }
+    src/main/scala/CS011_Notify.scala: |
+      package notify
+
+      object CS011_Notify {
+        val CS011_GARBAGE_E = "notify_marker"
+
+        def sendAlert(msg: String): Unit = println(msg)
       }
   changed_files:
-    Services/Serializer.cs: |
-      using System.Text.Json;
+    src/main/scala/trading/Trade.scala: |
+      package trading
 
-      namespace MyApp.Services;
+      case class Trade(
+        id: String,
+        symbol: String,
+        quantity: Int,
+        price: Double,
+        side: String,
+        commission: Double
+      )
+    src/main/scala/trading/TradeRepository.scala: |
+      package trading
 
-      public static class Serializer
-      {
-          public static string ToJson<T>(T obj)
-          {
-              return JsonSerializer.Serialize(obj);
+      class TradeRepository {
+        private var store: List[Trade] = List.empty
+
+        def save(t: Trade): Unit = {
+          store = t :: store
+        }
+
+        def findBySymbol(symbol: String): List[Trade] =
+          store.filter(_.symbol == symbol)
+
+        def all(): List[Trade] = store
+
+        def totalCommission(): Double =
+          store.map(_.commission).sum
+      }
+    src/main/scala/trading/PositionService.scala: |
+      package trading
+
+      class PositionService(repo: TradeRepository) {
+        def netPosition(symbol: String): Int = {
+          repo.findBySymbol(symbol).foldLeft(0) { (acc, t) =>
+            if (t.side == "buy") acc + t.quantity else acc - t.quantity
           }
+        }
 
-          public static T? FromJson<T>(string json)
-          {
-              return JsonSerializer.Deserialize<T>(json);
+        def realizedPnl(symbol: String, currentPrice: Double): Double = {
+          repo.findBySymbol(symbol).foldLeft(0.0) { (acc, t) =>
+            val value = if (t.side == "buy") (currentPrice - t.price) * t.quantity
+                        else (t.price - currentPrice) * t.quantity
+            acc + value - t.commission
           }
+        }
+
+        def commissionPaid(): Double = repo.totalCommission()
       }
-    Program.cs: |
-      using System;
-      using MyApp.Services;
-      using MyApp.Models;
+    src/main/scala/trading/api/TradingController.scala: |
+      package trading.api
 
-      class Program
-      {
-          static void Main()
-          {
-              var user = new User { Id = 1, Name = "John" };
-              var json = Serializer.ToJson(user);
-              var restored = Serializer.FromJson<User>(json);
-          }
+      import trading.{PositionService, TradeRepository, Trade}
+
+      class TradingController(service: PositionService) {
+        def handlePosition(symbol: String): String = {
+          val pos = service.netPosition(symbol)
+          s"Net position for $symbol: $pos"
+        }
+
+        def handlePnl(symbol: String, currentPrice: Double): String = {
+          val pnl = service.realizedPnl(symbol, currentPrice)
+          s"PnL for $symbol at $$${currentPrice}: $$${pnl}"
+        }
       }
-    Unrelated/TemplateEngine.cs: |
-      namespace MyApp.Unrelated;
+    src/main/scala/CS011_MarketData.scala: |
+      package marketdata
 
-      public class TemplateEngine
-      {
-          private const string GARBAGE_CS_011_TEMPLATE_ENGINE_A = "template_engine_marker";
+      object CS011_MarketData {
+        val CS011_GARBAGE_A = "marketdata_marker"
+        val CS011_GARBAGE_B = "feed_url"
 
-          public string Render(string template) => GARBAGE_CS_011_TEMPLATE_ENGINE_A + template;
+        def getLastPrice(symbol: String): Double = 0.0
       }
-    Unrelated/LocalizationService.cs: |
-      namespace MyApp.Unrelated;
+    src/main/scala/CS011_Compliance.scala: |
+      package compliance
 
-      public class LocalizationService
-      {
-          public const string GARBAGE_CS_011_LOCALIZATION_B = "localization_marker";
+      object CS011_Compliance {
+        val CS011_GARBAGE_C = "compliance_marker"
+        val CS011_GARBAGE_D = "ruleset_version"
 
-          public string Translate(string key) => GARBAGE_CS_011_LOCALIZATION_B + key;
+        def checkTrade(tradeId: String): Boolean = true
       }
-  commit_message: Update files
+    src/main/scala/CS011_Notify.scala: |
+      package notify
+
+      object CS011_Notify {
+        val CS011_GARBAGE_E = "notify_marker"
+
+        def sendAlert(msg: String): Unit = println(msg)
+      }
+  commit_message: "feat: add commission to Trade, realizedPnl and commissionPaid to PositionService"
 fragments:
-- id: program_file
+- id: trade_commission_field
   selector:
-    path: Program.cs
-- id: req_global_0
+    path: src/main/scala/trading/Trade.scala
+    anchor: "commission: Double"
+- id: repo_total_commission
   selector:
-    anchor: using MyApp.Services;
-- id: req_global_1
+    path: src/main/scala/trading/TradeRepository.scala
+    anchor: "def totalCommission()"
+- id: service_realized_pnl
   selector:
-    anchor: static void Main()
-- id: no_global_0
+    path: src/main/scala/trading/PositionService.scala
+    anchor: "def realizedPnl(symbol: String, currentPrice: Double)"
+- id: service_commission_paid
   selector:
-    anchor: GARBAGE_CS_011_LOCALIZATION_B
-- id: no_global_1
+    path: src/main/scala/trading/PositionService.scala
+    anchor: "def commissionPaid()"
+- id: controller_handle_pnl
   selector:
-    anchor: GARBAGE_CS_011_TEMPLATE_ENGINE_A
-- id: no_global_2
+    path: src/main/scala/trading/api/TradingController.scala
+    anchor: "def handlePnl(symbol: String, currentPrice: Double)"
+- id: no_garbage_a
   selector:
-    anchor: LocalizationService.cs
-- id: no_global_3
+    anchor: CS011_GARBAGE_A
+- id: no_garbage_b
   selector:
-    anchor: TemplateEngine.cs
+    anchor: CS011_GARBAGE_B
+- id: no_garbage_c
+  selector:
+    anchor: CS011_GARBAGE_C
+- id: no_garbage_d
+  selector:
+    anchor: CS011_GARBAGE_D
+- id: no_garbage_e
+  selector:
+    anchor: CS011_GARBAGE_E
 oracle:
   required:
-  - program_file
-  - req_global_0
-  - req_global_1
+  - trade_commission_field
+  - repo_total_commission
+  - service_realized_pnl
+  - service_commission_paid
+  - controller_handle_pnl
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d
+  - no_garbage_e

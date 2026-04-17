@@ -1,0 +1,128 @@
+name: bal4_3hop_032_kotlin_color_palette
+tags:
+- lang:kotlin
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:trivial
+repo:
+  initial_files:
+    src/model/Color.kt: |
+      package model
+
+      data class Color(val r: Int, val g: Int, val b: Int)
+    src/palette/Mixer.kt: |
+      package palette
+
+      import model.Color
+
+      fun mix(a: Color, b: Color): Color =
+          Color((a.r + b.r) / 2, (a.g + b.g) / 2, (a.b + b.b) / 2)
+    src/render/Painter.kt: |
+      package render
+
+      import palette.mix
+      import model.Color
+
+      fun paint(a: Color, b: Color): String =
+          mix(a, b).toString()
+    src/ui/Canvas.kt: |
+      package ui
+
+      import render.paint
+      import model.Color
+
+      fun draw(): String =
+          paint(Color(255, 0, 0), Color(0, 0, 255))
+    src/utils/Noise.kt: |
+      package utils
+      val GARBAGE_032_NOISE_A = "noise"
+      val GARBAGE_032_SEED_B = 42
+      fun noise() = Math.random()
+    src/utils/Grid.kt: |
+      package utils
+      val GARBAGE_032_GRID_C = "grid"
+      val GARBAGE_032_SIZE_D = 8
+      fun grid() = Array(8) { IntArray(8) }
+  changed_files:
+    src/model/Color.kt: |
+      package model
+
+      data class Color(val r: Int, val g: Int, val b: Int, val a: Int = 255)
+    src/palette/Mixer.kt: |
+      package palette
+
+      import model.Color
+
+      fun mix(a: Color, b: Color): Color =
+          Color((a.r + b.r) / 2, (a.g + b.g) / 2, (a.b + b.b) / 2)
+    src/render/Painter.kt: |
+      package render
+
+      import palette.mix
+      import model.Color
+
+      fun paint(a: Color, b: Color): String =
+          mix(a, b).toString()
+    src/ui/Canvas.kt: |
+      package ui
+
+      import render.paint
+      import model.Color
+
+      fun draw(): String =
+          paint(Color(255, 0, 0), Color(0, 0, 255))
+    src/utils/Noise.kt: |
+      package utils
+      val GARBAGE_032_NOISE_A = "noise"
+      val GARBAGE_032_SEED_B = 42
+      fun noise() = Math.random()
+    src/utils/Grid.kt: |
+      package utils
+      val GARBAGE_032_GRID_C = "grid"
+      val GARBAGE_032_SIZE_D = 8
+      fun grid() = Array(8) { IntArray(8) }
+  commit_message: "feat: add alpha channel to Color"
+fragments:
+- id: color_alpha
+  selector:
+    path: src/model/Color.kt
+    anchor: "a: Int = 255"
+- id: mixer_import
+  selector:
+    path: src/palette/Mixer.kt
+    anchor: "import model.Color"
+- id: painter_import
+  selector:
+    path: src/render/Painter.kt
+    anchor: "import palette.mix"
+- id: canvas_import
+  selector:
+    path: src/ui/Canvas.kt
+    anchor: "import render.paint"
+- id: no_noise
+  selector:
+    path: src/utils/Noise.kt
+    anchor: "GARBAGE_032_NOISE_A"
+- id: no_grid
+  selector:
+    path: src/utils/Grid.kt
+    anchor: "GARBAGE_032_GRID_C"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_032_SEED_B
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_032_SIZE_D
+oracle:
+  required:
+  - color_alpha
+  - mixer_import
+  - painter_import
+  - canvas_import
+  allowed: []
+  forbidden:
+  - no_noise
+  - no_grid
+  - no_global_0
+  - no_global_1

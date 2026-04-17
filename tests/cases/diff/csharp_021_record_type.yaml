@@ -1,118 +1,124 @@
 name: csharp_021_record_type
+tags:
+- lang:python
+- lang:shell
+- change:multi_file
+- context:same_file
+- distance:0hop
+- difficulty:easy
 repo:
   initial_files:
-    Models/PersonRecord.cs: |
-      namespace MyApp.Models;
+    scripts/lint.py: |
+      import subprocess
+      import sys
 
-      public record Person(string FirstName, string LastName, int Age)
-      {
-          public string FullName => $"{FirstName} {LastName}";
-      }
+      LINT_PATHS = ["src", "tests"]
 
-      public record Address(string Street, string City, string Country);
-    Services/PersonService.cs: |
-      namespace MyApp.Services;
 
-      public class PersonService { }
-    Unrelated/GeoService.cs: |
-      namespace MyApp.Unrelated;
+      def run_ruff(paths: list[str] = LINT_PATHS) -> int:
+          result = subprocess.run(["ruff", "check"] + paths)
+          return result.returncode
+    scripts/lint.sh: |
+      #!/usr/bin/env bash
+      python3 scripts/lint.py
+    garbage/complexity.py: |
+      GARBAGE_CS021_COMPLEX_A = "complexity_marker"
 
-      public class GeoService
-      {
-          private const string GARBAGE_CS_021_GEO_SERVICE_A = "geo_service_marker";
 
-          public string Geocode(string address) => GARBAGE_CS_021_GEO_SERVICE_A + address;
-      }
-    Unrelated/CurrencyConverter.cs: |
-      namespace MyApp.Unrelated;
+      def check_complexity(path: str) -> dict:
+          return {}
+    garbage/dead_code.py: |
+      GARBAGE_CS021_DEAD_B = "dead_code_marker"
 
-      public class CurrencyConverter
-      {
-          public const string GARBAGE_CS_021_CURRENCY_CONVERTER_B = "currency_converter_marker";
 
-          public decimal Convert(decimal amount) => amount;
-      }
+      def find_dead_code(path: str) -> list:
+          return []
+    garbage/deps.py: |
+      GARBAGE_CS021_DEPS_C = "deps_marker"
+
+
+      def check_deps() -> list:
+          return []
   changed_files:
-    Models/PersonRecord.cs: |
-      namespace MyApp.Models;
+    scripts/lint.py: |
+      import subprocess
+      import sys
 
-      public record Person(string FirstName, string LastName, int Age)
-      {
-          public string FullName => $"{FirstName} {LastName}";
-      }
+      LINT_PATHS = ["src", "tests"]
 
-      public record Address(string Street, string City, string Country);
-    Services/PersonService.cs: |
-      using MyApp.Models;
 
-      namespace MyApp.Services;
+      def run_ruff(paths: list[str] = LINT_PATHS) -> int:
+          result = subprocess.run(["ruff", "check"] + paths)
+          return result.returncode
 
-      public class PersonService
-      {
-          public Person CreatePerson(string first, string last, int age)
-          {
-              return new Person(first, last, age);
-          }
 
-          public Person UpdateAge(Person person, int newAge)
-          {
-              return person with { Age = newAge };
-          }
+      def run_mypy(paths: list[str] = LINT_PATHS) -> int:
+          result = subprocess.run(["mypy"] + paths)
+          return result.returncode
 
-          public bool AreEqual(Person p1, Person p2)
-          {
-              return p1 == p2;
-          }
-      }
-    Unrelated/GeoService.cs: |
-      namespace MyApp.Unrelated;
 
-      public class GeoService
-      {
-          private const string GARBAGE_CS_021_GEO_SERVICE_A = "geo_service_marker";
+      def run_all(paths: list[str] = LINT_PATHS) -> int:
+          ruff_code = run_ruff(paths)
+          mypy_code = run_mypy(paths)
+          return max(ruff_code, mypy_code)
+    scripts/lint.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      if [[ "${CHECK:-all}" == "ruff" ]]; then
+          python3 -c "import scripts.lint; sys.exit(scripts.lint.run_ruff())"
+      elif [[ "${CHECK:-all}" == "mypy" ]]; then
+          python3 -c "import scripts.lint; sys.exit(scripts.lint.run_mypy())"
+      else
+          python3 -c "import scripts.lint; sys.exit(scripts.lint.run_all())"
+      fi
+    garbage/complexity.py: |
+      GARBAGE_CS021_COMPLEX_A = "complexity_marker"
 
-          public string Geocode(string address) => GARBAGE_CS_021_GEO_SERVICE_A + address;
-      }
-    Unrelated/CurrencyConverter.cs: |
-      namespace MyApp.Unrelated;
 
-      public class CurrencyConverter
-      {
-          public const string GARBAGE_CS_021_CURRENCY_CONVERTER_B = "currency_converter_marker";
+      def check_complexity(path: str) -> dict:
+          return {}
+    garbage/dead_code.py: |
+      GARBAGE_CS021_DEAD_B = "dead_code_marker"
 
-          public decimal Convert(decimal amount) => amount;
-      }
-  commit_message: Update files
+
+      def find_dead_code(path: str) -> list:
+          return []
+    garbage/deps.py: |
+      GARBAGE_CS021_DEPS_C = "deps_marker"
+
+
+      def check_deps() -> list:
+          return []
+  commit_message: "feat: add run_mypy and run_all functions to lint script"
 fragments:
-- id: personservice_file
+- id: run_mypy_fn
   selector:
-    path: Services/PersonService.cs
-- id: req_global_0
+    path: scripts/lint.py
+    anchor: "def run_mypy"
+- id: run_all_fn
   selector:
-    anchor: public Person CreatePerson(string first, string last, int age)
-- id: req_global_1
+    path: scripts/lint.py
+    anchor: "def run_all"
+- id: shell_check_dispatch
   selector:
-    anchor: public Person UpdateAge(Person person, int newAge)
-- id: no_global_0
+    path: scripts/lint.sh
+    anchor: 'CHECK:-all'
+- id: no_garbage_a
   selector:
-    anchor: GARBAGE_CS_021_CURRENCY_CONVERTER_B
-- id: no_global_1
+    anchor: GARBAGE_CS021_COMPLEX_A
+- id: no_garbage_b
   selector:
-    anchor: GARBAGE_CS_021_GEO_SERVICE_A
-- id: no_global_2
+    anchor: GARBAGE_CS021_DEAD_B
+- id: no_garbage_c
   selector:
-    anchor: CurrencyConverter.cs
-- id: no_global_3
-  selector:
-    anchor: GeoService.cs
+    anchor: GARBAGE_CS021_DEPS_C
 oracle:
   required:
-  - personservice_file
-  - req_global_0
-  - req_global_1
+  - run_mypy_fn
+  - run_all_fn
+  - shell_check_dispatch
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

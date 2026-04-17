@@ -1,0 +1,279 @@
+name: bal3_3hop_080_php_queue_processor_chain
+tags:
+- lang:php
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/Queue/Job.php: |
+      <?php
+      namespace App\Queue;
+
+      abstract class Job {
+          protected string $queue = 'default';
+          abstract public function handle(): void;
+          public function getQueue(): string {
+              return $this->queue;
+          }
+      }
+    src/Queue/Worker.php: |
+      <?php
+      namespace App\Queue;
+
+      use App\Queue\Job;
+
+      class Worker {
+          public function process(Job $job): bool {
+              try {
+                  $job->handle();
+                  return true;
+              } catch (\Throwable $e) {
+                  return false;
+              }
+          }
+      }
+    src/Queue/Dispatcher.php: |
+      <?php
+      namespace App\Queue;
+
+      use App\Queue\Worker;
+      use App\Queue\Job;
+
+      class Dispatcher {
+          private Worker $worker;
+          private array $queue = [];
+          public function __construct(Worker $worker) {
+              $this->worker = $worker;
+          }
+          public function dispatch(Job $job): void {
+              $this->queue[] = $job;
+          }
+          public function flush(): array {
+              $results = [];
+              foreach ($this->queue as $job) {
+                  $results[] = $this->worker->process($job);
+              }
+              $this->queue = [];
+              return $results;
+          }
+      }
+    src/Services/QueueService.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Queue\Dispatcher;
+      use App\Queue\Job;
+
+      class QueueService {
+          private Dispatcher $dispatcher;
+          public function __construct(Dispatcher $dispatcher) {
+              $this->dispatcher = $dispatcher;
+          }
+          public function enqueue(Job $job): void {
+              $this->dispatcher->dispatch($job);
+          }
+          public function processAll(): array {
+              return $this->dispatcher->flush();
+          }
+      }
+    src/Console/QueueCommand.php: |
+      <?php
+      namespace App\Console;
+
+      use App\Services\QueueService;
+
+      class QueueCommand {
+          private QueueService $service;
+          public function __construct(QueueService $service) {
+              $this->service = $service;
+          }
+          public function run(): array {
+              return $this->service->processAll();
+          }
+      }
+    src/Broadcasting/Broadcaster.php: |
+      <?php
+      namespace App\Broadcasting;
+      define('GARBAGE_080_BROADCAST_A', 'pusher');
+      define('GARBAGE_080_CHANNEL_B', 'default');
+
+      class Broadcaster {
+          public function broadcast(string $channel, array $data): void {}
+      }
+    src/Broadcasting/PresenceChannel.php: |
+      <?php
+      namespace App\Broadcasting;
+      define('GARBAGE_080_PRESENCE_C', 'channel');
+      define('GARBAGE_080_AUTH_D', 'token');
+
+      class PresenceChannel {
+          public function join(string $userId): void {}
+      }
+  changed_files:
+    src/Queue/Job.php: |
+      <?php
+      namespace App\Queue;
+
+      abstract class Job {
+          protected string $queue = 'default';
+          protected int $maxRetries = 3;
+          protected int $attempts = 0;
+          abstract public function handle(): void;
+          public function getQueue(): string {
+              return $this->queue;
+          }
+          public function incrementAttempts(): void {
+              $this->attempts++;
+          }
+          public function canRetry(): bool {
+              return $this->attempts < $this->maxRetries;
+          }
+      }
+    src/Queue/Worker.php: |
+      <?php
+      namespace App\Queue;
+
+      use App\Queue\Job;
+
+      class Worker {
+          public function process(Job $job): bool {
+              $job->incrementAttempts();
+              try {
+                  $job->handle();
+                  return true;
+              } catch (\Throwable $e) {
+                  return false;
+              }
+          }
+      }
+    src/Queue/Dispatcher.php: |
+      <?php
+      namespace App\Queue;
+
+      use App\Queue\Worker;
+      use App\Queue\Job;
+
+      class Dispatcher {
+          private Worker $worker;
+          private array $queue = [];
+          private array $failed = [];
+          public function __construct(Worker $worker) {
+              $this->worker = $worker;
+          }
+          public function dispatch(Job $job): void {
+              $this->queue[] = $job;
+          }
+          public function flush(): array {
+              $results = [];
+              foreach ($this->queue as $job) {
+                  $success = $this->worker->process($job);
+                  if (!$success && $job->canRetry()) {
+                      $this->failed[] = $job;
+                  }
+                  $results[] = $success;
+              }
+              $this->queue = $this->failed;
+              $this->failed = [];
+              return $results;
+          }
+      }
+    src/Services/QueueService.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Queue\Dispatcher;
+      use App\Queue\Job;
+
+      class QueueService {
+          private Dispatcher $dispatcher;
+          public function __construct(Dispatcher $dispatcher) {
+              $this->dispatcher = $dispatcher;
+          }
+          public function enqueue(Job $job): void {
+              $this->dispatcher->dispatch($job);
+          }
+          public function processAll(): array {
+              return $this->dispatcher->flush();
+          }
+      }
+    src/Console/QueueCommand.php: |
+      <?php
+      namespace App\Console;
+
+      use App\Services\QueueService;
+
+      class QueueCommand {
+          private QueueService $service;
+          public function __construct(QueueService $service) {
+              $this->service = $service;
+          }
+          public function run(): array {
+              return $this->service->processAll();
+          }
+      }
+    src/Broadcasting/Broadcaster.php: |
+      <?php
+      namespace App\Broadcasting;
+      define('GARBAGE_080_BROADCAST_A', 'pusher');
+      define('GARBAGE_080_CHANNEL_B', 'default');
+
+      class Broadcaster {
+          public function broadcast(string $channel, array $data): void {}
+      }
+    src/Broadcasting/PresenceChannel.php: |
+      <?php
+      namespace App\Broadcasting;
+      define('GARBAGE_080_PRESENCE_C', 'channel');
+      define('GARBAGE_080_AUTH_D', 'token');
+
+      class PresenceChannel {
+          public function join(string $userId): void {}
+      }
+  commit_message: "feat: add retry mechanism with max attempts to queue jobs"
+fragments:
+- id: job_max_retries
+  selector:
+    path: src/Queue/Job.php
+    anchor: "protected int $maxRetries"
+- id: job_can_retry
+  selector:
+    path: src/Queue/Job.php
+    anchor: "function canRetry"
+- id: worker_increments
+  selector:
+    path: src/Queue/Worker.php
+    anchor: "incrementAttempts()"
+- id: dispatcher_retry_logic
+  selector:
+    path: src/Queue/Dispatcher.php
+    anchor: "canRetry()"
+- id: service_uses_dispatcher
+  selector:
+    path: src/Services/QueueService.php
+    anchor: "use App\\Queue\\Dispatcher"
+- id: command_uses_service
+  selector:
+    path: src/Console/QueueCommand.php
+    anchor: "use App\\Services\\QueueService"
+- id: no_broadcaster
+  selector:
+    path: src/Broadcasting/Broadcaster.php
+    anchor: "GARBAGE_080_BROADCAST_A"
+- id: no_presence
+  selector:
+    path: src/Broadcasting/PresenceChannel.php
+    anchor: "GARBAGE_080_PRESENCE_C"
+oracle:
+  required:
+  - job_max_retries
+  - job_can_retry
+  - worker_increments
+  - dispatcher_retry_logic
+  - service_uses_dispatcher
+  - command_uses_service
+  allowed: []
+  forbidden:
+  - no_broadcaster
+  - no_presence

@@ -1,4 +1,11 @@
 name: kubernetes_031_istio_virtual_service
+tags:
+- lang:yaml
+- change:single_file
+- change:config
+- context:import_chain
+- distance:2hop
+- difficulty:medium
 repo:
   initial_files:
     k8s/base/deployment-v1.yaml: |

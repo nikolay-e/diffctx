@@ -1,0 +1,243 @@
+name: bal3_3hop_030_rust_app_coordinator_processor_validator
+tags:
+- lang:rust
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/validator/rules.rs: |
+      pub struct Rule {
+          pub field: String,
+          pub required: bool,
+          pub min_len: usize,
+      }
+
+      pub struct Validator {
+          rules: Vec<Rule>,
+      }
+
+      impl Validator {
+          pub fn new(rules: Vec<Rule>) -> Self {
+              Self { rules }
+          }
+
+          pub fn validate(&self, data: &std::collections::HashMap<String, String>) -> Vec<String> {
+              let mut errors = Vec::new();
+              for rule in &self.rules {
+                  match data.get(&rule.field) {
+                      None if rule.required => {
+                          errors.push(format!("{} is required", rule.field));
+                      }
+                      Some(val) if val.len() < rule.min_len => {
+                          errors.push(format!("{} too short", rule.field));
+                      }
+                      _ => {}
+                  }
+              }
+              errors
+          }
+      }
+    src/validator/mod.rs: |
+      pub mod rules;
+    src/processor/processor.rs: |
+      use crate::validator::rules::Validator;
+      use std::collections::HashMap;
+
+      pub struct Processor {
+          validator: Validator,
+      }
+
+      impl Processor {
+          pub fn new(validator: Validator) -> Self {
+              Self { validator }
+          }
+
+          pub fn process(&self, data: &HashMap<String, String>) -> Result<(), Vec<String>> {
+              let errors = self.validator.validate(data);
+              if errors.is_empty() {
+                  Ok(())
+              } else {
+                  Err(errors)
+              }
+          }
+      }
+    src/processor/mod.rs: |
+      pub mod processor;
+    src/coordinator/coordinator.rs: |
+      use crate::processor::processor::Processor;
+      use std::collections::HashMap;
+
+      pub struct Coordinator {
+          processor: Processor,
+          processed: u64,
+      }
+
+      impl Coordinator {
+          pub fn new(processor: Processor) -> Self {
+              Self { processor, processed: 0 }
+          }
+
+          pub fn coordinate(&mut self, data: &HashMap<String, String>) -> Result<(), Vec<String>> {
+              let result = self.processor.process(data);
+              if result.is_ok() {
+                  self.processed += 1;
+              }
+              result
+          }
+
+          pub fn total_processed(&self) -> u64 {
+              self.processed
+          }
+      }
+    src/coordinator/mod.rs: |
+      pub mod coordinator;
+    src/app/app.rs: |
+      use crate::coordinator::coordinator::Coordinator;
+      use std::collections::HashMap;
+
+      pub struct App {
+          coordinator: Coordinator,
+      }
+
+      impl App {
+          pub fn new(coordinator: Coordinator) -> Self {
+              Self { coordinator }
+          }
+
+          pub fn submit(&mut self, data: &HashMap<String, String>) -> String {
+              match self.coordinator.coordinate(data) {
+                  Ok(()) => "accepted".to_string(),
+                  Err(errors) => format!("rejected: {}", errors.join(", ")),
+              }
+          }
+      }
+    src/app/mod.rs: |
+      pub mod app;
+    src/report/summary.rs: |
+      pub static GARBAGE_BAL3_030_SUMMARY_MARKER_A: &str = "summary";
+      pub static GARBAGE_BAL3_030_TOTAL_MARKER_B: u64 = 0;
+
+      pub struct Summary;
+      impl Summary {
+          pub fn generate(&self) -> String { String::new() }
+      }
+    src/report/detail.rs: |
+      pub static GARBAGE_BAL3_030_DETAIL_MARKER_C: &str = "detail";
+      pub static GARBAGE_BAL3_030_VERBOSE_MARKER_D: bool = false;
+
+      pub struct Detail;
+      impl Detail {
+          pub fn generate(&self) -> String { String::new() }
+      }
+    src/report/mod.rs: |
+      pub mod summary;
+      pub mod detail;
+    src/lib.rs: |
+      pub mod validator;
+      pub mod processor;
+      pub mod coordinator;
+      pub mod app;
+      pub mod report;
+  changed_files:
+    src/validator/rules.rs: |
+      pub struct Rule {
+          pub field: String,
+          pub required: bool,
+          pub min_len: usize,
+          pub max_len: usize,
+      }
+
+      pub struct Validator {
+          rules: Vec<Rule>,
+      }
+
+      impl Validator {
+          pub fn new(rules: Vec<Rule>) -> Self {
+              Self { rules }
+          }
+
+          pub fn validate(&self, data: &std::collections::HashMap<String, String>) -> Vec<String> {
+              let mut errors = Vec::new();
+              for rule in &self.rules {
+                  match data.get(&rule.field) {
+                      None if rule.required => {
+                          errors.push(format!("{} is required", rule.field));
+                      }
+                      Some(val) if val.len() < rule.min_len => {
+                          errors.push(format!("{} too short", rule.field));
+                      }
+                      Some(val) if rule.max_len > 0 && val.len() > rule.max_len => {
+                          errors.push(format!("{} too long", rule.field));
+                      }
+                      _ => {}
+                  }
+              }
+              errors
+          }
+
+          pub fn rule_count(&self) -> usize {
+              self.rules.len()
+          }
+      }
+  commit_message: "Add max_len validation and rule_count to validator"
+fragments:
+- id: rule_max_len
+  selector:
+    path: src/validator/rules.rs
+    anchor: "pub max_len: usize"
+- id: validate_too_long
+  selector:
+    path: src/validator/rules.rs
+    anchor: "too long"
+- id: rule_count
+  selector:
+    path: src/validator/rules.rs
+    anchor: "pub fn rule_count"
+- id: processor_process
+  selector:
+    path: src/processor/processor.rs
+    anchor: "pub fn process"
+- id: coordinator_coordinate
+  selector:
+    path: src/coordinator/coordinator.rs
+    anchor: "pub fn coordinate"
+- id: app_submit
+  selector:
+    path: src/app/app.rs
+    anchor: "pub fn submit"
+- id: no_summary
+  selector:
+    path: src/report/summary.rs
+- id: no_detail
+  selector:
+    path: src/report/detail.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_030_SUMMARY_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_030_TOTAL_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_030_DETAIL_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_030_VERBOSE_MARKER_D
+oracle:
+  required:
+  - rule_max_len
+  - validate_too_long
+  - rule_count
+  - processor_process
+  - coordinator_coordinate
+  - app_submit
+  allowed: []
+  forbidden:
+  - no_summary
+  - no_detail
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

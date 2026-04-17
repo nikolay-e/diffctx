@@ -1,25 +1,144 @@
 name: internals_033_trailing_whitespace
+tags:
+- lang:ruby
+- change:bug_fix
+- change:single_file
+- context:same_file
+- distance:0hop
+- difficulty:trivial
 repo:
   initial_files:
-    whitespace.py: |
-      def placeholder():
-          pass
+    app/services/cart_service.rb: |
+      class CartService
+        def initialize(cart)
+          @cart = cart
+        end
+
+        def add_item(product, quantity)
+          raise ArgumentError, "quantity must be positive" unless quantity > 0
+          existing = @cart.items.find { |i| i.product_id == product.id }
+          if existing
+            existing.quantity += quantity
+          else
+            @cart.items << CartItem.new(product_id: product.id, quantity: quantity, price: product.price)
+          end
+          @cart
+        end
+
+        def remove_item(product_id)
+          @cart.items.reject! { |i| i.product_id == product_id }
+          @cart
+        end
+
+        def total
+          @cart.items.sum { |i| i.quantity * i.price }
+        end
+
+        def item_count
+          @cart.items.sum(&:quantity)
+        end
+      end
+    garbage/jobs/cleanup.rb: |
+      # GARBAGE_TW33_A = "cleanup_job_unrelated"
+      class CleanupJob
+        def perform
+          nil
+        end
+      end
+    garbage/lib/formatter.rb: |
+      # GARBAGE_TW33_B = "formatter_unrelated"
+      class Formatter
+        def format(value)
+          value.to_s
+        end
+      end
+    garbage/lib/exporter.rb: |
+      # GARBAGE_TW33_C = "exporter_unrelated"
+      class Exporter
+        def export(records)
+          []
+        end
+      end
   changed_files:
-    whitespace.py: |
-      def process_data():
-          result = calculate()
-          return result
-  commit_message: Update files
+    app/services/cart_service.rb: |
+      class CartService
+        def initialize(cart)
+          @cart = cart
+        end
+
+        def add_item(product, quantity)
+          raise ArgumentError, "quantity must be positive" unless quantity > 0
+          raise ArgumentError, "product is required" if product.nil?
+          existing = @cart.items.find { |i| i.product_id == product.id }
+          if existing
+            existing.quantity += quantity
+          else
+            @cart.items << CartItem.new(product_id: product.id, quantity: quantity, price: product.price)
+          end
+          @cart
+        end
+
+        def remove_item(product_id)
+          removed = @cart.items.count { |i| i.product_id == product_id }
+          @cart.items.reject! { |i| i.product_id == product_id }
+          raise ArgumentError, "item not in cart" if removed.zero?
+          @cart
+        end
+
+        def total
+          @cart.items.sum { |i| i.quantity * i.price }
+        end
+
+        def item_count
+          @cart.items.sum(&:quantity)
+        end
+      end
+    garbage/jobs/cleanup.rb: |
+      # GARBAGE_TW33_A = "cleanup_job_unrelated"
+      class CleanupJob
+        def perform
+          nil
+        end
+      end
+    garbage/lib/formatter.rb: |
+      # GARBAGE_TW33_B = "formatter_unrelated"
+      class Formatter
+        def format(value)
+          value.to_s
+        end
+      end
+    garbage/lib/exporter.rb: |
+      # GARBAGE_TW33_C = "exporter_unrelated"
+      class Exporter
+        def export(records)
+          []
+        end
+      end
+  commit_message: "fix: guard nil product in add_item and raise on remove_item miss"
 fragments:
-- id: whitespace_file
+- id: add_item_nil_guard
   selector:
-    path: whitespace.py
-- id: req_global_0
+    path: app/services/cart_service.rb
+    anchor: "product is required"
+- id: remove_item_raises_on_miss
   selector:
-    anchor: 'def process_data():'
+    path: app/services/cart_service.rb
+    anchor: "item not in cart"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_TW33_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_TW33_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_TW33_C
 oracle:
   required:
-  - whitespace_file
-  - req_global_0
+  - add_item_nil_guard
+  - remove_item_raises_on_miss
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

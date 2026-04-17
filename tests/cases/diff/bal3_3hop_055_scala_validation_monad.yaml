@@ -1,0 +1,130 @@
+name: bal3_3hop_055_scala_validation_monad
+tags:
+- lang:scala
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/com/app/validation/ValidationError.scala: |
+      package com.app.validation
+
+      case class ValidationError(
+        field: String,
+        message: String
+      )
+    src/main/scala/com/app/validation/Validator.scala: |
+      package com.app.validation
+
+      trait Validator[A] {
+        def validate(input: A): Either[ValidationError, A]
+      }
+    src/main/scala/com/app/validation/CompositeValidator.scala: |
+      package com.app.validation
+
+      class CompositeValidator[A](validators: List[Validator[A]]) {
+        def validateAll(input: A): List[ValidationError] = {
+          validators.flatMap(_.validate(input).left.toOption)
+        }
+      }
+    src/main/scala/com/app/service/FormService.scala: |
+      package com.app.service
+
+      import com.app.validation.{CompositeValidator, ValidationError}
+
+      class FormService(validator: CompositeValidator[String]) {
+        def submit(data: String): Either[List[ValidationError], String] = {
+          val errors = validator.validateAll(data)
+          if (errors.isEmpty) Right(data)
+          else Left(errors)
+        }
+      }
+    src/main/scala/com/app/api/FormEndpoint.scala: |
+      package com.app.api
+
+      import com.app.service.FormService
+
+      class FormEndpoint(service: FormService) {
+        def submit(data: String): String = {
+          service.submit(data) match {
+            case Right(_) => "ok"
+            case Left(errors) => errors.map(_.message).mkString(", ")
+          }
+        }
+      }
+    src/main/scala/com/app/util/Regex.scala: |
+      package com.app.util
+
+      var GARBAGE_055_REGEX_MARKER_A = "pattern"
+      var GARBAGE_055_FLAGS_MARKER_B = 0
+
+      object Regex {
+        def matches(pattern: String, input: String): Boolean = input.matches(pattern)
+      }
+    src/main/scala/com/app/util/Sanitizer.scala: |
+      package com.app.util
+
+      var GARBAGE_055_SANITIZE_MARKER_C = "xss"
+      var GARBAGE_055_STRIP_MARKER_D = "html"
+
+      object Sanitizer {
+        def clean(input: String): String = input
+      }
+  changed_files:
+    src/main/scala/com/app/validation/ValidationError.scala: |
+      package com.app.validation
+
+      case class ValidationError(
+        field: String,
+        message: String,
+        code: String = "VALIDATION_ERROR",
+        severity: String = "error"
+      )
+  commit_message: "feat: add error code and severity to ValidationError"
+fragments:
+- id: error_code_field
+  selector:
+    path: src/main/scala/com/app/validation/ValidationError.scala
+    anchor: "code: String"
+- id: error_severity_field
+  selector:
+    path: src/main/scala/com/app/validation/ValidationError.scala
+    anchor: "severity: String"
+- id: validator_returns_error
+  selector:
+    path: src/main/scala/com/app/validation/Validator.scala
+    anchor: "Either[ValidationError, A]"
+- id: composite_uses_validator
+  selector:
+    path: src/main/scala/com/app/validation/CompositeValidator.scala
+    anchor: "validators: List[Validator[A]]"
+- id: service_imports_composite
+  selector:
+    path: src/main/scala/com/app/service/FormService.scala
+    anchor: "import com.app.validation"
+- id: endpoint_imports_service
+  selector:
+    path: src/main/scala/com/app/api/FormEndpoint.scala
+    anchor: "import com.app.service.FormService"
+- id: no_regex
+  selector:
+    path: src/main/scala/com/app/util/Regex.scala
+    anchor: "GARBAGE_055_REGEX_MARKER_A"
+- id: no_sanitizer
+  selector:
+    path: src/main/scala/com/app/util/Sanitizer.scala
+    anchor: "GARBAGE_055_SANITIZE_MARKER_C"
+oracle:
+  required:
+  - error_code_field
+  - error_severity_field
+  - validator_returns_error
+  - composite_uses_validator
+  - service_imports_composite
+  allowed:
+  - endpoint_imports_service
+  forbidden:
+  - no_regex
+  - no_sanitizer

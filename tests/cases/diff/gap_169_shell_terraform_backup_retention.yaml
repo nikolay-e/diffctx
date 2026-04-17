@@ -1,0 +1,91 @@
+name: gap_169_shell_terraform_backup_retention
+tags:
+- change:config
+- change:single_file
+- context:same_file
+- difficulty:easy
+- distance:0hop
+- lang:shell
+- lang:terraform
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    ops/backup.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      BACKUP_DIR="/var/backups/db"
+      RETENTION_DAYS=7
+      TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+      DB_NAME="inventory"
+
+      pg_dump "$DB_NAME" > "${BACKUP_DIR}/${DB_NAME}_${TIMESTAMP}.sql"
+
+      find "$BACKUP_DIR" -name "*.sql" -mtime +"$RETENTION_DAYS" -delete
+
+      echo "Backup completed: ${DB_NAME}_${TIMESTAMP}.sql"
+    ops/storage.tf: |
+      resource "aws_s3_bucket" "backups" {
+        bucket = "inventory-db-backups"
+      }
+
+      resource "aws_s3_bucket_lifecycle_configuration" "expire" {
+        bucket = aws_s3_bucket.backups.id
+
+        rule {
+          id     = "expire-old"
+          status = "Enabled"
+
+          expiration {
+            days = 30
+          }
+        }
+      }
+    ops/monitoring.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      THRESHOLD=90
+      DISK_USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+
+      if [ "$DISK_USAGE" -gt "$THRESHOLD" ]; then
+        echo "ALERT: disk usage at ${DISK_USAGE}%"
+      fi
+  changed_files:
+    ops/backup.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      BACKUP_DIR="/var/backups/db"
+      RETENTION_DAYS=30
+      TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+      DB_NAME="inventory"
+
+      pg_dump "$DB_NAME" > "${BACKUP_DIR}/${DB_NAME}_${TIMESTAMP}.sql"
+
+      find "$BACKUP_DIR" -name "*.sql" -mtime +"$RETENTION_DAYS" -delete
+
+      echo "Backup completed: ${DB_NAME}_${TIMESTAMP}.sql"
+fragments:
+- id: backup_retention
+  selector:
+    path: ops/backup.sh
+    anchor: RETENTION_DAYS=30
+- id: backup_find_delete
+  selector:
+    path: ops/backup.sh
+    anchor: mtime
+- id: no_monitoring
+  selector:
+    path: ops/monitoring.sh
+- id: no_storage
+  selector:
+    path: ops/storage.tf
+oracle:
+  required:
+  - backup_retention
+  - backup_find_delete
+  forbidden:
+  - no_monitoring
+  - no_storage

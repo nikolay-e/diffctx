@@ -1,0 +1,132 @@
+name: bal4_crossmod_002_go_interface_impl_cross_pkg
+tags:
+- lang:go
+- change:single_file
+- context:cross_module
+- distance:1hop
+- difficulty:trivial
+repo:
+  initial_files:
+    pkg/storage/store.go: |
+      package storage
+
+      type Store interface {
+          Get(key string) (string, error)
+          Set(key string, value string) error
+      }
+    pkg/cache/redis.go: |
+      package cache
+
+      import "pkg/storage"
+
+      type RedisCache struct {
+          addr string
+      }
+
+      func NewRedisCache(addr string) storage.Store {
+          return &RedisCache{addr: addr}
+      }
+
+      func (r *RedisCache) Get(key string) (string, error) {
+          return "", nil
+      }
+
+      func (r *RedisCache) Set(key string, value string) error {
+          return nil
+      }
+    pkg/util/strings.go: |
+      package util
+
+      var GARBAGE_002_UTIL_A = "strings"
+      var GARBAGE_002_HELPER_B = true
+
+      func Trim(s string) string {
+          return s
+      }
+    garbage_main.go: |
+      package main
+
+      var GARBAGE_002_MAIN_C = "entry"
+      var GARBAGE_002_APP_D = "start"
+
+      func main() {}
+  changed_files:
+    pkg/storage/store.go: |
+      package storage
+
+      type Store interface {
+          Get(key string) (string, error)
+          Set(key string, value string) error
+          Delete(key string) error
+      }
+    pkg/cache/redis.go: |
+      package cache
+
+      import "pkg/storage"
+
+      type RedisCache struct {
+          addr string
+      }
+
+      func NewRedisCache(addr string) storage.Store {
+          return &RedisCache{addr: addr}
+      }
+
+      func (r *RedisCache) Get(key string) (string, error) {
+          return "", nil
+      }
+
+      func (r *RedisCache) Set(key string, value string) error {
+          return nil
+      }
+    pkg/util/strings.go: |
+      package util
+
+      var GARBAGE_002_UTIL_A = "strings"
+      var GARBAGE_002_HELPER_B = true
+
+      func Trim(s string) string {
+          return s
+      }
+    garbage_main.go: |
+      package main
+
+      var GARBAGE_002_MAIN_C = "entry"
+      var GARBAGE_002_APP_D = "start"
+
+      func main() {}
+  commit_message: "add Delete method to Store interface"
+fragments:
+- id: redis_impl
+  selector:
+    path: pkg/cache/redis.go
+    anchor: "func NewRedisCache(addr string) storage.Store"
+- id: no_util
+  selector:
+    path: pkg/util/strings.go
+- id: no_garbage_main
+  selector:
+    path: garbage_main.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_002_UTIL_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_002_HELPER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_002_MAIN_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_002_APP_D
+oracle:
+  required:
+  - redis_impl
+  allowed: []
+  forbidden:
+  - no_util
+  - no_garbage_main
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

@@ -1,0 +1,101 @@
+name: toml_004_pyproject_dependency
+tags:
+- lang:toml
+- lang:python
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    pyproject.toml: |
+      [project]
+      name = "apiclient"
+      version = "0.2.0"
+      requires-python = ">=3.11"
+      dependencies = [
+          "pydantic>=2.0",
+      ]
+
+      [build-system]
+      requires = ["hatchling"]
+      build-backend = "hatchling.build"
+    src/apiclient/http_client.py: |
+      import json
+      import urllib.request
+
+      def get(url: str) -> dict:
+          with urllib.request.urlopen(url) as resp:
+              return json.loads(resp.read())
+    src/apiclient/__init__.py: |
+      from .http_client import get
+    TOML_NOISE_004_queue.toml: |
+      [TOML_NOISE_004_rabbitmq]
+      TOML_NOISE_004_host = "rabbitmq.internal"
+      TOML_NOISE_004_vhost = "/production"
+      TOML_NOISE_004_prefetch = 10
+
+      [TOML_NOISE_004_retry]
+      TOML_NOISE_004_max_attempts = 3
+    src/apiclient/toml_noise_004_unused.py: |
+      # TOML_NOISE_004_unused module
+      TOML_NOISE_004_CONST = "unused_marker"
+  changed_files:
+    pyproject.toml: |
+      [project]
+      name = "apiclient"
+      version = "0.2.0"
+      requires-python = ">=3.11"
+      dependencies = [
+          "pydantic>=2.0",
+          "httpx>=0.27",
+      ]
+
+      [build-system]
+      requires = ["hatchling"]
+      build-backend = "hatchling.build"
+    src/apiclient/http_client.py: |
+      import httpx
+      from pydantic import BaseModel
+
+      class Response(BaseModel):
+          status_code: int
+          body: dict
+
+      def get(url: str, timeout: float = 10.0) -> Response:
+          resp = httpx.get(url, timeout=timeout)
+          resp.raise_for_status()
+          return Response(status_code=resp.status_code, body=resp.json())
+  commit_message: "feat: replace urllib with httpx for async-ready HTTP client"
+fragments:
+- id: pyproject_httpx
+  selector:
+    path: pyproject.toml
+    anchor: "httpx"
+- id: http_client_import
+  selector:
+    path: src/apiclient/http_client.py
+    anchor: "import httpx"
+- id: no_noise_toml
+  selector:
+    path: TOML_NOISE_004_queue.toml
+- id: no_unused_py
+  selector:
+    path: src/apiclient/toml_noise_004_unused.py
+- id: no_global_0
+  selector:
+    anchor: TOML_NOISE_004_host
+- id: no_global_1
+  selector:
+    anchor: TOML_NOISE_004_CONST
+oracle:
+  required:
+  - pyproject_httpx
+  - http_client_import
+  allowed: []
+  forbidden:
+  - no_noise_toml
+  - no_unused_py
+  - no_global_0
+  - no_global_1

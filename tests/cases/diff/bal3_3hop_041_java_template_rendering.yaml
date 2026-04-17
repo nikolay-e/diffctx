@@ -1,0 +1,151 @@
+name: bal3_3hop_041_java_template_rendering
+tags:
+- lang:java
+- change:single_file
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/java/com/app/template/TemplateNode.java: |
+      package com.app.template;
+
+      public class TemplateNode {
+          private String tag;
+          private String content;
+          public TemplateNode(String tag, String content) {
+              this.tag = tag;
+              this.content = content;
+          }
+          public String getTag() { return tag; }
+          public String getContent() { return content; }
+          public String render() {
+              return "<" + tag + ">" + content + "</" + tag + ">";
+          }
+      }
+    src/main/java/com/app/template/TemplateEngine.java: |
+      package com.app.template;
+
+      import java.util.List;
+      import java.util.stream.Collectors;
+
+      public class TemplateEngine {
+          public String render(List<TemplateNode> nodes) {
+              return nodes.stream()
+                  .map(TemplateNode::render)
+                  .collect(Collectors.joining("\n"));
+          }
+      }
+    src/main/java/com/app/service/RenderService.java: |
+      package com.app.service;
+
+      import com.app.template.TemplateEngine;
+      import com.app.template.TemplateNode;
+      import java.util.List;
+
+      public class RenderService {
+          private final TemplateEngine engine;
+          public RenderService(TemplateEngine engine) {
+              this.engine = engine;
+          }
+          public String renderPage(List<TemplateNode> nodes) {
+              return engine.render(nodes);
+          }
+      }
+    src/main/java/com/app/web/PageController.java: |
+      package com.app.web;
+
+      import com.app.service.RenderService;
+
+      public class PageController {
+          private final RenderService renderService;
+          public PageController(RenderService renderService) {
+              this.renderService = renderService;
+          }
+          public String show() {
+              return renderService.renderPage(java.util.List.of());
+          }
+      }
+    src/main/java/com/app/util/HtmlEscaper.java: |
+      package com.app.util;
+
+      public class HtmlEscaper {
+          public static String GARBAGE_041_ESCAPE_MARKER_A = "html";
+          public static String GARBAGE_041_AMP_MARKER_B = "&amp;";
+          public static String escape(String s) { return s; }
+      }
+    src/main/java/com/app/util/UrlBuilder.java: |
+      package com.app.util;
+
+      public class UrlBuilder {
+          public static String GARBAGE_041_URL_MARKER_C = "http";
+          public static int GARBAGE_041_PORT_MARKER_D = 8080;
+          public static String build(String path) { return "/" + path; }
+      }
+  changed_files:
+    src/main/java/com/app/template/TemplateNode.java: |
+      package com.app.template;
+
+      import java.util.Map;
+
+      public class TemplateNode {
+          private String tag;
+          private String content;
+          private Map<String, String> attributes;
+          public TemplateNode(String tag, String content, Map<String, String> attributes) {
+              this.tag = tag;
+              this.content = content;
+              this.attributes = attributes;
+          }
+          public String getTag() { return tag; }
+          public String getContent() { return content; }
+          public Map<String, String> getAttributes() { return attributes; }
+          public String render() {
+              StringBuilder sb = new StringBuilder("<" + tag);
+              attributes.forEach((k, v) -> sb.append(" ").append(k).append("=\"").append(v).append("\""));
+              sb.append(">").append(content).append("</").append(tag).append(">");
+              return sb.toString();
+          }
+      }
+  commit_message: "feat: add HTML attribute support to TemplateNode"
+fragments:
+- id: node_attributes_field
+  selector:
+    path: src/main/java/com/app/template/TemplateNode.java
+    anchor: "Map<String, String> attributes"
+- id: node_render_attrs
+  selector:
+    path: src/main/java/com/app/template/TemplateNode.java
+    anchor: "attributes.forEach"
+- id: engine_uses_node
+  selector:
+    path: src/main/java/com/app/template/TemplateEngine.java
+    anchor: "TemplateNode::render"
+- id: service_imports_engine
+  selector:
+    path: src/main/java/com/app/service/RenderService.java
+    anchor: "import com.app.template.TemplateEngine"
+- id: controller_imports_service
+  selector:
+    path: src/main/java/com/app/web/PageController.java
+    anchor: "import com.app.service.RenderService"
+- id: no_html_escaper
+  selector:
+    path: src/main/java/com/app/util/HtmlEscaper.java
+    anchor: "GARBAGE_041_ESCAPE_MARKER_A"
+- id: no_url_builder
+  selector:
+    path: src/main/java/com/app/util/UrlBuilder.java
+    anchor: "GARBAGE_041_URL_MARKER_C"
+oracle:
+  required:
+  - node_attributes_field
+  - node_render_attrs
+  - engine_uses_node
+  - service_imports_engine
+  allowed:
+  - controller_imports_service
+  forbidden:
+  - no_html_escaper
+  - no_url_builder

@@ -1,0 +1,109 @@
+name: gap2_164_ts_signature_cross_module_workflow_engine
+tags:
+- change:signature
+- change:single_file
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+- lang:typescript
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/orchestrator/workflowRunner.ts: |
+      import { StepExecutor, StepResult } from "../steps/stepExecutor";
+
+      export class WorkflowRunner {
+        constructor(private executor: StepExecutor) {}
+
+        async run(steps: string[]): Promise<StepResult[]> {
+          const results: StepResult[] = [];
+          for (const step of steps) {
+            results.push(await this.executor.execute(step));
+          }
+          return results;
+        }
+      }
+    src/steps/stepExecutor.ts: |
+      export interface StepResult {
+        name: string;
+        success: boolean;
+        output: string;
+      }
+
+      export class StepExecutor {
+        async execute(stepName: string): Promise<StepResult> {
+          return { name: stepName, success: true, output: "" };
+        }
+      }
+    src/logging/auditLog.ts: |
+      export class AuditLog {
+        private entries: string[] = [];
+
+        append(message: string): void {
+          this.entries.push(`[${new Date().toISOString()}] ${message}`);
+        }
+
+        dump(): string[] {
+          return [...this.entries];
+        }
+      }
+  changed_files:
+    src/steps/stepExecutor.ts: |
+      export interface StepResult {
+        name: string;
+        success: boolean;
+        output: string;
+        durationMs: number;
+      }
+
+      export interface RetryPolicy {
+        maxAttempts: number;
+        backoffMs: number;
+      }
+
+      export class StepExecutor {
+        async execute(stepName: string, retry?: RetryPolicy): Promise<StepResult> {
+          const start = Date.now();
+          let attempts = 0;
+          const maxAttempts = retry?.maxAttempts ?? 1;
+          while (attempts < maxAttempts) {
+            attempts++;
+            try {
+              return { name: stepName, success: true, output: "", durationMs: Date.now() - start };
+            } catch {
+              if (attempts >= maxAttempts) {
+                return { name: stepName, success: false, output: "exhausted", durationMs: Date.now() - start };
+              }
+              await new Promise(r => setTimeout(r, retry!.backoffMs));
+            }
+          }
+          return { name: stepName, success: false, output: "unreachable", durationMs: Date.now() - start };
+        }
+      }
+fragments:
+- id: retry_policy
+  selector:
+    path: src/steps/stepExecutor.ts
+    anchor: RetryPolicy
+- id: execute_sig
+  selector:
+    path: src/steps/stepExecutor.ts
+    anchor: "execute(stepName: string, retry"
+- id: duration_field
+  selector:
+    path: src/steps/stepExecutor.ts
+    anchor: durationMs
+- id: no_audit
+  selector:
+    path: src/logging/auditLog.ts
+- id: no_runner
+  selector:
+    path: src/orchestrator/workflowRunner.ts
+oracle:
+  required:
+  - retry_policy
+  - execute_sig
+  - duration_field
+  forbidden:
+  - no_audit

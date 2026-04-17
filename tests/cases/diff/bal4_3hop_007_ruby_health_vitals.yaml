@@ -1,0 +1,152 @@
+name: bal4_3hop_007_ruby_health_vitals
+tags:
+- lang:ruby
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:trivial
+repo:
+  initial_files:
+    lib/health/measurement.rb: |
+      module Health
+        class Measurement
+          attr_reader :kind, :value
+          def initialize(kind, value)
+            @kind = kind
+            @value = value
+          end
+        end
+      end
+    lib/health/vitals.rb: |
+      require_relative 'measurement'
+      module Health
+        class Vitals
+          def record(kind, value)
+            Measurement.new(kind, value)
+          end
+        end
+      end
+    lib/health/monitor.rb: |
+      require_relative 'vitals'
+      module Health
+        class Monitor
+          def initialize
+            @vitals = Vitals.new
+          end
+          def check(kind, value)
+            @vitals.record(kind, value)
+          end
+        end
+      end
+    lib/health/clinic.rb: |
+      require_relative 'monitor'
+      module Health
+        class Clinic
+          def initialize
+            @monitor = Monitor.new
+          end
+          def examine(kind, value)
+            @monitor.check(kind, value)
+          end
+        end
+      end
+    lib/health/export.rb: |
+      module Health
+        GARBAGE_007_EXPORT_A = "csv"
+        GARBAGE_007_HEADER_B = true
+        class Export
+          def self.to_csv(data)
+            data.join(",")
+          end
+        end
+      end
+  changed_files:
+    lib/health/measurement.rb: |
+      module Health
+        class Measurement
+          attr_reader :kind, :value, :unit
+          def initialize(kind, value, unit: nil)
+            @kind = kind
+            @value = value
+            @unit = unit
+          end
+        end
+      end
+    lib/health/vitals.rb: |
+      require_relative 'measurement'
+      module Health
+        class Vitals
+          def record(kind, value)
+            Measurement.new(kind, value)
+          end
+        end
+      end
+    lib/health/monitor.rb: |
+      require_relative 'vitals'
+      module Health
+        class Monitor
+          def initialize
+            @vitals = Vitals.new
+          end
+          def check(kind, value)
+            @vitals.record(kind, value)
+          end
+        end
+      end
+    lib/health/clinic.rb: |
+      require_relative 'monitor'
+      module Health
+        class Clinic
+          def initialize
+            @monitor = Monitor.new
+          end
+          def examine(kind, value)
+            @monitor.check(kind, value)
+          end
+        end
+      end
+    lib/health/export.rb: |
+      module Health
+        GARBAGE_007_EXPORT_A = "csv"
+        GARBAGE_007_HEADER_B = true
+        class Export
+          def self.to_csv(data)
+            data.join(",")
+          end
+        end
+      end
+  commit_message: "feat: add optional unit to measurement"
+fragments:
+- id: measurement_unit
+  selector:
+    path: lib/health/measurement.rb
+    anchor: "unit"
+- id: vitals_uses_measurement
+  selector:
+    path: lib/health/vitals.rb
+    anchor: "require_relative 'measurement'"
+- id: monitor_uses_vitals
+  selector:
+    path: lib/health/monitor.rb
+    anchor: "require_relative 'vitals'"
+- id: clinic_uses_monitor
+  selector:
+    path: lib/health/clinic.rb
+    anchor: "require_relative 'monitor'"
+- id: no_export
+  selector:
+    path: lib/health/export.rb
+    anchor: "GARBAGE_007_EXPORT_A"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_007_HEADER_B
+oracle:
+  required:
+  - measurement_unit
+  - vitals_uses_measurement
+  - monitor_uses_vitals
+  - clinic_uses_monitor
+  allowed: []
+  forbidden:
+  - no_export
+  - no_global_0

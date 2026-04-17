@@ -1,0 +1,261 @@
+name: gap_065_py_crossmod_pipeline_executor
+tags:
+- change:multi_file
+- change:new_function
+- change:new_function
+- change:signature
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+- lang:python
+repo:
+  initial_files:
+    src/pipeline/executor.py: |
+      from typing import List, Callable, Any
+      from src.pipeline.stage import Stage, StageResult
+
+      class PipelineExecutor:
+          def __init__(self, name: str):
+              self.name = name
+              self._stages: List[Stage] = []
+
+          def add_stage(self, stage: Stage) -> None:
+              self._stages.append(stage)
+
+          def run(self, payload: Any) -> Any:
+              current = payload
+              for stage in self._stages:
+                  result = stage.execute(current)
+                  if not result.success:
+                      raise RuntimeError(f"Stage {stage.label} failed")
+                  current = result.output
+              return current
+
+          def stage_count(self) -> int:
+              return len(self._stages)
+    src/pipeline/stage.py: |
+      from typing import Any, Callable, Optional
+      from dataclasses import dataclass
+
+      @dataclass
+      class StageResult:
+          success: bool
+          output: Any
+          error: Optional[str] = None
+
+      class Stage:
+          def __init__(self, label: str, handler: Callable):
+              self.label = label
+              self.handler = handler
+
+          def execute(self, payload: Any) -> StageResult:
+              try:
+                  output = self.handler(payload)
+                  return StageResult(success=True, output=output)
+              except Exception as e:
+                  return StageResult(success=False, output=None, error=str(e))
+    src/pipeline/validator.py: |
+      from typing import Any, Dict, List
+
+      class SchemaValidator:
+          def __init__(self, rules: Dict[str, type]):
+              self.rules = rules
+
+          def validate(self, data: Dict[str, Any]) -> List[str]:
+              errors = []
+              for field_name, expected_type in self.rules.items():
+                  if field_name not in data:
+                      errors.append(f"Missing field: {field_name}")
+                  elif not isinstance(data[field_name], expected_type):
+                      errors.append(f"Wrong type for {field_name}")
+              return errors
+
+          def is_valid(self, data: Dict[str, Any]) -> bool:
+              return len(self.validate(data)) == 0
+    src/pipeline/metrics.py: |
+      TRAP_GAP065_METRICS_A = "pipeline_metrics"
+      TRAP_GAP065_COUNTER_B = 0
+
+      class MetricsCollector:
+          def __init__(self):
+              self._counts = {}
+
+          def increment(self, key: str) -> None:
+              self._counts[key] = self._counts.get(key, 0) + 1
+
+          def get(self, key: str) -> int:
+              return self._counts.get(key, 0)
+    src/pipeline/serializer.py: |
+      import json
+      TRAP_GAP065_SERIAL_C = "serializer"
+      TRAP_GAP065_ENCODING_D = "utf-8"
+
+      class PayloadSerializer:
+          def to_json(self, data: dict) -> str:
+              return json.dumps(data, sort_keys=True)
+
+          def from_json(self, raw: str) -> dict:
+              return json.loads(raw)
+  changed_files:
+    src/pipeline/executor.py: |
+      from typing import List, Callable, Any
+      from src.pipeline.stage import Stage, StageResult
+
+      class PipelineExecutor:
+          def __init__(self, name: str, max_retries: int = 0):
+              self.name = name
+              self.max_retries = max_retries
+              self._stages: List[Stage] = []
+
+          def add_stage(self, stage: Stage) -> None:
+              self._stages.append(stage)
+
+          def run_with_retry(self, stage: Stage, payload: Any) -> StageResult:
+              last_result = None
+              for attempt in range(self.max_retries + 1):
+                  last_result = stage.execute(payload)
+                  if last_result.success:
+                      return last_result
+              return last_result
+
+          def run(self, payload: Any) -> Any:
+              current = payload
+              for stage in self._stages:
+                  result = self.run_with_retry(stage, current)
+                  if not result.success:
+                      raise RuntimeError(f"Stage {stage.label} failed: {result.error}")
+                  current = result.output
+              return current
+
+          def dry_run(self, payload: Any) -> List[str]:
+              labels = []
+              for stage in self._stages:
+                  labels.append(stage.label)
+              return labels
+
+          def stage_count(self) -> int:
+              return len(self._stages)
+    src/pipeline/stage.py: |
+      from typing import Any, Callable, Optional
+      from dataclasses import dataclass
+
+      @dataclass
+      class StageResult:
+          success: bool
+          output: Any
+          error: Optional[str] = None
+
+      class Stage:
+          def __init__(self, label: str, handler: Callable):
+              self.label = label
+              self.handler = handler
+
+          def execute(self, payload: Any) -> StageResult:
+              try:
+                  output = self.handler(payload)
+                  return StageResult(success=True, output=output)
+              except Exception as e:
+                  return StageResult(success=False, output=None, error=str(e))
+    src/pipeline/validator.py: |
+      from typing import Any, Dict, List
+
+      class SchemaValidator:
+          def __init__(self, rules: Dict[str, type]):
+              self.rules = rules
+
+          def validate(self, data: Dict[str, Any]) -> List[str]:
+              errors = []
+              for field_name, expected_type in self.rules.items():
+                  if field_name not in data:
+                      errors.append(f"Missing field: {field_name}")
+                  elif not isinstance(data[field_name], expected_type):
+                      errors.append(f"Wrong type for {field_name}")
+              return errors
+
+          def is_valid(self, data: Dict[str, Any]) -> bool:
+              return len(self.validate(data)) == 0
+    src/pipeline/metrics.py: |
+      TRAP_GAP065_METRICS_A = "pipeline_metrics"
+      TRAP_GAP065_COUNTER_B = 0
+
+      class MetricsCollector:
+          def __init__(self):
+              self._counts = {}
+
+          def increment(self, key: str) -> None:
+              self._counts[key] = self._counts.get(key, 0) + 1
+
+          def get(self, key: str) -> int:
+              return self._counts.get(key, 0)
+    src/pipeline/serializer.py: |
+      import json
+      TRAP_GAP065_SERIAL_C = "serializer"
+      TRAP_GAP065_ENCODING_D = "utf-8"
+
+      class PayloadSerializer:
+          def to_json(self, data: dict) -> str:
+              return json.dumps(data, sort_keys=True)
+
+          def from_json(self, raw: str) -> dict:
+              return json.loads(raw)
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: executor_retry
+  selector:
+    path: src/pipeline/executor.py
+    anchor: 'def run_with_retry(self, stage: Stage, payload: Any) -> StageResult:'
+- id: executor_dry_run
+  selector:
+    path: src/pipeline/executor.py
+    anchor: 'def dry_run(self, payload: Any) -> List[str]:'
+- id: executor_max_retries
+  selector:
+    path: src/pipeline/executor.py
+    anchor: self.max_retries = max_retries
+- id: stage_result_class
+  selector:
+    path: src/pipeline/stage.py
+    anchor: 'class StageResult:'
+- id: stage_execute
+  selector:
+    path: src/pipeline/stage.py
+    anchor: 'def execute(self, payload: Any) -> StageResult:'
+- id: no_metrics
+  selector:
+    path: src/pipeline/metrics.py
+- id: no_serializer
+  selector:
+    path: src/pipeline/serializer.py
+- id: no_validator
+  selector:
+    path: src/pipeline/validator.py
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP065_METRICS_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP065_COUNTER_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP065_SERIAL_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP065_ENCODING_D
+oracle:
+  required:
+  - executor_retry
+  - executor_dry_run
+  - stage_result_class
+  - stage_execute
+  allowed:
+  - executor_max_retries
+  forbidden:
+  - no_metrics
+  - no_serializer
+  - no_validator
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

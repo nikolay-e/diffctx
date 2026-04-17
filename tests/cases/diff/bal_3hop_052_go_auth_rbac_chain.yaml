@@ -1,0 +1,269 @@
+name: bal_3hop_052_go_auth_rbac_chain
+tags:
+- lang:go
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    pkg/auth/role.go: |
+      package auth
+
+      type Role string
+
+      const (
+        RoleAdmin  Role = "admin"
+        RoleUser   Role = "user"
+      )
+
+      type Permission struct {
+        Resource string
+        Action   string
+      }
+
+      func GetPermissions(role Role) []Permission {
+        switch role {
+        case RoleAdmin:
+          return []Permission{
+            {Resource: "*", Action: "*"},
+          }
+        case RoleUser:
+          return []Permission{
+            {Resource: "profile", Action: "read"},
+            {Resource: "profile", Action: "write"},
+          }
+        }
+        return nil
+      }
+    pkg/auth/checker.go: |
+      package auth
+
+      type AccessChecker struct{}
+
+      func NewAccessChecker() *AccessChecker {
+        return &AccessChecker{}
+      }
+
+      func (c *AccessChecker) HasPermission(role Role, resource string, action string) bool {
+        perms := GetPermissions(role)
+        for _, p := range perms {
+          if (p.Resource == "*" || p.Resource == resource) && (p.Action == "*" || p.Action == action) {
+            return true
+          }
+        }
+        return false
+      }
+    pkg/middleware/auth.go: |
+      package middleware
+
+      import (
+        "net/http"
+        "pkg/auth"
+      )
+
+      func AuthzMiddleware(checker *auth.AccessChecker, resource string, action string) func(http.Handler) http.Handler {
+        return func(next http.Handler) http.Handler {
+          return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            role := auth.Role(r.Header.Get("X-Role"))
+            if !checker.HasPermission(role, resource, action) {
+              http.Error(w, "Forbidden", http.StatusForbidden)
+              return
+            }
+            next.ServeHTTP(w, r)
+          })
+        }
+      }
+    cmd/api/routes.go: |
+      package main
+
+      import (
+        "net/http"
+        "pkg/auth"
+        "pkg/middleware"
+      )
+
+      func setupRoutes() http.Handler {
+        checker := auth.NewAccessChecker()
+        mux := http.NewServeMux()
+
+        adminHandler := middleware.AuthzMiddleware(checker, "admin", "write")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+          w.Write([]byte("admin panel"))
+        }))
+        mux.Handle("/admin", adminHandler)
+        return mux
+      }
+    pkg/util/token.go: |
+      package util
+
+      var GARBAGE_052_TOKEN_MARKER_A = "token"
+      var GARBAGE_052_JWT_MARKER_B = true
+
+      func ParseToken(token string) (string, error) { return "", nil }
+    pkg/util/session.go: |
+      package util
+
+      var GARBAGE_052_SESSION_MARKER_C = "session"
+      var GARBAGE_052_STORE_MARKER_D = true
+
+      func CreateSession(userID string) string { return "" }
+  changed_files:
+    pkg/auth/role.go: |
+      package auth
+
+      type Role string
+
+      const (
+        RoleAdmin     Role = "admin"
+        RoleUser      Role = "user"
+        RoleModerator Role = "moderator"
+      )
+
+      type Permission struct {
+        Resource string
+        Action   string
+      }
+
+      func GetPermissions(role Role) []Permission {
+        switch role {
+        case RoleAdmin:
+          return []Permission{
+            {Resource: "*", Action: "*"},
+          }
+        case RoleModerator:
+          return []Permission{
+            {Resource: "profile", Action: "read"},
+            {Resource: "profile", Action: "write"},
+            {Resource: "content", Action: "read"},
+            {Resource: "content", Action: "delete"},
+          }
+        case RoleUser:
+          return []Permission{
+            {Resource: "profile", Action: "read"},
+            {Resource: "profile", Action: "write"},
+          }
+        }
+        return nil
+      }
+    pkg/auth/checker.go: |
+      package auth
+
+      type AccessChecker struct{}
+
+      func NewAccessChecker() *AccessChecker {
+        return &AccessChecker{}
+      }
+
+      func (c *AccessChecker) HasPermission(role Role, resource string, action string) bool {
+        perms := GetPermissions(role)
+        for _, p := range perms {
+          if (p.Resource == "*" || p.Resource == resource) && (p.Action == "*" || p.Action == action) {
+            return true
+          }
+        }
+        return false
+      }
+    pkg/middleware/auth.go: |
+      package middleware
+
+      import (
+        "net/http"
+        "pkg/auth"
+      )
+
+      func AuthzMiddleware(checker *auth.AccessChecker, resource string, action string) func(http.Handler) http.Handler {
+        return func(next http.Handler) http.Handler {
+          return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            role := auth.Role(r.Header.Get("X-Role"))
+            if !checker.HasPermission(role, resource, action) {
+              http.Error(w, "Forbidden", http.StatusForbidden)
+              return
+            }
+            next.ServeHTTP(w, r)
+          })
+        }
+      }
+    cmd/api/routes.go: |
+      package main
+
+      import (
+        "net/http"
+        "pkg/auth"
+        "pkg/middleware"
+      )
+
+      func setupRoutes() http.Handler {
+        checker := auth.NewAccessChecker()
+        mux := http.NewServeMux()
+
+        adminHandler := middleware.AuthzMiddleware(checker, "admin", "write")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+          w.Write([]byte("admin panel"))
+        }))
+        mux.Handle("/admin", adminHandler)
+
+        moderateHandler := middleware.AuthzMiddleware(checker, "content", "delete")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+          w.Write([]byte("moderation panel"))
+        }))
+        mux.Handle("/moderate", moderateHandler)
+        return mux
+      }
+    pkg/util/token.go: |
+      package util
+
+      var GARBAGE_052_TOKEN_MARKER_A = "token"
+      var GARBAGE_052_JWT_MARKER_B = true
+
+      func ParseToken(token string) (string, error) { return "", nil }
+    pkg/util/session.go: |
+      package util
+
+      var GARBAGE_052_SESSION_MARKER_C = "session"
+      var GARBAGE_052_STORE_MARKER_D = true
+
+      func CreateSession(userID string) string { return "" }
+  commit_message: "feat: add moderator role with content permissions"
+fragments:
+- id: role_moderator
+  selector:
+    path: pkg/auth/role.go
+    anchor: 'RoleModerator Role = "moderator"'
+- id: moderator_permissions
+  selector:
+    path: pkg/auth/role.go
+    anchor: "case RoleModerator"
+- id: checker_imports_role
+  selector:
+    path: pkg/auth/checker.go
+    anchor: "func (c *AccessChecker) HasPermission"
+- id: middleware_imports_auth
+  selector:
+    path: pkg/middleware/auth.go
+    anchor: "pkg/auth"
+- id: routes_moderate_handler
+  selector:
+    path: cmd/api/routes.go
+    anchor: "moderateHandler"
+- id: routes_imports_middleware
+  selector:
+    path: cmd/api/routes.go
+    anchor: "pkg/middleware"
+- id: no_token
+  selector:
+    path: pkg/util/token.go
+    anchor: "GARBAGE_052_TOKEN_MARKER_A"
+- id: no_session
+  selector:
+    path: pkg/util/session.go
+    anchor: "GARBAGE_052_SESSION_MARKER_C"
+oracle:
+  required:
+  - role_moderator
+  - moderator_permissions
+  - checker_imports_role
+  - middleware_imports_auth
+  - routes_moderate_handler
+  - routes_imports_middleware
+  allowed: []
+  forbidden:
+  - no_token
+  - no_session

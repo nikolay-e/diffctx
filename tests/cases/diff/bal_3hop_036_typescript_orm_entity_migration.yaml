@@ -1,0 +1,250 @@
+name: bal_3hop_036_typescript_orm_entity_migration
+tags:
+- lang:typescript
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/entities/invoice.ts: |
+      export interface Invoice {
+        id: string;
+        amount: number;
+        status: 'pending' | 'paid';
+        createdAt: Date;
+      }
+
+      export function createInvoice(amount: number): Invoice {
+        return { id: crypto.randomUUID(), amount, status: 'pending', createdAt: new Date() };
+      }
+    src/repositories/invoice.ts: |
+      import { Invoice, createInvoice } from '../entities/invoice';
+
+      export class InvoiceRepository {
+        private invoices: Invoice[] = [];
+
+        save(amount: number): Invoice {
+          const invoice = createInvoice(amount);
+          this.invoices.push(invoice);
+          return invoice;
+        }
+
+        findById(id: string): Invoice | undefined {
+          return this.invoices.find(i => i.id === id);
+        }
+
+        findByStatus(status: Invoice['status']): Invoice[] {
+          return this.invoices.filter(i => i.status === status);
+        }
+      }
+    src/services/billing.ts: |
+      import { InvoiceRepository } from '../repositories/invoice';
+
+      export class BillingService {
+        constructor(private repo: InvoiceRepository) {}
+
+        createInvoice(amount: number) {
+          return this.repo.save(amount);
+        }
+
+        getPendingInvoices() {
+          return this.repo.findByStatus('pending');
+        }
+      }
+    src/api/billing.ts: |
+      import { BillingService } from '../services/billing';
+      import { InvoiceRepository } from '../repositories/invoice';
+
+      const repo = new InvoiceRepository();
+      const billing = new BillingService(repo);
+
+      export function handleCreateInvoice(req: any, res: any): void {
+        const invoice = billing.createInvoice(req.body.amount);
+        res.status(201).json(invoice);
+      }
+
+      export function handleGetPending(req: any, res: any): void {
+        const invoices = billing.getPendingInvoices();
+        res.json(invoices);
+      }
+    src/utils/csv.ts: |
+      GARBAGE_036_CSV_MARKER_A = "csv";
+      GARBAGE_036_DELIMITER_MARKER_B = ",";
+
+      export function toCSV(rows: any[]): string {
+        return rows.map(r => Object.values(r).join(',')).join('\n');
+      }
+    src/utils/template.ts: |
+      GARBAGE_036_TEMPLATE_MARKER_C = "template";
+      GARBAGE_036_RENDER_MARKER_D = true;
+
+      export function renderTemplate(tmpl: string, vars: Record<string, string>): string {
+        return tmpl.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] || '');
+      }
+    src/jobs/cleanup.ts: |
+      GARBAGE_036_CLEANUP_MARKER_E = "cleanup";
+      GARBAGE_036_CRON_MARKER_F = "0 0 * * *";
+
+      export function runCleanup(): void {
+        console.log('Cleanup started');
+      }
+  changed_files:
+    src/entities/invoice.ts: |
+      export interface Invoice {
+        id: string;
+        amount: number;
+        currency: string;
+        status: 'pending' | 'paid' | 'overdue';
+        createdAt: Date;
+        dueDate: Date;
+      }
+
+      export function createInvoice(amount: number, currency: string, dueDays: number = 30): Invoice {
+        const dueDate = new Date();
+        dueDate.setDate(dueDate.getDate() + dueDays);
+        return {
+          id: crypto.randomUUID(),
+          amount,
+          currency,
+          status: 'pending',
+          createdAt: new Date(),
+          dueDate,
+        };
+      }
+    src/repositories/invoice.ts: |
+      import { Invoice, createInvoice } from '../entities/invoice';
+
+      export class InvoiceRepository {
+        private invoices: Invoice[] = [];
+
+        save(amount: number, currency: string): Invoice {
+          const invoice = createInvoice(amount, currency);
+          this.invoices.push(invoice);
+          return invoice;
+        }
+
+        findById(id: string): Invoice | undefined {
+          return this.invoices.find(i => i.id === id);
+        }
+
+        findByStatus(status: Invoice['status']): Invoice[] {
+          return this.invoices.filter(i => i.status === status);
+        }
+
+        findOverdue(): Invoice[] {
+          const now = new Date();
+          return this.invoices.filter(i => i.status === 'pending' && i.dueDate < now);
+        }
+      }
+    src/services/billing.ts: |
+      import { InvoiceRepository } from '../repositories/invoice';
+
+      export class BillingService {
+        constructor(private repo: InvoiceRepository) {}
+
+        createInvoice(amount: number, currency: string) {
+          return this.repo.save(amount, currency);
+        }
+
+        getPendingInvoices() {
+          return this.repo.findByStatus('pending');
+        }
+
+        getOverdueInvoices() {
+          return this.repo.findOverdue();
+        }
+      }
+    src/api/billing.ts: |
+      import { BillingService } from '../services/billing';
+      import { InvoiceRepository } from '../repositories/invoice';
+
+      const repo = new InvoiceRepository();
+      const billing = new BillingService(repo);
+
+      export function handleCreateInvoice(req: any, res: any): void {
+        const invoice = billing.createInvoice(req.body.amount, req.body.currency);
+        res.status(201).json(invoice);
+      }
+
+      export function handleGetPending(req: any, res: any): void {
+        const invoices = billing.getPendingInvoices();
+        res.json(invoices);
+      }
+    src/utils/csv.ts: |
+      GARBAGE_036_CSV_MARKER_A = "csv";
+      GARBAGE_036_DELIMITER_MARKER_B = ",";
+
+      export function toCSV(rows: any[]): string {
+        return rows.map(r => Object.values(r).join(',')).join('\n');
+      }
+    src/utils/template.ts: |
+      GARBAGE_036_TEMPLATE_MARKER_C = "template";
+      GARBAGE_036_RENDER_MARKER_D = true;
+
+      export function renderTemplate(tmpl: string, vars: Record<string, string>): string {
+        return tmpl.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] || '');
+      }
+    src/jobs/cleanup.ts: |
+      GARBAGE_036_CLEANUP_MARKER_E = "cleanup";
+      GARBAGE_036_CRON_MARKER_F = "0 0 * * *";
+
+      export function runCleanup(): void {
+        console.log('Cleanup started');
+      }
+  commit_message: "feat: add currency, dueDate, and overdue status to Invoice"
+fragments:
+- id: invoice_currency_field
+  selector:
+    path: src/entities/invoice.ts
+    anchor: "currency: string"
+- id: invoice_due_date
+  selector:
+    path: src/entities/invoice.ts
+    anchor: "dueDate: Date"
+- id: repo_find_overdue
+  selector:
+    path: src/repositories/invoice.ts
+    anchor: "findOverdue(): Invoice[]"
+- id: repo_save_currency
+  selector:
+    path: src/repositories/invoice.ts
+    anchor: "save(amount: number, currency: string)"
+- id: service_imports_repo
+  selector:
+    path: src/services/billing.ts
+    anchor: "import { InvoiceRepository } from '../repositories/invoice'"
+- id: api_imports_service
+  selector:
+    path: src/api/billing.ts
+    anchor: "import { BillingService } from '../services/billing'"
+- id: api_create_with_currency
+  selector:
+    path: src/api/billing.ts
+    anchor: "req.body.currency"
+- id: no_csv
+  selector:
+    path: src/utils/csv.ts
+    anchor: "GARBAGE_036_CSV_MARKER_A"
+- id: no_template
+  selector:
+    path: src/utils/template.ts
+    anchor: "GARBAGE_036_TEMPLATE_MARKER_C"
+- id: no_cleanup
+  selector:
+    path: src/jobs/cleanup.ts
+    anchor: "GARBAGE_036_CLEANUP_MARKER_E"
+oracle:
+  required:
+  - invoice_currency_field
+  - invoice_due_date
+  - repo_find_overdue
+  - repo_save_currency
+  - service_imports_repo
+  - api_imports_service
+  - api_create_with_currency
+  allowed: []
+  forbidden:
+  - no_csv
+  - no_template
+  - no_cleanup

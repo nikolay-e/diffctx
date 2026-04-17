@@ -1,0 +1,81 @@
+name: bal3_1hop_015_go_template_engine
+tags:
+- lang:lua
+- change:bug_fix
+- change:single_file
+- context:same_file
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    game/combat.lua: |
+      local M = {}
+
+      function M.apply_damage(unit, damage)
+          unit.hp = unit.hp - damage
+      end
+
+      function M.heal(unit, amount)
+          unit.hp = unit.hp + amount
+      end
+
+      return M
+    garbage/BAL015_ui.lua: |
+      -- BAL015_GARBAGE_A = "ui_marker"
+    garbage/BAL015_audio.lua: |
+      -- BAL015_GARBAGE_B = "audio_marker"
+    garbage/BAL015_save.lua: |
+      -- BAL015_GARBAGE_C = "save_marker"
+  changed_files:
+    game/combat.lua: |
+      local M = {}
+
+      local MAX_HP = 999
+
+      function M.apply_damage(unit, damage)
+          if damage < 0 then
+              return
+          end
+          unit.hp = math.max(0, unit.hp - damage)
+      end
+
+      function M.heal(unit, amount)
+          if amount < 0 then
+              return
+          end
+          unit.hp = math.min(MAX_HP, unit.hp + amount)
+      end
+
+      return M
+    garbage/BAL015_ui.lua: |
+      -- BAL015_GARBAGE_A = "ui_marker"
+    garbage/BAL015_audio.lua: |
+      -- BAL015_GARBAGE_B = "audio_marker"
+    garbage/BAL015_save.lua: |
+      -- BAL015_GARBAGE_C = "save_marker"
+  commit_message: "fix: clamp hp in apply_damage and heal, reject negative values"
+fragments:
+- id: apply_damage_func
+  selector:
+    anchor: "function M.apply_damage"
+- id: heal_func
+  selector:
+    anchor: "function M.heal"
+- id: no_garbage_a
+  selector:
+    anchor: BAL015_GARBAGE_A
+- id: no_garbage_b
+  selector:
+    anchor: BAL015_GARBAGE_B
+- id: no_garbage_c
+  selector:
+    anchor: BAL015_GARBAGE_C
+oracle:
+  required:
+  - apply_damage_func
+  - heal_func
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

@@ -1,312 +1,112 @@
 name: rust_018_derive_macro
+tags:
+- lang:kotlin
+- change:bug_fix
+- change:single_file
+- context:same_file
+- distance:0hop
+- difficulty:medium
 repo:
   initial_files:
-    src/lib.rs: |
-      pub mod models;
-      pub mod unrelated;
-    src/models.rs: |
-      use std::fmt;
+    src/cloud/ResourceQuota.kt: |
+      data class ResourceRequest(val cpu: Int, val memoryMb: Int, val gpuCount: Int)
+      data class QuotaLimit(val maxCpu: Int, val maxMemoryMb: Int, val maxGpu: Int)
 
-      #[derive(Debug, Clone)]
-      pub struct User {
-          pub id: u64,
-          pub name: String,
-      }
+      class ResourceQuota(private val limit: QuotaLimit) {
+          private var usedCpu = 0
+          private var usedMemory = 0
+          private var usedGpu = 0
 
-      impl User {
-          pub fn new(id: u64, name: String) -> Self {
-              Self { id, name }
+          fun canAllocate(req: ResourceRequest): Boolean {
+              // BUG: checks limit not remaining capacity
+              return req.cpu <= limit.maxCpu &&
+                     req.memoryMb <= limit.maxMemoryMb &&
+                     req.gpuCount <= limit.maxGpu
           }
 
-          pub fn display_name(&self) -> &str {
-              &self.name
-          }
-      }
-
-      impl fmt::Display for User {
-          fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-              write!(f, "User #{}: {}", self.id, self.name)
-          }
-      }
-
-      impl Default for User {
-          fn default() -> Self {
-              Self::new(0, String::from("Anonymous"))
-          }
-      }
-    src/unrelated/mod.rs: |
-      pub mod events;
-      pub mod commands;
-    src/unrelated/events.rs: |
-      // GARBAGE_RUST_EVENTS_001
-      use std::collections::VecDeque;
-
-      pub const GARBAGE_MAX_EVENTS_002: usize = 1000;
-
-      #[derive(Debug)]
-      pub enum GarbageEventType003 {
-          Created,
-          Updated,
-          Deleted,
-      }
-
-      pub struct GarbageEvent004 {
-          event_type: GarbageEventType003,
-          timestamp: u64,
-          data: String,
-      }
-
-      impl GarbageEvent004 {
-          pub fn garbage_emit_005(&self) {
-              // GARBAGE_EMIT_IMPL_006
+          fun allocate(req: ResourceRequest) {
+              usedCpu += req.cpu
+              usedMemory += req.memoryMb
+              usedGpu += req.gpuCount
           }
 
-          pub fn garbage_serialize_007(&self) -> String {
-              "GARBAGE_SERIALIZED_008".to_string()
+          fun release(req: ResourceRequest) {
+              usedCpu -= req.cpu
+              usedMemory -= req.memoryMb
+              usedGpu -= req.gpuCount
           }
       }
-
-      pub struct GarbageEventBus009 {
-          events: VecDeque<GarbageEvent004>,
-      }
-
-      impl GarbageEventBus009 {
-          pub fn garbage_publish_010(&mut self, event: GarbageEvent004) {
-              self.events.push_back(event);
-          }
-      }
-    src/unrelated/commands.rs: |
-      // GARBAGE_RUST_COMMANDS_011
-      pub const GARBAGE_CMD_TIMEOUT_012: u64 = 30000;
-
-      pub trait GarbageCommand013 {
-          fn garbage_execute_014(&self) -> Result<(), String>;
-          fn garbage_undo_015(&self) -> Result<(), String>;
-      }
-
-      pub struct GarbageCommandHandler016 {
-          history: Vec<Box<dyn GarbageCommand013>>,
-      }
-
-      impl GarbageCommandHandler016 {
-          pub fn garbage_run_017(&mut self, cmd: Box<dyn GarbageCommand013>) -> Result<(), String> {
-              cmd.garbage_execute_014()?;
-              self.history.push(cmd);
-              Ok(())
-          }
-
-          pub fn garbage_undo_last_018(&mut self) -> Result<(), String> {
-              if let Some(cmd) = self.history.pop() {
-                  cmd.garbage_undo_015()
-              } else {
-                  Err("GARBAGE_NO_HISTORY_019".to_string())
-              }
-          }
-      }
+    garbage/ClusterAutoscaler.kt: |
+      // GARBAGE_CLO_A = "cluster_autoscaler_marker"
+    garbage/NodeSelector.kt: |
+      // GARBAGE_CLO_B = "node_selector_marker"
+    garbage/PodScheduler.kt: |
+      // GARBAGE_CLO_C = "pod_scheduler_marker"
+    garbage/VolumeManager.kt: |
+      // GARBAGE_CLO_D = "volume_manager_marker"
   changed_files:
-    src/lib.rs: |
-      pub mod models;
-      pub mod unrelated;
-    src/models.rs: |
-      use std::fmt;
-      use std::hash::{Hash, Hasher};
+    src/cloud/ResourceQuota.kt: |
+      data class ResourceRequest(val cpu: Int, val memoryMb: Int, val gpuCount: Int)
+      data class QuotaLimit(val maxCpu: Int, val maxMemoryMb: Int, val maxGpu: Int)
 
-      #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-      pub struct User {
-          pub id: u64,
-          pub name: String,
-          pub email: String,
-          pub active: bool,
-      }
+      class ResourceQuota(private val limit: QuotaLimit) {
+          private var usedCpu = 0
+          private var usedMemory = 0
+          private var usedGpu = 0
 
-      impl User {
-          pub fn new(id: u64, name: String, email: String) -> Self {
-              Self {
-                  id,
-                  name,
-                  email,
-                  active: true,
-              }
+          fun canAllocate(req: ResourceRequest): Boolean {
+              return req.cpu <= (limit.maxCpu - usedCpu) &&
+                     req.memoryMb <= (limit.maxMemoryMb - usedMemory) &&
+                     req.gpuCount <= (limit.maxGpu - usedGpu)
           }
 
-          pub fn with_status(id: u64, name: String, email: String, active: bool) -> Self {
-              Self { id, name, email, active }
+          fun allocate(req: ResourceRequest) {
+              usedCpu += req.cpu
+              usedMemory += req.memoryMb
+              usedGpu += req.gpuCount
           }
 
-          pub fn display_name(&self) -> &str {
-              &self.name
-          }
-
-          pub fn is_active(&self) -> bool {
-              self.active
-          }
-
-          pub fn deactivate(&mut self) {
-              self.active = false;
-          }
-
-          pub fn activate(&mut self) {
-              self.active = true;
+          fun release(req: ResourceRequest) {
+              usedCpu -= req.cpu
+              usedMemory -= req.memoryMb
+              usedGpu -= req.gpuCount
           }
       }
-
-      impl fmt::Display for User {
-          fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-              let status = if self.active { "active" } else { "inactive" };
-              write!(f, "User #{}: {} <{}> [{}]", self.id, self.name, self.email, status)
-          }
-      }
-
-      impl Default for User {
-          fn default() -> Self {
-              Self::new(0, String::from("Anonymous"), String::from("anon@example.com"))
-          }
-      }
-
-      #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
-      pub struct UserProfile {
-          pub user_id: u64,
-          pub bio: String,
-          pub avatar_url: Option<String>,
-      }
-
-      impl UserProfile {
-          pub fn new(user_id: u64) -> Self {
-              Self {
-                  user_id,
-                  bio: String::new(),
-                  avatar_url: None,
-              }
-          }
-
-          pub fn with_bio(user_id: u64, bio: &str) -> Self {
-              Self {
-                  user_id,
-                  bio: bio.to_string(),
-                  avatar_url: None,
-              }
-          }
-
-          pub fn set_avatar(&mut self, url: &str) {
-              self.avatar_url = Some(url.to_string());
-          }
-      }
-    src/unrelated/mod.rs: |
-      pub mod events;
-      pub mod commands;
-    src/unrelated/events.rs: |
-      // GARBAGE_RUST_EVENTS_001
-      use std::collections::VecDeque;
-
-      pub const GARBAGE_MAX_EVENTS_002: usize = 1000;
-
-      #[derive(Debug)]
-      pub enum GarbageEventType003 {
-          Created,
-          Updated,
-          Deleted,
-      }
-
-      pub struct GarbageEvent004 {
-          event_type: GarbageEventType003,
-          timestamp: u64,
-          data: String,
-      }
-
-      impl GarbageEvent004 {
-          pub fn garbage_emit_005(&self) {
-              // GARBAGE_EMIT_IMPL_006
-          }
-
-          pub fn garbage_serialize_007(&self) -> String {
-              "GARBAGE_SERIALIZED_008".to_string()
-          }
-      }
-
-      pub struct GarbageEventBus009 {
-          events: VecDeque<GarbageEvent004>,
-      }
-
-      impl GarbageEventBus009 {
-          pub fn garbage_publish_010(&mut self, event: GarbageEvent004) {
-              self.events.push_back(event);
-          }
-      }
-    src/unrelated/commands.rs: |
-      // GARBAGE_RUST_COMMANDS_011
-      pub const GARBAGE_CMD_TIMEOUT_012: u64 = 30000;
-
-      pub trait GarbageCommand013 {
-          fn garbage_execute_014(&self) -> Result<(), String>;
-          fn garbage_undo_015(&self) -> Result<(), String>;
-      }
-
-      pub struct GarbageCommandHandler016 {
-          history: Vec<Box<dyn GarbageCommand013>>,
-      }
-
-      impl GarbageCommandHandler016 {
-          pub fn garbage_run_017(&mut self, cmd: Box<dyn GarbageCommand013>) -> Result<(), String> {
-              cmd.garbage_execute_014()?;
-              self.history.push(cmd);
-              Ok(())
-          }
-
-          pub fn garbage_undo_last_018(&mut self) -> Result<(), String> {
-              if let Some(cmd) = self.history.pop() {
-                  cmd.garbage_undo_015()
-              } else {
-                  Err("GARBAGE_NO_HISTORY_019".to_string())
-              }
-          }
-      }
-  commit_message: Update files
+    garbage/ClusterAutoscaler.kt: |
+      // GARBAGE_CLO_A = "cluster_autoscaler_marker"
+    garbage/NodeSelector.kt: |
+      // GARBAGE_CLO_B = "node_selector_marker"
+    garbage/PodScheduler.kt: |
+      // GARBAGE_CLO_C = "pod_scheduler_marker"
+    garbage/VolumeManager.kt: |
+      // GARBAGE_CLO_D = "volume_manager_marker"
+  commit_message: "fix: check remaining capacity not total limit in ResourceQuota.canAllocate"
 fragments:
-- id: models_file
+- id: can_allocate
   selector:
-    path: src/models.rs
-- id: req_global_0
+    anchor: "fun canAllocate(req: ResourceRequest)"
+- id: allocate
   selector:
-    anchor: use std::hash::{Hash, Hasher};
-- id: req_global_1
+    anchor: "fun allocate(req: ResourceRequest)"
+- id: no_garbage_a
   selector:
-    anchor: 'pub fn with_status(id: u64, name: String, email: String, active: bool) -> Self {'
-- id: no_global_0
+    anchor: GARBAGE_CLO_A
+- id: no_garbage_b
   selector:
-    anchor: GARBAGE_CMD_TIMEOUT_012
-- id: no_global_1
+    anchor: GARBAGE_CLO_B
+- id: no_garbage_c
   selector:
-    anchor: GARBAGE_EMIT_IMPL_006
-- id: no_global_2
+    anchor: GARBAGE_CLO_C
+- id: no_garbage_d
   selector:
-    anchor: GARBAGE_MAX_EVENTS_002
-- id: no_global_3
-  selector:
-    anchor: GARBAGE_RUST_COMMANDS_011
-- id: no_global_4
-  selector:
-    anchor: GARBAGE_RUST_EVENTS_001
-- id: no_global_5
-  selector:
-    anchor: commands.rs
-- id: no_global_6
-  selector:
-    anchor: events.rs
-- id: no_global_7
-  selector:
-    anchor: mod.rs
+    anchor: GARBAGE_CLO_D
 oracle:
   required:
-  - models_file
-  - req_global_0
-  - req_global_1
-  allowed: []
+  - can_allocate
+  allowed:
+  - allocate
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

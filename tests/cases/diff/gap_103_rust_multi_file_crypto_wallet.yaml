@@ -1,0 +1,155 @@
+name: gap_103_rust_multi_file_crypto_wallet
+tags:
+- lang:rust
+- change:multi_file
+- change:new_function
+- change:signature
+- context:import_chain
+- difficulty:medium
+- distance:2hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    src/wallet/account.rs: |
+      use crate::wallet::keypair::KeyPair;
+      use crate::wallet::address::Address;
+
+      pub struct Account {
+          label: String,
+          keypair: KeyPair,
+      }
+
+      impl Account {
+          pub fn new(label: &str, keypair: KeyPair) -> Self {
+              Self {
+                  label: label.to_string(),
+                  keypair,
+              }
+          }
+
+          pub fn address(&self) -> Address {
+              Address::from_public_key(self.keypair.public_key())
+          }
+
+          pub fn label(&self) -> &str {
+              &self.label
+          }
+      }
+    src/wallet/keypair.rs: |
+      pub struct KeyPair {
+          secret: [u8; 32],
+          public: [u8; 32],
+      }
+
+      impl KeyPair {
+          pub fn generate() -> Self {
+              Self {
+                  secret: [0u8; 32],
+                  public: [1u8; 32],
+              }
+          }
+
+          pub fn public_key(&self) -> &[u8; 32] {
+              &self.public
+          }
+
+          pub fn sign(&self, message: &[u8]) -> Vec<u8> {
+              let mut sig = Vec::from(message);
+              sig.extend_from_slice(&self.secret[..4]);
+              sig
+          }
+      }
+    src/wallet/address.rs: |
+      pub struct Address {
+          bytes: [u8; 20],
+      }
+
+      impl Address {
+          pub fn from_public_key(pk: &[u8; 32]) -> Self {
+              let mut bytes = [0u8; 20];
+              bytes.copy_from_slice(&pk[..20]);
+              Self { bytes }
+          }
+
+          pub fn to_hex(&self) -> String {
+              self.bytes.iter().map(|b| format!("{:02x}", b)).collect()
+          }
+      }
+    src/mining/hasher.rs: |
+      pub struct BlockHasher {
+          difficulty: u32,
+      }
+
+      impl BlockHasher {
+          pub fn new(difficulty: u32) -> Self {
+              Self { difficulty }
+          }
+
+          pub fn meets_difficulty(&self, hash: &[u8]) -> bool {
+              let leading_zeros = hash.iter().take_while(|&&b| b == 0).count();
+              leading_zeros >= self.difficulty as usize
+          }
+      }
+  changed_files:
+    src/wallet/account.rs: |
+      use crate::wallet::keypair::KeyPair;
+      use crate::wallet::address::Address;
+
+      pub struct Account {
+          label: String,
+          keypair: KeyPair,
+          nonce: u64,
+      }
+
+      impl Account {
+          pub fn new(label: &str, keypair: KeyPair) -> Self {
+              Self {
+                  label: label.to_string(),
+                  keypair,
+                  nonce: 0,
+              }
+          }
+
+          pub fn address(&self) -> Address {
+              Address::from_public_key(self.keypair.public_key())
+          }
+
+          pub fn label(&self) -> &str {
+              &self.label
+          }
+
+          pub fn sign_transaction(&mut self, payload: &[u8]) -> Vec<u8> {
+              self.nonce += 1;
+              let mut message = Vec::from(payload);
+              message.extend_from_slice(&self.nonce.to_be_bytes());
+              self.keypair.sign(&message)
+          }
+      }
+fragments:
+- id: account_sign_tx
+  selector:
+    path: src/wallet/account.rs
+    anchor: "pub fn sign_transaction"
+- id: keypair_sign
+  selector:
+    path: src/wallet/keypair.rs
+    anchor: "pub fn sign"
+- id: address_from_pk
+  selector:
+    path: src/wallet/address.rs
+    anchor: "pub fn from_public_key"
+- id: no_mining
+  selector:
+    path: src/mining/hasher.rs
+- id: no_block_hasher
+  selector:
+    anchor: BlockHasher
+oracle:
+  required:
+  - account_sign_tx
+  - keypair_sign
+  - address_from_pk
+  forbidden:
+  - no_mining
+  - no_block_hasher

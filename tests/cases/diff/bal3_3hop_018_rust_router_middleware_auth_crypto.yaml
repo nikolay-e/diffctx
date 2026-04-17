@@ -1,0 +1,193 @@
+name: bal3_3hop_018_rust_router_middleware_auth_crypto
+tags:
+- lang:rust
+- change:bug_fix
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    src/crypto/hasher.rs: |
+      use std::collections::hash_map::DefaultHasher;
+      use std::hash::{Hash, Hasher};
+
+      pub struct AppHasher {
+          salt: String,
+      }
+
+      impl AppHasher {
+          pub fn new(salt: String) -> Self {
+              Self { salt }
+          }
+
+          pub fn hash(&self, input: &str) -> u64 {
+              let mut hasher = DefaultHasher::new();
+              format!("{}{}", self.salt, input).hash(&mut hasher);
+              hasher.finish()
+          }
+
+          pub fn verify(&self, input: &str, expected: u64) -> bool {
+              self.hash(input) == expected
+          }
+      }
+    src/crypto/mod.rs: |
+      pub mod hasher;
+    src/auth/token.rs: |
+      use crate::crypto::hasher::AppHasher;
+
+      pub struct TokenManager {
+          hasher: AppHasher,
+      }
+
+      impl TokenManager {
+          pub fn new(hasher: AppHasher) -> Self {
+              Self { hasher }
+          }
+
+          pub fn generate(&self, user_id: &str) -> String {
+              format!("{}", self.hasher.hash(user_id))
+          }
+
+          pub fn validate(&self, user_id: &str, token: &str) -> bool {
+              let expected: u64 = token.parse().unwrap_or(0);
+              self.hasher.verify(user_id, expected)
+          }
+      }
+    src/auth/mod.rs: |
+      pub mod token;
+    src/middleware/auth_guard.rs: |
+      use crate::auth::token::TokenManager;
+
+      pub struct AuthGuard {
+          token_mgr: TokenManager,
+      }
+
+      impl AuthGuard {
+          pub fn new(token_mgr: TokenManager) -> Self {
+              Self { token_mgr }
+          }
+
+          pub fn check(&self, user_id: &str, token: &str) -> bool {
+              self.token_mgr.validate(user_id, token)
+          }
+      }
+    src/middleware/mod.rs: |
+      pub mod auth_guard;
+    src/router/router.rs: |
+      use crate::middleware::auth_guard::AuthGuard;
+      use std::collections::HashMap;
+
+      pub struct Router {
+          guard: AuthGuard,
+          routes: HashMap<String, String>,
+      }
+
+      impl Router {
+          pub fn new(guard: AuthGuard) -> Self {
+              Self { guard, routes: HashMap::new() }
+          }
+
+          pub fn add_route(&mut self, path: &str, handler: &str) {
+              self.routes.insert(path.to_string(), handler.to_string());
+          }
+
+          pub fn dispatch(&self, path: &str, user_id: &str, token: &str) -> String {
+              if !self.guard.check(user_id, token) {
+                  return "unauthorized".to_string();
+              }
+              match self.routes.get(path) {
+                  Some(handler) => handler.clone(),
+                  None => "not found".to_string(),
+              }
+          }
+      }
+    src/router/mod.rs: |
+      pub mod router;
+    src/config/settings.rs: |
+      pub static GARBAGE_BAL3_018_SETTINGS_MARKER_A: &str = "settings";
+      pub static GARBAGE_BAL3_018_DEBUG_MARKER_B: bool = false;
+
+      pub struct Settings {
+          pub debug: bool,
+      }
+    src/config/mod.rs: |
+      pub mod settings;
+    src/lib.rs: |
+      pub mod crypto;
+      pub mod auth;
+      pub mod middleware;
+      pub mod router;
+      pub mod config;
+  changed_files:
+    src/crypto/hasher.rs: |
+      use std::collections::hash_map::DefaultHasher;
+      use std::hash::{Hash, Hasher};
+
+      pub struct AppHasher {
+          salt: String,
+      }
+
+      impl AppHasher {
+          pub fn new(salt: String) -> Self {
+              Self { salt }
+          }
+
+          pub fn hash(&self, input: &str) -> u64 {
+              let mut hasher = DefaultHasher::new();
+              format!("{}{}", self.salt, input).hash(&mut hasher);
+              hasher.finish()
+          }
+
+          pub fn verify(&self, input: &str, expected: u64) -> bool {
+              let actual = self.hash(input);
+              constant_time_eq(actual, expected)
+          }
+      }
+
+      fn constant_time_eq(a: u64, b: u64) -> bool {
+          let diff = a ^ b;
+          diff == 0
+      }
+  commit_message: "Fix timing-safe token comparison in hasher"
+fragments:
+- id: hasher_constant_time
+  selector:
+    path: src/crypto/hasher.rs
+    anchor: "fn constant_time_eq"
+- id: hasher_verify
+  selector:
+    path: src/crypto/hasher.rs
+    anchor: "constant_time_eq(actual, expected)"
+- id: token_validate
+  selector:
+    path: src/auth/token.rs
+    anchor: "pub fn validate"
+- id: guard_check
+  selector:
+    path: src/middleware/auth_guard.rs
+    anchor: "pub fn check"
+- id: router_dispatch
+  selector:
+    path: src/router/router.rs
+    anchor: "pub fn dispatch"
+- id: no_settings
+  selector:
+    path: src/config/settings.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_018_SETTINGS_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_018_DEBUG_MARKER_B
+oracle:
+  required:
+  - hasher_constant_time
+  - hasher_verify
+  - token_validate
+  - guard_check
+  - router_dispatch
+  allowed: []
+  forbidden:
+  - no_settings
+  - no_global_0
+  - no_global_1

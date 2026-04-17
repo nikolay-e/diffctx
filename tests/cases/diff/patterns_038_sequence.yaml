@@ -1,206 +1,149 @@
 name: patterns_038_sequence
+tags:
+- lang:rust
+- change:bug_fix
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:medium
 repo:
   initial_files:
-    src/rate_limiter.py: |
-      import time
+    src/healthcare/vital_monitor.rs: |
+      pub struct SpO2Monitor {
+          readings: Vec<f32>,
+          sample_window: usize,
+      }
 
-      class RateLimiter:
-          def __init__(self, max_calls: int, period: float):
-              self.max_calls = max_calls
-              self.period = period
-              self.calls = []
+      impl SpO2Monitor {
+          pub fn new(sample_window: usize) -> Self {
+              Self { readings: Vec::new(), sample_window }
+          }
 
-          def is_allowed(self) -> bool:
-              now = time.time()
-              self.calls = [c for c in self.calls if now - c < self.period]
-              if len(self.calls) < self.max_calls:
-                  self.calls.append(now)
-                  return True
-              return False
+          pub fn record(&mut self, value: f32) {
+              self.readings.push(value);
+              if self.readings.len() > self.sample_window {
+                  self.readings.remove(0);  // BUG: O(n) removal, should use VecDeque
+              }
+          }
 
-          def wait_time(self) -> float:
-              if not self.calls:
-                  return 0
-              oldest = min(self.calls)
-              return max(0, self.period - (time.time() - oldest))
-    tests/test_rate_limiter.py: |
-      from src.rate_limiter import RateLimiter
+          pub fn average_spo2(&self) -> Option<f32> {
+              if self.readings.is_empty() {
+                  return None;
+              }
+              Some(self.readings.iter().sum::<f32>() / self.readings.len() as f32)
+          }
 
-      def test_allows_within_limit():
-          limiter = RateLimiter(max_calls=3, period=1.0)
-          assert limiter.is_allowed() is True
-    src/token_bucket.py: |
-      import time
+          pub fn is_hypoxic(&self) -> bool {
+              self.average_spo2().map_or(false, |avg| avg < 94.0)
+          }
+      }
+    src/healthcare/alarm.rs: |
+      use crate::healthcare::vital_monitor::SpO2Monitor;
 
-      class TokenBucket:
-          def __init__(self, capacity: int, refill_rate: float):
-              self.capacity = capacity
-              self.tokens = capacity
-              self.refill_rate = refill_rate
-              self.last_refill = time.time()
+      pub struct HypoxiaAlarm {
+          monitor: SpO2Monitor,
+          triggered: bool,
+      }
 
-          def is_allowed(self) -> bool:
-              self._refill()
-              if self.tokens >= 1:
-                  self.tokens -= 1
-                  return True
-              return False
+      impl HypoxiaAlarm {
+          pub fn new(window: usize) -> Self {
+              Self { monitor: SpO2Monitor::new(window), triggered: false }
+          }
 
-          def _refill(self):
-              now = time.time()
-              elapsed = now - self.last_refill
-              self.tokens = min(self.capacity, self.tokens + elapsed * self.refill_rate)
-              self.last_refill = now
-    tests/test_token_bucket.py: |
-      from unittest.mock import patch
-      from src.token_bucket import TokenBucket
-
-      def test_allows_with_tokens():
-          bucket = TokenBucket(capacity=5, refill_rate=1.0)
-          assert bucket.is_allowed() is True
-
-      @patch('src.token_bucket.time.time')
-      def test_refill_after_time(mock_time):
-          mock_time.return_value = 0.0
-          bucket = TokenBucket(capacity=1, refill_rate=1.0)
-          bucket.is_allowed()
-          assert bucket.is_allowed() is False
-          mock_time.return_value = 2.0
-          assert bucket.is_allowed() is True
+          pub fn update(&mut self, spo2: f32) -> bool {
+              self.monitor.record(spo2);
+              self.triggered = self.monitor.is_hypoxic();
+              self.triggered
+          }
+      }
+    garbage/ecg_processor.rs: |
+      // GARBAGE_VIT_A = "ecg_processor_marker"
+    garbage/bp_monitor.rs: |
+      // GARBAGE_VIT_B = "bp_monitor_marker"
+    garbage/glucose_tracker.rs: |
+      // GARBAGE_VIT_C = "glucose_tracker_marker"
   changed_files:
-    src/rate_limiter.py: |
-      import time
+    src/healthcare/vital_monitor.rs: |
+      use std::collections::VecDeque;
 
-      class RateLimiter:
-          def __init__(self, max_calls: int, period: float):
-              self.max_calls = max_calls
-              self.period = period
-              self.calls = []
+      pub struct SpO2Monitor {
+          readings: VecDeque<f32>,
+          sample_window: usize,
+      }
 
-          def is_allowed(self) -> bool:
-              now = time.time()
-              self.calls = [c for c in self.calls if now - c < self.period]
-              if len(self.calls) < self.max_calls:
-                  self.calls.append(now)
-                  return True
-              return False
+      impl SpO2Monitor {
+          pub fn new(sample_window: usize) -> Self {
+              Self { readings: VecDeque::new(), sample_window }
+          }
 
-          def wait_time(self) -> float:
-              if not self.calls:
-                  return 0
-              oldest = min(self.calls)
-              return max(0, self.period - (time.time() - oldest))
-    tests/test_rate_limiter.py: |
-      from unittest.mock import patch
-      from src.rate_limiter import RateLimiter
+          pub fn record(&mut self, value: f32) {
+              if self.readings.len() >= self.sample_window {
+                  self.readings.pop_front();
+              }
+              self.readings.push_back(value);
+          }
 
-      def test_allows_within_limit():
-          limiter = RateLimiter(max_calls=3, period=1.0)
-          assert limiter.is_allowed() is True
+          pub fn average_spo2(&self) -> Option<f32> {
+              if self.readings.is_empty() {
+                  return None;
+              }
+              Some(self.readings.iter().sum::<f32>() / self.readings.len() as f32)
+          }
 
-      @patch('src.rate_limiter.time.time')
-      def test_rate_limit_sequence(mock_time):
-          mock_time.side_effect = [
-              0.0,    # First call check
-              0.0,    # First call append
-              0.1,    # Second call check
-              0.1,    # Second call append
-              0.2,    # Third call check
-              0.2,    # Third call append
-              0.3,    # Fourth call check (should be blocked)
-              1.5,    # Fifth call check (period passed)
-              1.5,    # Fifth call append
-          ]
-          limiter = RateLimiter(max_calls=3, period=1.0)
-          assert limiter.is_allowed() is True
-          assert limiter.is_allowed() is True
-          assert limiter.is_allowed() is True
-          assert limiter.is_allowed() is False
-          assert limiter.is_allowed() is True
-    src/token_bucket.py: |
-      import time
+          pub fn is_hypoxic(&self) -> bool {
+              self.average_spo2().map_or(false, |avg| avg < 94.0)
+          }
+      }
+    src/healthcare/alarm.rs: |
+      use crate::healthcare::vital_monitor::SpO2Monitor;
 
-      class TokenBucket:
-          def __init__(self, capacity: int, refill_rate: float):
-              self.capacity = capacity
-              self.tokens = capacity
-              self.refill_rate = refill_rate
-              self.last_refill = time.time()
+      pub struct HypoxiaAlarm {
+          monitor: SpO2Monitor,
+          triggered: bool,
+      }
 
-          def is_allowed(self) -> bool:
-              self._refill()
-              if self.tokens >= 1:
-                  self.tokens -= 1
-                  return True
-              return False
+      impl HypoxiaAlarm {
+          pub fn new(window: usize) -> Self {
+              Self { monitor: SpO2Monitor::new(window), triggered: false }
+          }
 
-          def _refill(self):
-              now = time.time()
-              elapsed = now - self.last_refill
-              self.tokens = min(self.capacity, self.tokens + elapsed * self.refill_rate)
-              self.last_refill = now
-    tests/test_token_bucket.py: |
-      from unittest.mock import patch
-      from src.token_bucket import TokenBucket
-
-      def test_allows_with_tokens():
-          bucket = TokenBucket(capacity=5, refill_rate=1.0)
-          assert bucket.is_allowed() is True
-
-      @patch('src.token_bucket.time.time')
-      def test_refill_after_time(mock_time):
-          mock_time.return_value = 0.0
-          bucket = TokenBucket(capacity=1, refill_rate=1.0)
-          bucket.is_allowed()
-          assert bucket.is_allowed() is False
-          mock_time.return_value = 2.0
-          assert bucket.is_allowed() is True
-  commit_message: Update files
+          pub fn update(&mut self, spo2: f32) -> bool {
+              self.monitor.record(spo2);
+              self.triggered = self.monitor.is_hypoxic();
+              self.triggered
+          }
+      }
+    garbage/ecg_processor.rs: |
+      // GARBAGE_VIT_A = "ecg_processor_marker"
+    garbage/bp_monitor.rs: |
+      // GARBAGE_VIT_B = "bp_monitor_marker"
+    garbage/glucose_tracker.rs: |
+      // GARBAGE_VIT_C = "glucose_tracker_marker"
+  commit_message: "fix: replace Vec with VecDeque in SpO2Monitor for O(1) window eviction"
 fragments:
-- id: test_rate_limiter
+- id: record_fn
   selector:
-    path: tests/test_rate_limiter.py
-    anchor: from unittest.mock import patch
-- id: test_rate_limiter_1
+    path: src/healthcare/vital_monitor.rs
+    anchor: "pub fn record"
+- id: alarm_update
   selector:
-    path: tests/test_rate_limiter.py
-    anchor: '@patch(''src.rate_limiter.time.time'')'
-- id: rate_limiter
+    path: src/healthcare/alarm.rs
+    anchor: "pub fn update"
+- id: no_garbage_a
   selector:
-    path: src/rate_limiter.py
-    anchor: 'def is_allowed(self) -> bool:'
-- id: no_token_bucket
+    anchor: GARBAGE_VIT_A
+- id: no_garbage_b
   selector:
-    path: src/token_bucket.py
-- id: no_test_token_bucket
+    anchor: GARBAGE_VIT_B
+- id: no_garbage_c
   selector:
-    path: tests/test_token_bucket.py
-- id: no_global_0
-  selector:
-    anchor: class TokenBucket
-- id: no_global_1
-  selector:
-    anchor: refill_rate
-- id: no_global_2
-  selector:
-    anchor: _refill
-- id: no_global_3
-  selector:
-    anchor: test_allows_with_tokens
-- id: no_global_4
-  selector:
-    anchor: test_refill_after_time
+    anchor: GARBAGE_VIT_C
 oracle:
   required:
-  - test_rate_limiter
-  - test_rate_limiter_1
-  - rate_limiter
-  allowed: []
+  - record_fn
+  allowed:
+  - alarm_update
   forbidden:
-  - no_token_bucket
-  - no_test_token_bucket
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

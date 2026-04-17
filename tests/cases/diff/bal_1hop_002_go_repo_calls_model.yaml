@@ -1,0 +1,112 @@
+name: bal_1hop_002_go_repo_calls_model
+tags:
+- lang:go
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    internal/model/order.go: |
+      package model
+
+      type Order struct {
+          ID     int
+          UserID int
+          Total  float64
+          Status string
+      }
+
+      func NewOrder(userID int, total float64) *Order {
+          return &Order{
+              UserID: userID,
+              Total:  total,
+              Status: "pending",
+          }
+      }
+    internal/repo/order_repo.go: |
+      package repo
+
+      import "myapp/internal/model"
+
+      type OrderRepository struct {
+          orders []*model.Order
+      }
+
+      func (r *OrderRepository) Save(o *model.Order) {
+          r.orders = append(r.orders, o)
+      }
+
+      func (r *OrderRepository) FindByUser(userID int) []*model.Order {
+          var result []*model.Order
+          for _, o := range r.orders {
+              if o.UserID == userID {
+                  result = append(result, o)
+              }
+          }
+          return result
+      }
+    internal/config/env.go: |
+      package config
+
+      import "os"
+
+      func GetDatabaseURL() string {
+          return os.Getenv("DATABASE_URL")
+      }
+    internal/logger/log.go: |
+      package logger
+
+      import "log"
+
+      func Info(msg string) {
+          log.Println("[INFO]", msg)
+      }
+  changed_files:
+    internal/model/order.go: |
+      package model
+
+      import "time"
+
+      type Order struct {
+          ID        int
+          UserID    int
+          Total     float64
+          Status    string
+          CreatedAt time.Time
+      }
+
+      func NewOrder(userID int, total float64) *Order {
+          return &Order{
+              UserID:    userID,
+              Total:     total,
+              Status:    "pending",
+              CreatedAt: time.Now(),
+          }
+      }
+  commit_message: "feat: add CreatedAt timestamp to Order model"
+fragments:
+- id: order_struct_updated
+  selector:
+    path: internal/model/order.go
+    anchor: "CreatedAt time.Time"
+- id: repo_uses_order
+  selector:
+    path: internal/repo/order_repo.go
+    anchor: "model.Order"
+- id: unrelated_config
+  selector:
+    path: internal/config/env.go
+    anchor: "func GetDatabaseURL"
+- id: unrelated_logger
+  selector:
+    path: internal/logger/log.go
+    anchor: "func Info"
+oracle:
+  required:
+  - order_struct_updated
+  - repo_uses_order
+  allowed: []
+  forbidden:
+  - unrelated_config
+  - unrelated_logger

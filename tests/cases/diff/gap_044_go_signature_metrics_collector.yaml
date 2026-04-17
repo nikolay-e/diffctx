@@ -1,0 +1,247 @@
+name: gap_044_go_signature_metrics_collector
+tags:
+- lang:go
+- change:signature
+- change:single_file
+- context:cross_module
+- distance:2hop
+- difficulty:medium
+repo:
+  initial_files:
+    internal/metrics/counter.go: |
+      package metrics
+
+      import (
+          "sync"
+          "sync/atomic"
+      )
+
+      type Counter struct {
+          name  string
+          value int64
+      }
+
+      func NewCounter(name string) *Counter {
+          return &Counter{name: name}
+      }
+
+      func (c *Counter) Inc() {
+          atomic.AddInt64(&c.value, 1)
+      }
+
+      func (c *Counter) Value() int64 {
+          return atomic.LoadInt64(&c.value)
+      }
+
+      type Registry struct {
+          mu       sync.RWMutex
+          counters map[string]*Counter
+      }
+
+      func NewRegistry() *Registry {
+          return &Registry{
+              counters: make(map[string]*Counter),
+          }
+      }
+
+      func (r *Registry) Counter(name string) *Counter {
+          r.mu.Lock()
+          defer r.mu.Unlock()
+          if c, ok := r.counters[name]; ok {
+              return c
+          }
+          c := NewCounter(name)
+          r.counters[name] = c
+          return c
+      }
+
+      func (r *Registry) Snapshot() map[string]int64 {
+          r.mu.RLock()
+          defer r.mu.RUnlock()
+          snap := make(map[string]int64)
+          for k, v := range r.counters {
+              snap[k] = v.Value()
+          }
+          return snap
+      }
+    internal/handler/api.go: |
+      package handler
+
+      import (
+          "encoding/json"
+          "net/http"
+          "mymodule/internal/metrics"
+      )
+
+      type APIHandler struct {
+          registry *metrics.Registry
+      }
+
+      func NewAPIHandler(reg *metrics.Registry) *APIHandler {
+          return &APIHandler{registry: reg}
+      }
+
+      func (h *APIHandler) HandleRequest(w http.ResponseWriter, r *http.Request) {
+          h.registry.Counter("requests_total").Inc()
+          w.WriteHeader(http.StatusOK)
+      }
+
+      func (h *APIHandler) HandleMetrics(w http.ResponseWriter, r *http.Request) {
+          snap := h.registry.Snapshot()
+          json.NewEncoder(w).Encode(snap)
+      }
+    cmd/api/main.go: |
+      package main
+
+      import (
+          "net/http"
+          "mymodule/internal/handler"
+          "mymodule/internal/metrics"
+      )
+
+      func main() {
+          reg := metrics.NewRegistry()
+          api := handler.NewAPIHandler(reg)
+          http.HandleFunc("/api", api.HandleRequest)
+          http.HandleFunc("/metrics", api.HandleMetrics)
+          http.ListenAndServe(":9090", nil)
+      }
+  changed_files:
+    internal/metrics/counter.go: |
+      package metrics
+
+      import (
+          "sync"
+          "sync/atomic"
+      )
+
+      type Labels map[string]string
+
+      type Counter struct {
+          name   string
+          labels Labels
+          value  int64
+      }
+
+      func NewCounter(name string, labels Labels) *Counter {
+          return &Counter{name: name, labels: labels}
+      }
+
+      func (c *Counter) Inc() {
+          atomic.AddInt64(&c.value, 1)
+      }
+
+      func (c *Counter) Value() int64 {
+          return atomic.LoadInt64(&c.value)
+      }
+
+      type Registry struct {
+          mu       sync.RWMutex
+          counters map[string]*Counter
+      }
+
+      func NewRegistry() *Registry {
+          return &Registry{
+              counters: make(map[string]*Counter),
+          }
+      }
+
+      func (r *Registry) Counter(name string, labels Labels) *Counter {
+          r.mu.Lock()
+          defer r.mu.Unlock()
+          key := name + labelsKey(labels)
+          if c, ok := r.counters[key]; ok {
+              return c
+          }
+          c := NewCounter(name, labels)
+          r.counters[key] = c
+          return c
+      }
+
+      func labelsKey(l Labels) string {
+          result := ""
+          for k, v := range l {
+              result += k + "=" + v + ","
+          }
+          return result
+      }
+
+      func (r *Registry) Snapshot() map[string]int64 {
+          r.mu.RLock()
+          defer r.mu.RUnlock()
+          snap := make(map[string]int64)
+          for k, v := range r.counters {
+              snap[k] = v.Value()
+          }
+          return snap
+      }
+    internal/handler/api.go: |
+      package handler
+
+      import (
+          "encoding/json"
+          "net/http"
+          "mymodule/internal/metrics"
+      )
+
+      type APIHandler struct {
+          registry *metrics.Registry
+      }
+
+      func NewAPIHandler(reg *metrics.Registry) *APIHandler {
+          return &APIHandler{registry: reg}
+      }
+
+      func (h *APIHandler) HandleRequest(w http.ResponseWriter, r *http.Request) {
+          h.registry.Counter("requests_total").Inc()
+          w.WriteHeader(http.StatusOK)
+      }
+
+      func (h *APIHandler) HandleMetrics(w http.ResponseWriter, r *http.Request) {
+          snap := h.registry.Snapshot()
+          json.NewEncoder(w).Encode(snap)
+      }
+    cmd/api/main.go: |
+      package main
+
+      import (
+          "net/http"
+          "mymodule/internal/handler"
+          "mymodule/internal/metrics"
+      )
+
+      func main() {
+          reg := metrics.NewRegistry()
+          api := handler.NewAPIHandler(reg)
+          http.HandleFunc("/api", api.HandleRequest)
+          http.HandleFunc("/metrics", api.HandleMetrics)
+          http.ListenAndServe(":9090", nil)
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: labels_type
+  selector:
+    path: internal/metrics/counter.go
+    anchor: "type Labels map[string]string"
+- id: counter_constructor
+  selector:
+    path: internal/metrics/counter.go
+    anchor: "func NewCounter(name string, labels Labels) *Counter"
+- id: registry_counter
+  selector:
+    path: internal/metrics/counter.go
+    anchor: "func (r *Registry) Counter(name string, labels Labels) *Counter"
+- id: handler_call_site
+  selector:
+    path: internal/handler/api.go
+    anchor: 'h.registry.Counter("requests_total").Inc()'
+oracle:
+  required:
+  - labels_type
+  - counter_constructor
+  - registry_counter
+  - handler_call_site
+  allowed: []
+  forbidden: []

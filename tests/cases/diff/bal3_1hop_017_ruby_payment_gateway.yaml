@@ -1,0 +1,214 @@
+name: bal3_1hop_017_ruby_payment_gateway
+tags:
+- lang:ruby
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    lib/payment/gateway.rb: |
+      module Payment
+        class Gateway
+          attr_reader :api_key
+
+          def initialize(api_key:)
+            @api_key = api_key
+          end
+
+          def charge(amount, currency)
+            { success: true, amount: amount, currency: currency }
+          end
+
+          def refund(transaction_id)
+            { success: true, transaction_id: transaction_id }
+          end
+        end
+      end
+    lib/checkout/processor.rb: |
+      require_relative '../payment/gateway'
+
+      module Checkout
+        class Processor
+          def initialize(gateway)
+            @gateway = gateway
+          end
+
+          def process(cart)
+            total = cart.map { |item| item[:price] }.sum
+            @gateway.charge(total, 'USD')
+          end
+        end
+      end
+    lib/subscription/billing.rb: |
+      require_relative '../payment/gateway'
+
+      module Subscription
+        class Billing
+          def initialize(gateway)
+            @gateway = gateway
+          end
+
+          def bill(plan_price, currency)
+            @gateway.charge(plan_price, currency)
+          end
+
+          def cancel_refund(tx_id)
+            @gateway.refund(tx_id)
+          end
+        end
+      end
+    lib/donation/handler.rb: |
+      require_relative '../payment/gateway'
+
+      module Donation
+        class Handler
+          def initialize(gateway)
+            @gateway = gateway
+          end
+
+          def donate(amount)
+            @gateway.charge(amount, 'USD')
+          end
+        end
+      end
+    lib/inventory/tracker.rb: |
+      GARBAGE_017_INVENTORY_A = "inventory"
+
+      module Inventory
+        class Tracker
+          def initialize
+            @items = {}
+          end
+
+          def add(sku, qty)
+            @items[sku] = (@items[sku] || 0) + qty
+          end
+        end
+      end
+    lib/shipping/calculator.rb: |
+      GARBAGE_017_SHIPPING_B = "shipping"
+
+      module Shipping
+        class Calculator
+          def calculate(weight, zone)
+            weight * 0.5 + zone * 2.0
+          end
+        end
+      end
+    lib/tax/estimator.rb: |
+      GARBAGE_017_TAX_C = "tax"
+
+      module Tax
+        class Estimator
+          def estimate(amount, rate)
+            amount * rate
+          end
+        end
+      end
+  changed_files:
+    lib/payment/gateway.rb: |
+      module Payment
+        class ChargeResult
+          attr_reader :success, :amount, :currency, :transaction_id, :fee
+
+          def initialize(success:, amount:, currency:, transaction_id:, fee:)
+            @success = success
+            @amount = amount
+            @currency = currency
+            @transaction_id = transaction_id
+            @fee = fee
+          end
+        end
+
+        class Gateway
+          attr_reader :api_key
+
+          def initialize(api_key:, environment: :sandbox)
+            @api_key = api_key
+            @environment = environment
+          end
+
+          def charge(amount, currency, idempotency_key: nil)
+            ChargeResult.new(
+              success: true,
+              amount: amount,
+              currency: currency,
+              transaction_id: "tx_#{idempotency_key || SecureRandom.hex(8)}",
+              fee: amount * 0.029
+            )
+          end
+
+          def refund(transaction_id, reason: nil)
+            { success: true, transaction_id: transaction_id, reason: reason }
+          end
+        end
+      end
+  commit_message: "feat: add ChargeResult, idempotency_key, environment, and fee"
+fragments:
+- id: charge_result_class
+  selector:
+    path: lib/payment/gateway.rb
+    anchor: "class ChargeResult"
+- id: environment_param
+  selector:
+    path: lib/payment/gateway.rb
+    anchor: "environment: :sandbox"
+- id: idempotency_key
+  selector:
+    path: lib/payment/gateway.rb
+    anchor: "idempotency_key: nil"
+- id: fee_calculation
+  selector:
+    path: lib/payment/gateway.rb
+    anchor: "amount * 0.029"
+- id: checkout_calls_charge
+  selector:
+    path: lib/checkout/processor.rb
+    anchor: "@gateway.charge(total, 'USD')"
+- id: billing_calls_charge
+  selector:
+    path: lib/subscription/billing.rb
+    anchor: "@gateway.charge(plan_price, currency)"
+- id: donation_calls_charge
+  selector:
+    path: lib/donation/handler.rb
+    anchor: "@gateway.charge(amount, 'USD')"
+- id: unrelated_inventory
+  selector:
+    path: lib/inventory/tracker.rb
+    anchor: "class Tracker"
+- id: unrelated_shipping
+  selector:
+    path: lib/shipping/calculator.rb
+    anchor: "class Calculator"
+- id: unrelated_tax
+  selector:
+    path: lib/tax/estimator.rb
+    anchor: "class Estimator"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_017_INVENTORY_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_017_SHIPPING_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_017_TAX_C
+oracle:
+  required:
+  - charge_result_class
+  - environment_param
+  - idempotency_key
+  - checkout_calls_charge
+  allowed:
+  - fee_calculation
+  - billing_calls_charge
+  - donation_calls_charge
+  forbidden:
+  - unrelated_inventory
+  - unrelated_shipping
+  - unrelated_tax
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

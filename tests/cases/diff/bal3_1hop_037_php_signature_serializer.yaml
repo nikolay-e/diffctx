@@ -1,0 +1,236 @@
+name: bal3_1hop_037_php_signature_serializer
+tags:
+- lang:php
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/Serializer/JsonSerializer.php: |
+      <?php
+      namespace App\Serializer;
+
+      class JsonSerializer
+      {
+          public function serialize(array $data): string
+          {
+              return json_encode($data);
+          }
+
+          public function deserialize(string $json): array
+          {
+              return json_decode($json, true);
+          }
+      }
+    src/Api/ResponseBuilder.php: |
+      <?php
+      namespace App\Api;
+
+      use App\Serializer\JsonSerializer;
+
+      class ResponseBuilder
+      {
+          private JsonSerializer $serializer;
+
+          public function __construct(JsonSerializer $serializer)
+          {
+              $this->serializer = $serializer;
+          }
+
+          public function success(array $data): string
+          {
+              return $this->serializer->serialize(['status' => 'ok', 'data' => $data]);
+          }
+
+          public function error(string $message): string
+          {
+              return $this->serializer->serialize(['status' => 'error', 'message' => $message]);
+          }
+      }
+    src/Api/RequestParser.php: |
+      <?php
+      namespace App\Api;
+
+      use App\Serializer\JsonSerializer;
+
+      class RequestParser
+      {
+          private JsonSerializer $serializer;
+
+          public function __construct(JsonSerializer $serializer)
+          {
+              $this->serializer = $serializer;
+          }
+
+          public function parse(string $body): array
+          {
+              return $this->serializer->deserialize($body);
+          }
+      }
+    src/Export/DataExporter.php: |
+      <?php
+      namespace App\Export;
+
+      use App\Serializer\JsonSerializer;
+
+      class DataExporter
+      {
+          private JsonSerializer $serializer;
+
+          public function __construct(JsonSerializer $serializer)
+          {
+              $this->serializer = $serializer;
+          }
+
+          public function exportToJson(array $records): string
+          {
+              return $this->serializer->serialize($records);
+          }
+      }
+    src/Import/DataImporter.php: |
+      <?php
+      namespace App\Import;
+
+      use App\Serializer\JsonSerializer;
+
+      class DataImporter
+      {
+          private JsonSerializer $serializer;
+
+          public function __construct(JsonSerializer $serializer)
+          {
+              $this->serializer = $serializer;
+          }
+
+          public function importFromJson(string $raw): array
+          {
+              return $this->serializer->deserialize($raw);
+          }
+      }
+    src/Logging/LogFormatter.php: |
+      <?php
+      namespace App\Logging;
+
+      GARBAGE_BAL3_037_LOGFMT_A = 'formatter';
+      GARBAGE_BAL3_037_LEVEL_B = 'info';
+
+      class LogFormatter
+      {
+          public function format(string $level, string $message): string
+          {
+              return "[{$level}] {$message}";
+          }
+      }
+    src/Logging/LogWriter.php: |
+      <?php
+      namespace App\Logging;
+
+      GARBAGE_BAL3_037_WRITER_C = 'writer';
+      GARBAGE_BAL3_037_PATH_D = '/var/log';
+
+      class LogWriter
+      {
+          public function write(string $entry): void
+          {
+          }
+      }
+    src/Logging/LogRotator.php: |
+      <?php
+      namespace App\Logging;
+
+      GARBAGE_BAL3_037_ROTATE_E = 'rotate';
+      GARBAGE_BAL3_037_MAX_F = 10;
+
+      class LogRotator
+      {
+          public function rotate(string $path): void
+          {
+          }
+      }
+  changed_files:
+    src/Serializer/JsonSerializer.php: |
+      <?php
+      namespace App\Serializer;
+
+      class JsonSerializer
+      {
+          public function serialize(array $data, bool $prettyPrint = false): string
+          {
+              $flags = $prettyPrint ? JSON_PRETTY_PRINT : 0;
+              return json_encode($data, $flags | JSON_THROW_ON_ERROR);
+          }
+
+          public function deserialize(string $json, bool $strict = true): array
+          {
+              $result = json_decode($json, true, 512, $strict ? JSON_THROW_ON_ERROR : 0);
+              return $result ?? [];
+          }
+      }
+  commit_message: "Add pretty print and strict mode to JsonSerializer"
+fragments:
+- id: response_builder
+  selector:
+    path: src/Api/ResponseBuilder.php
+    anchor: "use App\\Serializer\\JsonSerializer"
+- id: response_serialize
+  selector:
+    path: src/Api/ResponseBuilder.php
+    anchor: "serializer->serialize"
+- id: request_parser
+  selector:
+    path: src/Api/RequestParser.php
+    anchor: "use App\\Serializer\\JsonSerializer"
+- id: data_exporter
+  selector:
+    path: src/Export/DataExporter.php
+    anchor: "use App\\Serializer\\JsonSerializer"
+- id: data_importer
+  selector:
+    path: src/Import/DataImporter.php
+    anchor: "use App\\Serializer\\JsonSerializer"
+- id: no_log_formatter
+  selector:
+    path: src/Logging/LogFormatter.php
+- id: no_log_writer
+  selector:
+    path: src/Logging/LogWriter.php
+- id: no_log_rotator
+  selector:
+    path: src/Logging/LogRotator.php
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_037_LOGFMT_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_037_LEVEL_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_037_WRITER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_037_PATH_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL3_037_ROTATE_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL3_037_MAX_F
+oracle:
+  required:
+  - response_builder
+  - response_serialize
+  - request_parser
+  - data_exporter
+  - data_importer
+  allowed: []
+  forbidden:
+  - no_log_formatter
+  - no_log_writer
+  - no_log_rotator
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

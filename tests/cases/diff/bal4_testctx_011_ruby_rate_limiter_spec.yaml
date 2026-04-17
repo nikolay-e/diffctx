@@ -1,0 +1,124 @@
+name: bal4_testctx_011_ruby_rate_limiter_spec
+tags:
+- lang:ruby
+- change:single_file
+- change:bug_fix
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    lib/rate_limiter.rb: |
+      class RateLimiter
+        def initialize(max_requests)
+          @max = max_requests
+          @count = 0
+        end
+
+        def allow?
+          @count += 1
+          @count <= @max
+        end
+
+        def reset
+          @count = 0
+        end
+      end
+    spec/rate_limiter_spec.rb: |
+      require_relative '../lib/rate_limiter'
+
+      RSpec.describe RateLimiter do
+        describe '#allow?' do
+          it 'allows requests under limit' do
+            limiter = RateLimiter.new(3)
+            expect(limiter.allow?).to be true
+            expect(limiter.allow?).to be true
+            expect(limiter.allow?).to be true
+          end
+
+          it 'rejects requests over limit' do
+            limiter = RateLimiter.new(1)
+            limiter.allow?
+            expect(limiter.allow?).to be false
+          end
+        end
+
+        describe '#reset' do
+          it 'resets counter' do
+            limiter = RateLimiter.new(1)
+            limiter.allow?
+            limiter.reset
+            expect(limiter.allow?).to be true
+          end
+        end
+      end
+    lib/circuit_breaker.rb: |
+      class CircuitBreaker
+        def initialize(threshold)
+          @threshold = threshold
+          @failures = 0
+        end
+
+        def record_failure
+          @failures += 1
+        end
+      end
+    lib/retry_policy.rb: |
+      class RetryPolicy
+        def initialize(attempts)
+          @attempts = attempts
+        end
+
+        def execute
+          @attempts.times { yield }
+        end
+      end
+  changed_files:
+    lib/rate_limiter.rb: |
+      class RateLimiter
+        def initialize(max_requests)
+          @max = max_requests
+          @count = 0
+        end
+
+        def allow?
+          return false if @max <= 0
+          @count += 1
+          @count <= @max
+        end
+
+        def reset
+          @count = 0
+        end
+      end
+  commit_message: "fix: guard against zero max_requests"
+fragments:
+- id: allow_method
+  selector:
+    path: lib/rate_limiter.rb
+    anchor: "def allow?"
+- id: spec_allow
+  selector:
+    path: spec/rate_limiter_spec.rb
+    anchor: "describe '#allow?'"
+- id: spec_rejects
+  selector:
+    path: spec/rate_limiter_spec.rb
+    anchor: "it 'rejects requests over limit'"
+- id: no_circuit
+  selector:
+    path: lib/circuit_breaker.rb
+    anchor: "class CircuitBreaker"
+- id: no_retry
+  selector:
+    path: lib/retry_policy.rb
+    anchor: "class RetryPolicy"
+oracle:
+  required:
+  - allow_method
+  - spec_allow
+  - spec_rejects
+  allowed: []
+  forbidden:
+  - no_circuit
+  - no_retry

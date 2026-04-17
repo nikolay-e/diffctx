@@ -1,0 +1,219 @@
+name: bal2_testctx_039_csharp_retry_policy
+tags:
+- lang:csharp
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/Resilience/RetryPolicy.cs: |
+      using System;
+      using System.Threading.Tasks;
+
+      namespace App.Resilience
+      {
+          public class RetryPolicy
+          {
+              private readonly int _maxRetries;
+              private readonly TimeSpan _delay;
+
+              public RetryPolicy(int maxRetries, TimeSpan delay)
+              {
+                  _maxRetries = maxRetries;
+                  _delay = delay;
+              }
+
+              public async Task<T> ExecuteAsync<T>(Func<Task<T>> action)
+              {
+                  var attempts = 0;
+                  while (true)
+                  {
+                      try
+                      {
+                          return await action();
+                      }
+                      catch (Exception) when (attempts < _maxRetries)
+                      {
+                          attempts++;
+                          await Task.Delay(_delay);
+                      }
+                  }
+              }
+          }
+      }
+    Tests/RetryPolicyTests.cs: |
+      using Xunit;
+      using App.Resilience;
+      using System;
+      using System.Threading.Tasks;
+
+      namespace App.Tests
+      {
+          public class RetryPolicyTests
+          {
+              [Fact]
+              public async Task ExecuteAsync_SucceedsFirstTry_ReturnsResult()
+              {
+                  var policy = new RetryPolicy(3, TimeSpan.FromMilliseconds(10));
+                  var result = await policy.ExecuteAsync(() => Task.FromResult(42));
+                  Assert.Equal(42, result);
+              }
+
+              [Fact]
+              public async Task ExecuteAsync_FailsThenSucceeds_RetriesCorrectly()
+              {
+                  var policy = new RetryPolicy(3, TimeSpan.FromMilliseconds(10));
+                  var attempt = 0;
+                  var result = await policy.ExecuteAsync<int>(() =>
+                  {
+                      attempt++;
+                      if (attempt < 3) throw new InvalidOperationException();
+                      return Task.FromResult(99);
+                  });
+                  Assert.Equal(99, result);
+              }
+          }
+      }
+    src/Resilience/CircuitBreaker.cs: |
+      using System;
+
+      namespace App.Resilience
+      {
+          public class CircuitBreaker
+          {
+              private int _failureCount;
+              private readonly int _threshold;
+              private bool _isOpen;
+
+              public CircuitBreaker(int threshold)
+              {
+                  _threshold = threshold;
+              }
+
+              public bool CanExecute()
+              {
+                  return !_isOpen;
+              }
+
+              public void RecordFailure()
+              {
+                  _failureCount++;
+                  if (_failureCount >= _threshold)
+                      _isOpen = true;
+              }
+
+              public void Reset()
+              {
+                  _failureCount = 0;
+                  _isOpen = false;
+              }
+          }
+      }
+    src/Http/HttpClientWrapper.cs: |
+      using System;
+      using System.Net.Http;
+
+      namespace App.Http
+      {
+          public class HttpClientWrapper
+          {
+              private readonly HttpClient _client = new HttpClient();
+
+              public string Get(string url)
+              {
+                  return _client.GetStringAsync(url).Result;
+              }
+          }
+      }
+  changed_files:
+    src/Resilience/RetryPolicy.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Threading.Tasks;
+
+      namespace App.Resilience
+      {
+          public class RetryPolicy
+          {
+              private readonly int _maxRetries;
+              private readonly TimeSpan _delay;
+              private readonly List<Type> _retryableExceptions;
+
+              public RetryPolicy(int maxRetries, TimeSpan delay, List<Type> retryableExceptions = null)
+              {
+                  _maxRetries = maxRetries;
+                  _delay = delay;
+                  _retryableExceptions = retryableExceptions;
+              }
+
+              public async Task<T> ExecuteAsync<T>(Func<Task<T>> action)
+              {
+                  var attempts = 0;
+                  while (true)
+                  {
+                      try
+                      {
+                          return await action();
+                      }
+                      catch (Exception ex) when (attempts < _maxRetries && IsRetryable(ex))
+                      {
+                          attempts++;
+                          await Task.Delay(CalculateDelay(attempts));
+                      }
+                  }
+              }
+
+              private bool IsRetryable(Exception ex)
+              {
+                  if (_retryableExceptions == null) return true;
+                  return _retryableExceptions.Contains(ex.GetType());
+              }
+
+              private TimeSpan CalculateDelay(int attempt)
+              {
+                  return TimeSpan.FromMilliseconds(_delay.TotalMilliseconds * Math.Pow(2, attempt - 1));
+              }
+          }
+      }
+  commit_message: "feat: add exception filtering and exponential backoff"
+fragments:
+- id: is_retryable
+  selector:
+    path: src/Resilience/RetryPolicy.cs
+    anchor: "private bool IsRetryable(Exception ex)"
+- id: calculate_delay
+  selector:
+    path: src/Resilience/RetryPolicy.cs
+    anchor: "private TimeSpan CalculateDelay(int attempt)"
+- id: retryable_exceptions_field
+  selector:
+    path: src/Resilience/RetryPolicy.cs
+    anchor: "_retryableExceptions"
+- id: test_imports
+  selector:
+    path: Tests/RetryPolicyTests.cs
+    anchor: "using App.Resilience"
+- id: test_retries
+  selector:
+    path: Tests/RetryPolicyTests.cs
+    anchor: "ExecuteAsync_FailsThenSucceeds_RetriesCorrectly"
+- id: no_circuit_breaker
+  selector:
+    path: src/Resilience/CircuitBreaker.cs
+    anchor: "class CircuitBreaker"
+- id: no_http_client
+  selector:
+    path: src/Http/HttpClientWrapper.cs
+    anchor: "class HttpClientWrapper"
+oracle:
+  required:
+  - is_retryable
+  - calculate_delay
+  - test_imports
+  allowed:
+  - retryable_exceptions_field
+  - test_retries
+  forbidden:
+  - no_circuit_breaker
+  - no_http_client

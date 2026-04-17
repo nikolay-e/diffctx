@@ -1,0 +1,109 @@
+name: bal_3hop_002_python_data_pipeline_schema
+tags:
+- lang:python
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    pipeline/schema.py: |
+      from dataclasses import dataclass
+      @dataclass
+      class Record:
+          key: str
+          value: str
+    pipeline/transform.py: |
+      from pipeline.schema import Record
+      def normalize(record: Record) -> Record:
+          return Record(key=record.key.lower(), value=record.value.strip())
+    pipeline/batch.py: |
+      from pipeline.transform import normalize
+      from pipeline.schema import Record
+      def process_batch(records: list[Record]) -> list[Record]:
+          return [normalize(r) for r in records]
+    pipeline/runner.py: |
+      from pipeline.batch import process_batch
+      from pipeline.schema import Record
+      def run_pipeline(raw_data: list[dict]) -> list[Record]:
+          records = [Record(key=d["key"], value=d["value"]) for d in raw_data]
+          return process_batch(records)
+    utils/metrics.py: |
+      class MetricsCollector:
+          def __init__(self):
+              self.counts = {}
+          def increment(self, name: str):
+              self.counts[name] = self.counts.get(name, 0) + 1
+    config/settings.py: |
+      DATABASE_URL = "postgres://localhost/app"
+      BATCH_SIZE = 100
+  changed_files:
+    pipeline/schema.py: |
+      from dataclasses import dataclass, field
+      from typing import Optional
+      @dataclass
+      class Record:
+          key: str
+          value: str
+          metadata: Optional[dict] = field(default_factory=dict)
+    pipeline/transform.py: |
+      from pipeline.schema import Record
+      def normalize(record: Record) -> Record:
+          return Record(key=record.key.lower(), value=record.value.strip())
+    pipeline/batch.py: |
+      from pipeline.transform import normalize
+      from pipeline.schema import Record
+      def process_batch(records: list[Record]) -> list[Record]:
+          return [normalize(r) for r in records]
+    pipeline/runner.py: |
+      from pipeline.batch import process_batch
+      from pipeline.schema import Record
+      def run_pipeline(raw_data: list[dict]) -> list[Record]:
+          records = [Record(key=d["key"], value=d["value"]) for d in raw_data]
+          return process_batch(records)
+    utils/metrics.py: |
+      class MetricsCollector:
+          def __init__(self):
+              self.counts = {}
+          def increment(self, name: str):
+              self.counts[name] = self.counts.get(name, 0) + 1
+    config/settings.py: |
+      DATABASE_URL = "postgres://localhost/app"
+      BATCH_SIZE = 100
+  commit_message: "feat: add optional metadata field to Record schema"
+fragments:
+- id: schema_metadata_field
+  selector:
+    path: pipeline/schema.py
+    anchor: "metadata: Optional[dict] = field(default_factory=dict)"
+- id: transform_imports_schema
+  selector:
+    path: pipeline/transform.py
+    anchor: "from pipeline.schema import Record"
+- id: batch_imports_transform
+  selector:
+    path: pipeline/batch.py
+    anchor: "from pipeline.transform import normalize"
+- id: runner_imports_batch
+  selector:
+    path: pipeline/runner.py
+    anchor: "from pipeline.batch import process_batch"
+- id: no_metrics
+  selector:
+    path: utils/metrics.py
+    anchor: "class MetricsCollector"
+- id: no_settings
+  selector:
+    path: config/settings.py
+    anchor: "DATABASE_URL"
+oracle:
+  required:
+  - schema_metadata_field
+  - transform_imports_schema
+  - batch_imports_transform
+  - runner_imports_batch
+  allowed: []
+  forbidden:
+  - no_metrics
+  - no_settings

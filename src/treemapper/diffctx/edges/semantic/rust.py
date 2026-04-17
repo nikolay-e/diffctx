@@ -312,6 +312,27 @@ class RustEdgeBuilder(EdgeBuilder):
         return list(discovered)
 
     @staticmethod
+    @staticmethod
+    def _collect_forward_targets(
+        frontier: set[Path], file_uses: dict[Path, set[str]], file_mods: dict[Path, set[str]]
+    ) -> set[str]:
+        targets: set[str] = set()
+        for f in frontier:
+            for use_path in file_uses.get(f, set()):
+                for part in use_path.split("::"):
+                    targets.add(part.lower())
+            targets.update(m.lower() for m in file_mods.get(f, set()))
+        return targets
+
+    @staticmethod
+    def _extract_use_parts(file_uses: dict[Path, set[str]], candidate: Path) -> set[str]:
+        parts: set[str] = set()
+        for use_path in file_uses.get(candidate, set()):
+            for part in use_path.split("::"):
+                parts.add(part.lower())
+        return parts
+
+    @staticmethod
     def _discover_one_hop(
         frontier: set[Path],
         candidates: list[Path],
@@ -324,13 +345,7 @@ class RustEdgeBuilder(EdgeBuilder):
         found: set[Path] = set()
         skip = exclude | already_found
         frontier_mod_names = {_stem_to_mod_name(f) for f in frontier}
-
-        forward_targets: set[str] = set()
-        for f in frontier:
-            for use_path in file_uses.get(f, set()):
-                for part in use_path.split("::"):
-                    forward_targets.add(part.lower())
-            forward_targets.update(m.lower() for m in file_mods.get(f, set()))
+        forward_targets = RustEdgeBuilder._collect_forward_targets(frontier, file_uses, file_mods)
 
         for target_name in forward_targets:
             for candidate in mod_name_to_files.get(target_name, []):
@@ -340,15 +355,9 @@ class RustEdgeBuilder(EdgeBuilder):
         for candidate in candidates:
             if candidate in skip or candidate in found:
                 continue
-            cand_mods = file_mods.get(candidate, set())
-            if cand_mods & frontier_mod_names:
+            if file_mods.get(candidate, set()) & frontier_mod_names:
                 found.add(candidate)
-                continue
-            cand_parts: set[str] = set()
-            for use_path in file_uses.get(candidate, set()):
-                for part in use_path.split("::"):
-                    cand_parts.add(part.lower())
-            if cand_parts & frontier_mod_names:
+            elif RustEdgeBuilder._extract_use_parts(file_uses, candidate) & frontier_mod_names:
                 found.add(candidate)
 
         return found
@@ -384,38 +393,48 @@ class RustEdgeBuilder(EdgeBuilder):
         trait_impls: dict[FragmentId, list[tuple[str, str]]] = defaultdict(list)
 
         for f in rust_frags:
-            stem = f.path.stem.lower()
-            name_to_frags[stem].append(f.id)
-
-            if stem in {"mod", "lib"}:
-                mod_to_frags[f.path.parent.name.lower()].append(f.id)
-            else:
-                mod_to_frags[stem].append(f.id)
-
-            funcs, types = _extract_definitions(f.content)
-            for t in types:
-                type_defs[t.lower()].append(f.id)
-            for fn in funcs:
-                fn_defs[fn.lower()].append(f.id)
-
-            for mod_name in _extract_mods(f.content):
-                mod_to_frags[mod_name.lower()].append(f.id)
-
-            for trait_name, type_name in _extract_trait_impls(f.content):
-                trait_impls[f.id].append((trait_name, type_name))
-
-            for pub_use_path in _extract_pub_uses(f.content):
-                parts = pub_use_path.split("::")
-                leaf = parts[-1]
-                leaf_lower = leaf.lower()
-                if leaf_lower not in name_to_frags:
-                    for target_fid_list in [type_defs.get(leaf_lower, []), fn_defs.get(leaf_lower, [])]:
-                        for target_fid in target_fid_list:
-                            if target_fid != f.id:
-                                name_to_frags[leaf_lower].append(f.id)
-                                break
+            self._index_fragment(f, name_to_frags, mod_to_frags, type_defs, fn_defs, trait_impls)
 
         return name_to_frags, mod_to_frags, type_defs, fn_defs, trait_impls
+
+    @staticmethod
+    def _index_fragment(
+        f: Fragment,
+        name_to_frags: dict[str, list[FragmentId]],
+        mod_to_frags: dict[str, list[FragmentId]],
+        type_defs: dict[str, list[FragmentId]],
+        fn_defs: dict[str, list[FragmentId]],
+        trait_impls: dict[FragmentId, list[tuple[str, str]]],
+    ) -> None:
+        stem = f.path.stem.lower()
+        name_to_frags[stem].append(f.id)
+
+        if stem in {"mod", "lib"}:
+            mod_to_frags[f.path.parent.name.lower()].append(f.id)
+        else:
+            mod_to_frags[stem].append(f.id)
+
+        funcs, types = _extract_definitions(f.content)
+        for t in types:
+            type_defs[t.lower()].append(f.id)
+        for fn in funcs:
+            fn_defs[fn.lower()].append(f.id)
+
+        for mod_name in _extract_mods(f.content):
+            mod_to_frags[mod_name.lower()].append(f.id)
+
+        for trait_name, type_name in _extract_trait_impls(f.content):
+            trait_impls[f.id].append((trait_name, type_name))
+
+        for pub_use_path in _extract_pub_uses(f.content):
+            parts = pub_use_path.split("::")
+            leaf_lower = parts[-1].lower()
+            if leaf_lower not in name_to_frags:
+                for target_fid_list in [type_defs.get(leaf_lower, []), fn_defs.get(leaf_lower, [])]:
+                    for target_fid in target_fid_list:
+                        if target_fid != f.id:
+                            name_to_frags[leaf_lower].append(f.id)
+                            break
 
     def _link_fragment(
         self,

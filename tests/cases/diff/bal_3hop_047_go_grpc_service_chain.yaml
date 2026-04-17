@@ -1,0 +1,231 @@
+name: bal_3hop_047_go_grpc_service_chain
+tags:
+- lang:go
+- change:new_function
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    pkg/proto/payment.go: |
+      package proto
+
+      type PaymentRequest struct {
+        OrderID string
+        Amount  float64
+      }
+
+      type PaymentResponse struct {
+        TransactionID string
+        Success       bool
+      }
+    pkg/gateway/payment.go: |
+      package gateway
+
+      import "pkg/proto"
+
+      type PaymentGateway struct {
+        apiKey string
+      }
+
+      func NewPaymentGateway(apiKey string) *PaymentGateway {
+        return &PaymentGateway{apiKey: apiKey}
+      }
+
+      func (g *PaymentGateway) Charge(req proto.PaymentRequest) proto.PaymentResponse {
+        return proto.PaymentResponse{TransactionID: "txn-001", Success: true}
+      }
+    pkg/service/payment.go: |
+      package service
+
+      import (
+        "pkg/gateway"
+        "pkg/proto"
+      )
+
+      type PaymentService struct {
+        gw *gateway.PaymentGateway
+      }
+
+      func NewPaymentService(gw *gateway.PaymentGateway) *PaymentService {
+        return &PaymentService{gw: gw}
+      }
+
+      func (s *PaymentService) ProcessPayment(orderID string, amount float64) proto.PaymentResponse {
+        req := proto.PaymentRequest{OrderID: orderID, Amount: amount}
+        return s.gw.Charge(req)
+      }
+    cmd/server/grpc.go: |
+      package main
+
+      import (
+        "fmt"
+        "pkg/service"
+        "pkg/gateway"
+      )
+
+      var paymentService = service.NewPaymentService(gateway.NewPaymentGateway("key-123"))
+
+      func handlePayment(orderID string, amount float64) {
+        resp := paymentService.ProcessPayment(orderID, amount)
+        fmt.Printf("Payment %s: success=%v\n", resp.TransactionID, resp.Success)
+      }
+    pkg/middleware/logging.go: |
+      package middleware
+
+      var GARBAGE_047_LOGGING_MARKER_A = "logging"
+      var GARBAGE_047_FORMAT_MARKER_B = "json"
+
+      func LogRequest(method string, path string) {}
+    pkg/util/retry.go: |
+      package util
+
+      var GARBAGE_047_RETRY_MARKER_C = "retry"
+      var GARBAGE_047_MAX_MARKER_D = 3
+
+      func Retry(fn func() error, maxRetries int) error { return fn() }
+  changed_files:
+    pkg/proto/payment.go: |
+      package proto
+
+      type PaymentRequest struct {
+        OrderID  string
+        Amount   float64
+        Currency string
+      }
+
+      type PaymentResponse struct {
+        TransactionID string
+        Success       bool
+        ErrorCode     string
+      }
+
+      type RefundRequest struct {
+        TransactionID string
+        Amount        float64
+      }
+    pkg/gateway/payment.go: |
+      package gateway
+
+      import "pkg/proto"
+
+      type PaymentGateway struct {
+        apiKey string
+      }
+
+      func NewPaymentGateway(apiKey string) *PaymentGateway {
+        return &PaymentGateway{apiKey: apiKey}
+      }
+
+      func (g *PaymentGateway) Charge(req proto.PaymentRequest) proto.PaymentResponse {
+        return proto.PaymentResponse{TransactionID: "txn-001", Success: true}
+      }
+
+      func (g *PaymentGateway) Refund(req proto.RefundRequest) proto.PaymentResponse {
+        return proto.PaymentResponse{TransactionID: req.TransactionID, Success: true}
+      }
+    pkg/service/payment.go: |
+      package service
+
+      import (
+        "pkg/gateway"
+        "pkg/proto"
+      )
+
+      type PaymentService struct {
+        gw *gateway.PaymentGateway
+      }
+
+      func NewPaymentService(gw *gateway.PaymentGateway) *PaymentService {
+        return &PaymentService{gw: gw}
+      }
+
+      func (s *PaymentService) ProcessPayment(orderID string, amount float64, currency string) proto.PaymentResponse {
+        req := proto.PaymentRequest{OrderID: orderID, Amount: amount, Currency: currency}
+        return s.gw.Charge(req)
+      }
+
+      func (s *PaymentService) RefundPayment(transactionID string, amount float64) proto.PaymentResponse {
+        req := proto.RefundRequest{TransactionID: transactionID, Amount: amount}
+        return s.gw.Refund(req)
+      }
+    cmd/server/grpc.go: |
+      package main
+
+      import (
+        "fmt"
+        "pkg/service"
+        "pkg/gateway"
+      )
+
+      var paymentService = service.NewPaymentService(gateway.NewPaymentGateway("key-123"))
+
+      func handlePayment(orderID string, amount float64) {
+        resp := paymentService.ProcessPayment(orderID, amount, "USD")
+        fmt.Printf("Payment %s: success=%v\n", resp.TransactionID, resp.Success)
+      }
+
+      func handleRefund(transactionID string, amount float64) {
+        resp := paymentService.RefundPayment(transactionID, amount)
+        fmt.Printf("Refund %s: success=%v\n", resp.TransactionID, resp.Success)
+      }
+    pkg/middleware/logging.go: |
+      package middleware
+
+      var GARBAGE_047_LOGGING_MARKER_A = "logging"
+      var GARBAGE_047_FORMAT_MARKER_B = "json"
+
+      func LogRequest(method string, path string) {}
+    pkg/util/retry.go: |
+      package util
+
+      var GARBAGE_047_RETRY_MARKER_C = "retry"
+      var GARBAGE_047_MAX_MARKER_D = 3
+
+      func Retry(fn func() error, maxRetries int) error { return fn() }
+  commit_message: "feat: add refund support and currency to payment flow"
+fragments:
+- id: payment_currency_field
+  selector:
+    path: pkg/proto/payment.go
+    anchor: "Currency string"
+- id: refund_request_type
+  selector:
+    path: pkg/proto/payment.go
+    anchor: "type RefundRequest struct"
+- id: gateway_refund_method
+  selector:
+    path: pkg/gateway/payment.go
+    anchor: "func (g *PaymentGateway) Refund"
+- id: service_refund_method
+  selector:
+    path: pkg/service/payment.go
+    anchor: "func (s *PaymentService) RefundPayment"
+- id: grpc_imports_service
+  selector:
+    path: cmd/server/grpc.go
+    anchor: "pkg/service"
+- id: grpc_handle_refund
+  selector:
+    path: cmd/server/grpc.go
+    anchor: "func handleRefund"
+- id: no_logging
+  selector:
+    path: pkg/middleware/logging.go
+    anchor: "GARBAGE_047_LOGGING_MARKER_A"
+- id: no_retry
+  selector:
+    path: pkg/util/retry.go
+    anchor: "GARBAGE_047_RETRY_MARKER_C"
+oracle:
+  required:
+  - payment_currency_field
+  - refund_request_type
+  - gateway_refund_method
+  - service_refund_method
+  - grpc_imports_service
+  - grpc_handle_refund
+  allowed: []
+  forbidden:
+  - no_logging
+  - no_retry

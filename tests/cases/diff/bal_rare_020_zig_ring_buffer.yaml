@@ -1,0 +1,186 @@
+name: bal_rare_020_zig_ring_buffer
+tags:
+- lang:java
+- change:multi_file
+- change:refactor
+- context:cross_module
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/main/java/com/logistics/TrackingService.java: |
+      package com.logistics;
+
+      import java.util.HashMap;
+      import java.util.Map;
+
+      public class TrackingService {
+          private final Map<String, String> shipmentStatus = new HashMap<>();
+
+          public void updateStatus(String shipmentId, String status) {
+              if (shipmentId == null || shipmentId.isBlank()) {
+                  throw new IllegalArgumentException("Shipment ID required");
+              }
+              if (!isValidStatus(status)) {
+                  throw new IllegalArgumentException("Invalid status: " + status);
+              }
+              shipmentStatus.put(shipmentId, status);
+          }
+
+          private boolean isValidStatus(String status) {
+              return status != null && !status.isBlank();
+          }
+
+          public String getStatus(String shipmentId) {
+              return shipmentStatus.getOrDefault(shipmentId, "UNKNOWN");
+          }
+      }
+    src/main/java/com/logistics/NotificationSender.java: |
+      package com.logistics;
+
+      import java.util.HashMap;
+      import java.util.Map;
+
+      public class NotificationSender {
+          public void notifyStatusChange(String shipmentId, String status) {
+              if (shipmentId == null || shipmentId.isBlank()) {
+                  throw new IllegalArgumentException("Shipment ID required");
+              }
+              System.out.println("Notify: " + shipmentId + " -> " + status);
+          }
+      }
+    src/main/java/com/logistics/RouteCalculator.java: |
+      package com.logistics;
+
+      public class RouteCalculator {
+          public double estimateDeliveryDays(String origin, String destination) {
+              return 3.0;
+          }
+      }
+    garbage/CacheWarmer.java: |
+      // GARBAGE_RARE020_WARMUP_A = "cache_warmer_marker"
+    garbage/MetricsCollector.java: |
+      // GARBAGE_RARE020_METRICS_B = "metrics_collector_marker"
+    garbage/AuditLogger.java: |
+      // GARBAGE_RARE020_AUDIT_C = "audit_logger_marker"
+  changed_files:
+    src/main/java/com/logistics/TrackingService.java: |
+      package com.logistics;
+
+      import com.logistics.validation.ShipmentValidator;
+      import java.util.HashMap;
+      import java.util.Map;
+
+      public class TrackingService {
+          private final Map<String, String> shipmentStatus = new HashMap<>();
+          private final ShipmentValidator validator;
+
+          public TrackingService(ShipmentValidator validator) {
+              this.validator = validator;
+          }
+
+          public void updateStatus(String shipmentId, String status) {
+              validator.validateShipmentId(shipmentId);
+              validator.validateStatus(status);
+              shipmentStatus.put(shipmentId, status);
+          }
+
+          public String getStatus(String shipmentId) {
+              return shipmentStatus.getOrDefault(shipmentId, "UNKNOWN");
+          }
+      }
+    src/main/java/com/logistics/NotificationSender.java: |
+      package com.logistics;
+
+      import com.logistics.validation.ShipmentValidator;
+
+      public class NotificationSender {
+          private final ShipmentValidator validator;
+
+          public NotificationSender(ShipmentValidator validator) {
+              this.validator = validator;
+          }
+
+          public void notifyStatusChange(String shipmentId, String status) {
+              validator.validateShipmentId(shipmentId);
+              System.out.println("Notify: " + shipmentId + " -> " + status);
+          }
+      }
+    src/main/java/com/logistics/validation/ShipmentValidator.java: |
+      package com.logistics.validation;
+
+      public class ShipmentValidator {
+          public void validateShipmentId(String shipmentId) {
+              if (shipmentId == null || shipmentId.isBlank()) {
+                  throw new IllegalArgumentException("Shipment ID required");
+              }
+          }
+
+          public void validateStatus(String status) {
+              if (status == null || status.isBlank()) {
+                  throw new IllegalArgumentException("Status must not be blank");
+              }
+          }
+      }
+    src/main/java/com/logistics/RouteCalculator.java: |
+      package com.logistics;
+
+      public class RouteCalculator {
+          public double estimateDeliveryDays(String origin, String destination) {
+              return 3.0;
+          }
+      }
+    garbage/CacheWarmer.java: |
+      // GARBAGE_RARE020_WARMUP_A = "cache_warmer_marker"
+    garbage/MetricsCollector.java: |
+      // GARBAGE_RARE020_METRICS_B = "metrics_collector_marker"
+    garbage/AuditLogger.java: |
+      // GARBAGE_RARE020_AUDIT_C = "audit_logger_marker"
+  commit_message: "refactor: extract ShipmentValidator used by TrackingService and NotificationSender"
+fragments:
+- id: tracking_uses_validator
+  selector:
+    path: src/main/java/com/logistics/TrackingService.java
+    anchor: "private final ShipmentValidator validator;"
+- id: tracking_validate_call
+  selector:
+    path: src/main/java/com/logistics/TrackingService.java
+    anchor: "validator.validateShipmentId(shipmentId);"
+- id: notification_uses_validator
+  selector:
+    path: src/main/java/com/logistics/NotificationSender.java
+    anchor: "import com.logistics.validation.ShipmentValidator;"
+- id: validator_class
+  selector:
+    path: src/main/java/com/logistics/validation/ShipmentValidator.java
+    anchor: "public class ShipmentValidator {"
+- id: validator_validate_id
+  selector:
+    path: src/main/java/com/logistics/validation/ShipmentValidator.java
+    anchor: "public void validateShipmentId(String shipmentId) {"
+- id: unrelated_route
+  selector:
+    path: src/main/java/com/logistics/RouteCalculator.java
+    anchor: "public double estimateDeliveryDays"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_RARE020_WARMUP_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_RARE020_METRICS_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_RARE020_AUDIT_C
+oracle:
+  required:
+  - tracking_uses_validator
+  - tracking_validate_call
+  - validator_class
+  - validator_validate_id
+  allowed:
+  - notification_uses_validator
+  forbidden:
+  - unrelated_route
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

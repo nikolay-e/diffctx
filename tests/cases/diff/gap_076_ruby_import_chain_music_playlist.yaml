@@ -1,0 +1,316 @@
+name: gap_076_ruby_import_chain_music_playlist
+tags:
+- change:new_function
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:2hop
+- lang:ruby
+repo:
+  initial_files:
+    lib/music/track.rb: |
+      module Music
+        class Track
+          attr_reader :title, :artist, :duration_sec
+
+          def initialize(title, artist, duration_sec)
+            @title = title
+            @artist = artist
+            @duration_sec = duration_sec
+          end
+
+          def formatted_duration
+            minutes = duration_sec / 60
+            seconds = duration_sec % 60
+            "#{minutes}:#{seconds.to_s.rjust(2, '0')}"
+          end
+
+          def to_s
+            "#{artist} - #{title} (#{formatted_duration})"
+          end
+        end
+      end
+    lib/music/playlist.rb: |
+      require_relative 'track'
+
+      module Music
+        class Playlist
+          attr_reader :name
+
+          def initialize(name)
+            @name = name
+            @tracks = []
+          end
+
+          def add(track)
+            @tracks << track
+          end
+
+          def total_duration
+            @tracks.sum(&:duration_sec)
+          end
+
+          def track_count
+            @tracks.length
+          end
+
+          def tracks
+            @tracks.dup
+          end
+        end
+      end
+    lib/music/player.rb: |
+      require_relative 'playlist'
+
+      module Music
+        class Player
+          def initialize(playlist)
+            @playlist = playlist
+            @current_index = 0
+          end
+
+          def current_track
+            tracks = @playlist.tracks
+            return nil if tracks.empty?
+            tracks[@current_index % tracks.length]
+          end
+
+          def next_track
+            @current_index += 1
+            current_track
+          end
+        end
+      end
+    lib/music/equalizer.rb: |
+      TRAP_GAP076_EQ_A = "equalizer"
+      TRAP_GAP076_BANDS_B = 10
+
+      module Music
+        class Equalizer
+          BANDS = [:bass, :mid, :treble]
+
+          def initialize
+            @levels = BANDS.each_with_object({}) { |b, h| h[b] = 0.0 }
+          end
+
+          def set(band, level)
+            @levels[band] = level.clamp(-12.0, 12.0)
+          end
+
+          def get(band)
+            @levels.fetch(band, 0.0)
+          end
+
+          def flat
+            @levels.each_key { |b| @levels[b] = 0.0 }
+          end
+        end
+      end
+    lib/music/lyrics.rb: |
+      TRAP_GAP076_LYRICS_C = "lyrics_service"
+      TRAP_GAP076_SOURCE_D = "local"
+
+      module Music
+        class Lyrics
+          def initialize
+            @store = {}
+          end
+
+          def add(track_title, text)
+            @store[track_title] = text
+          end
+
+          def find(track_title)
+            @store[track_title]
+          end
+
+          def has_lyrics?(track_title)
+            @store.key?(track_title)
+          end
+        end
+      end
+  changed_files:
+    lib/music/track.rb: |
+      module Music
+        class Track
+          attr_reader :title, :artist, :duration_sec
+
+          def initialize(title, artist, duration_sec)
+            @title = title
+            @artist = artist
+            @duration_sec = duration_sec
+          end
+
+          def formatted_duration
+            minutes = duration_sec / 60
+            seconds = duration_sec % 60
+            "#{minutes}:#{seconds.to_s.rjust(2, '0')}"
+          end
+
+          def to_s
+            "#{artist} - #{title} (#{formatted_duration})"
+          end
+        end
+      end
+    lib/music/playlist.rb: |
+      require_relative 'track'
+
+      module Music
+        class Playlist
+          attr_reader :name
+
+          def initialize(name)
+            @name = name
+            @tracks = []
+          end
+
+          def add(track)
+            @tracks << track
+          end
+
+          def total_duration
+            @tracks.sum(&:duration_sec)
+          end
+
+          def track_count
+            @tracks.length
+          end
+
+          def tracks
+            @tracks.dup
+          end
+        end
+      end
+    lib/music/player.rb: |
+      require_relative 'playlist'
+
+      module Music
+        class Player
+          def initialize(playlist)
+            @playlist = playlist
+            @current_index = 0
+            @shuffle = false
+            @play_order = nil
+          end
+
+          def current_track
+            order = effective_order
+            return nil if order.empty?
+            order[@current_index % order.length]
+          end
+
+          def next_track
+            @current_index += 1
+            current_track
+          end
+
+          def toggle_shuffle
+            @shuffle = !@shuffle
+            @play_order = nil
+            @shuffle
+          end
+
+          private
+
+          def effective_order
+            tracks = @playlist.tracks
+            return tracks unless @shuffle
+            @play_order ||= tracks.shuffle
+          end
+        end
+      end
+    lib/music/equalizer.rb: |
+      TRAP_GAP076_EQ_A = "equalizer"
+      TRAP_GAP076_BANDS_B = 10
+
+      module Music
+        class Equalizer
+          BANDS = [:bass, :mid, :treble]
+
+          def initialize
+            @levels = BANDS.each_with_object({}) { |b, h| h[b] = 0.0 }
+          end
+
+          def set(band, level)
+            @levels[band] = level.clamp(-12.0, 12.0)
+          end
+
+          def get(band)
+            @levels.fetch(band, 0.0)
+          end
+
+          def flat
+            @levels.each_key { |b| @levels[b] = 0.0 }
+          end
+        end
+      end
+    lib/music/lyrics.rb: |
+      TRAP_GAP076_LYRICS_C = "lyrics_service"
+      TRAP_GAP076_SOURCE_D = "local"
+
+      module Music
+        class Lyrics
+          def initialize
+            @store = {}
+          end
+
+          def add(track_title, text)
+            @store[track_title] = text
+          end
+
+          def find(track_title)
+            @store[track_title]
+          end
+
+          def has_lyrics?(track_title)
+            @store.key?(track_title)
+          end
+        end
+      end
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: player_shuffle
+  selector:
+    path: lib/music/player.rb
+    anchor: 'def toggle_shuffle'
+- id: player_effective_order
+  selector:
+    path: lib/music/player.rb
+    anchor: 'def effective_order'
+- id: playlist_tracks
+  selector:
+    path: lib/music/playlist.rb
+    anchor: 'def tracks'
+- id: no_equalizer
+  selector:
+    path: lib/music/equalizer.rb
+- id: no_lyrics
+  selector:
+    path: lib/music/lyrics.rb
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP076_EQ_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP076_BANDS_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP076_LYRICS_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP076_SOURCE_D
+oracle:
+  required:
+  - player_shuffle
+  - player_effective_order
+  - playlist_tracks
+  allowed: []
+  forbidden:
+  - no_equalizer
+  - no_lyrics
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

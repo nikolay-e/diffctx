@@ -1,0 +1,282 @@
+name: gap_068_py_crossmod_permission_resolver
+tags:
+- change:multi_file
+- change:new_function
+- change:new_function
+- change:signature
+- context:cross_module
+- difficulty:hard
+- distance:2hop
+- lang:python
+repo:
+  initial_files:
+    src/auth/resolver.py: |
+      from typing import Set
+      from src.auth.policy import PolicyStore, AccessPolicy
+
+      class PermissionResolver:
+          def __init__(self, store: PolicyStore):
+              self.store = store
+
+          def can_access(self, user_role: str, resource: str) -> bool:
+              policy = self.store.find_policy(resource)
+              if policy is None:
+                  return False
+              return user_role in policy.allowed_roles
+
+          def list_resources(self, user_role: str) -> Set[str]:
+              result = set()
+              for policy in self.store.all_policies():
+                  if user_role in policy.allowed_roles:
+                      result.add(policy.resource)
+              return result
+    src/auth/policy.py: |
+      from typing import List, Optional, Set
+      from dataclasses import dataclass, field
+
+      @dataclass
+      class AccessPolicy:
+          resource: str
+          allowed_roles: Set[str] = field(default_factory=set)
+          deny_roles: Set[str] = field(default_factory=set)
+
+      class PolicyStore:
+          def __init__(self):
+              self._policies: List[AccessPolicy] = []
+
+          def add_policy(self, policy: AccessPolicy) -> None:
+              self._policies.append(policy)
+
+          def find_policy(self, resource: str) -> Optional[AccessPolicy]:
+              for p in self._policies:
+                  if p.resource == resource:
+                      return p
+              return None
+
+          def all_policies(self) -> List[AccessPolicy]:
+              return list(self._policies)
+    src/auth/token.py: |
+      import hashlib
+      from typing import Optional
+
+      class TokenManager:
+          def __init__(self, secret: str):
+              self._secret = secret
+              self._tokens = {}
+
+          def issue(self, user_id: str) -> str:
+              raw = f"{user_id}:{self._secret}"
+              token = hashlib.sha256(raw.encode()).hexdigest()[:32]
+              self._tokens[token] = user_id
+              return token
+
+          def validate(self, token: str) -> Optional[str]:
+              return self._tokens.get(token)
+    src/auth/rate_limiter.py: |
+      TRAP_GAP068_LIMITER_A = "rate_limiter"
+      TRAP_GAP068_WINDOW_B = 60
+
+      class RateLimiter:
+          def __init__(self, max_requests: int = 100):
+              self.max_requests = max_requests
+              self._counts = {}
+
+          def check(self, client_id: str) -> bool:
+              current = self._counts.get(client_id, 0)
+              return current < self.max_requests
+
+          def record(self, client_id: str) -> None:
+              self._counts[client_id] = self._counts.get(client_id, 0) + 1
+    src/auth/session.py: |
+      TRAP_GAP068_SESSION_C = "session_store"
+      TRAP_GAP068_TTL_D = 3600
+
+      class SessionStore:
+          def __init__(self, ttl: int = 3600):
+              self.ttl = ttl
+              self._sessions = {}
+
+          def create(self, user_id: str) -> str:
+              sid = f"sess_{user_id}"
+              self._sessions[sid] = user_id
+              return sid
+
+          def destroy(self, session_id: str) -> None:
+              self._sessions.pop(session_id, None)
+  changed_files:
+    src/auth/resolver.py: |
+      from typing import Set, Dict, List
+      from src.auth.policy import PolicyStore, AccessPolicy
+
+      class PermissionReport:
+          def __init__(self, role: str, allowed: Set[str], denied: Set[str]):
+              self.role = role
+              self.allowed = allowed
+              self.denied = denied
+
+      class PermissionResolver:
+          def __init__(self, store: PolicyStore, superuser_role: str = "admin"):
+              self.store = store
+              self.superuser_role = superuser_role
+
+          def can_access(self, user_role: str, resource: str) -> bool:
+              if user_role == self.superuser_role:
+                  return True
+              policy = self.store.find_policy(resource)
+              if policy is None:
+                  return False
+              if user_role in policy.deny_roles:
+                  return False
+              return user_role in policy.allowed_roles
+
+          def audit_role(self, user_role: str) -> PermissionReport:
+              allowed = set()
+              denied = set()
+              for policy in self.store.all_policies():
+                  if user_role in policy.deny_roles:
+                      denied.add(policy.resource)
+                  elif user_role in policy.allowed_roles:
+                      allowed.add(policy.resource)
+              return PermissionReport(role=user_role, allowed=allowed, denied=denied)
+
+          def effective_permissions(self, roles: List[str]) -> Set[str]:
+              combined = set()
+              for role in roles:
+                  combined.update(self.list_resources(role))
+              return combined
+
+          def list_resources(self, user_role: str) -> Set[str]:
+              result = set()
+              for policy in self.store.all_policies():
+                  if user_role in policy.allowed_roles:
+                      result.add(policy.resource)
+              return result
+    src/auth/policy.py: |
+      from typing import List, Optional, Set
+      from dataclasses import dataclass, field
+
+      @dataclass
+      class AccessPolicy:
+          resource: str
+          allowed_roles: Set[str] = field(default_factory=set)
+          deny_roles: Set[str] = field(default_factory=set)
+
+      class PolicyStore:
+          def __init__(self):
+              self._policies: List[AccessPolicy] = []
+
+          def add_policy(self, policy: AccessPolicy) -> None:
+              self._policies.append(policy)
+
+          def find_policy(self, resource: str) -> Optional[AccessPolicy]:
+              for p in self._policies:
+                  if p.resource == resource:
+                      return p
+              return None
+
+          def all_policies(self) -> List[AccessPolicy]:
+              return list(self._policies)
+    src/auth/token.py: |
+      import hashlib
+      from typing import Optional
+
+      class TokenManager:
+          def __init__(self, secret: str):
+              self._secret = secret
+              self._tokens = {}
+
+          def issue(self, user_id: str) -> str:
+              raw = f"{user_id}:{self._secret}"
+              token = hashlib.sha256(raw.encode()).hexdigest()[:32]
+              self._tokens[token] = user_id
+              return token
+
+          def validate(self, token: str) -> Optional[str]:
+              return self._tokens.get(token)
+    src/auth/rate_limiter.py: |
+      TRAP_GAP068_LIMITER_A = "rate_limiter"
+      TRAP_GAP068_WINDOW_B = 60
+
+      class RateLimiter:
+          def __init__(self, max_requests: int = 100):
+              self.max_requests = max_requests
+              self._counts = {}
+
+          def check(self, client_id: str) -> bool:
+              current = self._counts.get(client_id, 0)
+              return current < self.max_requests
+
+          def record(self, client_id: str) -> None:
+              self._counts[client_id] = self._counts.get(client_id, 0) + 1
+    src/auth/session.py: |
+      TRAP_GAP068_SESSION_C = "session_store"
+      TRAP_GAP068_TTL_D = 3600
+
+      class SessionStore:
+          def __init__(self, ttl: int = 3600):
+              self.ttl = ttl
+              self._sessions = {}
+
+          def create(self, user_id: str) -> str:
+              sid = f"sess_{user_id}"
+              self._sessions[sid] = user_id
+              return sid
+
+          def destroy(self, session_id: str) -> None:
+              self._sessions.pop(session_id, None)
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: resolver_audit
+  selector:
+    path: src/auth/resolver.py
+    anchor: 'def audit_role(self, user_role: str) -> PermissionReport:'
+- id: resolver_effective
+  selector:
+    path: src/auth/resolver.py
+    anchor: 'def effective_permissions(self, roles: List[str]) -> Set[str]:'
+- id: report_class
+  selector:
+    path: src/auth/resolver.py
+    anchor: 'class PermissionReport:'
+- id: policy_deny_roles
+  selector:
+    path: src/auth/policy.py
+    anchor: 'deny_roles: Set[str]'
+- id: no_rate_limiter
+  selector:
+    path: src/auth/rate_limiter.py
+- id: no_session
+  selector:
+    path: src/auth/session.py
+- id: no_token
+  selector:
+    path: src/auth/token.py
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP068_LIMITER_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP068_WINDOW_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP068_SESSION_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP068_TTL_D
+oracle:
+  required:
+  - resolver_audit
+  - resolver_effective
+  - report_class
+  - policy_deny_roles
+  allowed: []
+  forbidden:
+  - no_rate_limiter
+  - no_session
+  - no_token
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

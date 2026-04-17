@@ -1,0 +1,199 @@
+name: bal4_3hop_006_ruby_iot_sensor
+tags:
+- lang:ruby
+- change:single_file
+- context:import_chain
+- distance:3hop+
+- difficulty:easy
+repo:
+  initial_files:
+    lib/iot/reading.rb: |
+      module Iot
+        class Reading
+          attr_reader :value, :unit
+          def initialize(value, unit)
+            @value = value
+            @unit = unit
+          end
+        end
+      end
+    lib/iot/sensor.rb: |
+      require_relative 'reading'
+      module Iot
+        class Sensor
+          def initialize(id)
+            @id = id
+          end
+          def measure(value, unit)
+            Reading.new(value, unit)
+          end
+        end
+      end
+    lib/iot/gateway.rb: |
+      require_relative 'sensor'
+      module Iot
+        class Gateway
+          def initialize
+            @sensors = {}
+          end
+          def register(id)
+            @sensors[id] = Sensor.new(id)
+          end
+          def collect(id, value, unit)
+            @sensors[id].measure(value, unit)
+          end
+        end
+      end
+    lib/iot/dashboard.rb: |
+      require_relative 'gateway'
+      module Iot
+        class Dashboard
+          def initialize
+            @gw = Gateway.new
+          end
+          def add_sensor(id)
+            @gw.register(id)
+          end
+          def read(id, value, unit)
+            @gw.collect(id, value, unit)
+          end
+        end
+      end
+    lib/iot/firmware.rb: |
+      module Iot
+        GARBAGE_006_FIRMWARE_A = "v1.0"
+        GARBAGE_006_CHECKSUM_B = "abc"
+        class Firmware
+          def self.version
+            "1.0"
+          end
+        end
+      end
+    lib/iot/protocol.rb: |
+      module Iot
+        GARBAGE_006_PROTO_C = "mqtt"
+        GARBAGE_006_QOS_D = 1
+        class Protocol
+          def self.name
+            "mqtt"
+          end
+        end
+      end
+  changed_files:
+    lib/iot/reading.rb: |
+      module Iot
+        class Reading
+          attr_reader :value, :unit, :captured_at
+          def initialize(value, unit)
+            @value = value
+            @unit = unit
+            @captured_at = Time.now
+          end
+        end
+      end
+    lib/iot/sensor.rb: |
+      require_relative 'reading'
+      module Iot
+        class Sensor
+          def initialize(id)
+            @id = id
+          end
+          def measure(value, unit)
+            Reading.new(value, unit)
+          end
+        end
+      end
+    lib/iot/gateway.rb: |
+      require_relative 'sensor'
+      module Iot
+        class Gateway
+          def initialize
+            @sensors = {}
+          end
+          def register(id)
+            @sensors[id] = Sensor.new(id)
+          end
+          def collect(id, value, unit)
+            @sensors[id].measure(value, unit)
+          end
+        end
+      end
+    lib/iot/dashboard.rb: |
+      require_relative 'gateway'
+      module Iot
+        class Dashboard
+          def initialize
+            @gw = Gateway.new
+          end
+          def add_sensor(id)
+            @gw.register(id)
+          end
+          def read(id, value, unit)
+            @gw.collect(id, value, unit)
+          end
+        end
+      end
+    lib/iot/firmware.rb: |
+      module Iot
+        GARBAGE_006_FIRMWARE_A = "v1.0"
+        GARBAGE_006_CHECKSUM_B = "abc"
+        class Firmware
+          def self.version
+            "1.0"
+          end
+        end
+      end
+    lib/iot/protocol.rb: |
+      module Iot
+        GARBAGE_006_PROTO_C = "mqtt"
+        GARBAGE_006_QOS_D = 1
+        class Protocol
+          def self.name
+            "mqtt"
+          end
+        end
+      end
+  commit_message: "feat: add captured_at to readings"
+fragments:
+- id: reading_captured_at
+  selector:
+    path: lib/iot/reading.rb
+    anchor: "captured_at"
+- id: sensor_uses_reading
+  selector:
+    path: lib/iot/sensor.rb
+    anchor: "require_relative 'reading'"
+- id: gateway_uses_sensor
+  selector:
+    path: lib/iot/gateway.rb
+    anchor: "require_relative 'sensor'"
+- id: dashboard_uses_gateway
+  selector:
+    path: lib/iot/dashboard.rb
+    anchor: "require_relative 'gateway'"
+- id: no_firmware
+  selector:
+    path: lib/iot/firmware.rb
+    anchor: "GARBAGE_006_FIRMWARE_A"
+- id: no_protocol
+  selector:
+    path: lib/iot/protocol.rb
+    anchor: "GARBAGE_006_PROTO_C"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_006_CHECKSUM_B
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_006_QOS_D
+oracle:
+  required:
+  - reading_captured_at
+  - sensor_uses_reading
+  - gateway_uses_sensor
+  - dashboard_uses_gateway
+  allowed: []
+  forbidden:
+  - no_firmware
+  - no_protocol
+  - no_global_0
+  - no_global_1

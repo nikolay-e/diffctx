@@ -1,0 +1,218 @@
+name: bal_rare_006_elixir_plug_middleware
+tags:
+- lang:elixir
+- change:new_function
+- change:multi_file
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    lib/web/auth_plug.ex: |
+      defmodule Web.AuthPlug do
+        import Plug.Conn
+
+        def init(opts), do: opts
+
+        def call(conn, _opts) do
+          case get_req_header(conn, "authorization") do
+            ["Bearer " <> token] -> assign(conn, :token, token)
+            _ -> conn |> send_resp(401, "Unauthorized") |> halt()
+          end
+        end
+      end
+    lib/web/router.ex: |
+      defmodule Web.Router do
+        use Plug.Router
+        plug Web.AuthPlug
+        plug :match
+        plug :dispatch
+
+        get "/health" do
+          send_resp(conn, 200, "ok")
+        end
+
+        get "/users" do
+          send_resp(conn, 200, "[]")
+        end
+      end
+    lib/web/rate_limiter.ex: |
+      defmodule Web.RateLimiter do
+        import Plug.Conn
+
+        def init(opts), do: opts
+
+        def call(conn, _opts) do
+          conn
+        end
+      end
+    lib/web/endpoint.ex: |
+      defmodule Web.Endpoint do
+        use Plug.Builder
+        plug Web.Router
+      end
+    garbage_migrator.ex: |
+      defmodule GarbageMigrator do
+        @garbage_rare_006_version_a 1
+        @garbage_rare_006_table_b "migrations"
+
+        def migrate do
+          @garbage_rare_006_version_a
+        end
+
+        @garbage_rare_006_lock_c true
+      end
+    garbage_seeder.ex: |
+      defmodule GarbageSeeder do
+        @garbage_rare_006_count_d 100
+        @garbage_rare_006_batch_e 10
+
+        def seed do
+          @garbage_rare_006_count_d
+        end
+
+        @garbage_rare_006_faker_f true
+      end
+  changed_files:
+    lib/web/auth_plug.ex: |
+      defmodule Web.AuthPlug do
+        import Plug.Conn
+
+        def init(opts), do: opts
+
+        def call(conn, _opts) do
+          case get_req_header(conn, "authorization") do
+            ["Bearer " <> token] -> assign(conn, :token, token)
+            _ -> conn |> send_resp(401, "Unauthorized") |> halt()
+          end
+        end
+      end
+    lib/web/router.ex: |
+      defmodule Web.Router do
+        use Plug.Router
+        plug Web.AuthPlug
+        plug Web.RateLimiter, max_requests: 100, window_ms: 60_000
+        plug :match
+        plug :dispatch
+
+        get "/health" do
+          send_resp(conn, 200, "ok")
+        end
+
+        get "/users" do
+          send_resp(conn, 200, "[]")
+        end
+      end
+    lib/web/rate_limiter.ex: |
+      defmodule Web.RateLimiter do
+        import Plug.Conn
+
+        def init(opts) do
+          %{
+            max_requests: Keyword.get(opts, :max_requests, 60),
+            window_ms: Keyword.get(opts, :window_ms, 60_000)
+          }
+        end
+
+        def call(conn, %{max_requests: max, window_ms: window}) do
+          ip = conn.remote_ip |> :inet.ntoa() |> to_string()
+          case check_rate(ip, max, window) do
+            :ok -> conn
+            :rate_limited ->
+              conn
+              |> put_resp_header("retry-after", "60")
+              |> send_resp(429, "Too Many Requests")
+              |> halt()
+          end
+        end
+
+        defp check_rate(_ip, _max, _window), do: :ok
+      end
+    lib/web/endpoint.ex: |
+      defmodule Web.Endpoint do
+        use Plug.Builder
+        plug Web.Router
+      end
+    garbage_migrator.ex: |
+      defmodule GarbageMigrator do
+        @garbage_rare_006_version_a 1
+        @garbage_rare_006_table_b "migrations"
+
+        def migrate do
+          @garbage_rare_006_version_a
+        end
+
+        @garbage_rare_006_lock_c true
+      end
+    garbage_seeder.ex: |
+      defmodule GarbageSeeder do
+        @garbage_rare_006_count_d 100
+        @garbage_rare_006_batch_e 10
+
+        def seed do
+          @garbage_rare_006_count_d
+        end
+
+        @garbage_rare_006_faker_f true
+      end
+  commit_message: "feat: implement rate limiting middleware"
+fragments:
+- id: rate_limiter_init
+  selector:
+    path: lib/web/rate_limiter.ex
+    anchor: "max_requests: Keyword.get"
+- id: rate_limiter_call
+  selector:
+    path: lib/web/rate_limiter.ex
+    anchor: "check_rate(ip, max, window)"
+- id: router_plugs_limiter
+  selector:
+    path: lib/web/router.ex
+    anchor: "plug Web.RateLimiter, max_requests: 100"
+- id: no_auth_plug
+  selector:
+    path: lib/web/auth_plug.ex
+- id: no_endpoint
+  selector:
+    path: lib/web/endpoint.ex
+- id: no_garbage_migrator
+  selector:
+    path: garbage_migrator.ex
+- id: no_garbage_seeder
+  selector:
+    path: garbage_seeder.ex
+- id: no_global_0
+  selector:
+    anchor: garbage_rare_006_version_a
+- id: no_global_1
+  selector:
+    anchor: garbage_rare_006_table_b
+- id: no_global_2
+  selector:
+    anchor: garbage_rare_006_lock_c
+- id: no_global_3
+  selector:
+    anchor: garbage_rare_006_count_d
+- id: no_global_4
+  selector:
+    anchor: garbage_rare_006_batch_e
+- id: no_global_5
+  selector:
+    anchor: garbage_rare_006_faker_f
+oracle:
+  required:
+  - rate_limiter_init
+  - rate_limiter_call
+  - router_plugs_limiter
+  allowed: []
+  forbidden:
+  - no_auth_plug
+  - no_endpoint
+  - no_garbage_migrator
+  - no_garbage_seeder
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

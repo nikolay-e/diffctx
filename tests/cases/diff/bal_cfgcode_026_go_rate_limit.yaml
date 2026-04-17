@@ -1,0 +1,194 @@
+name: bal_cfgcode_026_go_rate_limit
+tags:
+- lang:go
+- change:single_file
+- change:config
+- context:config_to_code
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    config/ratelimit.yaml: |
+      global:
+        requests_per_second: 10
+        burst: 20
+      endpoints:
+        /api/search:
+          requests_per_second: 5
+    internal/ratelimit/limiter.go: |
+      package ratelimit
+
+      import (
+        "os"
+
+        "gopkg.in/yaml.v3"
+      )
+
+      type RateLimitConfig struct {
+        Global struct {
+          RPS   int `yaml:"requests_per_second"`
+          Burst int `yaml:"burst"`
+        } `yaml:"global"`
+        Endpoints map[string]struct {
+          RPS int `yaml:"requests_per_second"`
+        } `yaml:"endpoints"`
+      }
+
+      func LoadRateLimits() (*RateLimitConfig, error) {
+        data, err := os.ReadFile("config/ratelimit.yaml")
+        if err != nil {
+          return nil, err
+        }
+        var cfg RateLimitConfig
+        yaml.Unmarshal(data, &cfg)
+        return &cfg, nil
+      }
+
+      func (c *RateLimitConfig) LimitForEndpoint(path string) int {
+        if ep, ok := c.Endpoints[path]; ok {
+          return ep.RPS
+        }
+        return c.Global.RPS
+      }
+    internal/handlers/api.go: |
+      package handlers
+
+      var GARBAGE_CFGCODE_026_API_A = "v1"
+      var GARBAGE_CFGCODE_026_API_B = "/api"
+
+      func HandleSearch() string {
+        return "results"
+      }
+    internal/models/user.go: |
+      package models
+
+      var GARBAGE_CFGCODE_026_USER_C = "admin"
+      var GARBAGE_CFGCODE_026_USER_D = 1
+
+      type User struct {
+        ID   int
+        Name string
+      }
+  changed_files:
+    config/ratelimit.yaml: |
+      global:
+        requests_per_second: 100
+        burst: 200
+      endpoints:
+        /api/search:
+          requests_per_second: 50
+        /api/upload:
+          requests_per_second: 5
+          burst: 10
+      ip_whitelist:
+        - "10.0.0.0/8"
+        - "172.16.0.0/12"
+    internal/ratelimit/limiter.go: |
+      package ratelimit
+
+      import (
+        "os"
+
+        "gopkg.in/yaml.v3"
+      )
+
+      type RateLimitConfig struct {
+        Global struct {
+          RPS   int `yaml:"requests_per_second"`
+          Burst int `yaml:"burst"`
+        } `yaml:"global"`
+        Endpoints map[string]struct {
+          RPS int `yaml:"requests_per_second"`
+        } `yaml:"endpoints"`
+      }
+
+      func LoadRateLimits() (*RateLimitConfig, error) {
+        data, err := os.ReadFile("config/ratelimit.yaml")
+        if err != nil {
+          return nil, err
+        }
+        var cfg RateLimitConfig
+        yaml.Unmarshal(data, &cfg)
+        return &cfg, nil
+      }
+
+      func (c *RateLimitConfig) LimitForEndpoint(path string) int {
+        if ep, ok := c.Endpoints[path]; ok {
+          return ep.RPS
+        }
+        return c.Global.RPS
+      }
+    internal/handlers/api.go: |
+      package handlers
+
+      var GARBAGE_CFGCODE_026_API_A = "v1"
+      var GARBAGE_CFGCODE_026_API_B = "/api"
+
+      func HandleSearch() string {
+        return "results"
+      }
+    internal/models/user.go: |
+      package models
+
+      var GARBAGE_CFGCODE_026_USER_C = "admin"
+      var GARBAGE_CFGCODE_026_USER_D = 1
+
+      type User struct {
+        ID   int
+        Name string
+      }
+  commit_message: "config: production rate limits with IP whitelist"
+fragments:
+- id: config_global_rps
+  selector:
+    path: config/ratelimit.yaml
+    anchor: "requests_per_second: 100"
+- id: config_upload
+  selector:
+    path: config/ratelimit.yaml
+    anchor: "/api/upload"
+- id: config_whitelist
+  selector:
+    path: config/ratelimit.yaml
+    anchor: "ip_whitelist"
+- id: limiter_reads_config
+  selector:
+    path: internal/ratelimit/limiter.go
+    anchor: 'os.ReadFile("config/ratelimit.yaml")'
+- id: limiter_uses_endpoints
+  selector:
+    path: internal/ratelimit/limiter.go
+    anchor: "c.Endpoints[path]"
+- id: no_handlers
+  selector:
+    path: internal/handlers/api.go
+- id: no_models
+  selector:
+    path: internal/models/user.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFGCODE_026_API_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFGCODE_026_API_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFGCODE_026_USER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFGCODE_026_USER_D
+oracle:
+  required:
+  - config_global_rps
+  - config_upload
+  - config_whitelist
+  - limiter_reads_config
+  - limiter_uses_endpoints
+  allowed: []
+  forbidden:
+  - no_handlers
+  - no_models
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

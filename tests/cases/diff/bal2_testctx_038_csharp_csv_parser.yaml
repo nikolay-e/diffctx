@@ -1,0 +1,137 @@
+name: bal2_testctx_038_csharp_csv_parser
+tags:
+- lang:csharp
+- change:signature
+- context:test_file
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    src/Parsing/CsvParser.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Linq;
+
+      namespace App.Parsing
+      {
+          public class CsvParser
+          {
+              public List<string[]> Parse(string content)
+              {
+                  var lines = content.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                  return lines.Select(line => line.Split(',')).ToList();
+              }
+
+              public string[] GetHeaders(string content)
+              {
+                  var firstLine = content.Split('\n')[0];
+                  return firstLine.Split(',');
+              }
+          }
+      }
+    Tests/CsvParserTests.cs: |
+      using Xunit;
+      using App.Parsing;
+
+      namespace App.Tests
+      {
+          public class CsvParserTests
+          {
+              private readonly CsvParser _parser = new CsvParser();
+
+              [Fact]
+              public void Parse_TwoLines_ReturnsTwoRows()
+              {
+                  var result = _parser.Parse("a,b\n1,2");
+                  Assert.Equal(2, result.Count);
+              }
+
+              [Fact]
+              public void GetHeaders_ReturnsFirstRow()
+              {
+                  var headers = _parser.GetHeaders("name,age\nAlice,30");
+                  Assert.Equal("name", headers[0]);
+                  Assert.Equal("age", headers[1]);
+              }
+          }
+      }
+    src/Parsing/XmlParser.cs: |
+      using System;
+
+      namespace App.Parsing
+      {
+          public class XmlParser
+          {
+              public string GetRootElement(string xml)
+              {
+                  return "root";
+              }
+          }
+      }
+  changed_files:
+    src/Parsing/CsvParser.cs: |
+      using System;
+      using System.Collections.Generic;
+      using System.Linq;
+
+      namespace App.Parsing
+      {
+          public class CsvParser
+          {
+              public char Delimiter { get; set; } = ',';
+
+              public List<string[]> Parse(string content)
+              {
+                  var lines = content.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                  return lines.Select(line => line.Split(Delimiter)).ToList();
+              }
+
+              public string[] GetHeaders(string content)
+              {
+                  var firstLine = content.Split('\n')[0];
+                  return firstLine.Split(Delimiter);
+              }
+
+              public List<Dictionary<string, string>> ParseWithHeaders(string content)
+              {
+                  var rows = Parse(content);
+                  if (rows.Count < 2) return new List<Dictionary<string, string>>();
+                  var headers = rows[0];
+                  return rows.Skip(1)
+                      .Select(row => headers.Zip(row, (h, v) => new { h, v })
+                          .ToDictionary(x => x.h, x => x.v))
+                      .ToList();
+              }
+          }
+      }
+  commit_message: "feat: add configurable delimiter and header-based parsing"
+fragments:
+- id: delimiter_prop
+  selector:
+    path: src/Parsing/CsvParser.cs
+    anchor: "public char Delimiter"
+- id: parse_with_headers
+  selector:
+    path: src/Parsing/CsvParser.cs
+    anchor: "public List<Dictionary<string, string>> ParseWithHeaders"
+- id: test_imports
+  selector:
+    path: Tests/CsvParserTests.cs
+    anchor: "using App.Parsing"
+- id: test_parse
+  selector:
+    path: Tests/CsvParserTests.cs
+    anchor: "Parse_TwoLines_ReturnsTwoRows"
+- id: no_xml_parser
+  selector:
+    path: src/Parsing/XmlParser.cs
+    anchor: "class XmlParser"
+oracle:
+  required:
+  - parse_with_headers
+  - test_imports
+  allowed:
+  - delimiter_prop
+  - test_parse
+  forbidden:
+  - no_xml_parser

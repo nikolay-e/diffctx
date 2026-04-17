@@ -1,0 +1,101 @@
+name: r_lang_003_ggplot_theme_changed
+tags:
+- lang:r
+- change:single_file
+- change:refactor
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    R/theme_custom.R: |
+      library(ggplot2)
+
+      theme_my_app <- function(base_size = 12) {
+        theme_minimal(base_size = base_size) +
+          theme(
+            plot.background = element_rect(fill = "#ffffff", colour = NA),
+            panel.background = element_rect(fill = "#f5f5f5", colour = NA),
+            text = element_text(colour = "#333333"),
+            axis.title = element_text(size = rel(0.9)),
+            legend.position = "bottom"
+          )
+      }
+    R/dashboard.R: |
+      source("R/theme_custom.R")
+      library(ggplot2)
+
+      plot_sales <- function(data) {
+        ggplot(data, aes(x = month, y = revenue)) +
+          geom_line(colour = "#0066cc", linewidth = 1) +
+          geom_point(size = 2) +
+          labs(title = "Monthly Revenue", x = "Month", y = "Revenue") +
+          theme_my_app()
+      }
+
+      plot_category_breakdown <- function(data) {
+        ggplot(data, aes(x = category, y = sales, fill = category)) +
+          geom_col() +
+          theme_my_app(base_size = 10)
+      }
+    R/R_NOISE_003_validation.R: |
+      R_NOISE_003_is_positive <- function(x) {
+        is.numeric(x) && all(x > 0)
+      }
+      R_NOISE_003_check_no_na <- function(df, cols) {
+        all(sapply(cols, function(col) !anyNA(df[[col]])))
+      }
+    R/R_NOISE_003_color_palettes.R: |
+      R_NOISE_003_corporate_palette <- function() {
+        c("#003366", "#0066cc", "#66aaff", "#99ccff")
+      }
+      R_NOISE_003_diverging_palette <- function(n = 5) {
+        colorRampPalette(c("#d73027", "#f7f7f7", "#1a9850"))(n)
+      }
+  changed_files:
+    R/theme_custom.R: |
+      library(ggplot2)
+
+      theme_my_app <- function(base_size = 12) {
+        theme_minimal(base_size = base_size) +
+          theme(
+            plot.background = element_rect(fill = "#1a1a2e", colour = NA),
+            panel.background = element_rect(fill = "#16213e", colour = NA),
+            text = element_text(colour = "#e0e0e0"),
+            axis.title = element_text(size = rel(0.9), colour = "#a0a0a0"),
+            legend.position = "right",
+            legend.background = element_rect(fill = "#1a1a2e", colour = NA)
+          )
+      }
+  commit_message: "Update files"
+fragments:
+- id: theme_custom_changed
+  selector:
+    path: R/theme_custom.R
+    anchor: theme_my_app
+- id: dashboard_uses_theme
+  selector:
+    path: R/dashboard.R
+    anchor: theme_my_app
+- id: no_validation
+  selector:
+    path: R/R_NOISE_003_validation.R
+- id: no_color_palettes
+  selector:
+    path: R/R_NOISE_003_color_palettes.R
+- id: no_global_0
+  selector:
+    anchor: R_NOISE_003_is_positive
+- id: no_global_1
+  selector:
+    anchor: R_NOISE_003_corporate_palette
+oracle:
+  required:
+  - theme_custom_changed
+  - dashboard_uses_theme
+  allowed: []
+  forbidden:
+  - no_validation
+  - no_color_palettes
+  - no_global_0
+  - no_global_1

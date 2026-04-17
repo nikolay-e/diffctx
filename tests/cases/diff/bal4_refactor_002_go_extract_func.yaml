@@ -1,0 +1,151 @@
+name: bal4_refactor_002_go_extract_func
+tags:
+- lang:go
+- change:multi_file
+- change:refactor
+- context:import_chain
+- distance:0hop
+- difficulty:trivial
+repo:
+  initial_files:
+    pkg/auth/auth.go: |
+      package auth
+
+      func Login(user, pass string) (string, error) {
+          if len(user) < 3 {
+              return "", fmt.Errorf("user too short")
+          }
+          if len(pass) < 8 {
+              return "", fmt.Errorf("pass too short")
+          }
+          return generateToken(user), nil
+      }
+
+      func generateToken(user string) string {
+          return "tok_" + user
+      }
+    cmd/server.go: |
+      package main
+
+      import "app/pkg/auth"
+
+      func handleLogin(u, p string) {
+          tok, err := auth.Login(u, p)
+          if err != nil {
+              panic(err)
+          }
+          _ = tok
+      }
+    garbage_config.go: |
+      package garbage
+
+      GARBAGE_BAL4R002_CFG_A = "config"
+      GARBAGE_BAL4R002_ENV_B = "prod"
+
+      type Config struct {
+          GARBAGE_BAL4R002_STRUCT_C bool
+      }
+    garbage_metrics.go: |
+      package garbage
+
+      GARBAGE_BAL4R002_MET_D = "metrics"
+      GARBAGE_BAL4R002_CNT_E = 0
+  changed_files:
+    pkg/auth/auth.go: |
+      package auth
+
+      func Login(user, pass string) (string, error) {
+          if err := validateCredentials(user, pass); err != nil {
+              return "", err
+          }
+          return generateToken(user), nil
+      }
+
+      func validateCredentials(user, pass string) error {
+          if len(user) < 3 {
+              return fmt.Errorf("user too short")
+          }
+          if len(pass) < 8 {
+              return fmt.Errorf("pass too short")
+          }
+          return nil
+      }
+
+      func generateToken(user string) string {
+          return "tok_" + user
+      }
+    cmd/server.go: |
+      package main
+
+      import "app/pkg/auth"
+
+      func handleLogin(u, p string) {
+          tok, err := auth.Login(u, p)
+          if err != nil {
+              panic(err)
+          }
+          _ = tok
+      }
+    garbage_config.go: |
+      package garbage
+
+      GARBAGE_BAL4R002_CFG_A = "config"
+      GARBAGE_BAL4R002_ENV_B = "prod"
+
+      type Config struct {
+          GARBAGE_BAL4R002_STRUCT_C bool
+      }
+    garbage_metrics.go: |
+      package garbage
+
+      GARBAGE_BAL4R002_MET_D = "metrics"
+      GARBAGE_BAL4R002_CNT_E = 0
+  commit_message: "refactor: extract validateCredentials from Login"
+fragments:
+- id: login_calls_validate
+  selector:
+    path: pkg/auth/auth.go
+    anchor: "validateCredentials(user, pass)"
+- id: new_validate_func
+  selector:
+    path: pkg/auth/auth.go
+    anchor: "func validateCredentials(user, pass string) error"
+- id: caller_server
+  selector:
+    path: cmd/server.go
+    anchor: "auth.Login(u, p)"
+- id: no_garbage_config
+  selector:
+    path: garbage_config.go
+- id: no_garbage_metrics
+  selector:
+    path: garbage_metrics.go
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL4R002_CFG_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL4R002_ENV_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL4R002_STRUCT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL4R002_MET_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL4R002_CNT_E
+oracle:
+  required:
+  - login_calls_validate
+  - new_validate_func
+  allowed:
+  - caller_server
+  forbidden:
+  - no_garbage_config
+  - no_garbage_metrics
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

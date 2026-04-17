@@ -1,0 +1,78 @@
+name: css_008_font_face_src
+tags:
+- lang:css
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    fonts.css: |
+      @font-face {
+        font-family: 'Inter';
+        src: url('/fonts/inter-v12.woff2') format('woff2');
+        font-weight: 400;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: 'Inter';
+        src: url('/fonts/inter-v12-bold.woff2') format('woff2');
+        font-weight: 700;
+        font-display: swap;
+      }
+    typography.css: |
+      @import "fonts.css";
+      body { font-family: 'Inter', sans-serif; font-size: 16px; line-height: 1.5; }
+      h1, h2, h3 { font-weight: 700; }
+    CSS_NOISE_008_icons.css: |
+      .CSS_NOISE_008_icon_sm { width: 16px; height: 16px; }
+      .CSS_NOISE_008_icon_lg { width: 32px; height: 32px; }
+    CSS_NOISE_008_forms.css: |
+      .CSS_NOISE_008_form_label { display: block; margin-bottom: 4px; font-weight: 500; }
+      .CSS_NOISE_008_form_input { width: 100%; border: 1px solid #d1d5db; border-radius: 4px; }
+  changed_files:
+    fonts.css: |
+      @font-face {
+        font-family: 'Inter';
+        src: url('/fonts/inter-v13.woff2') format('woff2');
+        font-weight: 400;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: 'Inter';
+        src: url('/fonts/inter-v13-bold.woff2') format('woff2');
+        font-weight: 700;
+        font-display: swap;
+      }
+  commit_message: "style: upgrade Inter font from v12 to v13"
+fragments:
+- id: font_src_updated
+  selector:
+    path: fonts.css
+    anchor: inter-v13.woff2
+- id: typography_imports_fonts
+  selector:
+    path: typography.css
+    anchor: fonts.css
+- id: no_icons
+  selector:
+    path: CSS_NOISE_008_icons.css
+- id: no_forms
+  selector:
+    path: CSS_NOISE_008_forms.css
+- id: no_global_0
+  selector:
+    anchor: CSS_NOISE_008_icon_sm
+- id: no_global_1
+  selector:
+    anchor: CSS_NOISE_008_form_label
+oracle:
+  required:
+  - font_src_updated
+  - typography_imports_fonts
+  allowed: []
+  forbidden:
+  - no_icons
+  - no_forms
+  - no_global_0
+  - no_global_1

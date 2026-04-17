@@ -1,0 +1,154 @@
+name: bal2_1hop_032_scala_trait_mixin
+tags:
+- lang:scala
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/core/Serializable.scala: |
+      package core
+
+      trait Serializable {
+        def serialize: String
+        def contentType: String = "application/json"
+      }
+    src/main/scala/model/Event.scala: |
+      package model
+
+      import core.Serializable
+
+      case class Event(name: String, timestamp: Long) extends Serializable {
+        def serialize: String = s"""{"name":"$name","ts":$timestamp}"""
+      }
+    src/main/scala/model/Command.scala: |
+      package model
+
+      import core.Serializable
+
+      case class Command(action: String, payload: String) extends Serializable {
+        def serialize: String = s"""{"action":"$action","payload":"$payload"}"""
+      }
+    src/main/scala/transport/Sender.scala: |
+      package transport
+
+      import core.Serializable
+
+      class Sender(url: String) {
+        def send(msg: Serializable): Unit = {
+          val body = msg.serialize
+          println(s"POST $url: $body")
+        }
+      }
+    src/main/scala/config/AppConfig.scala: |
+      package config
+
+      GARBAGE_032_APP_CONFIG_A = "config"
+
+      case class AppConfig(host: String, port: Int) {
+        def baseUrl: String = s"http://$host:$port"
+      }
+    src/main/scala/util/Clock.scala: |
+      package util
+
+      GARBAGE_032_CLOCK_B = "clock"
+
+      object Clock {
+        def nowMillis: Long = System.currentTimeMillis()
+      }
+    src/main/scala/db/EventStore.scala: |
+      package db
+
+      GARBAGE_032_EVENT_STORE_C = "store"
+
+      class EventStore {
+        private var events: List[String] = Nil
+        def append(raw: String): Unit = events = raw :: events
+        def all: List[String] = events.reverse
+      }
+    src/main/scala/health/HealthCheck.scala: |
+      package health
+
+      GARBAGE_032_HEALTH_D = "health"
+
+      object HealthCheck {
+        def isAlive: Boolean = true
+      }
+  changed_files:
+    src/main/scala/core/Serializable.scala: |
+      package core
+
+      trait Serializable {
+        def serialize: String
+        def contentType: String = "application/json"
+        def headers: Map[String, String] = Map("Content-Type" -> contentType)
+        def sizeBytes: Int = serialize.getBytes("UTF-8").length
+      }
+  commit_message: "feat: add headers and sizeBytes to Serializable trait"
+fragments:
+- id: serializable_headers
+  selector:
+    path: src/main/scala/core/Serializable.scala
+    anchor: "def headers: Map[String, String]"
+- id: serializable_size
+  selector:
+    path: src/main/scala/core/Serializable.scala
+    anchor: "def sizeBytes: Int"
+- id: event_extends_serializable
+  selector:
+    path: src/main/scala/model/Event.scala
+    anchor: "extends Serializable"
+- id: command_extends_serializable
+  selector:
+    path: src/main/scala/model/Command.scala
+    anchor: "extends Serializable"
+- id: sender_calls_serialize
+  selector:
+    path: src/main/scala/transport/Sender.scala
+    anchor: "msg.serialize"
+- id: unrelated_config
+  selector:
+    path: src/main/scala/config/AppConfig.scala
+    anchor: "case class AppConfig"
+- id: unrelated_clock
+  selector:
+    path: src/main/scala/util/Clock.scala
+    anchor: "object Clock"
+- id: unrelated_event_store
+  selector:
+    path: src/main/scala/db/EventStore.scala
+    anchor: "class EventStore"
+- id: unrelated_health
+  selector:
+    path: src/main/scala/health/HealthCheck.scala
+    anchor: "object HealthCheck"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_032_APP_CONFIG_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_032_CLOCK_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_032_EVENT_STORE_C
+- id: no_garbage_d
+  selector:
+    anchor: GARBAGE_032_HEALTH_D
+oracle:
+  required:
+  - serializable_headers
+  - serializable_size
+  - event_extends_serializable
+  - command_extends_serializable
+  allowed:
+  - sender_calls_serialize
+  forbidden:
+  - unrelated_config
+  - unrelated_clock
+  - unrelated_event_store
+  - unrelated_health
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c
+  - no_garbage_d

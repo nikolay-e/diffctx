@@ -1,0 +1,150 @@
+name: gap2_008_kotlin_python_recipe_scaling_fix
+tags:
+- lang:kotlin
+- lang:python
+- change:bug_fix
+- change:multi_file
+- context:same_file
+- distance:0hop
+- difficulty:easy
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    app/src/main/kotlin/recipe/IngredientScaler.kt: |
+      package recipe
+
+      data class Ingredient(val name: String, val amountGrams: Double, val unit: String)
+
+      class IngredientScaler {
+          fun scale(ingredients: List<Ingredient>, factor: Double): List<Ingredient> {
+              return ingredients.map { it.copy(amountGrams = it.amountGrams * factor) }
+          }
+
+          fun totalWeight(ingredients: List<Ingredient>): Double {
+              return ingredients.sumOf { it.amountGrams }
+          }
+
+          fun filterByUnit(ingredients: List<Ingredient>, unit: String): List<Ingredient> {
+              return ingredients.filter { it.unit == unit }
+          }
+      }
+    tools/nutrition_calc.py: |
+      CALORIES_PER_GRAM = {
+          "flour": 3.64,
+          "sugar": 3.87,
+          "butter": 7.17,
+          "egg": 1.55,
+          "milk": 0.42,
+      }
+
+      def estimate_calories(ingredients: list[tuple[str, float]]) -> float:
+          total = 0.0
+          for name, grams in ingredients:
+              cpg = CALORIES_PER_GRAM.get(name, 0)
+              total += grams * cpg
+          return total
+
+      def macros_breakdown(protein_g: float, carb_g: float, fat_g: float) -> dict[str, float]:
+          total = protein_g * 4 + carb_g * 4 + fat_g * 9
+          if total == 0:
+              return {"protein": 0, "carbs": 0, "fat": 0}
+          return {
+              "protein": protein_g * 4 / total,
+              "carbs": carb_g * 4 / total,
+              "fat": fat_g * 9 / total,
+          }
+    app/src/main/kotlin/recipe/MealPlanner.kt: |
+      package recipe
+
+      data class Meal(val name: String, val calorieTarget: Int)
+
+      class MealPlanner {
+          private val meals = mutableListOf<Meal>()
+
+          fun addMeal(meal: Meal) {
+              meals.add(meal)
+          }
+
+          fun dailyCalories(): Int {
+              return meals.sumOf { it.calorieTarget }
+          }
+
+          fun mealNames(): List<String> {
+              return meals.map { it.name }
+          }
+      }
+  changed_files:
+    app/src/main/kotlin/recipe/IngredientScaler.kt: |
+      package recipe
+
+      data class Ingredient(val name: String, val amountGrams: Double, val unit: String)
+
+      class IngredientScaler {
+          fun scale(ingredients: List<Ingredient>, factor: Double): List<Ingredient> {
+              require(factor > 0) { "Scale factor must be positive" }
+              return ingredients.map { it.copy(amountGrams = it.amountGrams * factor) }
+          }
+
+          fun totalWeight(ingredients: List<Ingredient>): Double {
+              return ingredients.sumOf { it.amountGrams }
+          }
+
+          fun filterByUnit(ingredients: List<Ingredient>, unit: String): List<Ingredient> {
+              return ingredients.filter { it.unit.equals(unit, ignoreCase = true) }
+          }
+      }
+    tools/nutrition_calc.py: |
+      CALORIES_PER_GRAM = {
+          "flour": 3.64,
+          "sugar": 3.87,
+          "butter": 7.17,
+          "egg": 1.55,
+          "milk": 0.42,
+      }
+
+      def estimate_calories(ingredients: list[tuple[str, float]]) -> float:
+          total = 0.0
+          for name, grams in ingredients:
+              cpg = CALORIES_PER_GRAM.get(name.lower(), 0)
+              total += grams * cpg
+          return round(total, 1)
+
+      def macros_breakdown(protein_g: float, carb_g: float, fat_g: float) -> dict[str, float]:
+          total = protein_g * 4 + carb_g * 4 + fat_g * 9
+          if total == 0:
+              return {"protein": 0, "carbs": 0, "fat": 0}
+          return {
+              "protein": protein_g * 4 / total,
+              "carbs": carb_g * 4 / total,
+              "fat": fat_g * 9 / total,
+          }
+  commit_message: "fix: add scale factor validation and case-insensitive matching"
+fragments:
+- id: scale_validation
+  selector:
+    path: app/src/main/kotlin/recipe/IngredientScaler.kt
+    anchor: "require(factor > 0)"
+- id: filter_ignore_case
+  selector:
+    path: app/src/main/kotlin/recipe/IngredientScaler.kt
+    anchor: "ignoreCase = true"
+- id: calories_lower_fix
+  selector:
+    path: tools/nutrition_calc.py
+    anchor: "name.lower()"
+- id: no_meal_planner
+  selector:
+    path: app/src/main/kotlin/recipe/MealPlanner.kt
+- id: no_meal_class
+  selector:
+    anchor: MealPlanner
+oracle:
+  required:
+  - scale_validation
+  - filter_ignore_case
+  - calories_lower_fix
+  allowed: []
+  forbidden:
+  - no_meal_planner
+  - no_meal_class

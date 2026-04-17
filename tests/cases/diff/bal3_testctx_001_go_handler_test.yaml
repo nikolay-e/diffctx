@@ -1,0 +1,85 @@
+name: bal3_testctx_001_go_handler_test
+tags:
+- lang:go
+- change:single_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    handler/handler.go: |
+      package handler
+
+      import "net/http"
+
+      func HealthCheck(w http.ResponseWriter, r *http.Request) {
+          w.WriteHeader(http.StatusOK)
+          w.Write([]byte("ok"))
+      }
+    handler/handler_test.go: |
+      package handler
+
+      import (
+          "net/http"
+          "net/http/httptest"
+          "testing"
+      )
+
+      func TestHealthCheck(t *testing.T) {
+          req := httptest.NewRequest(http.MethodGet, "/health", nil)
+          w := httptest.NewRecorder()
+          HealthCheck(w, req)
+          if w.Code != http.StatusOK {
+              t.Errorf("expected 200, got %d", w.Code)
+          }
+      }
+    utils/strings.go: |
+      package utils
+
+      func Reverse(s string) string {
+          runes := []rune(s)
+          for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
+              runes[i], runes[j] = runes[j], runes[i]
+          }
+          return string(runes)
+      }
+  changed_files:
+    handler/handler.go: |
+      package handler
+
+      import (
+          "encoding/json"
+          "net/http"
+      )
+
+      func HealthCheck(w http.ResponseWriter, r *http.Request) {
+          w.WriteHeader(http.StatusOK)
+          w.Write([]byte("ok"))
+      }
+
+      func ReadinessCheck(w http.ResponseWriter, r *http.Request) {
+          resp := map[string]string{"status": "ready"}
+          json.NewEncoder(w).Encode(resp)
+      }
+  commit_message: "feat: add readiness check endpoint"
+fragments:
+- id: readiness_fn
+  selector:
+    path: handler/handler.go
+    anchor: "func ReadinessCheck"
+- id: test_imports_handler
+  selector:
+    path: handler/handler_test.go
+    anchor: "func TestHealthCheck(t *testing.T)"
+- id: no_utils
+  selector:
+    path: utils/strings.go
+    anchor: "func Reverse"
+oracle:
+  required:
+  - readiness_fn
+  - test_imports_handler
+  allowed: []
+  forbidden:
+  - no_utils

@@ -1,31 +1,337 @@
 name: internals_015_fragment_all_unicode_edge_cases
+tags:
+- lang:java
+- change:multi_file
+- change:new_function
+- context:test_file
+- distance:1hop
+- difficulty:hard
 repo:
   initial_files:
-    all_unicode.py: |
-      def placeholder():
-          pass
+    src/main/java/com/analytics/event/EventService.java: |
+      package com.analytics.event;
+
+      import java.time.Instant;
+      import java.util.List;
+      import java.util.Map;
+
+      public class EventService {
+          private final EventRepository repository;
+
+          public EventService(EventRepository repository) {
+              this.repository = repository;
+          }
+
+          public Event record(String type, String userId, Map<String, Object> properties) {
+              if (type == null || type.isBlank()) {
+                  throw new IllegalArgumentException("event type is required");
+              }
+              Event event = new Event(type, userId, properties, Instant.now());
+              return repository.save(event);
+          }
+
+          public List<Event> findByUser(String userId) {
+              return repository.findByUserId(userId);
+          }
+      }
+    src/main/java/com/analytics/event/EventRepository.java: |
+      package com.analytics.event;
+
+      import java.time.Instant;
+      import java.util.List;
+
+      public interface EventRepository {
+          Event save(Event event);
+          List<Event> findByUserId(String userId);
+          List<Event> findByType(String type);
+          List<Event> findBetween(Instant from, Instant to);
+      }
+    src/main/java/com/analytics/event/Event.java: |
+      package com.analytics.event;
+
+      import java.time.Instant;
+      import java.util.Map;
+
+      public class Event {
+          private final String type;
+          private final String userId;
+          private final Map<String, Object> properties;
+          private final Instant timestamp;
+
+          public Event(String type, String userId, Map<String, Object> properties, Instant timestamp) {
+              this.type = type;
+              this.userId = userId;
+              this.properties = properties;
+              this.timestamp = timestamp;
+          }
+
+          public String getType() { return type; }
+          public String getUserId() { return userId; }
+          public Map<String, Object> getProperties() { return properties; }
+          public Instant getTimestamp() { return timestamp; }
+      }
+    src/test/java/com/analytics/event/EventServiceTest.java: |
+      package com.analytics.event;
+
+      import org.junit.jupiter.api.Test;
+      import java.util.List;
+      import java.util.Map;
+      import static org.junit.jupiter.api.Assertions.*;
+
+      class EventServiceTest {
+          private final InMemoryEventRepository repo = new InMemoryEventRepository();
+          private final EventService service = new EventService(repo);
+
+          @Test
+          void record_validEvent_savesAndReturns() {
+              Event e = service.record("page_view", "user-1", Map.of("path", "/home"));
+              assertNotNull(e.getTimestamp());
+              assertEquals("page_view", e.getType());
+          }
+
+          @Test
+          void record_blankType_throwsException() {
+              assertThrows(IllegalArgumentException.class,
+                  () -> service.record("  ", "user-1", Map.of()));
+          }
+
+          @Test
+          void findByUser_returnsEventsForUser() {
+              service.record("login", "user-1", Map.of());
+              service.record("logout", "user-1", Map.of());
+              service.record("login", "user-2", Map.of());
+              List<Event> events = service.findByUser("user-1");
+              assertEquals(2, events.size());
+          }
+      }
+    src/main/java/com/analytics/report/ReportBuilder.java: |
+      package com.analytics.report;
+
+      // GARBAGE_INT15_A = "report_builder_unrelated"
+      public class ReportBuilder {
+          public String build(String title, java.util.List<String> rows) {
+              return title + ": " + rows.size() + " rows";
+          }
+      }
+    src/main/java/com/analytics/export/CsvExporter.java: |
+      package com.analytics.export;
+
+      // GARBAGE_INT15_B = "csv_exporter_unrelated"
+      public class CsvExporter {
+          public String export(java.util.List<java.util.List<String>> rows) {
+              return "";
+          }
+      }
+    src/main/java/com/analytics/dashboard/DashboardService.java: |
+      package com.analytics.dashboard;
+
+      // GARBAGE_INT15_C = "dashboard_service_unrelated"
+      public class DashboardService {
+          public java.util.Map<String, Long> getSummary() {
+              return java.util.Map.of();
+          }
+      }
   changed_files:
-    all_unicode.py: |
-      # 多语言测试 / Тест / اختبار
-      def handler():
-          cyrillic = "Привет"
-          chinese = "你好"
-          arabic = "مرحبا"
-          japanese = "こんにちは"
-          korean = "안녕하세요"
-          emoji = "🎉🔥🚀"
-          return {"status": "ok"}
-  commit_message: Update files
+    src/main/java/com/analytics/event/EventService.java: |
+      package com.analytics.event;
+
+      import java.time.Instant;
+      import java.util.List;
+      import java.util.Map;
+
+      public class EventService {
+          private final EventRepository repository;
+
+          public EventService(EventRepository repository) {
+              this.repository = repository;
+          }
+
+          public Event record(String type, String userId, Map<String, Object> properties) {
+              if (type == null || type.isBlank()) {
+                  throw new IllegalArgumentException("event type is required");
+              }
+              Event event = new Event(type, userId, properties, Instant.now());
+              return repository.save(event);
+          }
+
+          public List<Event> findByUser(String userId) {
+              return repository.findByUserId(userId);
+          }
+
+          public List<Event> findByType(String type) {
+              if (type == null || type.isBlank()) {
+                  throw new IllegalArgumentException("event type is required");
+              }
+              return repository.findByType(type);
+          }
+
+          public Map<String, Long> countByType(String userId) {
+              List<Event> events = repository.findByUserId(userId);
+              Map<String, Long> counts = new java.util.HashMap<>();
+              for (Event e : events) {
+                  counts.merge(e.getType(), 1L, Long::sum);
+              }
+              return counts;
+          }
+
+          public List<Event> findInTimeRange(Instant from, Instant to) {
+              if (from.isAfter(to)) {
+                  throw new IllegalArgumentException("from must be before to");
+              }
+              return repository.findBetween(from, to);
+          }
+      }
+    src/main/java/com/analytics/event/EventRepository.java: |
+      package com.analytics.event;
+
+      import java.time.Instant;
+      import java.util.List;
+
+      public interface EventRepository {
+          Event save(Event event);
+          List<Event> findByUserId(String userId);
+          List<Event> findByType(String type);
+          List<Event> findBetween(Instant from, Instant to);
+      }
+    src/main/java/com/analytics/event/Event.java: |
+      package com.analytics.event;
+
+      import java.time.Instant;
+      import java.util.Map;
+
+      public class Event {
+          private final String type;
+          private final String userId;
+          private final Map<String, Object> properties;
+          private final Instant timestamp;
+
+          public Event(String type, String userId, Map<String, Object> properties, Instant timestamp) {
+              this.type = type;
+              this.userId = userId;
+              this.properties = properties;
+              this.timestamp = timestamp;
+          }
+
+          public String getType() { return type; }
+          public String getUserId() { return userId; }
+          public Map<String, Object> getProperties() { return properties; }
+          public Instant getTimestamp() { return timestamp; }
+      }
+    src/test/java/com/analytics/event/EventServiceTest.java: |
+      package com.analytics.event;
+
+      import org.junit.jupiter.api.Test;
+      import java.time.Instant;
+      import java.util.List;
+      import java.util.Map;
+      import static org.junit.jupiter.api.Assertions.*;
+
+      class EventServiceTest {
+          private final InMemoryEventRepository repo = new InMemoryEventRepository();
+          private final EventService service = new EventService(repo);
+
+          @Test
+          void record_validEvent_savesAndReturns() {
+              Event e = service.record("page_view", "user-1", Map.of("path", "/home"));
+              assertNotNull(e.getTimestamp());
+              assertEquals("page_view", e.getType());
+          }
+
+          @Test
+          void record_blankType_throwsException() {
+              assertThrows(IllegalArgumentException.class,
+                  () -> service.record("  ", "user-1", Map.of()));
+          }
+
+          @Test
+          void findByUser_returnsEventsForUser() {
+              service.record("login", "user-1", Map.of());
+              service.record("logout", "user-1", Map.of());
+              service.record("login", "user-2", Map.of());
+              List<Event> events = service.findByUser("user-1");
+              assertEquals(2, events.size());
+          }
+
+          @Test
+          void countByType_aggregatesCorrectly() {
+              service.record("click", "user-1", Map.of());
+              service.record("click", "user-1", Map.of());
+              service.record("view", "user-1", Map.of());
+              Map<String, Long> counts = service.countByType("user-1");
+              assertEquals(2L, counts.get("click"));
+              assertEquals(1L, counts.get("view"));
+          }
+
+          @Test
+          void findInTimeRange_invalidRange_throwsException() {
+              Instant future = Instant.now().plusSeconds(3600);
+              Instant past = Instant.now().minusSeconds(3600);
+              assertThrows(IllegalArgumentException.class,
+                  () -> service.findInTimeRange(future, past));
+          }
+      }
+    src/main/java/com/analytics/report/ReportBuilder.java: |
+      package com.analytics.report;
+
+      // GARBAGE_INT15_A = "report_builder_unrelated"
+      public class ReportBuilder {
+          public String build(String title, java.util.List<String> rows) {
+              return title + ": " + rows.size() + " rows";
+          }
+      }
+    src/main/java/com/analytics/export/CsvExporter.java: |
+      package com.analytics.export;
+
+      // GARBAGE_INT15_B = "csv_exporter_unrelated"
+      public class CsvExporter {
+          public String export(java.util.List<java.util.List<String>> rows) {
+              return "";
+          }
+      }
+    src/main/java/com/analytics/dashboard/DashboardService.java: |
+      package com.analytics.dashboard;
+
+      // GARBAGE_INT15_C = "dashboard_service_unrelated"
+      public class DashboardService {
+          public java.util.Map<String, Long> getSummary() {
+              return java.util.Map.of();
+          }
+      }
+  commit_message: "feat: add findByType, countByType, findInTimeRange to EventService"
 fragments:
-- id: all_unicode_file
+- id: count_by_type_method
   selector:
-    path: all_unicode.py
-- id: req_global_0
+    path: src/main/java/com/analytics/event/EventService.java
+    anchor: "public Map<String, Long> countByType"
+- id: find_in_time_range
   selector:
-    anchor: 'def handler():'
+    path: src/main/java/com/analytics/event/EventService.java
+    anchor: "public List<Event> findInTimeRange"
+- id: test_count_by_type
+  selector:
+    path: src/test/java/com/analytics/event/EventServiceTest.java
+    anchor: "countByType_aggregatesCorrectly"
+- id: test_invalid_range
+  selector:
+    path: src/test/java/com/analytics/event/EventServiceTest.java
+    anchor: "findInTimeRange_invalidRange_throwsException"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_INT15_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_INT15_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_INT15_C
 oracle:
   required:
-  - all_unicode_file
-  - req_global_0
-  allowed: []
-  forbidden: []
+  - count_by_type_method
+  - find_in_time_range
+  - test_count_by_type
+  allowed:
+  - test_invalid_range
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

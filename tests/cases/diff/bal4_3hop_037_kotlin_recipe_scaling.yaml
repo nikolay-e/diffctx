@@ -1,0 +1,139 @@
+name: bal4_3hop_037_kotlin_recipe_scaling
+tags:
+- lang:kotlin
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:easy
+repo:
+  initial_files:
+    src/model/Ingredient.kt: |
+      package model
+
+      data class Ingredient(val name: String, val grams: Double)
+    src/scale/Scaler.kt: |
+      package scale
+
+      import model.Ingredient
+
+      class Scaler {
+          fun scale(ingredient: Ingredient, factor: Double): Ingredient =
+              ingredient.copy(grams = ingredient.grams * factor)
+      }
+    src/recipe/RecipeBuilder.kt: |
+      package recipe
+
+      import scale.Scaler
+      import model.Ingredient
+
+      class RecipeBuilder(private val scaler: Scaler) {
+          fun scaleAll(items: List<Ingredient>, factor: Double): List<Ingredient> =
+              items.map { scaler.scale(it, factor) }
+      }
+    src/api/RecipeApi.kt: |
+      package api
+
+      import recipe.RecipeBuilder
+      import model.Ingredient
+
+      class RecipeApi(private val builder: RecipeBuilder) {
+          fun scaleRecipe(items: List<Ingredient>, servings: Int): List<Ingredient> =
+              builder.scaleAll(items, servings.toDouble())
+      }
+    src/utils/Measure.kt: |
+      package utils
+      val GARBAGE_037_MEASURE_A = "measure"
+      val GARBAGE_037_UNIT_B = "g"
+    src/utils/Timer.kt: |
+      package utils
+      val GARBAGE_037_TIMER_C = "timer"
+      val GARBAGE_037_SEC_D = 60
+  changed_files:
+    src/model/Ingredient.kt: |
+      package model
+
+      data class Ingredient(val name: String, val grams: Double, val calories: Double = 0.0)
+    src/scale/Scaler.kt: |
+      package scale
+
+      import model.Ingredient
+
+      class Scaler {
+          fun scale(ingredient: Ingredient, factor: Double): Ingredient =
+              ingredient.copy(
+                  grams = ingredient.grams * factor,
+                  calories = ingredient.calories * factor
+              )
+      }
+    src/recipe/RecipeBuilder.kt: |
+      package recipe
+
+      import scale.Scaler
+      import model.Ingredient
+
+      class RecipeBuilder(private val scaler: Scaler) {
+          fun scaleAll(items: List<Ingredient>, factor: Double): List<Ingredient> =
+              items.map { scaler.scale(it, factor) }
+      }
+    src/api/RecipeApi.kt: |
+      package api
+
+      import recipe.RecipeBuilder
+      import model.Ingredient
+
+      class RecipeApi(private val builder: RecipeBuilder) {
+          fun scaleRecipe(items: List<Ingredient>, servings: Int): List<Ingredient> =
+              builder.scaleAll(items, servings.toDouble())
+      }
+    src/utils/Measure.kt: |
+      package utils
+      val GARBAGE_037_MEASURE_A = "measure"
+      val GARBAGE_037_UNIT_B = "g"
+    src/utils/Timer.kt: |
+      package utils
+      val GARBAGE_037_TIMER_C = "timer"
+      val GARBAGE_037_SEC_D = 60
+  commit_message: "feat: add calories to Ingredient and scale them"
+fragments:
+- id: ingredient_calories
+  selector:
+    path: src/model/Ingredient.kt
+    anchor: "calories: Double"
+- id: scaler_calories
+  selector:
+    path: src/scale/Scaler.kt
+    anchor: "calories = ingredient.calories * factor"
+- id: builder_import
+  selector:
+    path: src/recipe/RecipeBuilder.kt
+    anchor: "import scale.Scaler"
+- id: api_import
+  selector:
+    path: src/api/RecipeApi.kt
+    anchor: "import recipe.RecipeBuilder"
+- id: no_measure
+  selector:
+    path: src/utils/Measure.kt
+    anchor: "GARBAGE_037_MEASURE_A"
+- id: no_timer
+  selector:
+    path: src/utils/Timer.kt
+    anchor: "GARBAGE_037_TIMER_C"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_037_UNIT_B
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_037_SEC_D
+oracle:
+  required:
+  - ingredient_calories
+  - scaler_calories
+  - builder_import
+  - api_import
+  allowed: []
+  forbidden:
+  - no_measure
+  - no_timer
+  - no_global_0
+  - no_global_1

@@ -1,0 +1,246 @@
+name: bal_hard_030_csharp_rule_engine
+tags:
+- lang:csharp
+- change:multi_file
+- change:new_function
+- context:cross_module
+- distance:2hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/Rules/IRule.cs: |
+      namespace App.Rules
+      {
+          public interface IRule<T>
+          {
+              string Name { get; }
+              bool Evaluate(T context);
+              string Message { get; }
+          }
+      }
+    src/Rules/RuleEngine.cs: |
+      namespace App.Rules
+      {
+          using System.Collections.Generic;
+          using System.Linq;
+          public class RuleEngine<T>
+          {
+              private readonly List<IRule<T>> _rules = new();
+              public void AddRule(IRule<T> rule) => _rules.Add(rule);
+              public List<string> Validate(T context)
+              {
+                  return _rules.Where(r => !r.Evaluate(context)).Select(r => r.Message).ToList();
+              }
+          }
+      }
+    src/Models/LoanApplication.cs: |
+      namespace App.Models
+      {
+          public class LoanApplication
+          {
+              public string ApplicantName { get; set; }
+              public int CreditScore { get; set; }
+              public decimal RequestedAmount { get; set; }
+              public decimal AnnualIncome { get; set; }
+              public int EmploymentYears { get; set; }
+          }
+      }
+    src/Rules/Loan/MinCreditScoreRule.cs: |
+      namespace App.Rules.Loan
+      {
+          using App.Models;
+          public class MinCreditScoreRule : IRule<LoanApplication>
+          {
+              public string Name => "MinCreditScore";
+              public string Message => "Credit score too low";
+              public bool Evaluate(LoanApplication context) => context.CreditScore >= 650;
+          }
+      }
+    src/Rules/Loan/IncomeRatioRule.cs: |
+      namespace App.Rules.Loan
+      {
+          using App.Models;
+          public class IncomeRatioRule : IRule<LoanApplication>
+          {
+              public string Name => "IncomeRatio";
+              public string Message => "Loan amount exceeds 5x annual income";
+              public bool Evaluate(LoanApplication context) => context.RequestedAmount <= context.AnnualIncome * 5;
+          }
+      }
+    src/Service/LoanService.cs: |
+      namespace App.Service
+      {
+          using System.Collections.Generic;
+          using App.Rules;
+          using App.Rules.Loan;
+          using App.Models;
+          public class LoanService
+          {
+              private readonly RuleEngine<LoanApplication> _engine;
+              public LoanService()
+              {
+                  _engine = new RuleEngine<LoanApplication>();
+                  _engine.AddRule(new MinCreditScoreRule());
+                  _engine.AddRule(new IncomeRatioRule());
+              }
+              public (bool Approved, List<string> Errors) Evaluate(LoanApplication app)
+              {
+                  var errors = _engine.Validate(app);
+                  return (errors.Count == 0, errors);
+              }
+          }
+      }
+    src/Controllers/LoanController.cs: |
+      namespace App.Controllers
+      {
+          using App.Service;
+          using App.Models;
+          public class LoanController
+          {
+              private readonly LoanService _service;
+              public LoanController(LoanService service) { _service = service; }
+              public string Apply(LoanApplication app)
+              {
+                  var (approved, errors) = _service.Evaluate(app);
+                  return approved ? "Approved" : $"Denied: {string.Join(", ", errors)}";
+              }
+          }
+      }
+    src/Helpers/CreditBureau.cs: |
+      namespace App.Helpers
+      {
+          public static class CreditBureau
+          {
+              public static int FetchScore(string ssn) => 720;
+          }
+      }
+  changed_files:
+    src/Rules/RuleEngine.cs: |
+      namespace App.Rules
+      {
+          using System.Collections.Generic;
+          using System.Linq;
+          public class RuleResult
+          {
+              public string RuleName { get; set; }
+              public bool Passed { get; set; }
+              public string Message { get; set; }
+          }
+          public class RuleEngine<T>
+          {
+              private readonly List<IRule<T>> _rules = new();
+              public void AddRule(IRule<T> rule) => _rules.Add(rule);
+              public List<string> Validate(T context)
+              {
+                  return _rules.Where(r => !r.Evaluate(context)).Select(r => r.Message).ToList();
+              }
+              public List<RuleResult> EvaluateAll(T context)
+              {
+                  return _rules.Select(r => new RuleResult
+                  {
+                      RuleName = r.Name,
+                      Passed = r.Evaluate(context),
+                      Message = r.Message
+                  }).ToList();
+              }
+          }
+      }
+    src/Rules/Loan/MinEmploymentRule.cs: |
+      namespace App.Rules.Loan
+      {
+          using App.Models;
+          public class MinEmploymentRule : IRule<LoanApplication>
+          {
+              public string Name => "MinEmployment";
+              public string Message => "Minimum 2 years employment required";
+              public bool Evaluate(LoanApplication context) => context.EmploymentYears >= 2;
+          }
+      }
+    src/Service/LoanService.cs: |
+      namespace App.Service
+      {
+          using System.Collections.Generic;
+          using App.Rules;
+          using App.Rules.Loan;
+          using App.Models;
+          public class LoanService
+          {
+              private readonly RuleEngine<LoanApplication> _engine;
+              public LoanService()
+              {
+                  _engine = new RuleEngine<LoanApplication>();
+                  _engine.AddRule(new MinCreditScoreRule());
+                  _engine.AddRule(new IncomeRatioRule());
+                  _engine.AddRule(new MinEmploymentRule());
+              }
+              public (bool Approved, List<string> Errors) Evaluate(LoanApplication app)
+              {
+                  var errors = _engine.Validate(app);
+                  return (errors.Count == 0, errors);
+              }
+              public List<RuleResult> DetailedEvaluation(LoanApplication app)
+              {
+                  return _engine.EvaluateAll(app);
+              }
+          }
+      }
+  commit_message: "feat: add detailed rule evaluation and employment rule"
+fragments:
+- id: rule_result_class
+  selector:
+    path: RuleEngine.cs
+    anchor: "public class RuleResult"
+- id: engine_evaluate_all
+  selector:
+    path: RuleEngine.cs
+    anchor: "public List<RuleResult> EvaluateAll"
+- id: min_employment_rule
+  selector:
+    path: MinEmploymentRule.cs
+    anchor: "class MinEmploymentRule"
+- id: service_adds_employment_rule
+  selector:
+    path: LoanService.cs
+    anchor: "new MinEmploymentRule()"
+- id: service_detailed_eval
+  selector:
+    path: LoanService.cs
+    anchor: "public List<RuleResult> DetailedEvaluation"
+- id: irule_interface
+  selector:
+    path: IRule.cs
+    anchor: "public interface IRule"
+- id: loan_application_model
+  selector:
+    path: LoanApplication.cs
+    anchor: "public class LoanApplication"
+- id: controller_applies
+  selector:
+    path: LoanController.cs
+    anchor: "_service.Evaluate(app)"
+- id: no_credit_bureau
+  selector:
+    path: Helpers/CreditBureau.cs
+- id: no_credit_score_body
+  selector:
+    path: MinCreditScoreRule.cs
+    anchor: "CreditScore >= 650"
+- id: no_income_ratio_body
+  selector:
+    path: IncomeRatioRule.cs
+    anchor: "RequestedAmount <= context.AnnualIncome * 5"
+oracle:
+  required:
+  - rule_result_class
+  - engine_evaluate_all
+  - min_employment_rule
+  - service_adds_employment_rule
+  - service_detailed_eval
+  - irule_interface
+  - loan_application_model
+  - controller_applies
+  allowed: []
+  forbidden:
+  - no_credit_bureau
+  - no_credit_score_body
+  - no_income_ratio_body

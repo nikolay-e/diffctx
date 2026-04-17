@@ -1,0 +1,167 @@
+name: go_036_direct_import_1hop
+tags:
+- lang:go
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    pkg/auth/token.go: |
+      package auth
+
+      import "time"
+
+      type Token struct {
+          UserID    string
+          ExpiresAt time.Time
+      }
+
+      func NewToken(userID string, ttl time.Duration) *Token {
+          return &Token{
+              UserID:    userID,
+              ExpiresAt: time.Now().Add(ttl),
+          }
+      }
+
+      func (t *Token) IsExpired() bool {
+          return time.Now().After(t.ExpiresAt)
+      }
+    pkg/auth/session.go: |
+      package auth
+
+      import "time"
+
+      type Session struct {
+          token *Token
+          data  map[string]string
+      }
+
+      func NewSession(userID string) *Session {
+          tok := NewToken(userID, 24*time.Hour)
+          return &Session{
+              token: tok,
+              data:  make(map[string]string),
+          }
+      }
+
+      func (s *Session) IsValid() bool {
+          return s.token != nil && !s.token.IsExpired()
+      }
+
+      func (s *Session) UserID() string {
+          return s.token.UserID
+      }
+    pkg/billing/invoice.go: |
+      package billing
+
+      type Invoice struct {
+          ID     string
+          Amount float64
+      }
+
+      func NewInvoice(id string, amount float64) *Invoice {
+          return &Invoice{ID: id, Amount: amount}
+      }
+
+      func (inv *Invoice) Total() float64 {
+          return inv.Amount * 1.2
+      }
+  changed_files:
+    pkg/auth/token.go: |
+      package auth
+
+      import "time"
+
+      type Token struct {
+          UserID    string
+          Role      string
+          ExpiresAt time.Time
+      }
+
+      func NewToken(userID string, role string, ttl time.Duration) *Token {
+          return &Token{
+              UserID:    userID,
+              Role:      role,
+              ExpiresAt: time.Now().Add(ttl),
+          }
+      }
+
+      func (t *Token) IsExpired() bool {
+          return time.Now().After(t.ExpiresAt)
+      }
+
+      func (t *Token) HasRole(required string) bool {
+          return t.Role == required
+      }
+    pkg/auth/session.go: |
+      package auth
+
+      import "time"
+
+      type Session struct {
+          token *Token
+          data  map[string]string
+      }
+
+      func NewSession(userID string) *Session {
+          tok := NewToken(userID, 24*time.Hour)
+          return &Session{
+              token: tok,
+              data:  make(map[string]string),
+          }
+      }
+
+      func (s *Session) IsValid() bool {
+          return s.token != nil && !s.token.IsExpired()
+      }
+
+      func (s *Session) UserID() string {
+          return s.token.UserID
+      }
+    pkg/billing/invoice.go: |
+      package billing
+
+      type Invoice struct {
+          ID     string
+          Amount float64
+      }
+
+      func NewInvoice(id string, amount float64) *Invoice {
+          return &Invoice{ID: id, Amount: amount}
+      }
+
+      func (inv *Invoice) Total() float64 {
+          return inv.Amount * 1.2
+      }
+  commit_message: "feat(auth): add role to token"
+fragments:
+- id: token_role_field
+  selector:
+    path: pkg/auth/token.go
+    anchor: "Role      string"
+- id: new_token_signature
+  selector:
+    path: pkg/auth/token.go
+    anchor: "func NewToken(userID string, role string, ttl time.Duration)"
+- id: has_role_method
+  selector:
+    path: pkg/auth/token.go
+    anchor: "func (t *Token) HasRole(required string) bool"
+- id: session_calls_new_token
+  selector:
+    path: pkg/auth/session.go
+    anchor: "tok := NewToken(userID"
+- id: no_billing
+  selector:
+    path: pkg/billing/invoice.go
+oracle:
+  required:
+  - token_role_field
+  - new_token_signature
+  - has_role_method
+  - session_calls_new_token
+  allowed: []
+  forbidden:
+  - no_billing

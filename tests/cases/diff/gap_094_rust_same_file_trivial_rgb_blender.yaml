@@ -1,0 +1,113 @@
+name: gap_094_rust_same_file_trivial_rgb_blender
+tags:
+- lang:rust
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+repo:
+  initial_files:
+    src/color.rs: |
+      pub struct Rgb {
+          pub r: u8,
+          pub g: u8,
+          pub b: u8,
+      }
+
+      impl Rgb {
+          pub fn new(r: u8, g: u8, b: u8) -> Self {
+              Rgb { r, g, b }
+          }
+
+          pub fn to_hex(&self) -> String {
+              format!("#{:02x}{:02x}{:02x}", self.r, self.g, self.b)
+          }
+
+          pub fn grayscale(&self) -> u8 {
+              ((self.r as u16 + self.g as u16 + self.b as u16) / 3) as u8
+          }
+      }
+    src/gradient.rs: |
+      pub fn linear_interpolate(start: f64, end: f64, t: f64) -> f64 {
+          start + (end - start) * t
+      }
+
+      pub fn ease_in(t: f64) -> f64 {
+          t * t
+      }
+
+      pub fn ease_out(t: f64) -> f64 {
+          1.0 - (1.0 - t) * (1.0 - t)
+      }
+
+      pub fn ease_in_out(t: f64) -> f64 {
+          if t < 0.5 {
+              2.0 * t * t
+          } else {
+              1.0 - (-2.0 * t + 2.0).powi(2) / 2.0
+          }
+      }
+    src/palette.rs: |
+      pub const SOLARIZED_BASE03: (u8, u8, u8) = (0, 43, 54);
+      pub const SOLARIZED_BASE02: (u8, u8, u8) = (7, 54, 66);
+      pub const SOLARIZED_BASE01: (u8, u8, u8) = (88, 110, 117);
+      pub const SOLARIZED_RED: (u8, u8, u8) = (220, 50, 47);
+      pub const SOLARIZED_GREEN: (u8, u8, u8) = (133, 153, 0);
+      pub const SOLARIZED_BLUE: (u8, u8, u8) = (38, 139, 210);
+  changed_files:
+    src/color.rs: |
+      pub struct Rgb {
+          pub r: u8,
+          pub g: u8,
+          pub b: u8,
+      }
+
+      impl Rgb {
+          pub fn new(r: u8, g: u8, b: u8) -> Self {
+              Rgb { r, g, b }
+          }
+
+          pub fn to_hex(&self) -> String {
+              format!("#{:02x}{:02x}{:02x}", self.r, self.g, self.b)
+          }
+
+          pub fn grayscale(&self) -> u8 {
+              ((self.r as u16 + self.g as u16 + self.b as u16) / 3) as u8
+          }
+
+          pub fn invert(&self) -> Self {
+              Rgb::new(255 - self.r, 255 - self.g, 255 - self.b)
+          }
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: color_file
+  selector:
+    path: color.rs
+- id: req_invert
+  selector:
+    anchor: "pub fn invert"
+- id: req_struct
+  selector:
+    anchor: "pub struct Rgb"
+- id: no_gradient
+  selector:
+    path: gradient.rs
+- id: no_palette
+  selector:
+    path: palette.rs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GAP_094_A
+oracle:
+  required:
+  - color_file
+  - req_invert
+  - req_struct
+  allowed: []
+  forbidden:
+  - no_gradient
+  - no_palette
+  - no_global_0

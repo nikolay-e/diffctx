@@ -1,0 +1,162 @@
+name: bal_3hop_020_python_logging_structured
+tags:
+- lang:python
+- change:single_file
+- change:signature
+- context:import_chain
+- distance:3hop+
+- difficulty:hard
+repo:
+  initial_files:
+    logging/formatter.py: |
+      import json
+      from datetime import datetime
+      class LogFormatter:
+          def __init__(self, service_name: str):
+              self.service_name = service_name
+          def format(self, level: str, message: str) -> str:
+              entry = {
+                  "service": self.service_name,
+                  "level": level,
+                  "message": message,
+                  "timestamp": datetime.utcnow().isoformat(),
+              }
+              return json.dumps(entry)
+    logging/logger.py: |
+      from logging.formatter import LogFormatter
+      class Logger:
+          def __init__(self, formatter: LogFormatter):
+              self.formatter = formatter
+              self.entries: list[str] = []
+          def info(self, message: str):
+              self.entries.append(self.formatter.format("INFO", message))
+          def error(self, message: str):
+              self.entries.append(self.formatter.format("ERROR", message))
+    logging/manager.py: |
+      from logging.logger import Logger
+      from logging.formatter import LogFormatter
+      class LogManager:
+          def __init__(self):
+              self.loggers: dict[str, Logger] = {}
+          def get_logger(self, service_name: str) -> Logger:
+              if service_name not in self.loggers:
+                  formatter = LogFormatter(service_name)
+                  self.loggers[service_name] = Logger(formatter)
+              return self.loggers[service_name]
+    app/service.py: |
+      from logging.manager import LogManager
+      class AppService:
+          def __init__(self, name: str):
+              self.log_manager = LogManager()
+              self.logger = self.log_manager.get_logger(name)
+          def process(self, data: str) -> str:
+              self.logger.info(f"Processing: {data}")
+              result = data.upper()
+              self.logger.info(f"Result: {result}")
+              return result
+    utils/file_rotation.py: |
+      import os
+      def rotate_file(path: str, max_size: int = 10_000_000):
+          if os.path.exists(path) and os.path.getsize(path) > max_size:
+              os.rename(path, f"{path}.bak")
+    config/log_config.py: |
+      LOG_LEVEL = "INFO"
+      LOG_FILE = "/var/log/app.log"
+      MAX_LOG_SIZE = 50_000_000
+  changed_files:
+    logging/formatter.py: |
+      import json
+      from datetime import datetime
+      from typing import Optional
+      class LogFormatter:
+          def __init__(self, service_name: str, include_trace: bool = False):
+              self.service_name = service_name
+              self.include_trace = include_trace
+          def format(self, level: str, message: str,
+                     trace_id: Optional[str] = None) -> str:
+              entry = {
+                  "service": self.service_name,
+                  "level": level,
+                  "message": message,
+                  "timestamp": datetime.utcnow().isoformat(),
+              }
+              if self.include_trace and trace_id:
+                  entry["trace_id"] = trace_id
+              return json.dumps(entry)
+    logging/logger.py: |
+      from logging.formatter import LogFormatter
+      class Logger:
+          def __init__(self, formatter: LogFormatter):
+              self.formatter = formatter
+              self.entries: list[str] = []
+          def info(self, message: str):
+              self.entries.append(self.formatter.format("INFO", message))
+          def error(self, message: str):
+              self.entries.append(self.formatter.format("ERROR", message))
+    logging/manager.py: |
+      from logging.logger import Logger
+      from logging.formatter import LogFormatter
+      class LogManager:
+          def __init__(self):
+              self.loggers: dict[str, Logger] = {}
+          def get_logger(self, service_name: str) -> Logger:
+              if service_name not in self.loggers:
+                  formatter = LogFormatter(service_name)
+                  self.loggers[service_name] = Logger(formatter)
+              return self.loggers[service_name]
+    app/service.py: |
+      from logging.manager import LogManager
+      class AppService:
+          def __init__(self, name: str):
+              self.log_manager = LogManager()
+              self.logger = self.log_manager.get_logger(name)
+          def process(self, data: str) -> str:
+              self.logger.info(f"Processing: {data}")
+              result = data.upper()
+              self.logger.info(f"Result: {result}")
+              return result
+    utils/file_rotation.py: |
+      import os
+      def rotate_file(path: str, max_size: int = 10_000_000):
+          if os.path.exists(path) and os.path.getsize(path) > max_size:
+              os.rename(path, f"{path}.bak")
+    config/log_config.py: |
+      LOG_LEVEL = "INFO"
+      LOG_FILE = "/var/log/app.log"
+      MAX_LOG_SIZE = 50_000_000
+  commit_message: "feat: add trace_id support to LogFormatter"
+fragments:
+- id: formatter_trace_id
+  selector:
+    path: logging/formatter.py
+    anchor: "include_trace: bool = False"
+- id: logger_uses_formatter
+  selector:
+    path: logging/logger.py
+    anchor: "from logging.formatter import LogFormatter"
+- id: manager_uses_logger
+  selector:
+    path: logging/manager.py
+    anchor: "from logging.logger import Logger"
+- id: service_uses_manager
+  selector:
+    path: app/service.py
+    anchor: "from logging.manager import LogManager"
+- id: no_file_rotation
+  selector:
+    path: utils/file_rotation.py
+    anchor: "def rotate_file"
+- id: no_log_config
+  selector:
+    path: config/log_config.py
+    anchor: "LOG_LEVEL"
+oracle:
+  required:
+  - formatter_trace_id
+  - logger_uses_formatter
+  - manager_uses_logger
+  - service_uses_manager
+  allowed: []
+  forbidden:
+  - no_file_rotation
+  - no_log_config

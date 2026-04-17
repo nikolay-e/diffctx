@@ -1,0 +1,158 @@
+name: gap_182_python_config_database_pool_import
+tags:
+- lang:python
+- change:config
+- change:single_file
+- context:import_chain
+- difficulty:easy
+- distance:1hop
+repo:
+  initial_files:
+    settings/database.py: |
+      POOL_SIZE = 5
+      POOL_TIMEOUT = 30
+      CONNECTION_STRING = "postgresql://localhost:5432/warehouse"
+      ECHO_SQL = False
+    repository/inventory.py: |
+      from settings.database import POOL_SIZE, POOL_TIMEOUT
+
+      class InventoryRepository:
+          def __init__(self):
+              self.pool_size = POOL_SIZE
+              self.timeout = POOL_TIMEOUT
+              self._connections: list = []
+
+          def acquire(self) -> object:
+              if len(self._connections) < self.pool_size:
+                  conn = self._create_connection()
+                  self._connections.append(conn)
+                  return conn
+              raise RuntimeError("Pool exhausted")
+
+          def _create_connection(self) -> object:
+              return object()
+
+          def release(self, conn: object) -> None:
+              self._connections.remove(conn)
+    repository/audit.py: |
+      from settings.database import CONNECTION_STRING
+
+      TRAP_GAP_182_AUDIT_MARKER_A: str = "audit_noise"
+      TRAP_GAP_182_AUDIT_FLAG_B: bool = True
+
+      class AuditRepository:
+          def __init__(self):
+              self.dsn = CONNECTION_STRING
+
+          def log_event(self, event: str) -> None:
+              pass
+    workers/scheduler.py: |
+      import time
+
+      TRAP_GAP_182_SCHED_MARKER_C: str = "scheduler_noise"
+      TRAP_GAP_182_SCHED_FLAG_D: int = 60
+
+      class TaskScheduler:
+          def __init__(self, interval: int = 300):
+              self.interval = interval
+
+          def tick(self) -> None:
+              time.sleep(self.interval)
+  changed_files:
+    settings/database.py: |
+      POOL_SIZE = 20
+      POOL_TIMEOUT = 30
+      CONNECTION_STRING = "postgresql://localhost:5432/warehouse"
+      ECHO_SQL = False
+    repository/inventory.py: |
+      from settings.database import POOL_SIZE, POOL_TIMEOUT
+
+      class InventoryRepository:
+          def __init__(self):
+              self.pool_size = POOL_SIZE
+              self.timeout = POOL_TIMEOUT
+              self._connections: list = []
+
+          def acquire(self) -> object:
+              if len(self._connections) < self.pool_size:
+                  conn = self._create_connection()
+                  self._connections.append(conn)
+                  return conn
+              raise RuntimeError("Pool exhausted")
+
+          def _create_connection(self) -> object:
+              return object()
+
+          def release(self, conn: object) -> None:
+              self._connections.remove(conn)
+    repository/audit.py: |
+      from settings.database import CONNECTION_STRING
+
+      TRAP_GAP_182_AUDIT_MARKER_A: str = "audit_noise"
+      TRAP_GAP_182_AUDIT_FLAG_B: bool = True
+
+      class AuditRepository:
+          def __init__(self):
+              self.dsn = CONNECTION_STRING
+
+          def log_event(self, event: str) -> None:
+              pass
+    workers/scheduler.py: |
+      import time
+
+      TRAP_GAP_182_SCHED_MARKER_C: str = "scheduler_noise"
+      TRAP_GAP_182_SCHED_FLAG_D: int = 60
+
+      class TaskScheduler:
+          def __init__(self, interval: int = 300):
+              self.interval = interval
+
+          def tick(self) -> None:
+              time.sleep(self.interval)
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: config_pool
+  selector:
+    path: settings/database.py
+    anchor: POOL_SIZE = 20
+- id: inventory_import
+  selector:
+    path: repository/inventory.py
+    anchor: from settings.database import POOL_SIZE, POOL_TIMEOUT
+- id: inventory_uses_pool
+  selector:
+    path: repository/inventory.py
+    anchor: self.pool_size = POOL_SIZE
+- id: no_audit
+  selector:
+    path: repository/audit.py
+- id: no_scheduler
+  selector:
+    path: workers/scheduler.py
+- id: no_global_0
+  selector:
+    anchor: TRAP_GAP_182_AUDIT_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_GAP_182_AUDIT_FLAG_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_GAP_182_SCHED_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_GAP_182_SCHED_FLAG_D
+oracle:
+  required:
+  - config_pool
+  - inventory_import
+  - inventory_uses_pool
+  allowed: []
+  forbidden:
+  - no_audit
+  - no_scheduler
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

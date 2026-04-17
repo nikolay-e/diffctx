@@ -1,0 +1,129 @@
+name: bal_refactor_005_python_sync_to_async
+tags:
+- lang:rust
+- change:bug_fix
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    src/pagination/cursor.rs: |
+      pub struct Cursor {
+          pub page: u32,
+          pub per_page: u32,
+          pub total: u64,
+      }
+
+      impl Cursor {
+          pub fn new(page: u32, per_page: u32, total: u64) -> Self {
+              Cursor { page, per_page, total }
+          }
+
+          pub fn offset(&self) -> u64 {
+              // BUG: underflows when page=0 instead of being treated as page 1
+              ((self.page - 1) as u64) * (self.per_page as u64)
+          }
+
+          pub fn total_pages(&self) -> u32 {
+              ((self.total + self.per_page as u64 - 1) / self.per_page as u64) as u32
+          }
+
+          pub fn has_next(&self) -> bool {
+              self.page < self.total_pages()
+          }
+      }
+    src/api/list_handler.rs: |
+      use crate::pagination::cursor::Cursor;
+
+      pub struct ListHandler;
+
+      impl ListHandler {
+          pub fn paginate(page: u32, per_page: u32, total: u64) -> Cursor {
+              Cursor::new(page, per_page, total)
+          }
+      }
+    garbage/filter.rs: |
+      // GARBAGE_PAGE_A = "filter_marker"
+      pub fn apply_filter(_q: &str) -> Vec<String> { vec![] }
+    garbage/sort.rs: |
+      // GARBAGE_PAGE_B = "sort_marker"
+      pub fn sort_asc(mut v: Vec<i64>) -> Vec<i64> { v.sort(); v }
+    garbage/export.rs: |
+      // GARBAGE_PAGE_C = "export_marker"
+      pub fn export_csv(_rows: &[Vec<String>]) -> String { String::new() }
+  changed_files:
+    src/pagination/cursor.rs: |
+      pub struct Cursor {
+          pub page: u32,
+          pub per_page: u32,
+          pub total: u64,
+      }
+
+      impl Cursor {
+          pub fn new(page: u32, per_page: u32, total: u64) -> Self {
+              let page = page.max(1);
+              Cursor { page, per_page, total }
+          }
+
+          pub fn offset(&self) -> u64 {
+              ((self.page - 1) as u64) * (self.per_page as u64)
+          }
+
+          pub fn total_pages(&self) -> u32 {
+              ((self.total + self.per_page as u64 - 1) / self.per_page as u64) as u32
+          }
+
+          pub fn has_next(&self) -> bool {
+              self.page < self.total_pages()
+          }
+      }
+    src/api/list_handler.rs: |
+      use crate::pagination::cursor::Cursor;
+
+      pub struct ListHandler;
+
+      impl ListHandler {
+          pub fn paginate(page: u32, per_page: u32, total: u64) -> Cursor {
+              Cursor::new(page, per_page, total)
+          }
+      }
+    garbage/filter.rs: |
+      // GARBAGE_PAGE_A = "filter_marker"
+      pub fn apply_filter(_q: &str) -> Vec<String> { vec![] }
+    garbage/sort.rs: |
+      // GARBAGE_PAGE_B = "sort_marker"
+      pub fn sort_asc(mut v: Vec<i64>) -> Vec<i64> { v.sort(); v }
+    garbage/export.rs: |
+      // GARBAGE_PAGE_C = "export_marker"
+      pub fn export_csv(_rows: &[Vec<String>]) -> String { String::new() }
+  commit_message: "fix: clamp page to minimum 1 in Cursor::new to prevent underflow"
+fragments:
+- id: page_clamp
+  selector:
+    anchor: "let page = page.max(1);"
+- id: cursor_new
+  selector:
+    anchor: "pub fn new(page: u32, per_page: u32, total: u64) -> Self"
+- id: handler_uses_cursor
+  selector:
+    anchor: "use crate::pagination::cursor::Cursor"
+- id: no_garbage_a
+  selector:
+    anchor: GARBAGE_PAGE_A
+- id: no_garbage_b
+  selector:
+    anchor: GARBAGE_PAGE_B
+- id: no_garbage_c
+  selector:
+    anchor: GARBAGE_PAGE_C
+oracle:
+  required:
+  - page_clamp
+  - cursor_new
+  - handler_uses_cursor
+  allowed: []
+  forbidden:
+  - no_garbage_a
+  - no_garbage_b
+  - no_garbage_c

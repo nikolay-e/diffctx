@@ -1,0 +1,294 @@
+name: bal3_1hop_067_swift_enum_cases_added
+tags:
+- lang:swift
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    Sources/Models/PaymentMethod.swift: |
+      import Foundation
+
+      enum PaymentMethod: String, Codable {
+          case creditCard = "credit_card"
+          case debitCard = "debit_card"
+          case bankTransfer = "bank_transfer"
+
+          var displayName: String {
+              switch self {
+              case .creditCard: return "Credit Card"
+              case .debitCard: return "Debit Card"
+              case .bankTransfer: return "Bank Transfer"
+              }
+          }
+
+          var processingFee: Double {
+              switch self {
+              case .creditCard: return 0.029
+              case .debitCard: return 0.015
+              case .bankTransfer: return 0.005
+              }
+          }
+      }
+    Sources/Checkout/PaymentProcessor.swift: |
+      import Foundation
+      import Models
+
+      class PaymentProcessor {
+          func process(amount: Double, method: PaymentMethod) -> Bool {
+              let fee = amount * method.processingFee
+              let total = amount + fee
+              return charge(total: total, via: method)
+          }
+
+          private func charge(total: Double, via method: PaymentMethod) -> Bool {
+              return true
+          }
+      }
+    Sources/Checkout/CheckoutViewModel.swift: |
+      import Foundation
+      import Models
+
+      class CheckoutViewModel: ObservableObject {
+          @Published var selectedMethod: PaymentMethod = .creditCard
+          @Published var amount: Double = 0
+
+          func feeDescription() -> String {
+              return "\(selectedMethod.displayName): \(selectedMethod.processingFee * 100)%"
+          }
+      }
+    Sources/Checkout/ReceiptGenerator.swift: |
+      import Foundation
+      import Models
+
+      class ReceiptGenerator {
+          func generate(amount: Double, method: PaymentMethod) -> String {
+              let fee = amount * method.processingFee
+              return "Paid \(amount + fee) via \(method.displayName)"
+          }
+      }
+    Sources/Checkout/PaymentValidator.swift: |
+      import Foundation
+      import Models
+
+      class PaymentValidator {
+          func validate(method: PaymentMethod, amount: Double) -> Bool {
+              switch method {
+              case .bankTransfer:
+                  return amount >= 10.0
+              default:
+                  return amount > 0
+              }
+          }
+      }
+    Sources/Reports/SalesReport.swift: |
+      import Foundation
+      GARBAGE_067_REPORT_PERIOD_A = "monthly"
+      GARBAGE_067_CURRENCY_CODE_B = "USD"
+
+      class SalesReport {
+          func generate() -> String { return "" }
+      }
+    Sources/Reports/TaxReport.swift: |
+      import Foundation
+      GARBAGE_067_TAX_RATE_C = 0.2
+      GARBAGE_067_TAX_YEAR_D = 2025
+
+      class TaxReport {
+          func compute() -> Double { return 0 }
+      }
+    Sources/Notifications/EmailSender.swift: |
+      import Foundation
+      GARBAGE_067_SMTP_HOST_E = "smtp.example.com"
+      GARBAGE_067_SMTP_PORT_F = 587
+
+      class EmailSender {
+          func send(to: String, subject: String, body: String) {}
+      }
+  changed_files:
+    Sources/Models/PaymentMethod.swift: |
+      import Foundation
+
+      enum PaymentMethod: String, Codable {
+          case creditCard = "credit_card"
+          case debitCard = "debit_card"
+          case bankTransfer = "bank_transfer"
+          case applePay = "apple_pay"
+          case googlePay = "google_pay"
+          case crypto = "crypto"
+
+          var displayName: String {
+              switch self {
+              case .creditCard: return "Credit Card"
+              case .debitCard: return "Debit Card"
+              case .bankTransfer: return "Bank Transfer"
+              case .applePay: return "Apple Pay"
+              case .googlePay: return "Google Pay"
+              case .crypto: return "Cryptocurrency"
+              }
+          }
+
+          var processingFee: Double {
+              switch self {
+              case .creditCard: return 0.029
+              case .debitCard: return 0.015
+              case .bankTransfer: return 0.005
+              case .applePay: return 0.025
+              case .googlePay: return 0.025
+              case .crypto: return 0.01
+              }
+          }
+      }
+    Sources/Checkout/PaymentProcessor.swift: |
+      import Foundation
+      import Models
+
+      class PaymentProcessor {
+          func process(amount: Double, method: PaymentMethod) -> Bool {
+              let fee = amount * method.processingFee
+              let total = amount + fee
+              return charge(total: total, via: method)
+          }
+
+          private func charge(total: Double, via method: PaymentMethod) -> Bool {
+              return true
+          }
+      }
+    Sources/Checkout/CheckoutViewModel.swift: |
+      import Foundation
+      import Models
+
+      class CheckoutViewModel: ObservableObject {
+          @Published var selectedMethod: PaymentMethod = .creditCard
+          @Published var amount: Double = 0
+
+          func feeDescription() -> String {
+              return "\(selectedMethod.displayName): \(selectedMethod.processingFee * 100)%"
+          }
+      }
+    Sources/Checkout/ReceiptGenerator.swift: |
+      import Foundation
+      import Models
+
+      class ReceiptGenerator {
+          func generate(amount: Double, method: PaymentMethod) -> String {
+              let fee = amount * method.processingFee
+              return "Paid \(amount + fee) via \(method.displayName)"
+          }
+      }
+    Sources/Checkout/PaymentValidator.swift: |
+      import Foundation
+      import Models
+
+      class PaymentValidator {
+          func validate(method: PaymentMethod, amount: Double) -> Bool {
+              switch method {
+              case .bankTransfer:
+                  return amount >= 10.0
+              default:
+                  return amount > 0
+              }
+          }
+      }
+    Sources/Reports/SalesReport.swift: |
+      import Foundation
+      GARBAGE_067_REPORT_PERIOD_A = "monthly"
+      GARBAGE_067_CURRENCY_CODE_B = "USD"
+
+      class SalesReport {
+          func generate() -> String { return "" }
+      }
+    Sources/Reports/TaxReport.swift: |
+      import Foundation
+      GARBAGE_067_TAX_RATE_C = 0.2
+      GARBAGE_067_TAX_YEAR_D = 2025
+
+      class TaxReport {
+          func compute() -> Double { return 0 }
+      }
+    Sources/Notifications/EmailSender.swift: |
+      import Foundation
+      GARBAGE_067_SMTP_HOST_E = "smtp.example.com"
+      GARBAGE_067_SMTP_PORT_F = 587
+
+      class EmailSender {
+          func send(to: String, subject: String, body: String) {}
+      }
+  commit_message: "feat: add Apple Pay, Google Pay, and crypto payment methods"
+fragments:
+- id: processor_imports
+  selector:
+    path: Sources/Checkout/PaymentProcessor.swift
+    anchor: "import Models"
+- id: processor_method_usage
+  selector:
+    path: Sources/Checkout/PaymentProcessor.swift
+    anchor: "method.processingFee"
+- id: checkout_vm_imports
+  selector:
+    path: Sources/Checkout/CheckoutViewModel.swift
+    anchor: "import Models"
+- id: checkout_vm_selected
+  selector:
+    path: Sources/Checkout/CheckoutViewModel.swift
+    anchor: "var selectedMethod: PaymentMethod"
+- id: receipt_imports
+  selector:
+    path: Sources/Checkout/ReceiptGenerator.swift
+    anchor: "import Models"
+- id: validator_imports
+  selector:
+    path: Sources/Checkout/PaymentValidator.swift
+    anchor: "import Models"
+- id: validator_switch
+  selector:
+    path: Sources/Checkout/PaymentValidator.swift
+    anchor: "switch method"
+- id: no_sales_report
+  selector:
+    path: Sources/Reports/SalesReport.swift
+- id: no_tax_report
+  selector:
+    path: Sources/Reports/TaxReport.swift
+- id: no_email_sender
+  selector:
+    path: Sources/Notifications/EmailSender.swift
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_067_REPORT_PERIOD_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_067_CURRENCY_CODE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_067_TAX_RATE_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_067_TAX_YEAR_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_067_SMTP_HOST_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_067_SMTP_PORT_F
+oracle:
+  required:
+  - processor_imports
+  - processor_method_usage
+  - checkout_vm_imports
+  - checkout_vm_selected
+  - receipt_imports
+  - validator_imports
+  - validator_switch
+  allowed: []
+  forbidden:
+  - no_sales_report
+  - no_tax_report
+  - no_email_sender
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

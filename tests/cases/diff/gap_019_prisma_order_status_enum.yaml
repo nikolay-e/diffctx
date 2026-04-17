@@ -1,0 +1,157 @@
+name: gap_019_prisma_order_status_enum
+tags:
+- lang:prisma
+- lang:sql
+- lang:typescript
+- change:single_file
+- context:same_file
+- difficulty:trivial
+- distance:0hop
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    prisma/schema.prisma: |
+      generator client {
+        provider = "prisma-client-js"
+      }
+
+      datasource db {
+        provider = "postgresql"
+        url      = env("DATABASE_URL")
+      }
+
+      model Order {
+        id         Int      @id @default(autoincrement())
+        customerId Int
+        total      Decimal
+        status     String   @default("pending")
+        createdAt  DateTime @default(now())
+        items      OrderItem[]
+      }
+
+      model OrderItem {
+        id        Int   @id @default(autoincrement())
+        orderId   Int
+        productId Int
+        quantity  Int
+        price     Decimal
+        order     Order @relation(fields: [orderId], references: [id])
+      }
+    migrations/001_orders.sql: |
+      CREATE TABLE "Order" (
+        "id" SERIAL PRIMARY KEY,
+        "customerId" INTEGER NOT NULL,
+        "total" DECIMAL NOT NULL,
+        "status" TEXT NOT NULL DEFAULT 'pending',
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE "OrderItem" (
+        "id" SERIAL PRIMARY KEY,
+        "orderId" INTEGER NOT NULL,
+        "productId" INTEGER NOT NULL,
+        "quantity" INTEGER NOT NULL,
+        "price" DECIMAL NOT NULL,
+        CONSTRAINT "OrderItem_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "Order"("id")
+      );
+    src/handlers/checkout.ts: |
+      import { PrismaClient } from '@prisma/client';
+
+      const prisma = new PrismaClient();
+
+      export async function createOrder(customerId: number, items: Array<{ productId: number; quantity: number; price: number }>) {
+        const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+        return prisma.order.create({
+          data: {
+            customerId,
+            total,
+            items: { create: items },
+          },
+          include: { items: true },
+        });
+      }
+
+      export async function cancelOrder(orderId: number) {
+        return prisma.order.update({
+          where: { id: orderId },
+          data: { status: 'cancelled' },
+        });
+      }
+    src/lib/tax.ts: |
+      const TAX_RATES: Record<string, number> = {
+        US: 0.08,
+        CA: 0.13,
+        UK: 0.20,
+        DE: 0.19,
+      };
+
+      export function calculateTax(amount: number, countryCode: string): number {
+        const rate = TAX_RATES[countryCode] ?? 0;
+        return Math.round(amount * rate * 100) / 100;
+      }
+
+      export function grossAmount(net: number, countryCode: string): number {
+        return net + calculateTax(net, countryCode);
+      }
+  changed_files:
+    prisma/schema.prisma: |
+      generator client {
+        provider = "prisma-client-js"
+      }
+
+      datasource db {
+        provider = "postgresql"
+        url      = env("DATABASE_URL")
+      }
+
+      enum OrderStatus {
+        PENDING
+        CONFIRMED
+        SHIPPED
+        DELIVERED
+        CANCELLED
+        REFUNDED
+      }
+
+      model Order {
+        id         Int         @id @default(autoincrement())
+        customerId Int
+        total      Decimal
+        status     OrderStatus @default(PENDING)
+        createdAt  DateTime    @default(now())
+        items      OrderItem[]
+
+        @@index([customerId, status])
+      }
+
+      model OrderItem {
+        id        Int   @id @default(autoincrement())
+        orderId   Int
+        productId Int
+        quantity  Int
+        price     Decimal
+        order     Order @relation(fields: [orderId], references: [id])
+      }
+fragments:
+- id: order_status_enum
+  selector:
+    path: prisma/schema.prisma
+    anchor: "enum OrderStatus"
+- id: order_model
+  selector:
+    path: prisma/schema.prisma
+    anchor: "model Order"
+- id: no_tax
+  selector:
+    path: src/lib/tax.ts
+- id: no_checkout
+  selector:
+    path: src/handlers/checkout.ts
+oracle:
+  required:
+  - order_status_enum
+  - order_model
+  forbidden:
+  - no_tax
+  - no_checkout

@@ -1,0 +1,216 @@
+name: bal3_1hop_055_scala_multi_file_acl
+tags:
+- lang:scala
+- change:multi_file
+- context:import_chain
+- distance:1hop
+- difficulty:hard
+repo:
+  initial_files:
+    src/main/scala/acl/AccessControl.scala: |
+      package acl
+
+      class AccessControl {
+        private var permissions: Map[String, Set[String]] = Map.empty
+
+        def grant(role: String, resource: String): Unit = {
+          permissions = permissions + (role -> (permissions.getOrElse(role, Set.empty) + resource))
+        }
+
+        def isAllowed(role: String, resource: String): Boolean = {
+          permissions.getOrElse(role, Set.empty).contains(resource)
+        }
+      }
+    src/main/scala/acl/RoleManager.scala: |
+      package acl
+
+      class RoleManager(acl: AccessControl) {
+        def setupAdmin(): Unit = {
+          acl.grant("admin", "users")
+          acl.grant("admin", "settings")
+          acl.grant("admin", "reports")
+        }
+      }
+    src/main/scala/controller/AdminController.scala: |
+      package controller
+
+      import acl.AccessControl
+
+      class AdminController(acl: AccessControl) {
+        def canManageUsers(role: String): Boolean = {
+          acl.isAllowed(role, "users")
+        }
+      }
+    src/main/scala/controller/ReportController.scala: |
+      package controller
+
+      import acl.AccessControl
+
+      class ReportController(acl: AccessControl) {
+        def canViewReports(role: String): Boolean = {
+          acl.isAllowed(role, "reports")
+        }
+      }
+    src/main/scala/controller/SettingsController.scala: |
+      package controller
+
+      import acl.AccessControl
+
+      class SettingsController(acl: AccessControl) {
+        def canEditSettings(role: String): Boolean = {
+          acl.isAllowed(role, "settings")
+        }
+      }
+    src/main/scala/middleware/AclGuard.scala: |
+      package middleware
+
+      import acl.AccessControl
+
+      class AclGuard(acl: AccessControl) {
+        def check(role: String, resource: String): Boolean = {
+          acl.isAllowed(role, resource)
+        }
+      }
+    src/main/scala/format/HtmlFormatter.scala: |
+      package format
+
+      object HtmlFormatter {
+        val GARBAGE_BAL3_055_HTML_A = "html"
+        val GARBAGE_BAL3_055_ESC_B = true
+
+        def escape(text: String): String = text
+      }
+    src/main/scala/format/CsvFormatter.scala: |
+      package format
+
+      object CsvFormatter {
+        val GARBAGE_BAL3_055_CSV_C = "csv"
+        val GARBAGE_BAL3_055_SEP_D = ","
+
+        def format(rows: List[List[String]]): String = ""
+      }
+    src/main/scala/format/XmlFormatter.scala: |
+      package format
+
+      object XmlFormatter {
+        val GARBAGE_BAL3_055_XML_E = "xml"
+        val GARBAGE_BAL3_055_INDENT_F = 2
+
+        def format(data: Map[String, String]): String = ""
+      }
+  changed_files:
+    src/main/scala/acl/AccessControl.scala: |
+      package acl
+
+      class AccessControl {
+        private var permissions: Map[String, Set[String]] = Map.empty
+        private var denied: Map[String, Set[String]] = Map.empty
+
+        def grant(role: String, resource: String): Unit = {
+          permissions = permissions + (role -> (permissions.getOrElse(role, Set.empty) + resource))
+        }
+
+        def deny(role: String, resource: String): Unit = {
+          denied = denied + (role -> (denied.getOrElse(role, Set.empty) + resource))
+        }
+
+        def isAllowed(role: String, resource: String): Boolean = {
+          if (denied.getOrElse(role, Set.empty).contains(resource)) false
+          else permissions.getOrElse(role, Set.empty).contains(resource)
+        }
+
+        def getRolePermissions(role: String): Set[String] = {
+          permissions.getOrElse(role, Set.empty)
+        }
+
+        def revokeAll(role: String): Unit = {
+          permissions = permissions - role
+          denied = denied - role
+        }
+      }
+    src/main/scala/acl/RoleManager.scala: |
+      package acl
+
+      class RoleManager(acl: AccessControl) {
+        def setupAdmin(): Unit = {
+          acl.grant("admin", "users")
+          acl.grant("admin", "settings")
+          acl.grant("admin", "reports")
+        }
+
+        def setupViewer(): Unit = {
+          acl.grant("viewer", "reports")
+          acl.deny("viewer", "settings")
+        }
+
+        def listPermissions(role: String): Set[String] = {
+          acl.getRolePermissions(role)
+        }
+      }
+  commit_message: "Add deny, list, and revoke methods to AccessControl"
+fragments:
+- id: admin_controller
+  selector:
+    path: src/main/scala/controller/AdminController.scala
+    anchor: "import acl.AccessControl"
+- id: admin_allowed
+  selector:
+    path: src/main/scala/controller/AdminController.scala
+    anchor: "acl.isAllowed"
+- id: report_controller
+  selector:
+    path: src/main/scala/controller/ReportController.scala
+    anchor: "import acl.AccessControl"
+- id: settings_controller
+  selector:
+    path: src/main/scala/controller/SettingsController.scala
+    anchor: "import acl.AccessControl"
+- id: acl_guard
+  selector:
+    path: src/main/scala/middleware/AclGuard.scala
+    anchor: "import acl.AccessControl"
+- id: no_html
+  selector:
+    path: src/main/scala/format/HtmlFormatter.scala
+- id: no_csv
+  selector:
+    path: src/main/scala/format/CsvFormatter.scala
+- id: no_xml
+  selector:
+    path: src/main/scala/format/XmlFormatter.scala
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAL3_055_HTML_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAL3_055_ESC_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAL3_055_CSV_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAL3_055_SEP_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAL3_055_XML_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_BAL3_055_INDENT_F
+oracle:
+  required:
+  - admin_controller
+  - admin_allowed
+  - report_controller
+  - settings_controller
+  - acl_guard
+  allowed: []
+  forbidden:
+  - no_html
+  - no_csv
+  - no_xml
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
