@@ -155,14 +155,8 @@ def _parse_v1(data: dict) -> dict:
     }
 
 
-def _convert_to_v3(v1: dict, source_file: Path) -> dict:  # noqa: C901
-    name = v1["name"] or source_file.stem
-    fragments = []
+def _build_required_fragments(v1: dict, used_ids: set[str], fragments: list) -> list[str]:
     required_ids: list[str] = []
-    forbidden_ids: list[str] = []
-    used_ids: set[str] = set()
-
-    # Required: must_include_content_from (path + anchor)
     paths_with_req_anchors: set[str] = set()
     for path, snippets in v1["must_include_content_from"].items():
         paths_with_req_anchors.add(path)
@@ -171,8 +165,6 @@ def _convert_to_v3(v1: dict, source_file: Path) -> dict:  # noqa: C901
             fid = _unique(base, used_ids)
             fragments.append({"id": fid, "selector": {"path": path, "anchor": snippet}})
             required_ids.append(fid)
-
-    # Required: must_include_files (path only, skip if anchors exist for this path)
     for path in v1["must_include_files"]:
         if path in paths_with_req_anchors:
             continue
@@ -180,20 +172,19 @@ def _convert_to_v3(v1: dict, source_file: Path) -> dict:  # noqa: C901
         fid = _unique(base, used_ids)
         fragments.append({"id": fid, "selector": {"path": path}})
         required_ids.append(fid)
-
-    # Required: must_include_content (anchor only, no path)
     for idx, snippet in enumerate(v1["must_include_content"]):
         fid = _unique(f"req_global_{idx}", used_ids)
         fragments.append({"id": fid, "selector": {"anchor": snippet}})
         required_ids.append(fid)
-
-    # Required: must_include (legacy patterns, anchor only)
     for idx, pattern in enumerate(v1["must_include"]):
         fid = _unique(f"req_pattern_{idx}", used_ids)
         fragments.append({"id": fid, "selector": {"anchor": pattern}})
         required_ids.append(fid)
+    return required_ids
 
-    # Forbidden: must_not_include_content_from (path + anchor)
+
+def _build_forbidden_fragments(v1: dict, used_ids: set[str], fragments: list) -> list[str]:
+    forbidden_ids: list[str] = []
     paths_with_fbd_anchors: set[str] = set()
     for path, snippets in v1["must_not_include_content_from"].items():
         paths_with_fbd_anchors.add(path)
@@ -202,8 +193,6 @@ def _convert_to_v3(v1: dict, source_file: Path) -> dict:  # noqa: C901
             fid = _unique("no_" + base, used_ids)
             fragments.append({"id": fid, "selector": {"path": path, "anchor": snippet}})
             forbidden_ids.append(fid)
-
-    # Forbidden: must_not_include_files (path only, skip if anchors exist)
     for path in v1["must_not_include_files"]:
         if path in paths_with_fbd_anchors:
             continue
@@ -211,12 +200,20 @@ def _convert_to_v3(v1: dict, source_file: Path) -> dict:  # noqa: C901
         fid = _unique(base, used_ids)
         fragments.append({"id": fid, "selector": {"path": path}})
         forbidden_ids.append(fid)
-
-    # Forbidden: must_not_include (anchor only, no path)
     for idx, marker in enumerate(v1["must_not_include"]):
         fid = _unique(f"no_global_{idx}", used_ids)
         fragments.append({"id": fid, "selector": {"anchor": marker}})
         forbidden_ids.append(fid)
+    return forbidden_ids
+
+
+def _convert_to_v3(v1: dict, source_file: Path) -> dict:
+    name = v1["name"] or source_file.stem
+    fragments: list = []
+    used_ids: set[str] = set()
+
+    required_ids = _build_required_fragments(v1, used_ids, fragments)
+    forbidden_ids = _build_forbidden_fragments(v1, used_ids, fragments)
 
     # Build v3 structure
     v3: dict = {"name": name}

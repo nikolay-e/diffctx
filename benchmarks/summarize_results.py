@@ -7,26 +7,25 @@ from pathlib import Path
 from common import load_results
 
 
+def _print_txt_section(txt: Path, prefix: str, title: str, markers: tuple[str, ...]) -> None:
+    mode = txt.stem.replace(prefix, "")
+    print(f"### {title} ({mode})\n```")
+    for line in txt.read_text().splitlines():
+        if line.startswith(markers):
+            print(line)
+    print("```\n")
+
+
 def main() -> None:
     results_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("results")
 
     print("## Benchmark Results\n")
 
     for txt in sorted(results_dir.glob("cb_*.txt")):
-        mode = txt.stem.replace("cb_", "")
-        print(f"### ContextBench ({mode})\n```")
-        for line in txt.read_text().splitlines():
-            if line.startswith(("Avg ", "Total:")):
-                print(line)
-        print("```\n")
+        _print_txt_section(txt, "cb_", "ContextBench", ("Avg ", "Total:"))
 
     for txt in sorted(results_dir.glob("loo_*.txt")):
-        mode = txt.stem.replace("loo_", "")
-        print(f"### LOO ({mode})\n```")
-        for line in txt.read_text().splitlines():
-            if line.startswith(("Total LOO", "Found")):
-                print(line)
-        print("```\n")
+        _print_txt_section(txt, "loo_", "LOO", ("Total LOO", "Found"))
 
     for jf in sorted(results_dir.glob("loo_*.json")):
         mode = jf.stem.replace("loo_", "")

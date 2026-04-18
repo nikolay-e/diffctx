@@ -114,6 +114,19 @@ class _TagsQueryCache:
 _cache = _TagsQueryCache()
 
 
+def _classify_capture(
+    key: str, name: str, definitions: set[str], calls: set[str], type_refs: set[str], references: set[str]
+) -> None:
+    if key.startswith("definition."):
+        definitions.add(name)
+    elif key == "reference.call":
+        calls.add(name)
+    elif key in ("reference.type", "reference.class", "reference.implementation"):
+        type_refs.add(name)
+    elif key.startswith("reference."):
+        references.add(name)
+
+
 def _extract_tags(content: str, lang: str) -> _TagsInfo | None:
     pair = _cache.get(lang)
     if pair is None:
@@ -141,17 +154,8 @@ def _extract_tags(content: str, lang: str) -> _TagsInfo | None:
         name = name_text.decode("utf-8", errors="replace")
         if len(name) < 2:
             continue
-
-        capture_keys = set(captures_dict.keys()) - {"name", "doc"}
-        for key in capture_keys:
-            if key.startswith("definition."):
-                definitions.add(name)
-            elif key == "reference.call":
-                calls.add(name)
-            elif key in ("reference.type", "reference.class", "reference.implementation"):
-                type_refs.add(name)
-            elif key.startswith("reference."):
-                references.add(name)
+        for key in set(captures_dict.keys()) - {"name", "doc"}:
+            _classify_capture(key, name, definitions, calls, type_refs, references)
 
     return _TagsInfo(
         definitions=definitions,

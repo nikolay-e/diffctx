@@ -261,7 +261,7 @@ class CFamilyEdgeBuilder(EdgeBuilder):
             discovered.update(new_files)
             frontier = new_files
 
-        return list(discovered)
+        return sorted(discovered)
 
     def _collect_included_headers(self, c_changed: list[Path]) -> set[str]:
         included: set[str] = set()

@@ -142,6 +142,47 @@ _FILE_CONTEXT_DESCRIPTION = (
 )
 
 
+def _collect_matched_files(validated_path: Path, patterns: list[str], max_files: int) -> list[Path]:
+    import glob as globmod
+
+    matched: list[Path] = []
+    for pattern in patterns:
+        full_pattern = str(validated_path / pattern)
+        for match in sorted(globmod.glob(full_pattern, recursive=True)):
+            p = Path(match)
+            if p.is_file() and len(matched) < max_files:
+                matched.append(p)
+    return matched
+
+
+def _build_dry_run_report(matched: list[Path], validated_path: Path) -> str:
+    total_bytes = sum(p.stat().st_size for p in matched if p.exists())
+    lines = [f"Would match {len(matched)} files (~{total_bytes:,} bytes):"]
+    for p in matched:
+        rel = p.relative_to(validated_path)
+        lines.append(f"  {rel} ({p.stat().st_size:,}b)")
+    return "\n".join(lines)
+
+
+def _build_file_content_report(matched: list[Path], validated_path: Path, max_file_bytes: int) -> tuple[str, int, int]:
+    parts = [f"# {len(matched)} files matched\n"]
+    total_lines = 0
+    for p in matched:
+        rel = p.relative_to(validated_path)
+        try:
+            size = p.stat().st_size
+            if size > max_file_bytes:
+                parts.append(f"## {rel}\n*Skipped: {size:,} bytes exceeds limit*\n")
+                continue
+            content = p.read_text(encoding="utf-8", errors="replace")
+            total_lines += content.count("\n") + 1
+            suffix = p.suffix.lstrip(".")
+            parts.append(f"## {rel}\n```{suffix}\n{content}\n```\n")
+        except OSError as e:
+            parts.append(f"## {rel}\n*Error: {e}*\n")
+    return "\n".join(parts), len(matched), total_lines
+
+
 @mcp.tool(description=_FILE_CONTEXT_DESCRIPTION)
 async def get_file_context(
     repo_path: str,
@@ -154,44 +195,12 @@ async def get_file_context(
     validated_path = validate_dir_path(repo_path)
 
     def _read() -> tuple[str, int, int]:
-        import glob as globmod
-
-        matched: list[Path] = []
-        for pattern in patterns:
-            full_pattern = str(validated_path / pattern)
-            for match in sorted(globmod.glob(full_pattern, recursive=True)):
-                p = Path(match)
-                if p.is_file() and len(matched) < max_files:
-                    matched.append(p)
-
+        matched = _collect_matched_files(validated_path, patterns, max_files)
         if not matched:
             return f"No files matched patterns: {patterns}", 0, 0
-
         if dry_run:
-            total_bytes = sum(p.stat().st_size for p in matched if p.exists())
-            lines = [f"Would match {len(matched)} files (~{total_bytes:,} bytes):"]
-            for p in matched:
-                rel = p.relative_to(validated_path)
-                lines.append(f"  {rel} ({p.stat().st_size:,}b)")
-            return "\n".join(lines), 0, 0
-
-        parts = [f"# {len(matched)} files matched\n"]
-        total_lines = 0
-        for p in matched:
-            rel = p.relative_to(validated_path)
-            try:
-                size = p.stat().st_size
-                if size > max_file_bytes:
-                    parts.append(f"## {rel}\n*Skipped: {size:,} bytes exceeds limit*\n")
-                    continue
-                content = p.read_text(encoding="utf-8", errors="replace")
-                total_lines += content.count("\n") + 1
-                suffix = p.suffix.lstrip(".")
-                parts.append(f"## {rel}\n```{suffix}\n{content}\n```\n")
-            except OSError as e:
-                parts.append(f"## {rel}\n*Error: {e}*\n")
-
-        return "\n".join(parts), len(matched), total_lines
+            return _build_dry_run_report(matched, validated_path), 0, 0
+        return _build_file_content_report(matched, validated_path, max_file_bytes)
 
     raw_result: tuple[str, int, int] = await anyio.to_thread.run_sync(_read)
     content, n_files, n_lines = raw_result

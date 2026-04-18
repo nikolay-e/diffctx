@@ -72,6 +72,20 @@ def quotient_graph(pg: ProjectGraph, level: str = "directory") -> QuotientGraph:
     return qg
 
 
+def _aggregate_cross_edge(
+    qg: QuotientGraph,
+    src_key: str,
+    dst_key: str,
+    weight: float,
+    cat: str,
+) -> None:
+    pair = (src_key, dst_key)
+    if pair not in qg.edges:
+        qg.edges[pair] = QuotientEdge(source=src_key, target=dst_key)
+    qg.edges[pair].weight += weight
+    qg.edges[pair].categories[cat] = qg.edges[pair].categories.get(cat, 0) + 1
+
+
 def _aggregate_edges(pg: ProjectGraph, qg: QuotientGraph, fid_to_group: dict[FragmentId, str]) -> None:
     for src, nbrs in pg.graph.adjacency.items():
         src_key = fid_to_group.get(src)
@@ -85,11 +99,7 @@ def _aggregate_edges(pg: ProjectGraph, qg: QuotientGraph, fid_to_group: dict[Fra
             if src_key == dst_key:
                 qg.nodes[src_key].self_weight += weight
             else:
-                pair = (src_key, dst_key)
-                if pair not in qg.edges:
-                    qg.edges[pair] = QuotientEdge(source=src_key, target=dst_key)
-                qg.edges[pair].weight += weight
-                qg.edges[pair].categories[cat] = qg.edges[pair].categories.get(cat, 0) + 1
+                _aggregate_cross_edge(qg, src_key, dst_key, weight, cat)
 
 
 def to_mermaid(qg: QuotientGraph, top_n: int = 20) -> str:
@@ -120,7 +130,7 @@ def to_mermaid(qg: QuotientGraph, top_n: int = 20) -> str:
         src_id = node_ids[edge.source]
         dst_id = node_ids[edge.target]
         cats = edge.categories
-        top_cat = max(cats, key=lambda k: cats[k]) if cats else "?"
+        top_cat = max(cats, key=cats.__getitem__) if cats else "?"
         weight = int(edge.weight) if edge.weight == int(edge.weight) else round(edge.weight, 1)
         lines.append(f'    {src_id} -->|"{top_cat}: {weight}"| {dst_id}')
 

@@ -219,6 +219,22 @@ def _print_nontrivial_report(
         print(f"    HIT: {f}  max_ppr={max_score:.6f}")
 
 
+def _classify_nontrivial_stages(
+    nontrivial: set,
+    selected: set,
+    sel_dump: set,
+    fragmented: set,
+    universe: set,
+) -> dict[str, str]:
+    stage_per_file: dict[str, str] = {}
+    for f in nontrivial:
+        if f in selected:
+            stage_per_file[f] = "selected"
+        else:
+            stage_per_file[f] = _classify_failure_stage(f, sel_dump, fragmented, universe)
+    return stage_per_file
+
+
 def evaluate_one(inst: dict, budget: int) -> dict:
     iid = inst["instance_id"]
     print("\n" + "=" * 78)
@@ -293,12 +309,7 @@ def evaluate_one(inst: dict, budget: int) -> dict:
     nt_recall = len(nontrivial_hits) / len(nontrivial) if nontrivial else 0.0
     patch_coverage = len(p_set & selected) / len(p_set) if p_set else 0.0
 
-    stage_per_file: dict[str, str] = {}
-    for f in nontrivial:
-        if f in selected:
-            stage_per_file[f] = "selected"
-        else:
-            stage_per_file[f] = _classify_failure_stage(f, sel_dump, fragmented, universe)
+    stage_per_file = _classify_nontrivial_stages(nontrivial, selected, sel_dump, fragmented, universe)
 
     return {
         "id": iid,
@@ -328,6 +339,40 @@ def _print_threshold_sanity_check():
     print(f"diffctx _LOW_RELEVANCE_THRESHOLD = {v}", file=sys.stderr)
 
 
+def _filter_nontrivial_instances(insts: list) -> list:
+    kept = []
+    for i in insts:
+        gb = json.loads(i["gold_context"]) if isinstance(i["gold_context"], str) else i["gold_context"]
+        gold = {normalize_gold_path(g["file"]) for g in gb}
+        added, deleted, modified = patch_files_detailed(i["patch"])
+        if gold - (added | deleted | modified):
+            kept.append(i)
+    return kept
+
+
+def _print_ok_summary(ok: list[dict]) -> None:
+    print(f"\nAvg patch_coverage: {sum(r['patch_coverage'] for r in ok)/len(ok):.3f}")
+    print(f"Avg file_recall:    {sum(r['file_recall'] for r in ok)/len(ok):.3f}")
+    print(f"Avg nontrivial:     {sum(r['nt_recall'] for r in ok)/len(ok):.3f}")
+    total_deleted = sum(r["n_deleted_in_patch"] for r in ok)
+    print(f"Total deleted files across all instances: {total_deleted}")
+
+    stages: dict[str, int] = {}
+    total_nt = 0
+    for r in ok:
+        for _f, stage in r.get("stage_per_file", {}).items():
+            stages[stage] = stages.get(stage, 0) + 1
+            total_nt += 1
+    if total_nt:
+        print(f"\nStage-wise breakdown ({total_nt} nontrivial gold files):")
+        for stage in sorted(stages, key=lambda s: -stages[s]):
+            pct = 100 * stages[stage] / total_nt
+            print(f"  {stage:50s}: {stages[stage]:4d} ({pct:5.1f}%)")
+
+    print("\nIf patch_coverage < 0.95: BUG — diffctx is losing files from its own diff input.")
+    print("If patch_coverage > 0.95: not a patch-loss bug, look elsewhere.")
+
+
 def main():
     _print_threshold_sanity_check()
 
@@ -342,14 +387,7 @@ def main():
     ds = load_dataset("Contextbench/ContextBench", "contextbench_verified", split="train")
     insts = list(ds)
     if args.nontrivial_only:
-        kept = []
-        for i in insts:
-            gb = json.loads(i["gold_context"]) if isinstance(i["gold_context"], str) else i["gold_context"]
-            gold = {normalize_gold_path(g["file"]) for g in gb}
-            added, deleted, modified = patch_files_detailed(i["patch"])
-            if gold - (added | deleted | modified):
-                kept.append(i)
-        insts = kept
+        insts = _filter_nontrivial_instances(insts)
     insts = insts[: args.limit]
 
     print(f"Diagnosing {len(insts)} nontrivial instances at budget={args.budget}\n")
@@ -370,26 +408,7 @@ def main():
     for r in fail:
         print(f"  FAIL [{r['status']}]: {r['id']}")
     if ok:
-        print(f"\nAvg patch_coverage: {sum(r['patch_coverage'] for r in ok)/len(ok):.3f}")
-        print(f"Avg file_recall:    {sum(r['file_recall'] for r in ok)/len(ok):.3f}")
-        print(f"Avg nontrivial:     {sum(r['nt_recall'] for r in ok)/len(ok):.3f}")
-        total_deleted = sum(r["n_deleted_in_patch"] for r in ok)
-        print(f"Total deleted files across all instances: {total_deleted}")
-
-        stages: dict[str, int] = {}
-        total_nt = 0
-        for r in ok:
-            for _f, stage in r.get("stage_per_file", {}).items():
-                stages[stage] = stages.get(stage, 0) + 1
-                total_nt += 1
-        if total_nt:
-            print(f"\nStage-wise breakdown ({total_nt} nontrivial gold files):")
-            for stage in sorted(stages, key=lambda s: -stages[s]):
-                pct = 100 * stages[stage] / total_nt
-                print(f"  {stage:50s}: {stages[stage]:4d} ({pct:5.1f}%)")
-
-        print("\nIf patch_coverage < 0.95: BUG — diffctx is losing files from its own diff input.")
-        print("If patch_coverage > 0.95: not a patch-loss bug, look elsewhere.")
+        _print_ok_summary(ok)
 
 
 if __name__ == "__main__":

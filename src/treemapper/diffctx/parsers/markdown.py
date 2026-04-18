@@ -126,6 +126,15 @@ class RegexMarkdownStrategy:
     def can_handle(self, path: Path, _content: str) -> bool:
         return path.suffix.lower() in {".md", ".markdown", ".mdx"}
 
+    def _find_section_end(self, headings: list[tuple[int, int, str]], idx: int, total_lines: int) -> int:
+        start_line, level, _ = headings[idx]
+        end_line = total_lines
+        for next_line, next_level, _ in headings[idx + 1 :]:
+            if next_level <= level:
+                end_line = next_line - 1
+                break
+        return end_line if end_line >= start_line else -1
+
     def fragment(self, path: Path, content: str) -> list[Fragment]:
         lines = content.splitlines()
         if not lines:
@@ -141,17 +150,10 @@ class RegexMarkdownStrategy:
             return []
 
         fragments: list[Fragment] = []
-
-        for idx, (start_line, level, _title) in enumerate(headings):
-            end_line = len(lines)
-            for next_line, next_level, _ in headings[idx + 1 :]:
-                if next_level <= level:
-                    end_line = next_line - 1
-                    break
-
-            if end_line < start_line:
+        for idx, (start_line, _level, _title) in enumerate(headings):
+            end_line = self._find_section_end(headings, idx, len(lines))
+            if end_line < 0:
                 continue
-
             frag = create_fragment_from_lines(path, lines, start_line, end_line, "section", "docs")
             if frag:
                 fragments.append(frag)

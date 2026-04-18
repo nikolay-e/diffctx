@@ -190,7 +190,7 @@ class GoEdgeBuilder(EdgeBuilder):
             candidate_index = self._build_candidate_import_index(candidates, file_cache)
             self._discover_cross_package(go_changed, changed_set, candidates, candidate_index, discovered, repo_root, file_cache)
 
-        return list(discovered)
+        return sorted(discovered)
 
     def _build_candidate_import_index(
         self,
@@ -263,10 +263,9 @@ class GoEdgeBuilder(EdgeBuilder):
             if c_info is None:
                 continue
             c_pkg, c_imports = c_info
-            if self._import_matches_file(f_imports, c, c_pkg, repo_root):
-                discovered.add(c)
-                next_frontier.add(c)
-            elif self._import_matches_source(c_imports, f, f_pkg, f_rel_dir, repo_root):
+            if self._import_matches_file(f_imports, c, c_pkg, repo_root) or self._import_matches_source(
+                c_imports, f, f_pkg, f_rel_dir, repo_root
+            ):
                 discovered.add(c)
                 next_frontier.add(c)
 

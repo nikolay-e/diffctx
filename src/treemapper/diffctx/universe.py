@@ -216,6 +216,25 @@ def _filter_ignored(
     return result
 
 
+def _count_concept_occurrences(
+    already_included: list[Path],
+    concepts: frozenset[str],
+    file_cache: dict[Path, str] | None,
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for f in already_included:
+        content = file_cache.get(f) if file_cache else None
+        if content is None:
+            try:
+                content = f.read_text(encoding="utf-8", errors="replace")
+            except (OSError, UnicodeDecodeError):
+                continue
+        for ident in extract_identifiers(content, skip_stopwords=False):
+            if ident in concepts:
+                counts[ident] = counts.get(ident, 0) + 1
+    return counts
+
+
 def _expand_universe_by_rare_identifiers(
     root_dir: Path,
     concepts: frozenset[str],
@@ -228,24 +247,13 @@ def _expand_universe_by_rare_identifiers(
         return []
 
     included_set = set(already_included)
-    if candidate_files is not None:
-        files = [f for f in candidate_files if f not in included_set]
-    else:
-        files = _collect_candidate_files(root_dir, included_set, combined_spec)
+    files = (
+        [f for f in candidate_files if f not in included_set]
+        if candidate_files is not None
+        else _collect_candidate_files(root_dir, included_set, combined_spec)
+    )
     inverted_index = _build_ident_index(files, concepts, file_cache=file_cache)
-
-    included_concept_counts: dict[str, int] = {}
-    for f in already_included:
-        content = file_cache.get(f) if file_cache else None
-        if content is None:
-            try:
-                content = f.read_text(encoding="utf-8", errors="replace")
-            except (OSError, UnicodeDecodeError):
-                continue
-        for ident in extract_identifiers(content, skip_stopwords=False):
-            if ident in concepts:
-                included_concept_counts[ident] = included_concept_counts.get(ident, 0) + 1
-
+    included_concept_counts = _count_concept_occurrences(already_included, concepts, file_cache)
     return _collect_expansion_files(inverted_index, concepts, included_set, included_concept_counts)
 
 

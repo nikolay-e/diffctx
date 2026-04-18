@@ -26,11 +26,11 @@ REPOS_DIR = repos_dir("LOO_REPOS_DIR")
 def strip_file_from_patch(patch_text: str, file_to_hide: str) -> str:
     import re
 
-    pattern = re.compile(r"^diff --git\s.*?(?=^diff --git\s|\Z)", re.MULTILINE | re.DOTALL)
     hidden_markers = {f"a/{file_to_hide}", f"b/{file_to_hide}"}
     kept = []
-    for m in pattern.finditer(patch_text):
-        block = m.group()
+    for block in re.split(r"(?=^diff --git\s)", patch_text, flags=re.MULTILINE):
+        if not block.startswith("diff --git"):
+            continue
         first_line = block.split("\n", 1)[0]
         parts = first_line.split()
         if not any(p.strip('"') in hidden_markers for p in parts[2:]):
@@ -168,6 +168,38 @@ def _run_one(run_args: tuple[int, dict, int, str, int]) -> list[dict]:
         return []
 
 
+def _filter_multi_file(insts: list) -> list:
+    return [
+        i
+        for i in insts
+        if len(patch_files(i["patch"])) >= 2
+        and not is_mechanical_change(i["patch"])
+        and not any(is_vendor_or_generated(f) for f in patch_files(i["patch"]))
+    ]
+
+
+def _print_loo_breakdowns(all_results: list[dict]) -> None:
+    by_repo: dict[str, list[dict]] = defaultdict(list)
+    for r in all_results:
+        by_repo[r["repo"]].append(r)
+
+    print("Per-repo breakdown:")
+    for repo in sorted(by_repo, key=lambda r: len(by_repo[r]), reverse=True):
+        trials = by_repo[repo]
+        h = sum(1 for t in trials if t["found"])
+        print(f"  {repo:40s} {h}/{len(trials):3d} ({100 * h / len(trials):.0f}%)")
+
+    by_lang: dict[str, list[dict]] = defaultdict(list)
+    for r in all_results:
+        by_lang[r["language"]].append(r)
+
+    print("\nPer-language breakdown:")
+    for lang in sorted(by_lang, key=lambda la: len(by_lang[la]), reverse=True):
+        trials = by_lang[lang]
+        h = sum(1 for t in trials if t["found"])
+        print(f"  {lang:20s} {h}/{len(trials):3d} ({100 * h / len(trials):.0f}%)")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=50)
@@ -187,13 +219,7 @@ def main():
     ds = load_dataset(args.dataset, args.split, split="train")
     insts = list(ds)
 
-    multi_file = [
-        i
-        for i in insts
-        if len(patch_files(i["patch"])) >= 2
-        and not is_mechanical_change(i["patch"])
-        and not any(is_vendor_or_generated(f) for f in patch_files(i["patch"]))
-    ]
+    multi_file = _filter_multi_file(insts)
     print(f"Total instances: {len(insts)}, multi-file (filtered): {len(multi_file)}")
 
     warm_cache(multi_file)
@@ -235,25 +261,7 @@ def main():
             print(f"Found distractor:  {distractor_found}/{distractor_total} ({100 * distractor_found / distractor_total:.1f}%)")
         print()
 
-        by_repo: dict[str, list[dict]] = defaultdict(list)
-        for r in all_results:
-            by_repo[r["repo"]].append(r)
-
-        print("Per-repo breakdown:")
-        for repo in sorted(by_repo, key=lambda r: len(by_repo[r]), reverse=True):
-            trials = by_repo[repo]
-            h = sum(1 for t in trials if t["found"])
-            print(f"  {repo:40s} {h}/{len(trials):3d} ({100 * h / len(trials):.0f}%)")
-
-        by_lang: dict[str, list[dict]] = defaultdict(list)
-        for r in all_results:
-            by_lang[r["language"]].append(r)
-
-        print("\nPer-language breakdown:")
-        for lang in sorted(by_lang, key=lambda la: len(by_lang[la]), reverse=True):
-            trials = by_lang[lang]
-            h = sum(1 for t in trials if t["found"])
-            print(f"  {lang:20s} {h}/{len(trials):3d} ({100 * h / len(trials):.0f}%)")
+        _print_loo_breakdowns(all_results)
 
         if len(seeds) == 1:
             tag = f"loo_{args.scoring}_n{args.limit}_b{args.budget}"

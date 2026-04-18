@@ -350,7 +350,7 @@ class JavaScriptEdgeBuilder(EdgeBuilder):
             discovered.update(newly_found)
             frontier = [f for f in newly_found if _is_js_file(f)]
 
-        return list(discovered)
+        return sorted(discovered)
 
     def _discover_one_hop(
         self,
@@ -472,6 +472,21 @@ class JavaScriptEdgeBuilder(EdgeBuilder):
     _IMPORT_WEIGHT = 0.55
     _REEXPORT_WEIGHT_FACTOR = 0.8
 
+    def _link_resolved_import(
+        self,
+        src_path: Path,
+        resolved: Path,
+        file_to_frags: dict[Path, list[FragmentId]],
+        fragment_paths: set[Path],
+        edges: EdgeDict,
+    ) -> None:
+        if resolved == src_path:
+            return
+        target_ids = file_to_frags.get(resolved, [])
+        if target_ids:
+            self._link_import_pairs(file_to_frags[src_path], target_ids, edges)
+            self._follow_reexports(resolved, file_to_frags[src_path], file_to_frags, fragment_paths, edges)
+
     def _add_import_edges(
         self,
         js_frags: list[Fragment],
@@ -484,43 +499,17 @@ class JavaScriptEdgeBuilder(EdgeBuilder):
             file_to_frags[f.path].append(f.id)
 
         fragment_paths = set(file_to_frags.keys())
-        file_imports, alias_resolved = self._collect_imports(
-            js_frags,
-            info_cache,
-            tsconfig_resolver,
-            fragment_paths,
-        )
+        file_imports, alias_resolved = self._collect_imports(js_frags, info_cache, tsconfig_resolver, fragment_paths)
 
         for src_path, import_sources in file_imports.items():
             for import_source in import_sources:
                 resolved = _resolve_relative_import(src_path, import_source, fragment_paths)
-                if resolved is None or resolved == src_path:
-                    continue
-                target_ids = file_to_frags.get(resolved, [])
-                if target_ids:
-                    self._link_import_pairs(file_to_frags[src_path], target_ids, edges)
-                    self._follow_reexports(
-                        resolved,
-                        file_to_frags[src_path],
-                        file_to_frags,
-                        fragment_paths,
-                        edges,
-                    )
+                if resolved is not None:
+                    self._link_resolved_import(src_path, resolved, file_to_frags, fragment_paths, edges)
 
         for src_path, resolved_targets in alias_resolved.items():
             for resolved in resolved_targets:
-                if resolved == src_path:
-                    continue
-                target_ids = file_to_frags.get(resolved, [])
-                if target_ids:
-                    self._link_import_pairs(file_to_frags[src_path], target_ids, edges)
-                    self._follow_reexports(
-                        resolved,
-                        file_to_frags[src_path],
-                        file_to_frags,
-                        fragment_paths,
-                        edges,
-                    )
+                self._link_resolved_import(src_path, resolved, file_to_frags, fragment_paths, edges)
 
     @staticmethod
     def _collect_imports(

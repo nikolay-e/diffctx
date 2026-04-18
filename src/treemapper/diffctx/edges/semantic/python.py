@@ -120,6 +120,35 @@ def _resolve_relative_rg(source_path: Path, repo_root: Path, level: int, module:
     return ".".join(base_parts) if base_parts else None
 
 
+def _parse_rg_line(line: str) -> tuple[Path, str] | None:
+    idx = line.find(":")
+    if idx < 0:
+        return None
+    path_str = line[:idx]
+    rest = line[idx + 1 :]
+    idx2 = rest.find(":")
+    content = rest[idx2 + 1 :] if idx2 >= 0 and rest[:idx2].isdigit() else rest
+    return Path(path_str), content
+
+
+def _process_rg_import(stripped: str, path: Path, file_to_imports: dict[Path, set[str]], repo_root: Path) -> None:
+    m_from = _IMPORT_FROM_RE.match(stripped)
+    m_simple = _IMPORT_SIMPLE_RE.match(stripped)
+    if m_simple:
+        for name in m_simple.group(1).split(","):
+            name = name.split(" as ")[0].strip()
+            if name:
+                _add_import_with_prefixes(file_to_imports[path], name)
+    elif m_from:
+        dots, module = m_from.group(1), m_from.group(2)
+        if dots:
+            resolved = _resolve_relative_rg(path, repo_root, len(dots), module or "")
+            if resolved:
+                _add_import_with_prefixes(file_to_imports[path], resolved)
+        elif module:
+            _add_import_with_prefixes(file_to_imports[path], module)
+
+
 def _build_import_index_rg(
     repo_root: Path,
     candidate_set: set[Path],
@@ -140,40 +169,14 @@ def _build_import_index_rg(
     )
     file_to_imports: dict[Path, set[str]] = defaultdict(set)
     for line in r.stdout.splitlines():
-        idx = line.find(":")
-        if idx < 0:
+        parsed = _parse_rg_line(line)
+        if parsed is None:
             continue
-        path_str = line[:idx]
-        rest = line[idx + 1 :]
-        idx2 = rest.find(":")
-        if idx2 >= 0 and rest[:idx2].isdigit():
-            content = rest[idx2 + 1 :]
-        else:
-            content = rest
-
-        path = Path(path_str)
+        path, content = parsed
         if path not in candidate_set:
             continue
-
         stripped = content.strip()
-        m_from = _IMPORT_FROM_RE.match(stripped)
-        m_simple = _IMPORT_SIMPLE_RE.match(stripped)
-        if not m_from and not m_simple:
-            continue
-
-        if m_simple:
-            for name in m_simple.group(1).split(","):
-                name = name.split(" as ")[0].strip()
-                if name:
-                    _add_import_with_prefixes(file_to_imports[path], name)
-        elif m_from:
-            dots, module = m_from.group(1), m_from.group(2)
-            if dots:
-                resolved = _resolve_relative_rg(path, repo_root, len(dots), module or "")
-                if resolved:
-                    _add_import_with_prefixes(file_to_imports[path], resolved)
-            elif module:
-                _add_import_with_prefixes(file_to_imports[path], module)
+        _process_rg_import(stripped, path, file_to_imports, repo_root)
 
     return file_to_imports
 
@@ -209,6 +212,25 @@ def _find_module_file(target_dir: Path) -> Path | None:
     return None
 
 
+def _process_reexport_alias(
+    alias: ast.alias,
+    resolved_path: Path,
+    repo_root: Path | None,
+    file_cache: dict[Path, str] | None,
+    result: dict[str, Path],
+    depth: int,
+) -> None:
+    name = alias.asname or alias.name
+    if name == "*":
+        result[f"*:{resolved_path}"] = resolved_path
+        return
+    result[name] = resolved_path
+    if resolved_path.name == _INIT_PY:
+        nested = _resolve_init_reexports(resolved_path, repo_root, file_cache, depth + 1)
+        if name in nested:
+            result[name] = nested[name]
+
+
 def _resolve_init_reexports(
     init_path: Path,
     repo_root: Path | None,
@@ -240,26 +262,14 @@ def _resolve_init_reexports(
     for node in ast.walk(tree):
         if not isinstance(node, ast.ImportFrom) or not node.names:
             continue
-
         target_dir = _resolve_import_target_dir(node, pkg_dir, repo_root)
         if target_dir is None:
             continue
-
         resolved_path = _find_module_file(target_dir)
         if resolved_path is None:
             continue
-
         for alias in node.names:
-            _name = alias.asname or alias.name
-            if _name == "*":
-                result[f"*:{resolved_path}"] = resolved_path
-                continue
-            result[_name] = resolved_path
-
-            if resolved_path.name == _INIT_PY:
-                nested = _resolve_init_reexports(resolved_path, repo_root, file_cache, _depth + 1)
-                if _name in nested:
-                    result[_name] = nested[_name]
+            _process_reexport_alias(alias, resolved_path, repo_root, file_cache, result, _depth)
 
     return result
 
@@ -303,7 +313,34 @@ class PythonEdgeBuilder(EdgeBuilder):
             if not frontier:
                 break
 
-        return list(discovered)
+        return sorted(discovered)
+
+    @staticmethod
+    def _add_forward_imports(
+        f_imports: set[str],
+        module_to_files: dict[str, list[Path]],
+        changed_set: set[Path],
+        discovered: set[Path],
+        next_frontier: set[Path],
+    ) -> None:
+        for imp in f_imports:
+            for target in module_to_files.get(imp, []):
+                if target not in changed_set and target not in discovered:
+                    discovered.add(target)
+                    next_frontier.add(target)
+
+    @staticmethod
+    def _add_reverse_imports(
+        f_module: str,
+        file_to_imports: dict[Path, set[str]],
+        changed_set: set[Path],
+        discovered: set[Path],
+        next_frontier: set[Path],
+    ) -> None:
+        for candidate, cand_imports in file_to_imports.items():
+            if candidate not in changed_set and candidate not in discovered and f_module in cand_imports:
+                discovered.add(candidate)
+                next_frontier.add(candidate)
 
     @staticmethod
     def _expand_frontier(
@@ -324,31 +361,19 @@ class PythonEdgeBuilder(EdgeBuilder):
                     f_imports = _extract_imports_from_content(content, f, repo_root)
                 except (OSError, UnicodeDecodeError):
                     continue
-
-            for imp in f_imports:
-                for target in module_to_files.get(imp, []):
-                    if target not in changed_set and target not in discovered:
-                        discovered.add(target)
-                        next_frontier.add(target)
-
+            PythonEdgeBuilder._add_forward_imports(f_imports, module_to_files, changed_set, discovered, next_frontier)
             f_module = file_to_module.get(f) or path_to_module(f, repo_root)
             if f_module:
-                for candidate, cand_imports in file_to_imports.items():
-                    if candidate not in changed_set and candidate not in discovered and f_module in cand_imports:
-                        discovered.add(candidate)
-                        next_frontier.add(candidate)
-
+                PythonEdgeBuilder._add_reverse_imports(f_module, file_to_imports, changed_set, discovered, next_frontier)
         return next_frontier
 
-    def _build_import_index(
-        self,
+    @staticmethod
+    def _build_module_index(
         all_candidate_files: list[Path],
         repo_root: Path | None,
-        file_cache: dict[Path, str] | None = None,
-    ) -> tuple[dict[Path, str], dict[str, list[Path]], dict[Path, set[str]]]:
+    ) -> tuple[dict[Path, str], dict[str, list[Path]]]:
         file_to_module: dict[Path, str] = {}
         module_to_files: dict[str, list[Path]] = defaultdict(list)
-
         for f in all_candidate_files:
             if not _is_python_file(f):
                 continue
@@ -358,26 +383,16 @@ class PythonEdgeBuilder(EdgeBuilder):
                 module_to_files[module].append(f)
                 parts = module.split(".")
                 for i in range(1, len(parts)):
-                    prefix = ".".join(parts[:i])
-                    module_to_files[prefix].append(f)
+                    module_to_files[".".join(parts[:i])].append(f)
+        return file_to_module, module_to_files
 
-        self._enrich_with_reexports(
-            all_candidate_files,
-            repo_root,
-            file_cache,
-            file_to_module,
-            module_to_files,
-        )
-
-        if _RG_BIN and repo_root:
-            candidate_set = {f for f in all_candidate_files if _is_python_file(f)}
-            try:
-                file_to_imports = _build_import_index_rg(repo_root, candidate_set)
-                return file_to_module, dict(module_to_files), dict(file_to_imports)
-            except (subprocess.TimeoutExpired, OSError):
-                logger.debug("ripgrep import index failed, falling back to ast")
-
-        file_to_imports_ast: dict[Path, set[str]] = {}
+    @staticmethod
+    def _build_import_index_ast(
+        all_candidate_files: list[Path],
+        repo_root: Path | None,
+        file_cache: dict[Path, str] | None,
+    ) -> dict[Path, set[str]]:
+        file_to_imports: dict[Path, set[str]] = {}
         for f in all_candidate_files:
             if not _is_python_file(f):
                 continue
@@ -387,9 +402,44 @@ class PythonEdgeBuilder(EdgeBuilder):
                     content = f.read_text(encoding="utf-8")
                 except (OSError, UnicodeDecodeError):
                     continue
-            file_to_imports_ast[f] = _extract_imports_from_content(content, f, repo_root)
+            file_to_imports[f] = _extract_imports_from_content(content, f, repo_root)
+        return file_to_imports
 
-        return file_to_module, dict(module_to_files), file_to_imports_ast
+    def _build_import_index(
+        self,
+        all_candidate_files: list[Path],
+        repo_root: Path | None,
+        file_cache: dict[Path, str] | None = None,
+    ) -> tuple[dict[Path, str], dict[str, list[Path]], dict[Path, set[str]]]:
+        file_to_module, module_to_files = self._build_module_index(all_candidate_files, repo_root)
+        self._enrich_with_reexports(all_candidate_files, repo_root, file_cache, file_to_module, module_to_files)
+
+        if _RG_BIN and repo_root:
+            candidate_set = {f for f in all_candidate_files if _is_python_file(f)}
+            try:
+                file_to_imports = _build_import_index_rg(repo_root, candidate_set)
+                return file_to_module, dict(module_to_files), dict(file_to_imports)
+            except (subprocess.TimeoutExpired, OSError):
+                logger.debug("ripgrep import index failed, falling back to ast")
+
+        return file_to_module, dict(module_to_files), self._build_import_index_ast(all_candidate_files, repo_root, file_cache)
+
+    @staticmethod
+    def _register_reexport_source(
+        source_path: Path,
+        pkg_module: str,
+        repo_root: Path | None,
+        module_to_files: dict[str, list[Path]],
+        file_to_module: dict[Path, str],
+        existing: set[Path],
+    ) -> None:
+        if source_path not in existing:
+            module_to_files[pkg_module].append(source_path)
+            existing.add(source_path)
+            if source_path not in file_to_module:
+                src_module = path_to_module(source_path, repo_root)
+                if src_module:
+                    file_to_module[source_path] = src_module
 
     @staticmethod
     def _enrich_with_reexports(
@@ -399,21 +449,16 @@ class PythonEdgeBuilder(EdgeBuilder):
         file_to_module: dict[Path, str],
         module_to_files: dict[str, list[Path]],
     ) -> None:
-        init_files = [f for f in all_candidate_files if f.name == _INIT_PY]
-        for init_f in init_files:
+        for init_f in (f for f in all_candidate_files if f.name == _INIT_PY):
             pkg_module = path_to_module(init_f, repo_root)
             if not pkg_module:
                 continue
             reexports = _resolve_init_reexports(init_f, repo_root, file_cache)
             existing = set(module_to_files.get(pkg_module, []))
-            for _name, source_path in reexports.items():
-                if source_path not in existing:
-                    module_to_files[pkg_module].append(source_path)
-                    existing.add(source_path)
-                    if source_path not in file_to_module:
-                        src_module = path_to_module(source_path, repo_root)
-                        if src_module:
-                            file_to_module[source_path] = src_module
+            for source_path in reexports.values():
+                PythonEdgeBuilder._register_reexport_source(
+                    source_path, pkg_module, repo_root, module_to_files, file_to_module, existing
+                )
 
     @staticmethod
     def _enrich_frags_with_reexports(

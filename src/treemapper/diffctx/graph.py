@@ -20,6 +20,38 @@ logger = logging.getLogger(__name__)
 _NDArray = Any
 
 
+def _build_csr(
+    adj: dict[FragmentId, dict[FragmentId, float]],
+    nodes: list[FragmentId],
+    node_to_idx: dict[FragmentId, int],
+) -> CSRGraph:
+    n = len(nodes)
+    total_edges = sum(len(v) for v in adj.values())
+    indptr = np.zeros(n + 1, dtype=np.int32)
+    indices = np.empty(total_edges, dtype=np.int32)
+    weights = np.empty(total_edges, dtype=np.float64)
+    k = 0
+    for i in range(n):
+        nbrs = adj.get(nodes[i])
+        if nbrs:
+            for dst, w in nbrs.items():
+                dst_idx = node_to_idx.get(dst)
+                if dst_idx is not None:
+                    indices[k] = dst_idx
+                    weights[k] = w
+                    k += 1
+        indptr[i + 1] = k
+    if k < total_edges:
+        indices = indices[:k]  # type: ignore[assignment,unused-ignore]
+        weights = weights[:k]  # type: ignore[assignment,unused-ignore]
+    out_sum = np.zeros(n, dtype=np.float64)
+    for i in range(n):
+        s, e = indptr[i], indptr[i + 1]
+        if e > s:
+            out_sum[i] = weights[s:e].sum()
+    return CSRGraph(n, indptr, indices, weights, out_sum, node_to_idx, nodes)
+
+
 @dataclass
 class CSRGraph:
     n: int
@@ -78,38 +110,12 @@ class Graph:
     def to_csr(self) -> tuple[CSRGraph, CSRGraph]:
         if self._csr_cache is not None:
             return self._csr_cache
-
         nodes = sorted(self._nodes)
         node_to_idx = {n: i for i, n in enumerate(nodes)}
-        n = len(nodes)
-
-        def _build_one(adj: dict[FragmentId, dict[FragmentId, float]]) -> CSRGraph:
-            total_edges = sum(len(v) for v in adj.values())
-            indptr = np.zeros(n + 1, dtype=np.int32)
-            indices = np.empty(total_edges, dtype=np.int32)
-            weights = np.empty(total_edges, dtype=np.float64)
-            k = 0
-            for i in range(n):
-                nbrs = adj.get(nodes[i])
-                if nbrs:
-                    for dst, w in nbrs.items():
-                        dst_idx = node_to_idx.get(dst)
-                        if dst_idx is not None:
-                            indices[k] = dst_idx
-                            weights[k] = w
-                            k += 1
-                indptr[i + 1] = k
-            if k < total_edges:
-                indices = indices[:k]  # type: ignore[assignment,unused-ignore]
-                weights = weights[:k]  # type: ignore[assignment,unused-ignore]
-            out_sum = np.zeros(n, dtype=np.float64)
-            for i in range(n):
-                s, e = indptr[i], indptr[i + 1]
-                if e > s:
-                    out_sum[i] = weights[s:e].sum()
-            return CSRGraph(n, indptr, indices, weights, out_sum, node_to_idx, nodes)
-
-        result = _build_one(self._fwd), _build_one(self._rev)
+        result = (
+            _build_csr(self._fwd, nodes, node_to_idx),
+            _build_csr(self._rev, nodes, node_to_idx),
+        )
         self._csr_cache = result
         return result
 
@@ -122,20 +128,28 @@ class Graph:
                 g.add_edge(src, dst, weight=w)
         return g
 
+    @staticmethod
+    def _visit_adj(
+        adj: dict[FragmentId, dict[FragmentId, float]],
+        node: FragmentId,
+        new_dist: int,
+        visited: dict[FragmentId, int],
+        next_frontier: dict[FragmentId, int],
+    ) -> None:
+        for nbr in adj.get(node, {}):
+            if nbr not in visited:
+                visited[nbr] = new_dist
+                next_frontier[nbr] = new_dist
+
     def _bfs_from_seed(self, seed: FragmentId, radius: int) -> dict[FragmentId, int]:
         frontier = {seed: 0}
         visited: dict[FragmentId, int] = {seed: 0}
         for _step in range(radius):
             next_frontier: dict[FragmentId, int] = {}
             for node, dist in frontier.items():
-                for nbr in self._fwd.get(node, {}):
-                    if nbr not in visited:
-                        visited[nbr] = dist + 1
-                        next_frontier[nbr] = dist + 1
-                for nbr in self._rev.get(node, {}):
-                    if nbr not in visited:
-                        visited[nbr] = dist + 1
-                        next_frontier[nbr] = dist + 1
+                new_dist = dist + 1
+                self._visit_adj(self._fwd, node, new_dist, visited, next_frontier)
+                self._visit_adj(self._rev, node, new_dist, visited, next_frontier)
             frontier = next_frontier
         return visited
 
@@ -215,30 +229,29 @@ _SUPPRESSION_EXEMPT = frozenset({"semantic", "structural", "test_edge"})
 _HUB_OUT_DEGREE_THRESHOLD = 3
 
 
-def _apply_hub_suppression(
-    edges: dict[tuple[FragmentId, FragmentId], float],
-    edge_categories: dict[tuple[FragmentId, FragmentId], str],
-) -> dict[tuple[FragmentId, FragmentId], float]:
-    if not edges:
-        return edges
-
-    edge_list = list(edges.items())
-    n_edges = len(edge_list)
-
+def _build_node_index(
+    edge_list: list[tuple[tuple[FragmentId, FragmentId], float]],
+) -> dict[FragmentId, int]:
     node_set: dict[FragmentId, int] = {}
     for (src, dst), _w in edge_list:
         if src not in node_set:
             node_set[src] = len(node_set)
         if dst not in node_set:
             node_set[dst] = len(node_set)
+    return node_set
 
-    n_nodes = len(node_set)
+
+def _build_edge_arrays(
+    edge_list: list[tuple[tuple[FragmentId, FragmentId], float]],
+    node_set: dict[FragmentId, int],
+    edge_categories: dict[tuple[FragmentId, FragmentId], str],
+) -> tuple[_NDArray, _NDArray, _NDArray, _NDArray, _NDArray]:
+    n_edges = len(edge_list)
     src_idx = np.empty(n_edges, dtype=np.int32)
     dst_idx = np.empty(n_edges, dtype=np.int32)
     weights = np.empty(n_edges, dtype=np.float64)
     is_semantic = np.zeros(n_edges, dtype=np.bool_)
     is_exempt = np.zeros(n_edges, dtype=np.bool_)
-
     for i, ((src, dst), w) in enumerate(edge_list):
         src_idx[i] = node_set[src]
         dst_idx[i] = node_set[dst]
@@ -248,35 +261,52 @@ def _apply_hub_suppression(
             is_semantic[i] = True
         if cat in _SUPPRESSION_EXEMPT:
             is_exempt[i] = True
+    return src_idx, dst_idx, weights, is_semantic, is_exempt
 
-    # --- Phase 1: suppress high in-degree (non-exempt edges) ---
+
+def _suppress_semantic_hubs(
+    edge_list: list[tuple[tuple[FragmentId, FragmentId], float]],
+    src_idx: _NDArray,
+    is_semantic: _NDArray,
+    weights: _NDArray,
+    n_nodes: int,
+) -> None:
+    sem_out_files: dict[int, set[Path]] = {}
+    for i, ((_, dst), _w) in enumerate(edge_list):
+        if is_semantic[i]:
+            sem_out_files.setdefault(src_idx[i], set()).add(dst.path)
+    if not sem_out_files:
+        return
+    sem_file_deg = np.zeros(n_nodes, dtype=np.int32)
+    for si, files in sem_out_files.items():
+        sem_file_deg[si] = len(files)
+    src_sem_deg = sem_file_deg[src_idx]
+    sem_hub_mask = is_semantic & (src_sem_deg >= _HUB_OUT_DEGREE_THRESHOLD)
+    weights /= np.where(sem_hub_mask, np.sqrt(src_sem_deg.astype(np.float64)), 1.0)
+
+
+def _apply_hub_suppression(
+    edges: dict[tuple[FragmentId, FragmentId], float],
+    edge_categories: dict[tuple[FragmentId, FragmentId], str],
+) -> dict[tuple[FragmentId, FragmentId], float]:
+    if not edges:
+        return edges
+
+    edge_list = list(edges.items())
+    node_set = _build_node_index(edge_list)
+    n_nodes = len(node_set)
+    src_idx, dst_idx, weights, is_semantic, is_exempt = _build_edge_arrays(edge_list, node_set, edge_categories)
+
     in_degree = np.bincount(dst_idx, minlength=n_nodes)
     degrees_sorted = np.sort(in_degree[in_degree > 0])
     mid = len(degrees_sorted) // 2
     d_median = (degrees_sorted[mid] + degrees_sorted[~mid]) / 2.0
-
     dst_deg = in_degree[dst_idx]
     suppress_mask = (dst_deg > d_median) & ~is_exempt
-    log_factors = np.where(suppress_mask, np.maximum(1.0, np.log(1.0 + dst_deg)), 1.0)
-    weights /= log_factors
+    weights /= np.where(suppress_mask, np.maximum(1.0, np.log(1.0 + dst_deg)), 1.0)
 
-    # --- Phase 2: suppress semantic hubs (out-degree by unique file count) ---
-    sem_out_files: dict[int, set[Path]] = {}
-    for i, ((src, dst), _w) in enumerate(edge_list):
-        if is_semantic[i]:
-            si = src_idx[i]
-            sem_out_files.setdefault(si, set()).add(dst.path)
+    _suppress_semantic_hubs(edge_list, src_idx, is_semantic, weights, n_nodes)
 
-    if sem_out_files:
-        sem_file_deg = np.zeros(n_nodes, dtype=np.int32)
-        for si, files in sem_out_files.items():
-            sem_file_deg[si] = len(files)
-        src_sem_deg = sem_file_deg[src_idx]
-        sem_hub_mask = is_semantic & (src_sem_deg >= _HUB_OUT_DEGREE_THRESHOLD)
-        sqrt_factors = np.where(sem_hub_mask, np.sqrt(src_sem_deg.astype(np.float64)), 1.0)
-        weights /= sqrt_factors
-
-    # --- Rebuild dict ---
     result: dict[tuple[FragmentId, FragmentId], float] = {}
     for i, ((src, dst), _w) in enumerate(edge_list):
         result[(src, dst)] = float(weights[i])

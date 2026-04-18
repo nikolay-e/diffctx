@@ -41,10 +41,7 @@ class ProjectGraph:
     def neighbors(self, fid: FragmentId) -> dict[FragmentId, float]:
         return self.graph.neighbors(fid)
 
-    def subgraph(self, nodes: set[FragmentId]) -> ProjectGraph:
-        sub = Graph()
-        for n in nodes:
-            sub.add_node(n)
+    def _copy_edges_to_subgraph(self, sub: Graph, nodes: set[FragmentId]) -> None:
         for src, nbrs in self.graph.adjacency.items():
             if src not in nodes:
                 continue
@@ -54,17 +51,18 @@ class ProjectGraph:
                     cat = self.graph.edge_categories.get((src, dst))
                     if cat:
                         sub.edge_categories[(src, dst)] = cat
+
+    def subgraph(self, nodes: set[FragmentId]) -> ProjectGraph:
+        sub = Graph()
+        for n in nodes:
+            sub.add_node(n)
+        self._copy_edges_to_subgraph(sub, nodes)
         sub_frags = {fid: f for fid, f in self.fragments.items() if fid in nodes}
         sub_files: dict[Path, list[FragmentId]] = defaultdict(list)
         for fid in nodes:
             if fid in self.fragments:
                 sub_files[fid.path].append(fid)
-        return ProjectGraph(
-            graph=sub,
-            fragments=sub_frags,
-            files=dict(sub_files),
-            root_dir=self.root_dir,
-        )
+        return ProjectGraph(graph=sub, fragments=sub_frags, files=dict(sub_files), root_dir=self.root_dir)
 
     def edge_type_counts(self) -> dict[str, int]:
         counts: dict[str, int] = defaultdict(int)
@@ -79,44 +77,41 @@ class ProjectGraph:
                 in_deg[fid] += 1
         return sorted(in_deg.items(), key=lambda x: x[1], reverse=True)[:n]
 
+    def _node_dict(self, fid: FragmentId, frag: Fragment) -> dict[str, Any]:
+        rel_path = _relative_path(fid.path, self.root_dir)
+        loc = f"{fid.path.name}:{fid.start_line}-{fid.end_line}"
+        label = f"{frag.symbol_name} ({loc})" if frag.symbol_name else loc
+        return {
+            "id": f"{rel_path}:{fid.start_line}-{fid.end_line}",
+            "label": label,
+            "path": rel_path,
+            "lines": f"{fid.start_line}-{fid.end_line}",
+            "kind": frag.kind,
+            "symbol": frag.symbol_name or "",
+            "token_count": frag.token_count,
+        }
+
+    def _edge_dict(self, src: FragmentId, dst: FragmentId, weight: float, cat: str) -> dict[str, Any]:
+        src_frag = self.fragments.get(src)
+        dst_frag = self.fragments.get(dst)
+        return {
+            "source": f"{_relative_path(src.path, self.root_dir)}:{src.start_line}-{src.end_line}",
+            "source_symbol": (src_frag.symbol_name or "") if src_frag else "",
+            "target": f"{_relative_path(dst.path, self.root_dir)}:{dst.start_line}-{dst.end_line}",
+            "target_symbol": (dst_frag.symbol_name or "") if dst_frag else "",
+            "weight": round(weight, 4),
+            "category": cat,
+        }
+
     def to_dict(self) -> dict[str, Any]:
         root_name = self.root_dir.name if self.root_dir else "unknown"
-        nodes = []
-        for fid, frag in sorted(self.fragments.items(), key=lambda x: (x[0].path, x[0].start_line)):
-            rel_path = _relative_path(fid.path, self.root_dir) if self.root_dir else str(fid.path)
-            basename = fid.path.name
-            loc = f"{basename}:{fid.start_line}-{fid.end_line}"
-            label = f"{frag.symbol_name} ({loc})" if frag.symbol_name else loc
-            nodes.append(
-                {
-                    "id": f"{rel_path}:{fid.start_line}-{fid.end_line}",
-                    "label": label,
-                    "path": rel_path,
-                    "lines": f"{fid.start_line}-{fid.end_line}",
-                    "kind": frag.kind,
-                    "symbol": frag.symbol_name or "",
-                    "token_count": frag.token_count,
-                }
-            )
-
-        edges = []
-        for (src, dst), cat in sorted(self.graph.edge_categories.items(), key=lambda x: str(x[0])):
-            weight = self.graph.adjacency.get(src, {}).get(dst, 0.0)
-            src_path = _relative_path(src.path, self.root_dir) if self.root_dir else str(src.path)
-            dst_path = _relative_path(dst.path, self.root_dir) if self.root_dir else str(dst.path)
-            src_frag = self.fragments.get(src)
-            dst_frag = self.fragments.get(dst)
-            edges.append(
-                {
-                    "source": f"{src_path}:{src.start_line}-{src.end_line}",
-                    "source_symbol": (src_frag.symbol_name or "") if src_frag else "",
-                    "target": f"{dst_path}:{dst.start_line}-{dst.end_line}",
-                    "target_symbol": (dst_frag.symbol_name or "") if dst_frag else "",
-                    "weight": round(weight, 4),
-                    "category": cat,
-                }
-            )
-
+        nodes = [
+            self._node_dict(fid, frag) for fid, frag in sorted(self.fragments.items(), key=lambda x: (x[0].path, x[0].start_line))
+        ]
+        edges = [
+            self._edge_dict(src, dst, self.graph.adjacency.get(src, {}).get(dst, 0.0), cat)
+            for (src, dst), cat in sorted(self.graph.edge_categories.items(), key=lambda x: str(x[0]))
+        ]
         return {
             "name": root_name,
             "type": "project_graph",

@@ -89,6 +89,20 @@ class BM25Discovery(DiscoveryStrategy):
     def __init__(self, top_k: int = 1) -> None:
         self.top_k = top_k
 
+    @staticmethod
+    def _bm25_score(doc: list[str], query_set: set[str], idf: dict[str, float], avgdl: float) -> float:
+        from collections import Counter as _Counter
+
+        tf: _Counter[str] = _Counter(doc)
+        dl = len(doc)
+        s = 0.0
+        for t in query_set:
+            freq = tf.get(t, 0)
+            if freq == 0:
+                continue
+            s += idf.get(t, 0) * (freq * 2.5) / (freq + 1.5 * (1 - 0.75 + 0.75 * dl / avgdl))
+        return s
+
     def discover(self, ctx: DiscoveryContext) -> list[Path]:
         import math
         import re
@@ -124,18 +138,7 @@ class BM25Discovery(DiscoveryStrategy):
 
         query_set = set(query_tokens)
         idf = {t: math.log((n_docs - df.get(t, 0) + 0.5) / (df.get(t, 0) + 0.5) + 1.0) for t in query_set}
-
-        scores: list[float] = []
-        for doc in corpus:
-            tf: Counter[str] = Counter(doc)
-            dl = len(doc)
-            s = 0.0
-            for t in query_set:
-                if t not in tf:
-                    continue
-                freq = tf[t]
-                s += idf.get(t, 0) * (freq * 2.5) / (freq + 1.5 * (1 - 0.75 + 0.75 * dl / avgdl))
-            scores.append(s)
+        scores = [self._bm25_score(doc, query_set, idf, avgdl) for doc in corpus]
 
         ranked = sorted(range(len(scores)), key=lambda i: -scores[i])
         return [paths[i] for i in ranked[: self.top_k] if scores[i] > 0]

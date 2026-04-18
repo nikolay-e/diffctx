@@ -126,6 +126,50 @@ class SwiftEdgeBuilder(EdgeBuilder):
 
     _DISCOVERY_MAX_DEPTH = 2
 
+    def _expand_swift_frontier(
+        self,
+        frontier: list[Path],
+        all_candidate_files: list[Path],
+        skip: set[Path],
+        discovered: set[Path],
+    ) -> list[Path]:
+        next_frontier: list[Path] = []
+        referenced_types = self._collect_referenced_types(frontier)
+        defined_types = self._collect_defined_types(frontier)
+        self._collect_type_definers(all_candidate_files, skip, referenced_types, discovered, next_frontier)
+        self._collect_type_referencers(all_candidate_files, skip, defined_types, discovered, next_frontier)
+        return next_frontier
+
+    def _collect_type_definers(
+        self,
+        all_candidate_files: list[Path],
+        skip: set[Path],
+        referenced_types: set[str],
+        discovered: set[Path],
+        next_frontier: list[Path],
+    ) -> None:
+        if not referenced_types:
+            return
+        for f in self._find_files_defining_types(all_candidate_files, skip, referenced_types):
+            if f not in discovered:
+                discovered.add(f)
+                next_frontier.append(f)
+
+    def _collect_type_referencers(
+        self,
+        all_candidate_files: list[Path],
+        skip: set[Path],
+        defined_types: set[str],
+        discovered: set[Path],
+        next_frontier: list[Path],
+    ) -> None:
+        if not defined_types:
+            return
+        for f in self._find_files_referencing_types(all_candidate_files, skip, defined_types):
+            if f not in discovered:
+                discovered.add(f)
+                next_frontier.append(f)
+
     def discover_related_files(
         self,
         changed_files: list[Path],
@@ -142,24 +186,7 @@ class SwiftEdgeBuilder(EdgeBuilder):
         frontier = list(swift_changed)
 
         for _depth in range(self._DISCOVERY_MAX_DEPTH):
-            skip = changed_set | discovered
-
-            referenced_types = self._collect_referenced_types(frontier)
-            defined_types = self._collect_defined_types(frontier)
-
-            next_frontier: list[Path] = []
-            if referenced_types:
-                for f in self._find_files_defining_types(all_candidate_files, skip, referenced_types):
-                    if f not in discovered:
-                        discovered.add(f)
-                        next_frontier.append(f)
-            if defined_types:
-                for f in self._find_files_referencing_types(all_candidate_files, skip, defined_types):
-                    if f not in discovered:
-                        discovered.add(f)
-                        next_frontier.append(f)
-
-            frontier = next_frontier
+            frontier = self._expand_swift_frontier(frontier, all_candidate_files, changed_set | discovered, discovered)
             if not frontier:
                 break
 

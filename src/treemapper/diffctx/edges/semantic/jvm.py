@@ -295,6 +295,35 @@ class JVMEdgeBuilder(EdgeBuilder):
                     import_dirs.add(repo_root / src_prefix / Path(*pkg.split(".")))
         return import_dirs
 
+    @staticmethod
+    def _collect_frontier_classes(source_files: list[Path]) -> set[str]:
+        frontier_classes: set[str] = set()
+        for f in source_files:
+            try:
+                content = f.read_text(encoding="utf-8")
+                frontier_classes.update(_extract_classes(content, f))
+            except (OSError, UnicodeDecodeError):
+                pass
+        return frontier_classes
+
+    @staticmethod
+    def _candidate_matches_frontier(
+        candidate: Path,
+        eligible_dirs: set[Path],
+        type_refs: set[str],
+        frontier_classes: set[str],
+    ) -> bool:
+        try:
+            content = candidate.read_text(encoding="utf-8")
+            cand_classes = _extract_classes(content, candidate)
+            if candidate.parent in eligible_dirs and cand_classes & type_refs:
+                return True
+            if _extract_type_refs(content) & frontier_classes:
+                return True
+            return any(imp.rsplit(".", 1)[-1] in frontier_classes for imp in _extract_imports(content, candidate))
+        except (OSError, UnicodeDecodeError):
+            return False
+
     def _discover_single_hop(
         self,
         source_files: list[Path],
@@ -302,49 +331,15 @@ class JVMEdgeBuilder(EdgeBuilder):
         repo_root: Path | None,
     ) -> list[Path]:
         type_refs, import_packages = self._collect_source_refs(source_files)
-        source_dirs = {f.parent for f in source_files}
-        eligible_dirs = source_dirs | self._compute_import_dirs(repo_root, import_packages)
+        eligible_dirs = {f.parent for f in source_files} | self._compute_import_dirs(repo_root, import_packages)
         source_set = set(source_files)
+        frontier_classes = self._collect_frontier_classes(source_files)
 
-        frontier_classes: set[str] = set()
-        frontier_packages: set[str] = set()
-        for f in source_files:
-            try:
-                content = f.read_text(encoding="utf-8")
-                frontier_classes.update(_extract_classes(content, f))
-                pkg = _extract_package(content)
-                if pkg:
-                    frontier_packages.add(pkg)
-            except (OSError, UnicodeDecodeError):
-                pass
-
-        discovered: list[Path] = []
-        for candidate in candidates:
-            if candidate in source_set:
-                continue
-            try:
-                content = candidate.read_text(encoding="utf-8")
-                cand_classes = _extract_classes(content, candidate)
-
-                if candidate.parent in eligible_dirs and cand_classes & type_refs:
-                    discovered.append(candidate)
-                    continue
-
-                cand_type_refs = _extract_type_refs(content)
-                if cand_type_refs & frontier_classes:
-                    discovered.append(candidate)
-                    continue
-
-                cand_imports = _extract_imports(content, candidate)
-                for imp in cand_imports:
-                    imp_class = imp.rsplit(".", 1)[-1]
-                    if imp_class in frontier_classes:
-                        discovered.append(candidate)
-                        break
-            except (OSError, UnicodeDecodeError):
-                pass
-
-        return discovered
+        return [
+            c
+            for c in candidates
+            if c not in source_set and self._candidate_matches_frontier(c, eligible_dirs, type_refs, frontier_classes)
+        ]
 
     def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:
         jvm_frags = [f for f in fragments if _is_jvm_file(f.path)]

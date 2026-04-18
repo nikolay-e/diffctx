@@ -38,6 +38,27 @@ def _init_seed_residuals_csr(
     return residual
 
 
+def _propagate_mass(
+    u: int,
+    push_mass: float,
+    total_w: float,
+    indptr: Any,
+    indices: Any,
+    weights: Any,
+    residual: Any,
+    in_queue: Any,
+    queue: deque[int],
+    push_threshold: float,
+) -> None:
+    for k in range(indptr[u], indptr[u + 1]):
+        v = indices[k]
+        new_r = residual[v] + push_mass * (weights[k] / total_w)
+        residual[v] = new_r
+        if not in_queue[v] and new_r >= push_threshold:
+            queue.append(v)
+            in_queue[v] = True
+
+
 def _ppr_push_csr(
     csr: CSRGraph,
     seeds: set[FragmentId],
@@ -51,7 +72,6 @@ def _ppr_push_csr(
 
     restart = 1.0 - alpha
     push_threshold = tol
-
     indptr = csr.indptr
     indices = csr.indices
     weights = csr.weights
@@ -73,33 +93,16 @@ def _ppr_push_csr(
     while queue and pushes < max_pushes:
         u = queue.popleft()
         in_queue[u] = False
-
         r_u = residual[u]
         if r_u < push_threshold:
             continue
-
         estimate[u] += restart * r_u
         residual[u] = 0.0
-
         total_w = out_sum[u]
         if total_w <= 0:
             pushes += 1
             continue
-
-        push_mass = alpha * r_u
-        start = indptr[u]
-        end = indptr[u + 1]
-
-        for k in range(start, end):
-            v = indices[k]
-            delta = push_mass * (weights[k] / total_w)
-            old_r = residual[v]
-            new_r = old_r + delta
-            residual[v] = new_r
-            if not in_queue[v] and new_r >= push_threshold:
-                queue.append(v)
-                in_queue[v] = True
-
+        _propagate_mass(u, alpha * r_u, total_w, indptr, indices, weights, residual, in_queue, queue, push_threshold)
         pushes += 1
 
     return estimate

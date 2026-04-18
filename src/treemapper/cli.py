@@ -63,23 +63,34 @@ def _resolve_root_dir(directory: str) -> Path:
         _exit_error(f"Cannot access '{directory}': {e}")
 
 
-def _expand_paths(raw_paths: list[str]) -> tuple[list[Path], list[Path]]:
+def _resolve_glob_pattern(pattern: str) -> list[str]:
     import glob as globmod
 
+    matches = sorted(globmod.glob(pattern, recursive=True))
+    if matches:
+        return matches
+    try:
+        p = Path(pattern).resolve(strict=True)
+    except FileNotFoundError:
+        _exit_error(f"No matches for '{pattern}'")
+    except OSError as e:
+        _exit_error(f"Cannot access '{pattern}': {e}")
+    return [str(p)]
+
+
+def _classify_resolved(resolved: Path, dirs: list[Path], files: list[Path]) -> None:
+    if resolved.is_dir():
+        dirs.append(resolved)
+    elif resolved.is_file():
+        files.append(resolved)
+
+
+def _expand_paths(raw_paths: list[str]) -> tuple[list[Path], list[Path]]:
     dirs: list[Path] = []
     files: list[Path] = []
     seen: set[Path] = set()
     for pattern in raw_paths:
-        matches = sorted(globmod.glob(pattern, recursive=True))
-        if not matches:
-            try:
-                p = Path(pattern).resolve(strict=True)
-            except FileNotFoundError:
-                _exit_error(f"No matches for '{pattern}'")
-            except OSError as e:
-                _exit_error(f"Cannot access '{pattern}': {e}")
-            matches = [str(p)]
-        for m in matches:
+        for m in _resolve_glob_pattern(pattern):
             try:
                 resolved = Path(m).resolve()
             except OSError as e:
@@ -87,10 +98,7 @@ def _expand_paths(raw_paths: list[str]) -> tuple[list[Path], list[Path]]:
             if resolved in seen:
                 continue
             seen.add(resolved)
-            if resolved.is_dir():
-                dirs.append(resolved)
-            elif resolved.is_file():
-                files.append(resolved)
+            _classify_resolved(resolved, dirs, files)
     return dirs, files
 
 

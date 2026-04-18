@@ -151,7 +151,7 @@ class RubyEdgeBuilder(EdgeBuilder):
             if not frontier:
                 break
 
-        return list(discovered)
+        return sorted(discovered)
 
     @staticmethod
     def _collect_frontier_refs(

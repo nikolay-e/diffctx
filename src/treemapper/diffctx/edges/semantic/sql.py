@@ -260,7 +260,7 @@ class SqlEdgeBuilder(EdgeBuilder):
 
         discovered.update(self._find_adjacent_migrations(sql_changed, all_candidate_files, changed_set))
 
-        return list(discovered)
+        return sorted(discovered)
 
     def _collect_table_names(self, sql_files: list[Path]) -> set[str]:
         tables: set[str] = set()

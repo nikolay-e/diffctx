@@ -205,29 +205,40 @@ def _is_local_import(source: str) -> bool:
     return source.startswith(".") or source.startswith("@/") or source.startswith("~/")
 
 
+def _add_needs_for_syms(syms: set[str], needs: dict[tuple[str, str], InformationNeed]) -> None:
+    for sym in syms:
+        if len(sym) >= 3 and sym not in CODE_STOPWORDS:
+            needs.setdefault(("definition", sym), InformationNeed("definition", sym, None, 0.9))
+
+
+def _collect_js_import_needs(line: str, needs: dict[tuple[str, str], InformationNeed]) -> None:
+    for m in _JS_LOCAL_IMPORT_RE.finditer(line):
+        named, default, source = m.group(1), m.group(2), m.group(3)
+        if not _is_local_import(source):
+            continue
+        syms: set[str] = set()
+        if named:
+            syms = _parse_import_names(named)
+        elif default:
+            syms = {default.lower()}
+        _add_needs_for_syms(syms, needs)
+
+
+def _collect_py_import_needs(line: str, needs: dict[tuple[str, str], InformationNeed]) -> None:
+    for m in _PY_IMPORT_RE.finditer(line):
+        module, names = m.group(1), m.group(2)
+        if not module.startswith("."):
+            continue
+        _add_needs_for_syms(_parse_import_names(names), needs)
+
+
 def _collect_import_needs(
     changed_lines: list[str],
     needs: dict[tuple[str, str], InformationNeed],
 ) -> None:
     for line in changed_lines:
-        for m in _JS_LOCAL_IMPORT_RE.finditer(line):
-            named, default, source = m.group(1), m.group(2), m.group(3)
-            if not _is_local_import(source):
-                continue
-            syms: set[str] = set()
-            if named:
-                syms = _parse_import_names(named)
-            elif default:
-                syms = {default.lower()}
-            for sym in syms:
-                if len(sym) >= 3 and sym not in CODE_STOPWORDS:
-                    needs.setdefault(("definition", sym), InformationNeed("definition", sym, None, 0.9))
-        for m in _PY_IMPORT_RE.finditer(line):
-            module, names = m.group(1), m.group(2)
-            if module.startswith("."):
-                for sym in _parse_import_names(names):
-                    if len(sym) >= 3 and sym not in CODE_STOPWORDS:
-                        needs.setdefault(("definition", sym), InformationNeed("definition", sym, None, 0.9))
+        _collect_js_import_needs(line, needs)
+        _collect_py_import_needs(line, needs)
 
 
 def _is_comment_line(line: str) -> bool:
@@ -562,13 +573,12 @@ class UtilityState:
     file_importance: dict[Path, float] = field(default_factory=dict)
 
     def copy(self) -> UtilityState:
-        result: UtilityState = replace(
+        return replace(
             self,
             max_rel=dict(self.max_rel),
             priorities=dict(self.priorities),
             file_importance=dict(self.file_importance),
         )
-        return result
 
 
 def _phi(x: float) -> float:

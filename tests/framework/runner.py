@@ -26,29 +26,28 @@ def _symbol_matches(frag_symbol: str, expected: str, mode: str) -> bool:
     return frag_symbol == expected
 
 
+def _anchor_present(fragment: dict, anchor: str) -> bool:
+    return anchor in fragment.get("content", "") or anchor in fragment.get("path", "")
+
+
 def _matches_selector(fragment: dict, selector: Selector, accept: Accept) -> bool:
     if selector.any_of:
         return any(_matches_selector(fragment, s, accept) for s in selector.any_of)
 
     if selector.path is not None:
-        frag_path = fragment.get("path", "")
-        if not _match_path(frag_path, selector.path):
+        if not _match_path(fragment.get("path", ""), selector.path):
             return False
 
     if selector.symbol is not None:
-        frag_symbol = fragment.get("symbol") or ""
-        if not _symbol_matches(frag_symbol, selector.symbol, accept.symbol_match):
+        if not _symbol_matches(fragment.get("symbol") or "", selector.symbol, accept.symbol_match):
             return False
 
     if selector.kind is not None and accept.kind_must_match:
         if fragment.get("kind") != selector.kind:
             return False
 
-    if selector.anchor is not None:
-        content = fragment.get("content", "")
-        path = fragment.get("path", "")
-        if selector.anchor not in content and selector.anchor not in path:
-            return False
+    if selector.anchor is not None and not _anchor_present(fragment, selector.anchor):
+        return False
 
     return True
 
