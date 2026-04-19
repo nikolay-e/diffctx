@@ -5,8 +5,8 @@ import pytest
 mcp = pytest.importorskip("mcp", reason="mcp package not installed")
 from mcp.server.fastmcp.exceptions import ToolError  # noqa: E402
 
-from tests.conftest import GARBAGE_FILES  # noqa: E402
 from tests.framework.pygit2_backend import Pygit2Repo  # noqa: E402
+from tests.garbage_data import GARBAGE_FILES  # noqa: E402
 
 
 @pytest.fixture

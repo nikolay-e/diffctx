@@ -1,262 +1,23 @@
 from __future__ import annotations
 
-import re
 from collections import defaultdict
 from pathlib import Path
 
-from ...config.weights import EDGE_WEIGHTS
-from ...types import Fragment, FragmentId
-from ..base import EdgeBuilder, EdgeDict
-
-_RUST_USE_STMT_RE = re.compile(r"^\s*use\s+(.+?)\s*;", re.DOTALL | re.MULTILINE)
-_RUST_MOD_RE = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+([a-z_][a-z0-9_]*)\s*[;{]", re.MULTILINE)
-
-_RUST_FN_RE = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+([a-z_][a-z0-9_]*)", re.MULTILINE)
-_RUST_STRUCT_RE = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?struct\s+([A-Z]\w*)", re.MULTILINE)
-_RUST_ENUM_RE = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?enum\s+([A-Z]\w*)", re.MULTILINE)
-_RUST_TRAIT_RE = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?trait\s+([A-Z]\w*)", re.MULTILINE)
-_RUST_IMPL_RE = re.compile(r"^\s*impl(?:<[^>\n]*>)?\s+(?:\w+\s+for\s+)?([A-Z]\w*)", re.MULTILINE)
-_RUST_TRAIT_IMPL_RE = re.compile(r"^\s*impl(?:<[^>\n]*>)?\s+(\w+)\s+for\s+(\w+)", re.MULTILINE)
-_RUST_PUB_USE_RE = re.compile(r"^\s*pub\s+use\s+(?:crate::)?([a-z_]\w*(?:::\w+)*)", re.MULTILINE)
-_RUST_TYPE_ALIAS_RE = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?type\s+([A-Z]\w*)", re.MULTILINE)
-
-_RUST_TYPE_REF_RE = re.compile(r"(?<![a-z_])([A-Z]\w*)\b")
-_RUST_FN_CALL_RE = re.compile(r"(?<!\w)([a-z_][a-z0-9_]*)\s?!?\s?\(")
-_RUST_PATH_CALL_RE = re.compile(r"([a-z_][a-z0-9_]*)::([a-z_][a-z0-9_]*|[A-Z]\w*)")
-
-_RUST_COMMON_TYPES = frozenset(
-    {
-        "String",
-        "Vec",
-        "Option",
-        "Result",
-        "Box",
-        "Arc",
-        "Rc",
-        "Some",
-        "None",
-        "Ok",
-        "Err",
-        "Self",
-        "HashMap",
-        "HashSet",
-        "BTreeMap",
-        "BTreeSet",
-        "Cow",
-        "Pin",
-        "PhantomData",
-    }
+from ....config.weights import EDGE_WEIGHTS
+from ....types import Fragment, FragmentId
+from ...base import EdgeBuilder, EdgeDict
+from ._parsing import (
+    DISCOVERY_MAX_DEPTH,
+    extract_definitions,
+    extract_mods,
+    extract_pub_uses,
+    extract_references,
+    extract_trait_impls,
+    extract_uses,
+    is_rust_file,
+    read_cached,
+    stem_to_mod_name,
 )
-
-_RUST_BUILTIN_MACROS = frozenset(
-    {
-        "println",
-        "print",
-        "eprintln",
-        "eprint",
-        "format",
-        "vec",
-        "assert",
-        "assert_eq",
-        "assert_ne",
-        "debug_assert",
-        "debug_assert_eq",
-        "debug_assert_ne",
-        "panic",
-        "todo",
-        "unimplemented",
-        "unreachable",
-        "cfg",
-        "env",
-        "file",
-        "line",
-        "column",
-        "stringify",
-        "concat",
-        "include",
-        "include_str",
-        "include_bytes",
-        "write",
-        "writeln",
-    }
-)
-
-_RUST_KEYWORDS = frozenset(
-    {
-        "if",
-        "for",
-        "while",
-        "match",
-        "return",
-        "unsafe",
-        "loop",
-        "break",
-        "continue",
-        "else",
-        "where",
-        "as",
-        "in",
-        "ref",
-        "mut",
-        "pub",
-        "fn",
-        "let",
-        "const",
-        "static",
-        "move",
-        "async",
-        "await",
-        "dyn",
-        "impl",
-        "trait",
-        "struct",
-        "enum",
-        "type",
-        "use",
-        "mod",
-        "crate",
-        "self",
-        "super",
-    }
-)
-
-
-def _is_rust_file(path: Path) -> bool:
-    return path.suffix.lower() == ".rs"
-
-
-_MAX_USE_TREE_DEPTH = 10
-
-
-def _find_matching_brace(inner: str) -> int:
-    depth = 1
-    for i, ch in enumerate(inner):
-        if ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0:
-                return i
-    return 0
-
-
-def _split_brace_items(items_str: str) -> tuple[list[str], bool]:
-    items: list[str] = []
-    current: list[str] = []
-    depth = 0
-    has_self = False
-    for ch in items_str:
-        if ch == "{":
-            depth += 1
-            current.append(ch)
-        elif ch == "}":
-            depth -= 1
-            current.append(ch)
-        elif ch == "," and depth == 0:
-            item = "".join(current).strip()
-            if item == "self":
-                has_self = True
-            elif item:
-                items.append(item)
-            current = []
-        else:
-            current.append(ch)
-    item = "".join(current).strip()
-    if item == "self":
-        has_self = True
-    elif item:
-        items.append(item)
-    return items, has_self
-
-
-def _parse_use_tree(text: str, _depth: int = 0) -> list[str]:
-    if _depth > _MAX_USE_TREE_DEPTH:
-        return []
-    text = re.sub(r"^(?:crate|self|super)::", "", text.strip())
-    if "{" not in text:
-        return [text] if text else []
-    brace_pos = text.index("{")
-    prefix = text[:brace_pos].rstrip(":")
-    inner = text[brace_pos + 1 :]
-    end = _find_matching_brace(inner)
-    items, has_self = _split_brace_items(inner[:end])
-    results: list[str] = []
-    if has_self and prefix:
-        results.append(prefix)
-    for item in items:
-        results.extend(_parse_use_tree(f"{prefix}::{item}" if prefix else item, _depth + 1))
-    return results
-
-
-def _extract_uses(content: str) -> set[str]:
-    uses: set[str] = set()
-    for match in _RUST_USE_STMT_RE.finditer(content):
-        for path in _parse_use_tree(match.group(1)):
-            uses.add(path)
-            parts = path.split("::")
-            if len(parts) > 1:
-                uses.add(parts[0])
-    return uses
-
-
-def _extract_mods(content: str) -> set[str]:
-    return {m.group(1) for m in _RUST_MOD_RE.finditer(content)}
-
-
-def _extract_trait_impls(content: str) -> list[tuple[str, str]]:
-    return [(m.group(1), m.group(2)) for m in _RUST_TRAIT_IMPL_RE.finditer(content)]
-
-
-def _extract_pub_uses(content: str) -> list[str]:
-    return [m.group(1) for m in _RUST_PUB_USE_RE.finditer(content)]
-
-
-def _extract_definitions(content: str) -> tuple[set[str], set[str]]:
-    funcs = {m.group(1) for m in _RUST_FN_RE.finditer(content)}
-    types: set[str] = set()
-    types.update(m.group(1) for m in _RUST_STRUCT_RE.finditer(content))
-    types.update(m.group(1) for m in _RUST_ENUM_RE.finditer(content))
-    types.update(m.group(1) for m in _RUST_TRAIT_RE.finditer(content))
-    types.update(m.group(1) for m in _RUST_TYPE_ALIAS_RE.finditer(content))
-
-    for m in _RUST_IMPL_RE.finditer(content):
-        if m.group(1):
-            types.add(m.group(1))
-
-    return funcs, types
-
-
-def _extract_references(content: str) -> tuple[set[str], set[str], set[tuple[str, str]]]:
-    type_refs = {m.group(1) for m in _RUST_TYPE_REF_RE.finditer(content) if m.group(1) not in _RUST_COMMON_TYPES}
-    fn_calls = {
-        m.group(1)
-        for m in _RUST_FN_CALL_RE.finditer(content)
-        if m.group(1) not in _RUST_KEYWORDS and m.group(1) not in _RUST_BUILTIN_MACROS
-    }
-    path_calls = {(m.group(1), m.group(2)) for m in _RUST_PATH_CALL_RE.finditer(content)}
-    return type_refs, fn_calls, path_calls
-
-
-_DISCOVERY_MAX_DEPTH = 2
-
-
-def _stem_to_mod_name(path: Path) -> str:
-    stem = path.stem.lower()
-    if stem in {"mod", "lib"}:
-        return path.parent.name.lower()
-    return stem
-
-
-def _read_cached(path: Path, cache: dict[Path, str] | None) -> str | None:
-    if cache is not None and path in cache:
-        return cache[path]
-    try:
-        content = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return None
-    if cache is not None:
-        cache[path] = content
-    return content
 
 
 class RustEdgeBuilder(EdgeBuilder):
@@ -275,32 +36,32 @@ class RustEdgeBuilder(EdgeBuilder):
         repo_root: Path | None = None,
         **kwargs: object,
     ) -> list[Path]:
-        rust_changed = [f for f in changed_files if _is_rust_file(f)]
+        rust_changed = [f for f in changed_files if is_rust_file(f)]
         if not rust_changed:
             return []
 
         fc = kwargs.get("file_cache")
         cache: dict[Path, str] | None = fc if isinstance(fc, dict) else None
 
-        rust_candidates = [f for f in all_candidate_files if _is_rust_file(f)]
+        rust_candidates = [f for f in all_candidate_files if is_rust_file(f)]
 
         mod_name_to_files: dict[str, list[Path]] = defaultdict(list)
         file_uses: dict[Path, set[str]] = {}
         file_mods: dict[Path, set[str]] = {}
 
         for candidate in rust_candidates:
-            mod_name_to_files[_stem_to_mod_name(candidate)].append(candidate)
-            content = _read_cached(candidate, cache)
+            mod_name_to_files[stem_to_mod_name(candidate)].append(candidate)
+            content = read_cached(candidate, cache)
             if content is None:
                 continue
-            file_uses[candidate] = _extract_uses(content)
-            file_mods[candidate] = _extract_mods(content)
+            file_uses[candidate] = extract_uses(content)
+            file_mods[candidate] = extract_mods(content)
 
         changed_set = set(changed_files)
         discovered: set[Path] = set()
         frontier = set(rust_changed)
 
-        for _depth in range(_DISCOVERY_MAX_DEPTH):
+        for _depth in range(DISCOVERY_MAX_DEPTH):
             next_frontier = self._discover_one_hop(
                 frontier, rust_candidates, changed_set, discovered, file_uses, file_mods, mod_name_to_files
             )
@@ -343,7 +104,7 @@ class RustEdgeBuilder(EdgeBuilder):
     ) -> set[Path]:
         found: set[Path] = set()
         skip = exclude | already_found
-        frontier_mod_names = {_stem_to_mod_name(f) for f in frontier}
+        frontier_mod_names = {stem_to_mod_name(f) for f in frontier}
         forward_targets = RustEdgeBuilder._collect_forward_targets(frontier, file_uses, file_mods)
 
         for target_name in forward_targets:
@@ -362,7 +123,7 @@ class RustEdgeBuilder(EdgeBuilder):
         return found
 
     def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:
-        rust_frags = [f for f in fragments if _is_rust_file(f.path)]
+        rust_frags = [f for f in fragments if is_rust_file(f.path)]
         if not rust_frags:
             return {}
 
@@ -397,7 +158,6 @@ class RustEdgeBuilder(EdgeBuilder):
         return name_to_frags, mod_to_frags, type_defs, fn_defs, trait_impls
 
     @staticmethod
-    @staticmethod
     def _register_pub_use(
         leaf_lower: str,
         frag_id: FragmentId,
@@ -430,19 +190,19 @@ class RustEdgeBuilder(EdgeBuilder):
         else:
             mod_to_frags[stem].append(f.id)
 
-        funcs, types = _extract_definitions(f.content)
+        funcs, types = extract_definitions(f.content)
         for t in types:
             type_defs[t.lower()].append(f.id)
         for fn in funcs:
             fn_defs[fn.lower()].append(f.id)
 
-        for mod_name in _extract_mods(f.content):
+        for mod_name in extract_mods(f.content):
             mod_to_frags[mod_name.lower()].append(f.id)
 
-        for trait_name, type_name in _extract_trait_impls(f.content):
+        for trait_name, type_name in extract_trait_impls(f.content):
             trait_impls[f.id].append((trait_name, type_name))
 
-        for pub_use_path in _extract_pub_uses(f.content):
+        for pub_use_path in extract_pub_uses(f.content):
             leaf_lower = pub_use_path.split("::")[-1].lower()
             RustEdgeBuilder._register_pub_use(leaf_lower, f.id, name_to_frags, type_defs, fn_defs)
 
@@ -461,7 +221,7 @@ class RustEdgeBuilder(EdgeBuilder):
     ) -> None:
         name_to_frags, mod_to_frags, type_defs, fn_defs, _trait_impls = indices
 
-        type_refs, fn_calls, path_calls = _extract_references(rf.content)
+        type_refs, fn_calls, path_calls = extract_references(rf.content)
 
         self._link_uses(rf, mod_to_frags, name_to_frags, edges)
         self._link_declared_mods(rf, name_to_frags, edges)
@@ -489,7 +249,7 @@ class RustEdgeBuilder(EdgeBuilder):
         edges: EdgeDict,
     ) -> None:
         for f in rust_frags:
-            for pub_use_path in _extract_pub_uses(f.content):
+            for pub_use_path in extract_pub_uses(f.content):
                 parts = pub_use_path.split("::")
                 leaf_lower = parts[-1].lower()
                 for target_fid_list in [type_defs.get(leaf_lower, []), fn_defs.get(leaf_lower, [])]:
@@ -504,7 +264,7 @@ class RustEdgeBuilder(EdgeBuilder):
         name_to_frags: dict[str, list[FragmentId]],
         edges: EdgeDict,
     ) -> None:
-        for use_path in _extract_uses(rf.content):
+        for use_path in extract_uses(rf.content):
             self._link_use_path_parts(rf.id, use_path, mod_to_frags, name_to_frags, edges)
 
     def _link_use_path_parts(
@@ -526,7 +286,7 @@ class RustEdgeBuilder(EdgeBuilder):
         name_to_frags: dict[str, list[FragmentId]],
         edges: EdgeDict,
     ) -> None:
-        for mod_name in _extract_mods(rf.content):
+        for mod_name in extract_mods(rf.content):
             for fid in name_to_frags.get(mod_name.lower(), []):
                 if fid != rf.id:
                     self.add_edge(edges, rf.id, fid, self.mod_weight)

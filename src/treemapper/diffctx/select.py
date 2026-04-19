@@ -9,6 +9,7 @@ import statistics
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ._select_debug import _collect_greedy_densities, _write_greedy_dump
 from .config.limits import UTILITY
 from .types import Fragment, FragmentId
 from .utility import InformationNeed, UtilityState, apply_fragment, compute_density, marginal_gain, utility_value
@@ -17,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 _BASELINE_K_MAX = 5
 _CORE_BUDGET_FRACTION = 0.70
+_SENTINEL_TOKEN_COUNT = 10**9
+_BASELINE_SAMPLE_FRACTION = 0.1
 
 
 def _drop_redundant_signatures(candidates: list[Fragment], budget: int) -> list[Fragment]:
@@ -28,11 +31,15 @@ def _drop_redundant_signatures(candidates: list[Fragment], budget: int) -> list[
     for f in candidates:
         if "_signature" not in f.kind:
             full_token_by_loc[(f.path, f.start_line)] = f.token_count
-    return [f for f in candidates if "_signature" not in f.kind or full_token_by_loc.get((f.path, f.start_line), 10**9) > budget]
+    return [
+        f
+        for f in candidates
+        if "_signature" not in f.kind or full_token_by_loc.get((f.path, f.start_line), _SENTINEL_TOKEN_COUNT) > budget
+    ]
 
 
 def _adaptive_baseline_k(n_candidates: int) -> int:
-    return min(_BASELINE_K_MAX, math.ceil(0.1 * n_candidates))
+    return min(_BASELINE_K_MAX, math.ceil(_BASELINE_SAMPLE_FRACTION * n_candidates))
 
 
 @dataclass
@@ -231,63 +238,6 @@ def _compute_r_cap(rel: dict[FragmentId, float], core_ids: set[FragmentId] | Non
     return max(med + UTILITY.r_cap_sigma * std, 1e-9)
 
 
-def _collect_greedy_densities(
-    candidates: list[Fragment],
-    rel: dict[FragmentId, float],
-    needs: tuple[InformationNeed, ...],
-    utility_state: UtilityState,
-) -> list[tuple[str, int, int, float, float, float]]:
-    result: list[tuple[str, int, int, float, float, float]] = []
-    for frag in candidates:
-        if frag.token_count > 0:
-            density = compute_density(frag, rel.get(frag.id, 0.0), needs, utility_state)
-            gain = marginal_gain(frag, rel.get(frag.id, 0.0), needs, utility_state)
-            result.append((str(frag.path), frag.start_line, frag.token_count, rel.get(frag.id, 0.0), gain, density))
-    return result
-
-
-def _write_greedy_dump(
-    path: str,
-    tau: float,
-    threshold: float,
-    baseline_k: int,
-    n_candidates: int,
-    n_selected: int,
-    remaining_budget: int,
-    densities: list[tuple[str, int, int, float, float, float]],
-) -> None:
-    import json as _json
-
-    with open(path, "w") as f:
-        f.write(
-            _json.dumps(
-                {
-                    "tau": tau,
-                    "threshold": threshold,
-                    "baseline_k": baseline_k,
-                    "n_candidates": n_candidates,
-                    "n_selected_noncore": n_selected,
-                    "remaining_budget": remaining_budget,
-                }
-            )
-            + "\n"
-        )
-        for fpath, start, tokens, ppr, gain, density in sorted(densities, key=lambda x: -x[5]):
-            f.write(
-                _json.dumps(
-                    {
-                        "path": fpath,
-                        "start": start,
-                        "tokens": tokens,
-                        "ppr": round(ppr, 6),
-                        "gain": round(gain, 4),
-                        "density": round(density, 6),
-                    }
-                )
-                + "\n"
-            )
-
-
 def _build_signature_lookup(fragments: list[Fragment], core_fragments: list[Fragment]) -> dict[FragmentId, Fragment]:
     sig_by_loc: dict[tuple[Path, int], Fragment] = {}
     for f in fragments:
@@ -335,6 +285,32 @@ def _topk_select(
     )
 
 
+def _setup_and_select_core(
+    fragments: list[Fragment],
+    core_ids: set[FragmentId],
+    rel: dict[FragmentId, float],
+    needs: tuple[InformationNeed, ...],
+    budget_tokens: int,
+    tau: float,
+    file_importance: dict[Path, float] | None,
+) -> tuple[_SelectionState, list[Fragment], list[Fragment], bool]:
+    core_fragments = [f for f in fragments if f.id in core_ids]
+    core_fragments.sort(key=lambda f: (f.token_count if f.token_count > 0 else _SENTINEL_TOKEN_COUNT, f.line_count, f.start_line))
+    non_core_fragments = [f for f in fragments if f.id not in core_ids]
+
+    sig_lookup = _build_signature_lookup(fragments, core_fragments)
+    state = _init_selection_state(core_ids, rel, budget_tokens, file_importance)
+    _select_core_fragments(core_fragments, rel, needs, state, budget_tokens, sig_lookup)
+
+    selected_core_ids = {f.id for f in state.selected}
+    skipped_core = core_ids - selected_core_ids
+    if skipped_core:
+        non_core_fragments.extend(f for f in core_fragments if f.id in skipped_core)
+
+    should_return_early = state.remaining_budget <= 0
+    return state, non_core_fragments, list(state.selected), should_return_early
+
+
 def lazy_greedy_select(
     fragments: list[Fragment],
     core_ids: set[FragmentId],
@@ -352,21 +328,21 @@ def lazy_greedy_select(
             core_ids,
         )
 
-    core_fragments = [f for f in fragments if f.id in core_ids]
-    core_fragments.sort(key=lambda f: (f.token_count if f.token_count > 0 else 10**9, f.line_count, f.start_line))
-    non_core_fragments = [f for f in fragments if f.id not in core_ids]
+    state, non_core_fragments, selected_core, should_return_early = _setup_and_select_core(
+        fragments,
+        core_ids,
+        rel,
+        needs,
+        budget_tokens,
+        tau,
+        file_importance,
+    )
 
-    sig_lookup = _build_signature_lookup(fragments, core_fragments)
-    state = _init_selection_state(core_ids, rel, budget_tokens, file_importance)
-    _select_core_fragments(core_fragments, rel, needs, state, budget_tokens, sig_lookup)
+    selected_core_id_set = {f.id for f in selected_core}
+    core_ids = selected_core_id_set
 
-    selected_core_ids = {f.id for f in state.selected}
-    skipped_core = core_ids - selected_core_ids
-    if skipped_core:
-        non_core_fragments.extend(f for f in core_fragments if f.id in skipped_core)
-        core_ids = selected_core_ids
-
-    if state.remaining_budget <= 0:
+    if should_return_early:
+        logger.debug("core selection exhausted budget, skipping greedy phase")
         used = budget_tokens - state.remaining_budget
         return _log_and_return(
             SelectionResult(

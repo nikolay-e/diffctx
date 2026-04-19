@@ -1,12 +1,22 @@
 from __future__ import annotations
 
+import logging
 import re
 from collections import defaultdict
 from pathlib import Path
 
+import tree_sitter_java
+import tree_sitter_scala
+from tree_sitter import Language, Node, Parser, Tree
+
 from ...config.weights import EDGE_WEIGHTS
 from ...types import Fragment, FragmentId
 from ..base import EdgeBuilder, EdgeDict
+
+logger = logging.getLogger(__name__)
+
+_JAVA_LANG = Language(tree_sitter_java.language())
+_SCALA_LANG = Language(tree_sitter_scala.language())
 
 _DISCOVERY_MAX_DEPTH = 2
 
@@ -14,18 +24,6 @@ _JAVA_EXTS = {".java"}
 _KOTLIN_EXTS = {".kt", ".kts"}
 _SCALA_EXTS = {".scala", ".sc"}
 _JVM_EXTS = _JAVA_EXTS | _KOTLIN_EXTS | _SCALA_EXTS
-
-_JAVA_IMPORT_RE = re.compile(
-    r"^\s*import\s+(?:static\s+)?([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*(?:\.[A-Z]\w*|\.\*))",
-    re.MULTILINE,
-)
-_JAVA_PACKAGE_RE = re.compile(r"^\s*package\s+([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*)", re.MULTILINE)
-_JAVA_CLASS_RE = re.compile(
-    r"^\s*(?:(?:public|private|protected|static|abstract|final|sealed|non-sealed|strictfp)\s+)*(?:class|interface|enum|record)\s+([A-Z]\w*)",
-    re.MULTILINE,
-)
-_JAVA_EXTENDS_RE = re.compile(r"\bextends\s+([A-Z]\w*(?:\s*,\s*[A-Z]\w*)*)")
-_JAVA_IMPLEMENTS_RE = re.compile(r"\bimplements\s+([A-Z]\w*(?:\s*,\s*[A-Z]\w*)*)")
 
 _KOTLIN_IMPORT_RE = re.compile(
     r"^\s*import\s+([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*(?:\.[A-Z]\w*|\.\*)?)",
@@ -39,16 +37,7 @@ _KOTLIN_FUN_RE = re.compile(
     r"^\s*(?:\w+\s+)*fun\s+(?:<[^>]+>\s+)?([a-zA-Z_]\w*)",
     re.MULTILINE,
 )
-
-_SCALA_IMPORT_RE = re.compile(
-    r"^\s*import\s+([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*(?:\.[A-Z_]\w*|\.\*)?)",
-    re.MULTILINE,
-)
-_SCALA_CLASS_RE = re.compile(
-    r"^\s*(?:(?:abstract|sealed|final|case|implicit|private|protected)\s+)*(?:class|trait|object)\s+([A-Z]\w*)",
-    re.MULTILINE,
-)
-_SCALA_DEF_RE = re.compile(r"^\s*(?:private |protected )?def\s+([a-z]\w*)", re.MULTILINE)
+_JAVA_PACKAGE_RE = re.compile(r"^\s*package\s+([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*)", re.MULTILINE)
 
 _TYPE_REF_RE = re.compile(r"(?<![a-z_])([A-Z]\w*)\b")
 _KOTLIN_DECL_RE = re.compile(r"(?:class|interface|object)\s+\w+")
@@ -143,39 +132,193 @@ def _is_scala(path: Path) -> bool:
     return path.suffix.lower() in _SCALA_EXTS
 
 
-def _extract_imports(content: str, path: Path) -> set[str]:
+def _parse_tree(content: str, path: Path) -> Tree | None:
     if _is_java(path):
-        return {m.group(1) for m in _JAVA_IMPORT_RE.finditer(content)}
-    elif _is_kotlin(path):
+        parser = Parser(_JAVA_LANG)
+        return parser.parse(content.encode())
+    if _is_scala(path):
+        parser = Parser(_SCALA_LANG)
+        return parser.parse(content.encode())
+    return None
+
+
+def _collect_nodes(root: Node, target_types: set[str]) -> list[Node]:
+    result: list[Node] = []
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        if node.type in target_types:
+            result.append(node)
+        else:
+            stack.extend(node.children)
+    return result
+
+
+def _node_text(node: Node) -> str:
+    return node.text.decode()  # type: ignore[no-any-return]
+
+
+def _extract_java_imports(root: Node) -> set[str]:
+    imports: set[str] = set()
+    for imp_node in _collect_nodes(root, {"import_declaration"}):
+        has_asterisk = False
+        scoped_text = None
+        for child in imp_node.children:
+            if child.type == "scoped_identifier":
+                scoped_text = _node_text(child)
+            elif child.type == "asterisk":
+                has_asterisk = True
+        if scoped_text:
+            if has_asterisk:
+                imports.add(f"{scoped_text}.*")
+            else:
+                imports.add(scoped_text)
+    return imports
+
+
+def _extract_scala_imports(root: Node) -> set[str]:
+    imports: set[str] = set()
+    for imp_node in _collect_nodes(root, {"import_declaration"}):
+        parts: list[str] = []
+        has_wildcard = False
+        has_selectors = False
+        selector_names: list[str] = []
+        for child in imp_node.children:
+            if child.type == "identifier":
+                parts.append(_node_text(child))
+            elif child.type == "namespace_wildcard":
+                has_wildcard = True
+            elif child.type == "namespace_selectors":
+                has_selectors = True
+                for sel_child in child.children:
+                    if sel_child.type == "identifier":
+                        selector_names.append(_node_text(sel_child))
+        if not parts:
+            continue
+        base = ".".join(parts)
+        if has_wildcard:
+            imports.add(f"{base}.*")
+        elif has_selectors:
+            for name in selector_names:
+                imports.add(f"{base}.{name}")
+        else:
+            imports.add(base)
+    return imports
+
+
+def _extract_imports(content: str, path: Path) -> set[str]:
+    tree = _parse_tree(content, path)
+    if tree is not None:
+        if _is_java(path):
+            return _extract_java_imports(tree.root_node)
+        return _extract_scala_imports(tree.root_node)
+    if _is_kotlin(path):
         return {m.group(1) for m in _KOTLIN_IMPORT_RE.finditer(content)}
-    elif _is_scala(path):
-        return {m.group(1) for m in _SCALA_IMPORT_RE.finditer(content)}
     return set()
 
 
-def _extract_package(content: str) -> str | None:
+def _extract_package(content: str, path: Path | None = None) -> str | None:
+    if path is not None:
+        tree = _parse_tree(content, path)
+        if tree is not None:
+            if _is_java(path):
+                for node in _collect_nodes(tree.root_node, {"package_declaration"}):
+                    for child in node.children:
+                        if child.type == "scoped_identifier":
+                            return _node_text(child)
+            elif _is_scala(path):
+                for node in _collect_nodes(tree.root_node, {"package_clause"}):
+                    for child in node.children:
+                        if child.type == "package_identifier":
+                            return _node_text(child)
     match = _JAVA_PACKAGE_RE.search(content)
     return match.group(1) if match else None
 
 
-def _extract_classes(content: str, path: Path) -> set[str]:
+def _identifier_child(node: Node) -> str | None:
+    for child in node.children:
+        if child.type == "identifier":
+            return _node_text(child)
+    return None
+
+
+def _extract_java_classes(root: Node) -> set[str]:
+    target_types = {"class_declaration", "interface_declaration", "enum_declaration", "record_declaration"}
     classes: set[str] = set()
-    if _is_java(path):
-        classes.update(m.group(1) for m in _JAVA_CLASS_RE.finditer(content))
-    elif _is_kotlin(path):
-        classes.update(m.group(1) for m in _KOTLIN_CLASS_RE.finditer(content))
-    elif _is_scala(path):
-        classes.update(m.group(1) for m in _SCALA_CLASS_RE.finditer(content))
+    for node in _collect_nodes(root, target_types):
+        name = _identifier_child(node)
+        if name:
+            classes.add(name)
     return classes
 
 
-def _split_class_list(regex: re.Pattern[str], content: str) -> set[str]:
+def _extract_scala_classes(root: Node) -> set[str]:
+    target_types = {"class_definition", "trait_definition", "object_definition"}
+    classes: set[str] = set()
+    for node in _collect_nodes(root, target_types):
+        name = _identifier_child(node)
+        if name:
+            classes.add(name)
+    return classes
+
+
+def _extract_classes(content: str, path: Path) -> set[str]:
+    tree = _parse_tree(content, path)
+    if tree is not None:
+        if _is_java(path):
+            return _extract_java_classes(tree.root_node)
+        return _extract_scala_classes(tree.root_node)
+    if _is_kotlin(path):
+        return {m.group(1) for m in _KOTLIN_CLASS_RE.finditer(content)}
+    return set()
+
+
+def _type_identifier_from_node(node: Node) -> str | None:
+    if node.type == "type_identifier":
+        return _node_text(node)
+    if node.type == "generic_type":
+        for child in node.children:
+            if child.type == "type_identifier":
+                return _node_text(child)
+    return None
+
+
+def _collect_type_refs_from_list(type_list_node: Node) -> set[str]:
     refs: set[str] = set()
-    for m in regex.finditer(content):
-        for cls in m.group(1).split(","):
-            stripped = cls.strip()
-            if stripped:
-                refs.add(stripped)
+    for child in type_list_node.children:
+        name = _type_identifier_from_node(child)
+        if name:
+            refs.add(name)
+    return refs
+
+
+def _extract_java_inheritance(root: Node) -> set[str]:
+    refs: set[str] = set()
+    class_types = {"class_declaration", "interface_declaration", "enum_declaration", "record_declaration"}
+    for node in _collect_nodes(root, class_types):
+        for child in node.children:
+            if child.type == "superclass":
+                for sc_child in child.children:
+                    name = _type_identifier_from_node(sc_child)
+                    if name:
+                        refs.add(name)
+            elif child.type in ("super_interfaces", "extends_interfaces"):
+                for tl_child in child.children:
+                    if tl_child.type == "type_list":
+                        refs.update(_collect_type_refs_from_list(tl_child))
+    return refs
+
+
+def _extract_scala_inheritance(root: Node) -> set[str]:
+    refs: set[str] = set()
+    class_types = {"class_definition", "trait_definition", "object_definition"}
+    for node in _collect_nodes(root, class_types):
+        for child in node.children:
+            if child.type == "extends_clause":
+                for ec_child in child.children:
+                    name = _type_identifier_from_node(ec_child)
+                    if name:
+                        refs.add(name)
     return refs
 
 
@@ -213,13 +356,12 @@ def _extract_kotlin_supertypes(content: str) -> set[str]:
 def _extract_inheritance(content: str, path: Path) -> set[str]:
     if _is_kotlin(path):
         return _extract_kotlin_supertypes(content)
-    if _is_scala(path):
-        refs = _split_class_list(_JAVA_EXTENDS_RE, content)
-        refs.update(m.group(1) for m in _SCALA_WITH_RE.finditer(content))
-        return refs
-    refs = _split_class_list(_JAVA_EXTENDS_RE, content)
-    refs.update(_split_class_list(_JAVA_IMPLEMENTS_RE, content))
-    return refs
+    tree = _parse_tree(content, path)
+    if tree is not None:
+        if _is_java(path):
+            return _extract_java_inheritance(tree.root_node)
+        return _extract_scala_inheritance(tree.root_node)
+    return set()
 
 
 def _extract_type_refs(content: str) -> set[str]:
@@ -281,7 +423,7 @@ class JVMEdgeBuilder(EdgeBuilder):
                         if len(parts) == 2:
                             import_packages.add(parts[0])
             except (OSError, UnicodeDecodeError):
-                pass
+                logger.debug("skipping unreadable file: %s", f)
         return type_refs, import_packages
 
     @staticmethod
@@ -303,7 +445,7 @@ class JVMEdgeBuilder(EdgeBuilder):
                 content = f.read_text(encoding="utf-8")
                 frontier_classes.update(_extract_classes(content, f))
             except (OSError, UnicodeDecodeError):
-                pass
+                logger.debug("skipping unreadable file: %s", f)
         return frontier_classes
 
     @staticmethod
@@ -322,6 +464,7 @@ class JVMEdgeBuilder(EdgeBuilder):
                 return True
             return any(imp.rsplit(".", 1)[-1] in frontier_classes for imp in _extract_imports(content, candidate))
         except (OSError, UnicodeDecodeError):
+            logger.debug("skipping unreadable file: %s", candidate)
             return False
 
     def _discover_single_hop(
@@ -362,7 +505,7 @@ class JVMEdgeBuilder(EdgeBuilder):
         fqn_to_frags: dict[str, list[FragmentId]] = defaultdict(list)
 
         for f in jvm_frags:
-            pkg = _extract_package(f.content)
+            pkg = _extract_package(f.content, f.path)
             if pkg:
                 package_to_frags[pkg].append(f.id)
 
@@ -465,7 +608,7 @@ class JVMEdgeBuilder(EdgeBuilder):
         package_to_frags: dict[str, list[FragmentId]],
         edges: EdgeDict,
     ) -> None:
-        current_pkg = _extract_package(jf.content)
+        current_pkg = _extract_package(jf.content, jf.path)
         if not current_pkg:
             return
         for fid in package_to_frags.get(current_pkg, []):

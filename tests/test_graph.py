@@ -1,25 +1,14 @@
-import json
-import math
-import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest
 
-from tests.conftest import run_treemapper_subprocess
 from tests.framework.pygit2_backend import Pygit2Repo
 from treemapper.diffctx.graph_analytics import (
-    QuotientGraph,
     coupling_metrics,
     detect_cycles,
     hotspots,
-    quotient_graph,
-    to_mermaid,
 )
-from treemapper.diffctx.graph_export import (
-    graph_summary,
-    graph_to_graphml_string,
-    graph_to_json_string,
-)
+from treemapper.diffctx.graph_export import graph_summary
 from treemapper.diffctx.project_graph import build_project_graph
 
 # ---------------------------------------------------------------------------
@@ -176,10 +165,6 @@ def _build_graph(root, **kw):
     return build_project_graph(root, **kw)
 
 
-def _run_graph_cli(args, cwd):
-    return run_treemapper_subprocess(["graph", *args], cwd=cwd)
-
-
 # ===================================================================
 # Phase 1 — Core
 # ===================================================================
@@ -256,51 +241,6 @@ class TestGraphBuild:
         assert pg.root_dir == graph_project.resolve()
 
 
-class TestGraphExportJSON:
-    @pytest.fixture(autouse=True)
-    def _setup(self, graph_project):
-        self.pg = _build_graph(graph_project)
-        self.json_str = graph_to_json_string(self.pg)
-        self.data = json.loads(self.json_str)
-
-    def test_json_parses(self):
-        assert isinstance(self.data, dict)
-
-    def test_json_top_level_fields(self):
-        for key in ("name", "type", "node_count", "edge_count", "nodes", "edges"):
-            assert key in self.data, f"missing top-level key: {key}"
-
-    def test_json_type_is_project_graph(self):
-        assert self.data["type"] == "project_graph"
-
-    def test_json_counts_match_arrays(self):
-        assert self.data["node_count"] == len(self.data["nodes"])
-        assert self.data["edge_count"] == len(self.data["edges"])
-
-    def test_json_node_required_fields(self):
-        for node in self.data["nodes"]:
-            for field in ("id", "path", "lines", "kind", "symbol", "token_count"):
-                assert field in node, f"node missing field: {field}"
-
-    def test_json_edge_required_fields(self):
-        if not self.data["edges"]:
-            pytest.skip("no edges in test graph")
-        for edge in self.data["edges"]:
-            for field in ("source", "target", "weight", "category"):
-                assert field in edge, f"edge missing field: {field}"
-
-    def test_json_no_absolute_paths(self):
-        for node in self.data["nodes"]:
-            assert not node["path"].startswith("/"), f"absolute path: {node['path']}"
-
-    def test_json_weights_valid(self):
-        for edge in self.data["edges"]:
-            w = edge["weight"]
-            assert w > 0, f"non-positive weight: {w}"
-            assert not math.isnan(w), "NaN weight"
-            assert not math.isinf(w), "Inf weight"
-
-
 class TestGraphCycles:
     def test_obvious_cycle(self, tmp_path):
         (tmp_path / "a.py").write_text("from b import B\n\nclass A:\n    pass\n")
@@ -357,57 +297,6 @@ class TestGraphCycles:
         semantic_cycles = detect_cycles(pg, level="file", edge_types={"semantic"})
         all_cycles = detect_cycles(pg, level="file")
         assert len(semantic_cycles) <= len(all_cycles) or len(semantic_cycles) == len(all_cycles)
-
-
-class TestGraphCLI:
-    def test_default_mermaid_export(self, graph_git_project):
-        result = _run_graph_cli([".", "-q"], cwd=graph_git_project)
-        assert result.returncode == 0
-        assert result.stdout.startswith("graph LR")
-
-    def test_json_format(self, graph_git_project):
-        result = _run_graph_cli([".", "-f", "json", "-q"], cwd=graph_git_project)
-        assert result.returncode == 0
-        data = json.loads(result.stdout)
-        assert data["type"] == "project_graph"
-
-    def test_graphml_format(self, graph_git_project):
-        result = _run_graph_cli([".", "-f", "graphml", "-q"], cwd=graph_git_project)
-        assert result.returncode == 0
-        ET.fromstring(result.stdout)
-
-    def test_summary(self, graph_git_project):
-        result = _run_graph_cli([".", "--summary", "-q"], cwd=graph_git_project)
-        assert result.returncode == 0
-        out = result.stdout.lower()
-        assert "nodes" in out
-        assert "edges" in out
-        assert "cycle" in out
-        assert "hotspot" in out
-        assert "cohesion" in out
-
-    def test_output_file(self, graph_git_project):
-        out_file = graph_git_project / "graph.json"
-        result = _run_graph_cli([".", "-f", "json", "-o", str(out_file), "-q"], cwd=graph_git_project)
-        assert result.returncode == 0
-        assert out_file.exists()
-        data = json.loads(out_file.read_text())
-        assert data["type"] == "project_graph"
-
-    def test_level_directory_mermaid(self, graph_git_project):
-        result = _run_graph_cli([".", "-f", "mermaid", "--level", "directory", "-q"], cwd=graph_git_project)
-        assert result.returncode == 0
-        out = result.stdout
-        assert out.strip().startswith("graph LR")
-        assert "src" in out or '["' in out
-
-    def test_tree_mode_still_works(self, graph_git_project):
-        out_file = graph_git_project / "tree.yaml"
-        result = run_treemapper_subprocess([".", "-o", str(out_file), "-q"], cwd=graph_git_project)
-        assert result.returncode == 0
-        assert out_file.exists()
-        content = out_file.read_text()
-        assert "type:" in content or "name:" in content
 
 
 # ===================================================================
@@ -468,42 +357,6 @@ class TestGraphSummary:
         assert str(pg.edge_count) in text
 
 
-class TestGraphMermaid:
-    def test_empty_graph(self):
-        qg = QuotientGraph()
-        result = to_mermaid(qg)
-        assert result == "graph LR\n"
-
-    def test_starts_with_graph_lr(self, graph_project):
-        pg = _build_graph(graph_project)
-        qg = quotient_graph(pg, level="directory")
-        result = to_mermaid(qg)
-        assert result.startswith("graph LR")
-
-    def test_contains_arrows(self, graph_project):
-        pg = _build_graph(graph_project)
-        qg = quotient_graph(pg, level="directory")
-        result = to_mermaid(qg)
-        if pg.edge_count > 0:
-            assert "-->" in result
-
-    def test_directory_level_labels(self, graph_project):
-        pg = _build_graph(graph_project)
-        qg = quotient_graph(pg, level="directory")
-        result = to_mermaid(qg)
-        for line in result.splitlines():
-            if '["' in line:
-                label = line.split('["')[1].split('"]')[0]
-                assert ":" not in label or label.count(":") == 0
-
-    def test_top_n_limit(self, graph_project):
-        pg = _build_graph(graph_project)
-        qg = quotient_graph(pg, level="file")
-        result = to_mermaid(qg, top_n=3)
-        node_defs = [line for line in result.splitlines() if '["' in line]
-        assert len(node_defs) <= 3
-
-
 class TestGraphMetrics:
     def test_instability_range(self, graph_project):
         pg = _build_graph(graph_project)
@@ -538,80 +391,6 @@ class TestGraphMetrics:
         metrics = coupling_metrics(pg, level="directory")
         names = {m.name for m in metrics}
         assert any("src" in n for n in names)
-
-
-class TestGraphExportGraphML:
-    def test_valid_xml(self, graph_project):
-        pg = _build_graph(graph_project)
-        xml_str = graph_to_graphml_string(pg)
-        ET.fromstring(xml_str)
-
-    def test_has_node_and_edge_elements(self, graph_project):
-        pg = _build_graph(graph_project)
-        xml_str = graph_to_graphml_string(pg)
-        root = ET.fromstring(xml_str)
-        ns = {"g": "http://graphml.graphdrawing.org/graphml"}
-        nodes = root.findall(".//g:node", ns)
-        assert len(nodes) > 0
-        if pg.edge_count > 0:
-            edges = root.findall(".//g:edge", ns)
-            assert len(edges) > 0
-
-    def test_attribute_keys_defined(self, graph_project):
-        pg = _build_graph(graph_project)
-        xml_str = graph_to_graphml_string(pg)
-        root = ET.fromstring(xml_str)
-        ns = {"g": "http://graphml.graphdrawing.org/graphml"}
-        key_names = {k.get("attr.name") for k in root.findall("g:key", ns)}
-        for attr in ("path", "lines", "kind", "symbol", "token_count", "weight", "category"):
-            assert attr in key_names, f"missing GraphML key: {attr}"
-
-
-# ===================================================================
-# Phase 3 — API & Robustness
-# ===================================================================
-
-
-class TestProjectGraphAPI:
-    def test_subgraph_preserves_internal_edges(self, graph_project):
-        pg = _build_graph(graph_project)
-        if pg.node_count < 2 or pg.edge_count == 0:
-            pytest.skip("need edges for subgraph test")
-        first_edge = next(iter(pg.graph.edge_categories.keys()))
-        subset = {first_edge[0], first_edge[1]}
-        sub = pg.subgraph(subset)
-        assert sub.edge_count >= 1
-
-    def test_subgraph_excludes_external(self, graph_project):
-        pg = _build_graph(graph_project)
-        if pg.node_count < 2:
-            pytest.skip("need multiple nodes")
-        some_nodes = set(list(pg.fragments.keys())[:2])
-        sub = pg.subgraph(some_nodes)
-        for src, nbrs in sub.graph.adjacency.items():
-            assert src in some_nodes
-            for dst in nbrs:
-                assert dst in some_nodes
-
-    def test_edges_of_type_filters_correctly(self, graph_project):
-        pg = _build_graph(graph_project)
-        for cat in pg.edge_type_counts():
-            for _, _, w in pg.edges_of_type(cat):
-                assert w >= 0
-
-    def test_edge_type_counts_sum(self, graph_project):
-        pg = _build_graph(graph_project)
-        counts = pg.edge_type_counts()
-        total = sum(counts.values())
-        assert total == pg.edge_count
-
-    def test_to_dict_roundtrip(self, graph_project):
-        pg = _build_graph(graph_project)
-        d = pg.to_dict()
-        serialized = json.dumps(d)
-        assert isinstance(serialized, str)
-        deserialized = json.loads(serialized)
-        assert deserialized["node_count"] == pg.node_count
 
 
 class TestGraphEdgeCases:

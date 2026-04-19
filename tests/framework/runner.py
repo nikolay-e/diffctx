@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tests.conftest import GARBAGE_FILES, GARBAGE_MARKERS
 from tests.framework.pygit2_backend import Pygit2Repo
 from tests.framework.scoring import (
     ScoreBreakdown,
@@ -12,6 +11,7 @@ from tests.framework.scoring import (
     compute_diff_token_count,
 )
 from tests.framework.types import Accept, DeclaredFragment, Oracle, Selector, YamlTestCase
+from tests.garbage_data import GARBAGE_FILES, GARBAGE_MARKERS
 
 
 def _match_path(candidate: str, target: str) -> bool:

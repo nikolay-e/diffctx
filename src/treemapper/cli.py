@@ -12,6 +12,8 @@ from .version import __version__
 logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_FILE_BYTES = 10 * 1024 * 1024  # 10 MB
+_DEFAULT_ALPHA = 0.60
+_DEFAULT_TAU = 0.08
 
 
 def _exit_error(message: str) -> NoReturn:
@@ -133,28 +135,24 @@ def _find_in_treemapper_dir(arg: str, root_dir: Path, extra_exts: tuple[str, ...
     return None
 
 
-def _resolve_ignore_file(ignore_file_arg: str | None, root_dir: Path) -> Path | None:
-    if not ignore_file_arg:
+def _resolve_config_file(file_arg: str | None, root_dir: Path, extensions: tuple[str, ...], label: str) -> Path | None:
+    if not file_arg:
         return None
-    found = _find_in_treemapper_dir(ignore_file_arg, root_dir, (".ignore", ".txt"))
+    found = _find_in_treemapper_dir(file_arg, root_dir, extensions)
     if found:
         return found
-    resolved = Path(ignore_file_arg).resolve()
+    resolved = Path(file_arg).resolve()
     if not resolved.is_file():
-        _exit_error(f"Ignore file '{ignore_file_arg}' does not exist")
+        _exit_error(f"{label} file '{file_arg}' does not exist")
     return resolved
+
+
+def _resolve_ignore_file(ignore_file_arg: str | None, root_dir: Path) -> Path | None:
+    return _resolve_config_file(ignore_file_arg, root_dir, (".ignore", ".txt"), "Ignore")
 
 
 def _resolve_whitelist_file(whitelist_file_arg: str | None, root_dir: Path) -> Path | None:
-    if not whitelist_file_arg:
-        return None
-    found = _find_in_treemapper_dir(whitelist_file_arg, root_dir, (".whitelist", ".txt"))
-    if found:
-        return found
-    resolved = Path(whitelist_file_arg).resolve()
-    if not resolved.is_file():
-        _exit_error(f"Whitelist file '{whitelist_file_arg}' does not exist")
-    return resolved
+    return _resolve_config_file(whitelist_file_arg, root_dir, (".whitelist", ".txt"), "Whitelist")
 
 
 @dataclass
@@ -181,8 +179,8 @@ class ParsedArgs:
     quiet: bool = False
     diff_range: str | None = None
     budget: int | None = None
-    alpha: float = 0.60
-    tau: float = 0.08
+    alpha: float = _DEFAULT_ALPHA
+    tau: float = _DEFAULT_TAU
     scoring: str = "hybrid"
     full_diff: bool = False
     command: str | None = None
@@ -341,14 +339,14 @@ def _build_main_parser() -> argparse.ArgumentParser:
     diff_group.add_argument(
         "--alpha",
         type=float,
-        default=0.60,
+        default=_DEFAULT_ALPHA,
         metavar="F",
         help="How tightly context clusters around changes, 0-1 (default: 0.60, higher = more focused)",
     )
     diff_group.add_argument(
         "--tau",
         type=float,
-        default=0.08,
+        default=_DEFAULT_TAU,
         metavar="F",
         help="Minimum relevance to include a fragment (default: 0.08, lower = more context)",
     )
@@ -372,9 +370,9 @@ def _warn_diff_only_flags(args: argparse.Namespace) -> None:
     used = []
     if args.budget is not None:
         used.append("--budget")
-    if abs(args.alpha - 0.60) > 1e-9:
+    if abs(args.alpha - _DEFAULT_ALPHA) > 1e-9:
         used.append("--alpha")
-    if abs(args.tau - 0.08) > 1e-9:
+    if abs(args.tau - _DEFAULT_TAU) > 1e-9:
         used.append("--tau")
     if args.full:
         used.append("--full")

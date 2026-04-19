@@ -1,12 +1,22 @@
 from __future__ import annotations
 
+import logging
 import re
 from collections import defaultdict
 from pathlib import Path
 
+import tree_sitter_c
+import tree_sitter_cpp
+from tree_sitter import Language, Node, Parser, Tree
+
 from ...config.weights import EDGE_WEIGHTS
 from ...types import Fragment, FragmentId
 from ..base import EdgeBuilder, EdgeDict
+
+logger = logging.getLogger(__name__)
+
+_C_LANG = Language(tree_sitter_c.language())
+_CPP_LANG = Language(tree_sitter_cpp.language())
 
 _C_EXTENSIONS = {".c", ".h"}
 _CPP_EXTENSIONS = {".cpp", ".hpp", ".cc", ".cxx", ".hxx", ".c++", ".h++", ".hh", ".ipp", ".tpp"}
@@ -15,35 +25,12 @@ _ALL_C_FAMILY = _C_EXTENSIONS | _CPP_EXTENSIONS | _OBJC_EXTENSIONS
 
 _INCLUDE_RE = re.compile(r'^\s*#\s*(?:include|import)\s*[<"]([^>"]+)[>"]', re.MULTILINE)
 
-_FUNC_DEF_RE = re.compile(
-    r"^\s*(?:static\s+|inline\s+|virtual\s+|explicit\s+|constexpr\s+)*"
-    r"(?:[\w:]+\s+){0,10}"
-    r"(\w+)\s*\([^)]*\)\s*(?:const\s*)?(?:override\s*)?(?:final\s*)?"
-    r"(?:noexcept(?:\([^)]*\))?\s*)?"
-    r"\s*\{",
-    re.MULTILINE,
-)
-
-_CLASS_RE = re.compile(r"^\s{0,20}(?:template\s{0,5}<[^>]{0,200}>\s{0,5})?(?:class|struct)\s+(\w+)", re.MULTILINE)
-_TYPEDEF_RE = re.compile(r"^\s{0,20}typedef\s{1,10}[^\n;]{1,500}\s{1,10}(\w+)\s{0,10};", re.MULTILINE)
-_USING_TYPE_RE = re.compile(r"^\s{0,20}using\s+(\w+)\s{0,10}=", re.MULTILINE)
-_ENUM_RE = re.compile(r"^\s*enum\s+(?:class\s+)?(\w+)", re.MULTILINE)
-_NAMESPACE_RE = re.compile(r"^\s*namespace\s+(\w+)", re.MULTILINE)
-
 _FUNC_CALL_RE = re.compile(r"\b(\w+)\s*\(")
 _TYPE_REF_RE = re.compile(r"\b([A-Z]\w*)\b")
 
-_METHOD_IMPL_RE = re.compile(r"^\s*(?:[\w:]+\s+)?(\w+)::(\w+)\s*\(", re.MULTILINE)
-
-_INHERITANCE_RE = re.compile(
-    r"(?:class|struct)\s+(\w+)\s*(?:final\s*)?:\s*"
-    r"((?:(?:public|protected|private|virtual)\s+)*\w+(?:\s*,\s*(?:(?:public|protected|private|virtual)\s+)*\w+)*)",
-    re.MULTILINE,
-)
-
-_FORWARD_DECL_RE = re.compile(r"^\s*(?:class|struct)\s+(\w+)\s*;", re.MULTILINE)
-
-_FRIEND_DECL_RE = re.compile(r"\bfriend\s+(?:class|struct)\s+(\w+)", re.MULTILINE)
+_HEADER_EXTENSIONS = frozenset({".h", ".hpp", ".hh", ".hxx", ".h++"})
+_IMPL_EXTENSIONS = frozenset({".c", ".cpp", ".cc", ".cxx", ".c++", ".m", ".mm"})
+_MIN_IDENTIFIER_LENGTH = 2
 
 _DISCOVERY_MAX_DEPTH = 2
 
@@ -116,6 +103,19 @@ _C_COMMON_MACROS = frozenset(
 )
 
 
+def _get_parser(path: Path) -> Parser:
+    lang = _CPP_LANG if path.suffix.lower() in _CPP_EXTENSIONS else _C_LANG
+    return Parser(lang)
+
+
+def _parse_tree(content: str, path: Path) -> Tree | None:
+    try:
+        return _get_parser(path).parse(content.encode("utf-8"))
+    except Exception:
+        logger.debug("tree-sitter failed to parse C/C++ content for %s", path)
+        return None
+
+
 def _is_c_family(path: Path) -> bool:
     return path.suffix.lower() in _ALL_C_FAMILY
 
@@ -130,56 +130,167 @@ def _extract_includes(content: str) -> set[str]:
     return includes
 
 
-def _extract_definitions(content: str) -> tuple[set[str], set[str], set[str]]:
+def _find_child_by_type(node: Node, child_type: str) -> Node | None:
+    for child in node.children:
+        if child.type == child_type:
+            return child
+    return None
+
+
+def _extract_func_name_from_declarator(declarator: Node) -> tuple[str | None, str | None]:
+    for child in declarator.children:
+        if child.type == "identifier":
+            return child.text.decode(), None
+        if child.type == "qualified_identifier":
+            parts = [c.text.decode() for c in child.children if c.type in ("identifier", "type_identifier")]
+            if len(parts) >= 2:
+                return parts[-1], parts[-2]
+            if parts:
+                return parts[0], None
+        if child.type == "function_declarator":
+            return _extract_func_name_from_declarator(child)
+        if child.type == "pointer_declarator":
+            return _extract_func_name_from_declarator(child)
+        if child.type == "reference_declarator":
+            return _extract_func_name_from_declarator(child)
+    return None, None
+
+
+_TYPE_DEFINITION_NODES = frozenset(
+    {
+        "class_specifier",
+        "struct_specifier",
+        "enum_specifier",
+        "type_definition",
+        "alias_declaration",
+    }
+)
+
+
+def _add_type_name(child: Node, types: set[str]) -> None:
+    name_node = _find_child_by_type(child, "type_identifier")
+    if name_node:
+        types.add(name_node.text.decode())
+
+
+def _add_func_definition(child: Node, functions: set[str], types: set[str]) -> None:
+    declarator = child.child_by_field_name("declarator")
+    if declarator:
+        func_name, class_name = _extract_func_name_from_declarator(declarator)
+        if func_name and func_name not in _C_KEYWORDS:
+            functions.add(func_name)
+        if class_name:
+            types.add(class_name)
+
+
+def _walk_definitions(node: Node, functions: set[str], types: set[str], namespaces: set[str]) -> None:
+    for child in node.children:
+        ntype = child.type
+        if ntype == "function_definition":
+            _add_func_definition(child, functions, types)
+        elif ntype in _TYPE_DEFINITION_NODES:
+            _add_type_name(child, types)
+        elif ntype == "namespace_definition":
+            name_node = _find_child_by_type(child, "identifier")
+            if name_node:
+                namespaces.add(name_node.text.decode())
+            body = child.child_by_field_name("body")
+            if body:
+                _walk_definitions(body, functions, types, namespaces)
+
+
+def _extract_definitions(content: str, path: Path | None = None) -> tuple[set[str], set[str], set[str]]:
+    if path is None:
+        path = Path("unknown.cpp")
+    tree = _parse_tree(content, path)
+    if tree is None:
+        return set(), set(), set()
     functions: set[str] = set()
     types: set[str] = set()
     namespaces: set[str] = set()
-
-    for match in _FUNC_DEF_RE.finditer(content):
-        name = match.group(1)
-        if name in _C_KEYWORDS:
-            continue
-        functions.add(name)
-
-    for pattern in [_CLASS_RE, _TYPEDEF_RE, _USING_TYPE_RE, _ENUM_RE]:
-        for match in pattern.finditer(content):
-            types.add(match.group(1))
-
-    for match in _NAMESPACE_RE.finditer(content):
-        namespaces.add(match.group(1))
-
-    for match in _METHOD_IMPL_RE.finditer(content):
-        class_name, method_name = match.groups()
-        types.add(class_name)
-        functions.add(method_name)
-
+    _walk_definitions(tree.root_node, functions, types, namespaces)
     return functions, types, namespaces
 
 
-_BASE_CLASS_NAME_RE = re.compile(r"\b(\w+)\s*$")
-
-
-def _extract_inheritance(content: str) -> list[tuple[str, set[str]]]:
+def _extract_inheritance(content: str, path: Path | None = None) -> list[tuple[str, set[str]]]:
+    if path is None:
+        path = Path("unknown.cpp")
+    tree = _parse_tree(content, path)
+    if tree is None:
+        return []
     results: list[tuple[str, set[str]]] = []
-    for match in _INHERITANCE_RE.finditer(content):
-        derived = match.group(1)
-        bases_raw = match.group(2)
-        bases: set[str] = set()
-        for part in bases_raw.split(","):
-            m = _BASE_CLASS_NAME_RE.search(part.strip())
-            if m:
-                bases.add(m.group(1))
-        if bases:
-            results.append((derived, bases))
+    _walk_inheritance(tree.root_node, results)
     return results
 
 
-def _extract_forward_decls(content: str) -> set[str]:
-    return {match.group(1) for match in _FORWARD_DECL_RE.finditer(content)}
+def _walk_inheritance(node: Node, results: list[tuple[str, set[str]]]) -> None:
+    for child in node.children:
+        if child.type in ("class_specifier", "struct_specifier"):
+            name_node = _find_child_by_type(child, "type_identifier")
+            base_clause = _find_child_by_type(child, "base_class_clause")
+            if name_node and base_clause:
+                bases = {c.text.decode() for c in base_clause.children if c.type == "type_identifier"}
+                if bases:
+                    results.append((name_node.text.decode(), bases))
+        elif child.type == "namespace_definition":
+            body = child.child_by_field_name("body")
+            if body:
+                _walk_inheritance(body, results)
 
 
-def _extract_friend_decls(content: str) -> set[str]:
-    return {match.group(1) for match in _FRIEND_DECL_RE.finditer(content)}
+def _extract_forward_decls(content: str, path: Path | None = None) -> set[str]:
+    if path is None:
+        path = Path("unknown.cpp")
+    tree = _parse_tree(content, path)
+    if tree is None:
+        return set()
+    result: set[str] = set()
+    _walk_forward_decls(tree.root_node, result)
+    return result
+
+
+def _walk_forward_decls(node: Node, result: set[str]) -> None:
+    for child in node.children:
+        if child.type == "declaration":
+            has_body = any(c.type == "field_declaration_list" for c in child.children)
+            if not has_body:
+                for inner in child.children:
+                    if inner.type in ("class_specifier", "struct_specifier"):
+                        name_node = _find_child_by_type(inner, "type_identifier")
+                        if name_node:
+                            result.add(name_node.text.decode())
+        elif child.type in ("class_specifier", "struct_specifier"):
+            if not _find_child_by_type(child, "field_declaration_list"):
+                name_node = _find_child_by_type(child, "type_identifier")
+                if name_node:
+                    result.add(name_node.text.decode())
+        elif child.type == "namespace_definition":
+            body = child.child_by_field_name("body")
+            if body:
+                _walk_forward_decls(body, result)
+
+
+def _extract_friend_decls(content: str, path: Path | None = None) -> set[str]:
+    if path is None:
+        path = Path("unknown.cpp")
+    tree = _parse_tree(content, path)
+    if tree is None:
+        return set()
+    result: set[str] = set()
+    _walk_friend_decls(tree.root_node, result)
+    return result
+
+
+def _walk_friend_decls(node: Node, result: set[str]) -> None:
+    for child in node.children:
+        if child.type == "friend_declaration":
+            name_node = _find_child_by_type(child, "type_identifier")
+            if name_node:
+                result.add(name_node.text.decode())
+        elif hasattr(child, "children"):
+            body = child.child_by_field_name("body") or child.child_by_field_name("field_declaration_list")
+            if body:
+                _walk_friend_decls(body, result)
 
 
 def _extract_references(content: str, own_defs: set[str]) -> tuple[set[str], set[str]]:
@@ -190,14 +301,14 @@ def _extract_references(content: str, own_defs: set[str]) -> tuple[set[str], set
         name = match.group(1)
         if name in _C_KEYWORDS:
             continue
-        if name not in own_defs and not name.startswith("_") and len(name) > 2:
+        if name not in own_defs and not name.startswith("_") and len(name) > _MIN_IDENTIFIER_LENGTH:
             calls.add(name)
 
     for match in _TYPE_REF_RE.finditer(content):
         name = match.group(1)
         if name in _C_COMMON_MACROS:
             continue
-        if name not in own_defs and len(name) > 2:
+        if name not in own_defs and len(name) > _MIN_IDENTIFIER_LENGTH:
             type_refs.add(name)
 
     return calls, type_refs
@@ -273,6 +384,7 @@ class CFamilyEdgeBuilder(EdgeBuilder):
                     if "/" in inc:
                         included.add(inc.split("/")[-1])
             except (OSError, UnicodeDecodeError):
+                logger.debug("skipping unreadable file: %s", f)
                 continue
         return included
 
@@ -314,6 +426,7 @@ class CFamilyEdgeBuilder(EdgeBuilder):
                     return True
             return False
         except (OSError, UnicodeDecodeError):
+            logger.debug("skipping unreadable file: %s", candidate)
             return False
 
     def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:
@@ -339,7 +452,7 @@ class CFamilyEdgeBuilder(EdgeBuilder):
                 idx.header_to_frags[f.path.stem + ".h"].append(f.id)
                 idx.header_to_frags[f.path.stem + ".hpp"].append(f.id)
 
-            functions, types, _ = _extract_definitions(f.content)
+            functions, types, _ = _extract_definitions(f.content, f.path)
             idx.frag_own_defs[f.id] = functions | types
 
             for func in functions:
@@ -398,7 +511,7 @@ class CFamilyEdgeBuilder(EdgeBuilder):
         type_defs: dict[str, list[FragmentId]],
         edges: EdgeDict,
     ) -> None:
-        for _derived, bases in _extract_inheritance(f.content):
+        for _derived, bases in _extract_inheritance(f.content, f.path):
             for base in bases:
                 for def_id in type_defs.get(base, []):
                     if def_id != f.id:
@@ -410,7 +523,7 @@ class CFamilyEdgeBuilder(EdgeBuilder):
         type_defs: dict[str, list[FragmentId]],
         edges: EdgeDict,
     ) -> None:
-        for name in _extract_forward_decls(f.content):
+        for name in _extract_forward_decls(f.content, f.path):
             for def_id in type_defs.get(name, []):
                 if def_id != f.id:
                     self.add_edge(edges, f.id, def_id, self.forward_decl_weight)
@@ -421,7 +534,7 @@ class CFamilyEdgeBuilder(EdgeBuilder):
         type_defs: dict[str, list[FragmentId]],
         edges: EdgeDict,
     ) -> None:
-        for name in _extract_friend_decls(f.content):
+        for name in _extract_friend_decls(f.content, f.path):
             for def_id in type_defs.get(name, []):
                 if def_id != f.id:
                     self.add_edge(edges, f.id, def_id, self.friend_weight)
@@ -435,8 +548,8 @@ class CFamilyEdgeBuilder(EdgeBuilder):
             if len(group) < 2:
                 continue
 
-            headers = [f for f in group if f.path.suffix.lower() in {".h", ".hpp", ".hh", ".hxx", ".h++"}]
-            impls = [f for f in group if f.path.suffix.lower() in {".c", ".cpp", ".cc", ".cxx", ".c++", ".m", ".mm"}]
+            headers = [f for f in group if f.path.suffix.lower() in _HEADER_EXTENSIONS]
+            impls = [f for f in group if f.path.suffix.lower() in _IMPL_EXTENSIONS]
 
             for h in headers:
                 for impl in impls:

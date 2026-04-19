@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 
 from ...config.weights import EDGE_WEIGHTS
 from ...types import Fragment, FragmentId
 from ..base import EdgeBuilder, EdgeDict, FragmentIndex, discover_files_by_refs
+
+logger = logging.getLogger(__name__)
 
 _DBT_SQL_EXTS = {".sql"}
 _DBT_YAML_EXTS = {".yml", ".yaml"}
@@ -15,6 +18,8 @@ _SOURCE_RE = re.compile(r"""\{\{\s*source\(\s*['"]([^'"]{1,200})['"]\s*,\s*['"](
 _MACRO_CALL_RE = re.compile(r"""\{\{\s*([a-zA-Z_]\w{0,200})\s*\(""")
 _MACRO_DEF_RE = re.compile(r"""\{%[-\s]*macro\s+([a-zA-Z_]\w{0,200})\s*\(""")
 _SCHEMA_MODEL_NAME_RE = re.compile(r"^\s*-\s*name:\s*(\w{1,200})", re.MULTILINE)
+
+_STAGING_TABLE_PREFIX = "stg_"
 
 _DBT_JINJA_BUILTINS = frozenset(
     {
@@ -124,35 +129,22 @@ def _extract_schema_model_names(content: str) -> set[str]:
     return names
 
 
-def _process_source_table_line(
-    line: str, stripped: str, indent: int, in_sources: bool, in_tables: bool, tables_indent: int, tables: set[str]
-) -> tuple[bool, bool, int]:
-    if stripped.startswith("sources:"):
-        return True, False, tables_indent
-    if in_sources and stripped.startswith("tables:"):
-        return in_sources, True, indent
-    if in_tables:
-        if indent <= tables_indent:
-            return in_sources, False, tables_indent
-        m = _SCHEMA_MODEL_NAME_RE.match(line)
-        if m:
-            tables.add(m.group(1))
-    return in_sources, in_tables, tables_indent
-
-
 def _extract_source_table_names(content: str) -> set[str]:
-    in_sources = False
-    in_tables = False
-    tables_indent = 0
+    import yaml
+
     tables: set[str] = set()
-    for line in content.splitlines():
-        stripped = line.strip()
-        if not stripped:
+    try:
+        data = yaml.safe_load(content)
+    except yaml.YAMLError:
+        return tables
+    if not isinstance(data, dict):
+        return tables
+    for source in data.get("sources", []):
+        if not isinstance(source, dict):
             continue
-        indent = len(line) - len(line.lstrip())
-        in_sources, in_tables, tables_indent = _process_source_table_line(
-            line, stripped, indent, in_sources, in_tables, tables_indent, tables
-        )
+        for table in source.get("tables", []):
+            if isinstance(table, dict) and "name" in table:
+                tables.add(table["name"])
     return tables
 
 
@@ -204,6 +196,7 @@ class DbtEdgeBuilder(EdgeBuilder):
                 if _is_dbt_yaml(f):
                     self._collect_refs_from_yaml(content, refs, source_tables)
             except (OSError, UnicodeDecodeError):
+                logger.debug("skipping unreadable dbt file: %s", f)
                 continue
 
         self._discover_macro_files(macro_names, all_candidate_files, refs)
@@ -229,6 +222,7 @@ class DbtEdgeBuilder(EdgeBuilder):
                 if defs & macro_names:
                     refs.add(candidate.name.lower())
             except (OSError, UnicodeDecodeError):
+                logger.debug("skipping unreadable dbt file: %s", candidate)
                 continue
 
     def _candidate_references_changed_model(self, content: str, changed_model_names: set[str]) -> bool:
@@ -263,6 +257,7 @@ class DbtEdgeBuilder(EdgeBuilder):
                 if self._candidate_references_changed_model(content, changed_model_names):
                     refs.add(candidate.name.lower())
             except (OSError, UnicodeDecodeError):
+                logger.debug("skipping unreadable dbt file: %s", candidate)
                 continue
 
     def _discover_source_consumers(
@@ -283,6 +278,7 @@ class DbtEdgeBuilder(EdgeBuilder):
                         refs.add(candidate.name.lower())
                         break
             except (OSError, UnicodeDecodeError):
+                logger.debug("skipping unreadable dbt file: %s", candidate)
                 continue
 
     def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:
@@ -395,7 +391,7 @@ class DbtEdgeBuilder(EdgeBuilder):
         idx: FragmentIndex,
         edges: EdgeDict,
     ) -> None:
-        target_name = f"stg_{table}.sql".lower()
+        target_name = f"{_STAGING_TABLE_PREFIX}{table}.sql".lower()
         for name, frag_ids in idx.by_name.items():
             if name == target_name or name == f"{table}.sql":
                 for fid in frag_ids:

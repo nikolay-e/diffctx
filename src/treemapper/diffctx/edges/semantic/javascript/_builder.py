@@ -1,321 +1,29 @@
 from __future__ import annotations
 
-import json
-import re
 from collections import defaultdict
 from pathlib import Path
 
-from ...config.weights import LANG_WEIGHTS
-from ...types import Fragment, FragmentId
-from ..base import EdgeBuilder, EdgeDict, add_semantic_edges
-from .javascript_semantics import JsFragmentInfo, analyze_javascript_fragment, extract_import_sources
-
-_JS_EXTS = {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".mts", ".cts"}
-_TS_EXTS = {".ts", ".tsx", ".mts", ".cts"}
-_JSON_EXT = ".json"
-
-_EXPORT_DECL_RE = re.compile(
-    r"export\s+(?:const|let|var|function\*?|class|async\s+function|interface|type|enum|abstract\s+class)\s+(\w+)",
-    re.MULTILINE,
+from ....config.weights import LANG_WEIGHTS
+from ....types import Fragment, FragmentId
+from ...base import EdgeBuilder, EdgeDict, add_semantic_edges
+from ..javascript_semantics import JsFragmentInfo, analyze_javascript_fragment, extract_import_sources
+from ._resolve import (
+    _JS_EXTS,
+    _NAMED_IMPORT_NAMES_RE,
+    _REEXPORT_SOURCE_RE,
+    _TS_EXTS,
+    _extract_exports_from_content,
+    _extract_imports_from_content,
+    _is_js_file,
+    _resolve_relative_import,
 )
-_EXPORT_DEFAULT_NAME_RE = re.compile(
-    r"export\s+default\s+(?:(?:class|function\*?|async\s+function)\s+)?(\w+)",
-    re.MULTILINE,
-)
-_EXPORT_LIST_RE = re.compile(r"export\s*\{([^}]+)\}", re.MULTILINE)
-_NAMED_IMPORT_NAMES_RE = re.compile(
-    r"import\s*(?:type\s*)?\{([^}]+)\}\s*from\s*['\"]",
-    re.MULTILINE,
-)
-
-
-_JS_KEYWORDS = frozenset(
-    {
-        "new",
-        "class",
-        "function",
-        "async",
-        "await",
-        "return",
-        "throw",
-        "delete",
-        "typeof",
-        "instanceof",
-        "void",
-        "yield",
-        "super",
-        "this",
-        "null",
-        "undefined",
-        "true",
-        "false",
-    }
-)
-
-
-def _add_name_if_valid(name: str, target: set[str]) -> None:
-    if name and len(name) >= 2:
-        target.add(name.lower())
-
-
-def _extract_exports_from_content(content: str, exported: set[str]) -> None:
-    for m in _EXPORT_DECL_RE.finditer(content):
-        _add_name_if_valid(m.group(1), exported)
-    for m in _EXPORT_DEFAULT_NAME_RE.finditer(content):
-        captured = m.group(1)
-        if captured in _JS_KEYWORDS:
-            continue
-        _add_name_if_valid(captured, exported)
-    for m in _EXPORT_LIST_RE.finditer(content):
-        for part in m.group(1).split(","):
-            part = part.strip().split(" as ")[0].strip()
-            _add_name_if_valid(part, exported)
-
+from ._tsconfig import TsconfigResolver
 
 _JS_WEIGHTS = LANG_WEIGHTS["javascript"]
 _TS_WEIGHTS = LANG_WEIGHTS["typescript"]
 
-
-def _is_js_file(path: Path) -> bool:
-    return path.suffix.lower() in _JS_EXTS
-
-
-def _normalize_import(imp: str, source_path: Path) -> set[str]:
-    names: set[str] = set()
-
-    if imp.startswith("."):
-        base_dir = source_path.parent
-        parts = imp.split("/")
-        resolved_parts: list[str] = []
-
-        for part in parts:
-            if part == ".":
-                continue
-            elif part == "..":
-                base_dir = base_dir.parent
-            else:
-                resolved_parts.append(part)
-
-        if resolved_parts:
-            base_parts = list(base_dir.parts)
-            full_resolved = base_parts + resolved_parts
-            names.add("/".join(full_resolved))
-            names.add("/".join(resolved_parts))
-            names.add(resolved_parts[-1])
-    else:
-        names.add(imp)
-        parts = imp.split("/")
-        if len(parts) > 1:
-            names.add(parts[-1])
-
-    return names
-
-
-def _extract_imports_from_content(content: str, source_path: Path) -> set[str]:
-    raw_sources = extract_import_sources(content)
-    normalized: set[str] = set()
-    for source in raw_sources:
-        normalized.update(_normalize_import(source, source_path))
-    return normalized
-
-
-def _resolve_relative_import(
-    source_file: Path,
-    import_source: str,
-    candidate_set: set[Path],
-) -> Path | None:
-    base_dir = source_file.parent
-    parts = import_source.split("/")
-    resolved = base_dir
-    for part in parts:
-        if part == ".":
-            continue
-        elif part == "..":
-            resolved = resolved.parent
-        else:
-            resolved = resolved / part
-
-    for ext in (".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"):
-        candidate = resolved.parent / (resolved.name + ext)
-        if candidate in candidate_set:
-            return candidate
-
-    for index_name in ("index.ts", "index.tsx", "index.js", "index.jsx"):
-        candidate = resolved / index_name
-        if candidate in candidate_set:
-            return candidate
-
-    if resolved in candidate_set:
-        return resolved
-
-    return None
-
-
-_JSONC_LINE_COMMENT_RE = re.compile(r"//.*$", re.MULTILINE)
-_JSONC_BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
-_TRAILING_COMMA_RE = re.compile(r",\s*([}\]])")
-
-_REEXPORT_SOURCE_RE = re.compile(
-    r"export\s*(?:\*|\{[^}]*\})\s*from\s*['\"]([^'\"]+)['\"]",
-    re.MULTILINE,
-)
-
-_MAX_EXTENDS_DEPTH = 5
 _REEXPORT_MAX_DEPTH = 2
 _DISCOVERY_MAX_DEPTH = 2
-
-
-def _strip_jsonc_comments(text: str) -> str:
-    text = _JSONC_BLOCK_COMMENT_RE.sub("", text)
-    text = _JSONC_LINE_COMMENT_RE.sub("", text)
-    text = _TRAILING_COMMA_RE.sub(r"\1", text)
-    return text
-
-
-def _resolve_absolute_import(
-    resolved_path: Path,
-    candidate_set: set[Path],
-) -> Path | None:
-    for ext in (".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"):
-        candidate = resolved_path.parent / (resolved_path.name + ext)
-        if candidate in candidate_set:
-            return candidate
-
-    for index_name in ("index.ts", "index.tsx", "index.js", "index.jsx"):
-        candidate = resolved_path / index_name
-        if candidate in candidate_set:
-            return candidate
-
-    if resolved_path in candidate_set:
-        return resolved_path
-
-    return None
-
-
-class _TsconfigResolver:
-    def __init__(self, repo_root: Path):
-        self._repo_root = repo_root
-        self._config_cache: dict[Path, dict[str, object] | None] = {}
-
-    def resolve(
-        self,
-        import_source: str,
-        source_file: Path,
-        candidate_set: set[Path],
-    ) -> Path | None:
-        config = self._find_config(source_file)
-        if not config:
-            return None
-
-        paths = config.get("paths")
-        if not isinstance(paths, dict) or not paths:
-            return None
-
-        base = self._resolve_base_dir(config)
-        return self._match_path_patterns(paths, import_source, base, candidate_set)
-
-    def _resolve_base_dir(self, config: dict[str, object]) -> Path:
-        base_url = config.get("baseUrl", ".")
-        config_dir = config.get("_config_dir", self._repo_root)
-        if not isinstance(config_dir, Path):
-            config_dir = Path(str(config_dir))
-        if not isinstance(base_url, str):
-            base_url = "."
-        return config_dir / base_url
-
-    @staticmethod
-    def _match_path_patterns(
-        paths: dict[str, object],
-        import_source: str,
-        base: Path,
-        candidate_set: set[Path],
-    ) -> Path | None:
-        for pattern, targets in paths.items():
-            if not isinstance(targets, list):
-                continue
-            prefix = pattern.replace("*", "")
-            if not import_source.startswith(prefix):
-                continue
-            suffix = import_source[len(prefix) :]
-            for target in targets:
-                if not isinstance(target, str):
-                    continue
-                resolved_path = (base / target.replace("*", suffix)).resolve()
-                result = _resolve_absolute_import(resolved_path, candidate_set)
-                if result is not None:
-                    return result
-        return None
-
-    def _find_config(self, source_file: Path) -> dict[str, object] | None:
-        current = source_file.parent
-        while True:
-            if current in self._config_cache:
-                return self._config_cache[current]
-
-            tsconfig_path = current / "tsconfig.json"
-            if tsconfig_path.is_file():
-                config = self._load_config(tsconfig_path, 0)
-                self._config_cache[current] = config
-                return config
-
-            if current == self._repo_root or current == current.parent:
-                self._config_cache[current] = None
-                return None
-            current = current.parent
-
-    def _load_config(self, config_path: Path, depth: int) -> dict[str, object] | None:
-        if depth >= _MAX_EXTENDS_DEPTH:
-            return None
-        try:
-            raw = config_path.read_text(encoding="utf-8")
-            data = json.loads(_strip_jsonc_comments(raw))
-        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
-            return None
-
-        if not isinstance(data, dict):
-            return None
-
-        extends = data.get("extends")
-        parent_opts: dict[str, object] = {}
-        if isinstance(extends, str):
-            parent_path = self._resolve_extends_path(extends, config_path)
-            if parent_path and parent_path.is_file():
-                parent_config = self._load_config(parent_path, depth + 1)
-                if parent_config:
-                    parent_opts = dict(parent_config)
-
-        compiler_opts = data.get("compilerOptions", {})
-        if not isinstance(compiler_opts, dict):
-            compiler_opts = {}
-
-        parent_compiler = parent_opts.get("compilerOptions", {})
-        if not isinstance(parent_compiler, dict):
-            parent_compiler = {}
-
-        merged_compiler = {**parent_compiler, **compiler_opts}
-
-        result: dict[str, object] = {}
-        if "paths" in merged_compiler:
-            result["paths"] = merged_compiler["paths"]
-        if "baseUrl" in merged_compiler:
-            result["baseUrl"] = merged_compiler["baseUrl"]
-        result["_config_dir"] = config_path.parent
-
-        return result
-
-    @staticmethod
-    def _resolve_extends_path(extends: str, config_path: Path) -> Path | None:
-        if extends.startswith("."):
-            parent_path = (config_path.parent / extends).resolve()
-            if not parent_path.suffix:
-                parent_path = parent_path.with_suffix(_JSON_EXT)
-            return parent_path
-        node_modules = config_path.parent / "node_modules" / extends
-        if node_modules.is_file():
-            return node_modules
-        if node_modules.with_suffix(_JSON_EXT).is_file():
-            return node_modules.with_suffix(_JSON_EXT)
-        return None
 
 
 class JavaScriptEdgeBuilder(EdgeBuilder):
@@ -465,7 +173,7 @@ class JavaScriptEdgeBuilder(EdgeBuilder):
                 edges, f.id, info, name_to_defs, w.call, w.symbol_ref, w.type_ref, self.reverse_weight_factor, self_defs
             )
 
-        tsconfig_resolver = _TsconfigResolver(repo_root) if repo_root else None
+        tsconfig_resolver = TsconfigResolver(repo_root) if repo_root else None
         self._add_import_edges(js_frags, info_cache, edges, tsconfig_resolver)
         return edges
 
@@ -492,7 +200,7 @@ class JavaScriptEdgeBuilder(EdgeBuilder):
         js_frags: list[Fragment],
         info_cache: dict[FragmentId, JsFragmentInfo],
         edges: EdgeDict,
-        tsconfig_resolver: _TsconfigResolver | None = None,
+        tsconfig_resolver: TsconfigResolver | None = None,
     ) -> None:
         file_to_frags: dict[Path, list[FragmentId]] = defaultdict(list)
         for f in js_frags:
@@ -515,7 +223,7 @@ class JavaScriptEdgeBuilder(EdgeBuilder):
     def _collect_imports(
         js_frags: list[Fragment],
         info_cache: dict[FragmentId, JsFragmentInfo],
-        tsconfig_resolver: _TsconfigResolver | None,
+        tsconfig_resolver: TsconfigResolver | None,
         candidate_set: set[Path],
     ) -> tuple[dict[Path, set[str]], dict[Path, set[Path]]]:
         file_imports: dict[Path, set[str]] = defaultdict(set)
@@ -610,7 +318,7 @@ class JavaScriptEdgeBuilder(EdgeBuilder):
         repo_root: Path | None = None,
     ) -> list[Path]:
         candidate_set = set(all_candidate_files)
-        tsconfig_resolver = _TsconfigResolver(repo_root) if repo_root else None
+        tsconfig_resolver = TsconfigResolver(repo_root) if repo_root else None
         discovered: list[Path] = []
         for f in js_changed:
             try:

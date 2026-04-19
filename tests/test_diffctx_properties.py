@@ -6,8 +6,8 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
-from tests.conftest import GARBAGE_FILES, GARBAGE_MARKERS
 from tests.framework.pygit2_backend import Pygit2Repo
+from tests.garbage_data import GARBAGE_FILES, GARBAGE_MARKERS
 from treemapper.diffctx import build_diff_context
 from treemapper.tokens import count_tokens
 

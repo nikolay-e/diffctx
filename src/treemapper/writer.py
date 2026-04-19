@@ -17,8 +17,7 @@ logger = logging.getLogger(__name__)
 
 _YAML_PROBLEMATIC_RE = re.compile(r"[\r\x00\x85\u2028\u2029]")
 
-_YAML_STRING_ESCAPE_PATTERN = re.compile(r'[\\"\n\r\x00\x08\x0c\x85\u2028\u2029]')
-_YAML_STRING_ESCAPE_MAP = {
+_YAML_BASE_ESCAPE_MAP = {
     "\\": "\\\\",
     '"': '\\"',
     "\n": "\\n",
@@ -30,21 +29,11 @@ _YAML_STRING_ESCAPE_MAP = {
     "\u2028": "\\u2028",
     "\u2029": "\\u2029",
 }
+_YAML_STRING_ESCAPE_MAP = dict(_YAML_BASE_ESCAPE_MAP)
+_YAML_CONTENT_ESCAPE_MAP = {**_YAML_BASE_ESCAPE_MAP, "\t": "\\t"}
 
-_YAML_CONTENT_ESCAPE_PATTERN = re.compile(r'[\\"\n\t\r\x00\x08\x0c\x85\u2028\u2029]')
-_YAML_CONTENT_ESCAPE_MAP = {
-    "\\": "\\\\",
-    '"': '\\"',
-    "\n": "\\n",
-    "\t": "\\t",
-    "\r": "\\r",
-    "\x00": "\\0",
-    "\x08": "\\b",
-    "\x0c": "\\f",
-    "\x85": "\\x85",
-    "\u2028": "\\u2028",
-    "\u2029": "\\u2029",
-}
+_YAML_STRING_ESCAPE_PATTERN = re.compile("[" + re.escape("".join(_YAML_STRING_ESCAPE_MAP)) + "]")
+_YAML_CONTENT_ESCAPE_PATTERN = re.compile("[" + re.escape("".join(_YAML_CONTENT_ESCAPE_MAP)) + "]")
 
 _BACKTICK_RUN_PATTERN = re.compile(r"`+")
 _MD_SPECIAL_CHARS = re.compile(r"([\\`*_\[\]()#>+\-~|{}!])")

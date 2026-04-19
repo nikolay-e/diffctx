@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 from collections import defaultdict
 from pathlib import Path
@@ -7,6 +8,8 @@ from pathlib import Path
 from ...config.weights import EDGE_WEIGHTS
 from ...types import Fragment, FragmentId
 from ..base import EdgeBuilder, EdgeDict
+
+logger = logging.getLogger(__name__)
 
 _SQL_EXTS = {".sql"}
 
@@ -271,6 +274,7 @@ class SqlEdgeBuilder(EdgeBuilder):
                 tables.update(_extract_view_definitions(content))
                 tables.update(_extract_table_references(content))
             except (OSError, UnicodeDecodeError):
+                logger.debug("skipping unreadable file: %s", f)
                 continue
         return tables
 
@@ -295,6 +299,7 @@ class SqlEdgeBuilder(EdgeBuilder):
                     if any(t in content_lower for t in target_lower if len(t) >= 3):
                         discovered.append(candidate)
             except (OSError, UnicodeDecodeError):
+                logger.debug("skipping unreadable file: %s", candidate)
                 continue
         return discovered
 
