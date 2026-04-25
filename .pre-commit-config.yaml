@@ -251,6 +251,43 @@ repos:
         files: \.(md|markdown)$
 
   # ============================================================================
+  # RUST QUALITY (fmt, clippy, test, audit)
+  # ============================================================================
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt (Rust formatting)
+        language: system
+        entry: bash -c 'cd diffctx && cargo fmt -- --check'
+        pass_filenames: false
+        files: ^diffctx/.*\.rs$
+        types: [file]
+
+      - id: cargo-clippy
+        name: cargo clippy (Rust linting)
+        language: system
+        entry: bash -c 'cd diffctx && cargo clippy --release --lib 2>&1 | tail -5'
+        pass_filenames: false
+        files: ^diffctx/
+        types: [file]
+
+      - id: cargo-test
+        name: cargo test (Rust unit tests)
+        language: system
+        entry: bash -c 'cd diffctx && cargo test --release'
+        pass_filenames: false
+        files: ^diffctx/.*\.rs$
+        types: [file]
+
+      - id: cargo-audit
+        name: cargo audit (dependency vulnerabilities)
+        language: system
+        entry: bash -c 'command -v cargo-audit >/dev/null 2>&1 && cd diffctx && cargo audit || true'
+        pass_filenames: false
+        files: ^diffctx/Cargo\.(toml|lock)$
+        types: [file]
+
+  # ============================================================================
   # COMMIT MESSAGE QUALITY
   # ============================================================================
   - repo: https://github.com/commitizen-tools/commitizen

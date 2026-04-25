@@ -4,7 +4,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-from ..config.extensions import CODE_EXTENSIONS
+from ..config import CODE_EXTENSIONS
 from ..types import Fragment, FragmentId, extract_identifiers
 
 _MIN_FRAGMENT_LINES = 1

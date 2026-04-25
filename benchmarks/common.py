@@ -229,8 +229,20 @@ def save_results(results: list, tag: str, output_dir: Path = RESULTS_DIR, **meta
     return path
 
 
+_worker_index_counter = 0
+_worker_index_lock = __import__("threading").Lock()
+_pid_to_worker_index: dict[int, int] = {}
+
+
 def worker_dir(base: Path) -> Path:
-    d = base / f"w{os.getpid()}"
+    global _worker_index_counter
+    pid = os.getpid()
+    with _worker_index_lock:
+        if pid not in _pid_to_worker_index:
+            _pid_to_worker_index[pid] = _worker_index_counter
+            _worker_index_counter += 1
+    idx = _pid_to_worker_index[pid]
+    d = base / f"w{idx}"
     d.mkdir(exist_ok=True)
     return d
 

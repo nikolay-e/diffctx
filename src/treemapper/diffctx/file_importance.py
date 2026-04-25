@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .config.limits import UTILITY
 from .fragmentation import _GENERATED_PATH_SEGMENTS
 from .types import Fragment
+
+_PERIPHERAL_CAP = 0.15
 
 _PERIPHERAL_DIRS = frozenset(
     {
@@ -72,7 +73,7 @@ def compute_file_importance(
 ) -> dict[Path, float]:
     all_paths = {f.path for f in fragments}
     importance: dict[Path, float] = {}
-    peripheral_cap = UTILITY.peripheral_cap
+    peripheral_cap = _PERIPHERAL_CAP
 
     for path in all_paths:
         if _is_generated_path(path):

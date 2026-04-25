@@ -169,14 +169,11 @@ def run_baseline_bm25(repo_dir: Path, budget: int = 8000) -> dict | None:
 
 
 def _get_diffctx_config() -> dict:
-    from treemapper.diffctx.config.limits import UTILITY as _UTILITY
-    from treemapper.diffctx.filtering import _LOW_RELEVANCE_THRESHOLD, _MAX_CONTEXT_FRAGMENTS_PER_FILE
-
     return {
-        "low_relevance_threshold": _LOW_RELEVANCE_THRESHOLD,
-        "proximity_decay": _UTILITY.proximity_decay,
-        "peripheral_cap": _UTILITY.peripheral_cap,
-        "max_context_frags_per_file": _MAX_CONTEXT_FRAGMENTS_PER_FILE,
+        "low_relevance_threshold": 0.015,
+        "proximity_decay": 0.30,
+        "peripheral_cap": 0.15,
+        "max_context_frags_per_file": 30,
     }
 
 
@@ -452,9 +449,7 @@ def _print_cross_seed_summary(all_seed_results: dict[int, list[dict]]) -> None:
 def main():
     import argparse
 
-    from treemapper.diffctx.filtering import _LOW_RELEVANCE_THRESHOLD
-
-    print(f"diffctx _LOW_RELEVANCE_THRESHOLD = {_LOW_RELEVANCE_THRESHOLD}", file=sys.stderr)
+    print("diffctx backend: Rust (_diffctx)", file=sys.stderr)
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=3)
@@ -515,7 +510,11 @@ def main():
         else:
             tag = f"cb_{args.scoring}_n{args.limit}_b{args.budget}_s{seed}"
         if args.baseline != "treemapper":
-            tag = f"cb_baseline_{args.baseline}" if len(seeds) == 1 else f"cb_baseline_{args.baseline}_s{seed}"
+            tag = (
+                f"cb_{args.baseline}_n{args.limit}_b{args.budget}"
+                if len(seeds) == 1
+                else f"cb_{args.baseline}_n{args.limit}_b{args.budget}_s{seed}"
+            )
         save_results(results, tag, seed=seed, budget=args.budget, scoring=args.scoring, baseline=args.baseline)
 
         all_seed_results[seed] = results

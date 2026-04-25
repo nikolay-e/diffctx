@@ -10,9 +10,6 @@ import networkx as nx
 import numpy as np
 
 from .config import LIMITS
-from .edges import collect_all_edges
-from .edges.similarity.lexical import clamp_lexical_weight
-from .embeddings import _build_embedding_edges
 from .types import Fragment, FragmentId
 
 logger = logging.getLogger(__name__)
@@ -199,6 +196,10 @@ def _populate_graph(graph: Graph, all_edges: dict[tuple[FragmentId, FragmentId],
 
 
 def build_graph(fragments: list[Fragment], repo_root: Path | None = None) -> Graph:
+    from .edges import collect_all_edges
+    from .edges.similarity.lexical import clamp_lexical_weight
+    from .embeddings import _build_embedding_edges
+
     graph = Graph()
     for frag in fragments:
         graph.add_node(frag.id)

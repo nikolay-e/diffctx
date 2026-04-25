@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from .diffctx import ProjectGraph, build_diff_context, build_project_graph
+from .diffctx import build_diff_context, build_project_graph
 from .ignore import get_ignore_specs, get_whitelist_spec
 from .tree import TreeBuildContext, build_tree
 from .version import __version__
@@ -14,7 +14,6 @@ from .writer import write_tree_json, write_tree_markdown, write_tree_text, write
 logging.getLogger("treemapper").addHandler(logging.NullHandler())
 
 __all__ = [
-    "ProjectGraph",
     "__version__",
     "build_diff_context",
     "build_project_graph",
