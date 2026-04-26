@@ -1178,11 +1178,12 @@ fn create_and_append_fragment(
         Some(s) => s,
         None => return false,
     };
+    let identifiers = extract_identifiers(&snippet, 2);
     fragments.push(Fragment {
         id: FragmentId::new(Arc::clone(path), start, end),
         kind: FragmentKind::from_str(kind),
-        content: snippet.clone(),
-        identifiers: extract_identifiers(&snippet, 2),
+        content: Arc::from(snippet),
+        identifiers,
         token_count: 0,
         symbol_name: sym_name.map(|s| s.to_string()),
     });
@@ -1318,11 +1319,12 @@ fn try_container_split(
     }
     let header_end = first_child_start - 1;
     if let Some(snippet) = create_snippet(lines, start, header_end) {
+        let identifiers = extract_identifiers(&snippet, 2);
         fragments.push(Fragment {
             id: FragmentId::new(Arc::clone(path), start, header_end),
             kind: FragmentKind::from_str(kind),
-            content: snippet.clone(),
-            identifiers: extract_identifiers(&snippet, 2),
+            content: Arc::from(snippet),
+            identifiers,
             token_count: 0,
             symbol_name: sym_name.map(|s| s.to_string()),
         });

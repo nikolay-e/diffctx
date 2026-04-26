@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::sync::Arc;
 
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
@@ -18,12 +19,16 @@ pub struct PyFragment {
     pub kind: String,
     #[pyo3(get)]
     pub symbol: Option<String>,
-    #[pyo3(get)]
-    pub content: Option<String>,
+    pub content: Option<Arc<str>>,
 }
 
 #[pymethods]
 impl PyFragment {
+    #[getter]
+    fn content(&self) -> Option<&str> {
+        self.content.as_deref()
+    }
+
     fn to_dict<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         let dict = PyDict::new(py);
         dict.set_item("path", &self.path)?;
@@ -33,7 +38,7 @@ impl PyFragment {
             dict.set_item("symbol", s)?;
         }
         if let Some(ref c) = self.content {
-            dict.set_item("content", c)?;
+            dict.set_item("content", c.as_ref())?;
         }
         Ok(dict)
     }
@@ -294,7 +299,7 @@ fn build_diff_context<'py>(
             frag_dict.set_item("symbol", s)?;
         }
         if let Some(ref c) = entry.content {
-            frag_dict.set_item("content", c)?;
+            frag_dict.set_item("content", c.as_ref())?;
         }
         frag_list.append(frag_dict)?;
     }
@@ -302,20 +307,14 @@ fn build_diff_context<'py>(
 
     let latency = PyDict::new(py);
     if let Some(ref lb) = output.latency {
-        latency.set_item(
-            "fragmentation_ms",
-            (lb.fragmentation_ms * 10.0).round() / 10.0,
-        )?;
-        latency.set_item("discovery_ms", (lb.discovery_ms * 10.0).round() / 10.0)?;
-        latency.set_item(
-            "tokenization_ms",
-            (lb.tokenization_ms * 10.0).round() / 10.0,
-        )?;
-        latency.set_item(
-            "scoring_selection_ms",
-            (lb.scoring_selection_ms * 10.0).round() / 10.0,
-        )?;
-        latency.set_item("total_ms", (lb.total_ms * 10.0).round() / 10.0)?;
+        let r = |v: f64| (v * 10.0).round() / 10.0;
+        latency.set_item("parse_changed_ms", r(lb.parse_changed_ms))?;
+        latency.set_item("universe_walk_ms", r(lb.universe_walk_ms))?;
+        latency.set_item("discovery_ms", r(lb.discovery_ms))?;
+        latency.set_item("parse_discovered_ms", r(lb.parse_discovered_ms))?;
+        latency.set_item("tokenization_ms", r(lb.tokenization_ms))?;
+        latency.set_item("scoring_selection_ms", r(lb.scoring_selection_ms))?;
+        latency.set_item("total_ms", r(lb.total_ms))?;
     } else {
         latency.set_item("total_ms", (total_ms * 10.0).round() / 10.0)?;
     }

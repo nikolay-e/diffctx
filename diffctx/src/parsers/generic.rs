@@ -33,12 +33,13 @@ impl FragmentationStrategy for GenericStrategy {
             if !snippet.ends_with('\n') {
                 snippet.push('\n');
             }
+            let identifiers = extract_identifiers(&snippet, 2);
 
             fragments.push(Fragment {
                 id: FragmentId::new(Arc::clone(&path), start_line, end_line),
                 kind: FragmentKind::Chunk,
-                content: snippet.clone(),
-                identifiers: extract_identifiers(&snippet, 2),
+                content: Arc::from(snippet),
+                identifiers,
                 token_count: 0,
                 symbol_name: None,
             });

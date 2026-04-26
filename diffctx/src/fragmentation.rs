@@ -148,11 +148,12 @@ fn truncate_generated_fragments(file_frags: Vec<Fragment>) -> Vec<Fragment> {
                 remaining
             );
             let new_end = frag.start_line() + max_lines - 1;
+            let identifiers = extract_identifiers(&truncated_content, 2);
             Fragment {
                 id: FragmentId::new(frag.id.path.clone(), frag.start_line(), new_end),
                 kind: frag.kind,
-                content: truncated_content.clone(),
-                identifiers: extract_identifiers(&truncated_content, 2),
+                content: Arc::from(truncated_content),
+                identifiers,
                 token_count: 0,
                 symbol_name: frag.symbol_name,
             }
@@ -311,12 +312,13 @@ pub fn create_whole_file_fragment(
     let line_count = lines.len() as u32;
     let path_arc: Arc<str> = Arc::from(path.to_string_lossy().as_ref());
     let token_count = count_tokens(&content) + LIMITS.overhead_per_fragment;
+    let identifiers = extract_identifiers(&content, 2);
 
     Some(Fragment {
         id: FragmentId::new(path_arc, 1, line_count),
         kind: FragmentKind::Chunk,
-        content: content.clone(),
-        identifiers: extract_identifiers(&content, 2),
+        content: Arc::from(content),
+        identifiers,
         token_count,
         symbol_name: None,
     })

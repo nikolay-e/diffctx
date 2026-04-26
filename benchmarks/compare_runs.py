@@ -4,8 +4,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from common import load_results as _load_raw
-from stats import bootstrap_ci, paired_bootstrap_delta, wilcoxon_paired
+from benchmarks.common import load_results as _load_raw
+from benchmarks.stats import bootstrap_ci, paired_bootstrap_delta, wilcoxon_paired
 
 METRICS = [
     "file_recall",

@@ -8,9 +8,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from common import load_results
+from benchmarks.common import load_results
 
-BUDGETS = [2000, 4000, 8000]
+BUDGETS = [8000, 16000, 32000, 64000, 999999]
 MODES = ["hybrid", "ego", "ppr"]
 
 
@@ -23,7 +23,9 @@ def run_at_budget(budget: int, mode: str, limit: int) -> None:
     subprocess.run(
         [
             sys.executable,
-            "benchmarks/contextbench_diffctx.py",
+            "-m",
+            "benchmarks",
+            "cb",
             "--limit",
             str(limit),
             "--budget",

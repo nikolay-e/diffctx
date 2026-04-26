@@ -7,6 +7,7 @@ use crate::types::{Fragment, FragmentId};
 pub enum EdgeCategory {
     Semantic,
     Structural,
+    Sibling,
     Config,
     ConfigGeneric,
     Document,
@@ -21,6 +22,7 @@ impl EdgeCategory {
         match s {
             "semantic" => Self::Semantic,
             "structural" => Self::Structural,
+            "sibling" => Self::Sibling,
             "config" => Self::Config,
             "config_generic" => Self::ConfigGeneric,
             "document" => Self::Document,
@@ -73,6 +75,10 @@ impl Graph {
         if weight.is_nan() || weight.is_infinite() || weight <= 0.0 {
             return;
         }
+        debug_assert!(
+            self.csr_cache.is_none(),
+            "add_edge called after Graph was frozen"
+        );
 
         let fwd_nbrs = self.fwd.entry(src.clone()).or_default();
         let existing = fwd_nbrs.get(&dst).copied().unwrap_or(0.0);
@@ -83,25 +89,22 @@ impl Graph {
         rev_nbrs.insert(src, new_weight);
     }
 
-    pub fn neighbors(&self, node: &FragmentId) -> Option<&FxHashMap<FragmentId, f64>> {
-        self.fwd.get(node)
-    }
-
-    pub fn reverse_neighbors(&self, node: &FragmentId) -> Option<&FxHashMap<FragmentId, f64>> {
-        self.rev.get(node)
-    }
-
     pub fn node_count(&self) -> usize {
         self.nodes.len()
     }
 
     pub fn edge_count(&self) -> usize {
+        if let Some((fwd, _)) = &self.csr_cache {
+            return fwd.indices.len();
+        }
         self.fwd.values().map(|nbrs| nbrs.len()).sum()
     }
 
-    pub fn to_csr(&mut self) -> &(CsrGraph, CsrGraph) {
+    /// Convert the build-time hashmap representation into CSR and drop the hashmaps.
+    /// After freeze, fwd/rev are empty and all reads go through CSR.
+    pub fn freeze(&mut self) {
         if self.csr_cache.is_some() {
-            return self.csr_cache.as_ref().unwrap();
+            return;
         }
 
         let mut nodes: Vec<FragmentId> = self.nodes.iter().cloned().collect();
@@ -113,11 +116,63 @@ impl Graph {
             .map(|(i, n)| (n.clone(), i as u32))
             .collect();
 
-        let fwd_csr = build_csr(&self.fwd, &nodes, &node_to_idx);
-        let rev_csr = build_csr(&self.rev, &nodes, &node_to_idx);
+        let fwd = std::mem::take(&mut self.fwd);
+        let rev = std::mem::take(&mut self.rev);
+
+        let fwd_csr = build_csr_owned(fwd, &nodes, &node_to_idx);
+        let rev_csr = build_csr_owned(rev, &nodes, &node_to_idx);
 
         self.csr_cache = Some((fwd_csr, rev_csr));
+    }
+
+    pub fn to_csr(&mut self) -> &(CsrGraph, CsrGraph) {
+        self.freeze();
         self.csr_cache.as_ref().unwrap()
+    }
+
+    pub fn fwd_csr(&self) -> Option<&CsrGraph> {
+        self.csr_cache.as_ref().map(|(f, _)| f)
+    }
+
+    pub fn rev_csr(&self) -> Option<&CsrGraph> {
+        self.csr_cache.as_ref().map(|(_, r)| r)
+    }
+
+    /// Look up the weight of edge `src -> dst` in the forward CSR.
+    pub fn forward_edge_weight(&self, src: &FragmentId, dst: &FragmentId) -> Option<f64> {
+        let fwd = self.fwd_csr()?;
+        let src_idx = *fwd.node_to_idx.get(src)? as usize;
+        let dst_idx = *fwd.node_to_idx.get(dst)?;
+        let s = fwd.indptr[src_idx] as usize;
+        let e = fwd.indptr[src_idx + 1] as usize;
+        for k in s..e {
+            if fwd.indices[k] == dst_idx {
+                return Some(fwd.weights[k]);
+            }
+        }
+        None
+    }
+
+    /// Invoke `f(neighbor_id, weight)` for each forward neighbor of `node`.
+    pub fn for_each_forward_neighbor<F: FnMut(&FragmentId, f64)>(
+        &self,
+        node: &FragmentId,
+        mut f: F,
+    ) {
+        let fwd = match self.fwd_csr() {
+            Some(c) => c,
+            None => return,
+        };
+        let idx = match fwd.node_to_idx.get(node) {
+            Some(&i) => i as usize,
+            None => return,
+        };
+        let s = fwd.indptr[idx] as usize;
+        let e = fwd.indptr[idx + 1] as usize;
+        for k in s..e {
+            let dst_idx = fwd.indices[k] as usize;
+            f(&fwd.idx_to_node[dst_idx], fwd.weights[k]);
+        }
     }
 
     pub fn ego_graph(
@@ -125,82 +180,86 @@ impl Graph {
         seeds: &FxHashSet<FragmentId>,
         radius: usize,
     ) -> FxHashMap<FragmentId, f64> {
-        if self.nodes.is_empty() {
+        let (fwd, rev) = match &self.csr_cache {
+            Some(c) => c,
+            None => return FxHashMap::default(),
+        };
+        if fwd.n == 0 {
             return FxHashMap::default();
         }
 
-        let valid_seeds: Vec<&FragmentId> =
-            seeds.iter().filter(|s| self.nodes.contains(*s)).collect();
-
-        let per_seed: Vec<FxHashMap<FragmentId, f64>> = valid_seeds
-            .par_iter()
-            .map(|seed| {
-                let visited = self.bfs_from_seed(seed, radius);
-                let mut local: FxHashMap<FragmentId, f64> = FxHashMap::default();
-                for (node, dist) in visited {
-                    let hop_score = if dist > 0 {
-                        1.0 / (1 + dist) as f64
-                    } else {
-                        1.0
-                    };
-                    local.insert(node, hop_score);
-                }
-                local
-            })
+        let valid_seed_idxs: Vec<u32> = seeds
+            .iter()
+            .filter_map(|s| fwd.node_to_idx.get(s).copied())
             .collect();
 
-        let mut scores: FxHashMap<FragmentId, f64> = FxHashMap::default();
-        for local in per_seed {
-            for (node, hop_score) in local {
-                let entry = scores.entry(node).or_insert(0.0);
-                if hop_score > *entry {
-                    *entry = hop_score;
+        let per_seed: Vec<Vec<(u32, u32)>> = valid_seed_idxs
+            .par_iter()
+            .map(|&seed_idx| bfs_from_seed_csr(fwd, rev, seed_idx, radius))
+            .collect();
+
+        let mut best_dist: FxHashMap<u32, u32> = FxHashMap::default();
+        for visits in per_seed {
+            for (idx, dist) in visits {
+                let entry = best_dist.entry(idx).or_insert(u32::MAX);
+                if dist < *entry {
+                    *entry = dist;
                 }
             }
+        }
+
+        let mut scores: FxHashMap<FragmentId, f64> = FxHashMap::default();
+        for (idx, dist) in best_dist {
+            let hop_score = if dist > 0 {
+                1.0 / (1 + dist) as f64
+            } else {
+                1.0
+            };
+            scores.insert(fwd.idx_to_node[idx as usize].clone(), hop_score);
         }
 
         scores
     }
+}
 
-    fn bfs_from_seed(&self, seed: &FragmentId, radius: usize) -> FxHashMap<FragmentId, usize> {
-        let mut visited: FxHashMap<FragmentId, usize> = FxHashMap::default();
-        visited.insert(seed.clone(), 0);
-        let mut frontier: FxHashMap<FragmentId, usize> = FxHashMap::default();
-        frontier.insert(seed.clone(), 0);
+fn bfs_from_seed_csr(
+    fwd: &CsrGraph,
+    rev: &CsrGraph,
+    seed_idx: u32,
+    radius: usize,
+) -> Vec<(u32, u32)> {
+    let n = fwd.n;
+    let mut dist = vec![u32::MAX; n];
+    dist[seed_idx as usize] = 0;
+    let mut result: Vec<(u32, u32)> = vec![(seed_idx, 0)];
+    let mut frontier: Vec<u32> = vec![seed_idx];
 
-        for _step in 0..radius {
-            let mut next_frontier: FxHashMap<FragmentId, usize> = FxHashMap::default();
-            for (node, dist) in &frontier {
-                let new_dist = dist + 1;
-                Self::visit_adj(&self.fwd, node, new_dist, &mut visited, &mut next_frontier);
-                Self::visit_adj(&self.rev, node, new_dist, &mut visited, &mut next_frontier);
-            }
-            frontier = next_frontier;
-        }
-
-        visited
-    }
-
-    fn visit_adj(
-        adj: &FxHashMap<FragmentId, FxHashMap<FragmentId, f64>>,
-        node: &FragmentId,
-        new_dist: usize,
-        visited: &mut FxHashMap<FragmentId, usize>,
-        next_frontier: &mut FxHashMap<FragmentId, usize>,
-    ) {
-        if let Some(nbrs) = adj.get(node) {
-            for nbr in nbrs.keys() {
-                if !visited.contains_key(nbr) {
-                    visited.insert(nbr.clone(), new_dist);
-                    next_frontier.insert(nbr.clone(), new_dist);
+    for step in 0..radius {
+        let new_dist = (step + 1) as u32;
+        let mut next: Vec<u32> = Vec::new();
+        for &u in &frontier {
+            let ui = u as usize;
+            for csr in [fwd, rev] {
+                let s = csr.indptr[ui] as usize;
+                let e = csr.indptr[ui + 1] as usize;
+                for k in s..e {
+                    let v = csr.indices[k];
+                    if dist[v as usize] == u32::MAX {
+                        dist[v as usize] = new_dist;
+                        next.push(v);
+                        result.push((v, new_dist));
+                    }
                 }
             }
         }
+        frontier = next;
     }
+
+    result
 }
 
-fn build_csr(
-    adj: &FxHashMap<FragmentId, FxHashMap<FragmentId, f64>>,
+fn build_csr_owned(
+    adj: FxHashMap<FragmentId, FxHashMap<FragmentId, f64>>,
     nodes: &[FragmentId],
     node_to_idx: &FxHashMap<FragmentId, u32>,
 ) -> CsrGraph {
@@ -355,22 +414,19 @@ pub fn build_graph(
 
     apply_hub_suppression(&mut edges, &categories);
 
-    for ((src, dst), w) in &edges {
-        if *w > 0.0 {
+    for ((src, dst), w) in edges {
+        if w > 0.0 {
             graph
                 .fwd
                 .entry(src.clone())
                 .or_default()
-                .insert(dst.clone(), *w);
-            graph
-                .rev
-                .entry(dst.clone())
-                .or_default()
-                .insert(src.clone(), *w);
+                .insert(dst.clone(), w);
+            graph.rev.entry(dst).or_default().insert(src, w);
         }
     }
 
     graph.edge_categories = categories;
+    graph.freeze();
     graph
 }
 
@@ -383,6 +439,12 @@ mod tests {
         FragmentId::new(Arc::from(path), start, end)
     }
 
+    fn collect_forward(g: &Graph, node: &FragmentId) -> Vec<(FragmentId, f64)> {
+        let mut out = Vec::new();
+        g.for_each_forward_neighbor(node, |nbr, w| out.push((nbr.clone(), w)));
+        out
+    }
+
     #[test]
     fn add_edge_takes_max_weight() {
         let mut g = Graph::new();
@@ -393,9 +455,12 @@ mod tests {
         g.add_edge(a.clone(), b.clone(), 0.5);
         g.add_edge(a.clone(), b.clone(), 0.8);
         g.add_edge(a.clone(), b.clone(), 0.3);
+        g.freeze();
 
-        assert_eq!(g.neighbors(&a).unwrap()[&b], 0.8);
-        assert_eq!(g.reverse_neighbors(&b).unwrap()[&a], 0.8);
+        let fwd = collect_forward(&g, &a);
+        assert_eq!(fwd.len(), 1);
+        assert!((fwd[0].1 - 0.8).abs() < 1e-9);
+        assert_eq!(fwd[0].0, b);
     }
 
     #[test]
@@ -409,8 +474,9 @@ mod tests {
         g.add_edge(a.clone(), b.clone(), f64::INFINITY);
         g.add_edge(a.clone(), b.clone(), -1.0);
         g.add_edge(a.clone(), b.clone(), 0.0);
+        g.freeze();
 
-        assert!(g.neighbors(&a).is_none());
+        assert!(collect_forward(&g, &a).is_empty());
         assert_eq!(g.edge_count(), 0);
     }
 
@@ -443,6 +509,7 @@ mod tests {
         g.add_node(c.clone());
         g.add_edge(a.clone(), b.clone(), 1.0);
         g.add_edge(b.clone(), c.clone(), 1.0);
+        g.freeze();
 
         let mut seeds = FxHashSet::default();
         seeds.insert(a.clone());
@@ -455,7 +522,8 @@ mod tests {
 
     #[test]
     fn ego_graph_empty() {
-        let g = Graph::new();
+        let mut g = Graph::new();
+        g.freeze();
         let seeds = FxHashSet::default();
         let scores = g.ego_graph(&seeds, 2);
         assert!(scores.is_empty());

@@ -11,10 +11,8 @@ use crate::utility::scoring::{
     UtilityState, apply_fragment, compute_density, marginal_gain, utility_value,
 };
 
-const BASELINE_K_MAX: usize = 5;
 const CORE_BUDGET_FRACTION: f64 = 0.70;
 const SENTINEL_TOKEN_COUNT: u32 = 1_000_000_000;
-const BASELINE_SAMPLE_FRACTION: f64 = 0.1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SelectionReason {
@@ -163,10 +161,6 @@ fn drop_redundant_signatures(candidates: &[Fragment], budget: u32) -> Vec<Fragme
         })
         .cloned()
         .collect()
-}
-
-fn adaptive_baseline_k(n_candidates: usize) -> usize {
-    BASELINE_K_MAX.min((BASELINE_SAMPLE_FRACTION * n_candidates as f64).ceil() as usize)
 }
 
 fn compute_r_cap(
@@ -403,12 +397,10 @@ fn run_greedy_loop_heap(
     rel: &FxHashMap<FragmentId, f64>,
     needs: &[InformationNeed],
     tau: f64,
-    baseline_k: usize,
+    _initial_budget: u32,
 ) -> (usize, f64) {
-    let mut baseline_densities: Vec<f64> = Vec::new();
-    let mut threshold = 0.0;
-    let mut selections_for_baseline = 0;
     let mut current_version = 0u32;
+    let mut peak_density: f64 = 0.0;
 
     while !heap.is_empty() && state.remaining_budget > 0 {
         let (best_frag, best_density, new_version) = find_best_candidate_heap(
@@ -431,21 +423,9 @@ fn run_greedy_loop_heap(
             break;
         }
 
-        if selections_for_baseline < baseline_k {
-            baseline_densities.push(best_density);
-            selections_for_baseline += 1;
-            if selections_for_baseline == baseline_k && !baseline_densities.is_empty() {
-                let mut sorted = baseline_densities.clone();
-                sorted.sort_by(|a, b| a.total_cmp(b));
-                let mid = sorted.len() / 2;
-                let median = if sorted.len() % 2 == 0 {
-                    (sorted[mid - 1] + sorted[mid]) / 2.0
-                } else {
-                    sorted[mid]
-                };
-                threshold = tau * median;
-            }
-        } else if best_density < threshold {
+        if best_density > peak_density {
+            peak_density = best_density;
+        } else if peak_density > 0.0 && best_density < tau * peak_density {
             break;
         }
 
@@ -456,7 +436,8 @@ fn run_greedy_loop_heap(
         apply_fragment(&best_frag, rel_score, needs, &mut state.utility_state);
     }
 
-    (selections_for_baseline, threshold)
+    let threshold = tau * peak_density;
+    (state.selected.len(), threshold)
 }
 
 fn setup_and_select_core(
@@ -582,7 +563,6 @@ pub fn lazy_greedy_select(
         .collect();
     let candidates = drop_redundant_signatures(&candidates, state.remaining_budget);
 
-    let baseline_k = adaptive_baseline_k(candidates.len());
     let mut id_to_frag: FxHashMap<FragmentId, Fragment> = FxHashMap::default();
     let mut heap = build_initial_heap(
         &candidates,
@@ -592,14 +572,14 @@ pub fn lazy_greedy_select(
         &mut id_to_frag,
     );
 
-    let (selections_for_baseline, threshold) = run_greedy_loop_heap(
+    let (_, threshold) = run_greedy_loop_heap(
         &mut heap,
         &id_to_frag,
         &mut state,
         rel,
         needs,
         tau,
-        baseline_k,
+        budget_tokens,
     );
 
     let greedy_utility = utility_value(&state.utility_state);
@@ -640,7 +620,7 @@ pub fn lazy_greedy_select(
         SelectionReason::NoUtility
     } else if state.selected.is_empty() || state.selected.len() == base_selected.len() {
         SelectionReason::NoCandidates
-    } else if selections_for_baseline >= baseline_k && threshold > 0.0 && !heap.is_empty() {
+    } else if threshold > 0.0 && !heap.is_empty() {
         SelectionReason::StoppedByTau
     } else {
         SelectionReason::NoCandidates

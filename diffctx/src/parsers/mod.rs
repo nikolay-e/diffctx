@@ -119,11 +119,12 @@ fn create_code_gap_fragments(
             continue;
         }
         if let Some(snippet) = create_snippet(lines, start, end) {
+            let identifiers = crate::types::extract_identifiers(&snippet, 2);
             fragments.push(Fragment {
                 id: crate::types::FragmentId::new(Arc::clone(&path), start, end),
                 kind: crate::types::FragmentKind::Chunk,
-                content: snippet.clone(),
-                identifiers: crate::types::extract_identifiers(&snippet, 2),
+                content: Arc::from(snippet),
+                identifiers,
                 token_count: 0,
                 symbol_name: None,
             });

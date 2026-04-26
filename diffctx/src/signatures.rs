@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use rustc_hash::FxHashSet;
 
 use crate::types::{Fragment, FragmentId, FragmentKind};
@@ -107,7 +109,7 @@ pub fn generate_signature_variants(fragments: &[Fragment]) -> Vec<Fragment> {
         signatures.push(Fragment {
             id: sig_id,
             kind: signature_kind(frag.kind),
-            content: sig_content,
+            content: Arc::from(sig_content),
             identifiers: frag.identifiers.clone(),
             token_count: 0,
             symbol_name: frag.symbol_name.clone(),

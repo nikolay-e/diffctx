@@ -88,11 +88,12 @@ fn fragment_json(path: Arc<str>, content: &str) -> Vec<Fragment> {
             snippet.push('\n');
         }
 
+        let identifiers = extract_identifiers(&snippet, 2);
         fragments.push(Fragment {
             id: FragmentId::new(Arc::clone(&path), start_line, end_line),
             kind: FragmentKind::Chunk,
-            content: snippet.clone(),
-            identifiers: extract_identifiers(&snippet, 2),
+            content: Arc::from(snippet),
+            identifiers,
             token_count: 0,
             symbol_name: None,
         });
@@ -141,11 +142,12 @@ fn split_at_top_level_pattern(path: Arc<str>, content: &str, pattern: &Regex) ->
             snippet.push('\n');
         }
 
+        let identifiers = extract_identifiers(&snippet, 2);
         fragments.push(Fragment {
             id: FragmentId::new(Arc::clone(&path), start_line, end_line),
             kind: FragmentKind::Chunk,
-            content: snippet.clone(),
-            identifiers: extract_identifiers(&snippet, 2),
+            content: Arc::from(snippet),
+            identifiers,
             token_count: 0,
             symbol_name: None,
         });
@@ -176,11 +178,12 @@ fn make_single_fragment(path: Arc<str>, lines: &[&str]) -> Vec<Fragment> {
         snippet.push('\n');
     }
     let end_line = lines.len() as u32;
+    let identifiers = extract_identifiers(&snippet, 2);
     vec![Fragment {
         id: FragmentId::new(path, 1, end_line),
         kind: FragmentKind::Chunk,
-        content: snippet.clone(),
-        identifiers: extract_identifiers(&snippet, 2),
+        content: Arc::from(snippet),
+        identifiers,
         token_count: 0,
         symbol_name: None,
     }]

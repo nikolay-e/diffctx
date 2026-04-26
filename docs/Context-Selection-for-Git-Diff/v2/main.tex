@@ -1,0 +1,529 @@
+\documentclass[11pt, a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{dsfont}
+\providecommand{\mathbbm}[1]{\mathds{#1}}
+\newtheorem{theorem}{Theorem}
+\newtheorem{proposition}{Proposition}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage[margin=1in]{geometry}
+
+\title{Context-Selection for Git Diff: Budgeted Submodular Maximization on Code Dependency Graphs}
+
+\author{
+  Nikolay Eremeev \\
+  \texttt{nikolay.eremeev@outlook.com} \\
+  \texttt{https://github.com/nikolay-e/treemapper}
+}
+
+\date{January 2025}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Retrieving optimal context for Large Language Models to understand code changes is a critical challenge in automated software engineering. Current approaches rely on naive windowing or purely lexical retrieval, missing complex structural dependencies. We formalize diff-aware code context selection as \textbf{budgeted submodular maximization on a typed dependency graph}, providing constant-factor approximation guarantees through modified-greedy on submodular knapsack ($\frac{1}{2}(1-1/e)$); a Boltzmann-reweighted matroid reformulation recovers the classical $(1-1/e)$ bound when applicable. Two formal components ground the framework: (i) a partition matroid over multi-resolution fragments enforcing structural non-redundancy, and (ii) a pluggable relevance signal $\hat{w}(f, \Delta)$ instantiated via three families---Personalized PageRank, bounded ego-network expansion, and BM25 lexical retrieval---together with a hybrid combiner. We propose an evaluation methodology using dependency coverage recall and fault localization accuracy as behavioral proxies for the latent notion of ``understanding.''
+\end{abstract}
+
+\newpage
+\section{Introduction}
+
+Large Language Models have demonstrated remarkable capabilities in code understanding tasks, yet their effectiveness depends critically on the context provided within limited token budgets. When reviewing code changes, developers and AI systems alike must determine which surrounding code fragments are necessary to understand the implications of a diff. Too little context leads to misunderstanding; too much context wastes tokens and introduces noise.
+
+Current approaches to context selection suffer from fundamental limitations. Fixed-window methods (e.g., $\pm 10$ lines around changes) ignore semantic structure and miss distant dependencies. Whole-file inclusion is wasteful and scales poorly. Lexical retrieval (BM25, embeddings) can miss structural relationships that are often important for code comprehension~\cite{ko2006exploratory, robillard2004effective}. None provide principled stopping criteria or approximation guarantees.
+
+We address this gap by formalizing diff context selection as \textbf{budgeted submodular maximization} over Code Property Graphs. Our key insight is that ``understanding a change'' can be operationalized as covering explanatory concepts---definitions, call targets, type signatures, impacted tests---that propagate through structural dependencies with diminishing returns.
+
+\paragraph{Contributions.}
+\begin{enumerate}
+    \item A formal problem statement casting context selection as budgeted submodular maximization with constant-factor approximation guarantees: $\frac{1}{2}(1-1/e)$ via modified-greedy on submodular knapsack, and $(1-1/e)$ on a Boltzmann-reweighted matroid reformulation that folds the budget into the objective
+    \item A typed-edge dependency-graph framework with per-category extraction and treatment (e.g., hub-suppression exemption), generalizing flat code-graph approaches
+    \item A pluggable relevance-scoring abstraction $\hat{w}(f, \Delta)$ where multiple algorithms (Personalized PageRank, bounded ego-network expansion, BM25) instantiate the abstract signal under a single submodular framework
+    \item An evaluation methodology using behavioral proxies (dependency coverage, fault localization) when ground truth is unavailable
+    \item A reference implementation supporting 42 programming languages and configuration formats (Appendix~\ref{sec:impl-inventory})
+\end{enumerate}
+
+\newpage
+\section{Related Work}
+
+\paragraph{Program Dependence and Slicing.}
+Program slicing~\cite{weiser1984program} computes the subset of statements affecting a variable, forming the foundation for dependency-based code understanding. Program Dependence Graphs (PDGs)~\cite{ferrante1987program} and their interprocedural extensions~\cite{horwitz1990interprocedural} capture control and data dependencies, enabling precise impact analysis. Our work extends these ideas to context selection for LLMs, treating dependency graphs as the substrate for relevance propagation.
+
+\paragraph{Developer Navigation and Information Foraging.}
+Studies of how developers navigate code~\cite{ko2006exploratory, robillard2004effective} reveal that structural relationships (calls, definitions) dominate over lexical search. This informs our edge weighting scheme, prioritizing structural signals while retaining lexical features as fallback.
+
+\paragraph{Submodular Optimization.}
+Monotone submodular maximization admits efficient greedy approximations~\cite{nemhauser1978analysis}, with lazy evaluation~\cite{minoux1978accelerated} and stochastic variants~\cite{mirzasoleiman2015lazier} improving scalability. We apply this framework to context selection, modeling coverage of explanatory concepts as a submodular function.
+
+\paragraph{Retrieval for Code Understanding.}
+Recent work explores retrieval-augmented generation for code tasks, typically using embedding similarity or BM25 over code chunks. Our approach differs by grounding retrieval in explicit dependency structure rather than purely lexical or semantic similarity, and by providing a principled utility function for budget allocation.
+
+\paragraph{Repository-Level Context Tools.}
+Aider~\cite{aider2023repomap} proposes a related repository-mapping approach using Personalized PageRank over tree-sitter-extracted definition--reference graphs, with binary-search packing under a token budget. Our framework differs in three respects: (i) we formalize selection as budgeted submodular maximization with explicit $(1-1/e)$ guarantees rather than heuristic packing, (ii) we introduce a typed edge taxonomy with per-category treatment (e.g., hub-suppression exemption for semantic, structural, and test edges), and (iii) we treat scoring as a pluggable component, comparing PPR, ego-network expansion, and lexical baselines empirically. Sourcegraph Cody~\cite{hartman2024recsys} formalizes code retrieval as a multi-stage RecSys pipeline with complementary retrievers (keyword, embedding, graph), but does not commit to a formal optimization framework. RepoMapper~\cite{repomapper2024} replicates Aider's PageRank approach as an MCP server.
+
+\paragraph{Concurrent Work on Submodular Code Context.}
+Concurrent work by Arafat~\cite{arafat2025citation} explores submodular packing for citation-grounded comprehension on conversational queries over Python repositories, combining BM25, dense embeddings, and graph expansion via import relations; their evaluation reports completeness improvements over plain greedy via submodular packing. Our work differs in three concrete respects: (i) diff-aware setting with explicit core edit set $E_0$ and budget reservation, versus their conversational query setting; (ii) typed edge taxonomy with ten categories and per-category treatment, versus their flat graph; (iii) explicit matroid--knapsack analysis with temperature reweighting, versus their direct submodular maximization over a single retrieved candidate set. The two works are complementary and together support the broader case for submodular formulations in code context selection.
+
+\paragraph{Impact Analysis and Co-change.}
+ATHENA~\cite{athena2024} combines dependency graphs with transformer embeddings for impact analysis on bug-fix prediction; Ripple~\cite{ripple2026} extends this with LLM reasoning over evolutionary coupling. These works target predicting which files \emph{will be changed} given a seed, an adjacent task to context selection. DraCo~\cite{draco2024} replaces random walks with static dataflow analysis for retrieval, demonstrating that explicit structural reasoning can outperform learned propagation in code-specific settings. We share their structural emphasis but differ in objective (context for understanding rather than prediction of next change) and formal framework.
+
+\newpage
+\section{Problem Formulation}
+\label{sec:problem}
+
+\subsection{Inputs and Definitions}
+
+Given repository states $V_{\mathrm{before}}, V_{\mathrm{after}}$ with diff $\Delta = \mathrm{diff}(V_{\mathrm{before}} \to V_{\mathrm{after}})$, token budget $B$, and (during training/evaluation) an annotated golden set $G \subseteq F$ of fragments deemed relevant for understanding $\Delta$, we seek a fragment set $C^* \subseteq F$ that maximizes weighted recall against $G$---approximated at inference by a learned relevance predictor---subject to a partition matroid structure on $F$ and a token budget $\mathrm{cost}(C) \leq B$.
+
+\paragraph{Fragment Universe $F$.} The set of candidate fragments is defined as
+\begin{equation}
+F = \{(\mathrm{source}, \mathrm{start}, \mathrm{end})\},
+\end{equation}
+contiguous, syntactically or semantically delimited regions of the sources, each carrying a stable identity. The notion is domain-agnostic: in source code, fragments are named declarations and their bodies (functions, types, modules, constants, rules); in prose, sections, paragraphs, or list items; in structured data (YAML, JSON, XML), keyed entries and array elements; in logs, individual events. Extraction is deferred to a domain-specific parser (tree-sitter for code, structural splitter for markup, regex-delimited for unstructured text), with indentation- or whitespace-based fallback when parsing fails. Fragments may also exist at multiple granularities for the same underlying unit---e.g., a full function body and a signature-only abridgement, or a full section and its heading---which introduces structural redundancy handled below.
+
+\paragraph{Non-Redundancy via Partition Matroid $M = (F, \mathcal{I})$.} Fragments in $F$ may be mutually redundant: one may be nested inside another, multiple variants may exist at different granularities, or the same content may recur across documents. We define a pairwise redundancy relation $\sim$ on $F$ (overlapping ranges, alternative resolutions of the same unit, duplicated content) and take its transitive closure to obtain an equivalence relation, which partitions $F$ into classes $\mathcal{P} = \{P_u\}$. At most one representative per class may be selected:
+\begin{equation}
+\mathcal{I} = \{C \subseteq F : |C \cap P_u| \leq 1 \text{ for all } u\}
+\end{equation}
+This is a structural hard constraint, preserved exactly throughout selection. The full-vs-abridged split for code is one instance of $\mathcal{P}$ (singleton-pair classes by construction); range-overlap-induced equivalence for general text is another (chains of overlapping fragments collapsed under transitive closure). In implementation, overlap detection over fragment ranges with union-find suffices to enforce $\mathcal{I}$ without explicit matroid machinery.
+
+\paragraph{Cost Model (modular proxy).}
+\begin{equation}
+\mathrm{cost}(C) = \sum_{f \in C} |f|
+\end{equation}
+where $|f|$ denotes the size of fragment $f$ in consumer-appropriate units (tokens for LLM consumers, bytes for storage-bound channels, lines for human readers), and any per-fragment metadata cost (source identifiers, position markers, delimiters) is folded into $|f|$ at extraction time. This is a \emph{modular} approximation: the true assembled cost is bounded above by $\mathrm{cost}(C)$, with overlap deduplication across nested fragments and shared per-source headers acting as a free reduction at materialization time. Modeling these second-order savings would render $\mathrm{cost}$ submodular and complicate optimization without changing feasibility. For LLM consumers, practical budgets range from 5k to 15k tokens, bounded by context window limits and the ``lost in the middle'' effect~\cite{liu2023lost}.
+
+\paragraph{Knapsack Constraint.} The cost model induces a knapsack constraint independent of the matroid:
+\begin{equation}
+\mathcal{K} = \{C \subseteq F : \mathrm{cost}(C) \leq B\}
+\end{equation}
+
+\paragraph{Feasible Region.} The full feasible region is the intersection of matroid and knapsack:
+\begin{equation}
+\mathcal{F} = \mathcal{I} \cap \mathcal{K} = \{C \subseteq F : |C \cap P_u| \leq 1 \text{ for all } u, \text{ and } \mathrm{cost}(C) \leq B\}
+\end{equation}
+We separate $\mathcal{I}$ and $\mathcal{K}$ deliberately: the matroid is a hard structural constraint, while the knapsack is a numerical resource constraint. Submodular maximization under matroid alone admits $(1-1/e)$ via continuous greedy~\cite{calinescu2011maximizing}; under knapsack alone admits $(1-1/e)$ via modified greedy~\cite{sviridenko2004note,khuller1999budgeted}; under their intersection admits only $(1-1/e-\varepsilon)$ via continuous greedy with contention resolution~\cite{chekuri2014submodular}. We do not invoke that machinery directly; see the temperature-reweighted formulation below.
+
+\paragraph{Objective.} The objective takes the same algebraic form in both modes but with different sources for the per-fragment weight $w(f, \Delta) \geq 0$:
+\begin{equation}
+\max_{C \subseteq F} \; \mathcal{U}(C) = \sum_{e \in C} w(e, \Delta) \quad \text{s.t.} \quad C \in \mathcal{F}.
+\end{equation}
+\emph{Evaluation mode} (golden set $G$ available): $w(f) = \mathbbm{1}[f \in G] \cdot \omega_f$, so the sum collapses to weighted recall against $G$:
+\begin{equation}
+\mathcal{U}_{\mathrm{eval}}(C) = \sum_{e \in C \cap G} \omega_e.
+\end{equation}
+\emph{Inference mode} (no golden set): $w(f, \Delta) = \hat{w}(f, \Delta)$, a learned predictor of relevance trained to approximate the eval-mode signal.
+
+The optimization target $\mathcal{U}$ is a modular function in the primary instantiation; precision is controlled implicitly via the budget $B$, which bounds $|C|$. Asymmetric error cost---false negatives (missing a relevant fragment) degrade LLM understanding more severely than false positives---justifies the recall-centric formulation in both modes.
+
+\paragraph{Modular vs.\ Submodular Instantiations.} The framework supports both modular and submodular instantiations of $\mathcal{U}$ depending on how $w$ is constructed. When $w$ linearly weights fragments by relevance (the primary instantiation in this work), $\mathcal{U}$ is modular and density-greedy with the modified-greedy variant of Section~\ref{sec:greedy} provides $\frac{1}{2}(1-1/e)$ guarantees~\cite{khuller1999budgeted}. When $w$ aggregates concept coverage with a concave saturation (Section~\ref{sec:utility}), $\mathcal{U}$ becomes submodular and greedy on the Boltzmann-reweighted matroid form attains $(1-1/e)$~\cite{nemhauser1978analysis}. The optimization machinery is identical; only the guarantee statement and the precise objective differ.
+
+\paragraph{Pluggable Relevance Predictor.} We treat $\hat{w}(f, \Delta)$ as a pluggable component of the framework. In this work we instantiate it via three families: (i) \emph{Personalized PageRank} over a typed dependency graph (Section~\ref{sec:ppr}); (ii) \emph{bounded ego-network expansion} with depth-decayed weights (Section~\ref{sec:ego}); (iii) \emph{lexical similarity} via BM25 over fragment tokens (Section~\ref{sec:bm25}). A hybrid combiner adapts among these based on candidate-set characteristics (Section~\ref{sec:hybrid}). The submodular framework of this section is independent of which $\hat{w}$ is chosen; algorithmic guarantees apply uniformly to any non-negative scoring instantiation.
+
+\paragraph{Temperature-Reweighted Form.} To recover clean greedy guarantees on the matroid alone, we fold the budget into weights via Boltzmann reweighting:
+\begin{equation}
+\tilde{w}(f, \Delta) = w(f, \Delta) \cdot \exp(-\beta \cdot |f|)
+\label{eq:boltzmann}
+\end{equation}
+For an appropriately calibrated inverse temperature $\beta \geq 0$ (predicted per-instance from $(B, \Delta)$ to satisfy $\mathbb{E}[\mathrm{cost}(C^*)] \approx B$ on a validation corpus), the problem reduces to maximizing a modular function $\tilde{\mathcal{U}}(C) = \sum_{e \in C} \tilde{w}(e, \Delta)$ over the partition matroid $M$. The hard budget is enforced post-hoc by truncation.
+
+Two regimes apply guarantees to different operating points: \emph{(i) Boltzmann-reweighted matroid-only} — standard greedy attains the classical $(1-1/e)$ approximation~\cite{nemhauser1978analysis} on the modular $\tilde{\mathcal{U}}$ over the partition matroid; \emph{(ii) explicit knapsack with modified greedy} (Option B in Section~\ref{sec:greedy}) — a constant-factor approximation under direct knapsack constraint~\cite{khuller1999budgeted}. We do not invoke continuous-greedy machinery for the matroid+knapsack intersection; the temperature-reweighted formulation sidesteps the need.
+
+The parameter $\beta$ controls the expected cost: $\beta \to 0$ recovers pure relevance maximization (cost-blind); $\beta \to \infty$ collapses to cost minimization. This converts a matroid+knapsack problem (no clean guarantees) into a family of matroid problems parameterized by $\beta$, each solved optimally by greedy. We learn $\beta$ via a meta-level predictor $\beta = f_\theta(B, \Delta)$ trained to hit budget targets across diverse diffs (Section~\ref{sec:beta-calibration}).
+
+\paragraph{Core Edit Set $E_0 = E_{0,\mathrm{must}} \cup E_{0,\mathrm{opt}}$.} Constructed from diff $\Delta$: $E_{0,\mathrm{must}}$ contains literal diff hunks (mandatory; assigned $w \to \infty$ to force inclusion), and $E_{0,\mathrm{opt}}$ contains enclosing syntactic containers (functions/classes containing changes), treated as regular weighted candidates. Symbol-level context makes relevance propagation robust to line renumbering.
+
+\paragraph{Budget-Aware Core Selection.} A secondary knapsack reservation
+\begin{equation}
+\mathrm{cost}(C \cap E_0) \leq \beta_{\mathrm{core}} \cdot B, \quad \beta_{\mathrm{core}} \in [0.5, 0.7]
+\end{equation}
+ensures the greedy expansion phase retains working budget for relevance-propagated context. If $\mathrm{cost}(E_0) > \beta_{\mathrm{core}} \cdot B$, lowest-priority core fragments are downshifted to a more compact representative within their equivalence class $P_u$ (e.g., signature-only variant for code, heading-only for prose)---a legal swap inside the matroid---prioritized by relevance score. Without this constraint, large diffs consume the entire budget on core fragments and the optimization pipeline degenerates.
+
+\newpage
+\section{Methodology}
+
+\subsection{Instantiation: Typed Dependency Graph for Source Code}
+\label{sec:tdg}
+
+We now instantiate the framework of Section~\ref{sec:problem} for source code. Relevance weights $w(f, \Delta)$ are derived from a typed weighted graph $G = (\mathcal{V}, \mathcal{E}, w, \tau)$ where nodes $\mathcal{V}$ correspond to fragments in $F$, edges $\mathcal{E} \subseteq \mathcal{V} \times \mathcal{V}$ encode directed dependencies, $\tau : \mathcal{E} \to T$ assigns each edge a type from a fixed set $T$, and $w : \mathcal{E} \to \mathbb{R}_{\geq 0}$ assigns a per-type weight (Section~\ref{sec:weight-calibration}). Relevance is propagated by Personalized PageRank seeded at the diff (Section~\ref{sec:ppr}).
+
+\paragraph{Fragment Types.} Tree-sitter extraction yields 21 fragment kinds (Table~\ref{tab:fragment-types}), grouped by role: \emph{full semantic units} (function bodies, class/struct/interface/enum/impl/type/module/variable/property/record definitions and declarations), \emph{signature-only abridgements} of those (used as compact representatives in the partition matroid of Section~\ref{sec:problem}), and \emph{generic fallback} variants (\texttt{Section}, \texttt{Chunk}) for non-code text or files where parsing fails. Methods are encoded as \texttt{Function} fragments with the enclosing class providing context; only their signature variant (\texttt{MethodSignature}) is distinguished. Full units and their signature counterparts form the equivalence classes $P_u$ of the matroid: at most one resolution per unit is selected.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{ll}
+\toprule
+\textbf{Group} & \textbf{Variants} \\
+\midrule
+Full semantic units & \texttt{Function}, \texttt{Class}, \texttt{Struct}, \texttt{Interface}, \texttt{Enum}, \\
+                    & \texttt{Impl}, \texttt{Type}, \texttt{Module}, \texttt{Variable}, \texttt{Property}, \\
+                    & \texttt{Record}, \texttt{Declaration}, \texttt{Definition} \\
+Signature-only      & \texttt{FunctionSignature}, \texttt{MethodSignature}, \\
+                    & \texttt{ClassSignature}, \texttt{StructSignature}, \\
+                    & \texttt{InterfaceSignature}, \texttt{EnumSignature} \\
+Generic fallback    & \texttt{Section}, \texttt{Chunk} \\
+\bottomrule
+\end{tabular}
+\caption{Fragment kinds extracted by the implementation. Full units and their signature counterparts form partition-matroid equivalence classes; generic fallback variants are used when tree-sitter parsing is unavailable or for non-code text.}
+\label{tab:fragment-types}
+\end{table}
+
+\paragraph{Edge Categories.} The set $T$ comprises ten categories (Table~\ref{tab:edge-categories}): three core static-dependency categories (\texttt{Semantic}, \texttt{Structural}, \texttt{Similarity}); a \texttt{Sibling} category for file co-location (same-directory coupling); four extension categories that go beyond pure source-code dependencies (\texttt{Config}, \texttt{ConfigGeneric}, \texttt{Document}, \texttt{TestEdge}); the empirical \texttt{History} category mining co-change patterns from the git log~\cite{hassan2004predicting}; and a \texttt{Generic} fallback for unclassified relations. \texttt{Config} subsumes domain-specific infrastructure cross-references (Helm charts, Kubernetes manifests, Dockerfile/Compose dependencies, CI/CD pipeline links, build-system configs); these share the same learned weight per the per-category parameterization (Section~\ref{sec:weight-calibration}). \texttt{Semantic} subsumes call/import/type/symbol-reference edges, which are individually distinguished at extraction time but share a single learned weight. \texttt{TestEdge} carries direct ground-truth signal for relevance (failing tests after $\Delta$ point to impacted code). Three categories---\texttt{Semantic}, \texttt{Structural}, and \texttt{TestEdge}---are exempt from hub-suppression on the basis that their edges encode load-bearing structural and behavioral relationships that should not be dampened by node degree.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lp{8cm}}
+\toprule
+\textbf{Category} & \textbf{Description} \\
+\midrule
+\texttt{Semantic}      & Symbol references: function calls, identifier uses, type references, imports, Terraform module references. \\
+\texttt{Structural}    & AST containment (parent--child scope nesting). \\
+\texttt{Sibling}       & Files in the same directory (weak co-location coupling). \\
+\texttt{Similarity}    & Lexical/token overlap (TF-IDF on identifier tokens). \\
+\texttt{Config}        & Domain-specific infrastructure cross-references: Helm charts, Kubernetes manifests, Dockerfile/Compose dependencies, CI/CD pipelines, build-system configs (Bazel, CMake, etc.). \\
+\texttt{ConfigGeneric} & Generic YAML/JSON cross-references not covered by domain-specific extractors. \\
+\texttt{Document}      & Cross-references in documentation (markdown links, reference-style citations). \\
+\texttt{History}       & Co-change patterns mined from git history. \\
+\texttt{TestEdge}      & Test-to-code relationships. \\
+\texttt{Generic}       & Fallback for unclassified edges. \\
+\bottomrule
+\end{tabular}
+\caption{Edge categories in the typed dependency graph. Per-category weights $w_\tau$ are learned (Section~\ref{sec:weight-calibration}); cold-start prior orders structural over lexical.}
+\label{tab:edge-categories}
+\end{table}
+
+\paragraph{Symbol Resolution Caveat.} \texttt{Semantic} edges (call/import/type/symbol references) use AST queries and intra-scope lexical name matching as a heuristic approximation to data-flow analysis. True def-use chains require control-flow graph construction and reaching-definitions analysis, infeasible for incomplete or unparsable code in git working trees. Static resolution coverage is codebase-dependent and degrades with metaprogramming and dynamic dispatch (more severely in dynamic languages, less so in statically typed code with explicit annotations); quantifying resolution recall against runtime call graphs is left to empirical validation.
+
+\subsection{Relevance Scoring: A Pluggable Component}
+\label{sec:scoring}
+
+The submodular framework of Section~\ref{sec:problem} is agnostic to the choice of $\hat{w}(f, \Delta)$. We instantiate it via three families spanning the design space---global graph propagation, bounded local expansion, and pure lexical retrieval---together with an adaptive hybrid combiner. All four are first-class scoring modes in the implementation; per-category edge weights $w_\tau$ are calibrated independently for each (Section~\ref{sec:weight-calibration}). Empirical comparison is reported in Section~\ref{sec:eval}.
+
+\subsubsection{Personalized PageRank}
+\label{sec:ppr}
+
+We compute relevance scores via random walk with restart from core edits $E_0$:
+\begin{equation}
+    R_{\mathrm{PPR}}(v) = (1-\alpha) \cdot \delta(v \in E_0) + \alpha \cdot \sum_{(u \to v) \in \mathcal{E}} R_{\mathrm{PPR}}(u) \cdot \frac{w_{uv}}{\text{deg}_{\text{out}}(u)}
+\end{equation}
+where $\text{deg}_{\text{out}}(u) = \sum_{u \to x} w_{ux}$ is the weighted out-degree, ensuring outgoing transition probabilities sum to 1.
+
+The damping factor $\alpha \in [0.5, 0.65]$ controls locality. With continuation probability $\alpha$, walk length follows a geometric distribution with mean $1/(1-\alpha)$. For $\alpha = 0.6$, walks average $2.5$ steps before restarting. This provides sharper locality than web search ($\alpha = 0.85$, mean $\approx 6.7$), appropriate for the tighter dependency structure of code graphs. Convergence occurs when $\|R^{(t+1)} - R^{(t)}\|_1 < 10^{-4}$, typically within tens of iterations~\cite{lofgren2014fast}.
+
+\textbf{Locality interpretation:} In sparse code graphs with moderate branching, relevance decays approximately with graph distance, but the relationship is not strictly exponential on weighted directed graphs. Hub nodes with high in-degree can accumulate disproportionate mass regardless of semantic relevance, motivating the hub-suppression mechanism of Section~\ref{sec:tdg}.
+
+\subsubsection{Bounded Ego-Network Expansion}
+\label{sec:ego}
+
+Ego-network expansion computes relevance via depth-bounded BFS from the core edit set $E_0$, with weights decaying by hop distance:
+\begin{equation}
+R_{\mathrm{ego}}(v) = \sum_{u \in E_0} \mathbbm{1}[d_{\mathrm{hop}}(u,v) \leq L] \cdot \gamma^{d_{\mathrm{hop}}(u,v)} \cdot W_{\mathrm{path}}(u, v)
+\end{equation}
+where $L \in \{1, 2\}$ is the expansion radius, $\gamma \in (0, 1]$ is a per-hop decay factor, $d_{\mathrm{hop}}(u,v)$ is the number of edges in the shortest (by hop count) path from $u$ to $v$ in the typed graph, and
+\begin{equation}
+W_{\mathrm{path}}(u, v) = \max_{\pi \in \Pi_{\leq L}(u,v)} \prod_{(a,b) \in \pi} w_{ab}
+\end{equation}
+is the maximum, over all paths of length at most $L$, of the product of edge weights along the path. We use product aggregation along paths to model multiplicative attenuation: relevance through a chain of weak edges decays compoundingly, mirroring PPR's transition-probability semantics. Sum aggregation is an alternative; we report the product variant in evaluation.
+
+Unlike PPR, ego-expansion has no global stationary distribution: relevance is strictly local. This differs from PPR in two computational respects: (i) cost is $O(|E_0| \cdot \bar{d}^L)$ where $\bar{d}$ is average degree, typically faster than PPR's iterative convergence; (ii) hub nodes do not accumulate mass through long random walks, eliminating part of the motivation for hub-suppression on the scoring side.
+
+\textbf{Hypothesis on locality.} Files relevant to a code change tend to lie within a small graph radius of the seed edit; relevance signal beyond depth 2 is dominated by noise from utility hubs and broad-capture configuration files. PPR with high restart probability $\alpha \in [0.5, 0.65]$ effectively approximates EGO behavior, suggesting that for diff-aware context selection PPR's global formulation may be over-engineered relative to the structural reality. Section~\ref{sec:eval} tests this empirically.
+
+\subsubsection{Lexical Baseline (BM25)}
+\label{sec:bm25}
+
+BM25 scoring treats fragments as documents and the diff as a query, ranking purely on lexical overlap of identifier tokens:
+\begin{equation}
+R_{\mathrm{BM25}}(f) = \sum_{t \in q(\Delta)} \mathrm{IDF}(t) \cdot \frac{\mathrm{tf}(t, f) \cdot (k_1 + 1)}{\mathrm{tf}(t, f) + k_1 (1 - b + b \cdot |f| / \overline{|f|})}
+\end{equation}
+with standard parameters $k_1 = 2.5$, $b = 0.75$. The query $q(\Delta)$ is the set of identifiers extracted from $\Delta$. BM25 is the natural baseline: if structural reasoning provides no benefit, lexical retrieval should match graph-based methods. Reporting BM25 alongside graph methods is a methodological honesty check---without it, ``graph-based context selection'' is an unfalsifiable claim.
+
+\subsubsection{Hybrid Combiner}
+\label{sec:hybrid}
+
+The hybrid combiner adapts among PPR, EGO, and BM25 based on candidate-set characteristics. For small candidate sets ($n \leq 50$ files), PPR is run with a low-relevance filter; for larger sets, EGO at depth $2$ provides faster scoring with comparable quality, supplemented by BM25 top-1 to prevent purely lexical relevance from being lost:
+\begin{equation}
+R_{\mathrm{hybrid}}(v) = \begin{cases} R_{\mathrm{PPR}}(v) & |F_{\mathrm{cand}}| \leq 50 \\ R_{\mathrm{ego}}^{(L=2)}(v) + \lambda \cdot R_{\mathrm{BM25}}^{\mathrm{top-1}}(v) & |F_{\mathrm{cand}}| > 50 \end{cases}
+\end{equation}
+The threshold corresponds to the inflection point where PPR convergence cost exceeds EGO BFS cost on typical sparse code graphs (calibrated empirically). The threshold and supplement weight $\lambda$ are calibrated on validation. Hybrid is the production default; PPR/EGO/BM25 are accessible as explicit modes for ablation and analysis.
+
+\subsubsection{Discussion: What Each Mode Tests}
+\label{sec:scoring-discussion}
+
+The four scoring instantiations answer different questions in ablation:
+\begin{itemize}
+    \item \textbf{BM25} establishes a lexical baseline and tests whether structural reasoning is necessary at all.
+    \item \textbf{EGO} isolates the contribution of bounded local graph structure---``does the graph help, even just at depth 2?''
+    \item \textbf{PPR} tests whether global relevance propagation provides additional signal beyond local expansion.
+    \item \textbf{Hybrid} evaluates an adaptive combiner for production deployment.
+\end{itemize}
+A monotone ordering BM25 < EGO < PPR would validate the structural-relevance hypothesis with maximum strength; non-monotone results (e.g., EGO $\approx$ PPR) inform task-structure conclusions about the radius of relevance in code change. Section~\ref{sec:eval} reports the comparison.
+
+\subsection{Edge-Type Weight Calibration}
+\label{sec:weight-calibration}
+
+This is hyperparameter optimization over $|T|$ scalar parameters (ten in our instantiation, one per edge category), not learned per-edge weighting; richer parameterizations are deferred to future work. We parameterize edge weights by type: $w(e) = w_{\tau(e)}$ with $w_\tau \in \mathbb{R}_{\geq 0}^{|T|}$. Given a labeled corpus $\{(\Delta_i, G_i)\}_{i=1}^N$ of diffs paired with golden contexts, weights are calibrated by maximizing expected weighted recall on a held-out validation split:
+\begin{equation}
+w_\tau^* = \arg\max_{w_\tau \geq 0} \; \frac{1}{N} \sum_{i=1}^N \sum_{f \in C_i^*(w_\tau)} \mathbbm{1}[f \in G_i] \cdot \omega_f
+\end{equation}
+where $C_i^*(w_\tau)$ is the greedy solution under the active scoring algorithm $\hat{w} \in \{\mathrm{PPR}, \mathrm{EGO}, \mathrm{BM25}, \mathrm{Hybrid}\}$ with edge weights $w_\tau$. Calibration is performed independently for each scoring mode---PPR-tuned weights are not assumed optimal for EGO. Optimization uses grid search over a coarse simplex ($\sim 10^3$ evaluations for $|T| = 10$), or black-box methods (Bayesian optimization, CMA-ES) when more dimensions are added. In the absence of labeled data, structural priors $w_{\mathrm{semantic}} > w_{\mathrm{structural}} > w_{\mathrm{config}} > w_{\mathrm{similarity}} > w_{\mathrm{generic}}$ provide a reasonable cold-start ordering motivated by code-navigation studies~\cite{ko2006exploratory, robillard2004effective}.
+
+Richer parameterizations---learned per-edge weights $w(e) = \mathrm{MLP}(\mathrm{features}(e))$ over edge-context features---are deferred to future work, as they require labeled corpora larger than the $|T|$-scalar regime.
+
+\subsection{Temperature Calibration}
+\label{sec:beta-calibration}
+
+The Boltzmann reformulation reduces the matroid+knapsack problem to a family of matroid problems parameterized by $\beta$: $\beta \to 0$ recovers cost-blind relevance maximization, $\beta \to \infty$ collapses to cost minimization. We propose a meta-level instance-conditional predictor:
+\begin{equation}
+\beta = f_\theta(B, \phi(\Delta, G_{\mathrm{graph}}))
+\end{equation}
+where features $\phi$ include diff token cost, fragment count, candidate-set size, graph density, and core-edit cost share. The predictor $f_\theta$ would be trained to minimize $|\mathrm{cost}(C^*(\beta)) - B|$ on a validation corpus, with auxiliary recall floor against golden sets.
+
+In the present work we describe the mechanism and implement deterministic calibration; we do not learn $f_\theta$. The implementation selects $\beta$ per-instance via binary search over a logarithmic grid satisfying $|\mathrm{cost}(C^*(\beta)) - B| < \varepsilon$, which requires no training data. Replacement of binary search with a learned regression model is left to follow-up evaluation. Temperature calibration is the mechanism through which the matroid-only $(1-1/e)$ guarantee is recovered; the calibration mechanism affects budget targeting accuracy, not optimization theory.
+
+\subsection{Submodular Extension via Concept Coverage}
+\label{sec:utility}
+
+When concept annotations are available alongside the diff (e.g., labeled information needs $Z$ extracted from semantic analysis or human review), the modular weighted-recall objective generalizes to a submodular concept-coverage formulation. This extension trades modularity for the ability to model \emph{diminishing returns}: once a concept is well-covered by one fragment, additional fragments documenting the same concept add less value. The modular primary form is recovered as the special case $Z = G$, $\phi = \mathrm{id}$, $\mathrm{rel}(f, z) = \mathbbm{1}[f = z] \cdot \omega_z$, which collapses the coverage sum to weighted recall against golden fragments.
+
+The extension is defined by:
+\begin{equation}
+    U(C \mid \Delta) = \sum_{z \in Z} \phi\left(\max_{f \in C} \text{rel}(f, z)\right)
+\end{equation}
+where $\text{rel}(f, z) = R(f)$ if fragment $f$ contains/defines concept $z$, and $\phi: \mathbb{R}_{\geq 0} \to \mathbb{R}_{\geq 0}$ is a nondecreasing function (e.g., $\phi(x) = \sqrt{x}$ or $\phi(x) = \min(x, 1)$). Concave $\phi$ enforces saturation; identity $\phi$ recovers the modular case.
+
+\begin{theorem}
+Let $a_{f,z} \geq 0$ for all $f \in F, z \in Z$, and let $\phi: \mathbb{R}_{\geq 0} \to \mathbb{R}_{\geq 0}$ be nondecreasing. Then $U(C) = \sum_{z \in Z} \phi(\max_{f \in C} a_{f,z})$ is monotone submodular.
+\end{theorem}
+
+\begin{proof}
+Fix concept $z$ and define $g_z(C) = \phi(\max_{f \in C} a_{f,z})$. For $C \subseteq T$, let $m_C = \max_{f \in C} a_{f,z}$ and $m_T = \max_{f \in T} a_{f,z}$. By set inclusion, $m_C \leq m_T$.
+
+The marginal gain from adding fragment $v$ to $C$ is:
+\[
+\Delta_C(v) = \phi(\max(m_C, a_{v,z})) - \phi(m_C)
+\]
+
+\textbf{Case 1}: If $a_{v,z} \leq m_C$, then $\Delta_C(v) = 0$.
+
+\textbf{Case 2}: If $a_{v,z} > m_C$, then $\Delta_C(v) = \phi(a_{v,z}) - \phi(m_C)$.
+
+For $T \supseteq C$: If $a_{v,z} \leq m_T$, then $\Delta_T(v) = 0 \leq \Delta_C(v)$. If $a_{v,z} > m_T$, then since $m_T \geq m_C$ and $\phi$ is nondecreasing:
+\[
+\Delta_T(v) = \phi(a_{v,z}) - \phi(m_T) \leq \phi(a_{v,z}) - \phi(m_C) = \Delta_C(v)
+\]
+
+Thus $g_z$ is submodular. Since $U = \sum_z g_z$ with each $g_z \geq 0$, $U$ is submodular (nonnegative sums preserve submodularity).
+
+\textbf{Monotonicity}: Adding fragments can only increase $\max_{f \in C} a_{f,z}$, and $\phi$ nondecreasing implies $U(C \cup \{v\}) \geq U(C)$.
+\end{proof}
+
+Submodular extensions are compatible with the partition matroid but break the Boltzmann reweighting machinery, which assumes modularity for the post-hoc truncation argument. In submodular mode, optimization reverts to direct knapsack with modified-greedy (Section~\ref{sec:greedy}, Option B), yielding $\frac{1}{2}(1-1/e)$ rather than $(1-1/e)$. In our primary instantiation we use the modular weighted-recall objective; the submodular extension is reported in Section~\ref{sec:eval} as ablation.
+
+\paragraph{File-Importance Prior for Impact Needs.}
+\label{sec:importance}
+For impact-type needs we apply a per-fragment importance prior $I(f) \in (0, 1]$ to downweight peripheral code: $m'(f, n) = m(f, n) \cdot I(f)$ when $n.\mathrm{type} = \mathrm{impact}$. Three categories are distinguished by directory pattern: generated code ($I = 0.10$), peripheral directories such as \texttt{examples/}, \texttt{demo/}, \texttt{vendor/}, \texttt{fixtures/}, \texttt{docs/} ($I = 0.15$), and default code ($I = 1.0$). Values reflect domain priors---generated code is mechanically derived from a schema and carries no human-intent signal; peripheral directories are typically out of scope for production review---and are not calibrated to the benchmark; sensitivity to $\pm 25\%$ and $\pm 50\%$ perturbation is reported in the appendix. Submodularity is preserved since $I(f) \in (0, 1]$ is a per-fragment static scalar applied before the $\max$ aggregation in $\phi(\max_f \mathrm{rel}(f, z))$. Other need types (definition, signature, test, invariant, background) use unmodified $m(f, n)$ since they admit no analogous production-vs-peripheral distinction.
+
+\subsection{Greedy Selection with Adaptive Stopping}
+\label{sec:greedy}
+
+We employ a density-based greedy algorithm with lazy evaluation~\cite{minoux1978accelerated} for computational efficiency.
+
+\paragraph{Two regimes.} The greedy procedure operates in two regimes corresponding to how the budget is enforced.
+
+\textbf{Regime A (Boltzmann-reweighted, theoretical primary):} standard greedy on $\tilde{\mathcal{U}}(C) = \sum_e w(e) \exp(-\beta |e|)$ over the partition matroid attains $(1-1/e)$ via Nemhauser-Wolsey-Fisher~\cite{nemhauser1978analysis}; budget is enforced post-hoc by truncation. Applicable to modular $\mathcal{U}$.
+
+\textbf{Regime B (explicit knapsack, current implementation):} density-greedy on $\mathcal{U}$ with $\mathrm{cost}(C) \leq B$, with the modified-greedy variant (Option B below) providing $\frac{1}{2}(1-1/e)$~\cite{khuller1999budgeted, sviridenko2004note}. Used when $\mathcal{U}$ is genuinely submodular (Section~\ref{sec:utility}) and Boltzmann reweighting is inapplicable.
+
+Both regimes are implemented: Regime B is the default path operating on the submodular concept-coverage objective of Section~\ref{sec:utility}; Regime A is opt-in via a configuration flag, applying Boltzmann reweighting with binary-search $\beta$ calibration over the modular weighted-relevance objective. Comparison between the two regimes is reported in Section~\ref{sec:eval}.
+
+\paragraph{Approximation guarantees.} For monotone submodular maximization, the classical greedy algorithm achieves a $(1-1/e) \approx 0.632$ approximation under \textbf{cardinality constraints} ($|C| \leq k$)~\cite{nemhauser1978analysis}. Our problem uses a \textbf{knapsack constraint} ($\mathrm{cost}(C) \leq B$ with heterogeneous fragment costs), for which density-greedy does not admit the same guarantee. We therefore present two options:
+
+\textbf{Option A (Heuristic):} Use density-greedy as a practical heuristic without worst-case bounds. We hypothesize that performance on real code graphs may exceed 0.5 of optimal due to favorable structure, but this requires empirical validation.
+
+\textbf{Option B (Modified Greedy with Guarantee):} Return the better of (i) the density-greedy solution $C_{\text{greedy}}$ and (ii) the best single fragment fitting the budget:
+\[
+C_{\text{out}} = \arg\max\{U(C_{\text{greedy}}),\ \max_{f: |f| \leq B} U(\{f\})\}
+\]
+This standard modification provides a constant-factor approximation guarantee under knapsack constraints~\cite{khuller1999budgeted}. \textbf{Note}: this guarantee applies only to the variant \emph{without} adaptive stopping; the stopping heuristic is evaluated empirically.
+
+\begin{algorithm}
+\caption{Lazy Greedy Context Selection (Heuristic Version)}
+\begin{algorithmic}[1]
+\State Initialize $C \gets E_0$ (core edits; we assume $\mathrm{cost}(E_0) < B$)
+\State $Q \gets$ priority queue of candidates by marginal density
+\State $\text{baseline} \gets$ median density of first 5 selections
+\While{$\mathrm{cost}(C) < B$ and $Q \neq \emptyset$}
+    \State $f^* \gets$ pop highest-density candidate from $Q$
+    \If{$f^*$ evaluation is stale}
+        \State Recompute density, reinsert into $Q$
+        \State \textbf{continue}
+    \EndIf
+    \If{$\text{density}(f^*) < \tau \cdot \text{baseline}$}
+        \State \textbf{break} \Comment{Adaptive stopping (heuristic)}
+    \EndIf
+    \If{$\mathrm{cost}(C) + |f^*| \leq B$}
+        \State $C \gets C \cup \{f^*\}$
+        \State Expand neighbors of $f^*$ into $Q$
+    \EndIf
+\EndWhile
+\State \Return $C$
+\end{algorithmic}
+\end{algorithm}
+
+\paragraph{Adaptive stopping (engineering heuristic).} The stopping threshold $\tau \in [0.05, 0.15]$ terminates expansion when marginal utility-per-cost falls below a fraction of the baseline density. This modification improves token efficiency in practice but \textbf{invalidates formal approximation guarantees}, as greedy analysis assumes selection continues to the feasibility frontier. We evaluate via ablation: with vs. without stopping at matched budgets. Recommended values: $\tau \approx 0.08$ for focused tasks (bug fixes); $\tau \approx 0.12$ for exploratory tasks (refactoring).
+
+\paragraph{Complexity.}
+The algorithm runs in $O(|\mathcal{V}| \log |\mathcal{V}| + k \cdot T_{\text{eval}})$ where $k = |C|$ (typically 15--50 fragments) and $T_{\text{eval}} = O(|Z|)$. Lazy evaluation significantly reduces recomputations versus standard greedy on sparse code graphs.
+
+\newpage
+\section{Proposed Evaluation Methodology}
+\label{sec:eval}
+
+Since ``understanding'' is latent and task-dependent, we propose operationalizing it via behavioral proxies with measurable outcomes. Empirical validation following this protocol is planned as future work.
+
+\subsection{Dependency Coverage Recall}
+
+\begin{equation}
+    \text{Coverage}(C, \Delta) = \frac{|\{d \in \text{deps}(\Delta) : \exists f \in C, d \text{ resolves in } f\}|}{|\text{deps}(\Delta)|}
+\end{equation}
+
+where $\text{deps}(\Delta)$ includes definitions of modified symbols, call targets, callers, types in signatures, and covering tests. Prior work shows developers locate bugs significantly faster with complete dependency context~\cite{parnin2011automated}, motivating coverage as a structural proxy for understanding. However, we note that dependency coverage is a \emph{secondary diagnostic}; behavioral tasks (fault localization, explanation quality) provide primary validation.
+
+\subsection{Co-Change Recall}
+
+For commits where files $A$ and $B$ changed together, we input only change $A$ and measure whether retrieved context $C$ includes file $B$. Co-change is an established empirical proxy for coupling and impact in software repositories~\cite{hassan2004predicting}. Note that co-change has 30--40\% false positive rate due to incidental coupling (formatting, mass refactoring); we filter to semantic modifications ($\geq$5 substantive lines changed).
+
+\subsection{Fault Localization Accuracy}
+
+Given diff and context $(\Delta, C)$, an evaluator (LLM or human) ranks suspicious lines for root cause identification. Metrics include Mean Reciprocal Rank and Precision@$k$. Prior work suggests fault localization accuracy correlates with debugging efficiency~\cite{parnin2011automated}.
+
+\subsection{Experimental Design}
+
+We propose evaluation on 500+ bug-fix commits from established benchmarks (Defects4J, BugsInPy), stratified by diff size, change type, and programming language. Baselines include: diff-only with fixed padding, whole modified files, fixed-depth graph expansion, BM25-only retrieval, and \textbf{dense embedding retrieval} (CodeBERT or text-embedding-3-small with cosine similarity). Ablations will measure the contribution of each edge type (call graph, symbol reference, lexical) and the effect of the stopping criterion.
+
+\newpage
+\section{Discussion and Limitations}
+
+\paragraph{Language Coverage.}
+The framework requires language-specific tooling for AST parsing and name resolution. The current implementation supports Python, TypeScript, JavaScript, Go, Rust, Java, C, C++, Ruby, Kotlin, and Scala via tree-sitter parsing, with Python and JavaScript receiving dedicated semantic analysis. Dynamic languages present challenges due to incomplete static analysis of dynamic dispatch.
+
+\paragraph{Symbol Reference vs. Data-Flow.}
+Our ``symbol reference'' edges use lexical name matching within function scope as a heuristic. This is \textbf{not} true data-flow analysis, which requires CFG construction and reaching definitions computation---infeasible for incomplete code in git working trees. We explicitly acknowledge this limitation.
+
+\paragraph{Backward Dependencies.}
+The current PPR formulation propagates relevance along forward edges (callee direction). For understanding changes, backward dependencies (callers of modified functions, usages of modified variables) are often more important. Future work should add reverse edges or run PPR on the graph transpose.
+
+\paragraph{Hub Node Dominance.}
+Utility classes with high in-degree (Logger, Config, Utils) can accumulate excessive PPR mass. Our implementation applies IDF-style damping $w'_{uv} = w_{uv} / \log(1 + \text{in\_degree}(v))$ for nodes exceeding the 95th percentile in-degree. While this improves PPR distribution in preliminary testing, systematic validation across diverse codebases is required to confirm its effectiveness.
+
+\paragraph{Configuration Files.}
+Non-code files (YAML, JSON, TOML) lack structural dependencies. For these, lexical signals must dominate, with higher BM25 weights (0.4--0.5).
+
+\paragraph{Parameter Sensitivity.}
+While we provide operational ranges for parameters ($\alpha$, $\tau$, edge weights), optimal values are repository-dependent. We recommend calibration on 20--50 historical commits via grid search.
+
+\newpage
+\section{Conclusion}
+
+We have presented a theoretical framework for diff context selection based on budgeted submodular maximization over code property graphs. The formulation unifies structural and lexical signals, leverages well-studied optimization techniques, and offers adaptive stopping criteria based on marginal utility. The proposed evaluation methodology operationalizes the latent notion of understanding through dependency coverage and fault localization proxies.
+
+Key theoretical contributions: (1) proof that max-coverage utility with nondecreasing aggregation is submodular, (2) clear delineation between cardinality and knapsack constraint guarantees, (3) explicit acknowledgment of heuristic components (adaptive stopping, symbol reference edges).
+
+This work establishes the theoretical foundation for context-aware code analysis tools. Empirical validation on benchmark datasets will quantify the practical benefits over existing approaches and guide parameter calibration for diverse codebases.
+
+\newpage
+\section*{Acknowledgments}
+
+This work is part of the treemapper project (\url{https://github.com/nikolay-e/treemapper}).
+
+\appendix
+
+\newpage
+\section{Parameter Guidelines}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{llp{6cm}}
+\toprule
+\textbf{Parameter} & \textbf{Range} & \textbf{Selection Guidance} \\
+\midrule
+$\alpha$ (damping) & 0.50--0.65 & Start at 0.60; decrease for over-selection of distant code \\
+$\tau$ (threshold) & 0.05--0.15 & 0.08 for bug fixes; 0.12 for features (heuristic) \\
+Budget $B$ & 5k--20k tokens & 10k standard; scale with diff complexity \\
+Call weight & 0.7--0.9 & Tune via cross-validation on historical commits \\
+Lexical weight & 0.1--0.2 & Reduce if high false positive rate \\
+Overhead & 15--20 tokens & Measure actual serialization cost per fragment \\
+\bottomrule
+\end{tabular}
+\caption{Operational parameter ranges with selection heuristics.}
+\end{table}
+
+\newpage
+\section{Algorithmic Complexity}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{llll}
+\toprule
+\textbf{Component} & \textbf{Time} & \textbf{Space} & \textbf{Practical Scale} \\
+\midrule
+AST parsing & $O(n)$ & $O(n)$ & Tested to $\sim$500k LOC \\
+Call graph & $O(n \log n)$ & $O(n+m)$ & Tested to $\sim$200k LOC \\
+PPR (sparse) & $O(k \cdot m)$ & $O(n+m)$ & Tested to $\sim$50k nodes \\
+Lazy greedy & $O(|\mathcal{V}| \log |\mathcal{V}|)$ & $O(n)$ & Tested to $\sim$5k fragments \\
+\bottomrule
+\end{tabular}
+\caption{Complexity analysis where $n$ = fragments, $m$ = edges, $k$ = PPR iterations. Practical scale limits are estimates requiring validation; performance depends on repository structure and hardware.}
+\end{table}
+
+\newpage
+\section{Heuristics Annex}
+
+The following tactics are useful in practice but lack strong theoretical or empirical grounding. They should be evaluated via ablation before deployment.
+
+\paragraph{Relatedness Bonus.} The implementation includes a minimum marginal gain for fragments with high PPR relevance ($\geq 0.10$) and concept overlap: $\text{gain}_{\min} = \text{rel} \times 0.25 \times \min(|\text{covered}|, 5)$. This ensures semantically related fragments are included even when concepts are already covered by core fragments. Additionally, a fallback bonus of $\text{rel} \times 0.25$ applies to high-PPR fragments regardless of concept overlap, ensuring structurally related fragments (via call graph) are included. \textbf{Warning:} This modification may break strict submodularity of the utility function, invalidating worst-case approximation guarantees. Ablation studies comparing performance with and without the bonus are required.
+
+\paragraph{Hub Suppression.} Apply IDF-style penalty to edges into high in-degree nodes: $w'_{uv} = w_{uv} / \log(1 + \text{in\_degree}(v))$ when $\text{in\_degree}(v)$ exceeds the 95th percentile. This is implemented globally during graph construction.
+
+\paragraph{Backward Edge Weighting.} Weight caller$\to$callee edges at 0.7--0.8$\times$ of callee$\to$caller edges to prioritize impact analysis over dependency tracing.
+
+\paragraph{Test File Handling.} Include failing tests covering modified code with weight 0.9; passing tests with weight 0.5--0.6. Exclude distant integration tests unless budget permits.
+
+\paragraph{Signature Bundling.} When selecting any line inside a function, automatically include the function's signature and first docstring line to prevent orphaned code snippets.
+
+\newpage
+\section{Language Support}
+\label{sec:impl-inventory}
+
+The reference implementation provides dedicated tree-sitter extraction for 42 languages, grouped by domain. Languages without dedicated extractors fall back to a generic strategy (paragraph-level fragmentation for prose-like content, statement-level for code-like content).
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lp{8.5cm}}
+\toprule
+\textbf{Group} & \textbf{Languages} \\
+\midrule
+General-purpose & Python, JavaScript, TypeScript (incl.\ JSX/TSX), Go, Rust, Java, Kotlin, C, C++, C\#, Ruby, PHP, Swift, Scala \\
+Functional      & Haskell, Elixir, Erlang, OCaml, Clojure, Julia, F\# \\
+Scripting       & Lua, R, Perl, Bash/Zsh/Fish/Ksh, Dart, Groovy, Objective-C \\
+Markup/Data     & HTML, CSS/SCSS/LESS, YAML, JSON, GraphQL, HCL/Terraform, CMake, Make, Nix \\
+Domain-specific & Cargo (Rust), Bazel, dbt, OpenAPI, Prisma, Protobuf, SQL, Ansible \\
+Generic fallback & Markdown, plain text, TOML, dotfiles, unparsed sources \\
+\bottomrule
+\end{tabular}
+\caption{Languages supported by the reference implementation. General-purpose and functional languages have full semantic edge builders (call/import resolution, type references); markup and data formats use schema-aware extractors where applicable.}
+\label{tab:language-support}
+\end{table}
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}

@@ -16,13 +16,16 @@ use crate::git::{self, CatFileBatch};
 use crate::mode::{DiscoveryKind, PipelineConfig, ScoringKind, ScoringMode};
 use crate::postpass;
 use crate::render::{self, DiffContextOutput};
-use crate::scoring::{EgoGraphScoring, PPRScoring, ScoringStrategy};
+use crate::scoring::{BM25Scoring, EgoGraphScoring, PPRScoring, ScoringStrategy};
 use crate::signatures::generate_signature_variants;
 use crate::tokenizer::count_tokens;
 use crate::types::{Fragment, FragmentId};
 use crate::universe;
 
 const UNLIMITED_BUDGET: u32 = 10_000_000;
+const AUTO_BUDGET_MULTIPLIER: f64 = 5.0;
+const AUTO_BUDGET_MIN: u32 = 8_000;
+const AUTO_BUDGET_MAX: u32 = 124_000;
 const OVERHEAD_PER_FRAGMENT: u32 = 18;
 
 pub fn build_diff_context(
@@ -121,14 +124,19 @@ pub fn build_diff_context(
         Some(&mut batch_reader),
     );
 
+    let t_parse_changed = Instant::now();
+
     let included_set: FxHashSet<PathBuf> = changed_files.iter().cloned().collect();
     let all_candidate_files = universe::collect_candidate_files(&root_dir, &included_set);
 
-    let t1 = Instant::now();
+    let t_universe = Instant::now();
 
     let file_cache = build_file_cache(&all_candidate_files);
     let mode = scoring_mode;
-    let config = PipelineConfig::from_mode(mode, all_candidate_files.len());
+    let mut config = PipelineConfig::from_mode(mode, all_candidate_files.len());
+    if let Ok(s) = std::env::var("DIFFCTX_OBJECTIVE") {
+        config.objective = crate::mode::ObjectiveMode::from_str(&s);
+    }
 
     let mut expansion_concepts: FxHashSet<String> =
         crate::types::extract_identifiers(&diff_text, 3)
@@ -160,6 +168,10 @@ pub fn build_diff_context(
         .map(|p| universe::normalize_path(&p, &root_dir))
         .collect();
 
+    drop(discovery_ctx);
+
+    let t_discovery = Instant::now();
+
     all_fragments.extend(process_files_for_fragments(
         &discovered_files,
         &root_dir,
@@ -168,7 +180,7 @@ pub fn build_diff_context(
         Some(&mut batch_reader),
     ));
 
-    let t2 = Instant::now();
+    let t_parse_discovered = Instant::now();
 
     assign_token_counts(&mut all_fragments);
 
@@ -179,13 +191,21 @@ pub fn build_diff_context(
     assign_token_counts(&mut sig_frags);
     all_fragments.extend(sig_frags);
 
-    let t3 = Instant::now();
+    let t_tokenization = Instant::now();
 
     let selected = if full {
         select_full_mode(&all_fragments, &changed_files)
     } else {
         let seed_weights = compute_seed_weights(&hunks, &core_ids, &all_fragments);
-        let effective_budget = budget_tokens.unwrap_or(UNLIMITED_BUDGET);
+        let effective_budget = budget_tokens.unwrap_or_else(|| {
+            let core_tokens: u32 = all_fragments
+                .iter()
+                .filter(|f| core_ids.contains(&f.id))
+                .map(|f| f.token_count)
+                .sum();
+            let auto = (core_tokens as f64 * AUTO_BUDGET_MULTIPLIER) as u32;
+            auto.clamp(AUTO_BUDGET_MIN, AUTO_BUDGET_MAX)
+        });
 
         let discovered_path_set: FxHashSet<Arc<str>> = discovered_files
             .iter()
@@ -198,6 +218,7 @@ pub fn build_diff_context(
                 config.ppr_alpha,
                 config.low_relevance_filter,
             )),
+            ScoringKind::Bm25 => Box::new(BM25Scoring),
         };
 
         let scoring_result = strategy.score_and_filter(
@@ -211,15 +232,38 @@ pub fn build_diff_context(
 
         let needs = crate::utility::needs::needs_from_diff(&all_fragments, &core_ids, &diff_text);
 
-        let selection_result = crate::select::lazy_greedy_select(
-            scoring_result.filtered_fragments.clone(),
-            &core_ids,
-            &scoring_result.rel_scores,
-            &needs,
-            effective_budget,
-            tau,
-            None,
-        );
+        let selection_result = match config.objective {
+            crate::mode::ObjectiveMode::BoltzmannModular => {
+                let beta = crate::utility::calibrate_beta(
+                    &scoring_result.filtered_fragments,
+                    &core_ids,
+                    &scoring_result.rel_scores,
+                    effective_budget,
+                    0.05,
+                );
+                tracing::debug!("diffctx: boltzmann beta calibrated to {:.6e}", beta);
+                crate::utility::boltzmann_select(
+                    &scoring_result.filtered_fragments,
+                    &core_ids,
+                    &scoring_result.rel_scores,
+                    effective_budget,
+                    beta,
+                )
+            }
+            crate::mode::ObjectiveMode::Submodular => {
+                let file_importance =
+                    crate::utility::compute_file_importance(&scoring_result.filtered_fragments);
+                crate::select::lazy_greedy_select(
+                    scoring_result.filtered_fragments.clone(),
+                    &core_ids,
+                    &scoring_result.rel_scores,
+                    &needs,
+                    effective_budget,
+                    tau,
+                    Some(&file_importance),
+                )
+            }
+        };
 
         let mut selected = selection_result.selected;
 
@@ -255,23 +299,32 @@ pub fn build_diff_context(
 
     batch_reader.close();
 
-    let t4 = Instant::now();
+    let t_done = Instant::now();
 
     tracing::debug!(
-        "diffctx: timing — fragmentation {:.3}s, discovery {:.3}s, tokenization {:.3}s, scoring {:.3}s",
-        t1.duration_since(t0).as_secs_f64(),
-        t2.duration_since(t1).as_secs_f64(),
-        t3.duration_since(t2).as_secs_f64(),
-        t4.duration_since(t3).as_secs_f64(),
+        "diffctx: timing — parse_changed {:.3}s, universe {:.3}s, discovery {:.3}s, parse_discovered {:.3}s, tokenization {:.3}s, scoring {:.3}s",
+        t_parse_changed.duration_since(t0).as_secs_f64(),
+        t_universe.duration_since(t_parse_changed).as_secs_f64(),
+        t_discovery.duration_since(t_universe).as_secs_f64(),
+        t_parse_discovered.duration_since(t_discovery).as_secs_f64(),
+        t_tokenization
+            .duration_since(t_parse_discovered)
+            .as_secs_f64(),
+        t_done.duration_since(t_tokenization).as_secs_f64(),
     );
 
     let mut output = render::build_diff_context_output(&root_dir, &selected, no_content);
     output.latency = Some(render::LatencyBreakdown {
-        fragmentation_ms: t1.duration_since(t0).as_secs_f64() * 1000.0,
-        discovery_ms: t2.duration_since(t1).as_secs_f64() * 1000.0,
-        tokenization_ms: t3.duration_since(t2).as_secs_f64() * 1000.0,
-        scoring_selection_ms: t4.duration_since(t3).as_secs_f64() * 1000.0,
-        total_ms: t4.duration_since(t0).as_secs_f64() * 1000.0,
+        parse_changed_ms: t_parse_changed.duration_since(t0).as_secs_f64() * 1000.0,
+        universe_walk_ms: t_universe.duration_since(t_parse_changed).as_secs_f64() * 1000.0,
+        discovery_ms: t_discovery.duration_since(t_universe).as_secs_f64() * 1000.0,
+        parse_discovered_ms: t_parse_discovered.duration_since(t_discovery).as_secs_f64() * 1000.0,
+        tokenization_ms: t_tokenization
+            .duration_since(t_parse_discovered)
+            .as_secs_f64()
+            * 1000.0,
+        scoring_selection_ms: t_done.duration_since(t_tokenization).as_secs_f64() * 1000.0,
+        total_ms: t_done.duration_since(t0).as_secs_f64() * 1000.0,
     });
     Ok(output)
 }

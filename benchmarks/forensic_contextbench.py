@@ -10,7 +10,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from common import (
+from benchmarks.common import (
     apply_as_commit,
     ensure_repo,
     normalize_gold_path,
@@ -235,13 +235,48 @@ def _classify_nontrivial_stages(
     return stage_per_file
 
 
-def evaluate_one(inst: dict, budget: int) -> dict:
-    iid = inst["instance_id"]
+def _print_instance_header(
+    inst: dict, gold_blocks: list, gold_set: set, p_set: set, added: set, deleted: set, modified: set, nontrivial: set
+) -> None:
     print("\n" + "=" * 78)
-    print(f"INSTANCE: {iid}")
+    print(f"INSTANCE: {inst['instance_id']}")
     print(f"Repo: {inst['repo']}  Lang: {inst['language']}")
     print(f"Base: {inst['base_commit'][:12]}")
+    print(f"\n[GOLD]      {len(gold_set):3d} files, {len(gold_blocks):3d} blocks")
+    for f in sorted(gold_set)[:8]:
+        marker = " (in patch)" if f in p_set else " (NONTRIVIAL)"
+        print(f"  {f}{marker}")
+    if len(gold_set) > 8:
+        print(f"  ... and {len(gold_set) - 8} more")
+    print(f"\n[PATCH]     {len(p_set):3d} files (added={len(added)}, deleted={len(deleted)}, modified={len(modified)})")
+    if deleted:
+        print(f"  DELETED FILES: {sorted(deleted)}")
+    print(f"\n[NONTRIVIAL GOLD] {len(nontrivial):3d} files")
 
+
+def _print_pipeline_dump(
+    output: dict, elapsed: float, p_set: set, deleted: set, repo_dir: Path, nontrivial: set, gold_set: set, selected: set
+) -> tuple[set, set, set]:
+    print(f"\n[DIFFCTX]   {len(selected):3d} files, {output['fragment_count']:3d} fragments, {elapsed:.1f}s")
+    _print_patch_coverage(p_set, selected, deleted, repo_dir)
+    universe = read_dump_set("universe.txt")
+    fragmented = read_dump_set("fragmented.txt")
+    sel_dump = read_dump_set("selected.txt")
+    candidates_info = (DUMP_DIR / "candidates.txt").read_text().strip() if (DUMP_DIR / "candidates.txt").exists() else ""
+    print(f"\n[PIPELINE STAGES]\n  {candidates_info}")
+    print(f"  universe: {len(universe)}  fragmented: {len(fragmented)}  selected: {len(sel_dump)}")
+    nontrivial_hits = nontrivial & selected
+    _print_nontrivial_report(nontrivial, nontrivial_hits, nontrivial - selected, fragmented, universe, sel_dump)
+    extra = selected - gold_set
+    if extra:
+        print(f"\n[DIFFCTX EXTRA]  {len(extra)} files not in gold")
+        for f in sorted(extra)[:5]:
+            print(f"    {f} ({'patch' if f in p_set else 'discovered'})")
+    return universe, fragmented, sel_dump
+
+
+def evaluate_one(inst: dict, budget: int) -> dict:
+    iid = inst["instance_id"]
     gold_blocks = json.loads(inst["gold_context"]) if isinstance(inst["gold_context"], str) else inst["gold_context"]
     for g in gold_blocks:
         g["file"] = normalize_gold_path(g["file"])
@@ -249,24 +284,11 @@ def evaluate_one(inst: dict, budget: int) -> dict:
     added, deleted, modified = patch_files_detailed(inst["patch"])
     p_set = added | deleted | modified
     nontrivial = gold_set - p_set
-
-    print(f"\n[GOLD]      {len(gold_set):3d} files, {len(gold_blocks):3d} blocks")
-    for f in sorted(gold_set)[:8]:
-        marker = " (in patch)" if f in p_set else " (NONTRIVIAL)"
-        print(f"  {f}{marker}")
-    if len(gold_set) > 8:
-        print(f"  ... and {len(gold_set) - 8} more")
-
-    print(f"\n[PATCH]     {len(p_set):3d} files (added={len(added)}, deleted={len(deleted)}, modified={len(modified)})")
-    if deleted:
-        print(f"  DELETED FILES: {sorted(deleted)}")
-
-    print(f"\n[NONTRIVIAL GOLD] {len(nontrivial):3d} files")
+    _print_instance_header(inst, gold_blocks, gold_set, p_set, added, deleted, modified, nontrivial)
 
     repo_dir = ensure_repo(inst["repo_url"], inst["repo"], inst["base_commit"], REPOS_DIR)
     if not repo_dir:
         return {"id": iid, "status": "clone_fail"}
-
     if not apply_as_commit(repo_dir, inst["patch"]):
         run_cmd(["git", "-C", str(repo_dir), "checkout", "--force", inst["base_commit"]], check=False)
         return {"id": iid, "status": "apply_fail"}
@@ -274,43 +296,18 @@ def evaluate_one(inst: dict, budget: int) -> dict:
     t0 = time.time()
     output, err = run_diffctx(repo_dir, budget)
     elapsed = time.time() - t0
-
     if not output:
         run_cmd(["git", "-C", str(repo_dir), "reset", "--hard", "HEAD~1"], check=False)
         print(f"  DIFFCTX FAIL: {err}")
         return {"id": iid, "status": "diffctx_fail"}
 
     selected = {f["path"] for f in output["fragments"]}
-    print(f"\n[DIFFCTX]   {len(selected):3d} files, {output['fragment_count']:3d} fragments, {elapsed:.1f}s")
-
-    _print_patch_coverage(p_set, selected, deleted, repo_dir)
-
-    nontrivial_hits = nontrivial & selected
-    nontrivial_missed = nontrivial - selected
-    universe = read_dump_set("universe.txt")
-    fragmented = read_dump_set("fragmented.txt")
-    sel_dump = read_dump_set("selected.txt")
-    candidates_info = (DUMP_DIR / "candidates.txt").read_text().strip() if (DUMP_DIR / "candidates.txt").exists() else ""
-
-    print(f"\n[PIPELINE STAGES]\n  {candidates_info}")
-    print(f"  universe: {len(universe)}  fragmented: {len(fragmented)}  selected: {len(sel_dump)}")
-
-    _print_nontrivial_report(nontrivial, nontrivial_hits, nontrivial_missed, fragmented, universe, sel_dump)
-
-    extra = selected - gold_set
-    if extra:
-        print(f"\n[DIFFCTX EXTRA]  {len(extra)} files not in gold")
-        for f in sorted(extra)[:5]:
-            print(f"    {f} ({'patch' if f in p_set else 'discovered'})")
-
+    universe, fragmented, sel_dump = _print_pipeline_dump(
+        output, elapsed, p_set, deleted, repo_dir, nontrivial, gold_set, selected
+    )
     run_cmd(["git", "-C", str(repo_dir), "reset", "--hard", "HEAD~1"], check=False)
 
-    file_recall = len(gold_set & selected) / len(gold_set)
-    nt_recall = len(nontrivial_hits) / len(nontrivial) if nontrivial else 0.0
-    patch_coverage = len(p_set & selected) / len(p_set) if p_set else 0.0
-
-    stage_per_file = _classify_nontrivial_stages(nontrivial, selected, sel_dump, fragmented, universe)
-
+    nontrivial_hits = nontrivial & selected
     return {
         "id": iid,
         "status": "ok",
@@ -319,10 +316,10 @@ def evaluate_one(inst: dict, budget: int) -> dict:
         "n_patch": len(p_set),
         "n_nontrivial": len(nontrivial),
         "n_deleted_in_patch": len(deleted),
-        "patch_coverage": round(patch_coverage, 3),
-        "file_recall": round(file_recall, 3),
-        "nt_recall": round(nt_recall, 3),
-        "stage_per_file": stage_per_file,
+        "patch_coverage": round(len(p_set & selected) / len(p_set) if p_set else 0.0, 3),
+        "file_recall": round(len(gold_set & selected) / len(gold_set), 3),
+        "nt_recall": round(len(nontrivial_hits) / len(nontrivial) if nontrivial else 0.0, 3),
+        "stage_per_file": _classify_nontrivial_stages(nontrivial, selected, sel_dump, fragmented, universe),
     }
 
 
@@ -380,11 +377,13 @@ def main():
     ap.add_argument("--limit", type=int, default=5)
     ap.add_argument("--budget", type=int, default=8000)
     ap.add_argument("--nontrivial-only", action="store_true", default=True)
+    ap.add_argument("--dataset", type=str, default="full", choices=["verified", "full"])
     args = ap.parse_args()
 
     from datasets import load_dataset
 
-    ds = load_dataset("Contextbench/ContextBench", "contextbench_verified", split="train")
+    config = "contextbench_verified" if args.dataset == "verified" else "default"
+    ds = load_dataset("Contextbench/ContextBench", config, split="train")
     insts = list(ds)
     if args.nontrivial_only:
         insts = _filter_nontrivial_instances(insts)

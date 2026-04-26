@@ -7,7 +7,7 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
-from common import (
+from benchmarks.common import (
     WORKERS,
     apply_as_commit,
     ensure_repo,
@@ -208,7 +208,7 @@ def main():
     ap.add_argument("--seeds", type=str, default=None)
     ap.add_argument("--dataset", default="Contextbench/ContextBench")
     ap.add_argument("--split", default="contextbench_verified")
-    ap.add_argument("--scoring", type=str, default="ego", choices=["hybrid", "ppr", "ego"])
+    ap.add_argument("--scoring", type=str, default="ego", choices=["hybrid", "ppr", "ego", "bm25"])
     ap.add_argument("--timeout", type=int, default=300)
     args = ap.parse_args()
 

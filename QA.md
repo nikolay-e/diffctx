@@ -23,11 +23,6 @@
   remove cast and let type inference work
 - Lambda capturing loop variable (S1515): use `dict.__getitem__` instead
   of `lambda k: d[k]` — simpler and avoids the flag
-- S3776 cognitive complexity: SonarCloud counts boolean operators (`and`,
-  `or`) as separate increments — extracting complex conditions into named
-  helpers reduces complexity even without deep nesting changes
-- `cast` import removal: after removing casts, remove the `typing.cast`
-  import too or ruff/mypy will flag unused imports
 
 ## Test Suite
 
@@ -42,3 +37,65 @@
   — Python silently allows stacking
 - After merging duplicate branches (S1871 fix), verify the `or`
   logic preserves both conditions
+
+## SonarCloud (extras)
+
+- `whitelist_vulture.py` bare names (`Graph.add_node`) trigger S905
+  "no side effects" BUG — wrap in `_ = expr` to silence (vulture
+  still recognizes the reference)
+- `numpy_array /= divisor` (in-place mutation) is misread by SonarCloud as
+  unused local — use explicit `np.divide(arr, divisor, out=arr)` instead
+- Pinning `dtolnay/rust-toolchain@<sha>` requires explicit
+  `with: toolchain: stable` — pinning loses the default-input behavior
+- API to mark hotspot Safe:
+  `POST /api/hotspots/change_status hotspot=KEY status=REVIEWED resolution=SAFE`
+- API to mark issue false-positive:
+  `POST /api/issues/do_transition issue=KEY transition=falsepositive`
+- GraphML XML namespace `http://graphml.graphdrawing.org/graphml` triggers
+  S5332 (insecure http) but is the literal spec identifier — mark Safe
+
+## Cognitive Complexity Tactics
+
+- run_parallel-style "parallel-or-serial dispatcher" with extend/append:
+  extract `_collect_result(results, r, collect)` helper to dedupe both
+  branches and reduce S3776 score significantly
+- evaluate_one-style "header → run → report → return" functions:
+  extract `_print_*_header` and `_print_*_dump` helpers — the heavy
+  formatting blocks dominate the complexity score
+
+## Shell Scripts
+
+- `shelldre:S7688` — convert every `[ ... ]` to `[[ ... ]]` across the
+  whole file in one pass; SonarCloud reported lines drift after pre-commit
+  reformatting, so don't trust line numbers literally
+- `shelldre:S7682` — one-line tee/printf functions like `log() { ... }`
+  also need an explicit `return 0`; SonarCloud reports the line BEFORE
+  the function definition
+- `bash -n script.sh` after edits — quick syntactic sanity check
+
+## Pre-existing Test Failures (do not regress, do not retry-fix)
+
+- `tests/test_graph.py`, `test_graph_cli.py`, `test_graph_export.py` —
+  ALL three fail with `ModuleNotFoundError: treemapper.diffctx.edges`.
+  Python `edges` module was deleted in commit `e77d5494` (Rust-only
+  pipeline); CI excludes them via three `--ignore=...` flags in
+  `.github/workflows/ci.yml`. Reproduce locally with the same flags
+  before claiming "tests pass". Do NOT delete these files until
+  ProjectGraph is ported to Rust — they document the contract.
+
+## SonarCloud API
+
+- Public `api/issues/search?projectKeys=nikolay-e_TreeMapper&statuses=OPEN`
+  works without auth for OPEN issues. Token only needed for hotspot
+  state changes / false-positive transitions.
+
+## Memory Profiling for diffctx
+
+- `/usr/bin/time -l` on macOS reports `peak memory footprint` and
+  `maximum resident set size`. Run 3× and take median — single run
+  varies by ~500MB on small diffs (rayon thread allocator cache noise)
+- Peak on small diffs over treemapper itself is ~1.6–2.0 GB; dominated
+  by `build_file_cache` (200MB cap, but reads ALL <100KB files into
+  `Vec<(PathBuf, String)>` BEFORE applying the cap) and tree-sitter
+  parse trees, NOT lexical similarity. Lexical fixes only show up on
+  repos with many fragments + dense term overlap.

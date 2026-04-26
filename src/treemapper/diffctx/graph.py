@@ -283,7 +283,8 @@ def _suppress_semantic_hubs(
         sem_file_deg[si] = len(files)
     src_sem_deg = sem_file_deg[src_idx]
     sem_hub_mask = is_semantic & (src_sem_deg >= _HUB_OUT_DEGREE_THRESHOLD)
-    weights /= np.where(sem_hub_mask, np.sqrt(src_sem_deg.astype(np.float64)), 1.0)
+    divisor = np.where(sem_hub_mask, np.sqrt(src_sem_deg.astype(np.float64)), 1.0)
+    np.divide(weights, divisor, out=weights)
 
 
 def _apply_hub_suppression(

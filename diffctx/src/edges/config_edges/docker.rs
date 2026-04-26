@@ -241,8 +241,4 @@ impl EdgeBuilder for DockerEdgeBuilder {
 
         base::discover_files_by_refs(&refs, changed, candidates, repo_root)
     }
-
-    fn category_label(&self) -> Option<&str> {
-        Some("docker")
-    }
 }

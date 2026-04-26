@@ -3,6 +3,7 @@ pub enum ScoringMode {
     Hybrid,
     Ppr,
     Ego,
+    Bm25,
 }
 
 impl ScoringMode {
@@ -10,6 +11,7 @@ impl ScoringMode {
         match s.to_lowercase().as_str() {
             "ppr" => Self::Ppr,
             "ego" => Self::Ego,
+            "bm25" => Self::Bm25,
             _ => Self::Hybrid,
         }
     }
@@ -25,12 +27,29 @@ pub enum DiscoveryKind {
 pub enum ScoringKind {
     Ppr,
     Ego,
+    Bm25,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ObjectiveMode {
+    Submodular,
+    BoltzmannModular,
+}
+
+impl ObjectiveMode {
+    pub fn from_str(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "boltzmann" | "boltzmann_modular" | "modular_boltzmann" => Self::BoltzmannModular,
+            _ => Self::Submodular,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct PipelineConfig {
     pub discovery: DiscoveryKind,
     pub scoring: ScoringKind,
+    pub objective: ObjectiveMode,
     pub low_relevance_filter: bool,
     pub bm25_top_k: usize,
     pub ego_depth: usize,
@@ -47,6 +66,7 @@ impl PipelineConfig {
                 bm25_top_k: 1,
                 ego_depth: 1,
                 ppr_alpha: 0.60,
+                objective: ObjectiveMode::Submodular,
             },
             ScoringMode::Ego => Self {
                 discovery: DiscoveryKind::Ensemble,
@@ -55,6 +75,16 @@ impl PipelineConfig {
                 bm25_top_k: 1,
                 ego_depth: 2,
                 ppr_alpha: 0.60,
+                objective: ObjectiveMode::Submodular,
+            },
+            ScoringMode::Bm25 => Self {
+                discovery: DiscoveryKind::Ensemble,
+                scoring: ScoringKind::Bm25,
+                low_relevance_filter: false,
+                bm25_top_k: 0,
+                ego_depth: 1,
+                ppr_alpha: 0.60,
+                objective: ObjectiveMode::Submodular,
             },
             ScoringMode::Hybrid => {
                 let is_large = n_candidate_files > 50;
@@ -73,6 +103,7 @@ impl PipelineConfig {
                     bm25_top_k: if is_large { 1 } else { 0 },
                     ego_depth: if is_large { 2 } else { 1 },
                     ppr_alpha: 0.60,
+                    objective: ObjectiveMode::Submodular,
                 }
             }
         }

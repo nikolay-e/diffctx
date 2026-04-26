@@ -10,7 +10,7 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
-from common import (
+from benchmarks.common import (
     WORKERS,
     apply_as_commit,
     ensure_repo,
@@ -24,7 +24,7 @@ from common import (
     warm_cache,
     worker_dir,
 )
-from stats import bootstrap_ci
+from benchmarks.stats import bootstrap_ci
 
 _DEFAULT_DIFF_RANGE = "HEAD~1..HEAD"
 
@@ -50,11 +50,11 @@ def is_nontrivial(gold: list[dict], patch: str) -> bool:
     return bool(gold_files(gold) - patch_files(patch))
 
 
-def run_diffctx(repo_dir: Path, budget: int = 8000, scoring_mode: str = "hybrid") -> dict | None:
+def run_diffctx(repo_dir: Path, budget: int = 8000, scoring_mode: str = "hybrid", tau: float = 0.08) -> dict | None:
     from treemapper.diffctx.pipeline import build_diff_context
 
     try:
-        return build_diff_context(repo_dir, _DEFAULT_DIFF_RANGE, budget_tokens=budget, scoring_mode=scoring_mode)
+        return build_diff_context(repo_dir, _DEFAULT_DIFF_RANGE, budget_tokens=budget, scoring_mode=scoring_mode, tau=tau)
     except Exception as e:
         print(f"  DIFFCTX FAIL: {type(e).__name__}: {e}")
         return None
@@ -245,6 +245,7 @@ def evaluate_instance(
     repos_dir: Path = REPOS_DIR,
     scoring_mode: str = "hybrid",
     baseline: str = "treemapper",
+    tau: float = 0.08,
 ) -> dict | None:
     iid = inst["instance_id"]
     gold = parse_gold_context(inst["gold_context"])
@@ -280,7 +281,7 @@ def evaluate_instance(
         elif baseline == "bm25":
             output = run_baseline_bm25(repo_dir, budget)
         else:
-            output = run_diffctx(repo_dir, budget, scoring_mode)
+            output = run_diffctx(repo_dir, budget, scoring_mode, tau)
         elapsed = time.time() - t0
     finally:
         reset_to_parent(repo_dir)
@@ -337,7 +338,7 @@ def evaluate_instance(
     return result
 
 
-def _print_per_language_breakdown(ok: list[dict], by_lang: dict) -> None:
+def _print_per_language_breakdown(by_lang: dict) -> None:
     if len(by_lang) <= 1:
         return
     print("\nPer-language breakdown:")
@@ -349,7 +350,7 @@ def _print_per_language_breakdown(ok: list[dict], by_lang: dict) -> None:
         print(f"  {lang:12s} (n={len(lr):3d}): file_recall={avg_fr:.3f}  nontrivial={avg_ntr:.3f}  line_recall={avg_lr:.3f}")
 
 
-def _print_per_repo_breakdown(ok: list[dict], by_repo: dict) -> None:
+def _print_per_repo_breakdown(by_repo: dict) -> None:
     if len(by_repo) <= 1:
         return
     print("\nPer-repo breakdown:")
@@ -369,7 +370,25 @@ def aggregate(results: list[dict]) -> None:
     print(f"AGGREGATE ({len(ok)} instances)")
     print(f"{'='*60}")
 
-    for metric in ["file_recall", "nontrivial_file_recall", "line_recall", "line_recall_nontrivial"]:
+    all_metrics = sorted(
+        {
+            k
+            for r in ok
+            for k, v in r.items()
+            if isinstance(v, (int, float))
+            and k
+            not in (
+                "elapsed_s",
+                "gold_lines",
+                "covered_lines",
+                "fragments",
+                "gold_files",
+                "selected_files",
+                "nontrivial_gold_files",
+            )
+        }
+    )
+    for metric in all_metrics:
         vals = [r[metric] for r in ok if metric in r]
         if not vals:
             continue
@@ -386,12 +405,12 @@ def aggregate(results: list[dict]) -> None:
     by_lang: dict[str, list[dict]] = defaultdict(list)
     for r in ok:
         by_lang[r["language"]].append(r)
-    _print_per_language_breakdown(ok, by_lang)
+    _print_per_language_breakdown(by_lang)
 
     by_repo: dict[str, list[dict]] = defaultdict(list)
     for r in ok:
         by_repo[r["repo"]].append(r)
-    _print_per_repo_breakdown(ok, by_repo)
+    _print_per_repo_breakdown(by_repo)
 
     zero_frag = sum(1 for r in ok if r["fragments"] == 0)
     zero_line = sum(1 for r in ok if r["line_recall"] < 1e-9 and r["fragments"] > 0)
@@ -410,11 +429,11 @@ def aggregate(results: list[dict]) -> None:
         print(f"\nFailures: {dict(by_status)}")
 
 
-def _run_one(args: tuple[int, dict, int, str, str]) -> dict | None:
-    _i, inst, budget, scoring, baseline = args
+def _run_one(args: tuple[int, dict, int, str, str, float]) -> dict | None:
+    _i, inst, budget, scoring, baseline, tau = args
     wdir = worker_dir(REPOS_DIR)
     try:
-        return evaluate_instance(inst, budget, repos_dir=wdir, scoring_mode=scoring, baseline=baseline)
+        return evaluate_instance(inst, budget, repos_dir=wdir, scoring_mode=scoring, baseline=baseline, tau=tau)
     except Exception as e:
         print(f"  ERROR: {type(e).__name__}: {e}", flush=True)
         return {"id": inst["instance_id"], "status": "error"}
@@ -458,16 +477,19 @@ def main():
     parser.add_argument("--nontrivial-only", action="store_true", default=True)
     parser.add_argument("--seeds", type=str, default="42")
     parser.add_argument("--no-shuffle", action="store_true")
-    parser.add_argument("--scoring", type=str, default="hybrid", choices=["hybrid", "ppr", "ego"])
+    parser.add_argument("--scoring", type=str, default="hybrid", choices=["hybrid", "ppr", "ego", "bm25"])
     parser.add_argument("--baseline", type=str, default="treemapper", choices=["treemapper", "patch_files", "bm25"])
+    parser.add_argument("--dataset", type=str, default="full", choices=["verified", "full"])
+    parser.add_argument("--tau", type=float, default=0.08)
     args = parser.parse_args()
 
     seeds = [int(s) for s in args.seeds.split(",")]
 
     from datasets import load_dataset
 
-    print("Loading ContextBench verified subset...")
-    ds = load_dataset("Contextbench/ContextBench", "contextbench_verified", split="train")
+    config = "contextbench_verified" if args.dataset == "verified" else "default"
+    print(f"Loading ContextBench ({args.dataset})...")
+    ds = load_dataset("Contextbench/ContextBench", config, split="train")
     print(f"Loaded {len(ds)} instances")
 
     all_instances = list(ds)
@@ -498,7 +520,7 @@ def main():
         print(f"Evaluating {len(instances)} instances (budget={args.budget}, workers={WORKERS}, scoring={args.scoring})")
 
         t0 = time.time()
-        run_args = [(i, inst, args.budget, args.scoring, args.baseline) for i, inst in enumerate(instances, 1)]
+        run_args = [(i, inst, args.budget, args.scoring, args.baseline, args.tau) for i, inst in enumerate(instances, 1)]
         results = run_parallel(_run_one, run_args, WORKERS)
         elapsed = time.time() - t0
         print(f"\nTotal wall time: {elapsed:.0f}s")

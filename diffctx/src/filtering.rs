@@ -104,12 +104,10 @@ fn classify_semantic_edges(
         let (changed_frag, other_frag) = if src_changed { (src, dst) } else { (dst, src) };
 
         let fwd_w = graph
-            .neighbors(&changed_frag)
-            .and_then(|nbrs| nbrs.get(&other_frag).copied())
+            .forward_edge_weight(changed_frag, other_frag)
             .unwrap_or(0.0);
         let rev_w = graph
-            .neighbors(&other_frag)
-            .and_then(|nbrs| nbrs.get(&changed_frag).copied())
+            .forward_edge_weight(other_frag, changed_frag)
             .unwrap_or(0.0);
 
         if rev_w > fwd_w {
@@ -225,7 +223,7 @@ fn find_config_generic_code_files(
 }
 
 pub fn filter_unrelated_fragments(
-    fragments: Vec<Fragment>,
+    fragments: &[Fragment],
     core_ids: &FxHashSet<FragmentId>,
     graph: &Graph,
 ) -> Vec<Fragment> {
@@ -240,13 +238,10 @@ pub fn filter_unrelated_fragments(
         paths_to_remove.remove(p);
     }
 
-    if paths_to_remove.is_empty() {
-        return fragments;
-    }
-
     fragments
-        .into_iter()
+        .iter()
         .filter(|f| !paths_to_remove.contains(&f.id.path))
+        .cloned()
         .collect()
 }
 

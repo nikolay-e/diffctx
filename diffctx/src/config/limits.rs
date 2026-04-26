@@ -101,7 +101,6 @@ pub struct UtilityConfig {
     pub gamma: f64,
     pub r_cap_sigma: f64,
     pub proximity_decay: f64,
-    pub peripheral_cap: f64,
 }
 
 impl Default for UtilityConfig {
@@ -111,7 +110,6 @@ impl Default for UtilityConfig {
             gamma: 0.10,
             r_cap_sigma: 2.0,
             proximity_decay: 0.30,
-            peripheral_cap: 0.15,
         }
     }
 }

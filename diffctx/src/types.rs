@@ -208,7 +208,7 @@ impl FragmentId {
 pub struct Fragment {
     pub id: FragmentId,
     pub kind: FragmentKind,
-    pub content: String,
+    pub content: Arc<str>,
     pub identifiers: FxHashSet<String>,
     pub token_count: u32,
     pub symbol_name: Option<String>,

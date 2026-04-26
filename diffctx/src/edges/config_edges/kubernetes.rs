@@ -502,8 +502,4 @@ impl EdgeBuilder for KubernetesEdgeBuilder {
 
         discovered
     }
-
-    fn category_label(&self) -> Option<&str> {
-        Some("kubernetes")
-    }
 }

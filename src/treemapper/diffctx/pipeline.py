@@ -11,6 +11,9 @@ class DiffContextTimeoutError(Exception):
 _PIPELINE_TIMEOUT = 300
 
 
+_UNLIMITED_BUDGET = 10_000_000
+
+
 def build_diff_context(
     root_dir: Path,
     diff_range: str,
@@ -27,10 +30,17 @@ def build_diff_context(
 ) -> dict[str, Any]:
     from _diffctx import build_diff_context as _rust_build
 
+    if budget_tokens is not None and budget_tokens < 0:
+        effective_budget: int | None = _UNLIMITED_BUDGET
+    elif budget_tokens == 0 or budget_tokens is None:
+        effective_budget = None
+    else:
+        effective_budget = budget_tokens
+
     return _rust_build(  # type: ignore[no-any-return]
         str(root_dir),
         diff_range,
-        budget_tokens=budget_tokens,
+        budget_tokens=effective_budget,
         alpha=alpha,
         tau=tau,
         no_content=no_content,

@@ -1,43 +1,33 @@
 # Deviations from Paper
 
-This document tracks implementation deviations from the research
-paper [Context-Selection for Git Diff](https://nikolay-eremeev.com/blog/context-selection-git-diff/).
+This document tracks implementation behaviors that differ from the
+research paper (`docs/Context-Selection-for-Git-Diff/v2/main.tex`).
 
-## 1. Caller Importance Weighting for Impact Needs
+The list is intentionally short; substantive design choices live in
+the paper, not here.
 
-**Paper reference:** Section 4.2.1 (Impact need scoring)
+## None currently outstanding
 
-**Problem:** The paper's `m(f, n)` assigns a flat 0.8 to any
-fragment that mentions a symbol for `impact` needs. This cannot
-distinguish production callers (`handler.ts`) from peripheral
-code (`examples/parsing.ts`) — both receive identical scores.
+All previous deviations have been folded into the paper or
+removed from the implementation:
 
-**Extension:** For impact needs only, the match strength is
-scaled by a file importance factor:
+- **File-importance prior `I(f)` for impact-need scoring.** Constants
+  (`GENERATED_CAP = 0.10`, `PERIPHERAL_CAP = 0.15`, `DEFAULT_IMPORTANCE = 1.0`)
+  and path/stem patterns now live in `diffctx/src/config/importance.rs`
+  with principled rationale; the computation is `diffctx/src/utility/importance.rs::compute_file_importance`.
+  Values are fixed from priors, not trained, to avoid overfitting feature
+  engineering to a specific benchmark. See paper Section 4.5.1.
 
-```text
-m'(f, n) = m(f, n) * I(f)    where n.type == "impact"
-```
+- **Edge-category remapping.** `cicd`, `docker`, `kubernetes`, `build_system`
+  now map to `EdgeCategory::Config` (commit `68dd336b`); paper Table 2
+  reflects this.
 
-`I(f)` is computed from three layers:
+- **`Sibling` variant** added to `EdgeCategory` (commit `bd7f2c31`); paper
+  Table 2 lists 10 categories explicitly.
 
-| Layer | Signal | Importance |
-|-------|--------|------------|
-| Path patterns | `examples/`, `demo/`, `vendor/`, etc. | 0.15 |
-| Generated code | `generated/`, `__generated__/` paths | 0.10 |
-| Script dirs | `scripts/`, `tools/`, `bin/` | 0.40 |
-| Graph topology | Leaf node (in=0, out>0) | 0.25 |
-| Graph topology | Isolated (in=0, out=0) | 0.50 |
-| Graph topology | Production (in>0) | min(1.0, 0.7 + 0.1*in) |
+- **`terraform.rs`** moved to `diffctx/src/edges/semantic/` (commit `7ab933f8`);
+  folder structure now matches the actual category label.
 
-Path-based layers take priority over graph topology.
-
-**Submodularity preservation:** Since `I(f) in [0, 1]` is a
-constant per-fragment multiplier, `m'(f, n) <= m(f, n)`. The
-augmented score `a(f, n) = m'(f, n) + eta * R(f)` remains
-monotone submodular — scaling a nonneg input to `phi(max(...))` by
-a constant in [0, 1] preserves concavity of the max-of-concave
-composition.
-
-**Scope:** Only impact needs are affected. Definition, signature,
-test, invariant, and background needs use unmodified `m(f, n)`.
+When new deviations arise, prefer folding them into the paper; only
+list here items that are deliberately experimental or not yet
+described in the paper text.

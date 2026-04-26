@@ -63,74 +63,34 @@ fn clamp_lexical_weight(raw_sim: f64, src_path: Option<&Path>, dst_path: Option<
 
 pub struct LexicalEdgeBuilder;
 
-impl LexicalEdgeBuilder {
-    fn compute_doc_frequencies(&self, fragments: &[Fragment]) -> FxHashMap<String, usize> {
-        let mut doc_freq: FxHashMap<String, usize> = FxHashMap::default();
-        for frag in fragments {
-            let profile = profile_from_path(frag.path());
-            let idents = extract_identifier_list(&frag.content, 3);
-            let filtered = filter_idents(&idents, 3, profile);
-            let mut seen: FxHashSet<String> = FxHashSet::default();
-            for ident in filtered {
-                if seen.insert(ident.clone()) {
-                    *doc_freq.entry(ident).or_insert(0) += 1;
-                }
-            }
+/// Maps each unique term to a compact u32 id. Stores each term string exactly once.
+struct TermInterner {
+    by_str: FxHashMap<String, u32>,
+}
+
+impl TermInterner {
+    fn new() -> Self {
+        Self {
+            by_str: FxHashMap::default(),
         }
-        doc_freq
     }
 
-    fn compute_idf(
-        &self,
-        doc_freq: &FxHashMap<String, usize>,
-        n_docs: usize,
-    ) -> FxHashMap<String, f64> {
-        doc_freq
-            .iter()
-            .map(|(term, &df)| {
-                let idf = ((n_docs as f64 + 1.0) / (df as f64 + 1.0)).ln() + 1.0;
-                (term.clone(), idf)
-            })
-            .collect()
+    fn intern(&mut self, term: String) -> u32 {
+        let next_id = self.by_str.len() as u32;
+        *self.by_str.entry(term).or_insert(next_id)
     }
 
-    fn build_tf_idf_vector(
-        &self,
-        frag: &Fragment,
-        doc_freq: &FxHashMap<String, usize>,
-        idf: &FxHashMap<String, f64>,
-        max_df: usize,
-    ) -> FxHashMap<String, f64> {
+    fn len(&self) -> usize {
+        self.by_str.len()
+    }
+}
+
+impl LexicalEdgeBuilder {
+    /// Tokenize and filter identifiers for one fragment. Returns the raw filtered identifier list.
+    fn tokens(frag: &Fragment) -> Vec<String> {
         let profile = profile_from_path(frag.path());
         let idents = extract_identifier_list(&frag.content, 3);
-        let filtered = filter_idents(&idents, 3, profile);
-
-        let mut tf: FxHashMap<String, usize> = FxHashMap::default();
-        for ident in filtered {
-            *tf.entry(ident).or_insert(0) += 1;
-        }
-
-        let mut vec: FxHashMap<String, f64> = FxHashMap::default();
-        for (term, &count) in &tf {
-            let df = doc_freq.get(term).copied().unwrap_or(0);
-            if df == 0 || df > max_df {
-                continue;
-            }
-            let term_idf = idf.get(term).copied().unwrap_or(1.0);
-            if term_idf < LEXICAL.min_idf {
-                continue;
-            }
-            vec.insert(term.clone(), count as f64 * term_idf);
-        }
-
-        let norm: f64 = vec.values().map(|v| v * v).sum::<f64>().sqrt();
-        if norm > 0.0 {
-            for v in vec.values_mut() {
-                *v /= norm;
-            }
-        }
-
-        vec
+        filter_idents(&idents, 3, profile)
     }
 }
 
@@ -140,81 +100,155 @@ impl EdgeBuilder for LexicalEdgeBuilder {
             return FxHashMap::default();
         }
 
-        let doc_freq = self.compute_doc_frequencies(fragments);
         let n_docs = fragments.len();
         let max_df = (n_docs as f64 * LEXICAL.max_df_ratio).max(1.0) as usize;
-        let idf = self.compute_idf(&doc_freq, n_docs);
 
-        let tf_idf_vectors: FxHashMap<FragmentId, FxHashMap<String, f64>> = fragments
-            .par_iter()
-            .map(|frag| {
-                let vec = self.build_tf_idf_vector(frag, &doc_freq, &idf, max_df);
-                (frag.id.clone(), vec)
+        // Pass 1: tokenize each fragment in parallel; flatten to per-fragment Vec<String>.
+        let per_frag_tokens: Vec<Vec<String>> =
+            fragments.par_iter().map(|f| Self::tokens(f)).collect();
+
+        // Pass 2: build the term interner serially, computing document frequency in one go.
+        let mut interner = TermInterner::new();
+        let mut doc_freq: Vec<u32> = Vec::new();
+        let per_frag_term_ids: Vec<Vec<u32>> = per_frag_tokens
+            .into_iter()
+            .map(|tokens| {
+                let mut seen_in_doc: FxHashSet<u32> = FxHashSet::default();
+                let mut ids: Vec<u32> = Vec::with_capacity(tokens.len());
+                for tok in tokens {
+                    let id = interner.intern(tok);
+                    if doc_freq.len() <= id as usize {
+                        doc_freq.resize(id as usize + 1, 0);
+                    }
+                    if seen_in_doc.insert(id) {
+                        doc_freq[id as usize] += 1;
+                    }
+                    ids.push(id);
+                }
+                ids
             })
             .collect();
 
-        let mut postings: FxHashMap<String, Vec<(FragmentId, f64)>> = FxHashMap::default();
-        for (frag_id, vec) in &tf_idf_vectors {
-            for (term, &weight) in vec {
-                postings
-                    .entry(term.clone())
-                    .or_default()
-                    .push((frag_id.clone(), weight));
+        let n_terms = interner.len();
+        // Interner string-table is no longer needed once doc_freq has been built.
+        drop(interner);
+
+        let n_docs_f = n_docs as f64;
+        let mut idf: Vec<f32> = Vec::with_capacity(n_terms);
+        for &df in &doc_freq {
+            let v = ((n_docs_f + 1.0) / (df as f64 + 1.0)).ln() + 1.0;
+            idf.push(v as f32);
+        }
+
+        // Pass 3: build TF-IDF vectors as sparse Vec<(TermId, f32)>, normalized.
+        let tf_idf: Vec<Vec<(u32, f32)>> = per_frag_term_ids
+            .par_iter()
+            .map(|term_ids| {
+                let mut tf: FxHashMap<u32, u32> = FxHashMap::default();
+                for &id in term_ids {
+                    *tf.entry(id).or_insert(0) += 1;
+                }
+                let mut vec: Vec<(u32, f32)> = Vec::with_capacity(tf.len());
+                for (&term_id, &count) in &tf {
+                    let df = doc_freq[term_id as usize] as usize;
+                    if df == 0 || df > max_df {
+                        continue;
+                    }
+                    let term_idf = idf[term_id as usize];
+                    if (term_idf as f64) < LEXICAL.min_idf {
+                        continue;
+                    }
+                    vec.push((term_id, count as f32 * term_idf));
+                }
+                let norm: f32 = vec.iter().map(|(_, w)| w * w).sum::<f32>().sqrt();
+                if norm > 0.0 {
+                    for (_, w) in &mut vec {
+                        *w /= norm;
+                    }
+                }
+                vec.sort_unstable_by_key(|&(id, _)| id);
+                vec
+            })
+            .collect();
+
+        drop(per_frag_term_ids);
+        drop(doc_freq);
+        drop(idf);
+
+        // Pass 4: invert into postings — for each term, list of (frag_idx, weight).
+        // Consume tf_idf as we go so it never coexists with the inverted index.
+        let mut postings: Vec<Vec<(u32, f32)>> = vec![Vec::new(); n_terms];
+        for (frag_idx, vec) in tf_idf.into_iter().enumerate() {
+            for (term_id, weight) in vec {
+                postings[term_id as usize].push((frag_idx as u32, weight));
             }
         }
 
-        let mut dot_products: FxHashMap<(FragmentId, FragmentId), f64> = FxHashMap::default();
-        for (_term, posting_list) in &postings {
-            if posting_list.len() > LEXICAL.max_postings {
+        // Pass 5: O(F²) inner loop over each posting, capped by max_postings.
+        // Drop each posting list as soon as we are done with it.
+        let mut dot_products: FxHashMap<(u32, u32), f32> = FxHashMap::default();
+        for posting_list in postings.iter_mut() {
+            if posting_list.len() > LEXICAL.max_postings || posting_list.len() < 2 {
+                posting_list.clear();
+                posting_list.shrink_to_fit();
                 continue;
             }
             for i in 0..posting_list.len() {
-                let (ref frag_i, weight_i) = posting_list[i];
+                let (frag_i, weight_i) = posting_list[i];
                 for j in (i + 1)..posting_list.len() {
-                    let (ref frag_j, weight_j) = posting_list[j];
-                    let pair = if frag_i.to_string() < frag_j.to_string() {
-                        (frag_i.clone(), frag_j.clone())
+                    let (frag_j, weight_j) = posting_list[j];
+                    let pair = if frag_i < frag_j {
+                        (frag_i, frag_j)
                     } else {
-                        (frag_j.clone(), frag_i.clone())
+                        (frag_j, frag_i)
                     };
                     *dot_products.entry(pair).or_insert(0.0) += weight_i * weight_j;
                 }
             }
+            posting_list.clear();
+            posting_list.shrink_to_fit();
         }
+        drop(postings);
 
-        let id_to_path: FxHashMap<FragmentId, &str> =
-            fragments.iter().map(|f| (f.id.clone(), f.path())).collect();
+        // Pass 6: turn pairwise similarities into per-node top-k candidate edges.
+        let frag_paths: Vec<&str> = fragments.iter().map(|f| f.path()).collect();
+        let mut neighbors_by_node: FxHashMap<u32, Vec<(f32, u32)>> = FxHashMap::default();
 
-        let mut neighbors_by_node: FxHashMap<FragmentId, Vec<(f64, FragmentId)>> =
-            FxHashMap::default();
-
-        for ((src, dst), sim) in &dot_products {
-            if *sim < LEXICAL.min_similarity {
+        let min_sim = LEXICAL.min_similarity as f32;
+        let backward_factor = LEXICAL.backward_factor as f32;
+        for ((src_idx, dst_idx), sim) in &dot_products {
+            if *sim < min_sim {
                 continue;
             }
-            let src_path = id_to_path.get(src).map(|s| Path::new(*s));
-            let dst_path = id_to_path.get(dst).map(|s| Path::new(*s));
-            let fwd = clamp_lexical_weight(*sim, src_path, dst_path);
-            let bwd = clamp_lexical_weight(*sim, dst_path, src_path) * LEXICAL.backward_factor;
+            let src_path = Path::new(frag_paths[*src_idx as usize]);
+            let dst_path = Path::new(frag_paths[*dst_idx as usize]);
+            let fwd = clamp_lexical_weight(*sim as f64, Some(src_path), Some(dst_path)) as f32;
+            let bwd = clamp_lexical_weight(*sim as f64, Some(dst_path), Some(src_path)) as f32
+                * backward_factor;
             neighbors_by_node
-                .entry(src.clone())
+                .entry(*src_idx)
                 .or_default()
-                .push((fwd, dst.clone()));
+                .push((fwd, *dst_idx));
             neighbors_by_node
-                .entry(dst.clone())
+                .entry(*dst_idx)
                 .or_default()
-                .push((bwd, src.clone()));
+                .push((bwd, *src_idx));
         }
 
+        let frag_ids: Vec<&FragmentId> = fragments.iter().map(|f| &f.id).collect();
         let mut edges: EdgeDict = FxHashMap::default();
-        for (_node, mut candidates) in neighbors_by_node {
+        for (node_idx, mut candidates) in neighbors_by_node {
             candidates.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
             candidates.truncate(LEXICAL.top_k_neighbors);
-            for (weight, neighbor) in candidates {
-                let key = (_node.clone(), neighbor);
+            for (weight, neighbor_idx) in candidates {
+                let key = (
+                    frag_ids[node_idx as usize].clone(),
+                    frag_ids[neighbor_idx as usize].clone(),
+                );
                 let existing = edges.get(&key).copied().unwrap_or(0.0);
-                if weight > existing {
-                    edges.insert(key, weight);
+                let weight_f64 = weight as f64;
+                if weight_f64 > existing {
+                    edges.insert(key, weight_f64);
                 }
             }
         }

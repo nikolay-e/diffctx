@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -16,11 +17,11 @@ pub struct DiscoveryContext {
 }
 
 impl DiscoveryContext {
-    pub fn read_file(&self, path: &Path) -> Option<String> {
+    pub fn read_file(&self, path: &Path) -> Option<Cow<'_, str>> {
         if let Some(content) = self.file_cache.get(path) {
-            return Some(content.clone());
+            return Some(Cow::Borrowed(content.as_str()));
         }
-        std::fs::read_to_string(path).ok()
+        std::fs::read_to_string(path).ok().map(Cow::Owned)
     }
 }
 

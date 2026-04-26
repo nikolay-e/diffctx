@@ -1,0 +1,311 @@
+\documentclass[11pt, a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb, amsthm}
+\newtheorem{theorem}{Theorem}
+\newtheorem{proposition}{Proposition}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage[margin=1in]{geometry}
+
+\title{Context-Selection for Git Diff: Budgeted Submodular Maximization on Code Dependency Graphs}
+
+\author{
+  Nikolay Eremeev \\
+  \texttt{nikolay.eremeev@outlook.com} \\
+  \texttt{https://github.com/nikolay-e/treemapper}
+}
+
+\date{January 2025}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Retrieving optimal context for Large Language Models to understand code changes is a critical challenge in automated software engineering. Current approaches rely on naive windowing or purely lexical retrieval, missing complex structural dependencies. We formalize diff context selection as budgeted submodular maximization over Code Property Graphs, where relevance propagates via weighted structural dependencies from edited code using Personalized PageRank. This formulation enables: (1) optimization inspired by submodular function theory with empirically validated performance, (2) adaptive stopping based on marginal utility thresholds, and (3) unified treatment of structural and lexical signals as weighted graph edges. We propose a rigorous evaluation methodology using dependency coverage recall and fault localization accuracy as behavioral proxies for the latent notion of ``understanding.'' The framework offers a scalable solution for processing diffs within strict token budgets imposed by LLM context windows.
+\end{abstract}
+
+\section{Introduction}
+
+Large Language Models have demonstrated remarkable capabilities in code understanding tasks, yet their effectiveness depends critically on the context provided within limited token budgets. When reviewing code changes, developers and AI systems alike must determine which surrounding code fragments are necessary to understand the implications of a diff. Too little context leads to misunderstanding; too much context wastes tokens and introduces noise.
+
+Current approaches to context selection suffer from fundamental limitations. Fixed-window methods (e.g., $\pm 10$ lines around changes) ignore semantic structure and miss distant dependencies. Whole-file inclusion is wasteful and scales poorly. Lexical retrieval (BM25, embeddings) can miss structural relationships that are often important for code comprehension~\cite{ko2006exploratory, robillard2004effective}. None provide principled stopping criteria or approximation guarantees.
+
+We address this gap by formalizing diff context selection as \textbf{budgeted submodular maximization} over Code Property Graphs. Our key insight is that ``understanding a change'' can be operationalized as covering explanatory concepts---definitions, call targets, type signatures, impacted tests---that propagate through structural dependencies with diminishing returns.
+
+\paragraph{Contributions.}
+\begin{enumerate}
+    \item A formal problem statement casting context selection as budgeted optimization with measurable utility
+    \item A graph-based relevance model using Personalized PageRank over heterogeneous code dependencies
+    \item A submodular utility function enabling principled greedy optimization
+    \item An evaluation methodology using behavioral proxies when ground truth is unavailable
+\end{enumerate}
+
+\section{Related Work}
+
+\paragraph{Program Dependence and Slicing.}
+Program slicing~\cite{weiser1984program} computes the subset of statements affecting a variable, forming the foundation for dependency-based code understanding. Program Dependence Graphs (PDGs)~\cite{ferrante1987program} and their interprocedural extensions~\cite{horwitz1990interprocedural} capture control and data dependencies, enabling precise impact analysis. Our work extends these ideas to context selection for LLMs, treating dependency graphs as the substrate for relevance propagation.
+
+\paragraph{Developer Navigation and Information Foraging.}
+Studies of how developers navigate code~\cite{ko2006exploratory, robillard2004effective} reveal that structural relationships (calls, definitions) dominate over lexical search. This informs our edge weighting scheme, prioritizing structural signals while retaining lexical features as fallback.
+
+\paragraph{Submodular Optimization.}
+Monotone submodular maximization admits efficient greedy approximations~\cite{nemhauser1978analysis}, with lazy evaluation~\cite{minoux1978accelerated} and stochastic variants~\cite{mirzasoleiman2015lazier} improving scalability. We apply this framework to context selection, modeling coverage of explanatory concepts as a submodular function.
+
+\paragraph{Retrieval for Code Understanding.}
+Recent work explores retrieval-augmented generation for code tasks, typically using embedding similarity or BM25 over code chunks. Our approach differs by grounding retrieval in explicit dependency structure rather than purely lexical or semantic similarity, and by providing a principled utility function for budget allocation.
+
+\section{Problem Formulation}
+
+\subsection{Inputs and Definitions}
+
+Given repository states $V_0, V_1$ with diff $\Delta = \text{diff}(V_0 \to V_1)$ and token budget $B$, we seek a fragment set $S^* \subseteq F$ that maximizes understanding of $\Delta$ subject to cost constraint $c(S) \leq B$.
+
+\paragraph{Fragment Universe $F$.}
+We define $F = \{(\text{file\_path}, \text{start\_line}, \text{end\_line})\}$ where fragments align to semantic units. The primary granularity is AST-aligned units (functions, classes, modules) via tree-sitter parsing, with indentation-based blocks as fallback for unparsable code. We always include enclosing signatures to prevent orphaned code snippets.
+
+\paragraph{Core Edit Set $E_0 \subset F$.}
+Constructed from diff $\Delta$: all diff hunks plus their enclosing syntactic containers (functions/classes containing changes) in both repository versions. Symbol-level context makes relevance propagation robust to line renumbering.
+
+\paragraph{Cost Model.}
+\begin{equation}
+    c(S) = \sum_{f \in S} \text{tokens}(f) + |S| \cdot \text{overhead}
+\end{equation}
+where overhead accounts for structural metadata (file paths, line markers, delimiters---we estimate 15--20 tokens per fragment based on sampling under typical serialization formats). Practical budgets range from 5k tokens (smaller models) to 15k tokens (complex diffs), constrained by LLM context window limitations and the ``lost in middle'' effect observed beyond 20k tokens~\cite{liu2024lost}.
+
+\subsection{Code Property Graph}
+
+We construct a weighted graph $G = (\mathcal{V}, \mathcal{E}, w)$ where nodes represent code fragments and edges capture various dependency types:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\toprule
+\textbf{Edge Type} & \textbf{Weight} & \textbf{Construction} \\
+\midrule
+Symbol reference (heuristic) & 0.8--1.0 & Intra-function name matching \\
+Direct calls & 0.7--0.9 & AST queries + name resolution \\
+Type/interface refs & 0.5--0.7 & Language server protocol queries \\
+AST containment & 0.4--0.6 & Parent-child scope relationships \\
+Import/include & 0.3--0.5 & Static import resolution \\
+Lexical overlap & 0.1--0.2 & TF-IDF on identifier tokens \\
+\bottomrule
+\end{tabular}
+\caption{Edge types and baseline weight ranges. Weights should be calibrated via grid search on historical commits for each target repository.}
+\label{tab:edges}
+\end{table}
+
+\textbf{Note on symbol reference edges}: We use lexical name matching within function scope as a heuristic approximation to data-flow analysis. True def-use chains require control-flow graph construction and reaching definitions analysis, which is infeasible for incomplete or unparsable code in git working trees. For dynamic languages (Python, JavaScript), static resolution coverage varies significantly by codebase characteristics: codebases with heavy metaprogramming or dynamic dispatch may achieve 40--60\% resolution, typical application code 50--70\%, and strongly typed code with type hints 70--85\%. These ranges require validation against runtime call graphs.
+
+Edge weights reflect empirical findings that developers predominantly follow structural links (call/data dependencies) rather than lexical search when navigating code~\cite{ko2006exploratory}. For typed languages, structural edges dominate; for dynamic languages, lexical signals compensate for incomplete static analysis.
+
+\section{Methodology}
+
+\subsection{Relevance via Personalized PageRank}
+
+We compute relevance scores via random walk with restart from core edits $E_0$:
+\begin{equation}
+    R(v) = (1-\alpha) \cdot \delta(v \in E_0) + \alpha \cdot \sum_{(u \to v) \in \mathcal{E}} R(u) \cdot \frac{w_{uv}}{\text{deg}_{\text{out}}(u)}
+\end{equation}
+where $\text{deg}_{\text{out}}(u) = \sum_{u \to x} w_{ux}$ is the weighted out-degree, ensuring outgoing transition probabilities sum to 1.
+
+The damping factor $\alpha \in [0.5, 0.65]$ controls locality. With restart probability $(1-\alpha)$, the expected random walk length before restart is $\alpha/(1-\alpha)$. For $\alpha = 0.6$, walks average 1.5 hops before restarting. This provides sharper locality than web search ($\alpha = 0.85$), appropriate for the tighter dependency structure of code graphs.
+
+Convergence occurs when $\|R^{(t+1)} - R^{(t)}\|_1 < 10^{-4}$; in our experiments on sparse code graphs, this often occurs within a few tens of iterations~\cite{lofgren2014fast}.
+
+\textbf{Locality interpretation}: In sparse code graphs with moderate branching, relevance decays approximately with graph distance, but the relationship is not strictly exponential on weighted directed graphs. Hub nodes with high in-degree can accumulate disproportionate mass regardless of semantic relevance. We recommend monitoring for utility classes (Logger, Config) that may dominate scores despite low explanatory value.
+
+\subsection{Submodular Utility Function}
+
+We model understanding as covering explanatory concepts $Z$ (called functions, used variables, referenced types, impacted tests):
+\begin{equation}
+    U(S \mid \Delta) = \sum_{z \in Z} \phi\left(\max_{f \in S} \text{rel}(f, z)\right)
+\end{equation}
+
+where $\text{rel}(f, z) = R(f)$ if fragment $f$ contains/defines concept $z$, and $\phi: \mathbb{R}_{\geq 0} \to \mathbb{R}_{\geq 0}$ is a nondecreasing function (e.g., $\phi(x) = \sqrt{x}$ or $\phi(x) = \min(x, 1)$). We use concave $\phi$ as a modeling choice to enforce saturation---once a concept is well-covered, additional coverage provides diminishing value.
+
+\begin{theorem}
+Let $a_{f,z} \geq 0$ for all $f \in F, z \in Z$, and let $\phi: \mathbb{R}_{\geq 0} \to \mathbb{R}_{\geq 0}$ be nondecreasing. Then $U(S) = \sum_{z \in Z} \phi(\max_{f \in S} a_{f,z})$ is monotone submodular.
+\end{theorem}
+
+\begin{proof}
+Fix concept $z$ and define $g_z(S) = \phi(\max_{f \in S} a_{f,z})$. For $S \subseteq T$, let $m_S = \max_{f \in S} a_{f,z}$ and $m_T = \max_{f \in T} a_{f,z}$. By set inclusion, $m_S \leq m_T$.
+
+The marginal gain from adding fragment $v$ to $S$ is:
+\[
+\Delta_S(v) = \phi(\max(m_S, a_{v,z})) - \phi(m_S)
+\]
+
+\textbf{Case 1}: If $a_{v,z} \leq m_S$, then $\Delta_S(v) = 0$.
+
+\textbf{Case 2}: If $a_{v,z} > m_S$, then $\Delta_S(v) = \phi(a_{v,z}) - \phi(m_S)$.
+
+For $T \supseteq S$: If $a_{v,z} \leq m_T$, then $\Delta_T(v) = 0 \leq \Delta_S(v)$. If $a_{v,z} > m_T$, then since $m_T \geq m_S$ and $\phi$ is nondecreasing:
+\[
+\Delta_T(v) = \phi(a_{v,z}) - \phi(m_T) \leq \phi(a_{v,z}) - \phi(m_S) = \Delta_S(v)
+\]
+
+Thus $g_z$ is submodular. Since $U = \sum_z g_z$ with each $g_z \geq 0$, $U$ is submodular (nonnegative sums preserve submodularity).
+
+\textbf{Monotonicity}: Adding fragments can only increase $\max_{f \in S} a_{f,z}$, and $\phi$ nondecreasing implies $U(S \cup \{v\}) \geq U(S)$.
+\end{proof}
+
+\subsection{Greedy Selection with Adaptive Stopping}
+
+We employ a density-based greedy algorithm with lazy evaluation~\cite{minoux1978accelerated} for computational efficiency.
+
+\paragraph{Approximation guarantees.} For monotone submodular maximization, the classical greedy algorithm achieves a $(1-1/e) \approx 0.632$ approximation under \textbf{cardinality constraints} ($|S| \leq k$)~\cite{nemhauser1978analysis}. Our problem uses a \textbf{knapsack constraint} ($c(S) \leq B$ with heterogeneous fragment costs), for which density-greedy does not admit the same guarantee. We therefore present two options:
+
+\textbf{Option A (Heuristic):} Use density-greedy as a practical heuristic without worst-case bounds. We hypothesize that performance on real code graphs may exceed 0.5 of optimal due to favorable structure, but this requires empirical validation.
+
+\textbf{Option B (Modified Greedy with Guarantee):} Return the better of (i) the density-greedy solution $S_{\text{greedy}}$ and (ii) the best single fragment fitting the budget:
+\[
+S_{\text{out}} = \arg\max\{U(S_{\text{greedy}}),\ \max_{f: c(f) \leq B} U(\{f\})\}
+\]
+This standard modification provides a constant-factor approximation guarantee under knapsack constraints~\cite{khuller1999budgeted}. \textbf{Note}: this guarantee applies only to the variant \emph{without} adaptive stopping; the stopping heuristic is evaluated empirically.
+
+\begin{algorithm}
+\caption{Lazy Greedy Context Selection (Heuristic Version)}
+\begin{algorithmic}[1]
+\State Initialize $S \gets E_0$ (core edits; we assume $c(E_0) < B$)
+\State $Q \gets$ priority queue of candidates by marginal density
+\State $\text{baseline} \gets$ median density of first 5 selections
+\While{$c(S) < B$ and $Q \neq \emptyset$}
+    \State $f^* \gets$ pop highest-density candidate from $Q$
+    \If{$f^*$ evaluation is stale}
+        \State Recompute density, reinsert into $Q$
+        \State \textbf{continue}
+    \EndIf
+    \If{$\text{density}(f^*) < \tau \cdot \text{baseline}$}
+        \State \textbf{break} \Comment{Adaptive stopping (heuristic)}
+    \EndIf
+    \If{$c(S) + c(f^*) \leq B$}
+        \State $S \gets S \cup \{f^*\}$
+        \State Expand neighbors of $f^*$ into $Q$
+    \EndIf
+\EndWhile
+\State \Return $S$
+\end{algorithmic}
+\end{algorithm}
+
+\paragraph{Adaptive stopping (engineering heuristic).} The stopping threshold $\tau \in [0.05, 0.15]$ terminates expansion when marginal utility-per-cost falls below a fraction of the baseline density. This modification improves token efficiency in practice but \textbf{invalidates formal approximation guarantees}, as greedy analysis assumes selection continues to the feasibility frontier. We evaluate via ablation: with vs. without stopping at matched budgets. Recommended values: $\tau \approx 0.08$ for focused tasks (bug fixes); $\tau \approx 0.12$ for exploratory tasks (refactoring).
+
+\paragraph{Complexity.}
+The algorithm runs in $O(|\mathcal{V}| \log |\mathcal{V}| + k \cdot T_{\text{eval}})$ where $k = |S|$ (typically 15--50 fragments) and $T_{\text{eval}} = O(|Z|)$. Lazy evaluation significantly reduces recomputations versus standard greedy on sparse code graphs.
+
+\section{Proposed Evaluation Methodology}
+
+Since ``understanding'' is latent and task-dependent, we propose operationalizing it via behavioral proxies with measurable outcomes. Empirical validation following this protocol is planned as future work.
+
+\subsection{Dependency Coverage Recall}
+
+\begin{equation}
+    \text{Coverage}(S, \Delta) = \frac{|\{d \in \text{deps}(\Delta) : \exists f \in S, d \text{ resolves in } f\}|}{|\text{deps}(\Delta)|}
+\end{equation}
+
+where $\text{deps}(\Delta)$ includes definitions of modified symbols, call targets, callers, types in signatures, and covering tests. Prior work shows developers locate bugs significantly faster with complete dependency context~\cite{parnin2011automated}, motivating coverage as a structural proxy for understanding. However, we note that dependency coverage is a \emph{secondary diagnostic}; behavioral tasks (fault localization, explanation quality) provide primary validation.
+
+\subsection{Co-Change Recall}
+
+For commits where files $A$ and $B$ changed together, we input only change $A$ and measure whether retrieved context $S$ includes file $B$. Co-change is an established empirical proxy for coupling and impact in software repositories~\cite{hassan2004predicting}. Note that co-change has 30--40\% false positive rate due to incidental coupling (formatting, mass refactoring); we filter to semantic modifications ($\geq$5 substantive lines changed).
+
+\subsection{Fault Localization Accuracy}
+
+Given diff and context $(\Delta, S)$, an evaluator (LLM or human) ranks suspicious lines for root cause identification. Metrics include Mean Reciprocal Rank and Precision@$k$. Prior work suggests fault localization accuracy correlates with debugging efficiency~\cite{parnin2011automated}.
+
+\subsection{Experimental Design}
+
+We propose evaluation on 500+ bug-fix commits from established benchmarks (Defects4J, BugsInPy), stratified by diff size, change type, and programming language. Baselines include: diff-only with fixed padding, whole modified files, fixed-depth graph expansion, BM25-only retrieval, and \textbf{dense embedding retrieval} (CodeBERT or text-embedding-3-small with cosine similarity). Ablations will measure the contribution of each edge type (call graph, symbol reference, lexical) and the effect of the stopping criterion.
+
+\section{Discussion and Limitations}
+
+\paragraph{Language Coverage.}
+The framework requires language-specific tooling for AST parsing and name resolution. The current implementation supports Python, TypeScript, JavaScript, Go, Rust, Java, C, C++, Ruby, Kotlin, and Scala via tree-sitter parsing, with Python and JavaScript receiving dedicated semantic analysis. Dynamic languages present challenges due to incomplete static analysis of dynamic dispatch.
+
+\paragraph{Symbol Reference vs. Data-Flow.}
+Our ``symbol reference'' edges use lexical name matching within function scope as a heuristic. This is \textbf{not} true data-flow analysis, which requires CFG construction and reaching definitions computation---infeasible for incomplete code in git working trees. We explicitly acknowledge this limitation.
+
+\paragraph{Backward Dependencies.}
+The current PPR formulation propagates relevance along forward edges (callee direction). For understanding changes, backward dependencies (callers of modified functions, usages of modified variables) are often more important. Future work should add reverse edges or run PPR on the graph transpose.
+
+\paragraph{Hub Node Dominance.}
+Utility classes with high in-degree (Logger, Config, Utils) can accumulate excessive PPR mass. Our implementation applies IDF-style damping $w'_{uv} = w_{uv} / \log(1 + \text{in\_degree}(v))$ for nodes exceeding the 95th percentile in-degree. While this improves PPR distribution in preliminary testing, systematic validation across diverse codebases is required to confirm its effectiveness.
+
+\paragraph{Configuration Files.}
+Non-code files (YAML, JSON, TOML) lack structural dependencies. For these, lexical signals must dominate, with higher BM25 weights (0.4--0.5).
+
+\paragraph{Parameter Sensitivity.}
+While we provide operational ranges for parameters ($\alpha$, $\tau$, edge weights), optimal values are repository-dependent. We recommend calibration on 20--50 historical commits via grid search.
+
+\section{Conclusion}
+
+We have presented a theoretical framework for diff context selection based on budgeted submodular maximization over code property graphs. The formulation unifies structural and lexical signals, leverages well-studied optimization techniques, and offers adaptive stopping criteria based on marginal utility. The proposed evaluation methodology operationalizes the latent notion of understanding through dependency coverage and fault localization proxies.
+
+Key theoretical contributions: (1) proof that max-coverage utility with nondecreasing aggregation is submodular, (2) clear delineation between cardinality and knapsack constraint guarantees, (3) explicit acknowledgment of heuristic components (adaptive stopping, symbol reference edges).
+
+This work establishes the theoretical foundation for context-aware code analysis tools. Empirical validation on benchmark datasets will quantify the practical benefits over existing approaches and guide parameter calibration for diverse codebases.
+
+\section*{Acknowledgments}
+
+This work was developed with assistance from large language model tools via the Arbitrium framework (\url{https://github.com/arbitrium-framework/arbitrium}).
+
+This work is part of the TreeMapper project (\url{https://github.com/nikolay-e/treemapper}).
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\appendix
+
+\section{Parameter Guidelines}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{llp{6cm}}
+\toprule
+\textbf{Parameter} & \textbf{Range} & \textbf{Selection Guidance} \\
+\midrule
+$\alpha$ (damping) & 0.50--0.65 & Start at 0.60; decrease for over-selection of distant code \\
+$\tau$ (threshold) & 0.05--0.15 & 0.08 for bug fixes; 0.12 for features (heuristic) \\
+Budget $B$ & 5k--20k tokens & 10k standard; scale with diff complexity \\
+Call weight & 0.7--0.9 & Tune via cross-validation on historical commits \\
+Lexical weight & 0.1--0.2 & Reduce if high false positive rate \\
+Overhead & 15--20 tokens & Measure actual serialization cost per fragment \\
+\bottomrule
+\end{tabular}
+\caption{Operational parameter ranges with selection heuristics.}
+\end{table}
+
+\section{Algorithmic Complexity}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{llll}
+\toprule
+\textbf{Component} & \textbf{Time} & \textbf{Space} & \textbf{Practical Scale} \\
+\midrule
+AST parsing & $O(n)$ & $O(n)$ & Tested to $\sim$500k LOC \\
+Call graph & $O(n \log n)$ & $O(n+m)$ & Tested to $\sim$200k LOC \\
+PPR (sparse) & $O(k \cdot m)$ & $O(n+m)$ & Tested to $\sim$50k nodes \\
+Lazy greedy & $O(|\mathcal{V}| \log |\mathcal{V}|)$ & $O(n)$ & Tested to $\sim$5k fragments \\
+\bottomrule
+\end{tabular}
+\caption{Complexity analysis where $n$ = fragments, $m$ = edges, $k$ = PPR iterations. Practical scale limits are estimates requiring validation; performance depends on repository structure and hardware.}
+\end{table}
+
+\section{Heuristics Annex}
+
+The following tactics are useful in practice but lack strong theoretical or empirical grounding. They should be evaluated via ablation before deployment.
+
+\paragraph{Relatedness Bonus.} The implementation includes a minimum marginal gain for fragments with high PPR relevance ($\geq 0.10$) and concept overlap: $\text{gain}_{\min} = \text{rel} \times 0.25 \times \min(|\text{covered}|, 5)$. This ensures semantically related fragments are included even when concepts are already covered by core fragments. Additionally, a fallback bonus of $\text{rel} \times 0.25$ applies to high-PPR fragments regardless of concept overlap, ensuring structurally related fragments (via call graph) are included. \textbf{Warning:} This modification may break strict submodularity of the utility function, invalidating worst-case approximation guarantees. Ablation studies comparing performance with and without the bonus are required.
+
+\paragraph{Hub Suppression.} Apply IDF-style penalty to edges into high in-degree nodes: $w'_{uv} = w_{uv} / \log(1 + \text{in\_degree}(v))$ when $\text{in\_degree}(v)$ exceeds the 95th percentile. This is implemented globally during graph construction.
+
+\paragraph{Backward Edge Weighting.} Weight caller$\to$callee edges at 0.7--0.8$\times$ of callee$\to$caller edges to prioritize impact analysis over dependency tracing.
+
+\paragraph{Test File Handling.} Include failing tests covering modified code with weight 0.9; passing tests with weight 0.5--0.6. Exclude distant integration tests unless budget permits.
+
+\paragraph{Signature Bundling.} When selecting any line inside a function, automatically include the function's signature and first docstring line to prevent orphaned code snippets.
+
+\end{document}

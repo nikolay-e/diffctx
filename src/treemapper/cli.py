@@ -39,8 +39,8 @@ def _validate_max_file_bytes(max_file_bytes: int, no_file_size_limit: bool) -> i
 
 
 def _validate_budget(budget: int | None) -> None:
-    if budget is not None and budget <= 0:
-        _exit_error(f"--budget must be positive, got {budget}")
+    if budget is not None and budget < -1:
+        _exit_error(f"--budget must be >= -1 (0=auto, -1=unlimited), got {budget}")
 
 
 def _validate_alpha(alpha: float) -> None:
@@ -334,7 +334,7 @@ def _build_main_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         metavar="N",
-        help="Token budget for context selection (default: automatic via relevance threshold)",
+        help="Token budget: 0=auto (default), -1=unlimited, N=fixed budget",
     )
     diff_group.add_argument(
         "--alpha",
@@ -352,7 +352,7 @@ def _build_main_parser() -> argparse.ArgumentParser:
     )
     diff_group.add_argument(
         "--scoring",
-        choices=["hybrid", "ppr", "ego"],
+        choices=["hybrid", "ppr", "ego", "bm25"],
         default="hybrid",
         help="Scoring mode: hybrid (adapts to repo size), ppr (PageRank), ego (ego-graph)",
     )

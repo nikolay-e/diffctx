@@ -163,8 +163,4 @@ impl EdgeBuilder for BuildSystemEdgeBuilder {
 
         base::discover_files_by_refs(&refs, changed, candidates, repo_root)
     }
-
-    fn category_label(&self) -> Option<&str> {
-        Some("build_system")
-    }
 }

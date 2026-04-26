@@ -5,7 +5,7 @@ import statistics
 import sys
 from pathlib import Path
 
-from common import load_results
+from benchmarks.common import load_results
 
 METRICS = ["file_recall", "file_precision", "nontrivial_file_recall", "line_recall", "line_recall_nontrivial"]
 

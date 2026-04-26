@@ -60,27 +60,25 @@ fn find_dangling_semantic_names(
 ) -> FxHashSet<String> {
     let mut dangling = FxHashSet::default();
     for frag in selected {
-        if let Some(nbrs) = graph.neighbors(&frag.id) {
-            for nbr_id in nbrs.keys() {
-                if selected_ids.contains(nbr_id) {
-                    continue;
-                }
-                let cat = graph
-                    .edge_categories
-                    .get(&(frag.id.clone(), nbr_id.clone()));
-                if cat
-                    .map(|c| *c != crate::graph::EdgeCategory::Semantic)
-                    .unwrap_or(true)
-                {
-                    continue;
-                }
-                if let Some(nbr_frag) = frag_by_id.get(nbr_id) {
-                    if let Some(ref name) = nbr_frag.symbol_name {
-                        dangling.insert(name.to_lowercase());
-                    }
+        graph.for_each_forward_neighbor(&frag.id, |nbr_id, _w| {
+            if selected_ids.contains(nbr_id) {
+                return;
+            }
+            let cat = graph
+                .edge_categories
+                .get(&(frag.id.clone(), nbr_id.clone()));
+            if cat
+                .map(|c| *c != crate::graph::EdgeCategory::Semantic)
+                .unwrap_or(true)
+            {
+                return;
+            }
+            if let Some(nbr_frag) = frag_by_id.get(nbr_id) {
+                if let Some(ref name) = nbr_frag.symbol_name {
+                    dangling.insert(name.to_lowercase());
                 }
             }
-        }
+        });
     }
     dangling
 }

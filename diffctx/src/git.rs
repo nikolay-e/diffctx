@@ -89,25 +89,25 @@ fn wait_with_timeout(
     _args: &[&str],
 ) -> Result<std::process::Output> {
     let mut child = child;
-    let start = std::time::Instant::now();
+    let stdout_handle = child.stdout.take().map(|mut s| {
+        std::thread::spawn(move || -> std::io::Result<Vec<u8>> {
+            let mut buf = Vec::new();
+            s.read_to_end(&mut buf)?;
+            Ok(buf)
+        })
+    });
+    let stderr_handle = child.stderr.take().map(|mut s| {
+        std::thread::spawn(move || -> std::io::Result<Vec<u8>> {
+            let mut buf = Vec::new();
+            s.read_to_end(&mut buf)?;
+            Ok(buf)
+        })
+    });
 
-    loop {
+    let start = std::time::Instant::now();
+    let status = loop {
         match child.try_wait() {
-            Ok(Some(status)) => {
-                let mut stdout = Vec::new();
-                let mut stderr = Vec::new();
-                if let Some(mut out) = child.stdout.take() {
-                    let _ = out.read_to_end(&mut stdout);
-                }
-                if let Some(mut err) = child.stderr.take() {
-                    let _ = err.read_to_end(&mut stderr);
-                }
-                return Ok(std::process::Output {
-                    status,
-                    stdout,
-                    stderr,
-                });
-            }
+            Ok(Some(status)) => break status,
             Ok(None) => {
                 if start.elapsed() >= timeout {
                     let _ = child.kill();
@@ -118,7 +118,22 @@ fn wait_with_timeout(
             }
             Err(e) => return Err(GitError::Io(e)),
         }
-    }
+    };
+
+    let stdout = stdout_handle
+        .and_then(|h| h.join().ok())
+        .and_then(|r| r.ok())
+        .unwrap_or_default();
+    let stderr = stderr_handle
+        .and_then(|h| h.join().ok())
+        .and_then(|r| r.ok())
+        .unwrap_or_default();
+
+    Ok(std::process::Output {
+        status,
+        stdout,
+        stderr,
+    })
 }
 
 pub fn is_git_repo(path: &Path) -> bool {

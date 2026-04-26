@@ -33,6 +33,7 @@ pub mod shell;
 pub mod sql;
 pub mod swift;
 pub mod tags;
+pub mod terraform;
 pub mod zig;
 
 use super::base::EdgeBuilder;
@@ -74,6 +75,7 @@ pub fn get_semantic_builders() -> Vec<Box<dyn EdgeBuilder>> {
         Box::new(cargo_edges::CargoEdgeBuilder),
         Box::new(bazel::BazelEdgeBuilder),
         Box::new(ansible::AnsibleEdgeBuilder),
+        Box::new(terraform::TerraformEdgeBuilder),
         Box::new(tags::TagsEdgeBuilder),
     ]
 }

@@ -12,7 +12,7 @@ use crate::edges;
 use crate::mode::{PipelineConfig, ScoringKind, ScoringMode};
 use crate::parsers::fragment_file;
 use crate::render::{DiffContextOutput, build_diff_context_output};
-use crate::scoring::{EgoGraphScoring, PPRScoring, ScoringStrategy};
+use crate::scoring::{BM25Scoring, EgoGraphScoring, PPRScoring, ScoringStrategy};
 use crate::signatures::generate_signature_variants;
 use crate::tokenizer::count_tokens;
 use crate::types::{DiffHunk, Fragment, FragmentId};
@@ -111,6 +111,7 @@ pub fn build_diff_context_in_memory(
             config.ppr_alpha,
             config.low_relevance_filter,
         )),
+        ScoringKind::Bm25 => Box::new(BM25Scoring),
     };
 
     let scoring_result = strategy.score_and_filter(

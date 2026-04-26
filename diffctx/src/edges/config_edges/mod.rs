@@ -4,14 +4,12 @@ mod docker;
 mod generic;
 mod helm;
 mod kubernetes;
-mod terraform;
 
 use super::base::EdgeBuilder;
 
 pub fn get_config_builders() -> Vec<Box<dyn EdgeBuilder>> {
     vec![
         Box::new(generic::ConfigToCodeEdgeBuilder),
-        Box::new(terraform::TerraformEdgeBuilder),
         Box::new(cicd::CICDEdgeBuilder),
         Box::new(docker::DockerEdgeBuilder),
         Box::new(build_system::BuildSystemEdgeBuilder),
