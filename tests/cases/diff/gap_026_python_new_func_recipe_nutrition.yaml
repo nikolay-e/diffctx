@@ -75,8 +75,6 @@ repo:
               carbs = self.total_calories() - (protein * 4 + fat * 9)
               return {"protein_g": protein, "fat_g": fat, "carbs_kcal": max(carbs, 0)}
   commit_message: "add macro breakdown calculation to RecipeBuilder"
-fixtures:
-  auto_garbage: true
 fragments:
 - id: builder_macro
   selector:

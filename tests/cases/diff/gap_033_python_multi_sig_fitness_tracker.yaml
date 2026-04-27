@@ -113,8 +113,6 @@ repo:
           def summary(self) -> dict[str, int]:
               return {day: len(exs) for day, exs in self.schedule.items()}
   commit_message: "add weight tracking and rest day validation"
-fixtures:
-  auto_garbage: true
 fragments:
 - id: exercise_weight
   selector:

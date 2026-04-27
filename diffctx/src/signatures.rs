@@ -2,9 +2,8 @@ use std::sync::Arc;
 
 use rustc_hash::FxHashSet;
 
+use crate::config::graph_filtering::GRAPH_FILTERING;
 use crate::types::{Fragment, FragmentId, FragmentKind};
-
-const MIN_LINES_FOR_SIGNATURE: u32 = 5;
 
 fn is_signature_eligible(kind: FragmentKind) -> bool {
     matches!(
@@ -92,7 +91,7 @@ pub fn generate_signature_variants(fragments: &[Fragment]) -> Vec<Fragment> {
         if !is_signature_eligible(frag.kind) {
             continue;
         }
-        if frag.line_count() < MIN_LINES_FOR_SIGNATURE {
+        if frag.line_count() < GRAPH_FILTERING.min_lines_for_signature {
             continue;
         }
         let lines: Vec<&str> = frag.content.lines().collect();

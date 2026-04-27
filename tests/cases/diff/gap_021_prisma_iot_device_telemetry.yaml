@@ -161,8 +161,6 @@ repo:
         return readings.reduce((a, b) => a + b, 0) / readings.length;
       }
   commit_message: "add Alert model and createAlert function"
-fixtures:
-  auto_garbage: true
 fragments:
 - id: schema_alert_model
   selector:

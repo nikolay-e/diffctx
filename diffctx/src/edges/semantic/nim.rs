@@ -22,8 +22,6 @@ static INCLUDE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^\s*include\s+([\
 static PROC_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?m)^\s*(?:proc|func|method|iterator|converter|template|macro)\s+(\w+)").unwrap()
 });
-static TYPE_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?m)^\s*type\s*\n(?:\s+(\w+)\*?\s*=.+\n?)+").unwrap());
 static TYPE_SINGLE_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?m)^\s+(\w+)\*?\s*=\s*(?:object|ref|enum|distinct|concept)").unwrap()
 });

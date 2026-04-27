@@ -6,8 +6,6 @@ tags:
 - difficulty:easy
 - distance:0hop
 - lang:typescript
-xfail:
-  category: low-relevance-threshold-tuning
 repo:
   initial_files:
     src/build/targets.ts: |
@@ -135,8 +133,6 @@ repo:
         return `Watching: ${glob}`;
       }
   commit_message: Update files
-fixtures:
-  auto_garbage: true
 fragments:
 - id: targets_minify
   selector:

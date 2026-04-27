@@ -5,13 +5,13 @@ use std::sync::Arc;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::limits::UTILITY;
+use crate::config::selection::SELECTION;
 use crate::types::{Fragment, FragmentId};
 use crate::utility::needs::InformationNeed;
 use crate::utility::scoring::{
     UtilityState, apply_fragment, compute_density, marginal_gain, utility_value,
 };
 
-const CORE_BUDGET_FRACTION: f64 = 0.70;
 const SENTINEL_TOKEN_COUNT: u32 = 1_000_000_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -175,7 +175,7 @@ fn compute_r_cap(
 
     if values.len() < 2 {
         return if let Some(&v) = values.first() {
-            v.max(0.01)
+            v.max(SELECTION.r_cap_min)
         } else {
             1.0
         };
@@ -226,7 +226,7 @@ fn select_core_fragments(
     budget_tokens: u32,
     sig_lookup: &FxHashMap<FragmentId, Fragment>,
 ) {
-    let core_budget = (budget_tokens as f64 * CORE_BUDGET_FRACTION) as u32;
+    let core_budget = (budget_tokens as f64 * SELECTION.core_budget_fraction) as u32;
     let mut core_used = 0u32;
 
     let mut sorted_core: Vec<&Fragment> = core_fragments.iter().collect();
@@ -247,7 +247,7 @@ fn select_core_fragments(
                 {
                     state.selected.push(sig.clone());
                     state.selected_ids.add(&sig.id);
-                    state.remaining_budget -= sig.token_count;
+                    state.remaining_budget = state.remaining_budget.saturating_sub(sig.token_count);
                     core_used += sig.token_count;
                     let rel_score = rel.get(&frag.id).copied().unwrap_or(0.0);
                     apply_fragment(sig, rel_score, needs, &mut state.utility_state);
@@ -258,7 +258,7 @@ fn select_core_fragments(
 
         state.selected.push(frag.clone());
         state.selected_ids.add(&frag.id);
-        state.remaining_budget -= frag.token_count;
+        state.remaining_budget = state.remaining_budget.saturating_sub(frag.token_count);
         core_used += frag.token_count;
         let rel_score = rel.get(&frag.id).copied().unwrap_or(0.0);
         apply_fragment(frag, rel_score, needs, &mut state.utility_state);
@@ -431,7 +431,7 @@ fn run_greedy_loop_heap(
 
         state.selected.push(best_frag.clone());
         state.selected_ids.add(&best_frag.id);
-        state.remaining_budget -= best_frag.token_count;
+        state.remaining_budget = state.remaining_budget.saturating_sub(best_frag.token_count);
         let rel_score = rel.get(&best_frag.id).copied().unwrap_or(0.0);
         apply_fragment(&best_frag, rel_score, needs, &mut state.utility_state);
     }

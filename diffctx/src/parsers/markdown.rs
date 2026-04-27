@@ -3,6 +3,7 @@ use std::sync::Arc;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
+use crate::config::tokenization::TOKENIZATION;
 use crate::types::{Fragment, FragmentId, FragmentKind, extract_identifiers};
 
 use super::FragmentationStrategy;
@@ -73,7 +74,8 @@ impl FragmentationStrategy for MarkdownStrategy {
                 snippet.push('\n');
             }
 
-            let identifiers = extract_identifiers(&snippet, 2);
+            let identifiers =
+                extract_identifiers(&snippet, TOKENIZATION.fragment_min_identifier_length);
             fragments.push(Fragment {
                 id: FragmentId::new(Arc::clone(&path), start_line, end_line),
                 kind: FragmentKind::Section,

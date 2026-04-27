@@ -4,6 +4,9 @@ use std::sync::Arc;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 
+use crate::config::limits::{
+    DEFAULT_PIPELINE_TIMEOUT_SECONDS, DEFAULT_PPR_ALPHA, DEFAULT_STOPPING_THRESHOLD,
+};
 use crate::mode::ScoringMode;
 use crate::pipeline;
 use crate::render::{DiffContextOutput, FragmentEntry};
@@ -185,12 +188,12 @@ impl FragmentIterator {
     root_dir,
     diff_range = None,
     budget_tokens = None,
-    alpha = 0.60,
-    tau = 0.08,
+    alpha = DEFAULT_PPR_ALPHA,
+    tau = DEFAULT_STOPPING_THRESHOLD,
     no_content = false,
     full = false,
     scoring_mode = "hybrid",
-    timeout = 300,
+    timeout = DEFAULT_PIPELINE_TIMEOUT_SECONDS,
 ))]
 fn build_diff_context_native(
     root_dir: &str,
@@ -226,15 +229,15 @@ fn build_diff_context_native(
     root_dir,
     diff_range,
     budget_tokens = None,
-    alpha = 0.60,
-    tau = 0.08,
+    alpha = DEFAULT_PPR_ALPHA,
+    tau = DEFAULT_STOPPING_THRESHOLD,
     no_content = false,
     ignore_file = None,
     no_default_ignores = false,
     full = false,
     whitelist_file = None,
     scoring_mode = "hybrid",
-    timeout = 300,
+    timeout = DEFAULT_PIPELINE_TIMEOUT_SECONDS,
 ))]
 fn build_diff_context<'py>(
     py: Python<'py>,
@@ -323,11 +326,290 @@ fn build_diff_context<'py>(
     Ok(dict)
 }
 
+#[pyfunction]
+fn get_language_for_file(path: &str) -> Option<String> {
+    crate::languages::get_language_for_file(path).map(|s| s.to_string())
+}
+
+#[pyfunction]
+fn count_tokens(text: &str) -> u32 {
+    crate::tokenizer::count_tokens(text)
+}
+
+// -- Project graph + analytics + export (Python-facing wrappers) -------------
+
+use rustc_hash::{FxHashMap as RsFxHashMap, FxHashSet as RsFxHashSet};
+use std::path::PathBuf;
+
+use crate::analytics;
+use crate::graph::EdgeCategory;
+use crate::graph_export;
+use crate::project_graph;
+
+#[pyclass]
+pub struct PyProjectGraph {
+    inner: project_graph::ProjectGraph,
+    fragment_map: RsFxHashMap<crate::types::FragmentId, crate::types::Fragment>,
+}
+
+#[pymethods]
+impl PyProjectGraph {
+    #[getter]
+    fn fragment_count(&self) -> usize {
+        self.inner.fragments.len()
+    }
+
+    #[getter]
+    fn node_count(&self) -> usize {
+        self.inner.graph.node_count()
+    }
+
+    #[getter]
+    fn edge_count(&self) -> usize {
+        self.inner.graph.edge_count()
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "ProjectGraph(fragments={}, nodes={}, edges={})",
+            self.inner.fragments.len(),
+            self.inner.graph.node_count(),
+            self.inner.graph.edge_count(),
+        )
+    }
+}
+
+#[pyclass]
+pub struct PyQuotientGraph {
+    inner: analytics::QuotientGraph,
+}
+
+#[pymethods]
+impl PyQuotientGraph {
+    #[getter]
+    fn node_count(&self) -> usize {
+        self.inner.nodes.len()
+    }
+
+    #[getter]
+    fn edge_count(&self) -> usize {
+        self.inner.edges.len()
+    }
+}
+
+#[pyclass]
+#[derive(Clone)]
+pub struct PyModuleMetrics {
+    #[pyo3(get)]
+    pub name: String,
+    #[pyo3(get)]
+    pub cohesion: f64,
+    #[pyo3(get)]
+    pub coupling: f64,
+    #[pyo3(get)]
+    pub instability: f64,
+    #[pyo3(get)]
+    pub fan_in: u32,
+    #[pyo3(get)]
+    pub fan_out: u32,
+}
+
+fn parse_edge_categories(types: Option<Vec<String>>) -> Option<RsFxHashSet<EdgeCategory>> {
+    types.map(|v| v.iter().map(|s| EdgeCategory::from_str(s)).collect())
+}
+
+fn parse_quotient_level(level: &str) -> analytics::QuotientLevel {
+    analytics::QuotientLevel::from_str(level)
+}
+
+#[pyfunction]
+#[pyo3(signature = (root_dir))]
+fn build_project_graph(root_dir: &str) -> PyResult<PyProjectGraph> {
+    let pg = project_graph::build_project_graph(std::path::Path::new(root_dir))
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+    let fragment_map: RsFxHashMap<_, _> = pg
+        .fragments
+        .iter()
+        .map(|f| (f.id.clone(), f.clone()))
+        .collect();
+    Ok(PyProjectGraph {
+        inner: pg,
+        fragment_map,
+    })
+}
+
+#[pyfunction]
+#[pyo3(signature = (pg, level="directory", edge_types=None))]
+fn detect_cycles(
+    pg: &PyProjectGraph,
+    level: &str,
+    edge_types: Option<Vec<String>>,
+) -> Vec<Vec<String>> {
+    let level = parse_quotient_level(level);
+    let cats = parse_edge_categories(edge_types);
+    let root = pg.inner.root_dir.to_str();
+    analytics::detect_cycles(
+        &pg.inner.graph,
+        &pg.inner.fragments,
+        level,
+        root,
+        cats.as_ref(),
+    )
+    .into_iter()
+    .map(|cycle| cycle.into_iter().map(|s| s.to_string()).collect())
+    .collect()
+}
+
+#[pyfunction]
+#[pyo3(signature = (pg, top=10, edge_types=None))]
+fn hotspots<'py>(
+    py: Python<'py>,
+    pg: &PyProjectGraph,
+    top: usize,
+    edge_types: Option<Vec<String>>,
+) -> PyResult<Vec<(String, f64, Bound<'py, PyDict>)>> {
+    let cats = parse_edge_categories(edge_types);
+    let root = pg.inner.root_dir.to_str();
+    let entries = analytics::hotspots(
+        &pg.inner.graph,
+        &pg.inner.fragments,
+        top,
+        root,
+        cats.as_ref(),
+        None,
+    );
+    let mut out = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let details = PyDict::new(py);
+        details.set_item("out_degree", entry.out_degree)?;
+        details.set_item("churn", entry.churn)?;
+        out.push((entry.path.to_string(), entry.score, details));
+    }
+    Ok(out)
+}
+
+#[pyfunction]
+#[pyo3(signature = (pg, level="directory", edge_types=None))]
+fn coupling_metrics(
+    pg: &PyProjectGraph,
+    level: &str,
+    edge_types: Option<Vec<String>>,
+) -> Vec<PyModuleMetrics> {
+    let level = parse_quotient_level(level);
+    let cats = parse_edge_categories(edge_types);
+    let root = pg.inner.root_dir.to_str();
+    analytics::coupling_metrics(
+        &pg.inner.graph,
+        &pg.inner.fragments,
+        level,
+        root,
+        cats.as_ref(),
+    )
+    .into_iter()
+    .map(|m| PyModuleMetrics {
+        name: m.name.to_string(),
+        cohesion: m.cohesion,
+        coupling: m.coupling,
+        instability: m.instability,
+        fan_in: m.fan_in,
+        fan_out: m.fan_out,
+    })
+    .collect()
+}
+
+#[pyfunction]
+#[pyo3(signature = (pg, level="directory"))]
+fn quotient_graph(pg: &PyProjectGraph, level: &str) -> PyQuotientGraph {
+    let level = parse_quotient_level(level);
+    let root = pg.inner.root_dir.to_str();
+    let qg = analytics::quotient_graph(&pg.inner.graph, &pg.inner.fragments, level, root);
+    PyQuotientGraph { inner: qg }
+}
+
+#[pyfunction]
+#[pyo3(signature = (qg, top_n=50))]
+fn to_mermaid(qg: &PyQuotientGraph, top_n: usize) -> String {
+    analytics::to_mermaid(&qg.inner, top_n)
+}
+
+#[pyfunction]
+fn graph_to_json_string(pg: &PyProjectGraph) -> PyResult<String> {
+    let view = graph_export::ProjectGraphView {
+        graph: &pg.inner.graph,
+        fragments: &pg.fragment_map,
+        root_dir: Some(pg.inner.root_dir.as_path()),
+    };
+    graph_export::graph_to_json_string(&view)
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+}
+
+#[pyfunction]
+fn graph_to_graphml_string(pg: &PyProjectGraph) -> String {
+    let view = graph_export::ProjectGraphView {
+        graph: &pg.inner.graph,
+        fragments: &pg.fragment_map,
+        root_dir: Some(pg.inner.root_dir.as_path()),
+    };
+    graph_export::graph_to_graphml_string(&view)
+}
+
+#[pyfunction]
+#[pyo3(signature = (pg, top_n=10))]
+fn graph_summary<'py>(
+    py: Python<'py>,
+    pg: &PyProjectGraph,
+    top_n: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    let view = graph_export::ProjectGraphView {
+        graph: &pg.inner.graph,
+        fragments: &pg.fragment_map,
+        root_dir: Some(pg.inner.root_dir.as_path()),
+    };
+    let summary = graph_export::graph_summary(&view, top_n);
+    let dict = PyDict::new(py);
+    dict.set_item("node_count", summary.node_count)?;
+    dict.set_item("edge_count", summary.edge_count)?;
+    dict.set_item("file_count", summary.file_count)?;
+    dict.set_item("density", summary.density)?;
+    let etc = PyDict::new(py);
+    for (k, v) in &summary.edge_type_counts {
+        etc.set_item(k, *v)?;
+    }
+    dict.set_item("edge_type_counts", etc)?;
+    let top = PyList::empty(py);
+    for entry in &summary.top_in_degree {
+        let item = PyDict::new(py);
+        item.set_item("label", &entry.label)?;
+        item.set_item("in_degree", entry.in_degree)?;
+        top.append(item)?;
+    }
+    dict.set_item("top_in_degree", top)?;
+    Ok(dict)
+}
+
 #[pymodule]
 pub fn _diffctx(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(build_diff_context, m)?)?;
     m.add_function(wrap_pyfunction!(build_diff_context_native, m)?)?;
+    m.add_function(wrap_pyfunction!(get_language_for_file, m)?)?;
+    m.add_function(wrap_pyfunction!(count_tokens, m)?)?;
+    m.add_function(wrap_pyfunction!(build_project_graph, m)?)?;
+    m.add_function(wrap_pyfunction!(detect_cycles, m)?)?;
+    m.add_function(wrap_pyfunction!(hotspots, m)?)?;
+    m.add_function(wrap_pyfunction!(coupling_metrics, m)?)?;
+    m.add_function(wrap_pyfunction!(quotient_graph, m)?)?;
+    m.add_function(wrap_pyfunction!(to_mermaid, m)?)?;
+    m.add_function(wrap_pyfunction!(graph_to_json_string, m)?)?;
+    m.add_function(wrap_pyfunction!(graph_to_graphml_string, m)?)?;
+    m.add_function(wrap_pyfunction!(graph_summary, m)?)?;
     m.add_class::<DiffContextResult>()?;
     m.add_class::<PyFragment>()?;
+    m.add_class::<PyProjectGraph>()?;
+    m.add_class::<PyQuotientGraph>()?;
+    m.add_class::<PyModuleMetrics>()?;
     Ok(())
 }
+
+// silence "unused" warnings for fields used only via Python pyclass getters
+#[allow(dead_code)]
+fn _used(_: PathBuf) {}

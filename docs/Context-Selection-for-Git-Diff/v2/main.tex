@@ -151,6 +151,8 @@ ensures the greedy expansion phase retains working budget for relevance-propagat
 
 We now instantiate the framework of Section~\ref{sec:problem} for source code. Relevance weights $w(f, \Delta)$ are derived from a typed weighted graph $G = (\mathcal{V}, \mathcal{E}, w, \tau)$ where nodes $\mathcal{V}$ correspond to fragments in $F$, edges $\mathcal{E} \subseteq \mathcal{V} \times \mathcal{V}$ encode directed dependencies, $\tau : \mathcal{E} \to T$ assigns each edge a type from a fixed set $T$, and $w : \mathcal{E} \to \mathbb{R}_{\geq 0}$ assigns a per-type weight (Section~\ref{sec:weight-calibration}). Relevance is propagated by Personalized PageRank seeded at the diff (Section~\ref{sec:ppr}).
 
+\paragraph{Pipeline phases.} The implementation realizes Section~\ref{sec:problem}'s formalism in two preliminary phases before any scoring runs. \emph{File discovery} (\texttt{candidate\_files.rs}) walks the working tree under \texttt{.gitignore}-aware filters and assembles the candidate file set used as the source of $\mathcal{V}$; this resolves the implicit ``which files do we even consider'' question that the formalism leaves to the implementation. \emph{Fragment extraction} (\texttt{parsers/}, \texttt{fragmentation.rs}) then tree-sitter-parses each file into the fragments of Table~\ref{tab:fragment-types}, producing the fragment universe $F$. These two phases are distinct: file discovery operates on paths (no AST work), fragment extraction operates on file contents (no I/O). A separate \emph{symbol-level discovery} step (\texttt{discovery.rs}) seeds graph traversal from rare diff identifiers; it is part of the scoring pipeline (Section~\ref{sec:scoring}), not the universe-construction phases.
+
 \paragraph{Fragment Types.} Tree-sitter extraction yields 21 fragment kinds (Table~\ref{tab:fragment-types}), grouped by role: \emph{full semantic units} (function bodies, class/struct/interface/enum/impl/type/module/variable/property/record definitions and declarations), \emph{signature-only abridgements} of those (used as compact representatives in the partition matroid of Section~\ref{sec:problem}), and \emph{generic fallback} variants (\texttt{Section}, \texttt{Chunk}) for non-code text or files where parsing fails. Methods are encoded as \texttt{Function} fragments with the enclosing class providing context; only their signature variant (\texttt{MethodSignature}) is distinguished. Full units and their signature counterparts form the equivalence classes $P_u$ of the matroid: at most one resolution per unit is selected.
 
 \begin{table}[h]
@@ -218,6 +220,13 @@ The damping factor $\alpha \in [0.5, 0.65]$ controls locality. With continuation
 
 \textbf{Locality interpretation:} In sparse code graphs with moderate branching, relevance decays approximately with graph distance, but the relationship is not strictly exponential on weighted directed graphs. Hub nodes with high in-degree can accumulate disproportionate mass regardless of semantic relevance, motivating the hub-suppression mechanism of Section~\ref{sec:tdg}.
 
+\paragraph{Forward--Backward Blending.} For diff understanding, both \emph{forward} (callee-direction) and \emph{backward} (caller-direction) propagation carry signal: forward PPR exposes the dependencies a changed function relies on, backward PPR exposes the call sites and tests impacted by it. The implementation runs PPR independently on the original graph and its transpose, then linearly blends the two scores:
+\begin{equation}
+R_{\mathrm{PPR}}(v) = \rho \cdot R_{\mathrm{PPR}}^{\mathrm{fwd}}(v) + (1 - \rho) \cdot R_{\mathrm{PPR}}^{\mathrm{bwd}}(v), \quad \rho \in [0, 1]
+\label{eq:ppr-blend}
+\end{equation}
+where $\rho$ is the forward-blend weight (default $\rho = 0.4$, i.e.\ backward-leaning, reflecting that for diff comprehension the impact-direction signal is typically stronger than the dependency-direction signal). The two PPR runs share the same $\alpha$ and convergence tolerance; only the edge orientation differs.
+
 \subsubsection{Bounded Ego-Network Expansion}
 \label{sec:ego}
 
@@ -225,7 +234,7 @@ Ego-network expansion computes relevance via depth-bounded BFS from the core edi
 \begin{equation}
 R_{\mathrm{ego}}(v) = \sum_{u \in E_0} \mathbbm{1}[d_{\mathrm{hop}}(u,v) \leq L] \cdot \gamma^{d_{\mathrm{hop}}(u,v)} \cdot W_{\mathrm{path}}(u, v)
 \end{equation}
-where $L \in \{1, 2\}$ is the expansion radius, $\gamma \in (0, 1]$ is a per-hop decay factor, $d_{\mathrm{hop}}(u,v)$ is the number of edges in the shortest (by hop count) path from $u$ to $v$ in the typed graph, and
+where $L \in \{1, 2\}$ is the expansion radius (\texttt{EgoGraphScoring.max\_depth} in the implementation), $\gamma \in (0, 1]$ is a per-hop decay factor (\texttt{EgoScoringConfig.per\_hop\_decay}), $d_{\mathrm{hop}}(u,v)$ is the number of edges in the shortest (by hop count) path from $u$ to $v$ in the typed graph, and
 \begin{equation}
 W_{\mathrm{path}}(u, v) = \max_{\pi \in \Pi_{\leq L}(u,v)} \prod_{(a,b) \in \pi} w_{ab}
 \end{equation}
@@ -251,7 +260,7 @@ The hybrid combiner adapts among PPR, EGO, and BM25 based on candidate-set chara
 \begin{equation}
 R_{\mathrm{hybrid}}(v) = \begin{cases} R_{\mathrm{PPR}}(v) & |F_{\mathrm{cand}}| \leq 50 \\ R_{\mathrm{ego}}^{(L=2)}(v) + \lambda \cdot R_{\mathrm{BM25}}^{\mathrm{top-1}}(v) & |F_{\mathrm{cand}}| > 50 \end{cases}
 \end{equation}
-The threshold corresponds to the inflection point where PPR convergence cost exceeds EGO BFS cost on typical sparse code graphs (calibrated empirically). The threshold and supplement weight $\lambda$ are calibrated on validation. Hybrid is the production default; PPR/EGO/BM25 are accessible as explicit modes for ablation and analysis.
+The threshold corresponds to the inflection point where PPR convergence cost exceeds EGO BFS cost on typical sparse code graphs (calibrated empirically). The threshold and supplement weight $\lambda$ are calibrated on validation. Hybrid is the production default; PPR/EGO/BM25 are accessible as explicit modes for ablation and analysis.\footnote{The hybrid supplement weight $\lambda$ is unrelated to the PPR forward-blend $\rho$ of Equation~\ref{eq:ppr-blend}: $\lambda$ scales BM25 contribution \emph{within hybrid mode}, while $\rho$ scales forward-vs-backward PPR \emph{within PPR mode}. The symbols are distinct quantities and should not be conflated even though both control linear interpolation.}
 
 \subsubsection{Discussion: What Each Mode Tests}
 \label{sec:scoring-discussion}
@@ -377,7 +386,7 @@ This standard modification provides a constant-factor approximation guarantee un
 \end{algorithmic}
 \end{algorithm}
 
-\paragraph{Adaptive stopping (engineering heuristic).} The stopping threshold $\tau \in [0.05, 0.15]$ terminates expansion when marginal utility-per-cost falls below a fraction of the baseline density. This modification improves token efficiency in practice but \textbf{invalidates formal approximation guarantees}, as greedy analysis assumes selection continues to the feasibility frontier. We evaluate via ablation: with vs. without stopping at matched budgets. Recommended values: $\tau \approx 0.08$ for focused tasks (bug fixes); $\tau \approx 0.12$ for exploratory tasks (refactoring).
+\paragraph{Adaptive stopping (engineering heuristic).} The stopping threshold $\tau \in [0.05, 0.15]$ (\texttt{SelectionConfig.stopping\_threshold} in the implementation) terminates expansion when marginal utility-per-cost falls below a fraction of the baseline density. This modification improves token efficiency in practice but \textbf{invalidates formal approximation guarantees}, as greedy analysis assumes selection continues to the feasibility frontier. We evaluate via ablation: with vs. without stopping at matched budgets. Recommended values: $\tau \approx 0.08$ for focused tasks (bug fixes); $\tau \approx 0.12$ for exploratory tasks (refactoring).
 
 \paragraph{Complexity.}
 The algorithm runs in $O(|\mathcal{V}| \log |\mathcal{V}| + k \cdot T_{\text{eval}})$ where $k = |C|$ (typically 15--50 fragments) and $T_{\text{eval}} = O(|Z|)$. Lazy evaluation significantly reduces recomputations versus standard greedy on sparse code graphs.
@@ -465,6 +474,8 @@ Overhead & 15--20 tokens & Measure actual serialization cost per fragment \\
 \caption{Operational parameter ranges with selection heuristics.}
 \end{table}
 
+\paragraph{Implementation parameters not modelled in Section~\ref{sec:problem}--\ref{sec:greedy}.} The reference implementation exposes additional parameters that govern second-order behaviors not formalized in the body: a relevance-augmentation weight \texttt{UtilityConfig.eta} ($0.20$) blending raw PPR scores into match strength; a structural-bonus weight \texttt{UtilityConfig.structural\_bonus\_weight} ($0.10$) adding a small bonus when a fragment has any matched need; an $r_{\mathrm{cap}}$ calibration constant \texttt{UtilityConfig.r\_cap\_sigma} ($2.0$, in standard deviations) controlling the soft cap on per-fragment relevance contribution; a hunk-proximity decay system (\texttt{FilteringConfig.proximity\_half\_decay} = $50$ lines, \texttt{FilteringConfig.definition\_proximity\_half\_decay} = $5$ lines, \texttt{UtilityConfig.proximity\_decay} = $0.30$) that boosts fragments physically near diff hunks; BM25 hyperparameters \texttt{Bm25Config.doc\_len\_factor} ($1.5$), \texttt{Bm25Config.idf\_smoothing} ($0.5$), \texttt{Bm25Config.min\_query\_token\_length} ($3$); the Boltzmann calibration loop's bisection bounds \texttt{BoltzmannConfig.beta\_lo} ($10^{-6}$), \texttt{BoltzmannConfig.beta\_hi} ($1.0$), iteration cap \texttt{BoltzmannConfig.bisect\_iters} ($24$), and convergence tolerance \texttt{BoltzmannConfig.calibration\_tolerance} ($5\%$ of budget); and the rescue-phase parameters \texttt{RescueConfig.budget\_fraction} ($0.05$) and \texttt{RescueConfig.min\_score\_percentile} ($0.80$). These parameters are calibrated empirically on representative corpora and held fixed across modes; their role is operational rather than theoretical, so we do not model them in the body but document them here for reproducibility.
+
 \newpage
 \section{Algorithmic Complexity}
 
@@ -498,6 +509,8 @@ The following tactics are useful in practice but lack strong theoretical or empi
 
 \paragraph{Signature Bundling.} When selecting any line inside a function, automatically include the function's signature and first docstring line to prevent orphaned code snippets.
 
+\paragraph{Coherence Post-Pass (Rescue Phase).} After the main greedy loop terminates (either by exhausting the budget or by adaptive stopping, Section~\ref{sec:greedy}), a small reserved budget fraction is held back for a coherence pass that scans the selected set for dangling references---selected fragments mentioning identifiers whose definitions are absent from the context---and pulls in the missing definitions if they fit. The reserved fraction is a fixed default (5\% of $B$ in the reference implementation, \texttt{RescueConfig.budget\_fraction}); the rescue pass is gated by a percentile threshold on the candidate's relevance score (\texttt{RescueConfig.min\_score\_percentile}) so it does not flood the context with low-confidence rescues. This post-pass restores semantic coherence at the cost of relaxing the strict density-greedy ordering; see \texttt{postpass.rs::coherence\_post\_pass} for the implementation.
+
 \newpage
 \section{Language Support}
 \label{sec:impl-inventory}
@@ -521,6 +534,48 @@ Generic fallback & Markdown, plain text, TOML, dotfiles, unparsed sources \\
 \end{tabular}
 \caption{Languages supported by the reference implementation. General-purpose and functional languages have full semantic edge builders (call/import resolution, type references); markup and data formats use schema-aware extractors where applicable.}
 \label{tab:language-support}
+\end{table}
+
+\newpage
+\section{Symbol-to-Code Map}
+\label{sec:symbol-map}
+
+This appendix records the correspondence between symbols in the body of the paper and their identifiers in the reference Rust implementation. The map is the durable contract between the formalism and the code: a symbol that appears in the paper must resolve to a named field, function, or module in the codebase, and any drift surfaces here. Paths are relative to \texttt{diffctx/src/}.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{llp{4.5cm}l}
+\toprule
+\textbf{Paper symbol} & \textbf{Meaning} & \textbf{Code identifier} & \textbf{Source} \\
+\midrule
+$\alpha$            & PPR damping factor             & \texttt{PPRConfig.alpha}                       & \texttt{config/limits.rs} \\
+$\rho$              & PPR forward-blend weight (Eq.~\ref{eq:ppr-blend}) & \texttt{PPRConfig.forward\_blend} & \texttt{config/limits.rs} \\
+$\beta$             & Boltzmann inverse temperature  & \texttt{BoltzmannConfig.beta\_lo}/\texttt{beta\_hi} (bisection bounds) & \texttt{config/selection.rs} \\
+$\beta_{\mathrm{core}}$ & Core edit budget fraction  & \texttt{SelectionConfig.core\_budget\_fraction} & \texttt{config/selection.rs} \\
+$\gamma$            & Ego-network per-hop decay (Section~\ref{sec:ego}) & \texttt{EgoScoringConfig.per\_hop\_decay} & \texttt{config/scoring.rs} \\
+$\lambda$           & BM25 hybrid supplement weight (Section~\ref{sec:hybrid}) & (calibration target; not yet exposed as a const) & \texttt{scoring.rs} \\
+$\tau$              & Adaptive stopping threshold    & \texttt{SelectionConfig.stopping\_threshold}   & \texttt{config/selection.rs} \\
+$L$                 & Ego-network expansion radius   & \texttt{EgoGraphScoring.max\_depth}            & \texttt{scoring.rs} \\
+$k_1$, $b$          & BM25 saturation, length norm   & \texttt{Bm25Config.k1}, \texttt{Bm25Config.b}  & \texttt{config/bm25.rs} \\
+$w_\tau$            & Per-edge-category weight       & \texttt{CategoryWeights.<variant>}             & \texttt{config/category\_weights.rs} \\
+$I(f)$              & File-importance prior          & \texttt{utility::importance::compute\_file\_importance} & \texttt{utility/importance.rs} \\
+$\omega_e$          & Per-fragment importance scaling & \texttt{compute\_seed\_weights}               & \texttt{pipeline.rs} \\
+$E_0$               & Core edit set                  & \texttt{identify\_core\_fragments}             & \texttt{pipeline.rs} \\
+$F$                 & Fragment universe              & output of fragment-extraction phase            & \texttt{fragmentation.rs}, \texttt{parsers/} \\
+\midrule
+\multicolumn{4}{l}{\emph{Pipeline phases:}} \\
+File discovery      & Candidate file assembly        & \texttt{candidate\_files::collect\_candidate\_files} & \texttt{candidate\_files.rs} \\
+Fragment extraction & Tree-sitter fragmentation      & \texttt{fragmentation::process\_files\_for\_fragments} & \texttt{fragmentation.rs} \\
+Symbol-level discovery & Seed expansion via rare idents & \texttt{discovery::*Discovery}              & \texttt{discovery.rs} \\
+Scoring             & Pluggable $\hat{w}(f, \Delta)$ & \texttt{PPRScoring}, \texttt{EgoGraphScoring}, \texttt{BM25Scoring} & \texttt{scoring.rs} \\
+Filtering           & Relevance/proximity filters    & \texttt{filtering::*}                          & \texttt{filtering.rs} \\
+Selection           & Lazy greedy / Boltzmann        & \texttt{select::lazy\_greedy\_select}          & \texttt{select.rs} \\
+Coherence post-pass & Rescue dangling references     & \texttt{postpass::coherence\_post\_pass}       & \texttt{postpass.rs} \\
+\bottomrule
+\end{tabular}
+\caption{Symbol-to-code map. Paper symbols on the left correspond to the named code identifiers on the right, located in the listed source file under \texttt{diffctx/src/}. Implementation-only parameters are documented inline in Appendix~A and are not duplicated here.}
+\label{tab:symbol-map}
 \end{table}
 
 \bibliographystyle{plain}

@@ -225,8 +225,6 @@ repo:
           def destroy(self, session_id: str) -> None:
               self._sessions.pop(session_id, None)
   commit_message: Update files
-fixtures:
-  auto_garbage: true
 fragments:
 - id: resolver_audit
   selector:

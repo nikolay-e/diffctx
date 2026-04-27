@@ -17,17 +17,9 @@ fn is_css_file(path: &Path) -> bool {
 
 static IMPORT_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"(?m)^\s*@(?:import|use|forward)\s+['"]([^'"]+)['"]"#).unwrap());
-static SELECTOR_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^\s*([.#][\w-]+)").unwrap());
 
 fn extract_imports(content: &str) -> FxHashSet<String> {
     IMPORT_RE
-        .captures_iter(content)
-        .map(|c| c[1].to_string())
-        .collect()
-}
-
-fn extract_selectors(content: &str) -> FxHashSet<String> {
-    SELECTOR_RE
         .captures_iter(content)
         .map(|c| c[1].to_string())
         .collect()

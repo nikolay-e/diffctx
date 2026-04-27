@@ -4,7 +4,6 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::config::extensions::SWIFT_EXTENSIONS;
 use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 

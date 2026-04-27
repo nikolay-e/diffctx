@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -6,17 +5,9 @@ use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::extensions::CODE_EXTENSIONS;
+use crate::config::filtering::FILTERING;
 use crate::graph::{EdgeCategory, Graph};
 use crate::types::{DiffHunk, Fragment, FragmentId, FragmentKind};
-
-const PROXIMITY_FLOOR_MAX: f64 = 0.04;
-const PROXIMITY_HALF_DECAY: f64 = 50.0;
-const DEFINITION_PROXIMITY_HALF_DECAY: f64 = 5.0;
-const HUB_REVERSE_THRESHOLD: usize = 2;
-const MAX_CONTEXT_FRAGMENTS_PER_FILE: usize = 30;
-const LOW_RELEVANCE_THRESHOLD: f64 = 0.015;
-const SIZE_PENALTY_BASE_TOKENS: f64 = 100.0;
-const SIZE_PENALTY_EXPONENT: f64 = 0.5;
 
 fn fragment_hunk_gap(frag_start: u32, frag_end: u32, hunk_start: u32, hunk_end: u32) -> u32 {
     if frag_end < hunk_start {
@@ -37,18 +28,18 @@ fn proximity_score(frag: &Fragment, file_hunks: &[(u32, u32)]) -> f64 {
         .min()
         .unwrap_or(u32::MAX);
     let half_decay = if frag.kind == FragmentKind::Definition {
-        DEFINITION_PROXIMITY_HALF_DECAY
+        FILTERING.definition_proximity_half_decay
     } else {
-        PROXIMITY_HALF_DECAY
+        FILTERING.proximity_half_decay
     };
-    PROXIMITY_FLOOR_MAX / (1.0 + min_gap as f64 / half_decay)
+    FILTERING.proximity_floor_max / (1.0 + min_gap as f64 / half_decay)
 }
 
 fn effective_relevance_threshold(token_count: u32) -> f64 {
-    let size_factor = (token_count as f64 / SIZE_PENALTY_BASE_TOKENS)
+    let size_factor = (token_count as f64 / FILTERING.size_penalty_base_tokens)
         .max(1.0)
-        .powf(SIZE_PENALTY_EXPONENT);
-    LOW_RELEVANCE_THRESHOLD * size_factor
+        .powf(FILTERING.size_penalty_exponent);
+    FILTERING.low_relevance_threshold * size_factor
 }
 
 pub fn apply_hunk_proximity_bonus(
@@ -57,7 +48,7 @@ pub fn apply_hunk_proximity_bonus(
     fragments: &[Fragment],
     hunks: &[DiffHunk],
 ) {
-    let mut hunks_by_path: HashMap<&str, Vec<(u32, u32)>> = HashMap::new();
+    let mut hunks_by_path: FxHashMap<&str, Vec<(u32, u32)>> = FxHashMap::default();
     for h in hunks {
         let (h_start, h_end) = h.core_selection_range();
         hunks_by_path
@@ -87,8 +78,11 @@ pub fn apply_hunk_proximity_bonus(
 fn classify_semantic_edges(
     graph: &Graph,
     changed_paths: &FxHashSet<Arc<str>>,
-) -> (HashMap<Arc<str>, FxHashSet<Arc<str>>>, FxHashSet<Arc<str>>) {
-    let mut reverse_deps: HashMap<Arc<str>, FxHashSet<Arc<str>>> = HashMap::new();
+) -> (
+    FxHashMap<Arc<str>, FxHashSet<Arc<str>>>,
+    FxHashSet<Arc<str>>,
+) {
+    let mut reverse_deps: FxHashMap<Arc<str>, FxHashSet<Arc<str>>> = FxHashMap::default();
     let mut direct_edge_paths: FxHashSet<Arc<str>> = FxHashSet::default();
 
     for ((src, dst), category) in &graph.edge_categories {
@@ -135,12 +129,12 @@ fn find_hub_noise_paths(graph: &Graph, changed_paths: &FxHashSet<Arc<str>>) -> F
         })
         .collect();
 
-    let mut noise_counts: HashMap<Arc<str>, usize> = HashMap::new();
+    let mut noise_counts: FxHashMap<Arc<str>, usize> = FxHashMap::default();
     for (hub_path, deps) in &reverse_deps {
         if changed_paths.contains(hub_path) {
             continue;
         }
-        if deps.len() >= HUB_REVERSE_THRESHOLD {
+        if deps.len() >= FILTERING.hub_reverse_threshold {
             for dep in deps {
                 *noise_counts.entry(dep.clone()).or_insert(0) += 1;
             }
@@ -169,7 +163,7 @@ fn find_config_generic_code_files(
 ) -> FxHashSet<Arc<str>> {
     let mut has_real_edge: FxHashSet<Arc<str>> = FxHashSet::default();
     let mut has_generic_config: FxHashSet<Arc<str>> = FxHashSet::default();
-    let mut generic_edge_count: HashMap<Arc<str>, usize> = HashMap::new();
+    let mut generic_edge_count: FxHashMap<Arc<str>, usize> = FxHashMap::default();
     let config_stems: FxHashSet<String> = changed_paths
         .iter()
         .filter_map(|p| {
@@ -278,7 +272,7 @@ pub fn cap_context_fragments(
 ) -> Vec<Fragment> {
     let changed_paths: FxHashSet<Arc<str>> = core_ids.iter().map(|fid| fid.path.clone()).collect();
 
-    let mut ctx_by_path: HashMap<Arc<str>, Vec<Fragment>> = HashMap::new();
+    let mut ctx_by_path: FxHashMap<Arc<str>, Vec<Fragment>> = FxHashMap::default();
     let mut result: Vec<Fragment> = Vec::new();
 
     for f in fragments {
@@ -290,7 +284,7 @@ pub fn cap_context_fragments(
     }
 
     for (_path, mut file_frags) in ctx_by_path {
-        if file_frags.len() <= MAX_CONTEXT_FRAGMENTS_PER_FILE {
+        if file_frags.len() <= FILTERING.max_context_fragments_per_file {
             result.extend(file_frags);
         } else {
             file_frags.sort_by(|a, b| {
@@ -298,7 +292,11 @@ pub fn cap_context_fragments(
                 let sb = rel.get(&b.id).copied().unwrap_or(0.0);
                 sb.partial_cmp(&sa).unwrap_or(std::cmp::Ordering::Equal)
             });
-            result.extend(file_frags.into_iter().take(MAX_CONTEXT_FRAGMENTS_PER_FILE));
+            result.extend(
+                file_frags
+                    .into_iter()
+                    .take(FILTERING.max_context_fragments_per_file),
+            );
         }
     }
 

@@ -103,8 +103,6 @@ repo:
           def score(self, correct_indices: list[int]) -> int:
               return sum(1 for a, c in zip(self.answers, correct_indices) if a == c)
   commit_message: "add difficulty filter and session time limit"
-fixtures:
-  auto_garbage: true
 fragments:
 - id: question_difficulty
   selector:

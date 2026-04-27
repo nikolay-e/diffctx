@@ -3,6 +3,7 @@ use std::sync::Arc;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
+use crate::config::tokenization::TOKENIZATION;
 use crate::types::{Fragment, FragmentId, FragmentKind, extract_identifiers};
 
 use super::FragmentationStrategy;
@@ -88,7 +89,8 @@ fn fragment_json(path: Arc<str>, content: &str) -> Vec<Fragment> {
             snippet.push('\n');
         }
 
-        let identifiers = extract_identifiers(&snippet, 2);
+        let identifiers =
+            extract_identifiers(&snippet, TOKENIZATION.fragment_min_identifier_length);
         fragments.push(Fragment {
             id: FragmentId::new(Arc::clone(&path), start_line, end_line),
             kind: FragmentKind::Chunk,
@@ -142,7 +144,8 @@ fn split_at_top_level_pattern(path: Arc<str>, content: &str, pattern: &Regex) ->
             snippet.push('\n');
         }
 
-        let identifiers = extract_identifiers(&snippet, 2);
+        let identifiers =
+            extract_identifiers(&snippet, TOKENIZATION.fragment_min_identifier_length);
         fragments.push(Fragment {
             id: FragmentId::new(Arc::clone(&path), start_line, end_line),
             kind: FragmentKind::Chunk,
@@ -178,7 +181,7 @@ fn make_single_fragment(path: Arc<str>, lines: &[&str]) -> Vec<Fragment> {
         snippet.push('\n');
     }
     let end_line = lines.len() as u32;
-    let identifiers = extract_identifiers(&snippet, 2);
+    let identifiers = extract_identifiers(&snippet, TOKENIZATION.fragment_min_identifier_length);
     vec![Fragment {
         id: FragmentId::new(path, 1, end_line),
         kind: FragmentKind::Chunk,

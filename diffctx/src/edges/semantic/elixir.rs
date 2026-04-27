@@ -61,7 +61,7 @@ fn extract_func_defs(content: &str) -> FxHashSet<String> {
 pub struct ElixirEdgeBuilder;
 
 impl EdgeBuilder for ElixirEdgeBuilder {
-    fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
+    fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {
         let frags: Vec<&Fragment> = fragments
             .iter()
             .filter(|f| is_elixir_file(Path::new(f.path())))

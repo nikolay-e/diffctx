@@ -4,6 +4,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::config::edge_weights::{C_FAMILY_SEMANTIC, SEMANTIC_DISCOVERY};
 use crate::config::extensions::C_FAMILY_EXTENSIONS;
 use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::{Fragment, FragmentId};
@@ -96,9 +97,6 @@ static C_COMMON_MACROS: Lazy<FxHashSet<&str>> = Lazy::new(|| {
     .collect()
 });
 
-const MIN_IDENTIFIER_LENGTH: usize = 2;
-const DISCOVERY_MAX_DEPTH: usize = 2;
-
 fn extract_includes(content: &str) -> FxHashSet<String> {
     let mut includes = FxHashSet::default();
     for cap in INCLUDE_RE.captures_iter(content) {
@@ -115,7 +113,9 @@ fn extract_definitions(content: &str) -> (FxHashSet<String>, FxHashSet<String>) 
     let functions: FxHashSet<String> = FUNC_DEF_RE
         .captures_iter(content)
         .map(|c| c[1].to_string())
-        .filter(|n| !C_KEYWORDS.contains(n.as_str()) && n.len() > MIN_IDENTIFIER_LENGTH)
+        .filter(|n| {
+            !C_KEYWORDS.contains(n.as_str()) && n.len() > SEMANTIC_DISCOVERY.min_identifier_length
+        })
         .collect();
     let types: FxHashSet<String> = TYPE_DEF_RE
         .captures_iter(content)
@@ -135,7 +135,7 @@ fn extract_references(
             !C_KEYWORDS.contains(n.as_str())
                 && !own_defs.contains(n)
                 && !n.starts_with('_')
-                && n.len() > MIN_IDENTIFIER_LENGTH
+                && n.len() > SEMANTIC_DISCOVERY.min_identifier_length
         })
         .collect();
     let type_refs: FxHashSet<String> = TYPE_REF_RE
@@ -144,7 +144,7 @@ fn extract_references(
         .filter(|n| {
             !C_COMMON_MACROS.contains(n.as_str())
                 && !own_defs.contains(n)
-                && n.len() > MIN_IDENTIFIER_LENGTH
+                && n.len() > SEMANTIC_DISCOVERY.min_identifier_length
         })
         .collect();
     (calls, type_refs)
@@ -167,7 +167,7 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
         let type_weight = EDGE_WEIGHTS["c_type"].forward;
         let inheritance_weight = EDGE_WEIGHTS["c_inheritance"].forward;
         let reverse_factor = EDGE_WEIGHTS["c_include"].reverse_factor;
-        let base_weight = 0.70;
+        let base_weight = C_FAMILY_SEMANTIC.base_weight;
 
         let mut header_to_frags: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
         let mut func_defs_map: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
@@ -316,7 +316,7 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
         let mut discovered: FxHashSet<PathBuf> = FxHashSet::default();
         let mut frontier: Vec<PathBuf> = c_changed.iter().map(|f| (*f).clone()).collect();
 
-        for _ in 0..DISCOVERY_MAX_DEPTH {
+        for _ in 0..SEMANTIC_DISCOVERY.max_depth {
             let mut hop_found: Vec<PathBuf> = Vec::new();
 
             let mut included_headers: FxHashSet<String> = FxHashSet::default();

@@ -82,13 +82,20 @@ pub fn collect_all_edges(
         }
     }
 
+    let category_weights = *crate::config::category_weights::CATEGORY_WEIGHTS;
     let per_builder_edges: Vec<(EdgeDict, Vec<((FragmentId, FragmentId), EdgeCategory)>)> =
         all_builders
             .par_iter()
             .map(|(cat_name, builder)| {
                 let cat_label = builder.category_label().unwrap_or(cat_name);
                 let category = EdgeCategory::from_str(cat_label);
-                let edges = builder.build(fragments, repo_root);
+                let multiplier = category_weights.multiplier(category);
+                let mut edges = builder.build(fragments, repo_root);
+                if multiplier != 1.0 {
+                    for w in edges.values_mut() {
+                        *w *= multiplier;
+                    }
+                }
                 let cats: Vec<_> = edges.keys().map(|k| (k.clone(), category)).collect();
                 (edges, cats)
             })

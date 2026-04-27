@@ -5,6 +5,10 @@ mod tree_sitter_strategy;
 
 use std::sync::Arc;
 
+use once_cell::sync::Lazy;
+
+use crate::config::parsers::PARSERS;
+use crate::config::tokenization::TOKENIZATION;
 use crate::types::Fragment;
 
 pub trait FragmentationStrategy: Send + Sync {
@@ -12,15 +16,17 @@ pub trait FragmentationStrategy: Send + Sync {
     fn fragment(&self, path: Arc<str>, content: &str) -> Vec<Fragment>;
 }
 
-pub fn fragment_file(path: Arc<str>, content: &str) -> Vec<Fragment> {
-    let strategies: Vec<Box<dyn FragmentationStrategy>> = vec![
+static STRATEGIES: Lazy<Vec<Box<dyn FragmentationStrategy>>> = Lazy::new(|| {
+    vec![
         Box::new(tree_sitter_strategy::TreeSitterStrategy::new()),
         Box::new(markdown::MarkdownStrategy),
         Box::new(config_parser::ConfigStrategy),
         Box::new(generic::GenericStrategy),
-    ];
+    ]
+});
 
-    for strategy in &strategies {
+pub fn fragment_file(path: Arc<str>, content: &str) -> Vec<Fragment> {
+    for strategy in STRATEGIES.iter() {
         if strategy.can_handle(&path, content) {
             let fragments = strategy.fragment(Arc::clone(&path), content);
             if !fragments.is_empty() {
@@ -31,8 +37,6 @@ pub fn fragment_file(path: Arc<str>, content: &str) -> Vec<Fragment> {
 
     Vec::new()
 }
-
-const MIN_FRAGMENT_LINES: u32 = 1;
 
 fn create_snippet(lines: &[&str], start_line: u32, end_line: u32) -> Option<String> {
     if start_line == 0 || end_line == 0 || start_line > end_line {
@@ -115,11 +119,14 @@ fn create_code_gap_fragments(
     let mut fragments = Vec::new();
     for (start, end) in gaps {
         let (start, end) = trim_blank_lines(lines, start, end);
-        if start > end || end - start + 1 < MIN_FRAGMENT_LINES {
+        if start > end || end - start + 1 < PARSERS.min_fragment_lines {
             continue;
         }
         if let Some(snippet) = create_snippet(lines, start, end) {
-            let identifiers = crate::types::extract_identifiers(&snippet, 2);
+            let identifiers = crate::types::extract_identifiers(
+                &snippet,
+                TOKENIZATION.fragment_min_identifier_length,
+            );
             fragments.push(Fragment {
                 id: crate::types::FragmentId::new(Arc::clone(&path), start, end),
                 kind: crate::types::FragmentKind::Chunk,

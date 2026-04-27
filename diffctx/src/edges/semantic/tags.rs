@@ -2,15 +2,11 @@ use std::path::Path;
 
 use rustc_hash::FxHashMap;
 
+use crate::config::edge_weights::TAGS_SEMANTIC;
 use crate::types::{Fragment, FragmentId};
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder};
-
-const WEIGHT: f64 = 0.30;
-const REVERSE_FACTOR: f64 = 0.70;
-const MAX_FRAGMENTS_PER_IDENT: usize = 5;
-const MIN_IDENT_LEN: usize = 3;
 
 pub struct TagsEdgeBuilder;
 
@@ -21,7 +17,7 @@ impl EdgeBuilder for TagsEdgeBuilder {
         for f in fragments {
             let path = f.path();
             for ident in &f.identifiers {
-                if ident.len() >= MIN_IDENT_LEN {
+                if ident.len() >= TAGS_SEMANTIC.min_ident_len {
                     ident_index
                         .entry(ident.as_str())
                         .or_default()
@@ -33,7 +29,7 @@ impl EdgeBuilder for TagsEdgeBuilder {
         let mut edges: EdgeDict = FxHashMap::default();
 
         for (_, holders) in &ident_index {
-            if holders.len() < 2 || holders.len() > MAX_FRAGMENTS_PER_IDENT {
+            if holders.len() < 2 || holders.len() > TAGS_SEMANTIC.max_fragments_per_ident {
                 continue;
             }
 
@@ -52,7 +48,13 @@ impl EdgeBuilder for TagsEdgeBuilder {
                     let src = all_ids[i];
                     let dst = all_ids[j];
                     if src.path != dst.path {
-                        base::add_edge(&mut edges, src, dst, WEIGHT, REVERSE_FACTOR);
+                        base::add_edge(
+                            &mut edges,
+                            src,
+                            dst,
+                            TAGS_SEMANTIC.weight,
+                            TAGS_SEMANTIC.reverse_factor,
+                        );
                     }
                 }
             }

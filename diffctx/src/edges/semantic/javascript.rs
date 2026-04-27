@@ -4,6 +4,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::config::edge_weights::JAVASCRIPT_SEMANTIC;
 use crate::config::extensions::{JS_TS_EXTENSIONS, TYPESCRIPT_EXTENSIONS};
 use crate::config::weights::LANG_WEIGHTS;
 use crate::types::{Fragment, FragmentId};
@@ -175,9 +176,6 @@ fn resolve_relative_import(
     None
 }
 
-const IMPORT_WEIGHT: f64 = 0.55;
-const REVERSE_FACTOR: f64 = 0.5;
-
 pub struct JavaScriptEdgeBuilder;
 
 impl EdgeBuilder for JavaScriptEdgeBuilder {
@@ -228,7 +226,13 @@ impl EdgeBuilder for JavaScriptEdgeBuilder {
                             if dst_id == &f.id {
                                 continue;
                             }
-                            base::add_edge(&mut edges, &f.id, dst_id, base_weight, REVERSE_FACTOR);
+                            base::add_edge(
+                                &mut edges,
+                                &f.id,
+                                dst_id,
+                                base_weight,
+                                JAVASCRIPT_SEMANTIC.reverse_factor,
+                            );
                         }
                     }
                 }
@@ -265,8 +269,8 @@ impl EdgeBuilder for JavaScriptEdgeBuilder {
                                             &mut edges,
                                             src_id,
                                             tgt_id,
-                                            IMPORT_WEIGHT,
-                                            REVERSE_FACTOR,
+                                            JAVASCRIPT_SEMANTIC.import_weight,
+                                            JAVASCRIPT_SEMANTIC.reverse_factor,
                                         );
                                     }
                                 }

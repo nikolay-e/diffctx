@@ -4,15 +4,11 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::config::edge_weights::DOCKER;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, FragmentIndex, add_edge, link_by_name};
-
-const WEIGHT: f64 = 0.55;
-const COPY_WEIGHT: f64 = 0.65;
-const COMPOSE_WEIGHT: f64 = 0.50;
-const REVERSE_FACTOR: f64 = 0.40;
 
 static DOCKERFILE_COPY_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?mi)^(?:COPY|ADD)\s+(?:--[^\s]+\s+)*(.+)").unwrap());
@@ -128,7 +124,14 @@ impl EdgeBuilder for DockerEdgeBuilder {
         for df in &dockerfiles {
             let copy_refs = collect_dockerfile_refs(&df.content);
             for r in &copy_refs {
-                link_by_name(&df.id, r, &idx, &mut edges, COPY_WEIGHT, REVERSE_FACTOR);
+                link_by_name(
+                    &df.id,
+                    r,
+                    &idx,
+                    &mut edges,
+                    DOCKER.copy_weight,
+                    DOCKER.reverse_factor,
+                );
             }
 
             let has_env = DOCKERFILE_ENV_RE.is_match(&df.content);
@@ -145,7 +148,13 @@ impl EdgeBuilder for DockerEdgeBuilder {
                         .map(|e| e.to_string_lossy().to_lowercase())
                         .unwrap_or_default();
                     if (ext == "env" || fname.starts_with(".env")) && f.id != df.id {
-                        add_edge(&mut edges, &df.id, &f.id, WEIGHT, REVERSE_FACTOR);
+                        add_edge(
+                            &mut edges,
+                            &df.id,
+                            &f.id,
+                            DOCKER.weight,
+                            DOCKER.reverse_factor,
+                        );
                     }
                 }
             }
@@ -157,14 +166,27 @@ impl EdgeBuilder for DockerEdgeBuilder {
                 let dockerfile_dir = Path::new(df.path()).parent();
                 if let (Some(cf_parent), Some(df_parent)) = (df_dir, dockerfile_dir) {
                     if df_parent == cf_parent || df_parent.parent() == Some(cf_parent) {
-                        add_edge(&mut edges, &cf.id, &df.id, COMPOSE_WEIGHT, REVERSE_FACTOR);
+                        add_edge(
+                            &mut edges,
+                            &cf.id,
+                            &df.id,
+                            DOCKER.compose_weight,
+                            DOCKER.reverse_factor,
+                        );
                     }
                 }
             }
 
             let compose_refs = collect_compose_refs(&cf.content);
             for r in &compose_refs {
-                link_by_name(&cf.id, r, &idx, &mut edges, COMPOSE_WEIGHT, REVERSE_FACTOR);
+                link_by_name(
+                    &cf.id,
+                    r,
+                    &idx,
+                    &mut edges,
+                    DOCKER.compose_weight,
+                    DOCKER.reverse_factor,
+                );
             }
 
             for cap in COMPOSE_CONTEXT_RE.captures_iter(&cf.content) {
@@ -179,8 +201,8 @@ impl EdgeBuilder for DockerEdgeBuilder {
                                     &mut edges,
                                     &cf.id,
                                     &f.id,
-                                    COMPOSE_WEIGHT * 0.7,
-                                    REVERSE_FACTOR,
+                                    DOCKER.compose_weight * DOCKER.compose_context_modifier,
+                                    DOCKER.reverse_factor,
                                 );
                             }
                         }
@@ -197,8 +219,8 @@ impl EdgeBuilder for DockerEdgeBuilder {
                             vol,
                             &idx,
                             &mut edges,
-                            COMPOSE_WEIGHT * 0.6,
-                            REVERSE_FACTOR,
+                            DOCKER.compose_weight * DOCKER.compose_volume_modifier,
+                            DOCKER.reverse_factor,
                         );
                     }
                 }

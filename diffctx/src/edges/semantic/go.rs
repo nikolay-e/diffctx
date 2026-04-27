@@ -4,6 +4,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::config::edge_weights::{GO_SEMANTIC, SEMANTIC_DISCOVERY};
 use crate::config::extensions::GO_EXTENSIONS;
 use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::{Fragment, FragmentId};
@@ -79,8 +80,6 @@ fn has_init_func(content: &str) -> bool {
     INIT_FUNC_RE.is_match(content)
 }
 
-const DISCOVERY_MAX_DEPTH: usize = 2;
-
 pub struct GoEdgeBuilder;
 
 impl GoEdgeBuilder {
@@ -148,7 +147,7 @@ impl EdgeBuilder for GoEdgeBuilder {
         let func_weight = EDGE_WEIGHTS["go_func"].forward;
         let same_package_weight = EDGE_WEIGHTS["go_same_package"].forward;
         let reverse_factor = EDGE_WEIGHTS["go_import"].reverse_factor;
-        let init_same_package_weight = 0.15;
+        let init_same_package_weight = GO_SEMANTIC.init_same_package_weight;
 
         let (pkg_to_frags, path_to_frags, type_defs, func_defs) =
             self.build_indices(&go_frags, repo_root);
@@ -278,7 +277,7 @@ impl EdgeBuilder for GoEdgeBuilder {
 
         let mut frontier: FxHashSet<PathBuf> = go_changed.iter().map(|f| (*f).clone()).collect();
 
-        for _ in 0..DISCOVERY_MAX_DEPTH {
+        for _ in 0..SEMANTIC_DISCOVERY.max_depth {
             let mut next_frontier: FxHashSet<PathBuf> = FxHashSet::default();
             for f in &frontier {
                 let content = base::read_file_cached(f, file_cache);

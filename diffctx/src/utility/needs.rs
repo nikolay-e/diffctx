@@ -4,30 +4,9 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::config::needs::NEEDS;
 use crate::stopwords::CODE_STOPWORDS;
 use crate::types::{Fragment, FragmentId, extract_identifiers};
-
-const MIN_SYMBOL_LENGTH: usize = 3;
-const BACKGROUND_MIN_IDENT_LENGTH: usize = 5;
-
-const DEFINITION_PRIORITY: f64 = 0.9;
-const CALL_DEFINITION_PRIORITY: f64 = 1.0;
-const SIGNATURE_PRIORITY: f64 = 0.7;
-const IMPACT_PRIORITY: f64 = 0.8;
-const INVARIANT_PRIORITY: f64 = 0.85;
-const TEST_PRIORITY: f64 = 0.6;
-const BACKGROUND_PRIORITY: f64 = 0.2;
-const CONCEPT_BACKGROUND_PRIORITY: f64 = 0.3;
-const FALLBACK_PRIORITY: f64 = 0.5;
-
-const DEFINES_SCOPE_MATCH: f64 = 1.0;
-const DEFINES_NO_SCOPE: f64 = 0.5;
-const DEFINES_OTHER_SCOPE: f64 = 0.3;
-const IMPACT_SCOPE_MATCH: f64 = 0.15;
-const IMPACT_MENTIONS: f64 = 0.8;
-const SIGNATURE_DEFINES: f64 = 0.7;
-const TEST_MENTIONS: f64 = 0.6;
-const MENTIONS_FALLBACK: f64 = 0.3;
 
 static CALL_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(\w+)\s*\(").unwrap());
 static TYPE_REF_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?::|->)\s*([A-Z]\w+)").unwrap());
@@ -247,13 +226,13 @@ fn add_needs_for_syms(
     needs: &mut FxHashMap<(String, String), InformationNeed>,
 ) {
     for sym in syms {
-        if sym.len() >= MIN_SYMBOL_LENGTH && !CODE_STOPWORDS.contains(sym) {
+        if sym.len() >= NEEDS.min_symbol_length && !CODE_STOPWORDS.contains(sym) {
             let key = ("definition".to_string(), sym.clone());
             needs.entry(key).or_insert_with(|| InformationNeed {
                 need_type: "definition".to_string(),
                 symbol: sym.clone(),
                 scope: None,
-                priority: DEFINITION_PRIORITY,
+                priority: NEEDS.definition_priority,
             });
         }
     }
@@ -306,11 +285,11 @@ fn is_comment_line(line: &str) -> bool {
 
 fn defines_strength(scope_match: bool, has_scope: bool) -> f64 {
     if scope_match {
-        DEFINES_SCOPE_MATCH
+        NEEDS.defines_scope_match
     } else if !has_scope {
-        DEFINES_NO_SCOPE
+        NEEDS.defines_no_scope
     } else {
-        DEFINES_OTHER_SCOPE
+        NEEDS.defines_other_scope
     }
 }
 
@@ -366,21 +345,25 @@ pub fn match_strength_typed(frag: &Fragment, need: &InformationNeed) -> f64 {
     let nt = need.need_type.as_str();
 
     if nt == "impact" && scope_match {
-        return IMPACT_SCOPE_MATCH;
+        return NEEDS.impact_scope_match;
     }
     if defines && !frag.kind.is_signature() {
         return defines_strength(scope_match, need.scope.is_some());
     }
     if nt == "impact" && mentions && !defines {
-        return IMPACT_MENTIONS;
+        return NEEDS.impact_mentions;
     }
     if defines && (frag.kind.is_signature() || nt == "signature") {
-        return SIGNATURE_DEFINES;
+        return NEEDS.signature_defines;
     }
     if nt == "test" && mentions && is_test_fragment(frag) {
-        return TEST_MENTIONS;
+        return NEEDS.test_mentions;
     }
-    if mentions { MENTIONS_FALLBACK } else { 0.0 }
+    if mentions {
+        NEEDS.mentions_fallback
+    } else {
+        0.0
+    }
 }
 
 fn extract_changed_lines(diff_text: &str) -> Vec<String> {
@@ -412,7 +395,7 @@ fn infer_core_symbol(frag: &Fragment) -> Option<String> {
             .file_stem()
             .map(|s| s.to_string_lossy().to_string());
         if let Some(ref stem) = stem {
-            if stem.len() >= MIN_SYMBOL_LENGTH {
+            if stem.len() >= NEEDS.min_symbol_length {
                 return Some(stem.to_lowercase());
             }
         }
@@ -447,7 +430,7 @@ fn collect_core_needs(
             need_type: "impact".to_string(),
             symbol: sym,
             scope: Some(frag.id.path.clone()),
-            priority: IMPACT_PRIORITY,
+            priority: NEEDS.impact_priority,
         });
     }
     core_symbol_names
@@ -461,7 +444,7 @@ fn process_line_for_needs(
     for m in CALL_RE.captures_iter(line) {
         let name = &m[1];
         let low = name.to_lowercase();
-        if name.len() < MIN_SYMBOL_LENGTH
+        if name.len() < NEEDS.min_symbol_length
             || CODE_STOPWORDS.contains(&low)
             || LANGUAGE_BUILTINS.contains(&low)
         {
@@ -475,7 +458,7 @@ fn process_line_for_needs(
             need_type: "definition".to_string(),
             symbol: low,
             scope: None,
-            priority: CALL_DEFINITION_PRIORITY,
+            priority: NEEDS.call_definition_priority,
         });
     }
     for m in TYPE_REF_RE.captures_iter(line) {
@@ -485,7 +468,7 @@ fn process_line_for_needs(
             need_type: "signature".to_string(),
             symbol: sym,
             scope: None,
-            priority: SIGNATURE_PRIORITY,
+            priority: NEEDS.signature_priority,
         });
     }
     for m in GENERIC_TYPE_RE.captures_iter(line) {
@@ -495,7 +478,7 @@ fn process_line_for_needs(
             need_type: "signature".to_string(),
             symbol: sym,
             scope: None,
-            priority: SIGNATURE_PRIORITY,
+            priority: NEEDS.signature_priority,
         });
     }
 }
@@ -535,7 +518,7 @@ fn collect_test_needs(
                     need_type: "test".to_string(),
                     symbol: tested.clone(),
                     scope: None,
-                    priority: TEST_PRIORITY,
+                    priority: NEEDS.test_priority,
                 });
             }
         }
@@ -549,13 +532,13 @@ fn collect_invariant_needs(
     for line in changed_lines {
         for m in INVARIANT_RE.captures_iter(line) {
             let sym = m[1].to_lowercase();
-            if sym.len() >= MIN_SYMBOL_LENGTH && !CODE_STOPWORDS.contains(&sym) {
+            if sym.len() >= NEEDS.min_symbol_length && !CODE_STOPWORDS.contains(&sym) {
                 let key = ("invariant".to_string(), sym.clone());
                 needs.entry(key).or_insert_with(|| InformationNeed {
                     need_type: "invariant".to_string(),
                     symbol: sym,
                     scope: None,
-                    priority: INVARIANT_PRIORITY,
+                    priority: NEEDS.invariant_priority,
                 });
             }
         }
@@ -590,13 +573,13 @@ fn collect_config_context_needs(
             continue;
         }
         for ident in &frag.identifiers {
-            if ident.len() >= BACKGROUND_MIN_IDENT_LENGTH && !covered.contains(ident) {
+            if ident.len() >= NEEDS.background_min_ident_length && !covered.contains(ident) {
                 let key = ("background".to_string(), ident.clone());
                 needs.entry(key).or_insert_with(|| InformationNeed {
                     need_type: "background".to_string(),
                     symbol: ident.clone(),
                     scope: None,
-                    priority: BACKGROUND_PRIORITY,
+                    priority: NEEDS.background_priority,
                 });
             }
         }
@@ -610,13 +593,13 @@ fn collect_terraform_needs(
     for line in changed_lines {
         for m in TF_VAR_NEED_RE.captures_iter(line) {
             let sym = m[1].to_lowercase();
-            if sym.len() >= MIN_SYMBOL_LENGTH && !CODE_STOPWORDS.contains(&sym) {
+            if sym.len() >= NEEDS.min_symbol_length && !CODE_STOPWORDS.contains(&sym) {
                 let key = ("definition".to_string(), sym.clone());
                 needs.entry(key).or_insert_with(|| InformationNeed {
                     need_type: "definition".to_string(),
                     symbol: sym,
                     scope: None,
-                    priority: CALL_DEFINITION_PRIORITY,
+                    priority: NEEDS.call_definition_priority,
                 });
             }
         }
@@ -632,7 +615,7 @@ fn collect_terraform_needs(
                 need_type: "definition".to_string(),
                 symbol: full_ref,
                 scope: None,
-                priority: DEFINITION_PRIORITY,
+                priority: NEEDS.definition_priority,
             });
         }
     }
@@ -658,7 +641,7 @@ pub fn concepts_from_diff_text(
         .cloned()
         .collect();
 
-    let raw = extract_identifiers(&text, MIN_SYMBOL_LENGTH);
+    let raw = extract_identifiers(&text, NEEDS.min_symbol_length);
     raw.into_iter()
         .filter(|id| !expansion_stopwords.contains(id))
         .collect()
@@ -695,7 +678,7 @@ pub fn needs_from_diff(
                 need_type: "definition".to_string(),
                 symbol: c,
                 scope: None,
-                priority: FALLBACK_PRIORITY,
+                priority: NEEDS.fallback_priority,
             })
             .collect();
     }
@@ -708,7 +691,7 @@ pub fn needs_from_diff(
                 need_type: "background".to_string(),
                 symbol: c,
                 scope: None,
-                priority: CONCEPT_BACKGROUND_PRIORITY,
+                priority: NEEDS.concept_background_priority,
             });
         }
     }

@@ -199,8 +199,6 @@ repo:
           def from_json(self, raw: str) -> dict:
               return json.loads(raw)
   commit_message: Update files
-fixtures:
-  auto_garbage: true
 fragments:
 - id: executor_retry
   selector:

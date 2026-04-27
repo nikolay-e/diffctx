@@ -6,7 +6,9 @@ use rayon::prelude::*;
 use regex::Regex;
 use rustc_hash::FxHashSet;
 
+use crate::config::fragmentation::FRAGMENTATION;
 use crate::config::limits::LIMITS;
+use crate::config::tokenization::TOKENIZATION;
 use crate::git::{self, CatFileBatch};
 use crate::parsers::fragment_file;
 use crate::tokenizer::count_tokens;
@@ -73,7 +75,9 @@ static KNOWN_BINARY_EXTENSIONS: Lazy<FxHashSet<&'static str>> = Lazy::new(|| {
 });
 
 fn looks_binary(content: &str) -> bool {
-    let mut check_len = content.len().min(8192);
+    let mut check_len = content
+        .len()
+        .min(FRAGMENTATION.binary_detection_buffer_size);
     while check_len > 0 && !content.is_char_boundary(check_len) {
         check_len -= 1;
     }
@@ -99,7 +103,7 @@ fn has_generated_path_segment(path: &Path) -> bool {
 fn has_generated_content_marker(content: &str) -> bool {
     let header: String = content
         .lines()
-        .take(10)
+        .take(FRAGMENTATION.generated_marker_header_lines)
         .collect::<Vec<_>>()
         .join("\n")
         .to_lowercase();
@@ -148,7 +152,10 @@ fn truncate_generated_fragments(file_frags: Vec<Fragment>) -> Vec<Fragment> {
                 remaining
             );
             let new_end = frag.start_line() + max_lines - 1;
-            let identifiers = extract_identifiers(&truncated_content, 2);
+            let identifiers = extract_identifiers(
+                &truncated_content,
+                TOKENIZATION.fragment_min_identifier_length,
+            );
             Fragment {
                 id: FragmentId::new(frag.id.path.clone(), frag.start_line(), new_end),
                 kind: frag.kind,
@@ -201,21 +208,31 @@ fn read_file_content(
         .unwrap_or_else(|_| root_dir.to_path_buf());
     let rel = abs_path.strip_prefix(&resolved_root).ok()?;
 
+    let max_size = LIMITS.max_file_size;
     for rev in preferred_revs {
         if let Some(reader) = batch_reader.as_deref_mut() {
             match reader.get(rev, rel) {
-                Ok(content) if !looks_binary(&content) => return Some(content),
+                Ok(content) if content.len() <= max_size && !looks_binary(&content) => {
+                    return Some(content);
+                }
                 _ => continue,
             }
         } else {
             match git::show_file_at_revision(root_dir, rev, rel) {
-                Ok(content) if !looks_binary(&content) => return Some(content),
+                Ok(content) if content.len() <= max_size && !looks_binary(&content) => {
+                    return Some(content);
+                }
                 _ => continue,
             }
         }
     }
 
     if abs_path.exists() && abs_path.is_file() {
+        if let Ok(meta) = std::fs::metadata(&abs_path) {
+            if meta.len() as usize > LIMITS.max_file_size {
+                return None;
+            }
+        }
         if let Ok(content) = std::fs::read_to_string(&abs_path) {
             if !looks_binary(&content) {
                 return Some(content);
@@ -312,7 +329,7 @@ pub fn create_whole_file_fragment(
     let line_count = lines.len() as u32;
     let path_arc: Arc<str> = Arc::from(path.to_string_lossy().as_ref());
     let token_count = count_tokens(&content) + LIMITS.overhead_per_fragment;
-    let identifiers = extract_identifiers(&content, 2);
+    let identifiers = extract_identifiers(&content, TOKENIZATION.fragment_min_identifier_length);
 
     Some(Fragment {
         id: FragmentId::new(path_arc, 1, line_count),

@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use once_cell::sync::Lazy;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::config::edge_weights::SEMANTIC_DISCOVERY;
 use crate::config::extensions::CODE_EXTENSIONS;
 use crate::types::{Fragment, FragmentId};
 
@@ -220,8 +221,6 @@ pub fn read_file_cached<'a>(
     std::fs::read_to_string(path).ok()
 }
 
-const MIN_REF_LENGTH_FOR_PATH_MATCH: usize = 3;
-
 fn candidate_rel_path(candidate: &Path, repo_root: Option<&Path>) -> String {
     if let Some(root) = repo_root {
         if let Ok(rel) = candidate.strip_prefix(root) {
@@ -241,7 +240,7 @@ fn matches_any_ref(candidate_name: &str, candidate_rel: &str, refs: &FxHashSet<S
             return true;
         }
         let ref_lower = r.to_lowercase();
-        if ref_lower.len() >= MIN_REF_LENGTH_FOR_PATH_MATCH {
+        if ref_lower.len() >= SEMANTIC_DISCOVERY.min_ref_length_for_path_match {
             if let Some(idx) = candidate_rel.find(&ref_lower) {
                 let end_idx = idx + ref_lower.len();
                 let start_ok = idx == 0

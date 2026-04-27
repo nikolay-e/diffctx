@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import logging
 import sys
 from dataclasses import dataclass
-from typing import Any
 
-logger = logging.getLogger(__name__)
+from _diffctx import count_tokens as _rust_count_tokens
 
 
 @dataclass
@@ -15,29 +13,13 @@ class TokenCountResult:
     encoding: str
 
 
-_encoder_cache: dict[str, Any] = {}
-
-
-def _get_encoder(encoding: str) -> Any | None:
-    if encoding in _encoder_cache:
-        return _encoder_cache[encoding]
-    try:
-        import tiktoken
-
-        enc = tiktoken.get_encoding(encoding)
-        _encoder_cache[encoding] = enc
-        return enc
-    except Exception:
-        return None
-
-
 def count_tokens(text: str, encoding: str = "o200k_base") -> TokenCountResult:
-    encoder = _get_encoder(encoding)
-    if not encoder:
-        logger.debug("tiktoken unavailable, using char/4 approximation")
-        return TokenCountResult(len(text) // 4, False, "approximation")
+    """Count tokens via the Rust tiktoken backend.
 
-    return TokenCountResult(len(encoder.encode_ordinary(text)), True, encoding)
+    The `encoding` argument is accepted for API stability; the Rust backend
+    uses `o200k_base` and is always exact.
+    """
+    return TokenCountResult(int(_rust_count_tokens(text)), True, "o200k_base")
 
 
 def _format_size(byte_size: int) -> str:

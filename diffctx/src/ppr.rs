@@ -3,10 +3,9 @@ use std::collections::VecDeque;
 use rayon;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::config::limits::PPR;
 use crate::graph::{CsrGraph, Graph};
 use crate::types::FragmentId;
-
-const DEFAULT_SEED_EPSILON: f64 = 0.1;
 
 fn init_seed_residuals(
     csr: &CsrGraph,
@@ -28,14 +27,14 @@ fn init_seed_residuals(
     if let Some(sw) = seed_weights {
         let total: f64 = valid_seeds
             .iter()
-            .map(|s| sw.get(*s).copied().unwrap_or(DEFAULT_SEED_EPSILON))
+            .map(|s| sw.get(*s).copied().unwrap_or(PPR.default_seed_epsilon))
             .sum();
         if total <= 0.0 {
             return residual;
         }
         for s in &valid_seeds {
             let idx = csr.node_to_idx[*s] as usize;
-            residual[idx] = sw.get(*s).copied().unwrap_or(DEFAULT_SEED_EPSILON) / total;
+            residual[idx] = sw.get(*s).copied().unwrap_or(PPR.default_seed_epsilon) / total;
         }
     } else {
         let weight = 1.0 / valid_seeds.len() as f64;
@@ -73,7 +72,7 @@ fn ppr_push_csr(
         }
     }
 
-    let max_pushes = (n * 100).min(2_000_000);
+    let max_pushes = (n * PPR.push_scale_factor).min(PPR.max_pushes_cap);
     let mut pushes: usize = 0;
 
     while let Some(u) = queue.pop_front() {
@@ -123,7 +122,7 @@ pub fn personalized_pagerank(
     seeds: &FxHashSet<FragmentId>,
     alpha: f64,
     tol: f64,
-    lam: f64,
+    forward_blend: f64,
     seed_weights: Option<&FxHashMap<FragmentId, f64>>,
 ) -> FxHashMap<FragmentId, f64> {
     if graph.node_count() == 0 {
@@ -144,7 +143,7 @@ pub fn personalized_pagerank(
     let n = fwd_csr.n;
     let mut combined = vec![0.0f64; n];
     for i in 0..n {
-        combined[i] = lam * forward_est[i] + (1.0 - lam) * backward_est[i];
+        combined[i] = forward_blend * forward_est[i] + (1.0 - forward_blend) * backward_est[i];
     }
 
     let total: f64 = combined.iter().sum();

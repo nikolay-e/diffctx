@@ -150,8 +150,6 @@ repo:
       def format_records(records: list[DNSRecord]) -> str:
           return "\n".join(format_record(r) for r in records)
   commit_message: Update files
-fixtures:
-  auto_garbage: true
 fragments:
 - id: aaaa_type
   selector:

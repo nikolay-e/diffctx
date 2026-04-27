@@ -1,10 +1,11 @@
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::config::bm25::BM25;
+use crate::config::tokenization::TOKENIZATION;
 use crate::types::extract_identifier_list;
 
 pub struct DiscoveryContext {
@@ -67,7 +68,10 @@ fn expand_by_rare_identifiers(
             continue;
         }
         if let Some(content) = ctx.read_file(f) {
-            let idents: FxHashSet<String> = crate::types::extract_identifiers(&content, 3);
+            let idents: FxHashSet<String> = crate::types::extract_identifiers(
+                &content,
+                TOKENIZATION.query_min_identifier_length,
+            );
             for ident in &ctx.expansion_concepts {
                 if idents.contains(ident) {
                     ident_to_files
@@ -156,7 +160,7 @@ impl BM25Discovery {
         avgdl: f64,
     ) -> f64 {
         let dl = doc.len() as f64;
-        let mut tf: HashMap<&str, u32> = HashMap::new();
+        let mut tf: FxHashMap<&str, u32> = FxHashMap::default();
         for t in doc {
             *tf.entry(t.as_str()).or_insert(0) += 1;
         }
@@ -167,7 +171,8 @@ impl BM25Discovery {
                 continue;
             }
             let idf_val = idf.get(t).copied().unwrap_or(0.0);
-            s += idf_val * (freq * 2.5) / (freq + 1.5 * (1.0 - 0.75 + 0.75 * dl / avgdl));
+            s += idf_val * (freq * BM25.k1)
+                / (freq + BM25.doc_len_factor * (1.0 - BM25.b + BM25.b * dl / avgdl));
         }
         s
     }
@@ -175,7 +180,7 @@ impl BM25Discovery {
 
 impl DiscoveryStrategy for BM25Discovery {
     fn discover(&self, ctx: &DiscoveryContext) -> Vec<PathBuf> {
-        let query_tokens = extract_identifier_list(&ctx.diff_text, 3);
+        let query_tokens = extract_identifier_list(&ctx.diff_text, BM25.min_query_token_length);
         if query_tokens.is_empty() {
             return Vec::new();
         }
@@ -192,7 +197,10 @@ impl DiscoveryStrategy for BM25Discovery {
                 Some(c) => c,
                 None => continue,
             };
-            corpus.push(extract_identifier_list(&content, 3));
+            corpus.push(extract_identifier_list(
+                &content,
+                BM25.min_query_token_length,
+            ));
             paths.push(f.clone());
         }
 
@@ -203,7 +211,7 @@ impl DiscoveryStrategy for BM25Discovery {
         let n_docs = corpus.len();
         let avgdl = corpus.iter().map(|d| d.len()).sum::<usize>() as f64 / n_docs as f64;
 
-        let mut df: HashMap<String, usize> = HashMap::new();
+        let mut df: FxHashMap<String, usize> = FxHashMap::default();
         for doc in &corpus {
             let unique: FxHashSet<&str> = doc.iter().map(|s| s.as_str()).collect();
             for term in unique {
@@ -216,7 +224,8 @@ impl DiscoveryStrategy for BM25Discovery {
             .iter()
             .map(|t| {
                 let d = df.get(t).copied().unwrap_or(0) as f64;
-                let val = ((n_docs as f64 - d + 0.5) / (d + 0.5)).ln_1p();
+                let val =
+                    ((n_docs as f64 - d + BM25.idf_smoothing) / (d + BM25.idf_smoothing)).ln_1p();
                 (t.clone(), val)
             })
             .collect();

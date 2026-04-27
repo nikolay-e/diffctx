@@ -75,8 +75,6 @@ repo:
           temp_compensation = 1.0 + (ambient_temp - 20.0) * 0.001
           return (raw_value + profile.offset) * profile.scale * temp_compensation
   commit_message: "add ambient temperature compensation to calibration"
-fixtures:
-  auto_garbage: true
 fragments:
 - id: calibration_func
   selector:

@@ -4,6 +4,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::config::edge_weights::PYTHON_SEMANTIC;
 use crate::config::extensions::PYTHON_EXTENSIONS;
 use crate::config::weights::LANG_WEIGHTS;
 use crate::types::{Fragment, FragmentId};
@@ -134,11 +135,6 @@ static PY_KEYWORDS: Lazy<FxHashSet<&str>> = Lazy::new(|| {
     .collect()
 });
 
-const IMPORT_WEIGHT: f64 = 0.75;
-const IMPORT_CONFIRMED_BOOST: f64 = 1.5;
-const IMPORT_UNCONFIRMED_PENALTY: f64 = 0.2;
-const REVERSE_FACTOR: f64 = 0.5;
-
 pub struct PythonEdgeBuilder;
 
 impl EdgeBuilder for PythonEdgeBuilder {
@@ -233,9 +229,9 @@ impl EdgeBuilder for PythonEdgeBuilder {
                             let confirmed =
                                 !dst_module.is_empty() && src_imports.contains(dst_module);
                             let factor = if confirmed {
-                                IMPORT_CONFIRMED_BOOST
+                                PYTHON_SEMANTIC.import_confirmed_boost
                             } else {
-                                IMPORT_UNCONFIRMED_PENALTY
+                                PYTHON_SEMANTIC.import_unconfirmed_penalty
                             };
                             let w = base_weight * factor;
                             let key_fwd = (f.id.clone(), dst_id.clone());
@@ -243,7 +239,7 @@ impl EdgeBuilder for PythonEdgeBuilder {
                             if w > existing {
                                 edges.insert(key_fwd, w);
                             }
-                            let rev_w = w * REVERSE_FACTOR;
+                            let rev_w = w * PYTHON_SEMANTIC.reverse_factor;
                             let key_rev = (dst_id.clone(), f.id.clone());
                             let existing_rev = edges.get(&key_rev).copied().unwrap_or(0.0);
                             if rev_w > existing_rev {
@@ -262,8 +258,8 @@ impl EdgeBuilder for PythonEdgeBuilder {
                         }
                         let key = (f.id.clone(), tgt.clone());
                         let existing = edges.get(&key).copied().unwrap_or(0.0);
-                        if IMPORT_WEIGHT > existing {
-                            edges.insert(key, IMPORT_WEIGHT);
+                        if PYTHON_SEMANTIC.import_weight > existing {
+                            edges.insert(key, PYTHON_SEMANTIC.import_weight);
                         }
                     }
                 }

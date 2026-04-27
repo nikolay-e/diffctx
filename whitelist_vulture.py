@@ -1,10 +1,11 @@
+from treemapper.diffctx.graph import CSRGraph, Graph
+from treemapper.diffctx.tokenizer import detect_profile, is_nlp_available
+
 from treemapper.clipboard import clipboard_available
 from treemapper.diffctx import file_importance, fragmentation, git, graph_analytics, types, universe
-from treemapper.diffctx.graph import CSRGraph, Graph
 from treemapper.diffctx.graph_analytics import QuotientNode
 from treemapper.diffctx.pipeline import DiffContextTimeoutError
 from treemapper.diffctx.project_graph import ProjectGraph
-from treemapper.diffctx.tokenizer import detect_profile, is_nlp_available
 from treemapper.mcp.server import get_diff_context, get_file_context, get_tree_map, run_server
 
 _ = clipboard_available

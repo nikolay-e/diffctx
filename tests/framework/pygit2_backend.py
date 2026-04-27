@@ -1,12 +1,60 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 import pygit2
 
-from treemapper.diffctx.git import GitError, _parse_hunk_header, _parse_path_line
-from treemapper.diffctx.types import DiffHunk
+
+class GitError(Exception):
+    """Raised when a git operation fails (test-side mirror of the Rust GitError)."""
+
+
+@dataclass(frozen=True)
+class DiffHunk:
+    path: Path
+    new_start: int
+    new_len: int
+    old_start: int = 0
+    old_len: int = 0
+
+
+def _parse_hunk_header(match: re.Match[str], path: Path) -> DiffHunk:
+    old_start = int(match.group(1))
+    old_len_str = match.group(2)
+    old_len = int(old_len_str) if old_len_str else 1
+    new_start = int(match.group(3))
+    new_len_str = match.group(4)
+    new_len = int(new_len_str) if new_len_str else 1
+    return DiffHunk(
+        path=path,
+        new_start=new_start,
+        new_len=new_len,
+        old_start=old_start,
+        old_len=old_len,
+    )
+
+
+def _parse_path_line(line: str, repo_root: Path) -> tuple[str, Path | None]:
+    if line.startswith("--- /dev/null"):
+        return "old", None
+    if line.startswith("+++ /dev/null"):
+        return "new", None
+    if line.startswith("--- a/"):
+        rel_path = line.removeprefix("--- a/").strip()
+        resolved = (repo_root / rel_path).resolve()
+        if not resolved.is_relative_to(repo_root.resolve()):
+            return "", None
+        return "old", repo_root / rel_path
+    if line.startswith("+++ b/"):
+        rel_path = line.removeprefix("+++ b/").strip()
+        resolved = (repo_root / rel_path).resolve()
+        if not resolved.is_relative_to(repo_root.resolve()):
+            return "", None
+        return "new", repo_root / rel_path
+    return "", None
+
 
 _HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 

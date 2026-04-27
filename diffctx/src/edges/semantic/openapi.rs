@@ -4,6 +4,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::config::edge_weights::OPENAPI_SEMANTIC;
 use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
@@ -18,7 +19,7 @@ fn is_openapi_candidate(path: &Path) -> bool {
 fn is_openapi_file(content: &str) -> bool {
     content
         .lines()
-        .take(5)
+        .take(OPENAPI_SEMANTIC.marker_scan_lines)
         .any(|l| l.contains("openapi:") || l.contains("swagger:"))
 }
 

@@ -17,8 +17,6 @@ fn is_r_file(path: &Path) -> bool {
 
 static SOURCE_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r##"(?m)source\s*\(\s*['"]([^'"]+)['"]"##).unwrap());
-static LIBRARY_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r##"(?m)(?:library|require)\s*\(\s*['"]?(\w+)"##).unwrap());
 static FUNC_DEF_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?m)^\s*(\w+)\s*<-\s*function\s*\(").unwrap());
 static S4_CLASS_RE: Lazy<Regex> =

@@ -1,6 +1,7 @@
 use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::config::graph_filtering::GRAPH_FILTERING;
 use crate::types::{Fragment, FragmentId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -30,6 +31,21 @@ impl EdgeCategory {
             "history" => Self::History,
             "test_edge" => Self::TestEdge,
             _ => Self::Generic,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Semantic => "semantic",
+            Self::Structural => "structural",
+            Self::Sibling => "sibling",
+            Self::Config => "config",
+            Self::ConfigGeneric => "config_generic",
+            Self::Document => "document",
+            Self::Similarity => "similarity",
+            Self::History => "history",
+            Self::TestEdge => "test_edge",
+            Self::Generic => "generic",
         }
     }
 
@@ -91,6 +107,10 @@ impl Graph {
 
     pub fn node_count(&self) -> usize {
         self.nodes.len()
+    }
+
+    pub fn nodes(&self) -> impl Iterator<Item = &FragmentId> {
+        self.nodes.iter()
     }
 
     pub fn edge_count(&self) -> usize {
@@ -305,8 +325,6 @@ fn build_csr_owned(
     }
 }
 
-const HUB_OUT_DEGREE_THRESHOLD: usize = 3;
-
 fn apply_hub_suppression(
     edges: &mut FxHashMap<(FragmentId, FragmentId), f64>,
     edge_categories: &FxHashMap<(FragmentId, FragmentId), EdgeCategory>,
@@ -390,7 +408,7 @@ fn apply_hub_suppression(
         for i in 0..edge_list.len() {
             if is_semantic[i] {
                 let src_deg = sem_file_deg[src_indices[i] as usize];
-                if src_deg >= HUB_OUT_DEGREE_THRESHOLD as u32 {
+                if src_deg >= GRAPH_FILTERING.hub_out_degree_threshold as u32 {
                     edge_weights[i] /= (src_deg as f64).sqrt();
                 }
             }

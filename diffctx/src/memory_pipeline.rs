@@ -6,7 +6,9 @@ use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 use similar::{ChangeTag, TextDiff};
 
+use crate::config::budget::BUDGET;
 use crate::config::limits::LIMITS;
+use crate::config::tokenization::TOKENIZATION;
 use crate::core::{compute_seed_weights, identify_core_fragments};
 use crate::edges;
 use crate::mode::{PipelineConfig, ScoringKind, ScoringMode};
@@ -16,8 +18,6 @@ use crate::scoring::{BM25Scoring, EgoGraphScoring, PPRScoring, ScoringStrategy};
 use crate::signatures::generate_signature_variants;
 use crate::tokenizer::count_tokens;
 use crate::types::{DiffHunk, Fragment, FragmentId};
-
-const UNLIMITED_BUDGET: u32 = 10_000_000;
 
 pub struct MemoryRepo {
     pub name: String,
@@ -95,7 +95,7 @@ pub fn build_diff_context_in_memory(
     });
     all_fragments.extend(sig_frags);
 
-    let effective_budget = budget_tokens.unwrap_or(UNLIMITED_BUDGET);
+    let effective_budget = budget_tokens.unwrap_or(BUDGET.unlimited);
     let n_context = allowed_paths.len();
     let config = PipelineConfig::from_mode(scoring_mode, n_context);
     let seed_weights = compute_seed_weights(&hunks, &core_ids, &all_fragments);
@@ -254,7 +254,7 @@ fn compute_memory_diff_text(
         let diff = TextDiff::from_lines(old_content, new_content);
         let mut udiff = diff.unified_diff();
         let formatted = udiff
-            .context_radius(3)
+            .context_radius(TOKENIZATION.diff_context_radius)
             .header(&format!("a/{path}"), &format!("b/{path}"));
         let _ = write!(result, "{formatted}");
     }
@@ -271,7 +271,7 @@ fn compute_memory_diff_text(
         let diff = TextDiff::from_lines(old_content, &empty);
         let mut udiff = diff.unified_diff();
         let formatted = udiff
-            .context_radius(3)
+            .context_radius(TOKENIZATION.diff_context_radius)
             .header(&format!("a/{path}"), "/dev/null");
         let _ = write!(result, "{formatted}");
     }

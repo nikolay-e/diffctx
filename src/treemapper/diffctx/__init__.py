@@ -1,17 +1,14 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-from .git import GitError
 from .pipeline import build_diff_context
 
-if TYPE_CHECKING:
-    from .project_graph import ProjectGraph
 
-__all__ = ["GitError", "ProjectGraph", "build_diff_context", "build_project_graph"]
+class GitError(Exception):
+    """Raised when an underlying git operation fails.
+
+    Mirrors the Rust `_diffctx` error surface as a plain Python exception so
+    callers do not need to depend on PyO3-side classes.
+    """
 
 
-def build_project_graph(*args, **kwargs):  # type: ignore[no-untyped-def]
-    from .project_graph import build_project_graph as _build
-
-    return _build(*args, **kwargs)
+__all__ = ["GitError", "build_diff_context"]

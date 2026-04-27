@@ -4,18 +4,16 @@ use std::sync::Arc;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::limits::UTILITY;
+use crate::config::needs::NEEDS;
 use crate::types::Fragment;
 use crate::utility::needs::{InformationNeed, match_strength_typed};
-
-const MIN_REL_FOR_BONUS: f64 = 0.03;
-const RELATEDNESS_BONUS: f64 = 0.25;
 
 pub struct UtilityState {
     pub max_rel: FxHashMap<(String, String), f64>,
     pub priorities: FxHashMap<(String, String), f64>,
     pub structural_sum: f64,
     pub eta: f64,
-    pub gamma: f64,
+    pub structural_bonus_weight: f64,
     pub r_cap: f64,
     pub changed_dirs: FxHashSet<PathBuf>,
     pub proximity_decay: f64,
@@ -29,7 +27,7 @@ impl Default for UtilityState {
             priorities: FxHashMap::default(),
             structural_sum: 0.0,
             eta: UTILITY.eta,
-            gamma: UTILITY.gamma,
+            structural_bonus_weight: UTILITY.structural_bonus_weight,
             r_cap: 1.0,
             changed_dirs: FxHashSet::default(),
             proximity_decay: UTILITY.proximity_decay,
@@ -45,7 +43,7 @@ impl UtilityState {
             priorities: self.priorities.clone(),
             structural_sum: self.structural_sum,
             eta: self.eta,
-            gamma: self.gamma,
+            structural_bonus_weight: self.structural_bonus_weight,
             r_cap: self.r_cap,
             changed_dirs: self.changed_dirs.clone(),
             proximity_decay: self.proximity_decay,
@@ -74,7 +72,7 @@ fn needs_from_identifiers(frag: &Fragment) -> Vec<InformationNeed> {
             need_type: "definition".to_string(),
             symbol: c.clone(),
             scope: None,
-            priority: 0.5,
+            priority: NEEDS.identifier_default_priority,
         })
         .collect()
 }
@@ -93,7 +91,7 @@ fn diversity_bonus(
     gain: f64,
     state: &UtilityState,
 ) -> f64 {
-    if needs.is_empty() || rel_score < MIN_REL_FOR_BONUS {
+    if needs.is_empty() || rel_score < NEEDS.min_rel_for_bonus {
         return 0.0;
     }
     if gain <= 0.0 {
@@ -111,7 +109,7 @@ fn diversity_bonus(
         })
         .sum();
     let unsatisfied = (1.0 - total_covered / needs.len().max(1) as f64).max(0.0);
-    rel_score * RELATEDNESS_BONUS * unsatisfied
+    rel_score * NEEDS.relatedness_bonus * unsatisfied
 }
 
 fn compute_gain_core(
@@ -177,7 +175,7 @@ fn compute_gain_core(
         } else {
             0.0
         };
-        result.structural_bonus = state.gamma * r_norm;
+        result.structural_bonus = state.structural_bonus_weight * r_norm;
     }
 
     result

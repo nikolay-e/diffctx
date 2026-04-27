@@ -4,6 +4,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::config::edge_weights::SEMANTIC_DISCOVERY;
 use crate::config::extensions::RUST_EXTENSIONS;
 use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::{Fragment, FragmentId};
@@ -181,8 +182,6 @@ fn stem_to_mod_name(path: &Path) -> String {
         stem
     }
 }
-
-const DISCOVERY_MAX_DEPTH: usize = 2;
 
 pub struct RustEdgeBuilder;
 
@@ -427,7 +426,7 @@ impl EdgeBuilder for RustEdgeBuilder {
         let mut discovered: FxHashSet<PathBuf> = FxHashSet::default();
         let mut frontier: FxHashSet<PathBuf> = rust_changed.iter().map(|f| (*f).clone()).collect();
 
-        for _ in 0..DISCOVERY_MAX_DEPTH {
+        for _ in 0..SEMANTIC_DISCOVERY.max_depth {
             let skip: FxHashSet<PathBuf> = changed_set.union(&discovered).cloned().collect();
             let frontier_mod_names: FxHashSet<String> =
                 frontier.iter().map(|f| stem_to_mod_name(f)).collect();

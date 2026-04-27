@@ -4,6 +4,7 @@ use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::limits::LEXICAL;
+use crate::config::tokenization::TOKENIZATION;
 use crate::config::weights::{DEFAULT_LANG_WEIGHTS, LANG_WEIGHTS, LangWeights};
 use crate::languages::EXTENSION_TO_LANGUAGE;
 use crate::stopwords::{filter_idents, profile_from_path};
@@ -89,7 +90,8 @@ impl LexicalEdgeBuilder {
     /// Tokenize and filter identifiers for one fragment. Returns the raw filtered identifier list.
     fn tokens(frag: &Fragment) -> Vec<String> {
         let profile = profile_from_path(frag.path());
-        let idents = extract_identifier_list(&frag.content, 3);
+        let idents =
+            extract_identifier_list(&frag.content, TOKENIZATION.query_min_identifier_length);
         filter_idents(&idents, 3, profile)
     }
 }

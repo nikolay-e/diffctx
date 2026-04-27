@@ -78,8 +78,6 @@ repo:
           base = format_entry("ERROR", message)
           return f"{base} ({exc_type})"
   commit_message: "add structured context dict to format_entry"
-fixtures:
-  auto_garbage: true
 fragments:
 - id: formatter_entry
   selector:

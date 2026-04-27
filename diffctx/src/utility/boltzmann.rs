@@ -1,11 +1,8 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::config::selection::BOLTZMANN;
 use crate::select::{SelectionReason, SelectionResult};
 use crate::types::{Fragment, FragmentId};
-
-const BETA_LO: f64 = 1e-6;
-const BETA_HI: f64 = 1.0;
-const BETA_BISECT_ITERS: u32 = 24;
 
 fn boltzmann_weight(rel_score: f64, token_count: u32, beta: f64) -> f64 {
     rel_score * (-beta * token_count as f64).exp()
@@ -97,11 +94,11 @@ pub fn calibrate_beta(
     budget_tokens: u32,
     epsilon: f64,
 ) -> f64 {
-    let (mut lo, mut hi) = (BETA_LO, BETA_HI);
+    let (mut lo, mut hi) = (BOLTZMANN.beta_lo, BOLTZMANN.beta_hi);
     let target = budget_tokens as f64;
     let tol = (target * epsilon).max(1.0);
 
-    for _ in 0..BETA_BISECT_ITERS {
+    for _ in 0..BOLTZMANN.bisect_iters {
         let mid = (lo * hi).sqrt();
         let result = boltzmann_select(fragments, core_ids, rel, budget_tokens, mid);
         let cost = result.used_tokens as f64;

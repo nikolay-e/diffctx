@@ -6,6 +6,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::Serialize;
 
+use crate::config::render::RENDER;
 use crate::types::{Fragment, FragmentKind};
 
 #[derive(Serialize)]
@@ -115,7 +116,10 @@ fn extract_symbol(frag: &Fragment) -> Option<String> {
             if let Some(m) = caps.get(1) {
                 let result = m.as_str().trim();
                 return Some(if frag.kind == FragmentKind::Section {
-                    result.chars().take(50).collect()
+                    result
+                        .chars()
+                        .take(RENDER.section_symbol_max_chars)
+                        .collect()
                 } else {
                     result.to_string()
                 });

@@ -78,18 +78,34 @@ _SHARED_CACHE = Path(os.environ.get("CB_REPOS_DIR", str(Path.home() / ".cache" /
 _SHARED_CACHE.mkdir(parents=True, exist_ok=True)
 
 
+_PERF_CONFIG = (
+    ("gc.auto", "0"),
+    ("feature.manyFiles", "true"),
+    ("index.version", "4"),
+    ("core.untrackedCache", "true"),
+    ("core.fsmonitor", "false"),
+)
+
+
+def _apply_perf_config(repo_dir: Path) -> None:
+    for key, value in _PERF_CONFIG:
+        run_cmd(["git", "-C", str(repo_dir), "config", key, value], check=False, timeout=10)
+
+
 def _clone_one_repo(args: tuple[str, str]) -> None:
     repo, url = args
     safe_name = repo.replace("/", "__")
     cache_dir = _SHARED_CACHE / safe_name
     if cache_dir.exists():
+        _apply_perf_config(cache_dir)
+        run_cmd(["git", "-C", str(cache_dir), "worktree", "prune"], check=False, timeout=30)
         return
     print(f"  Cloning {repo}...", flush=True)
     r = run_cmd(["git", "clone", "--quiet", "--bare", url, str(cache_dir)], check=False, timeout=600)
     if r.returncode != 0:
         print(f"  CLONE FAIL {repo}: {r.stderr[:200]}")
         return
-    run_cmd(["git", "-C", str(cache_dir), "config", "gc.auto", "0"], check=False, timeout=10)
+    _apply_perf_config(cache_dir)
 
 
 def _fetch_one_commit(args: tuple[str, str]) -> None:
@@ -135,7 +151,7 @@ def _ensure_bare_cache(repo_url: str, repo_name: str) -> Path | None:
     if r.returncode != 0:
         print(f"  CLONE FAIL: {r.stderr[:200]}")
         return None
-    run_cmd(["git", "-C", str(cache_dir), "config", "gc.auto", "0"], check=False, timeout=10)
+    _apply_perf_config(cache_dir)
     return cache_dir
 
 
@@ -191,11 +207,14 @@ def ensure_repo(
         )
     else:
         with _bare_repo_lock(cache_dir):
+            run_cmd(["git", "-C", str(cache_dir), "worktree", "prune"], check=False, timeout=30)
             r = run_cmd(
                 ["git", "-C", str(cache_dir), "worktree", "add", "--detach", "--force", str(repo_dir), base_commit],
                 check=False,
                 timeout=checkout_timeout,
             )
+        if r.returncode == 0:
+            _apply_perf_config(repo_dir)
     if r.returncode != 0:
         print(f"  WORKTREE/CHECKOUT FAIL {base_commit[:12]}: {r.stderr[:200]}")
         return None
@@ -287,9 +306,27 @@ _worker_id: str = ""
 
 def _init_worker() -> None:
     global _worker_id
+    import importlib
     import warnings
 
     warnings.filterwarnings("ignore", category=SyntaxWarning)
+
+    os.environ.setdefault("RAYON_NUM_THREADS", os.environ.get("BENCH_RAYON_THREADS", "1"))
+    os.environ.setdefault("OMP_NUM_THREADS", "1")
+    os.environ.setdefault("MKL_NUM_THREADS", "1")
+    os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+    os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
+    for mod in (
+        "_diffctx",
+        "treemapper.diffctx.pipeline",
+        "tiktoken",
+    ):
+        try:
+            importlib.import_module(mod)
+        except ImportError:
+            pass
+
     _worker_id = uuid.uuid4().hex[:12]
 
 

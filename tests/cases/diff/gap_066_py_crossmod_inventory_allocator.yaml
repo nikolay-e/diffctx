@@ -223,8 +223,6 @@ repo:
           def recent(self, count: int = 10) -> list:
               return self._entries[-count:]
   commit_message: Update files
-fixtures:
-  auto_garbage: true
 fragments:
 - id: allocator_detailed
   selector:

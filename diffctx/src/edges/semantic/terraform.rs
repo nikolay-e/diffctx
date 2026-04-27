@@ -4,14 +4,11 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::config::edge_weights::TERRAFORM_SEMANTIC;
 use crate::types::{Fragment, FragmentId};
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids};
-
-const WEIGHT: f64 = 0.60;
-const REVERSE_FACTOR: f64 = 0.40;
-const MODULE_SOURCE_WEIGHT: f64 = WEIGHT * 0.8;
 
 static TF_EXTENSIONS: Lazy<FxHashSet<&str>> =
     Lazy::new(|| [".tf", ".tfvars", ".hcl"].iter().copied().collect());
@@ -320,7 +317,13 @@ fn build_index(tf_frags: &[&Fragment]) -> TFIndex {
 fn add_var_edges(f: &Fragment, idx: &TFIndex, edges: &mut EdgeDict) {
     for cap in VAR_REF_RE.captures_iter(&f.content) {
         if let Some(def_ids) = idx.var_defs.get(&cap[1].to_string()) {
-            add_edges_from_ids(edges, &f.id, def_ids, WEIGHT, REVERSE_FACTOR);
+            add_edges_from_ids(
+                edges,
+                &f.id,
+                def_ids,
+                TERRAFORM_SEMANTIC.weight,
+                TERRAFORM_SEMANTIC.reverse_factor,
+            );
         }
     }
 }
@@ -328,7 +331,13 @@ fn add_var_edges(f: &Fragment, idx: &TFIndex, edges: &mut EdgeDict) {
 fn add_local_edges(f: &Fragment, idx: &TFIndex, edges: &mut EdgeDict) {
     for cap in LOCAL_REF_RE.captures_iter(&f.content) {
         if let Some(def_ids) = idx.local_defs.get(&cap[1].to_string()) {
-            add_edges_from_ids(edges, &f.id, def_ids, WEIGHT, REVERSE_FACTOR);
+            add_edges_from_ids(
+                edges,
+                &f.id,
+                def_ids,
+                TERRAFORM_SEMANTIC.weight,
+                TERRAFORM_SEMANTIC.reverse_factor,
+            );
         }
     }
 }
@@ -338,10 +347,22 @@ fn add_data_edges(f: &Fragment, idx: &TFIndex, edges: &mut EdgeDict) {
         let full = format!("{}.{}", &cap[1], &cap[2]);
         let name = cap[2].to_string();
         if let Some(def_ids) = idx.data_defs.get(&full) {
-            add_edges_from_ids(edges, &f.id, def_ids, WEIGHT, REVERSE_FACTOR);
+            add_edges_from_ids(
+                edges,
+                &f.id,
+                def_ids,
+                TERRAFORM_SEMANTIC.weight,
+                TERRAFORM_SEMANTIC.reverse_factor,
+            );
         }
         if let Some(def_ids) = idx.data_defs.get(&name) {
-            add_edges_from_ids(edges, &f.id, def_ids, WEIGHT, REVERSE_FACTOR);
+            add_edges_from_ids(
+                edges,
+                &f.id,
+                def_ids,
+                TERRAFORM_SEMANTIC.weight,
+                TERRAFORM_SEMANTIC.reverse_factor,
+            );
         }
     }
 }
@@ -349,7 +370,13 @@ fn add_data_edges(f: &Fragment, idx: &TFIndex, edges: &mut EdgeDict) {
 fn add_module_edges(f: &Fragment, idx: &TFIndex, edges: &mut EdgeDict) {
     for cap in MODULE_REF_RE.captures_iter(&f.content) {
         if let Some(def_ids) = idx.module_defs.get(&cap[1].to_string()) {
-            add_edges_from_ids(edges, &f.id, def_ids, WEIGHT, REVERSE_FACTOR);
+            add_edges_from_ids(
+                edges,
+                &f.id,
+                def_ids,
+                TERRAFORM_SEMANTIC.weight,
+                TERRAFORM_SEMANTIC.reverse_factor,
+            );
         }
     }
 }
@@ -363,10 +390,22 @@ fn add_resource_edges(f: &Fragment, idx: &TFIndex, edges: &mut EdgeDict) {
         let res_name = &cap[2];
         let full = format!("{}.{}", res_type, res_name);
         if let Some(def_ids) = idx.resource_defs.get(&full) {
-            add_edges_from_ids(edges, &f.id, def_ids, WEIGHT, REVERSE_FACTOR);
+            add_edges_from_ids(
+                edges,
+                &f.id,
+                def_ids,
+                TERRAFORM_SEMANTIC.weight,
+                TERRAFORM_SEMANTIC.reverse_factor,
+            );
         }
         if let Some(def_ids) = idx.resource_defs.get(&res_name.to_string()) {
-            add_edges_from_ids(edges, &f.id, def_ids, WEIGHT, REVERSE_FACTOR);
+            add_edges_from_ids(
+                edges,
+                &f.id,
+                def_ids,
+                TERRAFORM_SEMANTIC.weight,
+                TERRAFORM_SEMANTIC.reverse_factor,
+            );
         }
     }
 }
@@ -428,8 +467,9 @@ fn build_module_source_edges(
                                     edges,
                                     &f.id,
                                     frag_id,
-                                    MODULE_SOURCE_WEIGHT,
-                                    REVERSE_FACTOR,
+                                    TERRAFORM_SEMANTIC.weight
+                                        * TERRAFORM_SEMANTIC.module_source_modifier,
+                                    TERRAFORM_SEMANTIC.reverse_factor,
                                 );
                             }
                         }

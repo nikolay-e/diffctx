@@ -6,6 +6,11 @@ use anyhow::Result;
 use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::candidate_files;
+use crate::config::budget::BUDGET;
+use crate::config::graph_filtering::GRAPH_FILTERING;
+use crate::config::limits::LIMITS;
+use crate::config::tokenization::TOKENIZATION;
 use crate::core::{compute_seed_weights, identify_core_fragments};
 use crate::discovery::{
     BM25Discovery, DefaultDiscovery, DiscoveryContext, DiscoveryStrategy, EnsembleDiscovery,
@@ -20,13 +25,6 @@ use crate::scoring::{BM25Scoring, EgoGraphScoring, PPRScoring, ScoringStrategy};
 use crate::signatures::generate_signature_variants;
 use crate::tokenizer::count_tokens;
 use crate::types::{Fragment, FragmentId};
-use crate::universe;
-
-const UNLIMITED_BUDGET: u32 = 10_000_000;
-const AUTO_BUDGET_MULTIPLIER: f64 = 5.0;
-const AUTO_BUDGET_MIN: u32 = 8_000;
-const AUTO_BUDGET_MAX: u32 = 124_000;
-const OVERHEAD_PER_FRAGMENT: u32 = 18;
 
 pub fn build_diff_context(
     root_dir: &Path,
@@ -93,7 +91,11 @@ pub fn build_diff_context(
     }
 
     let deleted_files = git::get_deleted_files(&root_dir, diff_range)?;
-    let (renamed_old, pure_rename_new) = git::get_renamed_paths(&root_dir, diff_range, 100)?;
+    let (renamed_old, pure_rename_new) = git::get_renamed_paths(
+        &root_dir,
+        diff_range,
+        GRAPH_FILTERING.git_rename_similarity_threshold,
+    )?;
     let excluded: FxHashSet<PathBuf> = deleted_files
         .into_iter()
         .chain(renamed_old)
@@ -127,7 +129,7 @@ pub fn build_diff_context(
     let t_parse_changed = Instant::now();
 
     let included_set: FxHashSet<PathBuf> = changed_files.iter().cloned().collect();
-    let all_candidate_files = universe::collect_candidate_files(&root_dir, &included_set);
+    let all_candidate_files = candidate_files::collect_candidate_files(&root_dir, &included_set);
 
     let t_universe = Instant::now();
 
@@ -139,14 +141,17 @@ pub fn build_diff_context(
     }
 
     let mut expansion_concepts: FxHashSet<String> =
-        crate::types::extract_identifiers(&diff_text, 3)
+        crate::types::extract_identifiers(&diff_text, TOKENIZATION.query_min_identifier_length)
             .into_iter()
             .collect();
 
     if let Some(ref h) = head_rev {
         if std::env::var("DIFFCTX_NO_COMMIT_SIGNAL").as_deref() != Ok("1") {
             if let Ok(commit_msg) = git::get_commit_message(&root_dir, h) {
-                for ident in crate::types::extract_identifiers(&commit_msg, 3) {
+                for ident in crate::types::extract_identifiers(
+                    &commit_msg,
+                    TOKENIZATION.query_min_identifier_length,
+                ) {
                     expansion_concepts.insert(ident);
                 }
             }
@@ -165,7 +170,7 @@ pub fn build_diff_context(
     let discovered_files = create_discovery(&config).discover(&discovery_ctx);
     let discovered_files: Vec<PathBuf> = discovered_files
         .into_iter()
-        .map(|p| universe::normalize_path(&p, &root_dir))
+        .map(|p| candidate_files::normalize_path(&p, &root_dir))
         .collect();
 
     drop(discovery_ctx);
@@ -203,8 +208,8 @@ pub fn build_diff_context(
                 .filter(|f| core_ids.contains(&f.id))
                 .map(|f| f.token_count)
                 .sum();
-            let auto = (core_tokens as f64 * AUTO_BUDGET_MULTIPLIER) as u32;
-            auto.clamp(AUTO_BUDGET_MIN, AUTO_BUDGET_MAX)
+            let auto = (core_tokens as f64 * BUDGET.auto_multiplier) as u32;
+            auto.clamp(BUDGET.auto_min, BUDGET.auto_max)
         });
 
         let discovered_path_set: FxHashSet<Arc<str>> = discovered_files
@@ -239,7 +244,7 @@ pub fn build_diff_context(
                     &core_ids,
                     &scoring_result.rel_scores,
                     effective_budget,
-                    0.05,
+                    crate::config::selection::BOLTZMANN.calibration_tolerance,
                 );
                 tracing::debug!("diffctx: boltzmann beta calibrated to {:.6e}", beta);
                 crate::utility::boltzmann_select(
@@ -370,14 +375,12 @@ fn create_discovery(config: &PipelineConfig) -> Box<dyn DiscoveryStrategy> {
     }
 }
 
-const MAX_CACHE_BYTES: usize = 200 * 1024 * 1024;
-
 fn build_file_cache(candidate_files: &[PathBuf]) -> FxHashMap<PathBuf, String> {
     let mut entries: Vec<(PathBuf, String)> = candidate_files
         .par_iter()
         .filter_map(|f| {
             let meta = f.metadata().ok()?;
-            if meta.len() > 100_000 {
+            if meta.len() as usize > LIMITS.max_file_size {
                 return None;
             }
             let content = std::fs::read_to_string(f).ok()?;
@@ -389,7 +392,7 @@ fn build_file_cache(candidate_files: &[PathBuf]) -> FxHashMap<PathBuf, String> {
     let mut cache: FxHashMap<PathBuf, String> = FxHashMap::default();
     let mut cache_bytes = 0usize;
     for (path, content) in entries {
-        if cache_bytes > MAX_CACHE_BYTES {
+        if cache_bytes > GRAPH_FILTERING.max_cache_bytes {
             break;
         }
         cache_bytes += content.len();
@@ -401,7 +404,7 @@ fn build_file_cache(candidate_files: &[PathBuf]) -> FxHashMap<PathBuf, String> {
 fn assign_token_counts(fragments: &mut [Fragment]) {
     fragments.par_iter_mut().for_each(|frag| {
         if frag.token_count == 0 {
-            frag.token_count = count_tokens(&frag.content) + OVERHEAD_PER_FRAGMENT;
+            frag.token_count = count_tokens(&frag.content) + LIMITS.overhead_per_fragment;
         }
     });
 }

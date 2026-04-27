@@ -4,14 +4,11 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::config::edge_weights::CICD;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, FragmentIndex, add_edge, link_by_name};
-
-const WEIGHT: f64 = 0.55;
-const SCRIPT_WEIGHT: f64 = 0.60;
-const REVERSE_FACTOR: f64 = 0.35;
 
 static GHA_RUN_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?m)^\s{0,20}-?\s{0,5}run:\s{0,5}[|>]?\s{0,5}([^\n]{1,500})").unwrap()
@@ -259,7 +256,14 @@ impl EdgeBuilder for CICDEdgeBuilder {
         for ci in &ci_frags {
             let refs = extract_refs_for_content(Path::new(ci.path()), &ci.content);
             for r in &refs {
-                link_by_name(&ci.id, r, &idx, &mut edges, SCRIPT_WEIGHT, REVERSE_FACTOR);
+                link_by_name(
+                    &ci.id,
+                    r,
+                    &idx,
+                    &mut edges,
+                    CICD.script_weight,
+                    CICD.reverse_factor,
+                );
             }
 
             let lower = ci.content.to_lowercase();
@@ -274,7 +278,13 @@ impl EdgeBuilder for CICDEdgeBuilder {
                         .map(|n| n.to_string_lossy().to_lowercase())
                         .unwrap_or_default();
                     if fname == "package.json" && f.id != ci.id {
-                        add_edge(&mut edges, &ci.id, &f.id, WEIGHT * 0.8, REVERSE_FACTOR);
+                        add_edge(
+                            &mut edges,
+                            &ci.id,
+                            &f.id,
+                            CICD.weight * CICD.script_modifier,
+                            CICD.reverse_factor,
+                        );
                     }
                 }
             }

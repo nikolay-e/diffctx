@@ -4,17 +4,11 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::config::edge_weights::KUBERNETES;
 use crate::types::{Fragment, FragmentId};
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge};
-
-const WEIGHT: f64 = 0.65;
-const CONFIGMAP_SECRET_WEIGHT: f64 = 0.70;
-const SERVICE_WEIGHT: f64 = 0.60;
-const SELECTOR_WEIGHT: f64 = 0.55;
-const IMAGE_WEIGHT: f64 = 0.40;
-const REVERSE_FACTOR: f64 = 0.45;
 
 static YAML_EXTS: Lazy<FxHashSet<&str>> = Lazy::new(|| [".yaml", ".yml"].iter().copied().collect());
 
@@ -318,7 +312,13 @@ fn link_by_patterns(
             if let Some(target_ids) = index.get(name) {
                 for target_id in target_ids {
                     if *target_id != frag.id {
-                        add_edge(edges, &frag.id, target_id, weight, REVERSE_FACTOR);
+                        add_edge(
+                            edges,
+                            &frag.id,
+                            target_id,
+                            weight,
+                            KUBERNETES.reverse_factor,
+                        );
                     }
                 }
             }
@@ -336,7 +336,7 @@ fn build_configmap_edges(
         &[&CONFIGMAP_REF_RE, &CONFIGMAP_NAME_RE, &VOLUME_CONFIGMAP_RE],
         configmaps,
         edges,
-        CONFIGMAP_SECRET_WEIGHT,
+        KUBERNETES.configmap_secret_weight,
     );
 }
 
@@ -350,7 +350,7 @@ fn build_secret_edges(
         &[&SECRET_REF_RE, &SECRET_NAME_RE, &VOLUME_SECRET_RE],
         secrets,
         edges,
-        CONFIGMAP_SECRET_WEIGHT,
+        KUBERNETES.configmap_secret_weight,
     );
 }
 
@@ -364,7 +364,7 @@ fn build_service_edges(
         &[&SERVICE_NAME_RE, &BACKEND_SERVICE_RE],
         services,
         edges,
-        SERVICE_WEIGHT,
+        KUBERNETES.service_weight,
     );
 }
 
@@ -373,7 +373,7 @@ fn build_volume_edges(
     pvcs: &FxHashMap<String, Vec<FragmentId>>,
     edges: &mut EdgeDict,
 ) {
-    link_by_patterns(frag, &[&VOLUME_PVC_RE], pvcs, edges, WEIGHT);
+    link_by_patterns(frag, &[&VOLUME_PVC_RE], pvcs, edges, KUBERNETES.weight);
 }
 
 fn get_service_selector(content: &str) -> FxHashMap<String, String> {
@@ -405,7 +405,13 @@ fn build_selector_edges(
 
     for (pod_id, labels) in pods_with_labels {
         if *pod_id != frag.id && labels_match(&selector, labels) {
-            add_edge(edges, &frag.id, pod_id, SELECTOR_WEIGHT, REVERSE_FACTOR);
+            add_edge(
+                edges,
+                &frag.id,
+                pod_id,
+                KUBERNETES.selector_weight,
+                KUBERNETES.reverse_factor,
+            );
         }
     }
 }
@@ -423,7 +429,13 @@ fn build_image_edges(
         if let Some(other_ids) = images.get(image) {
             for other_id in other_ids {
                 if *other_id != frag.id {
-                    add_edge(edges, &frag.id, other_id, IMAGE_WEIGHT, REVERSE_FACTOR);
+                    add_edge(
+                        edges,
+                        &frag.id,
+                        other_id,
+                        KUBERNETES.image_weight,
+                        KUBERNETES.reverse_factor,
+                    );
                 }
             }
         }

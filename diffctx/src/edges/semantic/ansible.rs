@@ -4,6 +4,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::config::edge_weights::ANSIBLE_SEMANTIC;
 use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
@@ -121,7 +122,7 @@ impl EdgeBuilder for AnsibleEdgeBuilder {
         let include_w = EDGE_WEIGHTS["ansible_include"].forward;
         let role_w = EDGE_WEIGHTS["ansible_role"].forward;
         let rev = EDGE_WEIGHTS["ansible_include"].reverse_factor;
-        let sibling_w = include_w * 0.6;
+        let sibling_w = include_w * ANSIBLE_SEMANTIC.sibling_modifier;
 
         let idx = FragmentIndex::new(fragments, repo_root);
         let mut edges: EdgeDict = FxHashMap::default();

@@ -109,8 +109,6 @@ repo:
           def unique_skus(self) -> int:
               return len(set(s for s, _ in self.lines))
   commit_message: "add min stock threshold and pick order priority"
-fixtures:
-  auto_garbage: true
 fragments:
 - id: stock_min_qty
   selector:

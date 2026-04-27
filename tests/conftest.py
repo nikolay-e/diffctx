@@ -3,58 +3,11 @@ import logging
 import os
 import subprocess
 import sys
-from functools import wraps
 from pathlib import Path
 
 import pytest
 
 from tests.framework.pygit2_backend import Pygit2Repo
-from tests.garbage_data import GARBAGE_MARKERS
-
-DIFF_CONTEXT_MAX_BUDGET = int(os.environ.get("DIFF_CONTEXT_MAX_BUDGET", "0"))
-
-VERIFY_NO_GARBAGE = os.environ.get("VERIFY_NO_GARBAGE", "1") == "1"
-
-
-@pytest.fixture(autouse=True)
-def cap_diff_context_budget(monkeypatch):
-    if DIFF_CONTEXT_MAX_BUDGET == 0 and not VERIFY_NO_GARBAGE:
-        yield
-        return
-
-    from treemapper import diffctx
-
-    original_build = diffctx.build_diff_context
-
-    @wraps(original_build)
-    def enhanced_build(*args, **kwargs):
-        if DIFF_CONTEXT_MAX_BUDGET > 0:
-            if "budget_tokens" in kwargs and kwargs["budget_tokens"] > DIFF_CONTEXT_MAX_BUDGET:
-                kwargs["budget_tokens"] = DIFF_CONTEXT_MAX_BUDGET
-        result = original_build(*args, **kwargs)
-        if VERIFY_NO_GARBAGE:
-            _verify_no_garbage_in_context(result)
-        return result
-
-    monkeypatch.setattr(diffctx, "build_diff_context", enhanced_build)
-    yield
-
-
-def _verify_no_garbage_in_context(context: dict) -> None:
-    all_content = []
-    for frag in context.get("fragments", []):
-        if "content" in frag:
-            all_content.append(frag["content"])
-        if "path" in frag:
-            all_content.append(frag["path"])
-    full_content = "\n".join(all_content)
-
-    for marker in GARBAGE_MARKERS:
-        if marker in full_content:
-            pytest.fail(
-                f"Garbage marker '{marker}' found in context! Algorithm included unrelated code that should have been excluded."
-            )
-
 
 PROJECT_ROOT = Path(__file__).parent.parent
 SRC_DIR = PROJECT_ROOT / "src"

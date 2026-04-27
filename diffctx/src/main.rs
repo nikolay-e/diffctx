@@ -4,6 +4,10 @@ use anyhow::Result;
 use clap::Parser;
 use tracing_subscriber::EnvFilter;
 
+use _diffctx::config::limits::{
+    DEFAULT_BUDGET_TOKENS, DEFAULT_PIPELINE_TIMEOUT_SECONDS, DEFAULT_PPR_ALPHA,
+    DEFAULT_STOPPING_THRESHOLD,
+};
 use _diffctx::mode::ScoringMode;
 use _diffctx::pipeline::build_diff_context;
 
@@ -13,7 +17,7 @@ struct Cli {
     #[arg(default_value = ".")]
     path: PathBuf,
 
-    #[arg(long, default_value = "4096")]
+    #[arg(long, default_value_t = DEFAULT_BUDGET_TOKENS)]
     budget: u32,
 
     #[arg(long, default_value = "yaml")]
@@ -22,10 +26,10 @@ struct Cli {
     #[arg(long)]
     diff_ref: Option<String>,
 
-    #[arg(long, default_value = "0.60")]
+    #[arg(long, default_value_t = DEFAULT_PPR_ALPHA)]
     alpha: f64,
 
-    #[arg(long, default_value = "0.08")]
+    #[arg(long, default_value_t = DEFAULT_STOPPING_THRESHOLD)]
     tau: f64,
 
     #[arg(long)]
@@ -37,7 +41,7 @@ struct Cli {
     #[arg(long, default_value = "hybrid")]
     scoring: String,
 
-    #[arg(long, default_value = "300")]
+    #[arg(long, default_value_t = DEFAULT_PIPELINE_TIMEOUT_SECONDS)]
     timeout: u64,
 }
 

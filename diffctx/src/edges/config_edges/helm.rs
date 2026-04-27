@@ -4,13 +4,11 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::config::edge_weights::HELM;
 use crate::types::{Fragment, FragmentId};
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge};
-
-const WEIGHT: f64 = 0.70;
-const REVERSE_FACTOR: f64 = 0.45;
 
 static HELM_VALUES_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"\{\{-?\s*\.Values\.([a-zA-Z0-9_.]+)").unwrap());
@@ -157,7 +155,7 @@ fn link_longest_match(
         let partial = parts[..i].join(".");
         if let Some(values_ids) = values_keys.get(&partial) {
             if let Some(first) = values_ids.first() {
-                add_edge(edges, tmpl_id, first, WEIGHT, REVERSE_FACTOR);
+                add_edge(edges, tmpl_id, first, HELM.weight, HELM.reverse_factor);
                 return;
             }
         }
@@ -172,7 +170,13 @@ fn link_root_key(
 ) {
     if let Some(values_ids) = values_keys.get(root_key) {
         for vid in values_ids {
-            add_edge(edges, tmpl_id, vid, WEIGHT * 0.8, REVERSE_FACTOR);
+            add_edge(
+                edges,
+                tmpl_id,
+                vid,
+                HELM.weight * HELM.value_modifier,
+                HELM.reverse_factor,
+            );
         }
     }
 }
@@ -201,7 +205,13 @@ fn add_include_edges(
         if let Some(def_ids) = define_defs.get(&cap[1]) {
             for def_id in def_ids {
                 if *def_id != tmpl.id {
-                    add_edge(edges, &tmpl.id, def_id, WEIGHT * 0.9, REVERSE_FACTOR);
+                    add_edge(
+                        edges,
+                        &tmpl.id,
+                        def_id,
+                        HELM.weight * HELM.definition_modifier,
+                        HELM.reverse_factor,
+                    );
                 }
             }
         }
@@ -222,7 +232,13 @@ fn add_chart_file_edges(
                 .to_path_buf()
         });
         if cf_root == chart_root {
-            add_edge(edges, &tmpl.id, &cf.id, WEIGHT * 0.5, REVERSE_FACTOR);
+            add_edge(
+                edges,
+                &tmpl.id,
+                &cf.id,
+                HELM.weight * HELM.configmap_modifier,
+                HELM.reverse_factor,
+            );
         }
     }
 }

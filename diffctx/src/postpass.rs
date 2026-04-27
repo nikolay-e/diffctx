@@ -1,26 +1,23 @@
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::config::selection::RESCUE;
 use crate::fragmentation::create_whole_file_fragment;
 use crate::git::CatFileBatch;
 use crate::graph::Graph;
 use crate::types::{Fragment, FragmentId};
 
-const RESCUE_BUDGET_FRACTION: f64 = 0.05;
-const RESCUE_MIN_SCORE_PERCENTILE: f64 = 0.80;
-
 struct IntervalIndex {
-    by_path: HashMap<Arc<str>, Vec<(u32, u32)>>,
+    by_path: FxHashMap<Arc<str>, Vec<(u32, u32)>>,
     ids: FxHashSet<FragmentId>,
 }
 
 impl IntervalIndex {
     fn new() -> Self {
         Self {
-            by_path: HashMap::new(),
+            by_path: FxHashMap::default(),
             ids: FxHashSet::default(),
         }
     }
@@ -133,7 +130,7 @@ pub fn coherence_post_pass(
     let used: u32 = selected.iter().map(|f| f.token_count).sum();
     let mut remaining = budget.saturating_sub(used);
 
-    let mut name_to_frags: HashMap<String, Vec<&Fragment>> = HashMap::new();
+    let mut name_to_frags: FxHashMap<String, Vec<&Fragment>> = FxHashMap::default();
     for f in all_fragments {
         if let Some(ref name) = f.symbol_name {
             name_to_frags
@@ -184,7 +181,7 @@ fn compute_rescue_threshold(
         return f64::INFINITY;
     }
     context_scores.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
-    let idx = (context_scores.len() as f64 * (1.0 - RESCUE_MIN_SCORE_PERCENTILE)) as usize;
+    let idx = (context_scores.len() as f64 * (1.0 - RESCUE.min_score_percentile)) as usize;
     context_scores[idx.min(context_scores.len() - 1)]
 }
 
@@ -197,7 +194,7 @@ pub fn rescue_nontrivial_context(
 ) {
     let used: u32 = selected.iter().map(|f| f.token_count).sum();
     let remaining = budget.saturating_sub(used);
-    let rescue_budget = remaining.min((budget as f64 * RESCUE_BUDGET_FRACTION) as u32);
+    let rescue_budget = remaining.min((budget as f64 * RESCUE.budget_fraction) as u32);
     if rescue_budget == 0 {
         return;
     }
@@ -270,7 +267,7 @@ pub fn ensure_changed_files_represented(
         return;
     }
 
-    let mut frags_by_path: HashMap<String, Vec<Fragment>> = HashMap::new();
+    let mut frags_by_path: FxHashMap<String, Vec<Fragment>> = FxHashMap::default();
     for f in all_fragments {
         let path_str = f.id.path.as_ref().to_string();
         if missing_paths

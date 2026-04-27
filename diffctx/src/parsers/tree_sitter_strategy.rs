@@ -1,17 +1,15 @@
+use std::cell::RefCell;
 use std::sync::Arc;
 
-use rustc_hash::FxHashSet;
-use tree_sitter::{Language, Node, Parser};
+use once_cell::sync::Lazy;
+use rustc_hash::{FxHashMap, FxHashSet};
+use tree_sitter::{Language, Node, Parser, Tree};
 
+use crate::config::parsers::PARSERS;
+use crate::config::tokenization::TOKENIZATION;
 use crate::types::{Fragment, FragmentId, FragmentKind, extract_identifiers};
 
-use super::{FragmentationStrategy, MIN_FRAGMENT_LINES, create_code_gap_fragments, create_snippet};
-
-const SUB_FRAGMENT_THRESHOLD_LINES: u32 = 30;
-const SUB_FRAGMENT_TARGET_LINES: u32 = 20;
-const MAX_SUB_DEPTH: u32 = 3;
-const MAX_RECURSION_DEPTH: u32 = 500;
-const CONTAINER_SEARCH_MAX_DEPTH: u32 = 3;
+use super::{FragmentationStrategy, create_code_gap_fragments, create_snippet};
 
 const BODY_FIELD_NAMES: &[&str] = &["body", "block", "consequence"];
 const BODY_NODE_TYPES: &[&str] = &[
@@ -977,50 +975,82 @@ fn find_lang_config(path: &str) -> Option<&'static LangConfig> {
     LANG_CONFIGS.iter().find(|c| c.extension == ext)
 }
 
+static LANGUAGE_CACHE: Lazy<FxHashMap<&'static str, Language>> = Lazy::new(|| {
+    let mut m: FxHashMap<&'static str, Language> = FxHashMap::default();
+    m.insert("python", Language::new(tree_sitter_python::LANGUAGE));
+    let js = Language::new(tree_sitter_javascript::LANGUAGE);
+    m.insert("javascript", js.clone());
+    m.insert("jsx", js);
+    m.insert(
+        "typescript",
+        Language::new(tree_sitter_typescript::LANGUAGE_TYPESCRIPT),
+    );
+    m.insert("tsx", Language::new(tree_sitter_typescript::LANGUAGE_TSX));
+    m.insert("go", Language::new(tree_sitter_go::LANGUAGE));
+    m.insert("rust", Language::new(tree_sitter_rust::LANGUAGE));
+    m.insert("java", Language::new(tree_sitter_java::LANGUAGE));
+    m.insert("c", Language::new(tree_sitter_c::LANGUAGE));
+    m.insert("cpp", Language::new(tree_sitter_cpp::LANGUAGE));
+    m.insert("ruby", Language::new(tree_sitter_ruby::LANGUAGE));
+    m.insert("c_sharp", Language::new(tree_sitter_c_sharp::LANGUAGE));
+    m.insert("php", Language::new(tree_sitter_php::LANGUAGE_PHP));
+    m.insert("scala", Language::new(tree_sitter_scala::LANGUAGE));
+    m.insert("swift", Language::new(tree_sitter_swift::LANGUAGE));
+    m.insert("html", Language::new(tree_sitter_html::LANGUAGE));
+    m.insert("bash", Language::new(tree_sitter_bash::LANGUAGE));
+    m.insert("css", Language::new(tree_sitter_css::LANGUAGE));
+    m.insert("haskell", Language::new(tree_sitter_haskell::LANGUAGE));
+    m.insert("elixir", Language::new(tree_sitter_elixir::LANGUAGE));
+    m.insert("lua", Language::new(tree_sitter_lua::LANGUAGE));
+    m.insert("r", Language::new(tree_sitter_r::LANGUAGE));
+    m.insert("ocaml", Language::new(tree_sitter_ocaml::LANGUAGE_OCAML));
+    m.insert("erlang", Language::new(tree_sitter_erlang::LANGUAGE));
+    m.insert("julia", Language::new(tree_sitter_julia::LANGUAGE));
+    m.insert("zig", Language::new(tree_sitter_zig::LANGUAGE));
+    m.insert("clojure", Language::new(tree_sitter_clojure::LANGUAGE));
+    m.insert("nix", Language::new(tree_sitter_nix::LANGUAGE));
+    m.insert("groovy", Language::new(tree_sitter_groovy::LANGUAGE));
+    m.insert("objc", Language::new(tree_sitter_objc::LANGUAGE));
+    m.insert("cmake", Language::new(tree_sitter_cmake::LANGUAGE));
+    m.insert("make", Language::new(tree_sitter_make::LANGUAGE));
+    m.insert("hcl", Language::new(tree_sitter_hcl::LANGUAGE));
+    m.insert("graphql", Language::new(tree_sitter_graphql::LANGUAGE));
+    m.insert("dart", Language::new(tree_sitter_dart::LANGUAGE));
+    m.insert("prisma", Language::new(tree_sitter_prisma_io::LANGUAGE));
+    m.insert("svelte", Language::new(tree_sitter_svelte_ng::LANGUAGE));
+    m.insert("json", Language::new(tree_sitter_json::LANGUAGE));
+    m.insert("yaml", Language::new(tree_sitter_yaml::LANGUAGE));
+    m
+});
+
 fn get_tree_sitter_language(ts_name: &str) -> Option<Language> {
-    let lang = match ts_name {
-        "python" => Language::new(tree_sitter_python::LANGUAGE),
-        "javascript" | "jsx" => Language::new(tree_sitter_javascript::LANGUAGE),
-        "typescript" => Language::new(tree_sitter_typescript::LANGUAGE_TYPESCRIPT),
-        "tsx" => Language::new(tree_sitter_typescript::LANGUAGE_TSX),
-        "go" => Language::new(tree_sitter_go::LANGUAGE),
-        "rust" => Language::new(tree_sitter_rust::LANGUAGE),
-        "java" => Language::new(tree_sitter_java::LANGUAGE),
-        "c" => Language::new(tree_sitter_c::LANGUAGE),
-        "cpp" => Language::new(tree_sitter_cpp::LANGUAGE),
-        "ruby" => Language::new(tree_sitter_ruby::LANGUAGE),
-        "c_sharp" => Language::new(tree_sitter_c_sharp::LANGUAGE),
-        "php" => Language::new(tree_sitter_php::LANGUAGE_PHP),
-        "scala" => Language::new(tree_sitter_scala::LANGUAGE),
-        "swift" => Language::new(tree_sitter_swift::LANGUAGE),
-        "html" => Language::new(tree_sitter_html::LANGUAGE),
-        "bash" => Language::new(tree_sitter_bash::LANGUAGE),
-        "css" => Language::new(tree_sitter_css::LANGUAGE),
-        "haskell" => Language::new(tree_sitter_haskell::LANGUAGE),
-        "elixir" => Language::new(tree_sitter_elixir::LANGUAGE),
-        "lua" => Language::new(tree_sitter_lua::LANGUAGE),
-        "r" => Language::new(tree_sitter_r::LANGUAGE),
-        "ocaml" => Language::new(tree_sitter_ocaml::LANGUAGE_OCAML),
-        "erlang" => Language::new(tree_sitter_erlang::LANGUAGE),
-        "julia" => Language::new(tree_sitter_julia::LANGUAGE),
-        "zig" => Language::new(tree_sitter_zig::LANGUAGE),
-        "clojure" => Language::new(tree_sitter_clojure::LANGUAGE),
-        "nix" => Language::new(tree_sitter_nix::LANGUAGE),
-        "groovy" => Language::new(tree_sitter_groovy::LANGUAGE),
-        "objc" => Language::new(tree_sitter_objc::LANGUAGE),
-        "cmake" => Language::new(tree_sitter_cmake::LANGUAGE),
-        "make" => Language::new(tree_sitter_make::LANGUAGE),
-        "hcl" => Language::new(tree_sitter_hcl::LANGUAGE),
-        "graphql" => Language::new(tree_sitter_graphql::LANGUAGE),
-        // "latex" => tree-sitter-latex crate is broken (missing external scanner)
-        "dart" => Language::new(tree_sitter_dart::LANGUAGE),
-        "prisma" => Language::new(tree_sitter_prisma_io::LANGUAGE),
-        "svelte" => Language::new(tree_sitter_svelte_ng::LANGUAGE),
-        "json" => Language::new(tree_sitter_json::LANGUAGE),
-        "yaml" => Language::new(tree_sitter_yaml::LANGUAGE),
-        _ => return None,
-    };
-    Some(lang)
+    LANGUAGE_CACHE.get(ts_name).cloned()
+}
+
+thread_local! {
+    static PARSER_CACHE: RefCell<FxHashMap<&'static str, Parser>> = RefCell::new(FxHashMap::default());
+}
+
+fn parse_with_cached_parser(
+    ts_name: &'static str,
+    language: &Language,
+    content: &str,
+) -> Option<Tree> {
+    PARSER_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        let parser = match cache.get_mut(ts_name) {
+            Some(p) => p,
+            None => {
+                let mut p = Parser::new();
+                if p.set_language(language).is_err() {
+                    return None;
+                }
+                cache.insert(ts_name, p);
+                cache.get_mut(ts_name).expect("just inserted")
+            }
+        };
+        parser.parse(content, None)
+    })
 }
 
 fn node_start_line(node: &Node) -> u32 {
@@ -1178,7 +1208,7 @@ fn create_and_append_fragment(
         Some(s) => s,
         None => return false,
     };
-    let identifiers = extract_identifiers(&snippet, 2);
+    let identifiers = extract_identifiers(&snippet, TOKENIZATION.fragment_min_identifier_length);
     fragments.push(Fragment {
         id: FragmentId::new(Arc::clone(path), start, end),
         kind: FragmentKind::from_str(kind),
@@ -1200,7 +1230,7 @@ fn emit_chunk(
     fragments: &mut Vec<Fragment>,
     covered: &mut Vec<(u32, u32)>,
 ) {
-    if end < start || end - start + 1 < MIN_FRAGMENT_LINES {
+    if end < start || end - start + 1 < PARSERS.min_fragment_lines {
         return;
     }
     let sym_name = parent_symbol.map(|ps| format!("{ps}[{start}]"));
@@ -1225,7 +1255,7 @@ fn create_sub_fragments(
     covered: &mut Vec<(u32, u32)>,
     depth: u32,
 ) {
-    if depth > MAX_SUB_DEPTH {
+    if depth > PARSERS.max_sub_depth {
         return;
     }
     let body = match find_body_node(node) {
@@ -1249,7 +1279,7 @@ fn create_sub_fragments(
     for child in &children[1..] {
         let child_start = node_start_line(child);
         let child_end = node_end_line(child);
-        if child_end - chunk_start_line + 1 > SUB_FRAGMENT_TARGET_LINES {
+        if child_end - chunk_start_line + 1 > PARSERS.sub_fragment_target_lines {
             emit_chunk(
                 path,
                 lines,
@@ -1278,7 +1308,7 @@ fn create_sub_fragments(
 }
 
 fn first_child_def_line(node: &Node, definition_types: &[&str], depth: u32) -> Option<u32> {
-    if depth > CONTAINER_SEARCH_MAX_DEPTH {
+    if depth > PARSERS.container_search_max_depth {
         return None;
     }
     let child_count = node.child_count();
@@ -1319,7 +1349,8 @@ fn try_container_split(
     }
     let header_end = first_child_start - 1;
     if let Some(snippet) = create_snippet(lines, start, header_end) {
-        let identifiers = extract_identifiers(&snippet, 2);
+        let identifiers =
+            extract_identifiers(&snippet, TOKENIZATION.fragment_min_identifier_length);
         fragments.push(Fragment {
             id: FragmentId::new(Arc::clone(path), start, header_end),
             kind: FragmentKind::from_str(kind),
@@ -1398,7 +1429,7 @@ fn handle_definition_node(
         return;
     }
 
-    if end - start + 1 >= MIN_FRAGMENT_LINES {
+    if end - start + 1 >= PARSERS.min_fragment_lines {
         if create_and_append_fragment(
             path,
             lines,
@@ -1413,7 +1444,7 @@ fn handle_definition_node(
         }
     }
 
-    if end - start + 1 > SUB_FRAGMENT_THRESHOLD_LINES {
+    if end - start + 1 > PARSERS.sub_fragment_threshold_lines {
         create_sub_fragments(
             node,
             path,
@@ -1453,7 +1484,7 @@ fn extract_definitions(
     added_ends: &mut FxHashSet<(String, u32)>,
     depth: u32,
 ) {
-    if depth > MAX_RECURSION_DEPTH {
+    if depth > PARSERS.max_recursion_depth {
         return;
     }
 
@@ -1539,12 +1570,7 @@ impl FragmentationStrategy for TreeSitterStrategy {
             None => return Vec::new(),
         };
 
-        let mut parser = Parser::new();
-        if parser.set_language(&language).is_err() {
-            return Vec::new();
-        }
-
-        let tree = match parser.parse(content, None) {
+        let tree = match parse_with_cached_parser(config.ts_name, &language, content) {
             Some(t) => t,
             None => return Vec::new(),
         };

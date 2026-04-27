@@ -80,6 +80,13 @@ pyo3 = { version = "0.24", features = ["extension-module"], optional = true }
 
 [dev-dependencies]
 tempfile = "3"
+serde_yaml = "0.9"
+walkdir = "2"
+libtest-mimic = "0.7"
+
+[[test]]
+name = "yaml_cases"
+harness = false
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }

@@ -17,10 +17,6 @@ fn is_nix_file(path: &Path) -> bool {
 static IMPORT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"import\s+([\./][\w./-]+)").unwrap());
 static CALL_PACKAGE_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"callPackage\s+([\./][\w./-]+)").unwrap());
-static FETCH_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"(?:fetchurl|fetchFromGitHub|fetchgit)\s*\{[^}]*url\s*=\s*['"]([^'"]+)['"]"#)
-        .unwrap()
-});
 static FILE_REF_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\./[\w./-]+"#).unwrap());
 
 fn extract_refs(content: &str) -> FxHashSet<String> {

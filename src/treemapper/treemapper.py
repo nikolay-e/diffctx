@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .cli import GraphArgs, ParsedArgs
+    from .cli import ParsedArgs
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ def _configure_windows_utf8() -> None:
 
 
 def _build_diff_tree(args: ParsedArgs) -> dict[str, Any]:
-    from .diffctx import GitError, build_diff_context
+    from .diffctx import build_diff_context
 
     if not args.diff_range:
         raise RuntimeError("diff_range is required in diff mode")
@@ -35,7 +35,7 @@ def _build_diff_tree(args: ParsedArgs) -> dict[str, Any]:
             whitelist_file=args.whitelist_file,
             scoring_mode=getattr(args, "scoring", "hybrid"),
         )
-    except GitError as e:
+    except RuntimeError as e:
         logger.error("%s", e)
         sys.exit(1)
 
@@ -143,43 +143,43 @@ _ARCHITECTURAL_EDGE_TYPES: frozenset[str] = frozenset(
 )
 
 
-def _format_cycles(g: GraphArgs, pg: Any) -> str:
+def _format_cycles(level: str, pg: Any) -> str:
     from .diffctx.graph_analytics import detect_cycles
 
-    cycles = detect_cycles(pg, level=g.level, edge_types={"semantic"})
+    cycles = detect_cycles(pg, level=level, edge_types={"semantic"})
     if not cycles:
         return "No dependency cycles detected."
     lines = [f"{len(cycles)} dependency cycle(s) detected:\n"]
     for i, cycle in enumerate(cycles, 1):
-        chain = " \u2192 ".join(cycle) + " \u2192 " + cycle[0]
+        chain = " → ".join(cycle) + " → " + cycle[0]
         lines.append(f"  Cycle {i} ({len(cycle)} nodes): {chain}")
     return "\n".join(lines)
 
 
-def _format_hotspots(_g: GraphArgs, pg: Any) -> str:
+def _format_hotspots(pg: Any) -> str:
     from .diffctx.graph_analytics import hotspots
 
     hot = hotspots(pg, top=10, edge_types=set(_ARCHITECTURAL_EDGE_TYPES))
     lines = [f"Top {len(hot)} hotspots:"]
     for rank, (name, score, details) in enumerate(hot, 1):
-        lines.append(f"  {rank}. {name}  score={score}  out_degree={details['out_degree']}  churn={details['churn']}")
+        lines.append(f"  {rank}. {name}  score={score:.4f}  out_degree={details['out_degree']}  churn={details['churn']}")
     return "\n".join(lines)
 
 
-def _format_metrics(g: GraphArgs, pg: Any) -> str:
+def _format_metrics(level: str, pg: Any) -> str:
     from .diffctx.graph_analytics import coupling_metrics
 
-    metrics = coupling_metrics(pg, level=g.level, edge_types=set(_ARCHITECTURAL_EDGE_TYPES))
-    lines = [f"Module metrics ({g.level} level):"]
+    metrics = coupling_metrics(pg, level=level, edge_types=set(_ARCHITECTURAL_EDGE_TYPES))
+    lines = [f"Module metrics ({level} level):"]
     for m in metrics:
         flags = ""
         if m.coupling > 0.7:
-            flags = "  \u26a0 high coupling"
+            flags = "  ⚠ high coupling"
         elif m.cohesion > 0.8:
-            flags = "  \u2713 high cohesion"
+            flags = "  ✓ high cohesion"
         lines.append(
-            f"  {m.name}  cohesion={m.cohesion}  coupling={m.coupling}  "
-            f"instability={m.instability}  fan_in={m.fan_in}  fan_out={m.fan_out}{flags}"
+            f"  {m.name}  cohesion={m.cohesion:.3f}  coupling={m.coupling:.3f}  "
+            f"instability={m.instability:.3f}  fan_in={m.fan_in}  fan_out={m.fan_out}{flags}"
         )
     return "\n".join(lines)
 
@@ -214,9 +214,9 @@ def _handle_graph_mode(args: ParsedArgs) -> str:
 
     if g.summary:
         parts.append(graph_summary(pg))
-        parts.append(_format_cycles(g, pg))
-        parts.append(_format_hotspots(g, pg))
-        parts.append(_format_metrics(g, pg))
+        parts.append(_format_cycles(g.level, pg))
+        parts.append(_format_hotspots(pg))
+        parts.append(_format_metrics(g.level, pg))
 
     if not g.summary:
         parts.append(_graph_to_string(pg, g.format, level=g.level))

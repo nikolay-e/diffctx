@@ -4,13 +4,11 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::config::edge_weights::BUILD_SYSTEM;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, FragmentIndex, link_by_name};
-
-const FILE_REF_WEIGHT: f64 = 0.60;
-const REVERSE_FACTOR: f64 = 0.35;
 
 static MAKE_INCLUDE_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?m)^(?:-)?include\s+(.+)$").unwrap());
@@ -132,7 +130,14 @@ impl EdgeBuilder for BuildSystemEdgeBuilder {
         for bf in &build_frags {
             let refs = extract_refs(Path::new(bf.path()), &bf.content);
             for r in &refs {
-                link_by_name(&bf.id, r, &idx, &mut edges, FILE_REF_WEIGHT, REVERSE_FACTOR);
+                link_by_name(
+                    &bf.id,
+                    r,
+                    &idx,
+                    &mut edges,
+                    BUILD_SYSTEM.file_ref_weight,
+                    BUILD_SYSTEM.reverse_factor,
+                );
             }
         }
 

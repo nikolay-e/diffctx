@@ -274,7 +274,7 @@ repos:
       - id: cargo-test
         name: cargo test (Rust unit tests)
         language: system
-        entry: bash -c 'cd diffctx && cargo test --release'
+        entry: bash -c 'cd diffctx && DIFFCTX_YAML_CASES_LIMIT=20 cargo test --release'
         pass_filenames: false
         files: ^diffctx/.*\.rs$
         types: [file]

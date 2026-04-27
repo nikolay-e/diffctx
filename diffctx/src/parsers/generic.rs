@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
+use crate::config::parsers::PARSERS;
+use crate::config::tokenization::TOKENIZATION;
 use crate::types::{Fragment, FragmentId, FragmentKind, extract_identifiers};
 
 use super::FragmentationStrategy;
-
-const GENERIC_MAX_LINES: usize = 200;
 
 pub struct GenericStrategy;
 
@@ -24,7 +24,7 @@ impl FragmentationStrategy for GenericStrategy {
         let mut start_idx: usize = 0;
 
         while start_idx < total {
-            let end_idx = (start_idx + GENERIC_MAX_LINES - 1).min(total - 1);
+            let end_idx = (start_idx + PARSERS.generic_max_lines - 1).min(total - 1);
 
             let start_line = start_idx as u32 + 1;
             let end_line = end_idx as u32 + 1;
@@ -33,7 +33,8 @@ impl FragmentationStrategy for GenericStrategy {
             if !snippet.ends_with('\n') {
                 snippet.push('\n');
             }
-            let identifiers = extract_identifiers(&snippet, 2);
+            let identifiers =
+                extract_identifiers(&snippet, TOKENIZATION.fragment_min_identifier_length);
 
             fragments.push(Fragment {
                 id: FragmentId::new(Arc::clone(&path), start_line, end_line),

@@ -3,19 +3,15 @@ use std::sync::Arc;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use std::collections::HashMap;
-
-use crate::config::limits::LIMITS;
+use crate::config::bm25::BM25;
+use crate::config::limits::{LIMITS, PPR};
+use crate::config::scoring::EGO;
+use crate::config::tokenization::TOKENIZATION;
 use crate::edges;
 use crate::filtering;
 use crate::graph::{self, Graph};
 use crate::ppr::personalized_pagerank;
 use crate::types::{DiffHunk, Fragment, FragmentId, extract_identifier_list};
-
-const EGO_IDENT_OVERLAP_EPSILON: f64 = 0.1;
-const EGO_IDENT_OVERLAP_CAP: usize = 10;
-const BM25_K1: f64 = 2.5;
-const BM25_B: f64 = 0.75;
 
 pub struct ScoringResult {
     pub rel_scores: FxHashMap<FragmentId, f64>,
@@ -63,8 +59,14 @@ impl ScoringStrategy for PPRScoring {
         let (edges, categories) =
             edges::collect_all_edges(all_fragments, repo_root, skip_expensive);
         let mut g = graph::build_graph(all_fragments, edges, categories);
-        let mut rel_scores =
-            personalized_pagerank(&mut g, core_ids, self.alpha, 1e-4, 0.4, seed_weights);
+        let mut rel_scores = personalized_pagerank(
+            &mut g,
+            core_ids,
+            self.alpha,
+            PPR.convergence_tolerance,
+            PPR.forward_blend,
+            seed_weights,
+        );
         filtering::apply_hunk_proximity_bonus(&mut rel_scores, core_ids, all_fragments, hunks);
 
         let filtered = filtering::filter_unrelated_fragments(all_fragments, core_ids, &g);
@@ -122,9 +124,9 @@ impl ScoringStrategy for EgoGraphScoring {
                 }
                 let overlap = frag.identifiers.intersection(&diff_idents).count();
                 if overlap > 0 {
-                    let bonus = EGO_IDENT_OVERLAP_EPSILON
-                        * overlap.min(EGO_IDENT_OVERLAP_CAP) as f64
-                        / EGO_IDENT_OVERLAP_CAP as f64;
+                    let bonus = EGO.identifier_overlap_epsilon
+                        * overlap.min(EGO.identifier_overlap_cap) as f64
+                        / EGO.identifier_overlap_cap as f64;
                     *rel_scores.get_mut(&frag.id).unwrap() += bonus;
                 }
             }
@@ -157,20 +159,27 @@ impl ScoringStrategy for BM25Scoring {
         let query_tokens: Vec<String> = all_fragments
             .iter()
             .filter(|f| core_ids.contains(&f.id))
-            .flat_map(|f| extract_identifier_list(&f.content, 3))
+            .flat_map(|f| {
+                extract_identifier_list(&f.content, TOKENIZATION.query_min_identifier_length)
+            })
             .collect();
         let query_set: FxHashSet<String> = query_tokens.into_iter().collect();
 
         let docs: Vec<(FragmentId, Vec<String>)> = all_fragments
             .iter()
             .filter(|f| !core_ids.contains(&f.id))
-            .map(|f| (f.id.clone(), extract_identifier_list(&f.content, 3)))
+            .map(|f| {
+                (
+                    f.id.clone(),
+                    extract_identifier_list(&f.content, TOKENIZATION.query_min_identifier_length),
+                )
+            })
             .collect();
 
         let n_docs = docs.len().max(1);
         let avgdl = docs.iter().map(|(_, d)| d.len()).sum::<usize>() as f64 / n_docs as f64;
 
-        let mut df: HashMap<String, usize> = HashMap::new();
+        let mut df: FxHashMap<String, usize> = FxHashMap::default();
         for (_, doc) in &docs {
             let unique: FxHashSet<&str> = doc.iter().map(|s| s.as_str()).collect();
             for term in unique {
@@ -182,7 +191,8 @@ impl ScoringStrategy for BM25Scoring {
             .iter()
             .map(|t| {
                 let d = df.get(t).copied().unwrap_or(0) as f64;
-                let val = ((n_docs as f64 - d + 0.5) / (d + 0.5)).ln_1p();
+                let val =
+                    ((n_docs as f64 - d + BM25.idf_smoothing) / (d + BM25.idf_smoothing)).ln_1p();
                 (t.clone(), val)
             })
             .collect();
@@ -195,7 +205,7 @@ impl ScoringStrategy for BM25Scoring {
         }
         for (fid, doc) in &docs {
             let dl = doc.len() as f64;
-            let mut tf: HashMap<&str, u32> = HashMap::new();
+            let mut tf: FxHashMap<&str, u32> = FxHashMap::default();
             for t in doc {
                 *tf.entry(t.as_str()).or_insert(0) += 1;
             }
@@ -206,8 +216,8 @@ impl ScoringStrategy for BM25Scoring {
                     continue;
                 }
                 let idf_val = idf.get(t).copied().unwrap_or(0.0);
-                score += idf_val * (freq * BM25_K1)
-                    / (freq + BM25_K1 * (1.0 - BM25_B + BM25_B * dl / avgdl));
+                score += idf_val * (freq * BM25.k1)
+                    / (freq + BM25.k1 * (1.0 - BM25.b + BM25.b * dl / avgdl));
             }
             if score > 0.0 {
                 rel_scores.insert(fid.clone(), score);

@@ -22,7 +22,6 @@ static BEHAVIOUR_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^-behaviou?r\((
 static IMPORT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^-import\((\w+),").unwrap());
 static FUNC_DEF_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^([a-z]\w*)\s*\(").unwrap());
 static REMOTE_CALL_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b([a-z]\w*):(\w+)\s*\(").unwrap());
-static EXPORT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^-export\(\[([^\]]+)\]\)").unwrap());
 
 fn extract_refs(content: &str) -> FxHashSet<String> {
     let mut refs = FxHashSet::default();

@@ -89,6 +89,31 @@
   works without auth for OPEN issues. Token only needed for hotspot
   state changes / false-positive transitions.
 
+## CI Build of Rust Extension
+
+- Test matrix needs `_diffctx` (Rust ext) installed before pytest. Use
+  `maturin build --release --out wheelhouse && pip install --force-reinstall
+  --no-deps wheelhouse/*.whl` — `maturin develop` requires a venv which the
+  GH runner doesn't have by default.
+- Set `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1` for Python versions newer than
+  PyO3's max supported (currently 3.13). Without this, 3.14+ matrix entries
+  fail at the build step before any test runs.
+- Cache cargo per-(os, python-version) — same cargo target dir compiled with
+  different Python ABIs collides if the key doesn't include python-version.
+
+## YAML Case Runner (cargo integration test)
+
+- Default `cargo test --release` runs every YAML case in `tests/cases/diff/`
+  via `tests/yaml_cases.rs` — 2723 trials, ~70s at -j8. Cap with
+  `DIFFCTX_YAML_CASES_LIMIT=N` env var for fast pre-commit (default in
+  `.pre-commit-config.yaml` is 20). CI rust-diffctx-test job uses the same
+  cap to avoid surfacing 269 long-tail failures as fresh CI noise.
+- libtest-mimic is the harness — every YAML case becomes its own Trial
+  visible in `cargo test` output. Cases with stale `xfail:` markers may
+  pass ("xpass"); strip via `--ignored` sweep when the algorithm improves.
+- Pass threshold (`DIFFCTX_YAML_MIN_SCORE`) defaults to 10% recall × (1 −
+  forbidden_rate). Original Python framework used the same value.
+
 ## Memory Profiling for diffctx
 
 - `/usr/bin/time -l` on macOS reports `peak memory footprint` and

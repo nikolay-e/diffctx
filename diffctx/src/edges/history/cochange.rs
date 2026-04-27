@@ -112,7 +112,7 @@ impl EdgeBuilder for CochangeEdgeBuilder {
             if *count < COCHANGE.min_count {
                 continue;
             }
-            let edge_weight = weight.min(0.1 * (*count as f64).ln_1p());
+            let edge_weight = weight.min(COCHANGE.log_scale_factor * (*count as f64).ln_1p());
             for fid1 in path_to_frags.get(p1).unwrap_or(&vec![]) {
                 for fid2 in path_to_frags.get(p2).unwrap_or(&vec![]) {
                     if fid1 == fid2 {

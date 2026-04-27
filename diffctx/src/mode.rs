@@ -1,3 +1,6 @@
+use crate::config::limits::PPR;
+use crate::config::mode::MODE;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScoringMode {
     Hybrid,
@@ -63,31 +66,31 @@ impl PipelineConfig {
                 discovery: DiscoveryKind::Ensemble,
                 scoring: ScoringKind::Ppr,
                 low_relevance_filter: false,
-                bm25_top_k: 1,
-                ego_depth: 1,
-                ppr_alpha: 0.60,
+                bm25_top_k: MODE.bm25_top_k_primary,
+                ego_depth: MODE.ego_depth_default,
+                ppr_alpha: PPR.alpha,
                 objective: ObjectiveMode::Submodular,
             },
             ScoringMode::Ego => Self {
                 discovery: DiscoveryKind::Ensemble,
                 scoring: ScoringKind::Ego,
                 low_relevance_filter: false,
-                bm25_top_k: 1,
-                ego_depth: 2,
-                ppr_alpha: 0.60,
+                bm25_top_k: MODE.bm25_top_k_primary,
+                ego_depth: MODE.ego_depth_extended,
+                ppr_alpha: PPR.alpha,
                 objective: ObjectiveMode::Submodular,
             },
             ScoringMode::Bm25 => Self {
                 discovery: DiscoveryKind::Ensemble,
                 scoring: ScoringKind::Bm25,
                 low_relevance_filter: false,
-                bm25_top_k: 0,
-                ego_depth: 1,
-                ppr_alpha: 0.60,
+                bm25_top_k: MODE.bm25_top_k_off,
+                ego_depth: MODE.ego_depth_default,
+                ppr_alpha: PPR.alpha,
                 objective: ObjectiveMode::Submodular,
             },
             ScoringMode::Hybrid => {
-                let is_large = n_candidate_files > 50;
+                let is_large = n_candidate_files > MODE.hybrid_large_candidate_threshold;
                 Self {
                     discovery: if is_large {
                         DiscoveryKind::Ensemble
@@ -100,9 +103,17 @@ impl PipelineConfig {
                         ScoringKind::Ppr
                     },
                     low_relevance_filter: !is_large,
-                    bm25_top_k: if is_large { 1 } else { 0 },
-                    ego_depth: if is_large { 2 } else { 1 },
-                    ppr_alpha: 0.60,
+                    bm25_top_k: if is_large {
+                        MODE.bm25_top_k_primary
+                    } else {
+                        MODE.bm25_top_k_off
+                    },
+                    ego_depth: if is_large {
+                        MODE.ego_depth_extended
+                    } else {
+                        MODE.ego_depth_default
+                    },
+                    ppr_alpha: PPR.alpha,
                     objective: ObjectiveMode::Submodular,
                 }
             }

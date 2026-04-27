@@ -4,6 +4,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::config::edge_weights::SEMANTIC_DISCOVERY;
 use crate::config::extensions::{
     JAVA_EXTENSIONS, JVM_EXTENSIONS, KOTLIN_EXTENSIONS, SCALA_EXTENSIONS,
 };
@@ -219,8 +220,6 @@ fn extract_annotations(content: &str) -> FxHashSet<String> {
         .collect()
 }
 
-const DISCOVERY_MAX_DEPTH: usize = 2;
-
 pub struct JVMEdgeBuilder;
 
 impl EdgeBuilder for JVMEdgeBuilder {
@@ -365,7 +364,7 @@ impl EdgeBuilder for JVMEdgeBuilder {
         let mut discovered: FxHashSet<PathBuf> = FxHashSet::default();
         let mut frontier: Vec<PathBuf> = jvm_changed.iter().map(|f| (*f).clone()).collect();
 
-        for _ in 0..DISCOVERY_MAX_DEPTH {
+        for _ in 0..SEMANTIC_DISCOVERY.max_depth {
             let mut type_refs: FxHashSet<String> = FxHashSet::default();
             let mut frontier_classes: FxHashSet<String> = FxHashSet::default();
 
