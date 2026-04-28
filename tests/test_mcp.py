@@ -106,3 +106,96 @@ class TestGetDiffContext:
                 "get_diff_context",
                 {"repo_path": str(mcp_repo.path), "diff_range": "nonexistent_ref..HEAD"},
             )
+
+
+class TestGetTreeMap:
+    @pytest.mark.asyncio
+    async def test_returns_tree_for_repo(self, server, mcp_repo):
+        result = await server.call_tool(
+            "get_tree_map",
+            {"repo_path": str(mcp_repo.path)},
+        )
+        text = _get_text(result)
+        assert "calc.py" in text
+        assert "main.py" in text
+
+    @pytest.mark.asyncio
+    async def test_subdirectory_scopes_output(self, server, mcp_repo):
+        result = await server.call_tool(
+            "get_tree_map",
+            {"repo_path": str(mcp_repo.path), "subdirectory": "src"},
+        )
+        text = _get_text(result)
+        assert "calc.py" in text
+
+    @pytest.mark.asyncio
+    async def test_no_content_omits_file_bodies(self, server, mcp_repo):
+        result = await server.call_tool(
+            "get_tree_map",
+            {"repo_path": str(mcp_repo.path), "no_content": True},
+        )
+        text = _get_text(result)
+        assert "calc.py" in text
+        assert "def add" not in text
+
+    @pytest.mark.asyncio
+    async def test_unknown_output_format_falls_back_to_yaml(self, server, mcp_repo):
+        result = await server.call_tool(
+            "get_tree_map",
+            {"repo_path": str(mcp_repo.path), "output_format": "not_a_format"},
+        )
+        text = _get_text(result)
+        assert "calc.py" in text
+        assert "name:" in text or "type:" in text
+
+
+class TestGetFileContext:
+    @pytest.mark.asyncio
+    async def test_glob_returns_matched_file_contents(self, server, mcp_repo):
+        result = await server.call_tool(
+            "get_file_context",
+            {"repo_path": str(mcp_repo.path), "patterns": ["src/*.py"]},
+        )
+        text = _get_text(result)
+        assert "calc.py" in text
+        assert "def add" in text
+
+    @pytest.mark.asyncio
+    async def test_dry_run_lists_without_reading(self, server, mcp_repo):
+        result = await server.call_tool(
+            "get_file_context",
+            {"repo_path": str(mcp_repo.path), "patterns": ["src/*.py"], "dry_run": True},
+        )
+        text = _get_text(result)
+        assert "Would match" in text
+        assert "def add" not in text
+
+    @pytest.mark.asyncio
+    async def test_no_match_returns_explicit_message(self, server, mcp_repo):
+        result = await server.call_tool(
+            "get_file_context",
+            {"repo_path": str(mcp_repo.path), "patterns": ["nonexistent_*.xyz"]},
+        )
+        text = _get_text(result)
+        assert "No files matched" in text
+
+
+class TestPathTraversalContainment:
+    @pytest.mark.asyncio
+    async def test_get_file_context_glob_traversal_returns_only_contained_paths(self, server, mcp_repo):
+        outside_secret = mcp_repo.path.parent / "secret.txt"
+        outside_secret.write_text("SHOULD_NOT_LEAK\n")
+        result = await server.call_tool(
+            "get_file_context",
+            {"repo_path": str(mcp_repo.path), "patterns": ["../secret.txt"]},
+        )
+        text = _get_text(result)
+        assert "SHOULD_NOT_LEAK" not in text, "glob traversal escaped repo_path; M2 regression"
+
+    @pytest.mark.asyncio
+    async def test_get_tree_map_subdirectory_traversal_rejected(self, server, mcp_repo):
+        with pytest.raises((ToolError, ValueError), match=r"escapes|outside|not.*directory"):
+            await server.call_tool(
+                "get_tree_map",
+                {"repo_path": str(mcp_repo.path), "subdirectory": "../"},
+            )

@@ -102,6 +102,8 @@ async def get_tree_map(
 
     validated_path = validate_repo_path(repo_path)
     target = validated_path / subdirectory if subdirectory else validated_path
+    if subdirectory and not _is_contained(target, validated_path):
+        raise ValueError(f"subdirectory escapes repo_path: {subdirectory}")
     if not target.is_dir():
         raise ValueError(f"Not a directory: {target}")
 
@@ -142,6 +144,13 @@ _FILE_CONTEXT_DESCRIPTION = (
 )
 
 
+def _is_contained(child: Path, root: Path) -> bool:
+    try:
+        return child.resolve().is_relative_to(root.resolve())
+    except (OSError, ValueError):
+        return False
+
+
 def _collect_matched_files(validated_path: Path, patterns: list[str], max_files: int) -> list[Path]:
     import glob as globmod
 
@@ -150,6 +159,8 @@ def _collect_matched_files(validated_path: Path, patterns: list[str], max_files:
         full_pattern = str(validated_path / pattern)
         for match in sorted(globmod.glob(full_pattern, recursive=True)):
             p = Path(match)
+            if not _is_contained(p, validated_path):
+                continue
             if p.is_file() and len(matched) < max_files:
                 matched.append(p)
     return matched

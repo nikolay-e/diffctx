@@ -16,6 +16,14 @@ pub fn parse_fraction_or_default(raw: Option<String>, default: f64) -> f64 {
     parse_f64_or_default(raw, default).clamp(0.0, 1.0)
 }
 
+/// Parse a fraction strictly inside the open interval (0, 1).
+/// Used for parameters where 0.0 or 1.0 produce algorithmic degeneracy
+/// (e.g. PPR_ALPHA=1.0 makes restart probability zero, yielding all-zero rankings).
+pub fn parse_open_fraction_or_default(raw: Option<String>, default: f64) -> f64 {
+    const EPS: f64 = 1e-4;
+    parse_f64_or_default(raw, default).clamp(EPS, 1.0 - EPS)
+}
+
 pub fn parse_usize_or_default(raw: Option<String>, default: usize) -> usize {
     raw.and_then(|s| s.parse::<usize>().ok()).unwrap_or(default)
 }
@@ -30,6 +38,10 @@ pub fn read_env_f64(name: &str, default: f64) -> f64 {
 
 pub fn read_env_fraction(name: &str, default: f64) -> f64 {
     parse_fraction_or_default(std::env::var(name).ok(), default)
+}
+
+pub fn read_env_open_fraction(name: &str, default: f64) -> f64 {
+    parse_open_fraction_or_default(std::env::var(name).ok(), default)
 }
 
 pub fn read_env_usize(name: &str, default: usize) -> usize {
@@ -65,6 +77,30 @@ mod tests {
         assert_eq!(parse_fraction_or_default(Some("-0.5".into()), 0.7), 0.7);
         assert_eq!(parse_fraction_or_default(Some("nan".into()), 0.7), 0.7);
         assert_eq!(parse_fraction_or_default(None, 0.7), 0.7);
+    }
+
+    #[test]
+    fn open_fraction_clamps_to_open_interval() {
+        // Boundary 1.0 → degenerate (PPR α=1 zeros all rankings); must clamp.
+        let v_one = parse_open_fraction_or_default(Some("1.0".into()), 0.6);
+        assert!(
+            v_one < 1.0,
+            "open fraction must clamp 1.0 below 1; got {v_one}"
+        );
+        assert!(
+            v_one > 0.99,
+            "clamp must stay near 1.0, not collapse to default"
+        );
+        // Boundary 0.0 → also degenerate; must clamp above 0.
+        let v_zero = parse_open_fraction_or_default(Some("0.0".into()), 0.6);
+        assert!(
+            v_zero > 0.0,
+            "open fraction must clamp 0.0 above 0; got {v_zero}"
+        );
+        // Interior values pass through.
+        assert_eq!(parse_open_fraction_or_default(Some("0.6".into()), 0.0), 0.6);
+        // Above 1.0 also clamped.
+        assert!(parse_open_fraction_or_default(Some("42".into()), 0.6) < 1.0);
     }
 
     #[test]

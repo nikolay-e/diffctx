@@ -3,7 +3,8 @@ use std::sync::Arc;
 
 use once_cell::sync::Lazy;
 use rustc_hash::{FxHashMap, FxHashSet};
-use tree_sitter::{Language, Node, Parser, Tree};
+use std::time::{Duration, Instant};
+use tree_sitter::{Language, Node, ParseOptions, Parser, Tree};
 
 use crate::config::parsers::PARSERS;
 use crate::config::tokenization::TOKENIZATION;
@@ -1031,6 +1032,11 @@ thread_local! {
     static PARSER_CACHE: RefCell<FxHashMap<&'static str, Parser>> = RefCell::new(FxHashMap::default());
 }
 
+/// Wall-clock deadline for a single tree-sitter parse. Pathological inputs
+/// (huge minified bundles, deeply ambiguous grammars) can otherwise pin a
+/// rayon worker indefinitely.
+const PARSE_TIMEOUT: Duration = Duration::from_secs(2);
+
 fn parse_with_cached_parser(
     ts_name: &'static str,
     language: &Language,
@@ -1049,7 +1055,18 @@ fn parse_with_cached_parser(
                 cache.get_mut(ts_name).expect("just inserted")
             }
         };
-        parser.parse(content, None)
+        // tree-sitter convention: progress_callback returns `true` to abort.
+        // We abort once the wall-clock deadline has passed.
+        let deadline = Instant::now() + PARSE_TIMEOUT;
+        let mut progress =
+            move |_state: &tree_sitter::ParseState| -> bool { Instant::now() >= deadline };
+        let bytes = content.as_bytes();
+        let len = bytes.len();
+        parser.parse_with_options(
+            &mut |i, _| (i < len).then(|| &bytes[i..]).unwrap_or_default(),
+            None,
+            Some(ParseOptions::new().progress_callback(&mut progress)),
+        )
     })
 }
 

@@ -61,6 +61,6 @@ pub static RESCUE: Lazy<RescueConfig> = Lazy::new(|| RescueConfig {
 });
 pub static BOLTZMANN: Lazy<BoltzmannConfig> = Lazy::new(|| BoltzmannConfig {
     calibration_tolerance: read_env_fraction("DIFFCTX_OP_BOLTZMANN_CALIBRATION_TOLERANCE", 0.05),
-    bisect_iters: read_env_u32("DIFFCTX_OP_BOLTZMANN_BISECT_ITERS", 24),
+    bisect_iters: read_env_u32("DIFFCTX_OP_BOLTZMANN_BISECT_ITERS", 24).max(1),
     ..BoltzmannConfig::default()
 });
