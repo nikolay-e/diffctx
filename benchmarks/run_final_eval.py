@@ -31,6 +31,20 @@ from benchmarks.common import repos_dir as default_repos_dir
 from benchmarks.diffctx_eval_fn import make_diffctx_eval_fn
 
 
+def _make_eval_fn(baseline: str, repo_root: Path, request_timeout: float):
+    if baseline == "diffctx":
+        return make_diffctx_eval_fn(repo_root)
+    if baseline == "bm25":
+        from benchmarks.baselines.bm25_baseline import make_bm25_eval_fn
+
+        return make_bm25_eval_fn(repo_root)
+    if baseline == "aider":
+        from benchmarks.baselines.aider_baseline import make_aider_eval_fn
+
+        return make_aider_eval_fn(repo_root, request_timeout=request_timeout)
+    raise ValueError(f"unknown baseline: {baseline}")
+
+
 def _load_winner(path: Path) -> RunParams:
     payload = json.loads(path.read_text())
     w = payload["winner"]
@@ -52,13 +66,20 @@ def main() -> int:
     p.add_argument("--timeout-per-instance", type=float, default=300.0)
     p.add_argument("--min-memory-gb", type=float, default=16.0)
     p.add_argument("--min-disk-gb", type=float, default=50.0)
+    p.add_argument(
+        "--baseline",
+        choices=["diffctx", "bm25", "aider"],
+        default="diffctx",
+        help="Which method to evaluate. Non-diffctx baselines ignore τ/cbf/scoring "
+        "(budget is the only RunParam they consume).",
+    )
     args = p.parse_args()
 
     repo_root = args.repos_dir or default_repos_dir()
     report_and_maybe_exit(probe_resources(min_memory_gb=args.min_memory_gb, repos_dir=repo_root, min_disk_gb=args.min_disk_gb))
 
     params = _load_winner(args.winner)
-    print(f"Final params: τ={params.tau} cbf={params.core_budget_fraction} budget={params.budget}")
+    print(f"Method: {args.baseline} | budget={params.budget} τ={params.tau} cbf={params.core_budget_fraction}")
 
     manifests = sorted(args.manifests_dir.glob("test_*.txt"))
     if not manifests:
@@ -66,7 +87,7 @@ def main() -> int:
         return 1
 
     adapters = default_test_adapters() + default_calibration_pool_adapters()
-    eval_fn = make_diffctx_eval_fn(repo_root)
+    eval_fn = _make_eval_fn(args.baseline, repo_root, request_timeout=args.timeout_per_instance)
 
     args.out.mkdir(parents=True, exist_ok=True)
     reports = []
@@ -97,10 +118,12 @@ def main() -> int:
     lang_agg = aggregate_by_language(all_results)
     lang_table = render_language_table(lang_agg)
 
+    header = f"# Final evaluation — {args.baseline}\n\n" f"Method: **{args.baseline}**, budget={params.budget}" + (
+        f", τ={params.tau}, cbf={params.core_budget_fraction}, scoring={params.scoring}" if args.baseline == "diffctx" else ""
+    )
     summary = "\n\n".join(
         [
-            "# Final evaluation",
-            f"Final parameters: τ={params.tau}, core_budget_fraction={params.core_budget_fraction}, budget={params.budget}, scoring={params.scoring}",
+            header,
             "## Per-benchmark",
             paper_table,
             "## Per-language",
@@ -109,6 +132,14 @@ def main() -> int:
     )
     (args.out / "PAPER_TABLE.md").write_text(summary)
     print(f"\nWrote per-benchmark JSON + PAPER_TABLE.md to {args.out}")
+
+    # Aider keeps a long-lived helper subprocess; shut it down cleanly.
+    if hasattr(eval_fn, "shutdown"):
+        try:
+            eval_fn.shutdown()
+        except Exception:
+            pass
+
     UniversalEvaluator()  # touch import to keep linter happy in stub envs
     return 0
 

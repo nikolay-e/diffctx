@@ -105,3 +105,66 @@ def render_language_table(per_lang: dict[str, dict[str, float]]) -> str:
         agg = per_lang[lang]
         lines.append(f"| {lang} | {int(agg['n'])} | {agg['file_recall']:.3f} | {agg['file_precision']:.3f} |")
     return "\n".join(lines) + "\n"
+
+
+def _index_by_id(results: Iterable[EvalResult]) -> dict[str, EvalResult]:
+    return {r.instance_id: r for r in results}
+
+
+def render_comparison_table(
+    diffctx_results: list[EvalResult],
+    baseline_results: list[EvalResult],
+    baseline_name: str,
+    metric: str = "file_recall",
+) -> str:
+    """Paired comparison: diffctx vs a baseline on the same instance set.
+
+    Reports per-benchmark mean of `metric` for each method, paired bootstrap
+    95% CI on the delta, and Wilcoxon signed-rank p-value. Methodology
+    matches the conventions described in `benchmarks/stats.py`.
+    """
+    from benchmarks.stats import paired_bootstrap_delta, wilcoxon_paired
+
+    by_id_d = _index_by_id(diffctx_results)
+    by_id_b = _index_by_id(baseline_results)
+    common_ids = sorted(set(by_id_d) & set(by_id_b))
+    if not common_ids:
+        return f"(no overlap between diffctx and {baseline_name} results)\n"
+
+    by_bench: dict[str, list[str]] = {}
+    for iid in common_ids:
+        bench = by_id_d[iid].source_benchmark
+        by_bench.setdefault(bench, []).append(iid)
+
+    lines: list[str] = []
+    lines.append(f"| Benchmark | n | diffctx | {baseline_name} | Delta (diffctx - {baseline_name}) | 95% CI | Wilcoxon p |")
+    lines.append("|---|---|---|---|---|---|---|")
+    pooled_d: list[float] = []
+    pooled_b: list[float] = []
+    for bench in sorted(by_bench):
+        ids = by_bench[bench]
+        d_vals = [float(getattr(by_id_d[i], metric)) for i in ids]
+        b_vals = [float(getattr(by_id_b[i], metric)) for i in ids]
+        pooled_d.extend(d_vals)
+        pooled_b.extend(b_vals)
+        d_mean = sum(d_vals) / len(d_vals)
+        b_mean = sum(b_vals) / len(b_vals)
+        boot = paired_bootstrap_delta(b_vals, d_vals)
+        wil = wilcoxon_paired(b_vals, d_vals)
+        lines.append(
+            f"| {bench} | {len(ids)} | {d_mean:.3f} | {b_mean:.3f} | "
+            f"{boot['delta_mean']:+.3f} | [{boot['ci_lo']:+.3f}, {boot['ci_hi']:+.3f}] | "
+            f"{wil['p_value']:.3g} |"
+        )
+    if pooled_d:
+        boot = paired_bootstrap_delta(pooled_b, pooled_d)
+        wil = wilcoxon_paired(pooled_b, pooled_d)
+        lines.append(
+            f"| **Pooled** | **{len(pooled_d)}** | "
+            f"**{sum(pooled_d) / len(pooled_d):.3f}** | "
+            f"**{sum(pooled_b) / len(pooled_b):.3f}** | "
+            f"**{boot['delta_mean']:+.3f}** | "
+            f"[{boot['ci_lo']:+.3f}, {boot['ci_hi']:+.3f}] | "
+            f"{wil['p_value']:.3g} |"
+        )
+    return "\n".join(lines) + "\n"

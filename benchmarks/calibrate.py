@@ -48,6 +48,13 @@ def main() -> int:
     p.add_argument("--timeout-per-instance", type=float, default=300.0)
     p.add_argument("--min-memory-gb", type=float, default=16.0)
     p.add_argument("--min-disk-gb", type=float, default=50.0)
+    p.add_argument(
+        "--subsample",
+        type=int,
+        default=None,
+        help="If set, randomly subsample N instances from the manifest (deterministic with --subsample-seed).",
+    )
+    p.add_argument("--subsample-seed", type=int, default=42)
     args = p.parse_args()
 
     repo_root = args.repos_dir or default_repos_dir()
@@ -64,7 +71,16 @@ def main() -> int:
     manifest_ids = read_manifest(args.manifest)
     adapters = default_test_adapters() + default_calibration_pool_adapters()
     instances = list(filter_instances_by_manifest(adapters, manifest_ids))
-    print(f"Resolved {len(instances)} / {len(manifest_ids)} instances")
+    if args.subsample is not None and args.subsample < len(instances):
+        import random as _rnd
+
+        rng = _rnd.Random(args.subsample_seed)
+        instances = sorted(instances, key=lambda i: i.instance_id)
+        rng.shuffle(instances)
+        instances = instances[: args.subsample]
+        print(f"Subsampled {len(instances)} of {len(manifest_ids)} (seed={args.subsample_seed})")
+    else:
+        print(f"Resolved {len(instances)} / {len(manifest_ids)} instances")
 
     eval_fn = make_diffctx_eval_fn(repo_root)
     args.out.mkdir(parents=True, exist_ok=True)

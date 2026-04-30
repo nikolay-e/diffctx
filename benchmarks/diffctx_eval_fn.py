@@ -49,10 +49,15 @@ def make_diffctx_eval_fn(repos_dir: Path):
     from benchmarks.common import apply_as_commit, ensure_repo, reset_to_parent
 
     evaluator = UniversalEvaluator()
+    # `_SHARED_CACHE` in benchmarks.common owns bare clones at `repos_dir/<repo>`;
+    # we put worktrees under `repos_dir/worktrees/<repo>` to avoid colliding with
+    # the bare clone path.
+    worktree_dir = repos_dir / "worktrees"
+    worktree_dir.mkdir(parents=True, exist_ok=True)
 
     def eval_fn(instance: BenchmarkInstance, params: RunParams) -> EvalResult:
         repo_url = str(instance.extra.get("repo_url") or f"https://github.com/{instance.repo}")
-        repo_dir = ensure_repo(repo_url, instance.repo, instance.base_commit, repos_dir)
+        repo_dir = ensure_repo(repo_url, instance.repo, instance.base_commit, worktree_dir)
         if repo_dir is None:
             result = EvalResult(
                 instance_id=instance.instance_id,

@@ -80,6 +80,40 @@ def append_checkpoint(path: Path, result: EvalResult) -> None:
         f.write(json.dumps(asdict(result), default=str) + "\n")
 
 
+def _load_existing_results(path: Path, allowed_ids: set[str]) -> list[EvalResult]:
+    """Replay a checkpoint into in-memory `EvalResult`s so a fully-resumed
+    run still contributes to per-trial aggregation."""
+    if not path.exists():
+        return []
+    out: list[EvalResult] = []
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if row.get("instance_id") not in allowed_ids:
+            continue
+        out.append(
+            EvalResult(
+                instance_id=row["instance_id"],
+                source_benchmark=row.get("source_benchmark", "unknown"),
+                file_recall=float(row.get("file_recall", 0.0)),
+                file_precision=float(row.get("file_precision", 0.0)),
+                fragment_recall=row.get("fragment_recall"),
+                fragment_precision=row.get("fragment_precision"),
+                line_f1=row.get("line_f1"),
+                used_tokens=int(row.get("used_tokens", 0)),
+                budget=int(row.get("budget", 0)),
+                elapsed_seconds=float(row.get("elapsed_seconds", 0.0)),
+                extra=row.get("extra", {}) or {},
+            )
+        )
+    return out
+
+
 def _failure_result(
     instance: BenchmarkInstance,
     params: RunParams,
@@ -122,7 +156,7 @@ def run_eval_set(
     """
     done_ids: set[str] = read_checkpoint(resume_from) if resume_from else set()
     pending = [i for i in instances if i.instance_id not in done_ids]
-    results: list[EvalResult] = []
+    results: list[EvalResult] = _load_existing_results(resume_from, done_ids) if resume_from else []
 
     def _record(r: EvalResult) -> None:
         results.append(r)
