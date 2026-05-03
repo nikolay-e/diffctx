@@ -8,24 +8,11 @@
 //! (Bayesian opt / grid search) against a labeled corpus, as described in
 //! paper Section 4.3 (Edge-Type Weight Calibration).
 //!
-//! Override at runtime via environment variables:
-//!   DIFFCTX_CATWEIGHT_SEMANTIC=0.65
-//!   DIFFCTX_CATWEIGHT_STRUCTURAL=0.50
-//!   DIFFCTX_CATWEIGHT_SIBLING=0.10
-//!   DIFFCTX_CATWEIGHT_CONFIG=0.40
-//!   DIFFCTX_CATWEIGHT_CONFIGGENERIC=0.30
-//!   DIFFCTX_CATWEIGHT_DOCUMENT=0.30
-//!   DIFFCTX_CATWEIGHT_SIMILARITY=0.20
-//!   DIFFCTX_CATWEIGHT_HISTORY=0.40
-//!   DIFFCTX_CATWEIGHT_TESTEDGE=0.60
-//!   DIFFCTX_CATWEIGHT_GENERIC=0.10
-//!
 //! Default for every variant is 1.0 (no scaling — the fine-grained
 //! prior weights from `weights.rs` apply unchanged).
 
 use once_cell::sync::Lazy;
 
-use crate::config::env_overrides::read_env_f64;
 use crate::graph::EdgeCategory;
 
 #[derive(Debug, Clone, Copy)]
@@ -77,18 +64,7 @@ impl CategoryWeights {
     }
 }
 
-pub static CATEGORY_WEIGHTS: Lazy<CategoryWeights> = Lazy::new(|| CategoryWeights {
-    semantic: read_env_f64("DIFFCTX_CATWEIGHT_SEMANTIC", 1.0),
-    structural: read_env_f64("DIFFCTX_CATWEIGHT_STRUCTURAL", 1.0),
-    sibling: read_env_f64("DIFFCTX_CATWEIGHT_SIBLING", 1.0),
-    config: read_env_f64("DIFFCTX_CATWEIGHT_CONFIG", 1.0),
-    config_generic: read_env_f64("DIFFCTX_CATWEIGHT_CONFIGGENERIC", 1.0),
-    document: read_env_f64("DIFFCTX_CATWEIGHT_DOCUMENT", 1.0),
-    similarity: read_env_f64("DIFFCTX_CATWEIGHT_SIMILARITY", 1.0),
-    history: read_env_f64("DIFFCTX_CATWEIGHT_HISTORY", 1.0),
-    test_edge: read_env_f64("DIFFCTX_CATWEIGHT_TESTEDGE", 1.0),
-    generic: read_env_f64("DIFFCTX_CATWEIGHT_GENERIC", 1.0),
-});
+pub static CATEGORY_WEIGHTS: Lazy<CategoryWeights> = Lazy::new(CategoryWeights::default);
 
 #[cfg(test)]
 mod tests {

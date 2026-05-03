@@ -10,12 +10,15 @@ pub enum ScoringMode {
 }
 
 impl ScoringMode {
-    pub fn from_str(s: &str) -> Self {
+    pub fn from_str(s: &str) -> Result<Self, String> {
         match s.to_lowercase().as_str() {
-            "ppr" => Self::Ppr,
-            "ego" => Self::Ego,
-            "bm25" => Self::Bm25,
-            _ => Self::Hybrid,
+            "hybrid" => Ok(Self::Hybrid),
+            "ppr" => Ok(Self::Ppr),
+            "ego" => Ok(Self::Ego),
+            "bm25" => Ok(Self::Bm25),
+            other => Err(format!(
+                "unknown scoring_mode '{other}': expected one of hybrid|ppr|ego|bm25"
+            )),
         }
     }
 }

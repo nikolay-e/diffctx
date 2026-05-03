@@ -84,6 +84,18 @@ _KEYWORDS = frozenset(
 )
 
 
+def _emit_query_idents(tok: str, out: set[str]) -> None:
+    if len(tok) < 3 or tok.isdigit() or tok.lower() in _KEYWORDS:
+        return
+    out.add(tok.lower())
+    for part in _CAMEL_SPLIT_RE.split(tok):
+        if len(part) >= 3 and part.lower() not in _KEYWORDS:
+            out.add(part.lower())
+    for part in tok.split("_"):
+        if len(part) >= 3 and part.lower() not in _KEYWORDS:
+            out.add(part.lower())
+
+
 def extract_idents_from_patch(patch: str) -> set[str]:
     """Extract retrieval-query identifiers from a unified diff.
 
@@ -100,15 +112,7 @@ def extract_idents_from_patch(patch: str) -> set[str]:
             continue
         body = raw[1:] if raw[:1] in ("+", "-", " ") else raw
         for tok in _TOKEN_RE.findall(body):
-            if len(tok) < 3 or tok.isdigit() or tok.lower() in _KEYWORDS:
-                continue
-            idents.add(tok.lower())
-            for part in _CAMEL_SPLIT_RE.split(tok):
-                if len(part) >= 3 and part.lower() not in _KEYWORDS:
-                    idents.add(part.lower())
-            for part in tok.split("_"):
-                if len(part) >= 3 and part.lower() not in _KEYWORDS:
-                    idents.add(part.lower())
+            _emit_query_idents(tok, idents)
     return idents
 
 

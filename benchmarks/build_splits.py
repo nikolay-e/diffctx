@@ -66,7 +66,7 @@ def default_calibration_pool_adapters() -> tuple[BenchmarkAdapter, ...]:
     )
 
 
-def main() -> int:
+def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "--out",
@@ -108,7 +108,7 @@ def main() -> int:
         print("=== SPLIT_REPORT.md (dry-run, NOT written) ===\n")
         print(report)
         print("\n--dry-run: no manifests written. Re-run without the flag to freeze.")
-        return 0
+        return
 
     written = write_manifests(result, args.out)
     report_path = args.out / "SPLIT_REPORT.md"
@@ -117,8 +117,7 @@ def main() -> int:
     for name, path in sorted(written.items()):
         print(f"  {name}: {path}")
     print(f"Report: {report_path}")
-    return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()

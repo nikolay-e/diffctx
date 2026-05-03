@@ -236,6 +236,24 @@ impl EdgeBuilder for TestEdgeBuilder {
                         }
                     }
                 }
+
+                if matches!(
+                    ext.as_str(),
+                    ".js" | ".ts" | ".jsx" | ".tsx" | ".mjs" | ".cjs"
+                ) {
+                    let stem_test = format!("{stem_lower}.test");
+                    let stem_spec = format!("{stem_lower}.spec");
+                    for c in candidate_by_stem.get(&stem_test).unwrap_or(&vec![]) {
+                        if base::file_ext(c) == ext && is_test_file(c) {
+                            discovered.push(c.clone());
+                        }
+                    }
+                    for c in candidate_by_stem.get(&stem_spec).unwrap_or(&vec![]) {
+                        if base::file_ext(c) == ext && is_test_file(c) {
+                            discovered.push(c.clone());
+                        }
+                    }
+                }
             }
         }
 

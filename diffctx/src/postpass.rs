@@ -3,51 +3,12 @@ use std::sync::Arc;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::config::selection::RESCUE;
+use crate::config::selection::rescue;
 use crate::fragmentation::create_whole_file_fragment;
 use crate::git::CatFileBatch;
 use crate::graph::Graph;
+use crate::interval::IntervalIndex;
 use crate::types::{Fragment, FragmentId};
-
-struct IntervalIndex {
-    by_path: FxHashMap<Arc<str>, Vec<(u32, u32)>>,
-    ids: FxHashSet<FragmentId>,
-}
-
-impl IntervalIndex {
-    fn new() -> Self {
-        Self {
-            by_path: FxHashMap::default(),
-            ids: FxHashSet::default(),
-        }
-    }
-
-    fn add(&mut self, frag: &Fragment) {
-        self.ids.insert(frag.id.clone());
-        let intervals = self.by_path.entry(frag.id.path.clone()).or_default();
-        let pair = (frag.start_line(), frag.end_line());
-        let pos = intervals
-            .binary_search_by(|p| p.0.cmp(&pair.0).then(p.1.cmp(&pair.1)))
-            .unwrap_or_else(|i| i);
-        intervals.insert(pos, pair);
-    }
-
-    fn overlaps(&self, frag: &Fragment) -> bool {
-        let intervals = match self.by_path.get(&frag.id.path) {
-            Some(i) => i,
-            None => return false,
-        };
-        for &(start, end) in intervals {
-            if start == frag.start_line() && end == frag.end_line() {
-                continue;
-            }
-            if end >= frag.start_line() && start <= frag.end_line() {
-                return true;
-            }
-        }
-        false
-    }
-}
 
 fn find_dangling_semantic_names(
     selected: &[Fragment],
@@ -84,18 +45,13 @@ fn pick_best_fragment<'a>(
     candidates: &[&'a Fragment],
     selected_ids: &FxHashSet<FragmentId>,
 ) -> Option<&'a Fragment> {
-    if candidates.iter().any(|c| selected_ids.contains(&c.id)) {
-        return None;
-    }
-    let full: Vec<&&Fragment> = candidates
+    let available: Vec<&&'a Fragment> = candidates
         .iter()
-        .filter(|f| !f.kind.is_signature())
+        .filter(|c| !selected_ids.contains(&c.id))
         .collect();
-    let sig: Vec<&&Fragment> = candidates
-        .iter()
-        .filter(|f| f.kind.is_signature())
-        .collect();
-    full.first().or(sig.first()).map(|f| **f)
+    let full = available.iter().find(|f| !f.kind.is_signature()).copied();
+    let sig = available.iter().find(|f| f.kind.is_signature()).copied();
+    full.or(sig).map(|f| *f)
 }
 
 fn pick_smallest_fitting(
@@ -181,7 +137,7 @@ fn compute_rescue_threshold(
         return f64::INFINITY;
     }
     context_scores.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
-    let idx = (context_scores.len() as f64 * (1.0 - RESCUE.min_score_percentile)) as usize;
+    let idx = (context_scores.len() as f64 * (1.0 - rescue().min_score_percentile)) as usize;
     context_scores[idx.min(context_scores.len() - 1)]
 }
 
@@ -194,7 +150,7 @@ pub fn rescue_nontrivial_context(
 ) {
     let used: u32 = selected.iter().map(|f| f.token_count).sum();
     let remaining = budget.saturating_sub(used);
-    let rescue_budget = remaining.min((budget as f64 * RESCUE.budget_fraction) as u32);
+    let rescue_budget = remaining.min((budget as f64 * rescue().budget_fraction) as u32);
     if rescue_budget == 0 {
         return;
     }

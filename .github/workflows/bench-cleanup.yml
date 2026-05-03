@@ -1,0 +1,66 @@
+name: bench-cleanup
+
+# Triggered whenever bench-sweep finishes — success, failure, OR cancellation.
+# Deletes the Hetzner CCX63 server that was provisioned for the sweep.
+on:
+  workflow_run:
+    workflows: [bench-sweep]
+    types: [completed]
+
+permissions:
+  actions: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download server_id artifact from triggering run
+        uses: actions/download-artifact@v8
+        with:
+          name: hetzner-server-id
+          github-token: ${{ secrets.GH_PAT }}
+          run-id: ${{ github.event.workflow_run.id }}
+        continue-on-error: true  # no artifact if provision never ran
+
+      - name: Delete Hetzner server
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ ! -f server_id.txt ]]; then
+            echo "No server_id.txt found — provision job may not have run. Nothing to delete."
+            exit 0
+          fi
+          SERVER_ID=$(tr -d '[:space:]' < server_id.txt)
+          if [[ -z "$SERVER_ID" || "$SERVER_ID" == "null" ]]; then
+            echo "server_id is empty — nothing to delete."
+            exit 0
+          fi
+          echo "Deleting Hetzner server $SERVER_ID..."
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
+            "https://api.hetzner.cloud/v1/servers/${SERVER_ID}" \
+            -H "Authorization: Bearer ${HCLOUD_TOKEN}")
+          if [[ "$STATUS" == "200" || "$STATUS" == "204" || "$STATUS" == "404" ]]; then
+            echo "Server $SERVER_ID deleted (HTTP $STATUS)."
+          else
+            echo "ERROR: Unexpected HTTP $STATUS when deleting server $SERVER_ID." >&2
+            exit 1
+          fi
+
+      - name: Deregister runners (best-effort)
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          RUNNERS=$(curl -sf \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            "https://api.github.com/repos/${REPO}/actions/runners?per_page=100" \
+            | jq -r '.runners[] | select(.status == "offline") | .id')
+          for RID in $RUNNERS; do
+            if curl -sf -X DELETE \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              "https://api.github.com/repos/${REPO}/actions/runners/${RID}"; then
+              echo "Removed offline runner $RID"
+            fi
+          done

@@ -1,23 +1,27 @@
-use once_cell::sync::Lazy;
-
 use crate::config::env_overrides::{read_env_fraction, read_env_u32};
 
+#[derive(Clone)]
 pub struct SelectionConfig {
     pub core_budget_fraction: f64,
     pub r_cap_min: f64,
-    pub stopping_threshold: f64,
 }
 
 impl Default for SelectionConfig {
     fn default() -> Self {
         Self {
-            core_budget_fraction: 0.70,
+            // Calibrated on the v1 manifest (2119 instances across
+            // SWE-bench Lite, PolyBench, Multi-SWE-bench, ContextBench)
+            // with the pebble-fixed pool. Winner of the (tau, cbf) grid
+            // = (0.12, 0.5) at min(per_benchmark file_recall) = 0.1092.
+            // Surface is flat (top-3 within 0.001), so the choice is
+            // robust rather than tuned to a sharp optimum.
+            core_budget_fraction: 0.5,
             r_cap_min: 0.01,
-            stopping_threshold: 0.08,
         }
     }
 }
 
+#[derive(Clone)]
 pub struct RescueConfig {
     pub budget_fraction: f64,
     pub min_score_percentile: f64,
@@ -32,6 +36,7 @@ impl Default for RescueConfig {
     }
 }
 
+#[derive(Clone)]
 pub struct BoltzmannConfig {
     pub beta_lo: f64,
     pub beta_hi: f64,
@@ -50,17 +55,27 @@ impl Default for BoltzmannConfig {
     }
 }
 
-pub static SELECTION: Lazy<SelectionConfig> = Lazy::new(|| SelectionConfig {
-    core_budget_fraction: read_env_fraction("DIFFCTX_OP_SELECTION_CORE_BUDGET_FRACTION", 0.70),
-    r_cap_min: read_env_fraction("DIFFCTX_OP_SELECTION_R_CAP_MIN", 0.01),
-    stopping_threshold: read_env_fraction("DIFFCTX_OP_SELECTION_STOPPING_THRESHOLD", 0.08),
-});
-pub static RESCUE: Lazy<RescueConfig> = Lazy::new(|| RescueConfig {
-    budget_fraction: read_env_fraction("DIFFCTX_OP_RESCUE_BUDGET_FRACTION", 0.05),
-    min_score_percentile: read_env_fraction("DIFFCTX_OP_RESCUE_MIN_SCORE_PERCENTILE", 0.80),
-});
-pub static BOLTZMANN: Lazy<BoltzmannConfig> = Lazy::new(|| BoltzmannConfig {
-    calibration_tolerance: read_env_fraction("DIFFCTX_OP_BOLTZMANN_CALIBRATION_TOLERANCE", 0.05),
-    bisect_iters: read_env_u32("DIFFCTX_OP_BOLTZMANN_BISECT_ITERS", 24).max(1),
-    ..BoltzmannConfig::default()
-});
+pub fn selection() -> SelectionConfig {
+    SelectionConfig {
+        core_budget_fraction: read_env_fraction("DIFFCTX_OP_SELECTION_CORE_BUDGET_FRACTION", 0.5),
+        r_cap_min: read_env_fraction("DIFFCTX_OP_SELECTION_R_CAP_MIN", 0.01),
+    }
+}
+
+pub fn rescue() -> RescueConfig {
+    RescueConfig {
+        budget_fraction: read_env_fraction("DIFFCTX_OP_RESCUE_BUDGET_FRACTION", 0.05),
+        min_score_percentile: read_env_fraction("DIFFCTX_OP_RESCUE_MIN_SCORE_PERCENTILE", 0.80),
+    }
+}
+
+pub fn boltzmann() -> BoltzmannConfig {
+    BoltzmannConfig {
+        calibration_tolerance: read_env_fraction(
+            "DIFFCTX_OP_BOLTZMANN_CALIBRATION_TOLERANCE",
+            0.05,
+        ),
+        bisect_iters: read_env_u32("DIFFCTX_OP_BOLTZMANN_BISECT_ITERS", 24).max(1),
+        ..BoltzmannConfig::default()
+    }
+}

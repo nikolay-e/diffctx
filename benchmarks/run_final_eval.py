@@ -38,10 +38,14 @@ def _make_eval_fn(baseline: str, repo_root: Path, request_timeout: float):
         from benchmarks.baselines.bm25_baseline import make_bm25_eval_fn
 
         return make_bm25_eval_fn(repo_root)
-    if baseline == "aider":
+    if baseline in {"aider", "aider_fair"}:
         from benchmarks.baselines.aider_baseline import make_aider_eval_fn
 
-        return make_aider_eval_fn(repo_root, request_timeout=request_timeout)
+        return make_aider_eval_fn(repo_root, request_timeout=request_timeout, aider_mode="fair")
+    if baseline == "aider_oracle":
+        from benchmarks.baselines.aider_baseline import make_aider_eval_fn
+
+        return make_aider_eval_fn(repo_root, request_timeout=request_timeout, aider_mode="oracle")
     raise ValueError(f"unknown baseline: {baseline}")
 
 
@@ -60,18 +64,19 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--winner", type=Path, required=True)
     p.add_argument("--manifests-dir", type=Path, required=True)
-    p.add_argument("--workers", type=int, default=1)
+    p.add_argument("--workers", type=int, default=40)
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--repos-dir", type=Path, default=None)
-    p.add_argument("--timeout-per-instance", type=float, default=300.0)
+    p.add_argument("--timeout-per-instance", type=float, default=20.0)
     p.add_argument("--min-memory-gb", type=float, default=16.0)
     p.add_argument("--min-disk-gb", type=float, default=50.0)
+    p.add_argument("--limit", type=int, default=0, help="Cap instances per manifest (0 = all)")
     p.add_argument(
         "--baseline",
-        choices=["diffctx", "bm25", "aider"],
+        choices=["diffctx", "bm25", "aider", "aider_fair", "aider_oracle"],
         default="diffctx",
         help="Which method to evaluate. Non-diffctx baselines ignore τ/cbf/scoring "
-        "(budget is the only RunParam they consume).",
+        "(budget is the only RunParam they consume). 'aider' is alias for 'aider_fair'.",
     )
     args = p.parse_args()
 
@@ -87,6 +92,11 @@ def main() -> int:
         return 1
 
     adapters = default_test_adapters() + default_calibration_pool_adapters()
+
+    import os as _os
+
+    _os.environ["DIFFCTX_BENCH_TIMEOUT_SEC"] = str(args.timeout_per_instance)
+
     eval_fn = _make_eval_fn(args.baseline, repo_root, request_timeout=args.timeout_per_instance)
 
     args.out.mkdir(parents=True, exist_ok=True)
@@ -96,6 +106,8 @@ def main() -> int:
         name = manifest_path.stem.removeprefix("test_")
         ids = read_manifest(manifest_path)
         instances = [i for i in filter_instances_by_manifest(adapters, ids) if i.source_benchmark == name]
+        if args.limit:
+            instances = instances[: args.limit]
         print(f"\n[{name}] {len(instances)} instances")
         ckpt = args.out / f"{name}.checkpoint.jsonl"
         results = run_eval_set(
@@ -118,9 +130,8 @@ def main() -> int:
     lang_agg = aggregate_by_language(all_results)
     lang_table = render_language_table(lang_agg)
 
-    header = f"# Final evaluation — {args.baseline}\n\n" f"Method: **{args.baseline}**, budget={params.budget}" + (
-        f", τ={params.tau}, cbf={params.core_budget_fraction}, scoring={params.scoring}" if args.baseline == "diffctx" else ""
-    )
+    extra = f", τ={params.tau}, cbf={params.core_budget_fraction}, scoring={params.scoring}" if args.baseline == "diffctx" else ""
+    header = f"# Final evaluation — {args.baseline}\n\nMethod: **{args.baseline}**, budget={params.budget}{extra}"
     summary = "\n\n".join(
         [
             header,

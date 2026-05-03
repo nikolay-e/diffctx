@@ -172,7 +172,7 @@ impl BM25Discovery {
             }
             let idf_val = idf.get(t).copied().unwrap_or(0.0);
             s += idf_val * (freq * BM25.k1)
-                / (freq + BM25.doc_len_factor * (1.0 - BM25.b + BM25.b * dl / avgdl));
+                / (freq + BM25.k1 * (1.0 - BM25.b + BM25.b * dl / avgdl));
         }
         s
     }
@@ -184,42 +184,54 @@ impl DiscoveryStrategy for BM25Discovery {
         if query_tokens.is_empty() {
             return Vec::new();
         }
+        let query_set: FxHashSet<String> = query_tokens.into_iter().collect();
 
         let changed_set: FxHashSet<&Path> = ctx.changed_files.iter().map(|p| p.as_path()).collect();
-        let mut corpus: Vec<Vec<String>> = Vec::new();
-        let mut paths: Vec<PathBuf> = Vec::new();
 
-        for f in &ctx.all_candidates {
-            if changed_set.contains(f.as_path()) {
-                continue;
-            }
-            let content = match ctx.read_file(f) {
-                Some(c) => c,
-                None => continue,
-            };
-            corpus.push(extract_identifier_list(
-                &content,
-                BM25.min_query_token_length,
-            ));
-            paths.push(f.clone());
-        }
+        // Parallel tokenization: previously a serial loop, the dominant
+        // cost on mega-repos (vscode/mui ~5k TS files). par_iter saturates
+        // available rayon threads.
+        let pairs: Vec<(PathBuf, Vec<String>)> = ctx
+            .all_candidates
+            .par_iter()
+            .filter(|f| !changed_set.contains(f.as_path()))
+            .filter_map(|f| {
+                let content = ctx.read_file(f)?;
+                Some((
+                    f.clone(),
+                    extract_identifier_list(&content, BM25.min_query_token_length),
+                ))
+            })
+            .collect();
 
-        if corpus.is_empty() {
+        if pairs.is_empty() {
             return Vec::new();
         }
+        let n_docs = pairs.len();
+        if n_docs > 5000 {
+            tracing::warn!(
+                "BM25Discovery: large candidate corpus ({n_docs} docs) — using inverted-index fast path"
+            );
+        }
 
-        let n_docs = corpus.len();
-        let avgdl = corpus.iter().map(|d| d.len()).sum::<usize>() as f64 / n_docs as f64;
-
+        // Single pass: compute df globally + inverted-index posting lists
+        // for query terms only (skip indexing terms not in the query — they
+        // are never needed and would balloon memory on large repos).
         let mut df: FxHashMap<String, usize> = FxHashMap::default();
-        for doc in &corpus {
+        let mut postings: FxHashMap<String, Vec<usize>> = FxHashMap::default();
+        let mut total_len: usize = 0;
+        for (doc_id, (_, doc)) in pairs.iter().enumerate() {
+            total_len += doc.len();
             let unique: FxHashSet<&str> = doc.iter().map(|s| s.as_str()).collect();
             for term in unique {
                 *df.entry(term.to_string()).or_insert(0) += 1;
+                if query_set.contains(term) {
+                    postings.entry(term.to_string()).or_default().push(doc_id);
+                }
             }
         }
+        let avgdl = total_len as f64 / n_docs as f64;
 
-        let query_set: FxHashSet<String> = query_tokens.into_iter().collect();
         let idf: FxHashMap<String, f64> = query_set
             .iter()
             .map(|t| {
@@ -230,23 +242,37 @@ impl DiscoveryStrategy for BM25Discovery {
             })
             .collect();
 
-        let scores: Vec<f64> = corpus
+        // Candidate doc-ids = union of posting lists for query terms. Docs
+        // not in this set contain zero query terms and would score 0 — skip
+        // them. This is the algorithmic win: scoring shrinks from O(N_docs)
+        // to O(|posting-list union|), typically ~10-100× smaller on big
+        // corpora where the query is sparse against the corpus vocabulary.
+        let mut candidate_ids: FxHashSet<usize> = FxHashSet::default();
+        for term in &query_set {
+            if let Some(p) = postings.get(term) {
+                candidate_ids.extend(p);
+            }
+        }
+        if candidate_ids.is_empty() {
+            return Vec::new();
+        }
+
+        let candidate_vec: Vec<usize> = candidate_ids.into_iter().collect();
+        let scored: Vec<(usize, f64)> = candidate_vec
             .par_iter()
-            .map(|doc| Self::bm25_score(doc, &query_set, &idf, avgdl))
+            .map(|&doc_id| {
+                let s = Self::bm25_score(&pairs[doc_id].1, &query_set, &idf, avgdl);
+                (doc_id, s)
+            })
             .collect();
 
-        let mut ranked: Vec<usize> = (0..scores.len()).collect();
-        ranked.sort_by(|&a, &b| {
-            scores[b]
-                .partial_cmp(&scores[a])
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+        let mut ranked: Vec<(usize, f64)> = scored.into_iter().filter(|(_, s)| *s > 0.0).collect();
+        ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         ranked
             .into_iter()
             .take(self.top_k)
-            .filter(|&i| scores[i] > 0.0)
-            .map(|i| paths[i].clone())
+            .map(|(i, _)| pairs[i].0.clone())
             .collect()
     }
 }

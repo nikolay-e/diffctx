@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use rayon::prelude::*;
 use rustc_hash::FxHashSet;
+use walkdir::WalkDir;
 
 use crate::config::graph_filtering::GRAPH_FILTERING;
 use crate::config::limits::LIMITS;
@@ -45,45 +46,34 @@ pub fn collect_candidate_files(root_dir: &Path, included_set: &FxHashSet<PathBuf
     }
 
     let mut fallback: Vec<PathBuf> = Vec::new();
-    if let Ok(entries) = walkdir(root_dir) {
-        for f in entries {
-            if fallback.len() >= GRAPH_FILTERING.fallback_max_files {
-                break;
+    for entry in WalkDir::new(root_dir)
+        .sort_by_file_name()
+        .into_iter()
+        .filter_entry(|e| {
+            if e.depth() == 0 || !e.file_type().is_dir() {
+                return true;
             }
-            if is_candidate_file(&f, root_dir, included_set) {
-                fallback.push(f);
+            match e.file_name().to_str() {
+                Some(name) => {
+                    !name.starts_with('.') && name != "node_modules" && name != "__pycache__"
+                }
+                None => true,
             }
+        })
+        .filter_map(|e| e.ok())
+    {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        if fallback.len() >= GRAPH_FILTERING.fallback_max_files {
+            break;
+        }
+        let path = entry.into_path();
+        if is_candidate_file(&path, root_dir, included_set) {
+            fallback.push(path);
         }
     }
     fallback
-}
-
-fn walkdir(root: &Path) -> std::io::Result<Vec<PathBuf>> {
-    let mut result = Vec::new();
-    walk_recursive(root, &mut result)?;
-    Ok(result)
-}
-
-fn walk_recursive(dir: &Path, result: &mut Vec<PathBuf>) -> std::io::Result<()> {
-    let mut entries: Vec<PathBuf> = std::fs::read_dir(dir)?
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .collect();
-    entries.sort();
-    for path in entries {
-        if path.is_dir() {
-            let name = path
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_default();
-            if name.starts_with('.') || name == "node_modules" || name == "__pycache__" {
-                continue;
-            }
-            walk_recursive(&path, result)?;
-        } else {
-            result.push(path);
-        }
-    }
-    Ok(())
 }
 
 pub fn normalize_path(path: &Path, root_dir: &Path) -> PathBuf {

@@ -9,6 +9,8 @@ from pathlib import Path
 from benchmarks.adapters.base import BenchmarkAdapter, BenchmarkInstance
 from benchmarks.adapters.contamination import ContaminationDetector
 
+_TWO_COL_DIVIDER = "|---|---|"
+
 
 @dataclass(frozen=True)
 class SplitConfig:
@@ -152,7 +154,7 @@ def render_split_report(config: SplitConfig, result: SplitResult, today: str = "
     lines.append("## Totals")
     lines.append("")
     lines.append("| Split | Count |")
-    lines.append("|---|---|")
+    lines.append(_TWO_COL_DIVIDER)
     lines.append(f"| Test | {result.stats.test_total} |")
     lines.append(f"| Validation | {result.stats.validation_total} |")
     lines.append(f"| Calibration | {result.stats.calibration_total} |")
@@ -160,7 +162,7 @@ def render_split_report(config: SplitConfig, result: SplitResult, today: str = "
     lines.append("## Test set per benchmark")
     lines.append("")
     lines.append("| Benchmark | Count |")
-    lines.append("|---|---|")
+    lines.append(_TWO_COL_DIVIDER)
     for name in sorted(result.stats.test_per_benchmark):
         lines.append(f"| {name} | {result.stats.test_per_benchmark[name]} |")
     lines.append("")
@@ -181,7 +183,7 @@ def render_split_report(config: SplitConfig, result: SplitResult, today: str = "
     lines.append("## Pinned dataset revisions")
     lines.append("")
     lines.append("| Adapter | Revision |")
-    lines.append("|---|---|")
+    lines.append(_TWO_COL_DIVIDER)
     for name in sorted(result.stats.dataset_revisions):
         lines.append(f"| {name} | `{result.stats.dataset_revisions[name]}` |")
     lines.append("")

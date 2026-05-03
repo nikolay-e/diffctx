@@ -51,6 +51,9 @@ class _SilentIO:
     """Duck-typed `io` substitute for RepoMap. No prompts, no console."""
 
     def read_text(self, fname, silent=False):
+        # `silent` is part of Aider's IO contract; ignored here because we
+        # never log anyway.
+        del silent
         try:
             with open(fname, encoding="utf-8", errors="replace") as f:
                 return f.read()
@@ -58,13 +61,13 @@ class _SilentIO:
             return None
 
     def tool_output(self, *args, **kwargs):
-        pass
+        """No-op: stub that swallows Aider tool output to keep the bench quiet."""
 
     def tool_warning(self, *args, **kwargs):
-        pass
+        """No-op: stub that swallows Aider tool warnings."""
 
     def tool_error(self, *args, **kwargs):
-        pass
+        """No-op: stub that swallows Aider tool errors."""
 
 
 _CODE_EXT_RE = __import__("re").compile(

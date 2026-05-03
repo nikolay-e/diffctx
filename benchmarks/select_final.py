@@ -45,10 +45,10 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--candidates", type=Path, required=True)
     p.add_argument("--manifest", type=Path, required=True)
-    p.add_argument("--workers", type=int, default=1)
+    p.add_argument("--workers", type=int, default=40)
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--repos-dir", type=Path, default=None)
-    p.add_argument("--timeout-per-instance", type=float, default=300.0)
+    p.add_argument("--timeout-per-instance", type=float, default=20.0)
     p.add_argument("--min-memory-gb", type=float, default=16.0)
     p.add_argument("--min-disk-gb", type=float, default=50.0)
     p.add_argument("--checkpoint-dir", type=Path, default=None)
@@ -64,6 +64,10 @@ def main() -> int:
     adapters = default_test_adapters() + default_calibration_pool_adapters()
     instances = list(filter_instances_by_manifest(adapters, manifest_ids))
     print(f"Validation set: {len(instances)} instances")
+
+    import os as _os
+
+    _os.environ["DIFFCTX_BENCH_TIMEOUT_SEC"] = str(args.timeout_per_instance)
 
     eval_fn = make_diffctx_eval_fn(repo_root)
     evaluator = UniversalEvaluator()

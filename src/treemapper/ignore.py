@@ -178,7 +178,8 @@ def _transform_parent_pattern(line: str, rel_to_root: str) -> str | None:
     pat = line[1:] if neg else line
 
     result: str
-    if "**" in pat or "/" not in pat:
+    slashed = pat.rstrip("/")
+    if "**" in pat or "/" not in slashed:
         result = pat
     elif pat.startswith("/"):
         transformed = _transform_pattern(pat[1:], rel_to_root)

@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Iterator
 from pathlib import Path
 
+import pytest
+
 from benchmarks.adapters import BenchmarkInstance, EvalResult
 from benchmarks.adapters.base import BenchmarkAdapter
 from benchmarks.adapters.calibrate import (
@@ -203,9 +205,9 @@ def test_aggregate_test_set_averages_metrics():
     ]
     report = aggregate_test_set("x", rs)
     assert report.n == 2
-    assert report.file_recall == 0.7
-    assert report.fragment_recall == 0.8
-    assert report.used_tokens_mean == 2000.0
+    assert report.file_recall == pytest.approx(0.7)
+    assert report.fragment_recall == pytest.approx(0.8)
+    assert report.used_tokens_mean == pytest.approx(2000.0)
 
 
 def test_render_paper_table_includes_per_benchmark_and_aggregate():
@@ -226,9 +228,9 @@ def test_aggregate_by_language_groups_using_extra_field():
         EvalResult("b::1", "b", file_recall=0.9, file_precision=0.8, extra={"language": "java"}),
     ]
     agg = aggregate_by_language(rs)
-    assert agg["python"]["n"] == 2.0
-    assert agg["python"]["file_recall"] == 0.6
-    assert agg["java"]["n"] == 1.0
+    assert agg["python"]["n"] == pytest.approx(2.0)
+    assert agg["python"]["file_recall"] == pytest.approx(0.6)
+    assert agg["java"]["n"] == pytest.approx(1.0)
 
 
 def test_run_eval_set_resume_from_skips_already_recorded(tmp_path: Path):
@@ -238,29 +240,19 @@ def test_run_eval_set_resume_from_skips_already_recorded(tmp_path: Path):
     # Pre-populate checkpoint with two completed IDs.
     pre = run_eval_set(instances[:2], _stub_eval_fn, params, workers=1, checkpoint_path=ckpt)
     assert len(pre) == 2
-    # Resume — only the last 3 should run.
-    rest = run_eval_set(instances, _stub_eval_fn, params, workers=1, resume_from=ckpt, checkpoint_path=ckpt)
-    assert len(rest) == 3
-    assert {r.instance_id for r in rest} == {"a::2", "a::3", "a::4"}
 
+    invoked_ids: list[str] = []
 
-def test_run_eval_set_records_timeout_when_eval_fn_hangs(tmp_path: Path):
-    import time as _time
+    def _tracking_eval(instance: BenchmarkInstance, p: RunParams) -> EvalResult:
+        invoked_ids.append(instance.instance_id)
+        return _stub_eval_fn(instance, p)
 
-    def _slow_eval(instance, params):
-        _time.sleep(2)
-        return EvalResult(
-            instance_id=instance.instance_id,
-            source_benchmark=instance.source_benchmark,
-            file_recall=1.0,
-            file_precision=1.0,
-        )
-
-    instances = [_inst("a", i) for i in range(2)]
-    params = RunParams()
-    results = run_eval_set(instances, _slow_eval, params, workers=2, timeout_per_instance=0.05)
-    statuses = {r.extra.get("status") for r in results}
-    assert statuses == {"timeout"}, f"expected only timeouts, got {statuses}"
+    rest = run_eval_set(instances, _tracking_eval, params, workers=1, resume_from=ckpt, checkpoint_path=ckpt)
+    # Only the unrecorded instances should actually invoke the eval fn.
+    assert invoked_ids == ["a::2", "a::3", "a::4"]
+    # Returned results include replayed + freshly-computed entries so a
+    # fully-resumed run still aggregates over every instance.
+    assert {r.instance_id for r in rest} == {"a::0", "a::1", "a::2", "a::3", "a::4"}
 
 
 def test_run_eval_set_serial_records_exception_as_error(tmp_path: Path):

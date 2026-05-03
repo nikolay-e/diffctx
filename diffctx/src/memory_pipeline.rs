@@ -135,8 +135,38 @@ pub fn build_diff_context_in_memory(
         None,
     );
 
+    let mut selected = selection.selected;
+
+    crate::postpass::coherence_post_pass(
+        &mut selected,
+        &scoring_result.filtered_fragments,
+        &scoring_result.graph,
+        effective_budget,
+    );
+
+    crate::postpass::rescue_nontrivial_context(
+        &mut selected,
+        &all_fragments,
+        &scoring_result.rel_scores,
+        &core_ids,
+        effective_budget,
+    );
+
+    let used: u32 = selected.iter().map(|f| f.token_count).sum();
+    let remaining = effective_budget.saturating_sub(used);
+    let changed_files: Vec<PathBuf> = changed_paths.iter().map(PathBuf::from).collect();
+    crate::postpass::ensure_changed_files_represented(
+        &mut selected,
+        &all_fragments,
+        &changed_files,
+        remaining,
+        Path::new("."),
+        &[],
+        None,
+    );
+
     let dummy_root = Path::new(".");
-    build_diff_context_output(dummy_root, &selection.selected, no_content)
+    build_diff_context_output(dummy_root, &selected, no_content)
 }
 
 fn compute_memory_hunks(

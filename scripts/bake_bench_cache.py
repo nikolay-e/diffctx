@@ -1,38 +1,45 @@
 #!/usr/bin/env python3
 """Bake bench repo cache into a Docker layer.
 
-Reads ContextBench full dataset, enumerates unique (repo, base_commit) pairs,
-clones each repo as a bare mirror, and fetches each commit explicitly. Designed
-to run inside a Docker build stage so that the resulting /cache/contextbench_repos
-directory becomes a baked-in image layer (no clone at runtime).
+Clones all repos referenced by the three test-set datasets as bare mirrors
+and fetches every required commit. Designed to run inside a Docker build
+stage so that /cache/contextbench_repos becomes a baked-in image layer.
 
-Idempotent: skips clones that already exist, skips fetches that are already local.
-Runs clones in parallel for throughput.
+Datasets baked:
+  - Contextbench/ContextBench   (default config, train split)
+  - princeton-nlp/SWE-bench_Verified  (test split)
+  - AmazonScience/SWE-PolyBench_500   (test split)
+
+Idempotent: skips clones that already exist, skips commits already local.
 """
 
 from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import subprocess
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-CLONE_TIMEOUT_SECS = 1800
-FETCH_TIMEOUT_SECS = 600
+CLONE_TIMEOUT_SECS = 3600
+FETCH_TIMEOUT_SECS = 900
 CLONE_PARALLELISM = int(os.environ.get("BAKE_PARALLELISM", "4"))
+NETWORK_RETRY_ATTEMPTS = 3
+NETWORK_RETRY_BACKOFF_SECS = 5
+
+DATASETS: list[tuple[str, str | None, str]] = [
+    ("Contextbench/ContextBench", "default", "train"),
+    ("Contextbench/ContextBench", "contextbench_verified", "train"),
+    ("princeton-nlp/SWE-bench_Verified", None, "test"),
+    ("AmazonScience/SWE-PolyBench_500", None, "test"),
+]
 
 
 def safe_name(repo: str) -> str:
     return repo.replace("/", "__")
-
-
-def repo_url_for(inst: dict) -> str:
-    url = inst.get("repo_url")
-    if url:
-        return url
-    return f"https://github.com/{inst['repo']}.git"
 
 
 def run(cmd: list[str], timeout: int) -> tuple[int, str]:
@@ -43,18 +50,77 @@ def run(cmd: list[str], timeout: int) -> tuple[int, str]:
         return 124, f"timeout after {timeout}s"
 
 
+def _is_valid_bare(cache_dir: Path) -> bool:
+    if not cache_dir.exists():
+        return False
+    r = subprocess.run(
+        ["git", "-C", str(cache_dir), "rev-parse", "--verify", "HEAD"],
+        capture_output=True,
+        timeout=10,
+    )
+    return r.returncode == 0
+
+
+def _purge(cache_dir: Path) -> None:
+    shutil.rmtree(cache_dir, ignore_errors=True)
+
+
+_PERF_CONFIG = (
+    ("gc.auto", "0"),
+    ("feature.manyFiles", "true"),
+    ("index.version", "4"),
+    ("core.fsmonitor", "false"),
+)
+
+
+def _apply_perf_config(cache_dir: Path) -> None:
+    for key, value in _PERF_CONFIG:
+        subprocess.run(
+            ["git", "-C", str(cache_dir), "config", key, value],
+            capture_output=True,
+            timeout=10,
+        )
+
+
 def clone_one(repo: str, url: str, target: Path) -> tuple[str, bool, str]:
-    safe = safe_name(repo)
-    cache_dir = target / safe
+    cache_dir = target / safe_name(repo)
     if cache_dir.exists():
-        return repo, True, "exists"
-    print(f"  CLONE {repo} <- {url}", flush=True)
-    rc, err = run(["git", "clone", "--quiet", "--bare", url, str(cache_dir)], CLONE_TIMEOUT_SECS)
-    if rc != 0:
-        return repo, False, err
-    # Disable gc so packs stay deterministic
-    run(["git", "-C", str(cache_dir), "config", "gc.auto", "0"], 30)
-    return repo, True, "cloned"
+        if _is_valid_bare(cache_dir):
+            return repo, True, "exists"
+        print(f"  CORRUPT cache for {repo}, removing and recloning", flush=True)
+        _purge(cache_dir)
+
+    last_err = ""
+    for attempt in range(1, NETWORK_RETRY_ATTEMPTS + 1):
+        print(f"  CLONE {repo} <- {url} (attempt {attempt})", flush=True)
+        try:
+            r = subprocess.run(
+                ["git", "clone", "--bare", url, str(cache_dir)],
+                capture_output=True,
+                timeout=CLONE_TIMEOUT_SECS,
+            )
+        except subprocess.TimeoutExpired:
+            _purge(cache_dir)
+            last_err = f"timeout after {CLONE_TIMEOUT_SECS}s"
+            if attempt < NETWORK_RETRY_ATTEMPTS:
+                time.sleep(NETWORK_RETRY_BACKOFF_SECS * (2 ** (attempt - 1)))
+            continue
+
+        if r.returncode != 0:
+            _purge(cache_dir)
+            last_err = r.stderr.decode("utf-8", "replace")[:500]
+            if attempt < NETWORK_RETRY_ATTEMPTS:
+                time.sleep(NETWORK_RETRY_BACKOFF_SECS * (2 ** (attempt - 1)))
+            continue
+
+        if not _is_valid_bare(cache_dir):
+            _purge(cache_dir)
+            return repo, False, "post-clone validation failed"
+
+        _apply_perf_config(cache_dir)
+        return repo, True, "cloned"
+
+    return repo, False, last_err
 
 
 def fetch_one(repo: str, commit: str, target: Path) -> tuple[str, str, bool, str]:
@@ -64,76 +130,129 @@ def fetch_one(repo: str, commit: str, target: Path) -> tuple[str, str, bool, str
     rc, _ = run(["git", "-C", str(cache_dir), "cat-file", "-t", commit], 30)
     if rc == 0:
         return repo, commit, True, "have"
-    print(f"  FETCH {repo}@{commit[:12]}", flush=True)
-    rc, err = run(["git", "-C", str(cache_dir), "fetch", "--quiet", "origin", commit], FETCH_TIMEOUT_SECS)
-    return repo, commit, rc == 0, err if rc != 0 else "fetched"
+    last_err = ""
+    for attempt in range(1, NETWORK_RETRY_ATTEMPTS + 1):
+        print(f"  FETCH {repo}@{commit[:12]} (attempt {attempt})", flush=True)
+        rc, err = run(["git", "-C", str(cache_dir), "fetch", "--quiet", "origin", commit], FETCH_TIMEOUT_SECS)
+        if rc == 0:
+            return repo, commit, True, "fetched"
+        last_err = err
+        if "unadvertised object" in err or "not our ref" in err or "couldn't find remote ref" in err.lower():
+            return repo, commit, False, f"unreachable_commit: {err}"
+        if attempt < NETWORK_RETRY_ATTEMPTS:
+            time.sleep(NETWORK_RETRY_BACKOFF_SECS * (2 ** (attempt - 1)))
+    return repo, commit, False, last_err
+
+
+def collect_repos_commits(
+    hf_path: str,
+    config: str | None,
+    split: str,
+    limit: int,
+) -> tuple[dict[str, str], set[tuple[str, str]]]:
+    from datasets import load_dataset
+
+    print(f"  Loading {hf_path} (config={config or 'default'}, split={split}) ...", flush=True)
+    ds = load_dataset(hf_path, name=config, split=split) if config else load_dataset(hf_path, split=split)
+    instances = list(ds)
+    if limit:
+        instances = instances[:limit]
+    repos: dict[str, str] = {}
+    commits: set[tuple[str, str]] = set()
+    for raw in instances:
+        inst = dict(raw)
+        repo = inst.get("repo") or inst.get("repo_name") or ""
+        if not repo:
+            continue
+        commit = inst.get("base_commit") or inst.get("commit") or ""
+        if not commit:
+            continue
+        if repo not in repos:
+            url = inst.get("repo_url") or f"https://github.com/{repo}.git"
+            repos[repo] = url
+        commits.add((repo, commit))
+    print(f"  → {len(repos)} unique repos, {len(commits)} unique commits", flush=True)
+    return repos, commits
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("target", type=Path, help="Target cache dir (e.g. /cache/contextbench_repos)")
-    ap.add_argument("--dataset", default="full", choices=["full", "verified"])
-    ap.add_argument("--limit", type=int, default=0, help="Optional cap on instances (0 = all)")
+    ap.add_argument("--limit", type=int, default=0, help="Cap instances per dataset (0 = all)")
     args = ap.parse_args()
 
     args.target.mkdir(parents=True, exist_ok=True)
 
-    print(f"Loading ContextBench/{args.dataset}...", flush=True)
-    from datasets import load_dataset
+    all_repos: dict[str, str] = {}
+    all_commits: set[tuple[str, str]] = set()
 
-    config = "contextbench_verified" if args.dataset == "verified" else "default"
-    ds = load_dataset("Contextbench/ContextBench", config, split="train")
-    instances = list(ds)
-    if args.limit:
-        instances = instances[: args.limit]
-    print(f"Loaded {len(instances)} instances", flush=True)
+    for hf_path, config, split in DATASETS:
+        repos, commits = collect_repos_commits(hf_path, config, split, args.limit)
+        all_repos.update(repos)
+        all_commits.update(commits)
 
-    repos: dict[str, str] = {}
-    commits: set[tuple[str, str]] = set()
-    for raw in instances:
-        inst: dict = dict(raw)  # type: ignore[arg-type]
-        repo = inst["repo"]
-        if repo not in repos:
-            repos[repo] = repo_url_for(inst)
-        commits.add((repo, inst["base_commit"]))
-
-    print(f"Unique repos: {len(repos)}, unique commits: {len(commits)}", flush=True)
+    print(
+        f"\nTotal: {len(all_repos)} unique repos, {len(all_commits)} unique commits",
+        flush=True,
+    )
     print(f"Cloning with parallelism={CLONE_PARALLELISM}", flush=True)
 
     failed_clones: list[tuple[str, str]] = []
-    with ThreadPoolExecutor(max_workers=CLONE_PARALLELISM) as pool:
-        futs = {pool.submit(clone_one, r, u, args.target): r for r, u in repos.items()}
-        for fut in as_completed(futs):
-            repo, ok, msg = fut.result()
+    with ThreadPoolExecutor(max_workers=CLONE_PARALLELISM) as clone_pool:
+        clone_futs = {clone_pool.submit(clone_one, r, u, args.target): r for r, u in all_repos.items()}
+        for clone_fut in as_completed(clone_futs):
+            repo, ok, msg = clone_fut.result()
             if not ok:
                 failed_clones.append((repo, msg))
                 print(f"  CLONE FAIL {repo}: {msg}", flush=True)
 
-    print(f"\nClones: {len(repos) - len(failed_clones)}/{len(repos)} successful", flush=True)
-    if failed_clones:
-        print(f"  Failed: {[r for r, _ in failed_clones]}", flush=True)
+    print(f"\nClones: {len(all_repos) - len(failed_clones)}/{len(all_repos)} successful", flush=True)
 
     failed_fetches: list[tuple[str, str, str]] = []
-    with ThreadPoolExecutor(max_workers=CLONE_PARALLELISM * 2) as pool:
-        futs = {pool.submit(fetch_one, r, c, args.target): (r, c) for r, c in commits}
-        ok_count = 0
-        for fut in as_completed(futs):
-            repo, commit, ok, msg = fut.result()
+    ok_count = 0
+    with ThreadPoolExecutor(max_workers=CLONE_PARALLELISM * 2) as fetch_pool:
+        fetch_futs = {fetch_pool.submit(fetch_one, r, c, args.target): (r, c) for r, c in all_commits}
+        for fetch_fut in as_completed(fetch_futs):
+            repo, commit, ok, msg = fetch_fut.result()
             if ok:
                 ok_count += 1
             else:
                 failed_fetches.append((repo, commit, msg))
 
-    print(f"\nCommits: {ok_count}/{len(commits)} present", flush=True)
+    print(f"\nCommits: {ok_count}/{len(all_commits)} present", flush=True)
     if failed_fetches:
         print(f"  Failed fetches: {len(failed_fetches)}", flush=True)
         for r, c, m in failed_fetches[:10]:
             print(f"    {r}@{c[:12]}: {m}", flush=True)
 
-    print("\nCache size estimate:", flush=True)
+    print("\nCache size:", flush=True)
     subprocess.run(["du", "-sh", str(args.target)], check=False)
 
-    # Don't fail the build for partial cache — bench gracefully handles missing repos
+    import json
+
+    manifest_path = args.target / ".bake_manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "failed_clones": [{"repo": r, "error": m} for r, m in failed_clones],
+                "failed_fetches": [{"repo": r, "commit": c, "error": m} for r, c, m in failed_fetches],
+                "ok_repos": sorted(set(all_repos) - {r for r, _ in failed_clones}),
+            },
+            indent=2,
+        )
+    )
+
+    if failed_clones:
+        print(
+            f"BAKE FAILED: {len(failed_clones)} clone failures (fetch failures={len(failed_fetches)})",
+            flush=True,
+        )
+        return 1
+    if failed_fetches:
+        print(
+            f"BAKE WARNING: {len(failed_fetches)} unreachable commits (force-pushed/deleted upstream) — sweep will skip these instances",
+            flush=True,
+        )
     return 0
 
 

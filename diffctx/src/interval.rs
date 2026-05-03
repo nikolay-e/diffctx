@@ -44,7 +44,12 @@ impl IntervalIndex {
             if start == frag.start_line() && end == frag.end_line() {
                 continue;
             }
-            if end >= frag.start_line() {
+            // Strict `>`: a fragment starting on the very last line of an
+            // already-selected fragment is adjacent, not overlapping. Compact
+            // languages (Rust/Go/Scala one-liners, Lisp `}{` chains) routinely
+            // produce back-to-back fragments sharing exactly that boundary
+            // line; treating it as overlap silently drops the next fragment.
+            if end > frag.start_line() {
                 return true;
             }
         }

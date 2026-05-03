@@ -1,24 +1,21 @@
 # syntax=docker/dockerfile:1.7
 #
-# Multi-arch reproducible bench image.
+# Runtime bench image (code only, ~1-2 GB).
+# Repo cache (~20 GB) lives in Dockerfile.bench-data and is mounted at
+# /cache/contextbench_repos via a shared host bind-mount on the CCX63 server.
 #
-# Layers (top to bottom = build order = cache order):
+# Layers:
 #   1. python base + system deps             (rare changes)
 #   2. python deps (requirements-bench.txt)  (weekly changes)
 #   3. rust wheel (cross-compiled)           (per-commit changes)
-#   4. PRE-BAKED bench repo cache (~20 GB)   (~monthly changes — dataset-driven)
-#   5. treemapper source (--no-deps install) (per-commit changes)
-#   6. benchmarks code                       (per-commit changes)
-#
-# Source-layer changes do NOT invalidate the giant cache layer (it's above).
-# The cache stage is built ONCE on $BUILDPLATFORM and shared across all
-# target archs (git data is binary-portable).
+#   4. treemapper source (--no-deps install) (per-commit changes)
+#   5. benchmarks code                       (changes most often)
 
 ARG PYTHON_VERSION=3.12
 ARG RUST_VERSION=1.92.0
 
 # ============================================================================
-# Stage A — Rust cross-compiler (cross-compile, do NOT emulate)
+# Stage A — Rust cross-compiler
 # ============================================================================
 FROM --platform=$BUILDPLATFORM python:${PYTHON_VERSION}-slim-bookworm AS rust-builder
 ARG TARGETPLATFORM
@@ -53,6 +50,7 @@ WORKDIR /build/diffctx
 COPY diffctx/Cargo.toml diffctx/Cargo.lock diffctx/pyproject.toml ./
 COPY diffctx/src ./src
 COPY diffctx/python ./python
+COPY diffctx/tests ./tests
 
 RUN set -eux; \
     TGT=$(cat /target_triple); \
@@ -62,28 +60,7 @@ RUN set -eux; \
     maturin build --release --target "$TGT" --out /wheels --interpreter python3
 
 # ============================================================================
-# Stage B — Bench repo cache warmer (BUILDPLATFORM only — git is portable)
-# ============================================================================
-FROM --platform=$BUILDPLATFORM python:${PYTHON_VERSION}-slim-bookworm AS cache-warmer
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    git ca-certificates curl \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN pip install --no-cache-dir datasets
-
-COPY scripts/bake_bench_cache.py /tmp/bake_bench_cache.py
-ARG BAKE_DATASET=full
-ARG BAKE_LIMIT=0
-ARG BAKE_PARALLELISM=4
-ENV BAKE_PARALLELISM=${BAKE_PARALLELISM}
-
-RUN python3 /tmp/bake_bench_cache.py /cache/contextbench_repos \
-    --dataset "${BAKE_DATASET}" \
-    $( [ "${BAKE_LIMIT}" -gt 0 ] && echo "--limit ${BAKE_LIMIT}" )
-
-# ============================================================================
-# Stage C — Final runtime
+# Stage B — Runtime
 # ============================================================================
 FROM python:${PYTHON_VERSION}-slim-bookworm AS runtime
 
@@ -105,22 +82,22 @@ RUN pip install --no-cache-dir -r requirements-bench.txt
 COPY --from=rust-builder /wheels/*.whl /tmp/wheels/
 RUN pip install --no-cache-dir --force-reinstall /tmp/wheels/*.whl && rm -rf /tmp/wheels
 
-# Layer 4: PRE-BAKED bench repo cache (~20 GB) — RARELY changes
-COPY --from=cache-warmer /cache/contextbench_repos /cache/contextbench_repos
-
-# Layer 5: treemapper source + editable install (no-deps to skip resolver)
+# Layer 4: treemapper source + editable install (no-deps to skip resolver)
 COPY pyproject.toml README.md ./
 COPY src ./src
 RUN pip install --no-cache-dir --no-deps -e .
 
-# Layer 6: Benchmarks code (changes most often)
+# Layer 5: Benchmarks code (changes most often)
 COPY benchmarks ./benchmarks
+COPY scripts/bake_bench_cache.py ./scripts/bake_bench_cache.py
 
+# /cache/contextbench_repos is populated at provision time via bake_bench_cache.py
+# running inside this image (see bench-sweep.yml cloud-init).
 ENV CB_REPOS_DIR=/cache/contextbench_repos
 ENV PYTHONUNBUFFERED=1
 
 LABEL org.opencontainers.image.source="https://github.com/nikolay-e/treemapper"
-LABEL org.opencontainers.image.description="treemapper diffctx benchmark image with pre-baked ContextBench repo cache"
+LABEL org.opencontainers.image.description="treemapper diffctx benchmark runtime image (repo cache mounted separately)"
 LABEL org.opencontainers.image.licenses="Apache-2.0"
 
 ENTRYPOINT ["python", "-m", "benchmarks"]

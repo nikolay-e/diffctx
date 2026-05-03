@@ -322,6 +322,8 @@ is left to future work: the labeled corpora required to disambiguate ten weights
 \end{itemize}
 These two parameters govern algorithm behavior at query time and admit a small grid search on a held-out manifest; calibration details are reported in Section~\ref{sec:prelim-results}. In the present work each scoring mode uses the same $(\tau, \beta_{\mathrm{core}})$ values selected on the hybrid-mode calibration; per-mode re-tuning is recorded as a sensitivity question in the limitations.
 
+\paragraph{Per-source out-edge cap.} The typed dependency graph admits power-law density on large repositories (django, mui/material-ui, microsoft/vscode), with raw edge counts reaching 3--5\,M before any pruning. We cap each source node's outgoing edge list to its top-$K$ neighbors by post-suppression weight, applied \emph{after} hub-suppression so the IDF damping computes against the full in-degree distribution. The default $K{=}64$ is the deployed value of the implementation; whether $K$ admits a meaningful tuning gradient or can be treated as a structural constant is empirically open and we report a stratified analysis with paired statistical test in the appendix once a sufficiently powered comparison ($n{\geq}500$ with Wilcoxon signed-rank) is completed. The implementation exposes the parameter via the \texttt{DIFFCTX\_MAX\_EDGES\_PER\_NODE} environment variable.
+
 \subsection{Temperature Calibration}
 \label{sec:beta-calibration}
 
@@ -484,19 +486,20 @@ This section instantiates the protocol of Section~\ref{sec:eval} and reports the
 \end{itemize}
 Cross-benchmark contamination is filtered by \texttt{(repo, base\_commit)} key (1449 instances dropped from the calibration pool). HuggingFace dataset revisions are pinned by SHA in \texttt{benchmarks/dataset\_revisions.json}.
 
-\paragraph{Calibration.} A 3$\times$3 grid over $\tau \in \{0.04, 0.08, 0.12\}$ and $\beta_{\mathrm{core}} \in \{0.5, 0.7, 0.9\}$ was run on the calibration manifest. The selection objective was the minimum file-recall across the four calibration source benchmarks (Section~\ref{sec:eval}). The full grid is reported in Table~\ref{tab:calibration-grid}. The selected cell is $\tau{=}0.12$, $\beta_{\mathrm{core}}{=}0.5$, with $B{=}8000$ tokens, $\mathrm{scoring}{=}\mathrm{hybrid}$. Two observations are worth recording: first, the winning $\tau$ row ($\tau{=}0.12$) clusters tightly across $\beta_{\mathrm{core}}$ values (0.7287--0.7298, a span of 0.001), indicating that $\beta_{\mathrm{core}}$ is essentially insensitive in this regime; second, the calibration objective varies by only $\sim$0.02 across the full grid. The remaining operational parameters (Section~\ref{sec:greedy} and the appendix) are held fixed at the values listed there.
+\paragraph{Calibration.} A 4$\times$3 grid over $\tau \in \{0.04, 0.08, 0.12, 0.16\}$ and $\beta_{\mathrm{core}} \in \{0.5, 0.7, 0.9\}$ was run on the full v1 calibration manifest (2{,}119 instances spanning SWE-bench Lite, PolyBench, Multi-SWE-bench, ContextBench). The selection objective is the minimum file-recall across the four calibration source benchmarks (Section~\ref{sec:eval}); minimum rather than mean prevents domination by the largest-population benchmark. The full grid is reported in Table~\ref{tab:calibration-grid}. The selected cell is $\tau{=}0.12$, $\beta_{\mathrm{core}}{=}0.5$, with $B{=}8000$ tokens, $\mathrm{scoring}{=}\mathrm{hybrid}$. Three observations: first, the surface is nearly flat---the top-3 cells lie within $0.001$ of each other (Table~\ref{tab:calibration-grid}), indicating that $(\tau, \beta_{\mathrm{core}})$ are robust rather than tuned to a sharp optimum; second, the absolute score $0.1092$ is the minimum mean recall across benchmarks on a difficult cross-language calibration mix---this is a baseline number for downstream multi-hop work, not a final test-set headline; third, the per-benchmark breakdown at the winner is $\{$swebench\_lite: 0.133, polybench: 0.109, multi\_swebench: 0.173, contextbench: 0.127$\}$, showing the bottleneck benchmark is PolyBench. The remaining operational parameters (Section~\ref{sec:greedy} and the appendix) are held fixed at the values listed there.
 
 \begin{table}[h]
 \centering
-\caption{Calibration grid scores: minimum per-source-benchmark file recall on the calibration manifest. The selected cell is highlighted; $\tau{=}0.12$ dominates across $\beta_{\mathrm{core}}$. The grid is reported in full to make the parameter-sensitivity argument concrete.}
+\caption{Calibration grid scores: minimum per-source-benchmark file recall on the v1 calibration manifest (2{,}119 instances, four benchmarks, hybrid scoring, $B{=}8000$). The selected cell is highlighted. Surface is flat (top-3 within $0.001$); $\tau$ varies modestly across rows, $\beta_{\mathrm{core}}$ is essentially insensitive within the winning row.}
 \label{tab:calibration-grid}
 \begin{tabular}{lccc}
 \toprule
 $\tau \; \backslash \; \beta_{\mathrm{core}}$ & $0.5$ & $0.7$ & $0.9$ \\
 \midrule
-$0.04$ & $0.7196$ & $0.7196$ & $0.7196$ \\
-$0.08$ & $0.7113$ & $0.7113$ & $0.7113$ \\
-$0.12$ & $\mathbf{0.7287^\ast}$ & $0.7287$ & $0.7298$ \\
+$0.04$ & $0.1081$ & $0.1068$ & $0.1053$ \\
+$0.08$ & $0.1091$ & $0.1081$ & $0.1050$ \\
+$0.12$ & $\mathbf{0.1092^\ast}$ & $0.1077$ & $0.1050$ \\
+$0.16$ & $0.1036$ & $0.1029$ & $0.1011$ \\
 \bottomrule
 \end{tabular}
 \end{table}

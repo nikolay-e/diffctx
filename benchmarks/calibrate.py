@@ -18,16 +18,45 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from benchmarks.adapters.calibrate import GridSpec, evaluate_grid, render_grid_report, top_k_trials
+from benchmarks.adapters.calibrate import (
+    GridSpec,
+    evaluate_grid_cached,
+    render_grid_report,
+    top_k_trials,
+)
 from benchmarks.adapters.runner import filter_instances_by_manifest, read_manifest
 from benchmarks.adapters.runtime_probe import probe_resources, report_and_maybe_exit
 from benchmarks.build_splits import default_calibration_pool_adapters, default_test_adapters
 from benchmarks.common import repos_dir as default_repos_dir
-from benchmarks.diffctx_eval_fn import make_diffctx_eval_fn
+from benchmarks.diffctx_eval_fn import make_diffctx_eval_all_cells_fn
 
 
 def _parse_floats(s: str) -> tuple[float, ...]:
     return tuple(float(p) for p in s.split(",") if p.strip())
+
+
+def _prewarm_bare_clones(instances) -> None:
+    """Clone every distinct repo serially before the parallel grid runs.
+
+    Cell 1 otherwise pays the full clone cost on its workers — when many
+    workers race on `_ensure_bare_cache` they all stall on the same git
+    operation and emit clone-fail spam. A single sequential warmup turns
+    that cold path into a one-time setup the grid never sees again.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    from benchmarks.common import _ensure_bare_cache
+
+    seen: dict[str, str] = {}
+    for inst in instances:
+        if inst.repo in seen:
+            continue
+        url = str(inst.extra.get("repo_url") or f"https://github.com/{inst.repo}")
+        seen[inst.repo] = url
+    print(f"Pre-warming {len(seen)} bare clones...", flush=True)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(lambda kv: _ensure_bare_cache(kv[1], kv[0]), seen.items()))
+    print("Pre-warm complete.", flush=True)
 
 
 def main() -> int:
@@ -41,11 +70,11 @@ def main() -> int:
     )
     p.add_argument("--budget", type=int, default=8000)
     p.add_argument("--scoring", default="hybrid")
-    p.add_argument("--workers", type=int, default=1)
+    p.add_argument("--workers", type=int, default=40)
     p.add_argument("--top-k", type=int, default=3)
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--repos-dir", type=Path, default=None)
-    p.add_argument("--timeout-per-instance", type=float, default=300.0)
+    p.add_argument("--timeout-per-instance", type=float, default=20.0)
     p.add_argument("--min-memory-gb", type=float, default=16.0)
     p.add_argument("--min-disk-gb", type=float, default=50.0)
     p.add_argument(
@@ -82,7 +111,15 @@ def main() -> int:
     else:
         print(f"Resolved {len(instances)} / {len(manifest_ids)} instances")
 
-    eval_fn = make_diffctx_eval_fn(repo_root)
+    _prewarm_bare_clones(instances)
+
+    # Workers read DIFFCTX_BENCH_TIMEOUT_SEC to scope the kill switch
+    # to the diffctx call only (excluding git clone / worktree setup).
+    import os as _os
+
+    _os.environ["DIFFCTX_BENCH_TIMEOUT_SEC"] = str(args.timeout_per_instance)
+
+    eval_all_cells_fn = make_diffctx_eval_all_cells_fn(repo_root)
     args.out.mkdir(parents=True, exist_ok=True)
     checkpoint_dir = args.out / "checkpoints"
 
@@ -90,13 +127,13 @@ def main() -> int:
         print(
             f"[{idx + 1}/{total}] τ={trial.params.tau:.4f} "
             f"cbf={trial.params.core_budget_fraction:.4f} → "
-            f"min(per_benchmark file_recall) = {trial.score:.4f}"
+            f"min={trial.score:.4f}  mean={trial.score_mean:.4f}"
         )
 
-    trials = evaluate_grid(
+    trials = evaluate_grid_cached(
         spec,
         instances,
-        eval_fn,
+        eval_all_cells_fn,
         workers=args.workers,
         on_trial=_on_trial,
         timeout_per_instance=args.timeout_per_instance,
@@ -116,6 +153,7 @@ def main() -> int:
             {
                 "params": asdict(t.params),
                 "score": t.score,
+                "score_mean": t.score_mean,
                 "per_benchmark": t.per_benchmark,
             }
             for t in trials
@@ -124,11 +162,15 @@ def main() -> int:
     (args.out / "grid_results.json").write_text(json.dumps(payload, indent=2, default=str))
 
     top = top_k_trials(trials, k=args.top_k)
-    top_payload = {"top_k": args.top_k, "candidates": [asdict(t.params) for t in top]}
+    top_payload = {
+        "top_k": args.top_k,
+        "candidates": [asdict(t.params) for t in top],
+        "candidate_scores": [{"params": asdict(t.params), "score_min": t.score, "score_mean": t.score_mean} for t in top],
+    }
     (args.out / "top_candidates.json").write_text(json.dumps(top_payload, indent=2, default=str))
-    print(f"\nTop {args.top_k} candidates by min(per_benchmark file_recall):")
+    print(f"\nTop {args.top_k} candidates by min(per_benchmark file_recall) [mean shown for cherry-pick check]:")
     for t in top:
-        print(f"  τ={t.params.tau} cbf={t.params.core_budget_fraction} score={t.score:.4f}")
+        print(f"  τ={t.params.tau} cbf={t.params.core_budget_fraction}  min={t.score:.4f}  mean={t.score_mean:.4f}")
     return 0
 
 

@@ -47,16 +47,32 @@ fn init_seed_residuals(
     residual
 }
 
+/// Result of one PPR push pass. `truncated` flags whether the
+/// `max_pushes` budget cut the iteration short — when true, the
+/// returned estimate is biased toward seeds and the absolute scores
+/// are not comparable to a converged run on the same graph. Surfaced
+/// to Python via `LatencyBreakdown.ppr_truncated` so calibration /
+/// final-eval rows can be filtered or flagged for the paper.
+struct PprPushResult {
+    estimate: Vec<f64>,
+    pushes: usize,
+    truncated: bool,
+}
+
 fn ppr_push_csr(
     csr: &CsrGraph,
     seeds: &FxHashSet<FragmentId>,
     alpha: f64,
     tol: f64,
     seed_weights: Option<&FxHashMap<FragmentId, f64>>,
-) -> Vec<f64> {
+) -> PprPushResult {
     let n = csr.n;
     if n == 0 {
-        return Vec::new();
+        return PprPushResult {
+            estimate: Vec::new(),
+            pushes: 0,
+            truncated: false,
+        };
     }
 
     let restart = 1.0 - alpha;
@@ -74,9 +90,11 @@ fn ppr_push_csr(
 
     let max_pushes = (n * PPR.push_scale_factor).min(PPR.max_pushes_cap);
     let mut pushes: usize = 0;
+    let mut truncated = false;
 
     while let Some(u) = queue.pop_front() {
         if pushes >= max_pushes {
+            truncated = true;
             break;
         }
         let ui = u as usize;
@@ -114,7 +132,26 @@ fn ppr_push_csr(
         pushes += 1;
     }
 
-    estimate
+    PprPushResult {
+        estimate,
+        pushes,
+        truncated,
+    }
+}
+
+/// Public PPR result. `truncated` is logical-OR of forward + backward
+/// push truncation flags. When true, downstream renormalization
+/// (sum-to-1 across nodes) hides the fact that the iteration was cut
+/// short by `max_pushes_cap`; the absolute relevance scores are
+/// biased toward seeds and not directly comparable across instances.
+/// We surface this to Python so calibration / final-eval rows can be
+/// filtered in post-analysis (PolyBench / Multi-SWE-bench instances
+/// with >20k fragments are the primary suspects).
+pub struct PprResult {
+    pub scores: FxHashMap<FragmentId, f64>,
+    pub truncated: bool,
+    pub forward_pushes: usize,
+    pub backward_pushes: usize,
 }
 
 pub fn personalized_pagerank(
@@ -124,18 +161,19 @@ pub fn personalized_pagerank(
     tol: f64,
     forward_blend: f64,
     seed_weights: Option<&FxHashMap<FragmentId, f64>>,
-) -> FxHashMap<FragmentId, f64> {
-    if graph.node_count() == 0 {
-        return FxHashMap::default();
-    }
-
-    if seeds.is_empty() {
-        return FxHashMap::default();
+) -> PprResult {
+    if graph.node_count() == 0 || seeds.is_empty() {
+        return PprResult {
+            scores: FxHashMap::default(),
+            truncated: false,
+            forward_pushes: 0,
+            backward_pushes: 0,
+        };
     }
 
     let (fwd_csr, rev_csr) = graph.to_csr();
 
-    let (forward_est, backward_est) = rayon::join(
+    let (forward, backward) = rayon::join(
         || ppr_push_csr(fwd_csr, seeds, alpha, tol, seed_weights),
         || ppr_push_csr(rev_csr, seeds, alpha, tol, seed_weights),
     );
@@ -143,7 +181,8 @@ pub fn personalized_pagerank(
     let n = fwd_csr.n;
     let mut combined = vec![0.0f64; n];
     for i in 0..n {
-        combined[i] = forward_blend * forward_est[i] + (1.0 - forward_blend) * backward_est[i];
+        combined[i] =
+            forward_blend * forward.estimate[i] + (1.0 - forward_blend) * backward.estimate[i];
     }
 
     let total: f64 = combined.iter().sum();
@@ -154,14 +193,19 @@ pub fn personalized_pagerank(
     }
 
     let idx_to_node = &fwd_csr.idx_to_node;
-    let mut result: FxHashMap<FragmentId, f64> = FxHashMap::default();
+    let mut scores: FxHashMap<FragmentId, f64> = FxHashMap::default();
     for i in 0..n {
         if combined[i] > 0.0 {
-            result.insert(idx_to_node[i].clone(), combined[i]);
+            scores.insert(idx_to_node[i].clone(), combined[i]);
         }
     }
 
-    result
+    PprResult {
+        scores,
+        truncated: forward.truncated || backward.truncated,
+        forward_pushes: forward.pushes,
+        backward_pushes: backward.pushes,
+    }
 }
 
 #[cfg(test)]
@@ -177,7 +221,7 @@ mod tests {
     fn ppr_empty_graph() {
         let mut g = Graph::new();
         let seeds = FxHashSet::default();
-        let result = personalized_pagerank(&mut g, &seeds, 0.6, 1e-4, 0.4, None);
+        let result = personalized_pagerank(&mut g, &seeds, 0.6, 1e-4, 0.4, None).scores;
         assert!(result.is_empty());
     }
 
@@ -189,7 +233,7 @@ mod tests {
 
         let mut seeds = FxHashSet::default();
         seeds.insert(a.clone());
-        let result = personalized_pagerank(&mut g, &seeds, 0.6, 1e-4, 0.4, None);
+        let result = personalized_pagerank(&mut g, &seeds, 0.6, 1e-4, 0.4, None).scores;
         assert!((result[&a] - 1.0).abs() < 1e-6);
     }
 
@@ -207,7 +251,7 @@ mod tests {
 
         let mut seeds = FxHashSet::default();
         seeds.insert(a.clone());
-        let result = personalized_pagerank(&mut g, &seeds, 0.6, 1e-6, 0.4, None);
+        let result = personalized_pagerank(&mut g, &seeds, 0.6, 1e-6, 0.4, None).scores;
 
         assert!(result[&a] > result[&b]);
         assert!(result[&b] > result[&c]);
@@ -228,7 +272,7 @@ mod tests {
 
         let mut seeds = FxHashSet::default();
         seeds.insert(a.clone());
-        let result = personalized_pagerank(&mut g, &seeds, 0.6, 1e-6, 0.4, None);
+        let result = personalized_pagerank(&mut g, &seeds, 0.6, 1e-6, 0.4, None).scores;
 
         let total: f64 = result.values().sum();
         assert!((total - 1.0).abs() < 1e-6);
@@ -251,7 +295,7 @@ mod tests {
         sw.insert(a.clone(), 0.9);
         sw.insert(b.clone(), 0.1);
 
-        let result = personalized_pagerank(&mut g, &seeds, 0.6, 1e-6, 0.4, Some(&sw));
+        let result = personalized_pagerank(&mut g, &seeds, 0.6, 1e-6, 0.4, Some(&sw)).scores;
         assert!(result[&a] > result[&b]);
     }
 
@@ -274,8 +318,8 @@ mod tests {
         let (mut g2, _) = build_star_graph();
         let seeds: FxHashSet<FragmentId> = std::iter::once(center).collect();
 
-        let r1 = personalized_pagerank(&mut g1, &seeds, 0.6, 1e-6, 0.4, None);
-        let r2 = personalized_pagerank(&mut g2, &seeds, 0.6, 1e-6, 0.4, None);
+        let r1 = personalized_pagerank(&mut g1, &seeds, 0.6, 1e-6, 0.4, None).scores;
+        let r2 = personalized_pagerank(&mut g2, &seeds, 0.6, 1e-6, 0.4, None).scores;
 
         assert_eq!(r1.len(), r2.len());
         for (id, v1) in &r1 {
@@ -290,8 +334,8 @@ mod tests {
         let (mut g_tight, _) = build_star_graph();
         let seeds: FxHashSet<FragmentId> = std::iter::once(center).collect();
 
-        let loose = personalized_pagerank(&mut g_loose, &seeds, 0.6, 1e-2, 0.4, None);
-        let tight = personalized_pagerank(&mut g_tight, &seeds, 0.6, 1e-6, 0.4, None);
+        let loose = personalized_pagerank(&mut g_loose, &seeds, 0.6, 1e-2, 0.4, None).scores;
+        let tight = personalized_pagerank(&mut g_tight, &seeds, 0.6, 1e-6, 0.4, None).scores;
 
         let max_diff = loose
             .iter()
@@ -307,7 +351,7 @@ mod tests {
     fn ppr_symmetric_star_assigns_equal_mass_to_leaves() {
         let (mut g, center) = build_star_graph();
         let seeds: FxHashSet<FragmentId> = std::iter::once(center.clone()).collect();
-        let result = personalized_pagerank(&mut g, &seeds, 0.6, 1e-8, 0.5, None);
+        let result = personalized_pagerank(&mut g, &seeds, 0.6, 1e-8, 0.5, None).scores;
 
         let leaf_scores: Vec<f64> = (0..5)
             .map(|i| result[&fid(&format!("leaf_{i}.rs"), 1, 10)])
@@ -384,8 +428,9 @@ mod tests {
         let tol = 1e-8;
         let blend = 1.0;
 
-        let r_naive = personalized_pagerank(&mut naive, &seeds, alpha, tol, blend, None);
-        let r_suppressed = personalized_pagerank(&mut suppressed, &seeds, alpha, tol, blend, None);
+        let r_naive = personalized_pagerank(&mut naive, &seeds, alpha, tol, blend, None).scores;
+        let r_suppressed =
+            personalized_pagerank(&mut suppressed, &seeds, alpha, tol, blend, None).scores;
 
         let hub_naive = r_naive.get(&hub).copied().unwrap_or(0.0);
         let hub_suppressed = r_suppressed.get(&hub).copied().unwrap_or(0.0);
@@ -449,7 +494,7 @@ mod tests {
         }
 
         let seeds: FxHashSet<FragmentId> = nodes.iter().take(2).cloned().collect();
-        let ppr_scores = personalized_pagerank(&mut g, &seeds, 0.6, 1e-8, 0.5, None);
+        let ppr_scores = personalized_pagerank(&mut g, &seeds, 0.6, 1e-8, 0.5, None).scores;
         let ego_scores = g.ego_graph(&seeds, 3);
 
         let common: Vec<FragmentId> = nodes
@@ -535,7 +580,7 @@ mod tests {
                 g.add_edge(leaf.clone(), center.clone(), 1.0);
             }
             let seeds: FxHashSet<FragmentId> = std::iter::once(center.clone()).collect();
-            let result = personalized_pagerank(&mut g, &seeds, alpha, 1e-10, 0.5, None);
+            let result = personalized_pagerank(&mut g, &seeds, alpha, 1e-10, 0.5, None).scores;
 
             let expected_center = 1.0 / (1.0 + alpha);
             let expected_leaf = alpha / (n_leaves as f64 * (1.0 + alpha));

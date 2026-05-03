@@ -1,6 +1,6 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::config::selection::BOLTZMANN;
+use crate::config::selection::boltzmann;
 use crate::select::{SelectionReason, SelectionResult};
 use crate::types::{Fragment, FragmentId};
 
@@ -30,6 +30,7 @@ pub fn boltzmann_select(
             reason: SelectionReason::NoCandidates,
             used_tokens: 0,
             utility: 0.0,
+            greedy_iters: 0,
         };
     }
 
@@ -79,11 +80,13 @@ pub fn boltzmann_select(
         selected.push(f);
     }
 
+    let final_count = selected.len();
     SelectionResult {
         selected,
         reason,
         used_tokens: used,
         utility: total_utility,
+        greedy_iters: final_count,
     }
 }
 
@@ -94,11 +97,12 @@ pub fn calibrate_beta(
     budget_tokens: u32,
     epsilon: f64,
 ) -> f64 {
-    let (mut lo, mut hi) = (BOLTZMANN.beta_lo, BOLTZMANN.beta_hi);
+    let cfg = boltzmann();
+    let (mut lo, mut hi) = (cfg.beta_lo, cfg.beta_hi);
     let target = budget_tokens as f64;
     let tol = (target * epsilon).max(1.0);
 
-    for _ in 0..BOLTZMANN.bisect_iters {
+    for _ in 0..cfg.bisect_iters {
         let mid = (lo * hi).sqrt();
         let result = boltzmann_select(fragments, core_ids, rel, budget_tokens, mid);
         let cost = result.used_tokens as f64;

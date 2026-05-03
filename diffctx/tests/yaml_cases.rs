@@ -1,12 +1,3 @@
-//! Integration test runner for the YAML case corpus at
-//! `<repo-root>/tests/cases/diff/**.yaml`.
-//!
-//! Replaces the deleted Python `tests/test_yaml_diff.py`. Each YAML case becomes
-//! one libtest-mimic Trial. Default behavior runs every `.yaml` under the cases
-//! directory; cap with `DIFFCTX_YAML_CASES_LIMIT=N` for fast pre-commit runs.
-//!
-//! `cargo test --release --test yaml_cases` from `diffctx/`.
-
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -16,85 +7,11 @@ use _diffctx::mode::ScoringMode;
 use _diffctx::pipeline::build_diff_context;
 use _diffctx::render::DiffContextOutput;
 use libtest_mimic::{Arguments, Failed, Trial};
-use serde::Deserialize;
 use tempfile::TempDir;
 use walkdir::WalkDir;
 
-#[derive(Debug, Deserialize, Default)]
-struct YamlCase {
-    #[serde(default)]
-    repo: RepoSpec,
-    #[serde(default)]
-    fragments: Vec<DeclaredFragment>,
-    #[serde(default)]
-    oracle: Oracle,
-    #[serde(default)]
-    accept: Accept,
-}
-
-#[derive(Debug, Deserialize, Default)]
-struct RepoSpec {
-    #[serde(default)]
-    initial_files: BTreeMap<String, String>,
-    #[serde(default)]
-    changed_files: BTreeMap<String, String>,
-    #[serde(default = "default_commit_message")]
-    commit_message: String,
-}
-
-#[derive(Debug, Deserialize, Default)]
-struct DeclaredFragment {
-    id: String,
-    #[serde(default)]
-    selector: Selector,
-}
-
-#[derive(Debug, Deserialize, Default, Clone)]
-struct Selector {
-    #[serde(default)]
-    path: Option<String>,
-    #[serde(default)]
-    symbol: Option<String>,
-    #[serde(default)]
-    kind: Option<String>,
-    #[serde(default)]
-    anchor: Option<String>,
-    #[serde(default)]
-    any_of: Option<Vec<Selector>>,
-}
-
-#[derive(Debug, Deserialize, Default)]
-struct Oracle {
-    #[serde(default)]
-    required: Vec<String>,
-    #[serde(default)]
-    forbidden: Vec<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct Accept {
-    #[serde(default = "default_symbol_match")]
-    symbol_match: String,
-    #[serde(default)]
-    kind_must_match: bool,
-}
-
-impl Default for Accept {
-    fn default() -> Self {
-        Self {
-            symbol_match: default_symbol_match(),
-            kind_must_match: false,
-        }
-    }
-}
-
-fn default_symbol_match() -> String {
-    "exact".into()
-}
-
-fn default_commit_message() -> String {
-    "Update files".into()
-}
+mod common;
+use common::{TestCase, calculate_budget, evaluate_oracle, garbage_files};
 
 fn cases_dir() -> PathBuf {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -121,11 +38,20 @@ fn discover_cases() -> Vec<DiscoveredCase> {
         .into_iter()
         .filter_map(Result::ok)
         .filter(|e| {
-            e.file_type().is_file()
-                && e.path()
-                    .extension()
-                    .and_then(|x| x.to_str())
-                    .is_some_and(|x| x == "yaml" || x == "yml")
+            if !e.file_type().is_file() {
+                return false;
+            }
+            let name = match e.path().file_name().and_then(|n| n.to_str()) {
+                Some(n) => n,
+                None => return false,
+            };
+            if name.starts_with('.') || name == "SCHEMA.md" {
+                return false;
+            }
+            e.path()
+                .extension()
+                .and_then(|x| x.to_str())
+                .is_some_and(|x| x == "yaml" || x == "yml")
         })
         .map(|e| {
             let path = e.path().to_path_buf();
@@ -186,120 +112,52 @@ fn rev_parse_head(repo: &Path) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
-fn match_path(candidate: &str, target: &str) -> bool {
-    candidate == target
-        || candidate.ends_with(&format!("/{target}"))
-        || candidate
-            .replace('\\', "/")
-            .ends_with(&format!("/{target}"))
+fn assemble_initial(case: &TestCase) -> BTreeMap<String, String> {
+    let mut initial = case.repo.initial_files.clone();
+    for (k, v) in &case.fixtures.distractors {
+        initial.insert(k.clone(), v.clone());
+    }
+    if case.fixtures.auto_garbage {
+        for (k, v) in garbage_files() {
+            initial.insert(k.clone(), v.clone());
+        }
+    }
+    initial
 }
 
-fn symbol_matches(frag_symbol: &str, expected: &str, mode: &str) -> bool {
-    match mode {
-        "prefix" => frag_symbol.starts_with(expected),
-        "substring" => frag_symbol.contains(expected),
-        _ => frag_symbol == expected,
+fn assemble_changed(case: &TestCase) -> BTreeMap<String, String> {
+    let mut changed = case.repo.changed_files.clone();
+    for (k, v) in &case.fixtures.distractors {
+        changed.entry(k.clone()).or_insert_with(|| v.clone());
     }
+    if case.fixtures.auto_garbage {
+        for (k, v) in garbage_files() {
+            changed.entry(k.clone()).or_insert_with(|| v.clone());
+        }
+    }
+    changed
 }
 
-fn matches_selector(
-    fragment: &_diffctx::render::FragmentEntry,
-    selector: &Selector,
-    accept: &Accept,
-) -> bool {
-    if let Some(any) = &selector.any_of {
-        return any.iter().any(|s| matches_selector(fragment, s, accept));
-    }
-
-    if let Some(path) = &selector.path {
-        if !match_path(&fragment.path, path) {
-            return false;
-        }
-    }
-
-    if let Some(symbol) = &selector.symbol {
-        let frag_symbol = fragment.symbol.as_deref().unwrap_or("");
-        if !symbol_matches(frag_symbol, symbol, &accept.symbol_match) {
-            return false;
-        }
-    }
-
-    if let Some(kind) = &selector.kind {
-        if accept.kind_must_match && fragment.kind != *kind {
-            return false;
-        }
-    }
-
-    if let Some(anchor) = &selector.anchor {
-        let content = fragment.content.as_deref().unwrap_or("");
-        if !content.contains(anchor) && !fragment.path.contains(anchor) {
-            return false;
-        }
-    }
-
-    true
-}
-
-fn evaluate_oracle(
+fn format_failure(
+    oracle: &common::OracleResult,
     output: &DiffContextOutput,
-    case: &YamlCase,
     min_score: f64,
-) -> Result<(), String> {
-    let mut matched_ids: std::collections::HashSet<&str> = std::collections::HashSet::new();
-    for entry in &output.fragments {
-        for decl in &case.fragments {
-            if matches_selector(entry, &decl.selector, &case.accept) {
-                matched_ids.insert(decl.id.as_str());
-            }
-        }
-    }
-
-    let required_total = case.oracle.required.len();
-    let missing_required: Vec<&str> = case
-        .oracle
-        .required
-        .iter()
-        .filter(|id| !matched_ids.contains(id.as_str()))
-        .map(String::as_str)
-        .collect();
-    let required_hits = required_total - missing_required.len();
-
-    let forbidden_total = case.oracle.forbidden.len();
-    let present_forbidden: Vec<&str> = case
-        .oracle
-        .forbidden
-        .iter()
-        .filter(|id| matched_ids.contains(id.as_str()))
-        .map(String::as_str)
-        .collect();
-    let forbidden_hits = present_forbidden.len();
-
-    let required_recall = if required_total == 0 {
-        1.0
-    } else {
-        required_hits as f64 / required_total as f64
-    };
-    let forbidden_rate = if forbidden_total == 0 {
-        0.0
-    } else {
-        forbidden_hits as f64 / forbidden_total as f64
-    };
-    let score = 100.0 * required_recall * (1.0 - forbidden_rate);
-
-    if score >= min_score {
-        return Ok(());
-    }
-
+) -> String {
     let mut msg = format!(
-        "score {score:.1}% < min {min_score:.1}% (recall={:.0}%, forbidden_rate={:.0}%)\n",
-        required_recall * 100.0,
-        forbidden_rate * 100.0,
+        "score {:.1}% < min {:.1}% (recall={:.0}%, forbidden_rate={:.0}%)\n",
+        oracle.score,
+        min_score,
+        oracle.recall * 100.0,
+        oracle.forbidden_rate * 100.0,
     );
-    if !missing_required.is_empty() {
-        msg.push_str(&format!("missing required: {missing_required:?}\n"));
+    if !oracle.missing_required.is_empty() {
+        msg.push_str(&format!(
+            "missing required: {:?}\n",
+            oracle.missing_required
+        ));
     }
-    if !present_forbidden.is_empty() {
-        msg.push_str(&format!("present forbidden: {present_forbidden:?}\n"));
+    if !oracle.hit_forbidden.is_empty() {
+        msg.push_str(&format!("present forbidden: {:?}\n", oracle.hit_forbidden));
     }
     msg.push_str(&format!(
         "selected fragments ({}):\n",
@@ -317,30 +175,12 @@ fn evaluate_oracle(
                 .unwrap_or_default()
         ));
     }
-    Err(msg)
-}
-
-fn calculate_budget(case: &YamlCase) -> u32 {
-    let mut content_tokens: u32 = 0;
-    for content in case
-        .repo
-        .initial_files
-        .values()
-        .chain(case.repo.changed_files.values())
-    {
-        content_tokens = content_tokens.saturating_add(_diffctx::tokenizer::count_tokens(content));
-    }
-    let estimated_fragments =
-        (case.repo.initial_files.len() + case.repo.changed_files.len()).max(2) as u32;
-    let overhead: u32 = estimated_fragments.saturating_mul(20);
-    let total = content_tokens.saturating_add(overhead);
-    let scaled = (f64::from(total) * 2.5) as u32;
-    scaled.max(500)
+    msg
 }
 
 fn run_case(case_path: &Path) -> Result<(), Failed> {
     let raw = fs::read_to_string(case_path).map_err(|e| Failed::from(format!("read: {e}")))?;
-    let case: YamlCase =
+    let case: TestCase =
         serde_yaml::from_str(&raw).map_err(|e| Failed::from(format!("parse YAML: {e}")))?;
 
     if case.repo.initial_files.is_empty() && case.repo.changed_files.is_empty() {
@@ -349,6 +189,13 @@ fn run_case(case_path: &Path) -> Result<(), Failed> {
         ));
     }
 
+    if case.xfail.as_ref().map(|x| x.is_active()).unwrap_or(false) {
+        return Ok(());
+    }
+
+    let initial = assemble_initial(&case);
+    let changed = assemble_changed(&case);
+
     let tmp = TempDir::new().map_err(|e| Failed::from(format!("tempdir: {e}")))?;
     let repo = tmp.path();
     run_git(repo, &["init", "--quiet"]).map_err(Failed::from)?;
@@ -356,7 +203,7 @@ fn run_case(case_path: &Path) -> Result<(), Failed> {
     run_git(repo, &["config", "user.name", "test"]).map_err(Failed::from)?;
     run_git(repo, &["config", "commit.gpgsign", "false"]).map_err(Failed::from)?;
 
-    write_files(repo, &case.repo.initial_files).map_err(Failed::from)?;
+    write_files(repo, &initial).map_err(Failed::from)?;
     run_git(repo, &["add", "-A"]).map_err(Failed::from)?;
     run_git(
         repo,
@@ -365,7 +212,7 @@ fn run_case(case_path: &Path) -> Result<(), Failed> {
     .map_err(Failed::from)?;
     let base_sha = rev_parse_head(repo).map_err(Failed::from)?;
 
-    write_files(repo, &case.repo.changed_files).map_err(Failed::from)?;
+    write_files(repo, &changed).map_err(Failed::from)?;
     run_git(repo, &["add", "-A"]).map_err(Failed::from)?;
     run_git(
         repo,
@@ -395,12 +242,20 @@ fn run_case(case_path: &Path) -> Result<(), Failed> {
     )
     .map_err(|e| Failed::from(format!("pipeline: {e}")))?;
 
-    let min_score = std::env::var("DIFFCTX_YAML_MIN_SCORE")
-        .ok()
-        .and_then(|s| s.parse::<f64>().ok())
-        .unwrap_or(10.0);
+    let oracle = evaluate_oracle(&case, &output);
 
-    evaluate_oracle(&output, &case, min_score).map_err(Failed::from)
+    let min_score = case.min_score.unwrap_or_else(|| {
+        std::env::var("DIFFCTX_YAML_MIN_SCORE")
+            .ok()
+            .and_then(|s| s.parse::<f64>().ok())
+            .unwrap_or(10.0)
+    });
+
+    if oracle.score >= min_score {
+        Ok(())
+    } else {
+        Err(Failed::from(format_failure(&oracle, &output, min_score)))
+    }
 }
 
 fn main() {

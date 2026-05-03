@@ -54,10 +54,8 @@ classifiers = [
 ]
 dynamic = [ "version" ]  # Version is still managed in version.py
 dependencies = [
-  "networkx>=3.0,<4.0",
   "numpy>=1.24,<3.0",
   "pathspec>=0.11,<2.0",
-  "tiktoken==0.12.0",
 ]
 optional-dependencies.dev = [
   "black>=23.0.0,<27.0",
@@ -71,6 +69,7 @@ optional-dependencies.dev = [
   "mistune>=3.0,<4.0",
   "mutmut>=3.5,<4.0",
   "mypy>=1.0,<2.0",
+  "pebble>=5.0,<6.0",
   "pre-commit>=3.0,<5.0",
   "pygit2>=1.12,<2.0",
   "pyinstaller>=5.0,<7.0",
@@ -84,9 +83,9 @@ optional-dependencies.dev = [
   "ruamel-yaml>=0.18,<1.0",
   # Quality checks
   "ruff>=0.4,<1.0",
+  "tiktoken==0.12.0",
   "treemapper[tree-sitter]",
   # Type stubs
-  "types-networkx>=3.0,<4.0",
   "types-pyyaml>=6.0,<7.0",
 ]
 optional-dependencies.embeddings = [
@@ -102,6 +101,7 @@ optional-dependencies.full = [
   "treemapper[tree-sitter]",
 ]
 optional-dependencies.mcp = [
+  "anyio>=4.5,<5.0",
   "mcp>=1.27,<2.0",
 ]
 optional-dependencies.nlp = [
@@ -237,6 +237,8 @@ module = [
   "treemapper.diffctx.edges",
   "treemapper.diffctx.edges.*",
   "treemapper.diffctx.embeddings",
+  "charset_normalizer",
+  "datasets",
 ]
 ignore_missing_imports = true
 

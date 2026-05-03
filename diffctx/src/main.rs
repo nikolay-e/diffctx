@@ -23,7 +23,7 @@ struct Cli {
     #[arg(long, default_value = "yaml")]
     format: String,
 
-    #[arg(long)]
+    #[arg(long = "diff")]
     diff_ref: Option<String>,
 
     #[arg(long, default_value_t = DEFAULT_PPR_ALPHA)]
@@ -52,7 +52,10 @@ fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
-    let scoring_mode = ScoringMode::from_str(&cli.scoring);
+    let scoring_mode = ScoringMode::from_str(&cli.scoring).unwrap_or_else(|e| {
+        eprintln!("error: {e}");
+        std::process::exit(2);
+    });
     let output = build_diff_context(
         &cli.path,
         cli.diff_ref.as_deref(),

@@ -8,6 +8,7 @@ use std::time::Duration;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::FxHashSet;
+use wait_timeout::ChildExt;
 
 use crate::config::git::{self, GIT};
 use crate::types::DiffHunk;
@@ -48,7 +49,15 @@ pub enum GitError {
 pub type Result<T> = std::result::Result<T, GitError>;
 
 fn validate_diff_range(diff_range: &str) -> Result<()> {
-    if !SAFE_RANGE_RE.is_match(diff_range.trim()) {
+    let trimmed = diff_range.trim();
+    // Reject leading-dot ranges like `..origin/main` (audit X16): the regex
+    // character class allows `.`, so a string of only dots/identifier-chars
+    // passes as a "ref" before being rejected by git itself with a less
+    // informative `fatal: ambiguous argument`. Surface the dedicated error.
+    if trimmed.starts_with('.') || trimmed.starts_with('/') {
+        return Err(GitError::InvalidRange(diff_range.to_string()));
+    }
+    if !SAFE_RANGE_RE.is_match(trimmed) {
         return Err(GitError::InvalidRange(diff_range.to_string()));
     }
     Ok(())
@@ -105,19 +114,12 @@ fn wait_with_timeout(
         })
     });
 
-    let start = std::time::Instant::now();
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) => {
-                if start.elapsed() >= timeout {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return Err(GitError::Timeout(timeout.as_secs()));
-                }
-                std::thread::sleep(Duration::from_millis(GIT.poll_interval_ms));
-            }
-            Err(e) => return Err(GitError::Io(e)),
+    let status = match child.wait_timeout(timeout)? {
+        Some(status) => status,
+        None => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(GitError::Timeout(timeout.as_secs()));
         }
     };
 
@@ -576,8 +578,8 @@ impl CatFileBatch {
         if let Some(mut child) = self.child.take() {
             drop(child.stdin.take());
             match child.wait_timeout(Duration::from_secs(GIT.catfile_termination_timeout_seconds)) {
-                Ok(_) => {}
-                Err(_) => {
+                Ok(Some(_)) => {}
+                _ => {
                     let _ = child.kill();
                     let _ = child.wait();
                 }
@@ -589,27 +591,5 @@ impl CatFileBatch {
 impl Drop for CatFileBatch {
     fn drop(&mut self) {
         self.close();
-    }
-}
-
-trait WaitTimeout {
-    fn wait_timeout(&mut self, dur: Duration) -> std::result::Result<std::process::ExitStatus, ()>;
-}
-
-impl WaitTimeout for Child {
-    fn wait_timeout(&mut self, dur: Duration) -> std::result::Result<std::process::ExitStatus, ()> {
-        let start = std::time::Instant::now();
-        loop {
-            match self.try_wait() {
-                Ok(Some(status)) => return Ok(status),
-                Ok(None) => {
-                    if start.elapsed() >= dur {
-                        return Err(());
-                    }
-                    std::thread::sleep(Duration::from_millis(GIT.poll_interval_ms));
-                }
-                Err(_) => return Err(()),
-            }
-        }
     }
 }

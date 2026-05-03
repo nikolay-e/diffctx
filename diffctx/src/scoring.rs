@@ -17,6 +17,11 @@ pub struct ScoringResult {
     pub rel_scores: FxHashMap<FragmentId, f64>,
     pub filtered_fragments: Vec<Fragment>,
     pub graph: Graph,
+    /// PPR push-iteration was cut by `max_pushes_cap` before convergence.
+    /// Always false for non-PPR strategies (EGO/BM25/Hybrid-EGO).
+    pub ppr_truncated: bool,
+    pub ppr_forward_pushes: usize,
+    pub ppr_backward_pushes: usize,
 }
 
 pub trait ScoringStrategy: Send + Sync {
@@ -59,7 +64,7 @@ impl ScoringStrategy for PPRScoring {
         let (edges, categories) =
             edges::collect_all_edges(all_fragments, repo_root, skip_expensive);
         let mut g = graph::build_graph(all_fragments, edges, categories);
-        let mut rel_scores = personalized_pagerank(
+        let ppr = personalized_pagerank(
             &mut g,
             core_ids,
             self.alpha,
@@ -67,6 +72,15 @@ impl ScoringStrategy for PPRScoring {
             PPR.forward_blend,
             seed_weights,
         );
+        let mut rel_scores = ppr.scores;
+        if ppr.truncated {
+            tracing::warn!(
+                "PPR push-cap hit on {} nodes (fwd_pushes={}, bwd_pushes={}); rel_scores biased",
+                g.node_count(),
+                ppr.forward_pushes,
+                ppr.backward_pushes,
+            );
+        }
         filtering::apply_hunk_proximity_bonus(&mut rel_scores, core_ids, all_fragments, hunks);
 
         let filtered = filtering::filter_unrelated_fragments(all_fragments, core_ids, &g);
@@ -81,6 +95,9 @@ impl ScoringStrategy for PPRScoring {
             rel_scores,
             filtered_fragments: filtered,
             graph: g,
+            ppr_truncated: ppr.truncated,
+            ppr_forward_pushes: ppr.forward_pushes,
+            ppr_backward_pushes: ppr.backward_pushes,
         }
     }
 }
@@ -140,6 +157,9 @@ impl ScoringStrategy for EgoGraphScoring {
             rel_scores,
             filtered_fragments: filtered,
             graph: g,
+            ppr_truncated: false,
+            ppr_forward_pushes: 0,
+            ppr_backward_pushes: 0,
         }
     }
 }
@@ -245,6 +265,9 @@ impl ScoringStrategy for BM25Scoring {
             rel_scores,
             filtered_fragments: filtered,
             graph: g,
+            ppr_truncated: false,
+            ppr_forward_pushes: 0,
+            ppr_backward_pushes: 0,
         }
     }
 }

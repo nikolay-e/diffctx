@@ -893,10 +893,13 @@ pub const PROFILE_LEGAL: &str = "legal";
 pub const PROFILE_DATA: &str = "data";
 pub const PROFILE_GENERIC: &str = "generic";
 
+static EMPTY_STOPWORDS: Lazy<FxHashSet<String>> = Lazy::new(FxHashSet::default);
+
 pub fn get_stopwords(profile: &str) -> &FxHashSet<String> {
     match profile {
         PROFILE_CODE | PROFILE_GENERIC => &CODE_STOPWORDS,
-        PROFILE_DOCS => &DOCS_STOPWORDS,
+        PROFILE_DOCS | PROFILE_LEGAL => &DOCS_STOPWORDS,
+        PROFILE_DATA => &EMPTY_STOPWORDS,
         _ => &CODE_STOPWORDS,
     }
 }

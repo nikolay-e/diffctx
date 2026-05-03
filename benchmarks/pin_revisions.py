@@ -72,7 +72,8 @@ def main() -> int:
             "fetched_at": now,
             "hf_path": hf_path,
         }
-        marker = "(unchanged)" if prev == sha else f"(was {prev[:12] if prev else 'main'})"
+        prev_marker = f"was {prev[:12]}" if prev else "was main"
+        marker = "(unchanged)" if prev == sha else f"({prev_marker})"
         print(f"  OK   {hf_path:<45} {sha[:12]} {marker}")
 
     save_pins(pins)

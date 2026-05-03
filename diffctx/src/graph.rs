@@ -64,12 +64,32 @@ pub struct CsrGraph {
     pub idx_to_node: Vec<FragmentId>,
 }
 
+/// Statistics from the per-source out-edge cap that runs in
+/// `build_graph` after `apply_hub_suppression`. Surfaced to Python
+/// via `LatencyBreakdown` so calibration runs can quantify how often
+/// the cap fires and how many edges it discards.
+#[derive(Default, Clone, Copy)]
+pub struct EdgeCapStats {
+    /// Edge count after merge + hub suppression, before cap.
+    pub edges_before_cap: usize,
+    /// Edge count after cap.
+    pub edges_after_cap: usize,
+    /// Edges discarded by the cap (lowest-weight neighbors of overfull nodes).
+    pub edges_dropped_by_cap: usize,
+    /// Number of source nodes that had > `max_per_node` outgoing edges
+    /// and therefore had their neighbor list truncated.
+    pub nodes_capped: usize,
+    /// The `max_per_node` value actually applied (after env-var override).
+    pub max_out_edges_per_node: usize,
+}
+
 pub struct Graph {
     nodes: FxHashSet<FragmentId>,
     fwd: FxHashMap<FragmentId, FxHashMap<FragmentId, f64>>,
     rev: FxHashMap<FragmentId, FxHashMap<FragmentId, f64>>,
     pub edge_categories: FxHashMap<(FragmentId, FragmentId), EdgeCategory>,
     csr_cache: Option<(CsrGraph, CsrGraph)>,
+    pub cap_stats: EdgeCapStats,
 }
 
 impl Graph {
@@ -80,6 +100,7 @@ impl Graph {
             rev: FxHashMap::default(),
             edge_categories: FxHashMap::default(),
             csr_cache: None,
+            cap_stats: EdgeCapStats::default(),
         }
     }
 
@@ -370,20 +391,19 @@ fn apply_hub_suppression(
 
     let mut degrees_sorted: Vec<u32> = in_degree.iter().copied().filter(|&d| d > 0).collect();
     degrees_sorted.sort_unstable();
-    let d_median = if degrees_sorted.is_empty() {
+    let d_p95 = if degrees_sorted.is_empty() {
         0.0
     } else {
-        let mid = degrees_sorted.len() / 2;
-        if degrees_sorted.len() % 2 == 0 {
-            (degrees_sorted[mid - 1] as f64 + degrees_sorted[mid] as f64) / 2.0
-        } else {
-            degrees_sorted[mid] as f64
-        }
+        let n = degrees_sorted.len();
+        let idx = ((n as f64 * 0.95).ceil() as usize)
+            .saturating_sub(1)
+            .min(n - 1);
+        degrees_sorted[idx] as f64
     };
 
     for i in 0..edge_list.len() {
         let dst_deg = in_degree[dst_indices[i] as usize] as f64;
-        if dst_deg > d_median && !is_exempt[i] {
+        if dst_deg > d_p95 && !is_exempt[i] {
             let divisor = dst_deg.ln_1p().max(1.0);
             edge_weights[i] /= divisor;
         }
@@ -420,6 +440,62 @@ fn apply_hub_suppression(
     }
 }
 
+/// Default top-K out-edges per source node. Calibrated against the
+/// observed edge density distribution: typical Python file emits
+/// 5-20 semantic + 2-5 structural + ≤20 sibling edges (~30-50 normal),
+/// so K=64 preserves all legitimate edges while clamping pathological
+/// dense nodes (e.g. utility hubs in django/material-ui that radiate
+/// into thousands of dependents).
+const DEFAULT_MAX_OUT_EDGES_PER_NODE: usize = 64;
+
+/// Truncate each node's outgoing edge list to the top-K by weight.
+/// Run AFTER `apply_hub_suppression` so the suppression pass sees
+/// the true in-degree distribution; otherwise its IDF damping is
+/// computed against a graph that has already been thinned.
+///
+/// Returns the cap stats for diagnostic surfacing into `LatencyBreakdown`.
+fn cap_out_edges_per_source(
+    edges: &mut FxHashMap<(FragmentId, FragmentId), f64>,
+    max_per_node: usize,
+) -> EdgeCapStats {
+    let edges_before = edges.len();
+
+    let mut by_src: FxHashMap<FragmentId, Vec<(FragmentId, f64)>> = FxHashMap::default();
+    for ((src, dst), w) in edges.drain() {
+        by_src.entry(src).or_default().push((dst, w));
+    }
+
+    let mut nodes_capped = 0;
+    let mut edges_dropped = 0;
+    for (src, mut neighbors) in by_src {
+        if neighbors.len() > max_per_node {
+            nodes_capped += 1;
+            edges_dropped += neighbors.len() - max_per_node;
+            neighbors.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            neighbors.truncate(max_per_node);
+        }
+        for (dst, w) in neighbors {
+            edges.insert((src.clone(), dst), w);
+        }
+    }
+
+    EdgeCapStats {
+        edges_before_cap: edges_before,
+        edges_after_cap: edges.len(),
+        edges_dropped_by_cap: edges_dropped,
+        nodes_capped,
+        max_out_edges_per_node: max_per_node,
+    }
+}
+
+fn read_max_out_edges_per_node() -> usize {
+    std::env::var("DIFFCTX_MAX_EDGES_PER_NODE")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|&v| v > 0)
+        .unwrap_or(DEFAULT_MAX_OUT_EDGES_PER_NODE)
+}
+
 pub fn build_graph(
     fragments: &[Fragment],
     mut edges: FxHashMap<(FragmentId, FragmentId), f64>,
@@ -431,6 +507,17 @@ pub fn build_graph(
     }
 
     apply_hub_suppression(&mut edges, &categories);
+
+    let max_per_node = read_max_out_edges_per_node();
+    let cap_stats = cap_out_edges_per_source(&mut edges, max_per_node);
+    tracing::debug!(
+        "edge cap K={}: {} -> {} (dropped {} from {} nodes)",
+        max_per_node,
+        cap_stats.edges_before_cap,
+        cap_stats.edges_after_cap,
+        cap_stats.edges_dropped_by_cap,
+        cap_stats.nodes_capped,
+    );
 
     for ((src, dst), w) in edges {
         if w > 0.0 {
@@ -444,6 +531,7 @@ pub fn build_graph(
     }
 
     graph.edge_categories = categories;
+    graph.cap_stats = cap_stats;
     graph.freeze();
     graph
 }

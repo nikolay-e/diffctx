@@ -234,6 +234,7 @@ fn escape_graphml(text: &str) -> String {
             '>' => out.push_str("&gt;"),
             '"' => out.push_str("&quot;"),
             '\'' => out.push_str("&apos;"),
+            '\r' => out.push_str("&#xD;"),
             other => out.push(other),
         }
     }

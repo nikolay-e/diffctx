@@ -32,7 +32,10 @@ impl Default for AlgorithmLimits {
 }
 
 pub const DEFAULT_PPR_ALPHA: f64 = 0.60;
-pub const DEFAULT_STOPPING_THRESHOLD: f64 = 0.08;
+/// Calibrated on v1 manifest (2119 instances, 4 benchmarks). Winner
+/// of (tau, cbf) grid = (0.12, 0.5) at min(per_benchmark file_recall)
+/// = 0.1092. Top-3 within 0.001 — surface is flat, choice is robust.
+pub const DEFAULT_STOPPING_THRESHOLD: f64 = 0.12;
 pub const DEFAULT_PIPELINE_TIMEOUT_SECONDS: u64 = 300;
 pub const DEFAULT_BUDGET_TOKENS: u32 = 4096;
 
@@ -85,22 +88,18 @@ impl Default for LexicalConfig {
 }
 
 pub struct CochangeConfig {
-    pub weight: f64,
     pub min_count: usize,
     pub max_files_per_commit: usize,
     pub commits_limit: usize,
-    pub timeout_seconds: u64,
     pub log_scale_factor: f64,
 }
 
 impl Default for CochangeConfig {
     fn default() -> Self {
         Self {
-            weight: 0.40,
             min_count: 2,
             max_files_per_commit: 30,
             commits_limit: 500,
-            timeout_seconds: 10,
             log_scale_factor: 0.1,
         }
     }

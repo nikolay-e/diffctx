@@ -280,3 +280,31 @@ xfail:
   reason: null
   issue: null
 ```
+
+## Runner support matrix
+
+Two runners execute these YAML cases.
+
+| Feature | `cargo test --test yaml_cases` | `cargo run --bin diffctx-test` |
+|---------|-------------------------------|--------------------------------|
+| `oracle.required` | enforced | enforced |
+| `oracle.forbidden` | enforced | enforced |
+| `oracle.allowed` | informational only | informational only |
+| `fixtures.distractors` | yes | yes |
+| `fixtures.auto_garbage` | yes | yes |
+| `xfail` (active) | skipped | tracked separately |
+| `min_score` (per-case) | overrides env default | uses oracle threshold |
+| Pipeline | real git repo via `tempfile` | in-memory `MemoryRepo` |
+| Parallelism | `libtest-mimic` threads | `rayon` |
+| Use case | CI regression gate | bulk benchmarking, JSON reports |
+
+Both runners share schema parsing, oracle evaluation and budget calculation
+via `diffctx/tests/common/mod.rs`. Per-case `min_score` is supported in the
+YAML schema:
+
+```yaml
+min_score: 50.0
+```
+
+If `min_score` is omitted, runners fall back to `DIFFCTX_YAML_MIN_SCORE`
+environment variable, then to the built-in default (10.0).

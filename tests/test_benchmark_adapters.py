@@ -200,7 +200,7 @@ def test_eval_result_dataclass_carries_optional_fragment_metrics():
     )
     assert r.fragment_recall is None
     assert r.line_f1 is None
-    assert r.elapsed_seconds == 0.0
+    assert r.elapsed_seconds == pytest.approx(0.0)
 
 
 class _StubPolyBenchAdapter(PolyBenchAdapter):
@@ -299,8 +299,8 @@ def test_evaluator_file_metrics_only_when_no_gold_fragments():
     )
     output = SelectionOutput(selected_files=frozenset({"a.py", "c.py"}))
     result = UniversalEvaluator().evaluate(inst, output, budget=8000)
-    assert result.file_recall == 0.5
-    assert result.file_precision == 0.5
+    assert result.file_recall == pytest.approx(0.5)
+    assert result.file_precision == pytest.approx(0.5)
     assert result.fragment_recall is None
     assert result.line_f1 is None
 
@@ -352,7 +352,7 @@ def test_evaluator_whole_file_gold_satisfied_by_any_selection_on_path():
     )
     output = SelectionOutput(selected_files=frozenset({"README.md"}), selected_fragments=selected)
     result = UniversalEvaluator().evaluate(inst, output, budget=8000)
-    assert result.fragment_recall == 1.0
+    assert result.fragment_recall == pytest.approx(1.0)
 
 
 def test_evaluator_aggregate_per_benchmark_separates_by_source():
@@ -382,8 +382,8 @@ def test_evaluator_aggregate_per_benchmark_separates_by_source():
         ev.evaluate(inst_b, output_miss, 8000),
     ]
     agg = ev.aggregate_per_benchmark(results)
-    assert agg["a"]["file_recall"] == 1.0
-    assert agg["b"]["file_recall"] == 0.0
+    assert agg["a"]["file_recall"] == pytest.approx(1.0)
+    assert agg["b"]["file_recall"] == pytest.approx(0.0)
 
 
 def test_dataset_pin_resolver_prefers_env_override(monkeypatch, tmp_path):

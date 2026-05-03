@@ -46,57 +46,39 @@ def _file_metrics(selected: frozenset[str], gold: frozenset[str]) -> tuple[float
     return _safe_div(overlap, len(gold)), _safe_div(overlap, len(selected))
 
 
+def _gold_fragment_hit(g: GoldenFragment, sel_by_path: dict[str, list[GoldenFragment]]) -> bool:
+    if g.is_whole_file():
+        return bool(sel_by_path.get(g.path))
+    g_lines = _line_set(g.start_line, g.end_line)
+    if not g_lines:
+        return False
+    for s in sel_by_path.get(g.path, []):
+        if s.is_whole_file() or (g_lines & _line_set(s.start_line, s.end_line)):
+            return True
+    return False
+
+
+def _sel_fragment_hit(s: GoldenFragment, gold_by_path: dict[str, list[GoldenFragment]]) -> bool:
+    if s.is_whole_file():
+        return bool(gold_by_path.get(s.path))
+    s_lines = _line_set(s.start_line, s.end_line)
+    if not s_lines:
+        return False
+    for g in gold_by_path.get(s.path, []):
+        if g.is_whole_file() or (s_lines & _line_set(g.start_line, g.end_line)):
+            return True
+    return False
+
+
 def _fragment_metrics(
     selected: tuple[GoldenFragment, ...],
     gold: tuple[GoldenFragment, ...],
 ) -> tuple[float, float]:
-    """Hit-rate metrics: a fragment is "covered" if it overlaps any partner.
-
-    Whole-file gold (start_line=end_line=None) is satisfied by ANY selected
-    fragment on the same path.
-    """
     sel_by_path = _by_path(selected)
     gold_by_path = _by_path(gold)
-
-    gold_hits = 0
-    for g in gold:
-        if g.is_whole_file():
-            if sel_by_path.get(g.path):
-                gold_hits += 1
-            continue
-        g_lines = _line_set(g.start_line, g.end_line)
-        if not g_lines:
-            continue
-        for s in sel_by_path.get(g.path, []):
-            if s.is_whole_file():
-                gold_hits += 1
-                break
-            s_lines = _line_set(s.start_line, s.end_line)
-            if g_lines & s_lines:
-                gold_hits += 1
-                break
-
-    sel_hits = 0
-    for s in selected:
-        if s.is_whole_file():
-            if gold_by_path.get(s.path):
-                sel_hits += 1
-            continue
-        s_lines = _line_set(s.start_line, s.end_line)
-        if not s_lines:
-            continue
-        for g in gold_by_path.get(s.path, []):
-            if g.is_whole_file():
-                sel_hits += 1
-                break
-            g_lines = _line_set(g.start_line, g.end_line)
-            if g_lines & s_lines:
-                sel_hits += 1
-                break
-
-    fragment_recall = _safe_div(gold_hits, len(gold))
-    fragment_precision = _safe_div(sel_hits, len(selected))
-    return fragment_recall, fragment_precision
+    gold_hits = sum(1 for g in gold if _gold_fragment_hit(g, sel_by_path))
+    sel_hits = sum(1 for s in selected if _sel_fragment_hit(s, gold_by_path))
+    return _safe_div(gold_hits, len(gold)), _safe_div(sel_hits, len(selected))
 
 
 def _line_f1(

@@ -88,6 +88,34 @@
 - Public `api/issues/search?projectKeys=nikolay-e_TreeMapper&statuses=OPEN`
   works without auth for OPEN issues. Token only needed for hotspot
   state changes / false-positive transitions.
+- Token lives in macOS Keychain under service `sonarqube-token` (40 chars).
+  Auth via `Authorization: Bearer <token>` (NOT basic auth). Use
+  `--data-urlencode key=value` for hotspot/issue mutations.
+- Quality gate ERROR conditions for treemapper after a paper-heavy push are
+  usually `new_reliability_rating>1` (driven by S3516 BLOCKER bugs) and
+  `new_security_hotspots_reviewed<100%`. Hotspots are bulk-resolvable in
+  one loop over `/api/hotspots/search?status=TO_REVIEW` — set Safe with
+  per-rule comments (S1313 instance-id false positive, S2245 seeded PRNG,
+  docker S6471 internal image, S7637 tag-pin policy). Hotspots resolved
+  this way DO clear the gate condition immediately on next refresh.
+
+## SonarCloud Recurring Patterns (paper/benchmark commits)
+
+- `python:S3516` BLOCKER on entry-points and orchestrators: appears when a
+  function has multiple `return X` statements all of the same name (e.g.
+  `return results`) — refactor into single tail-return by extracting
+  per-branch helpers, NOT by collapsing branches.
+- `python:S5799` MAJOR (implicit string concat / missing comma): black
+  often line-splits long f-strings into adjacent literals (`"..." "..."`).
+  Merge into one literal — keep flake8 / ruff aligned with this rule by
+  not relying on implicit concat for readability.
+- `python:S1244` MAJOR (float `==`): use `pytest.approx`, not `math.isclose`,
+  because the codebase already imports pytest in every test module.
+- `python:S1186` CRITICAL (empty methods): for duck-typed stubs (e.g.
+  Aider IO interface) add a one-line docstring describing the no-op —
+  `pass` alone is flagged.
+- `python:S1192` CRITICAL (literal duplication ≥3): extract module-private
+  `_TWO_COL_DIVIDER` style constant; keep adjacent to imports.
 
 ## CI Build of Rust Extension
 
@@ -100,6 +128,15 @@
   fail at the build step before any test runs.
 - Cache cargo per-(os, python-version) — same cargo target dir compiled with
   different Python ABIs collides if the key doesn't include python-version.
+- `panic = "abort"` in `[profile.release]` is INCOMPATIBLE with
+  `cargo test --release` — the test harness force-uses unwind, dependencies
+  get abort, link fails. Keep abort for production safety but split CI:
+  `cargo test --lib` (dev profile, harness happy) +
+  `cargo build --release` + `cargo test --release --test yaml_cases`
+  (integration tests with `harness = false` work in release).
+- Bench Dockerfile that copies `diffctx/Cargo.toml` MUST also copy
+  `diffctx/tests/` whenever Cargo.toml declares any `[[test]]` entry —
+  manifest parser validates path before any build step.
 
 ## YAML Case Runner (cargo integration test)
 
@@ -124,3 +161,89 @@
   `Vec<(PathBuf, String)>` BEFORE applying the cap) and tree-sitter
   parse trees, NOT lexical similarity. Lexical fixes only show up on
   repos with many fragments + dense term overlap.
+
+## Local pre-commit Environment
+
+- Repo uses `.venv/bin/python`. `pip install -e .` and `maturin develop`
+  must be invoked via `python -m pip` and `python -m maturin` (or after
+  `source .venv/bin/activate`); `maturin` from homebrew installs into the
+  wrong env and `_diffctx` won't be importable
+- `import-linter` pre-commit hook depends on `treemapper` being importable
+  from the venv — requires `_diffctx` to be built (`maturin develop --release
+  --features python`). Don't `SKIP=lint-imports` — fix the env.
+- `name-tests-test` hook treats every `tests/**/*.py` as a candidate test
+  and demands `test_*.py` naming. Add fixture dirs to its `exclude:` regex
+  in `.pre-commit-config.yaml`. Currently excluded: `diffctx/tests/fixtures/garbage/.*\.py`
+
+## Cargo features and `dep:` syntax
+
+- Optional tree-sitter grammars are split into `lang-core` (top-15) and
+  `lang-extra` (long-tail) features in `diffctx/Cargo.toml`. Default is
+  `["lang-core", "lang-extra"]` so `cargo build` is unchanged
+- **WATCH OUT**: `feature = ["dep:tree-sitter-X"]` SUPPRESSES the auto-feature
+  named `tree-sitter-X`. `#[cfg(feature = "tree-sitter-X")]` will then
+  evaluate to false and the language won't load. Use bare names without
+  `dep:` so the auto-feature is preserved
+- Adding a new grammar: bump optional dep in `[dependencies]`, append to the
+  matching feature list (`lang-core` or `lang-extra`) WITHOUT `dep:` prefix,
+  add `#[cfg]`-gated insert in `tree_sitter_strategy.rs::LANGUAGE_CACHE`
+
+## actionlint context restrictions
+
+- `${{ env.X }}` is BANNED inside `env:` blocks at any level (workflow, job,
+  step). Available contexts inside `env:` are: github, inputs, matrix,
+  needs, secrets, vars
+- Fix: inline literal values, or read `$X` from shell scripts in `run:` (the
+  surrounding env vars from outer scope are inherited as shell vars)
+
+## GitHub Actions security rules (SonarCloud)
+
+- `githubactions:S7630` BLOCKER: `${{ inputs.xxx }}` used directly in `run:`
+  block = script injection. Fix: assign each input to an `env:` key on the
+  step, then read via `${ENV_VAR}` in the shell. Never interpolate `inputs.*`
+  inline in shell.
+- `githubactions:S8264` MAJOR: workflow-level `permissions:` block must be
+  moved to individual job level. Each job already has or should have its own
+  `permissions:` key. Workflow-level is too broad.
+- `shellcheck SC2002`: `cat file | cmd` → `cmd < file` (useless cat)
+- `shellcheck SC2015`: `A && B || C` is not if-then-else; use `if A; then B; fi`
+
+## YAML heredoc indentation in GitHub Actions
+
+- Python/shell code inside a `run: |` heredoc must be indented to at least
+  10 spaces (matching block scalar indentation) — YAML strips those spaces
+  before passing to bash, so the script sees the code at column 0. Code at
+  0 spaces in the YAML file terminates the block scalar prematurely.
+- `PYEOF` heredoc terminator also needs 10 spaces of YAML indentation (becomes
+  column 0 in the shell script, correctly terminating the heredoc).
+- Use `<< 'PYEOF'` (quoted) to prevent bash expansion of Python f-strings and
+  GitHub Actions expressions are pre-expanded by GH before bash sees the script.
+
+## SonarCloud exclusions
+
+- `sonar.exclusions=diffctx/tests/fixtures/garbage/**` — fixture files
+  intentionally have unused params (S1172) and dead code; they simulate
+  "fake real code" as negative-test distractors
+
+## Cognitive Complexity Backlog
+
+`python:S3776` issues that cross the 15 threshold and weren't refactored in
+this QA pass (touching benchmark code = regression risk on v1 results):
+
+- `benchmarks/baselines/aider_baseline.py:112` (28→15)
+- `benchmarks/baselines/aider_baseline.py:135` (23→15)
+- `benchmarks/baselines/bm25_baseline.py:41` (32→15)
+- `benchmarks/aggregate_sweep.py:100` (23→15)
+- `benchmarks/adapters/multi_swebench.py:100` (17→15)
+- `benchmarks/diffctx_eval_fn.py:70` (18→15)
+- `benchmarks/diffctx_eval_fn.py:241` (19→15)
+- `benchmarks/adapters/calibrate.py:73` (25→15) — `evaluate_grid` retry/pool loop
+- `benchmarks/adapters/calibrate.py:160` (40→15) — `evaluate_grid_cached`, already
+  `# noqa: C901` for ruff (orchestration with timeout/exception/checkpoint dispatch
+  does not factor cleanly without behavior change)
+- `benchmarks/adapters/evaluator.py:49` (32→15)
+- `scripts/bake_bench_cache.py:72` (16→15)
+
+Tactic from earlier passes (already in this file): extract `_collect_result`
+helpers and `_print_*_header`/`_print_*_dump` blocks. Pair with v2 evaluation
+re-run so any drift is caught.

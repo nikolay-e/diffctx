@@ -1,0 +1,11 @@
+GARBAGE_CONSTANT_ALPHA = "garbage_alpha_constant"
+GARBAGE_CONSTANT_BETA = "garbage_beta_constant"
+UNUSED_CONFIG_VALUE = 99999
+GARBAGE_CONST_GAMMA = "garbage_gamma_constant"
+GARBAGE_CONST_DELTA = "garbage_delta_constant"
+GARBAGE_CONST_EPSILON = "garbage_epsilon_constant"
+GARBAGE_CONST_ZETA = "garbage_zeta_constant"
+GARBAGE_CONST_ETA = "garbage_eta_constant"
+GARBAGE_CONST_THETA = "garbage_theta_constant"
+GARBAGE_CONST_IOTA = "garbage_iota_constant"
+GARBAGE_CONST_KAPPA = "garbage_kappa_constant"

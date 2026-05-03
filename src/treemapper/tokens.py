@@ -16,9 +16,12 @@ class TokenCountResult:
 def count_tokens(text: str, encoding: str = "o200k_base") -> TokenCountResult:
     """Count tokens via the Rust tiktoken backend.
 
-    The `encoding` argument is accepted for API stability; the Rust backend
-    uses `o200k_base` and is always exact.
+    Only `o200k_base` is currently supported; passing any other encoding
+    raises `ValueError` to avoid silently mismatching the count and the
+    label on the returned result.
     """
+    if encoding != "o200k_base":
+        raise ValueError(f"unsupported encoding {encoding!r}; only 'o200k_base' is available")
     return TokenCountResult(int(_rust_count_tokens(text)), True, "o200k_base")
 
 

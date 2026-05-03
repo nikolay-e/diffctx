@@ -19,11 +19,11 @@ def _make_diff_repo(tmp_path: Path) -> tuple[Pygit2Repo, str]:
     repo = Pygit2Repo(tmp_path / "repo")
     repo.add_file(
         "src/calc.py",
-        "def add(a, b):\n    return a + b\n\n" "def sub(a, b):\n    return a - b\n\n" "def mul(a, b):\n    return a * b\n",
+        "def add(a, b):\n    return a + b\n\ndef sub(a, b):\n    return a - b\n\ndef mul(a, b):\n    return a * b\n",
     )
     repo.add_file(
         "src/main.py",
-        "from calc import add, sub, mul\n\n" "def run():\n    return add(1, 2) + sub(3, 1) + mul(2, 4)\n",
+        "from calc import add, sub, mul\n\ndef run():\n    return add(1, 2) + sub(3, 1) + mul(2, 4)\n",
     )
     repo.add_file("README.md", "# Demo\n\nUses `calc` helpers.\n")
     base = repo.commit("initial")
@@ -70,9 +70,9 @@ def test_diffctx_output_is_byte_identical_across_runs(tmp_path):
     args = [".", "--diff", diff_range, "--budget", "1024", "-f", "txt"]
     runs = [_run(repo.path, args)[0] for _ in range(5)]
     distinct = set(runs)
-    assert len(distinct) == 1, (
-        f"Non-deterministic output: {len(distinct)} distinct outputs across 5 runs. " f"First diff: {next(iter(distinct))[:300]}"
-    )
+    assert (
+        len(distinct) == 1
+    ), f"Non-deterministic output: {len(distinct)} distinct outputs across 5 runs. First diff: {next(iter(distinct))[:300]}"
 
 
 @pytest.mark.parametrize("threads", ["1", "2", "4", "14"])
@@ -128,9 +128,9 @@ def test_fraction_param_rejects_negative_falls_back_to_default(tmp_path, env_var
     baseline_out, _ = _run(repo.path, args)
     negative_out, _ = _run(repo.path, args, {env_var: "-1.0"})
 
-    assert baseline_out == negative_out, (
-        f"{env_var}=-1.0 should be rejected and fall back to default, " f"but stdout differs (clamp/reject path inconsistent)."
-    )
+    assert (
+        baseline_out == negative_out
+    ), f"{env_var}=-1.0 should be rejected and fall back to default, but stdout differs (clamp/reject path inconsistent)."
 
 
 def test_unreachable_revision_raises_clear_error(tmp_path):
@@ -164,9 +164,9 @@ def test_max_fragments_zero_falls_back_to_default(tmp_path):
     args = [".", "--diff", diff_range, "--budget", "1024", "-f", "txt"]
     out, err = _run(repo.path, args, {"TREEMAPPER_MAX_FRAGMENTS": "0"})
     tokens = _extract_tokens(out + err)
-    assert tokens > 0, (
-        f"TREEMAPPER_MAX_FRAGMENTS=0 produced empty output; should be rejected and fall back to default. " f"tokens={tokens}"
-    )
+    assert (
+        tokens > 0
+    ), f"TREEMAPPER_MAX_FRAGMENTS=0 produced empty output; should be rejected and fall back to default. tokens={tokens}"
 
 
 def test_ppr_alpha_one_does_not_degenerate(tmp_path):

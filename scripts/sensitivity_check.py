@@ -28,7 +28,7 @@ OPERATIONAL_PARAMS: list[tuple[str, float]] = [
 
 PERTURBATION_FACTORS = [0.50, 0.75, 1.25, 1.50]
 TOKEN_RE = re.compile(r"^([\d,]+)\s+tokens\b")
-FRAGMENT_RE = re.compile(r"^  (\S+):(\d+)-(\d+)")
+FRAGMENT_RE = re.compile(r"^ {2}(\S+):(\d+)-(\d+)")
 
 
 @dataclass(frozen=True)
@@ -118,7 +118,7 @@ def main() -> int:
             delta_pct = 100.0 * (r.tokens - baseline.tokens) / baseline.tokens if baseline.tokens else 0.0
             jacc = jaccard(baseline.fragments, r.fragments)
             print(
-                f"{name:<55} {factor:>6.2f} {value:>10.4g} " f"{r.tokens:>8d} {delta_pct:>+6.2f}% {jacc:>6.3f}",
+                f"{name:<55} {factor:>6.2f} {value:>10.4g} {r.tokens:>8d} {delta_pct:>+6.2f}% {jacc:>6.3f}",
                 flush=True,
             )
 

@@ -1,0 +1,54 @@
+name: sensitivity-check
+
+# Manual trigger only. Runs the Group-C parameter sensitivity analysis
+# (±25% / ±50% perturbation) on a given diff range.
+on:
+  workflow_dispatch:
+    inputs:
+      diff_range:
+        description: 'Git diff range (e.g. HEAD~5..HEAD)'
+        required: false
+        default: 'HEAD~5..HEAD'
+      budget:
+        description: 'Token budget for diffctx'
+        required: false
+        default: '4096'
+      params:
+        description: 'Comma-separated param list (empty = all Group-C params)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  sensitivity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install treemapper with dev extras
+        run: pip install -e ".[dev,tree-sitter]"
+
+      - name: Run sensitivity check
+        env:
+          DIFF_RANGE: ${{ inputs.diff_range }}
+          BUDGET: ${{ inputs.budget }}
+          PARAMS: ${{ inputs.params }}
+        run: |
+          ARGS=(--diff "${DIFF_RANGE}" --budget "${BUDGET}")
+          [[ -n "${PARAMS}" ]] && ARGS+=(--params "${PARAMS}")
+          bash scripts/sensitivity_check.sh "${ARGS[@]}" | tee sensitivity_output.txt
+
+      - name: Upload sensitivity report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sensitivity-report-${{ github.run_id }}
+          path: sensitivity_output.txt
+          retention-days: 30

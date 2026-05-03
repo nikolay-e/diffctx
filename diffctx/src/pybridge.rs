@@ -1,15 +1,31 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use pyo3::create_exception;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 
 use crate::config::limits::{
     DEFAULT_PIPELINE_TIMEOUT_SECONDS, DEFAULT_PPR_ALPHA, DEFAULT_STOPPING_THRESHOLD,
 };
+use crate::git::GitError as RustGitError;
 use crate::mode::ScoringMode;
-use crate::pipeline;
+use crate::pipeline::{self, ScoredState};
 use crate::render::{DiffContextOutput, FragmentEntry};
+
+#[pyclass(unsendable)]
+pub struct PyScoredState {
+    inner: Arc<ScoredState>,
+}
+
+create_exception!(_diffctx, GitError, pyo3::exceptions::PyException);
+
+fn map_pipeline_err(e: anyhow::Error) -> PyErr {
+    if let Some(git_err) = e.downcast_ref::<RustGitError>() {
+        return GitError::new_err(git_err.to_string());
+    }
+    pyo3::exceptions::PyRuntimeError::new_err(e.to_string())
+}
 
 #[pyclass]
 #[derive(Clone)]
@@ -186,47 +202,6 @@ impl FragmentIterator {
 #[pyfunction]
 #[pyo3(signature = (
     root_dir,
-    diff_range = None,
-    budget_tokens = None,
-    alpha = DEFAULT_PPR_ALPHA,
-    tau = DEFAULT_STOPPING_THRESHOLD,
-    no_content = false,
-    full = false,
-    scoring_mode = "hybrid",
-    timeout = DEFAULT_PIPELINE_TIMEOUT_SECONDS,
-))]
-fn build_diff_context_native(
-    root_dir: &str,
-    diff_range: Option<&str>,
-    budget_tokens: Option<u32>,
-    alpha: f64,
-    tau: f64,
-    no_content: bool,
-    full: bool,
-    scoring_mode: &str,
-    timeout: u64,
-) -> PyResult<DiffContextResult> {
-    let mode = ScoringMode::from_str(scoring_mode);
-    let path = Path::new(root_dir);
-
-    pipeline::build_diff_context(
-        path,
-        diff_range,
-        budget_tokens,
-        alpha,
-        tau,
-        no_content,
-        full,
-        mode,
-        timeout,
-    )
-    .map(DiffContextResult::from)
-    .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
-}
-
-#[pyfunction]
-#[pyo3(signature = (
-    root_dir,
     diff_range,
     budget_tokens = None,
     alpha = DEFAULT_PPR_ALPHA,
@@ -264,7 +239,8 @@ fn build_diff_context<'py>(
         tracing::warn!("whitelist_file is not yet implemented in Rust backend, ignored");
     }
 
-    let mode = ScoringMode::from_str(scoring_mode);
+    let mode =
+        ScoringMode::from_str(scoring_mode).map_err(pyo3::exceptions::PyValueError::new_err)?;
     let path = Path::new(root_dir);
     let range = if diff_range.is_empty() {
         None
@@ -273,18 +249,21 @@ fn build_diff_context<'py>(
     };
 
     let start = std::time::Instant::now();
-    let output = pipeline::build_diff_context(
-        path,
-        range,
-        budget_tokens,
-        alpha,
-        tau,
-        no_content,
-        full,
-        mode,
-        timeout,
-    )
-    .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+    let output = py
+        .allow_threads(|| {
+            pipeline::build_diff_context(
+                path,
+                range,
+                budget_tokens,
+                alpha,
+                tau,
+                no_content,
+                full,
+                mode,
+                timeout,
+            )
+        })
+        .map_err(map_pipeline_err)?;
     let total_ms = start.elapsed().as_secs_f64() * 1000.0;
 
     let dict = PyDict::new(py);
@@ -318,11 +297,141 @@ fn build_diff_context<'py>(
         latency.set_item("tokenization_ms", r(lb.tokenization_ms))?;
         latency.set_item("scoring_selection_ms", r(lb.scoring_selection_ms))?;
         latency.set_item("total_ms", r(lb.total_ms))?;
+        latency.set_item("scoring_ms", r(lb.scoring_ms))?;
+        latency.set_item("selection_ms", r(lb.selection_ms))?;
+        latency.set_item("candidate_count", lb.candidate_count)?;
+        latency.set_item("edge_count", lb.edge_count)?;
+        latency.set_item("greedy_iters", lb.greedy_iters)?;
+        latency.set_item("edges_before_cap", lb.edges_before_cap)?;
+        latency.set_item("edges_dropped_by_cap", lb.edges_dropped_by_cap)?;
+        latency.set_item("nodes_capped", lb.nodes_capped)?;
+        latency.set_item("max_out_edges_per_node", lb.max_out_edges_per_node)?;
+        latency.set_item("ppr_truncated", lb.ppr_truncated)?;
+        latency.set_item("ppr_forward_pushes", lb.ppr_forward_pushes)?;
+        latency.set_item("ppr_backward_pushes", lb.ppr_backward_pushes)?;
     } else {
         latency.set_item("total_ms", (total_ms * 10.0).round() / 10.0)?;
     }
     dict.set_item("latency", latency)?;
 
+    Ok(dict)
+}
+
+#[pyfunction]
+#[pyo3(signature = (
+    root_dir,
+    diff_range,
+    alpha = DEFAULT_PPR_ALPHA,
+    scoring_mode = "hybrid",
+    timeout = DEFAULT_PIPELINE_TIMEOUT_SECONDS,
+))]
+fn compute_scored_state(
+    py: Python<'_>,
+    root_dir: &str,
+    diff_range: &str,
+    alpha: f64,
+    scoring_mode: &str,
+    timeout: u64,
+) -> PyResult<PyScoredState> {
+    let mode =
+        ScoringMode::from_str(scoring_mode).map_err(pyo3::exceptions::PyValueError::new_err)?;
+    let path = Path::new(root_dir);
+    let range = if diff_range.is_empty() {
+        None
+    } else {
+        Some(diff_range)
+    };
+    let state = py
+        .allow_threads(|| pipeline::compute_scored_state(path, range, alpha, mode, timeout))
+        .map_err(map_pipeline_err)?;
+    Ok(PyScoredState {
+        inner: Arc::new(state),
+    })
+}
+
+#[pyfunction]
+#[pyo3(signature = (
+    state,
+    budget_tokens = None,
+    tau = DEFAULT_STOPPING_THRESHOLD,
+    no_content = false,
+))]
+fn select_with_params<'py>(
+    py: Python<'py>,
+    state: &PyScoredState,
+    budget_tokens: Option<u32>,
+    tau: f64,
+    no_content: bool,
+) -> PyResult<Bound<'py, PyDict>> {
+    let inner = state.inner.clone();
+    let output = py.allow_threads(move || {
+        if inner.all_fragments.is_empty() {
+            return DiffContextOutput {
+                name: inner
+                    .root_dir
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| inner.root_dir.to_string_lossy().to_string()),
+                output_type: "diff_context".to_string(),
+                fragment_count: 0,
+                fragments: Vec::new(),
+                latency: None,
+            };
+        }
+        pipeline::select_with_params(&inner, budget_tokens, tau, no_content)
+    });
+    diff_context_output_to_dict(py, &output)
+}
+
+fn diff_context_output_to_dict<'py>(
+    py: Python<'py>,
+    output: &DiffContextOutput,
+) -> PyResult<Bound<'py, PyDict>> {
+    let dict = PyDict::new(py);
+    dict.set_item("name", &output.name)?;
+    dict.set_item("type", "diff_context")?;
+    dict.set_item("fragment_count", output.fragment_count)?;
+
+    let frag_list = PyList::empty(py);
+    for entry in &output.fragments {
+        let frag_dict = PyDict::new(py);
+        frag_dict.set_item("path", &entry.path)?;
+        frag_dict.set_item("lines", &entry.lines)?;
+        frag_dict.set_item("kind", &entry.kind)?;
+        if let Some(ref s) = entry.symbol {
+            frag_dict.set_item("symbol", s)?;
+        }
+        if let Some(ref c) = entry.content {
+            frag_dict.set_item("content", c.as_ref())?;
+        }
+        frag_list.append(frag_dict)?;
+    }
+    dict.set_item("fragments", frag_list)?;
+
+    let latency = PyDict::new(py);
+    if let Some(ref lb) = output.latency {
+        let r = |v: f64| (v * 10.0).round() / 10.0;
+        latency.set_item("parse_changed_ms", r(lb.parse_changed_ms))?;
+        latency.set_item("universe_walk_ms", r(lb.universe_walk_ms))?;
+        latency.set_item("discovery_ms", r(lb.discovery_ms))?;
+        latency.set_item("parse_discovered_ms", r(lb.parse_discovered_ms))?;
+        latency.set_item("tokenization_ms", r(lb.tokenization_ms))?;
+        latency.set_item("scoring_selection_ms", r(lb.scoring_selection_ms))?;
+        latency.set_item("total_ms", r(lb.total_ms))?;
+        latency.set_item("scoring_ms", r(lb.scoring_ms))?;
+        latency.set_item("selection_ms", r(lb.selection_ms))?;
+        latency.set_item("candidate_count", lb.candidate_count)?;
+        latency.set_item("edge_count", lb.edge_count)?;
+        latency.set_item("greedy_iters", lb.greedy_iters)?;
+        latency.set_item("edges_before_cap", lb.edges_before_cap)?;
+        latency.set_item("edges_dropped_by_cap", lb.edges_dropped_by_cap)?;
+        latency.set_item("nodes_capped", lb.nodes_capped)?;
+        latency.set_item("max_out_edges_per_node", lb.max_out_edges_per_node)?;
+        latency.set_item("ppr_truncated", lb.ppr_truncated)?;
+        latency.set_item("ppr_forward_pushes", lb.ppr_forward_pushes)?;
+        latency.set_item("ppr_backward_pushes", lb.ppr_backward_pushes)?;
+    }
+    dict.set_item("latency", latency)?;
     Ok(dict)
 }
 
@@ -590,7 +699,9 @@ fn graph_summary<'py>(
 #[pymodule]
 pub fn _diffctx(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(build_diff_context, m)?)?;
-    m.add_function(wrap_pyfunction!(build_diff_context_native, m)?)?;
+    m.add_function(wrap_pyfunction!(compute_scored_state, m)?)?;
+    m.add_function(wrap_pyfunction!(select_with_params, m)?)?;
+    m.add_class::<PyScoredState>()?;
     m.add_function(wrap_pyfunction!(get_language_for_file, m)?)?;
     m.add_function(wrap_pyfunction!(count_tokens, m)?)?;
     m.add_function(wrap_pyfunction!(build_project_graph, m)?)?;
@@ -607,6 +718,7 @@ pub fn _diffctx(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyProjectGraph>()?;
     m.add_class::<PyQuotientGraph>()?;
     m.add_class::<PyModuleMetrics>()?;
+    m.add("GitError", m.py().get_type::<GitError>())?;
     Ok(())
 }
 

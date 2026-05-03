@@ -12,8 +12,13 @@ logger = logging.getLogger(__name__)
 
 
 def _configure_windows_utf8() -> None:
-    if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if reconfigure is None:
+        return
+    try:
+        reconfigure(encoding="utf-8")
+    except (AttributeError, ValueError, OSError):
+        pass
 
 
 def _build_diff_tree(args: ParsedArgs) -> dict[str, Any]:
@@ -46,6 +51,8 @@ def _root_display_name(root_dir: Any) -> str:
 
 
 def _build_file_node(file_path: Path, base_dir: Path, no_content: bool, max_file_bytes: int | None) -> dict[str, Any]:
+    from .tree import _read_file_content
+
     try:
         rel = file_path.relative_to(base_dir).as_posix()
     except ValueError:
@@ -53,13 +60,7 @@ def _build_file_node(file_path: Path, base_dir: Path, no_content: bool, max_file
     node: dict[str, Any] = {"name": rel, "type": "file"}
     if no_content:
         return node
-    try:
-        size = file_path.stat().st_size
-        if max_file_bytes is not None and size > max_file_bytes:
-            return node
-        node["content"] = file_path.read_text(encoding="utf-8", errors="replace")
-    except (OSError, UnicodeDecodeError):
-        pass
+    node["content"] = _read_file_content(file_path, max_file_bytes)
     return node
 
 

@@ -179,12 +179,16 @@ text_str = to_text(tree)
 md_str = to_markdown(tree)
 
 # Diff context mode
-from treemapper import build_diff_context
+from pathlib import Path
+from treemapper import build_diff_context, to_yaml
 
 ctx = build_diff_context(
-    root_dir,                 # Path to repository root
-    diff_range,               # e.g. "HEAD~1..HEAD", "main..feature"
-    budget_tokens=None,       # token limit (None = convergence-based)
+    Path("."),                # repository root
+    "HEAD~1..HEAD",           # diff range; also accepts "main..feature"
+    budget_tokens=None,       # None = convergence-based (default)
+                              #   0  = diff only, no expansion (recall floor)
+                              #  <0  = unlimited (10M-token soft ceiling)
+                              #  >0  = explicit token cap
     alpha=0.6,                # PPR damping factor
     tau=0.08,                 # stopping threshold
     full=False,               # skip smart selection

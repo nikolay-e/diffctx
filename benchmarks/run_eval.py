@@ -4,7 +4,7 @@ Example::
 
     python -m benchmarks.run_eval \\
         --manifest benchmarks/manifests/v1/calibration.txt \\
-        --tau 0.08 --core-budget-fraction 0.70 --budget 8000 \\
+        --tau 0.12 --core-budget-fraction 0.5 --budget 8000 \\
         --workers 7 \\
         --out results/eval_calibration_t008_c070.json
 """
@@ -31,11 +31,11 @@ def _all_default_adapters() -> tuple[BenchmarkAdapter, ...]:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--manifest", type=Path, required=True)
-    p.add_argument("--tau", type=float, default=0.08)
-    p.add_argument("--core-budget-fraction", type=float, default=0.70)
+    p.add_argument("--tau", type=float, default=0.12)
+    p.add_argument("--core-budget-fraction", type=float, default=0.5)
     p.add_argument("--budget", type=int, default=8000)
     p.add_argument("--scoring", default="hybrid")
-    p.add_argument("--workers", type=int, default=1)
+    p.add_argument("--workers", type=int, default=40)
     p.add_argument("--out", type=Path, required=True)
     p.add_argument(
         "--repos-dir",
@@ -43,7 +43,7 @@ def main() -> int:
         default=None,
         help="Where to cache cloned repositories (default: $CB_REPOS_DIR or ~/.cache/contextbench_repos)",
     )
-    p.add_argument("--timeout-per-instance", type=float, default=300.0)
+    p.add_argument("--timeout-per-instance", type=float, default=20.0)
     p.add_argument("--resume-from", type=Path, default=None, help="Skip instance_ids in this JSONL checkpoint.")
     p.add_argument("--checkpoint", type=Path, default=None, help="Append each result to this JSONL as it completes.")
     p.add_argument("--min-memory-gb", type=float, default=16.0, help="Pre-flight memory probe threshold.")
@@ -70,6 +70,10 @@ def main() -> int:
         scoring=args.scoring,
     )
     print(f"Params: {params.label()}")
+
+    import os as _os
+
+    _os.environ["DIFFCTX_BENCH_TIMEOUT_SEC"] = str(args.timeout_per_instance)
 
     eval_fn = make_diffctx_eval_fn(repo_root)
     results = run_eval_set(

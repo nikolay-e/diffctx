@@ -1,13 +1,16 @@
 from __future__ import annotations
 
-import contextlib
 import fcntl
 import json
 import os
 import re
+import shutil
 import subprocess
 import tempfile
+import time
 import uuid
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 
 WORKERS = int(os.environ.get("BENCH_WORKERS", "11"))
@@ -141,18 +144,80 @@ def warm_cache(instances: list[dict]) -> None:
     print(f"  Cache warm: {len(repos_to_clone)} repos", flush=True)
 
 
+@contextmanager
+def _cache_lock(cache_dir: Path) -> Generator[None, None, None]:
+    lock_path = cache_dir.parent / f".{cache_dir.name}.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock_path, "w") as fd:
+        fcntl.flock(fd.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(fd.fileno(), fcntl.LOCK_UN)
+
+
+def _purge_cache_dir(cache_dir: Path) -> None:
+    shutil.rmtree(cache_dir, ignore_errors=True)
+
+
+def _clone_bare(url: str, cache_dir: Path, attempts: int = 3, base_backoff: float = 5.0) -> bool:
+    for attempt in range(1, attempts + 1):
+        r = run_cmd(["git", "clone", "--quiet", "--bare", url, str(cache_dir)], check=False, timeout=900)
+        if r.returncode == 0:
+            return True
+        _purge_cache_dir(cache_dir)
+        if attempt < attempts:
+            time.sleep(base_backoff * (2 ** (attempt - 1)))
+        else:
+            print(f"  CLONE FAIL {url}: {r.stderr[:200]}")
+    return False
+
+
+def _is_bare_valid(cache_dir: Path) -> bool:
+    r = subprocess.run(
+        ["git", "-C", str(cache_dir), "rev-parse", "--verify", "HEAD"],
+        capture_output=True,
+        timeout=10,
+    )
+    return r.returncode == 0
+
+
 def _ensure_bare_cache(repo_url: str, repo_name: str) -> Path | None:
     safe_name = repo_name.replace("/", "__")
     cache_dir = _SHARED_CACHE / safe_name
-    if cache_dir.exists():
+
+    if cache_dir.exists() and _is_bare_valid(cache_dir):
         return cache_dir
-    url = repo_url or f"https://github.com/{repo_name}.git"
-    r = run_cmd(["git", "clone", "--quiet", "--bare", url, str(cache_dir)], check=False, timeout=600)
-    if r.returncode != 0:
-        print(f"  CLONE FAIL: {r.stderr[:200]}")
-        return None
-    _apply_perf_config(cache_dir)
-    return cache_dir
+
+    with _cache_lock(cache_dir):
+        if cache_dir.exists():
+            if _is_bare_valid(cache_dir):
+                return cache_dir
+            print(f"[ensure_repo] corrupt bare {cache_dir}, recloning", flush=True)
+            _purge_cache_dir(cache_dir)
+        url = repo_url or f"https://github.com/{repo_name}.git"
+        if not _clone_bare(url, cache_dir):
+            return None
+        _apply_perf_config(cache_dir)
+        return cache_dir
+
+
+def _ensure_commit_present(cache_dir: Path, commit: str) -> bool:
+    tree_ref = f"{commit}^{{tree}}"
+    r = run_cmd(["git", "-C", str(cache_dir), "cat-file", "-e", tree_ref], check=False, timeout=30)
+    if r.returncode == 0:
+        return True
+    with _cache_lock(cache_dir):
+        r = run_cmd(["git", "-C", str(cache_dir), "cat-file", "-e", tree_ref], check=False, timeout=30)
+        if r.returncode == 0:
+            return True
+        run_cmd(
+            ["git", "-C", str(cache_dir), "fetch", "--quiet", "--depth=1", "origin", commit],
+            check=False,
+            timeout=600,
+        )
+        r = run_cmd(["git", "-C", str(cache_dir), "cat-file", "-e", tree_ref], check=False, timeout=30)
+        return r.returncode == 0
 
 
 def _remove_stale_locks(git_dir: Path) -> None:
@@ -174,16 +239,15 @@ def _git_dir_for_repo(repo_dir: Path) -> Path:
     return git_path
 
 
-@contextlib.contextmanager
-def _bare_repo_lock(cache_dir: Path):
-    lock_path = cache_dir / ".bench-worktree.lock"
-    fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o644)
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
-        yield
-    finally:
-        fcntl.flock(fd, fcntl.LOCK_UN)
-        os.close(fd)
+def _try_worktree_add(
+    cache_dir: Path, repo_dir: Path, base_commit: str, checkout_timeout: int
+) -> subprocess.CompletedProcess[str]:
+    run_cmd(["git", "-C", str(cache_dir), "worktree", "prune", "--expire=now"], check=False, timeout=30)
+    return run_cmd(
+        ["git", "-C", str(cache_dir), "worktree", "add", "--detach", "--force", str(repo_dir), base_commit],
+        check=False,
+        timeout=checkout_timeout,
+    )
 
 
 def ensure_repo(
@@ -196,6 +260,26 @@ def ensure_repo(
     cache_dir = _ensure_bare_cache(repo_url, repo_name)
     if not cache_dir:
         return None
+
+    # Unconditional cleanup of orphan worktrees from previously killed processes.
+    # No-op on a clean cache; rescues worktree/<name>/locked after SIGKILL/OOM.
+    subprocess.run(
+        ["git", "-C", str(cache_dir), "worktree", "prune", "--expire=now"],
+        capture_output=True,
+        timeout=30,
+    )
+
+    if not _ensure_commit_present(cache_dir, base_commit):
+        print(f"  WORKTREE/CHECKOUT FAIL {base_commit[:12]}: unreachable_commit (not in cache and fetch failed)")
+        return None
+
+    # Per-worker isolated worktree path. `target_dir` is already per-worker
+    # (UUID-keyed via `worker_dir`), so reusing the deterministic path inside
+    # it across instances of the same repo is safe and saves a worktree add.
+    # If reuse fails, fall through to a fresh UUID-suffixed path so we never
+    # collide with a stale `worktrees/` registration in the shared bare cache.
+    # `git worktree add` against that bare cache is serialized by git's own
+    # `.git/worktrees.lock`; no userspace mutex needed.
     repo_dir = target_dir / repo_name.replace("/", "__")
     if repo_dir.exists():
         _remove_stale_locks(_git_dir_for_repo(repo_dir))
@@ -205,34 +289,101 @@ def ensure_repo(
             check=False,
             timeout=checkout_timeout,
         )
-    else:
-        with _bare_repo_lock(cache_dir):
-            run_cmd(["git", "-C", str(cache_dir), "worktree", "prune"], check=False, timeout=30)
-            r = run_cmd(
-                ["git", "-C", str(cache_dir), "worktree", "add", "--detach", "--force", str(repo_dir), base_commit],
-                check=False,
-                timeout=checkout_timeout,
-            )
         if r.returncode == 0:
-            _apply_perf_config(repo_dir)
+            return repo_dir
+        print(f"  RESET worktree {repo_name} ({r.stderr[:120]})", flush=True)
+        _purge_cache_dir(repo_dir)
+
+    r = _try_worktree_add(cache_dir, repo_dir, base_commit, checkout_timeout)
     if r.returncode != 0:
-        print(f"  WORKTREE/CHECKOUT FAIL {base_commit[:12]}: {r.stderr[:200]}")
-        return None
+        time.sleep(1)
+        _purge_cache_dir(repo_dir)
+        repo_dir = target_dir / f"{repo_name.replace('/', '__')}__{uuid.uuid4().hex[:8]}"
+        r = _try_worktree_add(cache_dir, repo_dir, base_commit, checkout_timeout)
+    if r.returncode != 0:
+        print(f"  worktree add failed for {repo_name}, retrying via _ensure_bare_cache: {r.stderr[:200]}", flush=True)
+        cache_dir = _ensure_bare_cache(repo_url, repo_name)
+        if not cache_dir:
+            return None
+        if not _ensure_commit_present(cache_dir, base_commit):
+            print(f"  WORKTREE/CHECKOUT FAIL {base_commit[:12]}: unreachable_commit after retry")
+            return None
+        _purge_cache_dir(repo_dir)
+        r = _try_worktree_add(cache_dir, repo_dir, base_commit, checkout_timeout)
+        if r.returncode != 0:
+            print(f"  WORKTREE/CHECKOUT FAIL {base_commit[:12]}: {r.stderr[:200]}")
+            return None
+    _apply_perf_config(repo_dir)
     return repo_dir
 
 
 def apply_as_commit(repo_dir: Path, patch_text: str, message: str = "bench") -> bool:
+    """Apply ``patch_text`` as a real commit on top of HEAD.
+
+    Two failure modes were observed in production and are now defended:
+
+    1. **`git commit` silently fails when no `user.email` / `user.name`
+       is configured.** Subprocess returncode is non-zero but the
+       previous code passed `check=False`, so HEAD never advanced. The
+       worktree's existing HEAD is then a `base_commit` -- often a
+       merge commit from SWE-bench data -- and any downstream
+       ``HEAD~1..HEAD`` query returns the merge's own diff (against an
+       arbitrary first-parent), which has nothing to do with the gold
+       patch. This corrupted ~53% of swebench_verified measurements.
+       Fix: pass `-c user.name=... -c user.email=...` inline, and
+       check the commit's exit code explicitly.
+
+    2. **`git apply --3way` fuzzy-merges and silently produces
+       wrong-content commits.** Removed -- only strict
+       ``git apply --index`` is used. If the strict apply fails the
+       instance is reported as unrecoverable.
+
+    Returns False on apply error, commit error, or empty commit
+    (HEAD didn't advance). Caller should flag these as
+    ``status="apply_fail"`` and exclude from metrics.
+    """
     with tempfile.NamedTemporaryFile(mode="w", suffix=".patch", delete=False) as f:
         f.write(patch_text)
         patch_path = f.name
     try:
         r = run_cmd(["git", "-C", str(repo_dir), "apply", "--index", patch_path], check=False)
         if r.returncode != 0:
-            r = run_cmd(["git", "-C", str(repo_dir), "apply", "--index", "--3way", patch_path], check=False)
-            if r.returncode != 0:
-                print(f"  APPLY FAIL: {r.stderr[:300]}")
-                return False
-        run_cmd(["git", "-C", str(repo_dir), "commit", "-m", message, "--allow-empty", "--no-verify"], check=False)
+            print(f"  APPLY FAIL: {r.stderr[:300]}")
+            return False
+
+        before = run_cmd(
+            ["git", "-C", str(repo_dir), "rev-parse", "HEAD"],
+            check=False,
+        ).stdout.strip()
+
+        commit_r = run_cmd(
+            [
+                "git",
+                "-c",
+                "user.name=diffctx-bench",
+                "-c",
+                "user.email=bench@diffctx.local",
+                "-C",
+                str(repo_dir),
+                "commit",
+                "-m",
+                message,
+                "--no-verify",
+            ],
+            check=False,
+        )
+        if commit_r.returncode != 0:
+            print(f"  COMMIT FAIL: {commit_r.stderr[:300]}")
+            return False
+
+        after = run_cmd(
+            ["git", "-C", str(repo_dir), "rev-parse", "HEAD"],
+            check=False,
+        ).stdout.strip()
+        if before == after:
+            # HEAD didn't move -- commit silently no-op'd. Treat as failure.
+            print(f"  COMMIT NOOP: HEAD still at {before[:12]}")
+            return False
         return True
     finally:
         os.unlink(patch_path)
@@ -311,11 +462,17 @@ def _init_worker() -> None:
 
     warnings.filterwarnings("ignore", category=SyntaxWarning)
 
-    os.environ.setdefault("RAYON_NUM_THREADS", os.environ.get("BENCH_RAYON_THREADS", "1"))
-    os.environ.setdefault("OMP_NUM_THREADS", "1")
-    os.environ.setdefault("MKL_NUM_THREADS", "1")
-    os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
-    os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+    # Explicit assignment, not setdefault: parent may have inherited a
+    # different value (e.g. ambient RAYON_NUM_THREADS=24 from a shell
+    # profile) which would defeat the cap. With N workers each running
+    # Rayon at full core count, we get N x cores threads contending for
+    # the same cores — the calibration timeout breaks before the
+    # algorithm finishes.
+    os.environ["RAYON_NUM_THREADS"] = os.environ.get("BENCH_RAYON_THREADS", "1")
+    os.environ["OMP_NUM_THREADS"] = "1"
+    os.environ["MKL_NUM_THREADS"] = "1"
+    os.environ["OPENBLAS_NUM_THREADS"] = "1"
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
     for mod in (
         "_diffctx",

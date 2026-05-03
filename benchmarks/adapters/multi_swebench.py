@@ -27,6 +27,21 @@ _LANG_FROM_EXTENSION: dict[str, str] = {
 }
 
 
+def _extract_base_commit(row: dict) -> str:
+    base = row.get("base") or {}
+    if isinstance(base, dict):
+        return base.get("sha") or base.get("commit") or ""
+    return str(base) if base else ""
+
+
+def _build_repo_name(row: dict) -> str:
+    org = row.get("org") or ""
+    repo_short = row.get("repo") or ""
+    if org and "/" not in repo_short:
+        return f"{org}/{repo_short}"
+    return repo_short or org
+
+
 def _infer_language(row: dict, gold_files: frozenset[str]) -> str:
     explicit = row.get("language")
     if explicit:
@@ -90,7 +105,7 @@ class _MultiSWEBenchAdapterBase(BenchmarkAdapter):
                 break
             except (DatasetGenerationError, TypeError, ValueError) as e:
                 print(
-                    f"[WARN] {self.name}: stream stopped early at row {n} " f"({type(e).__name__}: {str(e)[:200]})",
+                    f"[WARN] {self.name}: stream stopped early at row {n} ({type(e).__name__}: {str(e)[:200]})",
                     file=sys.stderr,
                 )
                 break
@@ -98,24 +113,16 @@ class _MultiSWEBenchAdapterBase(BenchmarkAdapter):
             yield dict(row)
 
     def _normalize(self, row: dict) -> BenchmarkInstance | None:
-        # Multi-SWE-bench schema differs from SWE-bench: `fix_patch` instead
-        # of `patch`, `base.sha` instead of `base_commit`, `org`/`repo` split.
         patch = row.get("fix_patch") or row.get("patch") or ""
         if not patch.strip():
             return None
         gold_files = extract_patch_files(patch)
         if not gold_files:
             return None
-        base = row.get("base") or {}
-        if isinstance(base, dict):
-            base_commit = base.get("sha") or base.get("commit") or ""
-        else:
-            base_commit = str(base) if base else ""
+        base_commit = _extract_base_commit(row)
         if not base_commit:
             return None
-        org = row.get("org") or ""
-        repo_short = row.get("repo") or ""
-        repo = f"{org}/{repo_short}" if org and "/" not in repo_short else (repo_short or org)
+        repo = _build_repo_name(row)
         if not repo:
             return None
         return BenchmarkInstance(

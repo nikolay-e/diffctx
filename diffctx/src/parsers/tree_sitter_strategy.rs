@@ -430,9 +430,9 @@ const LANG_CONFIGS: &[LangConfig] = &[
         ts_name: "haskell",
         definition_types: &[
             "function",
-            "type_alias",
+            "type_synomym",
             "newtype",
-            "adt",
+            "data_type",
             "class",
             "instance",
             "signature",
@@ -443,9 +443,9 @@ const LANG_CONFIGS: &[LangConfig] = &[
         ts_name: "haskell",
         definition_types: &[
             "function",
-            "type_alias",
+            "type_synomym",
             "newtype",
-            "adt",
+            "data_type",
             "class",
             "instance",
             "signature",
@@ -466,17 +466,13 @@ const LANG_CONFIGS: &[LangConfig] = &[
     LangConfig {
         extension: ".lua",
         ts_name: "lua",
-        definition_types: &[
-            "function_declaration",
-            "local_function",
-            "function_definition_statement",
-        ],
+        definition_types: &["function_declaration", "function_definition"],
     },
     // --- R ---
     LangConfig {
         extension: ".r",
         ts_name: "r",
-        definition_types: &["function_definition", "left_assignment"],
+        definition_types: &["function_definition"],
     },
     // --- OCaml ---
     LangConfig {
@@ -529,7 +525,14 @@ const LANG_CONFIGS: &[LangConfig] = &[
     LangConfig {
         extension: ".zig",
         ts_name: "zig",
-        definition_types: &["FnDecl", "ContainerDecl", "TestDecl", "VarDecl"],
+        definition_types: &[
+            "function_declaration",
+            "test_declaration",
+            "variable_declaration",
+            "struct_declaration",
+            "enum_declaration",
+            "union_declaration",
+        ],
     },
     // --- Clojure ---
     LangConfig {
@@ -594,7 +597,7 @@ const LANG_CONFIGS: &[LangConfig] = &[
         extension: ".dart",
         ts_name: "dart",
         definition_types: &[
-            "class_definition",
+            "class_declaration",
             "function_signature",
             "method_signature",
             "enum_declaration",
@@ -977,50 +980,130 @@ fn find_lang_config(path: &str) -> Option<&'static LangConfig> {
 }
 
 static LANGUAGE_CACHE: Lazy<FxHashMap<&'static str, Language>> = Lazy::new(|| {
+    #[allow(unused_mut)]
     let mut m: FxHashMap<&'static str, Language> = FxHashMap::default();
+
+    #[cfg(feature = "tree-sitter-python")]
     m.insert("python", Language::new(tree_sitter_python::LANGUAGE));
-    let js = Language::new(tree_sitter_javascript::LANGUAGE);
-    m.insert("javascript", js.clone());
-    m.insert("jsx", js);
-    m.insert(
-        "typescript",
-        Language::new(tree_sitter_typescript::LANGUAGE_TYPESCRIPT),
-    );
-    m.insert("tsx", Language::new(tree_sitter_typescript::LANGUAGE_TSX));
+
+    #[cfg(feature = "tree-sitter-javascript")]
+    {
+        let js = Language::new(tree_sitter_javascript::LANGUAGE);
+        m.insert("javascript", js.clone());
+        m.insert("jsx", js);
+    }
+
+    #[cfg(feature = "tree-sitter-typescript")]
+    {
+        m.insert(
+            "typescript",
+            Language::new(tree_sitter_typescript::LANGUAGE_TYPESCRIPT),
+        );
+        m.insert("tsx", Language::new(tree_sitter_typescript::LANGUAGE_TSX));
+    }
+
+    #[cfg(feature = "tree-sitter-go")]
     m.insert("go", Language::new(tree_sitter_go::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-rust")]
     m.insert("rust", Language::new(tree_sitter_rust::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-java")]
     m.insert("java", Language::new(tree_sitter_java::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-c")]
     m.insert("c", Language::new(tree_sitter_c::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-cpp")]
     m.insert("cpp", Language::new(tree_sitter_cpp::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-ruby")]
     m.insert("ruby", Language::new(tree_sitter_ruby::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-c-sharp")]
     m.insert("c_sharp", Language::new(tree_sitter_c_sharp::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-php")]
     m.insert("php", Language::new(tree_sitter_php::LANGUAGE_PHP));
+
+    #[cfg(feature = "tree-sitter-scala")]
     m.insert("scala", Language::new(tree_sitter_scala::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-swift")]
     m.insert("swift", Language::new(tree_sitter_swift::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-html")]
     m.insert("html", Language::new(tree_sitter_html::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-bash")]
     m.insert("bash", Language::new(tree_sitter_bash::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-css")]
     m.insert("css", Language::new(tree_sitter_css::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-haskell")]
     m.insert("haskell", Language::new(tree_sitter_haskell::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-elixir")]
     m.insert("elixir", Language::new(tree_sitter_elixir::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-lua")]
     m.insert("lua", Language::new(tree_sitter_lua::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-r")]
     m.insert("r", Language::new(tree_sitter_r::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-ocaml")]
     m.insert("ocaml", Language::new(tree_sitter_ocaml::LANGUAGE_OCAML));
+
+    #[cfg(feature = "tree-sitter-erlang")]
     m.insert("erlang", Language::new(tree_sitter_erlang::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-julia")]
     m.insert("julia", Language::new(tree_sitter_julia::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-zig")]
     m.insert("zig", Language::new(tree_sitter_zig::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-clojure")]
     m.insert("clojure", Language::new(tree_sitter_clojure::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-nix")]
     m.insert("nix", Language::new(tree_sitter_nix::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-groovy")]
     m.insert("groovy", Language::new(tree_sitter_groovy::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-objc")]
     m.insert("objc", Language::new(tree_sitter_objc::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-cmake")]
     m.insert("cmake", Language::new(tree_sitter_cmake::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-make")]
     m.insert("make", Language::new(tree_sitter_make::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-hcl")]
     m.insert("hcl", Language::new(tree_sitter_hcl::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-graphql")]
     m.insert("graphql", Language::new(tree_sitter_graphql::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-dart")]
     m.insert("dart", Language::new(tree_sitter_dart::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-prisma-io")]
     m.insert("prisma", Language::new(tree_sitter_prisma_io::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-svelte-ng")]
     m.insert("svelte", Language::new(tree_sitter_svelte_ng::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-json")]
     m.insert("json", Language::new(tree_sitter_json::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-yaml")]
     m.insert("yaml", Language::new(tree_sitter_yaml::LANGUAGE));
+
     m
 });
 

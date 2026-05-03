@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import time
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -20,8 +19,11 @@ class RunParams:
     near-zero effect). Anything else can be threaded through `extra_env`.
     """
 
-    tau: float = 0.08
-    core_budget_fraction: float = 0.70
+    # Calibrated v1 (2119 instances, 4 benchmarks, pebble-fixed pool):
+    # winner (tau, cbf) = (0.12, 0.5) at min(per_benchmark file_recall)
+    # = 0.1092. Surface is flat (top-3 within 0.001) — robust default.
+    tau: float = 0.12
+    core_budget_fraction: float = 0.5
     budget: int = 8000
     scoring: str = "hybrid"
     extra_env: dict[str, str] = field(default_factory=dict)
@@ -74,10 +76,18 @@ def read_checkpoint(path: Path) -> set[str]:
 
 
 def append_checkpoint(path: Path, result: EvalResult) -> None:
-    """Append one result as a JSONL row. Atomic per-line on POSIX."""
+    """Append one result as a JSONL row. fsync after each write so a
+    `os._exit(137)` kill in a sibling worker cannot leave a half-written
+    last line that breaks `jq` / line iteration on resume.
+    """
+    import os as _os
+
     path.parent.mkdir(parents=True, exist_ok=True)
+    line = json.dumps(asdict(result), default=str) + "\n"
     with path.open("a") as f:
-        f.write(json.dumps(asdict(result), default=str) + "\n")
+        f.write(line)
+        f.flush()
+        _os.fsync(f.fileno())
 
 
 def _load_existing_results(path: Path, allowed_ids: set[str]) -> list[EvalResult]:
@@ -138,17 +148,23 @@ def run_eval_set(
     eval_fn: EvalFn,
     params: RunParams,
     workers: int = 1,
-    timeout_per_instance: float = 300.0,
+    timeout_per_instance: float = 20.0,
     resume_from: Path | None = None,
     checkpoint_path: Path | None = None,
+    pool: object | None = None,
 ) -> list[EvalResult]:
     """Run `eval_fn(instance, params)` for every instance.
 
-    - `workers > 1` uses a thread pool; otherwise sequential.
-    - `timeout_per_instance` records a `status="timeout"` failure for any
-      future that does not return within the deadline. The hung worker
-      thread is left running (Python cannot kill threads safely); pool
-      shutdown does not wait for it.
+    - `workers > 1` uses a process pool (spawn context) so workers do
+      not share the GIL; otherwise sequential.
+    - `timeout_per_instance` is the wall-clock budget for ONE diffctx
+      call. The actual kill switch is armed inside the eval_fn (see
+      `benchmarks/diffctx_eval_fn.py`) around `build_diff_context` /
+      `compute_scored_state` only — git ops (clone, worktree add,
+      apply_as_commit) run uninstrumented because they are benchmark
+      scaffolding, not the algorithm under measurement. The orchestrator
+      passes the deadline to workers via the `DIFFCTX_BENCH_TIMEOUT_SEC`
+      environment variable.
     - `resume_from` (JSONL path): instance_ids already present in that file
       are skipped — re-running after a crash continues where it left off.
     - `checkpoint_path` (JSONL path): each completed result is appended
@@ -160,50 +176,130 @@ def run_eval_set(
 
     def _record(r: EvalResult) -> None:
         results.append(r)
-        if checkpoint_path is not None:
-            append_checkpoint(checkpoint_path, r)
+        if checkpoint_path is None:
+            return
+        # Pool-level transient failures (BrokenProcessPool) must NOT be
+        # persisted: on retry the orchestrator rebuilds the pool and these
+        # instances should be re-evaluated, not skipped via the resume set.
+        # EXCEPTION: status=="timeout" results — even though the kill switch
+        # surfaces them via BrokenProcessPool, they are deterministic per
+        # instance (the same input would hit the same deadline again) and
+        # MUST be checkpointed to prevent an infinite retry loop on a
+        # pathological repository.
+        status = (r.extra or {}).get("status", "")
+        err = str((r.extra or {}).get("error", ""))
+        if status != "timeout" and "BrokenProcessPool" in err:
+            return
+        append_checkpoint(checkpoint_path, r)
 
-    if not pending:
-        return results
-
-    if workers <= 1 or len(pending) <= 1:
-        for inst in pending:
-            try:
-                _record(eval_fn(inst, params))
-            except Exception as e:
-                _record(_failure_result(inst, params, "error", f"{type(e).__name__}: {e}"))
-        return results
-
-    from concurrent.futures import (
-        ThreadPoolExecutor,
-        as_completed,
-    )
-    from concurrent.futures import (
-        TimeoutError as FuturesTimeoutError,
-    )
-
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = {pool.submit(eval_fn, inst, params): inst for inst in pending}
-        # Generous outer deadline: timeout * ceil(len/workers) covers the
-        # serialised case if workers all hang together.
-        outer_deadline = time.monotonic() + timeout_per_instance * max(1, (len(pending) + workers - 1) // workers)
-        completed: set[str] = set()
-        try:
-            for future in as_completed(futures, timeout=max(0.0, outer_deadline - time.monotonic())):
-                inst = futures[future]
-                try:
-                    r = future.result(timeout=0)
-                except FuturesTimeoutError:
-                    r = _failure_result(inst, params, "timeout", f"after {timeout_per_instance}s")
-                except Exception as e:
-                    r = _failure_result(inst, params, "error", f"{type(e).__name__}: {e}")
-                completed.add(inst.instance_id)
-                _record(r)
-        except FuturesTimeoutError:
-            for inst in futures.values():
-                if inst.instance_id not in completed:
-                    _record(_failure_result(inst, params, "timeout", "exceeded global deadline"))
-        # Cancel any pending futures; running threads are abandoned.
-        pool.shutdown(wait=False, cancel_futures=True)
+    if pending:
+        if workers <= 1 or len(pending) <= 1:
+            _run_serial(pending, eval_fn, params, _record)
+        else:
+            _run_parallel(pending, eval_fn, params, workers, timeout_per_instance, _record, pool=pool)
 
     return results
+
+
+def _run_serial(
+    pending: list[BenchmarkInstance],
+    eval_fn: EvalFn,
+    params: RunParams,
+    record: Callable[[EvalResult], None],
+) -> None:
+    for inst in pending:
+        try:
+            record(eval_fn(inst, params))
+        except Exception as e:
+            record(_failure_result(inst, params, "error", f"{type(e).__name__}: {e}"))
+
+
+def _run_parallel(
+    pending: list[BenchmarkInstance],
+    eval_fn: EvalFn,
+    params: RunParams,
+    workers: int,
+    timeout_per_instance: float,
+    record: Callable[[EvalResult], None],
+    pool: object | None = None,
+) -> None:
+    """Pebble-based parallel drain.
+
+    Why pebble instead of `concurrent.futures.ProcessPoolExecutor`:
+    our kill switch (in `benchmarks/diffctx_eval_fn.py`) uses
+    `os._exit(137)` to bound the diffctx call. `ProcessPoolExecutor`
+    permanently brick's its pool when a worker dies via os._exit
+    (documented Python behavior — `BrokenProcessPool` is terminal).
+    pebble's `ProcessPool` instead respawns the dead worker
+    transparently, so a single timeout no longer cascades into
+    pool-wide failure. The `pool` arg (a foreign pool from a long-
+    running calibrator) is ignored by this code path; it is kept in
+    the signature for API stability with `run_eval_set`.
+    """
+    from concurrent.futures import TimeoutError as FuturesTimeoutError
+
+    from pebble import ProcessExpired, ProcessPool
+
+    from benchmarks.common import _init_worker
+
+    # `pool` is the legacy ProcessPoolExecutor foreign-pool path.
+    # Calibration's evaluate_grid_cached owns its own pebble pool now;
+    # this branch should not be reachable from updated callers but is
+    # preserved to surface a clear error if a stale caller passes a
+    # ProcessPoolExecutor-shaped pool.
+    if pool is not None:
+        raise NotImplementedError(
+            "run_eval_set received a foreign `pool` arg; pebble migration "
+            "expects callers to pass `pool=None` and let _run_parallel own "
+            "the pebble.ProcessPool."
+        )
+
+    # Per-task wall-clock deadline. Generous safety net: covers
+    # ensure_repo + apply_as_commit + diffctx + N selections. The
+    # narrow 20s budget on the algorithm itself is enforced inside
+    # eval_fn via threading.Timer + os._exit(137); this outer pebble
+    # timeout is the upper bound for git ops on huge repos.
+    pebble_timeout = max(timeout_per_instance + 30.0, 60.0)
+
+    with ProcessPool(
+        max_workers=workers,
+        max_tasks=50,
+        initializer=_init_worker,
+    ) as pp:
+        futures: dict = {}
+        for inst in pending:
+            future = pp.schedule(eval_fn, args=(inst, params), timeout=pebble_timeout)
+            futures[future] = inst
+
+        for future, inst in futures.items():
+            try:
+                r = future.result()
+            except FuturesTimeoutError:
+                r = _failure_result(
+                    inst,
+                    params,
+                    "timeout",
+                    f"pebble killed after {pebble_timeout:.0f}s",
+                )
+            except ProcessExpired as e:
+                # exitcode 137 == os._exit(137) from the narrow algorithm
+                # kill switch in eval_fn. Persist as timeout so the
+                # checkpoint records it; otherwise treat as a genuine
+                # crash (transient — not persisted by upstream _record).
+                if e.exitcode == 137:
+                    r = _failure_result(
+                        inst,
+                        params,
+                        "timeout",
+                        f"diffctx exceeded {timeout_per_instance:.0f}s budget",
+                    )
+                else:
+                    r = _failure_result(
+                        inst,
+                        params,
+                        "error",
+                        f"ProcessExpired exitcode={e.exitcode}",
+                    )
+            except Exception as e:
+                r = _failure_result(inst, params, "error", f"{type(e).__name__}: {e}")
+            record(r)
