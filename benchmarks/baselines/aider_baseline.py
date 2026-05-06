@@ -5,13 +5,14 @@ inputs as diffctx, via a subprocess in an isolated `uv tool` venv (Aider
 hard-pins ~95 deps including litellm, numpy==1.26.4, fastapi — those would
 break the main treemapper env if installed in-process).
 
-Spawn-once, reuse-many: a single helper process is kept alive across all
-instances in a run, so we pay aider's import cost (~1-2s) once per
-benchmark file, not 1500 times.
+Spawn-once, reuse-many: one helper process per worker process is kept alive
+across all instances assigned to that worker, so we pay aider's import
+cost (~1-2s) once per worker, not once per instance.
 """
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import shutil
@@ -234,6 +235,29 @@ def _aider_eval(
             pass
 
 
+_AIDER_PROC: _AiderProcess | None = None
+
+
+def _noop_shutdown() -> None:
+    pass
+
+
+def _pool_eval_aider(
+    repos_dir_str: str,
+    request_timeout: float,
+    aider_mode: str,
+    instance: BenchmarkInstance,
+    params: RunParams,
+) -> EvalResult:
+    global _AIDER_PROC
+    if _AIDER_PROC is None:
+        _AIDER_PROC = _AiderProcess()
+    evaluator = UniversalEvaluator()
+    worktree_dir = Path(repos_dir_str) / "worktrees" / f"w{os.getpid()}"
+    worktree_dir.mkdir(parents=True, exist_ok=True)
+    return _aider_eval(instance, params, evaluator, worktree_dir, _AIDER_PROC, request_timeout, aider_mode)
+
+
 def make_aider_eval_fn(
     repos_dir: Path,
     request_timeout: float = 300.0,
@@ -241,17 +265,6 @@ def make_aider_eval_fn(
 ):
     if aider_mode not in {"fair", "oracle"}:
         raise ValueError(f"aider_mode must be 'fair' or 'oracle', got {aider_mode!r}")
-
-    evaluator = UniversalEvaluator()
-    worktrees_root = repos_dir / "worktrees"
-    aider = _AiderProcess()
-
-    def eval_fn(instance: BenchmarkInstance, params: RunParams) -> EvalResult:
-        import os
-
-        worktree_dir = worktrees_root / f"w{os.getpid()}"
-        worktree_dir.mkdir(parents=True, exist_ok=True)
-        return _aider_eval(instance, params, evaluator, worktree_dir, aider, request_timeout, aider_mode)
-
-    eval_fn.shutdown = aider.shutdown  # type: ignore[attr-defined]
-    return eval_fn
+    fn = functools.partial(_pool_eval_aider, str(repos_dir), request_timeout, aider_mode)
+    fn.shutdown = _noop_shutdown  # type: ignore[attr-defined]
+    return fn

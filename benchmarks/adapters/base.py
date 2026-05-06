@@ -92,11 +92,11 @@ class BenchmarkAdapter(ABC):
 
 
 def extract_patch_files(patch: str) -> frozenset[str]:
-    """File-level recall ground truth — every file touched by the unified diff.
+    """File-level recall ground truth — files present on disk after applying the patch.
 
-    Mirrors `benchmarks.common.patch_files` but lives in the adapter layer
-    so adapters never depend on the legacy benchmark scripts.
+    Excludes pure deletions and old paths of pure renames so the recall
+    ceiling matches what any retrieval algorithm can actually return.
     """
-    from benchmarks.common import patch_files
+    from benchmarks.common import patch_files_at_head
 
-    return frozenset(patch_files(patch))
+    return frozenset(patch_files_at_head(patch))

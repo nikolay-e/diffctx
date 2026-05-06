@@ -28,7 +28,7 @@ _LANG_FROM_EXTENSION: dict[str, str] = {
 
 
 def _extract_base_commit(row: dict) -> str:
-    base = row.get("base") or {}
+    base = row.get("base")
     if isinstance(base, dict):
         return base.get("sha") or base.get("commit") or ""
     return str(base) if base else ""

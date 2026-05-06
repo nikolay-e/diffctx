@@ -101,6 +101,7 @@ jobs:
           mkdir -p /root/.ssh && chmod 700 /root/.ssh
           echo "${BENCH_SSH_PUBLIC_KEY}" >> /root/.ssh/authorized_keys
           chmod 600 /root/.ssh/authorized_keys
+          chage -M -1 root
           useradd -m -s /bin/bash github
           usermod -aG docker github
           echo "${GH_TOKEN}" | docker login ghcr.io -u nikolay-e --password-stdin
@@ -205,7 +206,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        method: [ppr, bm25, aider]
+        method: [ppr, ego, bm25, aider]
         budget: [64000]
         test_set: [swebench_verified]
     runs-on: ubuntu-latest
@@ -270,17 +271,17 @@ jobs:
         run: |
           method="${{ matrix.method }}"
           case "$method" in
-            ppr|ego|hybrid)
+            ppr|ego)
               echo "baseline=diffctx" >> "$GITHUB_OUTPUT"
               echo "scoring=$method" >> "$GITHUB_OUTPUT"
               ;;
             bm25)
               echo "baseline=bm25" >> "$GITHUB_OUTPUT"
-              echo "scoring=hybrid" >> "$GITHUB_OUTPUT"
+              echo "scoring=ego" >> "$GITHUB_OUTPUT"
               ;;
             aider)
               echo "baseline=aider_fair" >> "$GITHUB_OUTPUT"
-              echo "scoring=hybrid" >> "$GITHUB_OUTPUT"
+              echo "scoring=ego" >> "$GITHUB_OUTPUT"
               ;;
           esac
 
@@ -300,6 +301,9 @@ jobs:
         env:
           SCORING: ${{ steps.cfg.outputs.scoring }}
 
+      - name: Install uv (required by aider baseline)
+        run: pip install uv
+
       - name: Run cell (smoke — 5 instances)
         timeout-minutes: 50
         shell: bash
@@ -309,7 +313,7 @@ jobs:
             --baseline "${BASELINE}" \
             --winner /tmp/winner.json \
             --manifests-dir /tmp/manifest_one \
-            --workers 2 \
+            --workers 1 \
             --limit 5 \
             --timeout-per-instance "${INPUT_TIMEOUT}" \
             --min-memory-gb 2 \
@@ -323,42 +327,7 @@ jobs:
         run: |
           ckpt="${CELL_DIR}/${{ matrix.test_set }}.checkpoint.jsonl"
           if [ -f "${ckpt}" ]; then
-            python - <<PY > "${CELL_DIR}/cell_summary.json"
-          import json, statistics
-          rows = []
-          with open("${ckpt}") as f:
-              for line in f:
-                  line = line.strip()
-                  if line:
-                      rows.append(json.loads(line))
-          n = len(rows)
-          if n == 0:
-              print(json.dumps({"n": 0}))
-          else:
-              recall = [r.get("file_recall", 0) for r in rows]
-              precision = [r.get("file_precision", 0) for r in rows]
-              elapsed = [r.get("elapsed_seconds", 0) for r in rows]
-              tokens = [r.get("used_tokens", 0) for r in rows]
-              ok = sum(1 for r in rows if (r.get("extra") or {}).get("status") == "ok")
-              statuses = {}
-              for r in rows:
-                  s = (r.get("extra") or {}).get("status", "missing")
-                  statuses[s] = statuses.get(s, 0) + 1
-              out = {
-                  "n": n,
-                  "ok": ok,
-                  "ok_pct": 100.0 * ok / n if n else 0.0,
-                  "statuses": statuses,
-                  "file_recall": {
-                      "mean": statistics.fmean(recall),
-                      "median": statistics.median(recall),
-                  },
-                  "file_precision": {"mean": statistics.fmean(precision)},
-                  "elapsed_seconds": {"mean": statistics.fmean(elapsed), "total": sum(elapsed)},
-                  "used_tokens": {"mean": statistics.fmean(tokens)},
-              }
-              print(json.dumps(out, indent=2))
-          PY
+            python -m benchmarks.cell_metrics --ckpt "${ckpt}" --out "${CELL_DIR}/cell_summary.json"
             cat "${CELL_DIR}/cell_summary.json"
           else
             printf '{"error": "no checkpoint produced", "expected_path": "%s"}\n' "${ckpt}" \
@@ -397,14 +366,41 @@ jobs:
       packages: read
     strategy:
       fail-fast: false
-      max-parallel: 256
+      # 4 self-hosted runners on the CCX63 host; the queue can only drain at
+      # that rate anyway, so cap the matrix-level parallelism to match.
+      max-parallel: 4
       matrix:
-        method: [ppr, ego, hybrid, bm25, aider]
-        budget: [-1, 0, 32000, 64000, 128000]
+        method: [ppr, ego, bm25, aider]
+        # B=0 is a recall-floor sanity bound (must report ≈ 0); B=-1 is the
+        # unlimited-budget ceiling. The 5 paying budgets {8k, 16k, 32k, 64k, 128k}
+        # form the budget curve referenced in STATS_PLAN.md.
+        budget: [-1, 0, 8000, 16000, 32000, 64000, 128000]
+        # `depth` is the EGO graph traversal radius; only meaningful for
+        # method=ego. PPR uses alpha (not depth), BM25 has no graph,
+        # Aider is its own subprocess. Sentinel -1 means "depth does not
+        # apply"; non-EGO methods run only with depth=-1.
+        depth: [-1, 0, 1, 2, 3, 4]
         test_set: [contextbench_verified, polybench500, swebench_verified]
         exclude:
           - {method: bm25, budget: -1}
           - {method: aider, budget: -1}
+          # Non-EGO methods: only the depth=-1 cell.
+          - {method: ppr, depth: 0}
+          - {method: ppr, depth: 1}
+          - {method: ppr, depth: 2}
+          - {method: ppr, depth: 3}
+          - {method: ppr, depth: 4}
+          - {method: bm25, depth: 0}
+          - {method: bm25, depth: 1}
+          - {method: bm25, depth: 2}
+          - {method: bm25, depth: 3}
+          - {method: bm25, depth: 4}
+          - {method: aider, depth: 0}
+          - {method: aider, depth: 1}
+          - {method: aider, depth: 2}
+          - {method: aider, depth: 3}
+          - {method: aider, depth: 4}
+          - {method: ego, depth: -1}
     runs-on: [self-hosted, large]
     timeout-minutes: 350
     container:
@@ -422,8 +418,8 @@ jobs:
         --ulimit nproc=65535:65535
         -v /data/bench_repos:/cache/contextbench_repos
     env:
-      CELL_TAG: ${{ matrix.method }}_b${{ matrix.budget }}_${{ matrix.test_set }}
-      CELL_DIR: results/sweep/${{ matrix.method }}_b${{ matrix.budget }}_${{ matrix.test_set }}
+      CELL_TAG: ${{ matrix.method }}_b${{ matrix.budget }}_L${{ matrix.depth }}_${{ matrix.test_set }}
+      CELL_DIR: results/sweep/${{ matrix.method }}_b${{ matrix.budget }}_L${{ matrix.depth }}_${{ matrix.test_set }}
       MANIFESTS_DIR: benchmarks/manifests/v1
       INPUT_TAU: '0.12'
       INPUT_CBF: '0.5'
@@ -442,6 +438,7 @@ jobs:
             "cell": {
               "method": "${{ matrix.method }}",
               "budget": ${{ matrix.budget }},
+              "depth": ${{ matrix.depth }},
               "test_set": "${{ matrix.test_set }}",
               "tau": ${INPUT_TAU},
               "core_budget_fraction": ${INPUT_CBF}
@@ -478,6 +475,63 @@ jobs:
             echo "Waiting for repo cache extraction to complete..."
             sleep 15
           done
+
+      - name: Reclaim disk — purge own runner's worktrees, prune bare caches
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=/cache/contextbench_repos
+          # `_ensure_worker_state` names worktrees `worktrees/w<runner>_<pid>/`
+          # using `RUNNER_NAME` (with `-` and space mapped to `_`). Four
+          # self-hosted runners share `/data/bench_repos` on the CCX63 host,
+          # so a blanket `rm -rf worktrees/` would corrupt concurrent cells
+          # on the other runners. Restrict to dirs prefixed with our own
+          # runner name so cleanup is single-runner-scoped.
+          runner_slug="$(printf '%s' "${RUNNER_NAME:-unknown}" | tr ' -' '__')"
+          echo "--- Disk before cleanup ---"
+          df -h "${base}" || true
+          du -sh "${base}/worktrees" 2>/dev/null || echo "  (no worktrees dir)"
+          echo "  runner_slug=${runner_slug}"
+          # 1. Drop only THIS runner's accumulated worktree dirs from prior
+          #    cells. Concurrent cells on other runners (different PIDs and
+          #    different RUNNER_NAME prefixes) are untouched.
+          if [ -d "${base}/worktrees" ]; then
+            find "${base}/worktrees" -mindepth 1 -maxdepth 1 -type d \
+              -name "w${runner_slug}_*" -prune -exec rm -rf {} + 2>/dev/null || true
+          fi
+          # 2. Prune dangling worktree registrations on every bare cache.
+          #    Idempotent and safe even when other runners have live
+          #    registrations: `git worktree prune` only drops entries whose
+          #    target directory is missing.
+          for repo_cache in "${base}"/*/; do
+            if [ -d "${repo_cache}/.git" ] || [ -f "${repo_cache}/HEAD" ]; then
+              git -C "${repo_cache}" worktree prune --expire=now 2>/dev/null || true
+            fi
+          done
+          # 3. Sanity check: a single cell on a large repo (angular, AutoGPT,
+          #    transformers) can grow worktrees to 50-100 GB. With 4 cells
+          #    running concurrently on the same physical disk we want at
+          #    least ~150 GB headroom (4 cells x ~35 GB peak typical, plus
+          #    swap and other infrastructure). Run #49 hit ENOSPC at ~310 GB
+          #    free at cell start, so 150 GB is the conservative floor.
+          avail_kb=$(df --output=avail "${base}" | tail -1 | tr -d ' ')
+          avail_gb=$((avail_kb / 1024 / 1024))
+          echo "--- Disk after cleanup: ${avail_gb} GB available ---"
+          df -h "${base}"
+          if [ "${avail_gb}" -lt 150 ]; then
+            msg="Less than 150 GB free on /cache/contextbench_repos after"
+            msg="${msg} cleanup. Other runners may be holding live worktrees;"
+            msg="${msg} retrying in 60s in case they are about to release."
+            echo "::warning::${msg}" >&2
+            sleep 60
+            avail_kb=$(df --output=avail "${base}" | tail -1 | tr -d ' ')
+            avail_gb=$((avail_kb / 1024 / 1024))
+            echo "--- Disk after retry wait: ${avail_gb} GB ---"
+            if [ "${avail_gb}" -lt 100 ]; then
+              echo "::error::Disk still tight (${avail_gb} GB); aborting cell." >&2
+              exit 1
+            fi
+          fi
 
       - name: Validate bake manifest and purge known-bad repos
         shell: bash
@@ -530,17 +584,17 @@ jobs:
         run: |
           method="${{ matrix.method }}"
           case "$method" in
-            ppr|ego|hybrid)
+            ppr|ego)
               echo "baseline=diffctx" >> "$GITHUB_OUTPUT"
               echo "scoring=$method" >> "$GITHUB_OUTPUT"
               ;;
             bm25)
               echo "baseline=bm25" >> "$GITHUB_OUTPUT"
-              echo "scoring=hybrid" >> "$GITHUB_OUTPUT"
+              echo "scoring=ego" >> "$GITHUB_OUTPUT"
               ;;
             aider)
               echo "baseline=aider_fair" >> "$GITHUB_OUTPUT"
-              echo "scoring=hybrid" >> "$GITHUB_OUTPUT"
+              echo "scoring=ego" >> "$GITHUB_OUTPUT"
               ;;
           esac
 
@@ -559,6 +613,9 @@ jobs:
           JSON
         env:
           SCORING: ${{ steps.cfg.outputs.scoring }}
+
+      - name: Install uv (required by aider baseline; safe no-op for others)
+        run: pip install --no-cache-dir uv
 
       - name: Write checkpoint heartbeat script
         run: |
@@ -617,6 +674,12 @@ jobs:
           set -o pipefail
           python3 /tmp/heartbeat.py >> "${CELL_DIR}/heartbeat.log" 2>&1 &
           HEARTBEAT_PID=$!
+          # Apply EGO graph depth as an env override only when matrix.depth >= 0
+          # (the sentinel -1 means "depth doesn't apply to this method"; in that
+          # case we leave DIFFCTX_OP_GRAPH_DEPTH unset and the default kicks in).
+          if [ "${MATRIX_DEPTH}" != "-1" ]; then
+            export DIFFCTX_OP_GRAPH_DEPTH="${MATRIX_DEPTH}"
+          fi
           python -m benchmarks.run_final_eval \
             --baseline "${BASELINE}" \
             --winner /tmp/winner.json \
@@ -629,57 +692,14 @@ jobs:
           kill "${HEARTBEAT_PID}" 2>/dev/null || true
         env:
           BASELINE: ${{ steps.cfg.outputs.baseline }}
+          MATRIX_DEPTH: ${{ matrix.depth }}
 
       - name: Per-instance metric summary (always)
         if: always()
         run: |
           ckpt="${CELL_DIR}/${{ matrix.test_set }}.checkpoint.jsonl"
           if [ -f "${ckpt}" ]; then
-            python - <<PY > "${CELL_DIR}/cell_summary.json"
-          import json, statistics
-          rows = []
-          with open("${ckpt}") as f:
-              for line in f:
-                  line = line.strip()
-                  if line:
-                      rows.append(json.loads(line))
-          n = len(rows)
-          if n == 0:
-              print(json.dumps({"n": 0}))
-          else:
-              recall = [r.get("file_recall", 0) for r in rows]
-              precision = [r.get("file_precision", 0) for r in rows]
-              elapsed = [r.get("elapsed_seconds", 0) for r in rows]
-              tokens = [r.get("used_tokens", 0) for r in rows]
-              ok = sum(1 for r in rows if (r.get("extra") or {}).get("status") == "ok")
-              statuses = {}
-              for r in rows:
-                  s = (r.get("extra") or {}).get("status", "missing")
-                  statuses[s] = statuses.get(s, 0) + 1
-              out = {
-                  "n": n,
-                  "ok": ok,
-                  "ok_pct": 100.0 * ok / n if n else 0.0,
-                  "statuses": statuses,
-                  "file_recall": {
-                      "mean": statistics.fmean(recall),
-                      "median": statistics.median(recall),
-                      "p25": sorted(recall)[max(0, n*1//4-1)],
-                      "p75": sorted(recall)[min(n-1, n*3//4)],
-                  },
-                  "file_precision": {"mean": statistics.fmean(precision)},
-                  "elapsed_seconds": {
-                      "mean": statistics.fmean(elapsed),
-                      "max": max(elapsed),
-                      "total": sum(elapsed),
-                  },
-                  "used_tokens": {
-                      "mean": statistics.fmean(tokens),
-                      "max": max(tokens),
-                  },
-              }
-              print(json.dumps(out, indent=2))
-          PY
+            python -m benchmarks.cell_metrics --ckpt "${ckpt}" --out "${CELL_DIR}/cell_summary.json"
             cat "${CELL_DIR}/cell_summary.json"
           else
             printf '{"error": "no checkpoint produced", "expected_path": "%s"}\n' "${ckpt}" \
@@ -704,10 +724,32 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: cell-${{ matrix.method }}-b${{ matrix.budget }}-${{ matrix.test_set }}
+          name: cell-${{ matrix.method }}-b${{ matrix.budget }}-L${{ matrix.depth }}-${{ matrix.test_set }}
           path: ${{ env.CELL_DIR }}/
           retention-days: 90
           if-no-files-found: warn
+
+      - name: Reclaim disk — drop this cell's per-worker worktrees
+        if: always()
+        shell: bash
+        run: |
+          set -e
+          base=/cache/contextbench_repos
+          runner_slug="$(printf '%s' "${RUNNER_NAME:-unknown}" | tr ' -' '__')"
+          # Defense-in-depth: clean up at the END of each cell so a crash
+          # on the NEXT cell's preflight doesn't leave the runner ENOSPC'd.
+          # Scoped to this runner only — the other 3 self-hosted runners
+          # on this CCX63 share the disk and may have live worktrees.
+          if [ -d "${base}/worktrees" ]; then
+            find "${base}/worktrees" -mindepth 1 -maxdepth 1 -type d \
+              -name "w${runner_slug}_*" -prune -exec rm -rf {} + 2>/dev/null || true
+          fi
+          for repo_cache in "${base}"/*/; do
+            if [ -d "${repo_cache}/.git" ] || [ -f "${repo_cache}/HEAD" ]; then
+              git -C "${repo_cache}" worktree prune --expire=now 2>/dev/null || true
+            fi
+          done
+          df -h "${base}" || true
 
   # ============================================================================
   # 4. Aggregate all cells into per-cell summary table + raw artifact archive.

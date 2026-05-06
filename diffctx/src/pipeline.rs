@@ -137,16 +137,14 @@ pub fn compute_scored_state(
     }
 
     let deleted_files = git::get_deleted_files(&root_dir, diff_range)?;
-    let (renamed_old, pure_rename_new) = git::get_renamed_paths(
+    // Pure-rename old paths are gone from disk and cannot be fragmented; pure-rename new
+    // paths exist on HEAD and must remain candidates so seeds and discovery can find them.
+    let (renamed_old, _pure_rename_new) = git::get_renamed_paths(
         &root_dir,
         diff_range,
         GRAPH_FILTERING.git_rename_similarity_threshold,
     )?;
-    let excluded: FxHashSet<PathBuf> = deleted_files
-        .into_iter()
-        .chain(renamed_old)
-        .chain(pure_rename_new)
-        .collect();
+    let excluded: FxHashSet<PathBuf> = deleted_files.into_iter().chain(renamed_old).collect();
     let changed_files: Vec<PathBuf> = changed_files
         .into_iter()
         .filter(|f| {
@@ -181,7 +179,7 @@ pub fn compute_scored_state(
 
     let file_cache = build_file_cache(&all_candidate_files);
     let mode = scoring_mode;
-    let mut config = PipelineConfig::from_mode(mode, all_candidate_files.len());
+    let mut config = PipelineConfig::from_mode(mode);
     if let Ok(s) = std::env::var("DIFFCTX_OBJECTIVE") {
         config.objective = crate::mode::ObjectiveMode::from_str(&s);
     }
@@ -489,7 +487,7 @@ fn build_diff_context_full(
 }
 
 fn empty_scored_state(root_dir: PathBuf) -> ScoredState {
-    let config = PipelineConfig::from_mode(ScoringMode::Hybrid, 0);
+    let config = PipelineConfig::from_mode(ScoringMode::Ego);
     ScoredState {
         root_dir,
         config,
@@ -552,27 +550,26 @@ fn create_discovery(config: &PipelineConfig) -> Box<dyn DiscoveryStrategy> {
 }
 
 fn build_file_cache(candidate_files: &[PathBuf]) -> FxHashMap<PathBuf, String> {
-    let mut entries: Vec<(PathBuf, String)> = candidate_files
-        .par_iter()
-        .filter_map(|f| {
-            let meta = f.metadata().ok()?;
-            if meta.len() as usize > LIMITS.max_file_size {
-                return None;
-            }
-            let content = std::fs::read_to_string(f).ok()?;
-            Some((f.clone(), content))
-        })
-        .collect();
-    entries.sort_by(|a, b| a.0.cmp(&b.0));
-
+    // Stream files one at a time to avoid materialising all content before the cap.
+    // Previous par_iter().collect() allocated the full eligible corpus into an
+    // intermediate Vec before truncating — on repos with thousands of files this
+    // caused peak memory far above max_cache_bytes.
+    let mut sorted = candidate_files.to_vec();
+    sorted.sort();
     let mut cache: FxHashMap<PathBuf, String> = FxHashMap::default();
     let mut cache_bytes = 0usize;
-    for (path, content) in entries {
+    for path in sorted {
         if cache_bytes > GRAPH_FILTERING.max_cache_bytes {
             break;
         }
-        cache_bytes += content.len();
-        cache.insert(path, content);
+        let Ok(meta) = path.metadata() else { continue };
+        if meta.len() as usize > LIMITS.max_file_size {
+            continue;
+        }
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            cache_bytes += content.len();
+            cache.insert(path, content);
+        }
     }
     cache
 }

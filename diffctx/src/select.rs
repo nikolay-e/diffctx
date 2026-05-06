@@ -171,6 +171,9 @@ fn select_core_fragments(
     sig_lookup: &FxHashMap<FragmentId, Fragment>,
 ) {
     let core_budget = (budget_tokens as f64 * selection().core_budget_fraction) as u32;
+    // Counter for cores placed; the first pass keeps `core_used <= core_budget`,
+    // but the rescue pass below intentionally allows it to exceed `core_budget`
+    // up to `budget_tokens`. Don't assume the tighter bound past this scope.
     let mut core_used = 0u32;
 
     let mut sorted_core: Vec<&Fragment> = core_fragments.iter().collect();
@@ -180,7 +183,17 @@ fn select_core_fragments(
         rb.total_cmp(&ra)
     });
 
-    for frag in sorted_core {
+    let place_fragment =
+        |frag: &Fragment, core_used: &mut u32, state: &mut SelectionState, rel_score: f64| {
+            state.selected.push(frag.clone());
+            state.selected_ids.add_id(&frag.id);
+            state.remaining_budget = state.remaining_budget.saturating_sub(frag.token_count);
+            *core_used += frag.token_count;
+            apply_fragment(frag, rel_score, needs, &mut state.utility_state);
+        };
+
+    let mut skipped: Vec<&Fragment> = Vec::new();
+    for frag in &sorted_core {
         if state.selected_ids.is_superset_of(frag) {
             continue;
         }
@@ -189,23 +202,45 @@ fn select_core_fragments(
                 if !state.selected_ids.contains(&sig.id)
                     && core_used + sig.token_count <= core_budget
                 {
-                    state.selected.push(sig.clone());
-                    state.selected_ids.add_id(&sig.id);
-                    state.remaining_budget = state.remaining_budget.saturating_sub(sig.token_count);
-                    core_used += sig.token_count;
                     let rel_score = rel.get(&frag.id).copied().unwrap_or(0.0);
-                    apply_fragment(sig, rel_score, needs, &mut state.utility_state);
+                    place_fragment(sig, &mut core_used, state, rel_score);
+                    continue;
                 }
             }
+            skipped.push(frag);
             continue;
         }
 
-        state.selected.push(frag.clone());
-        state.selected_ids.add_id(&frag.id);
-        state.remaining_budget = state.remaining_budget.saturating_sub(frag.token_count);
-        core_used += frag.token_count;
         let rel_score = rel.get(&frag.id).copied().unwrap_or(0.0);
-        apply_fragment(frag, rel_score, needs, &mut state.utility_state);
+        place_fragment(frag, &mut core_used, state, rel_score);
+    }
+
+    // Bug #2 fix: cores that didn't fit the core_budget reservation must not be
+    // demoted to ordinary greedy candidates without a chance to be placed first.
+    // Sweep skipped cores cheapest-first against the *full* remaining budget
+    // (not just the core slice) so seeds aren't dropped purely because the
+    // highest-relevance core happened to be heavy.
+    if !skipped.is_empty() {
+        skipped.sort_by(|a, b| a.token_count.cmp(&b.token_count));
+        for frag in skipped {
+            if state.remaining_budget == 0 {
+                break;
+            }
+            if state.selected_ids.is_superset_of(frag) {
+                continue;
+            }
+            if frag.token_count <= state.remaining_budget {
+                let rel_score = rel.get(&frag.id).copied().unwrap_or(0.0);
+                place_fragment(frag, &mut core_used, state, rel_score);
+            } else if let Some(sig) = sig_lookup.get(&frag.id) {
+                if !state.selected_ids.contains(&sig.id)
+                    && sig.token_count <= state.remaining_budget
+                {
+                    let rel_score = rel.get(&frag.id).copied().unwrap_or(0.0);
+                    place_fragment(sig, &mut core_used, state, rel_score);
+                }
+            }
+        }
     }
 }
 
@@ -305,6 +340,44 @@ fn find_best_singleton(
         }
     }
     (best_singleton, best_gain)
+}
+
+/// Paper-aligned strict Khuller H₁: `argmax_{f ∈ F, |f| ≤ B} U({f})`.
+/// Iterates the FULL ground set (including core), gates on the FULL
+/// budget B (not the residual after partial-core packing), and evaluates
+/// each candidate as a lone selection against an empty utility state.
+///
+/// This is the comparator that, together with the greedy chain, gives
+/// the `(1-1/e)/2` approximation guarantee from Khuller-Moss-Naor 1999
+/// for monotone submodular maximization under a knapsack constraint.
+/// Restricting H₁ to `non_core` with budget `B − cost(packed_core)`
+/// (the prior `find_best_singleton`) is a strict relaxation that
+/// excludes any single high-utility fragment with `|f| > B − β_core·B`.
+fn find_best_singleton_full_set(
+    fragments: &[Fragment],
+    budget_tokens: u32,
+    rel: &FxHashMap<FragmentId, f64>,
+    needs: &[InformationNeed],
+    empty_state: &UtilityState,
+) -> (Option<Fragment>, f64) {
+    let mut best = None;
+    let mut best_gain = 0.0;
+    for f in fragments {
+        if f.token_count == 0 || f.token_count > budget_tokens {
+            continue;
+        }
+        let gain = marginal_gain(
+            f,
+            rel.get(&f.id).copied().unwrap_or(0.0),
+            needs,
+            empty_state,
+        );
+        if gain > best_gain {
+            best_gain = gain;
+            best = Some(f.clone());
+        }
+    }
+    (best, best_gain)
 }
 
 fn init_selection_state(
@@ -546,20 +619,45 @@ pub fn lazy_greedy_select(
         &base_state,
     );
 
+    let empty_state = init_selection_state(core_ids, rel, budget_tokens, file_importance);
+    let (full_singleton, full_singleton_gain) = find_best_singleton_full_set(
+        &fragments,
+        budget_tokens,
+        rel,
+        needs,
+        &empty_state.utility_state,
+    );
+
+    let mut best_alt_utility = greedy_utility;
+    let mut best_alt: Option<(Vec<Fragment>, u32)> = None;
+
     if let Some(ref singleton) = best_singleton {
-        let singleton_utility = utility_value(&base_state) + best_gain;
-        if singleton_utility > greedy_utility {
+        let u = utility_value(&base_state) + best_gain;
+        if u > best_alt_utility {
+            best_alt_utility = u;
             let used = budget_tokens - (base_budget - singleton.token_count);
-            let mut selected = base_selected.clone();
-            selected.push(singleton.clone());
-            return SelectionResult {
-                selected,
-                reason: SelectionReason::BestSingleton,
-                used_tokens: used,
-                utility: singleton_utility,
-                greedy_iters,
-            };
+            let mut sel = base_selected.clone();
+            sel.push(singleton.clone());
+            best_alt = Some((sel, used));
         }
+    }
+
+    if let Some(ref full) = full_singleton {
+        let u = utility_value(&empty_state.utility_state) + full_singleton_gain;
+        if u > best_alt_utility {
+            best_alt_utility = u;
+            best_alt = Some((vec![full.clone()], full.token_count));
+        }
+    }
+
+    if let Some((sel, used)) = best_alt {
+        return SelectionResult {
+            selected: sel,
+            reason: SelectionReason::BestSingleton,
+            used_tokens: used,
+            utility: best_alt_utility,
+            greedy_iters,
+        };
     }
 
     let used = budget_tokens - state.remaining_budget;

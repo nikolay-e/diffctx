@@ -63,6 +63,7 @@ lang-extra = [
 ]
 
 [dependencies]
+mimalloc = { version = "0.1", default-features = false }
 clap = { version = "4", features = ["derive"] }
 tree-sitter = "0.25"
 tree-sitter-python = { version = "0.23", optional = true }

@@ -1,0 +1,66 @@
+name: rename_pure_python_module
+tags:
+- lang:python
+- change:pure_rename
+- regression:bug1_pure_rename_new_excluded
+repo:
+  initial_files:
+    src/legacy/temperature.py: |
+      def celsius_to_fahrenheit(c: float) -> float:
+          return c * 9 / 5 + 32
+
+      def fahrenheit_to_celsius(f: float) -> float:
+          return (f - 32) * 5 / 9
+    src/api.py: |
+      from src.legacy.temperature import celsius_to_fahrenheit
+
+      def handle(c: float) -> float:
+          return celsius_to_fahrenheit(c)
+    src/utils/logger.py: |
+      GARBAGE_RENAME_LOGGER = "log"
+      GARBAGE_RENAME_LEVEL = "info"
+
+      def log(msg: str) -> None:
+          print(msg)
+  changed_files:
+    src/temperature.py: |
+      def celsius_to_fahrenheit(c: float) -> float:
+          return c * 9 / 5 + 32
+
+      def fahrenheit_to_celsius(f: float) -> float:
+          return (f - 32) * 5 / 9
+
+      def kelvin_to_celsius(k: float) -> float:
+          return k - 273.15
+    src/api.py: |
+      from src.temperature import celsius_to_fahrenheit
+
+      def handle(c: float) -> float:
+          return celsius_to_fahrenheit(c)
+    src/utils/logger.py: |
+      GARBAGE_RENAME_LOGGER = "log"
+      GARBAGE_RENAME_LEVEL = "info"
+
+      def log(msg: str) -> None:
+          print(msg)
+  commit_message: "refactor: rename legacy/temperature.py to top-level temperature.py and add kelvin"
+fragments:
+- id: new_path_kelvin
+  selector:
+    path: src/temperature.py
+    anchor: "kelvin_to_celsius"
+- id: api_import_update
+  selector:
+    path: src/api.py
+    anchor: "from src.temperature import"
+- id: garbage_logger
+  selector:
+    path: src/utils/logger.py
+    anchor: "GARBAGE_RENAME_LOGGER"
+oracle:
+  required:
+  - new_path_kelvin
+  allowed:
+  - api_import_update
+  forbidden:
+  - garbage_logger

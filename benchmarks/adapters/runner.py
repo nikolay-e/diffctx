@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import json
+import signal as _signal
+import time as _time
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Any
 
 from benchmarks.adapters.base import BenchmarkAdapter, BenchmarkInstance, EvalResult
 
 EvalFn = Callable[[BenchmarkInstance, "RunParams"], EvalResult]
+EvalAllCellsFn = Callable[[BenchmarkInstance, list["RunParams"]], list[tuple["RunParams", EvalResult]]]
 
 
 @dataclass(frozen=True)
@@ -25,7 +29,7 @@ class RunParams:
     tau: float = 0.12
     core_budget_fraction: float = 0.5
     budget: int = 8000
-    scoring: str = "hybrid"
+    scoring: str = "ego"
     extra_env: dict[str, str] = field(default_factory=dict)
 
     def to_env(self) -> dict[str, str]:
@@ -143,6 +147,49 @@ def _failure_result(
     return r
 
 
+def _handle_process_expired(
+    inst: BenchmarkInstance,
+    params: RunParams,
+    e: object,
+) -> EvalResult:
+    ec = getattr(e, "exitcode", None)
+    try:
+        sig_name = _signal.Signals(-ec).name if ec is not None and ec < 0 else str(ec)
+    except (ValueError, TypeError):
+        sig_name = str(ec)
+    if ec == -9:
+        status = "oom_kill"
+    elif ec is not None and ec < 0:
+        status = "signal_kill"
+    else:
+        status = "error"
+    msg = f"ProcessExpired signal={sig_name} exitcode={ec} repo={inst.repo}"
+    print(f"[WARN] {inst.instance_id} {msg}", flush=True)
+    return _failure_result(inst, params, status, msg)
+
+
+def _log_non_ok_result(r: EvalResult, status: str, err: str) -> None:
+    lang = (r.extra or {}).get("language", "")
+    t_clone = (r.extra or {}).get("t_clone_s", "")
+    detail = f" lang={lang}" if lang else ""
+    detail += f" t_clone={t_clone}s" if t_clone else ""
+    print(f"[WARN] {r.instance_id} status={status}{detail} error={err}", flush=True)
+
+
+def _maybe_checkpoint(path: Path | None, r: EvalResult, status: str, err: str) -> None:
+    if path is None:
+        return
+    # Pool-level transient failures (BrokenProcessPool) must NOT be persisted:
+    # on retry the orchestrator rebuilds the pool and these instances should be
+    # re-evaluated, not skipped via the resume set.
+    # EXCEPTION: status=="timeout" is deterministic per-instance (the same input
+    # would hit the same deadline again) and MUST be checkpointed to prevent an
+    # infinite retry loop on a pathological repository.
+    if status != "timeout" and "BrokenProcessPool" in err:
+        return
+    append_checkpoint(path, r)
+
+
 def run_eval_set(
     instances: list[BenchmarkInstance],
     eval_fn: EvalFn,
@@ -176,21 +223,11 @@ def run_eval_set(
 
     def _record(r: EvalResult) -> None:
         results.append(r)
-        if checkpoint_path is None:
-            return
-        # Pool-level transient failures (BrokenProcessPool) must NOT be
-        # persisted: on retry the orchestrator rebuilds the pool and these
-        # instances should be re-evaluated, not skipped via the resume set.
-        # EXCEPTION: status=="timeout" results — even though the kill switch
-        # surfaces them via BrokenProcessPool, they are deterministic per
-        # instance (the same input would hit the same deadline again) and
-        # MUST be checkpointed to prevent an infinite retry loop on a
-        # pathological repository.
-        status = (r.extra or {}).get("status", "")
+        status = str((r.extra or {}).get("status", ""))
         err = str((r.extra or {}).get("error", ""))
-        if status != "timeout" and "BrokenProcessPool" in err:
-            return
-        append_checkpoint(checkpoint_path, r)
+        if status not in ("ok", "empty_query", "empty_corpus") and (status or err):
+            _log_non_ok_result(r, status, err)
+        _maybe_checkpoint(checkpoint_path, r, status, err)
 
     if pending:
         if workers <= 1 or len(pending) <= 1:
@@ -199,6 +236,145 @@ def run_eval_set(
             _run_parallel(pending, eval_fn, params, workers, timeout_per_instance, _record, pool=pool)
 
     return results
+
+
+def run_eval_set_multi_budget(
+    instances: list[BenchmarkInstance],
+    eval_all_cells_fn: EvalAllCellsFn,
+    params_list: list[RunParams],
+    workers: int = 1,
+    timeout_per_instance: float = 20.0,
+    resume_dir: Path | None = None,
+    checkpoint_dir: Path | None = None,
+) -> dict[int, list[EvalResult]]:
+    """Multi-budget driver that reuses `compute_scored_state` across budgets.
+
+    For diffctx, the heavy phase (fragment extraction, edge collection,
+    graph build, scoring) is independent of the (`budget`, `tau`) cell;
+    `pool_eval_all_cells` runs it once per instance and re-runs only the
+    cheap selection stage for each `RunParams` in `params_list`. This
+    typically converts a 7-budget sweep from 7x heavy work to 1x heavy +
+    7x cheap, a 5-7x wall-clock reduction for the headline grid.
+
+    Returns `{budget: list[EvalResult]}` keyed by `params.budget`. Per-
+    budget checkpoint files live at `<checkpoint_dir>/b<budget>.jsonl`,
+    matching the resume logic in the single-budget driver.
+    """
+    if not params_list:
+        return {}
+    budgets_in_order = [p.budget for p in params_list]
+    ckpts: dict[int, Path | None] = {
+        p.budget: ((checkpoint_dir / f"b{p.budget}.checkpoint.jsonl") if checkpoint_dir else None) for p in params_list
+    }
+    resume_paths: dict[int, Path | None] = {
+        p.budget: ((resume_dir / f"b{p.budget}.checkpoint.jsonl") if resume_dir else None) for p in params_list
+    }
+    done_ids: dict[int, set[str]] = {b: (read_checkpoint(p) if p else set()) for b, p in resume_paths.items()}
+    results_by_budget: dict[int, list[EvalResult]] = {
+        b: (_load_existing_results(p, done_ids[b]) if p else []) for b, p in resume_paths.items()
+    }
+
+    # An instance is "pending" if any of its budgets isn't already on disk.
+    pending: list[tuple[BenchmarkInstance, list[RunParams]]] = []
+    for inst in instances:
+        needed = [p for p in params_list if inst.instance_id not in done_ids[p.budget]]
+        if needed:
+            pending.append((inst, needed))
+
+    def _record_per_cell(per_cell: list[tuple[RunParams, EvalResult]]) -> None:
+        for params, r in per_cell:
+            results_by_budget[params.budget].append(r)
+            status = str((r.extra or {}).get("status", ""))
+            err = str((r.extra or {}).get("error", ""))
+            if status not in ("ok", "empty_query", "empty_corpus") and (status or err):
+                _log_non_ok_result(r, status, err)
+            _maybe_checkpoint(ckpts[params.budget], r, status, err)
+
+    if not pending:
+        return results_by_budget
+
+    if workers <= 1 or len(pending) <= 1:
+        _run_multi_budget_serial(pending, eval_all_cells_fn, _record_per_cell)
+    else:
+        _run_multi_budget_parallel(
+            pending,
+            eval_all_cells_fn,
+            workers,
+            timeout_per_instance,
+            len(params_list),
+            _record_per_cell,
+        )
+
+    # Re-order to match params_list submission order; defensive against
+    # internal restructuring of dict insertion semantics.
+    return {b: results_by_budget[b] for b in budgets_in_order}
+
+
+def _run_multi_budget_serial(
+    pending: list[tuple[BenchmarkInstance, list[RunParams]]],
+    eval_all_cells_fn: EvalAllCellsFn,
+    record: Callable[[list[tuple[RunParams, EvalResult]]], None],
+) -> None:
+    for inst, needed in pending:
+        try:
+            per_cell = eval_all_cells_fn(inst, needed)
+        except Exception as e:
+            per_cell = [(p, _failure_result(inst, p, "error", f"{type(e).__name__}: {e}")) for p in needed]
+        record(per_cell)
+
+
+def _resolve_multi_budget_future(
+    future: Any,
+    inst: BenchmarkInstance,
+    needed: list[RunParams],
+    pebble_timeout: float,
+    timeout_per_instance: float,
+) -> list[tuple[RunParams, EvalResult]]:
+    from concurrent.futures import TimeoutError as FuturesTimeoutError
+
+    from pebble import ProcessExpired
+
+    try:
+        return future.result()
+    except FuturesTimeoutError:
+        return [(p, _failure_result(inst, p, "timeout", f"pebble killed after {pebble_timeout:.0f}s")) for p in needed]
+    except ProcessExpired as e:
+        if e.exitcode == 137:
+            return [
+                (p, _failure_result(inst, p, "timeout", f"diffctx exceeded {timeout_per_instance:.0f}s budget")) for p in needed
+            ]
+        msg = f"ProcessExpired exitcode={getattr(e, 'exitcode', '?')}"
+        return [(p, _failure_result(inst, p, "error", msg)) for p in needed]
+    except Exception as e:
+        tb = getattr(e, "traceback", None)
+        err_msg = f"{type(e).__name__}: {e}"
+        if tb:
+            print(f"[worker-traceback] {inst.instance_id}:\n{tb}", flush=True)
+            err_msg = f"{err_msg} | traceback: {tb[-500:]}"
+        return [(p, _failure_result(inst, p, "error", err_msg)) for p in needed]
+
+
+def _run_multi_budget_parallel(
+    pending: list[tuple[BenchmarkInstance, list[RunParams]]],
+    eval_all_cells_fn: EvalAllCellsFn,
+    workers: int,
+    timeout_per_instance: float,
+    n_budgets: int,
+    record: Callable[[list[tuple[RunParams, EvalResult]]], None],
+) -> None:
+    from pebble import ProcessPool
+
+    from benchmarks.common import _init_worker
+
+    pebble_timeout = timeout_per_instance * n_budgets + 30.0
+    with ProcessPool(max_workers=workers, max_tasks=40, initializer=_init_worker) as pool:
+        futures = [
+            (pool.schedule(eval_all_cells_fn, args=[inst, needed], timeout=pebble_timeout), inst, needed)
+            for inst, needed in pending
+        ]
+        for future, inst, needed in futures:
+            per_cell = _resolve_multi_budget_future(future, inst, needed, pebble_timeout, timeout_per_instance)
+            record(per_cell)
 
 
 def _run_serial(
@@ -212,6 +388,36 @@ def _run_serial(
             record(eval_fn(inst, params))
         except Exception as e:
             record(_failure_result(inst, params, "error", f"{type(e).__name__}: {e}"))
+
+
+def _resolve_future(
+    future: Any,
+    inst: BenchmarkInstance,
+    params: RunParams,
+    timeout_per_instance: float,
+    pebble_timeout: float,
+) -> EvalResult:
+    from concurrent.futures import TimeoutError as FuturesTimeoutError
+
+    from pebble import ProcessExpired
+
+    try:
+        return future.result()
+    except FuturesTimeoutError:
+        return _failure_result(inst, params, "timeout", f"pebble killed after {pebble_timeout:.0f}s")
+    except ProcessExpired as e:
+        # exitcode 137 == os._exit(137) from the narrow algorithm kill switch.
+        # Persist as timeout so the checkpoint records it.
+        if e.exitcode == 137:
+            return _failure_result(inst, params, "timeout", f"diffctx exceeded {timeout_per_instance:.0f}s budget")
+        return _handle_process_expired(inst, params, e)
+    except Exception as e:
+        tb = getattr(e, "traceback", None)
+        err_msg = f"{type(e).__name__}: {e}"
+        if tb:
+            print(f"[worker-traceback] {inst.instance_id}:\n{tb}", flush=True)
+            err_msg = f"{err_msg} | traceback: {tb[-500:]}"
+        return _failure_result(inst, params, "error", err_msg)
 
 
 def _run_parallel(
@@ -236,9 +442,7 @@ def _run_parallel(
     running calibrator) is ignored by this code path; it is kept in
     the signature for API stability with `run_eval_set`.
     """
-    from concurrent.futures import TimeoutError as FuturesTimeoutError
-
-    from pebble import ProcessExpired, ProcessPool
+    from pebble import ProcessPool
 
     from benchmarks.common import _init_worker
 
@@ -261,6 +465,11 @@ def _run_parallel(
     # timeout is the upper bound for git ops on huge repos.
     pebble_timeout = max(timeout_per_instance + 30.0, 60.0)
 
+    _t_start = _time.monotonic()
+    _t_last_progress = _t_start
+    _completed = 0
+    _total = len(pending)
+
     with ProcessPool(
         max_workers=workers,
         max_tasks=50,
@@ -268,38 +477,23 @@ def _run_parallel(
     ) as pp:
         futures: dict = {}
         for inst in pending:
-            future = pp.schedule(eval_fn, args=(inst, params), timeout=pebble_timeout)
+            future = pp.schedule(eval_fn, args=[inst, params], timeout=pebble_timeout)
             futures[future] = inst
 
         for future, inst in futures.items():
-            try:
-                r = future.result()
-            except FuturesTimeoutError:
-                r = _failure_result(
-                    inst,
-                    params,
-                    "timeout",
-                    f"pebble killed after {pebble_timeout:.0f}s",
+            record(_resolve_future(future, inst, params, timeout_per_instance, pebble_timeout))
+            _completed += 1
+            _now = _time.monotonic()
+            if _now - _t_last_progress >= 30.0:
+                _elapsed = _now - _t_start
+                print(
+                    f"[progress] {_completed}/{_total} ({100.0 * _completed / _total:.0f}%) elapsed={_elapsed:.0f}s",
+                    flush=True,
                 )
-            except ProcessExpired as e:
-                # exitcode 137 == os._exit(137) from the narrow algorithm
-                # kill switch in eval_fn. Persist as timeout so the
-                # checkpoint records it; otherwise treat as a genuine
-                # crash (transient — not persisted by upstream _record).
-                if e.exitcode == 137:
-                    r = _failure_result(
-                        inst,
-                        params,
-                        "timeout",
-                        f"diffctx exceeded {timeout_per_instance:.0f}s budget",
-                    )
-                else:
-                    r = _failure_result(
-                        inst,
-                        params,
-                        "error",
-                        f"ProcessExpired exitcode={e.exitcode}",
-                    )
-            except Exception as e:
-                r = _failure_result(inst, params, "error", f"{type(e).__name__}: {e}")
-            record(r)
+                _t_last_progress = _now
+
+    _elapsed_total = _time.monotonic() - _t_start
+    print(
+        f"[progress] {_completed}/{_total} (100%) elapsed={_elapsed_total:.0f}s done",
+        flush=True,
+    )

@@ -253,37 +253,45 @@ pub fn process_files_for_fragments(
     let max_frags = LIMITS.max_fragments;
     let max_generated = LIMITS.max_generated_fragments;
 
-    let file_contents: Vec<(PathBuf, String)> = files
-        .iter()
-        .filter_map(|file_path| {
-            let content = read_file_content(
-                file_path,
-                root_dir,
-                preferred_revs,
-                batch_reader.as_deref_mut(),
-            )?;
-            Some((file_path.clone(), content))
-        })
-        .collect();
-
-    let parsed: Vec<Vec<Fragment>> = file_contents
-        .par_iter()
-        .map(|(file_path, content)| {
-            let path_arc: Arc<str> = Arc::from(file_path.to_string_lossy().as_ref());
-            let mut raw_frags = fragment_file(path_arc, content);
-
-            let generated = is_generated_file(file_path, content);
-            let cap = if generated { max_generated } else { max_frags };
-            if raw_frags.len() > cap {
-                raw_frags.sort_by(|a, b| b.line_count().cmp(&a.line_count()));
-                raw_frags.truncate(cap);
-            }
-            if generated {
-                raw_frags = truncate_generated_fragments(raw_frags);
-            }
-            raw_frags
-        })
-        .collect();
+    // Process files in chunks: sequential read (CatFileBatch is &mut, !Send) then
+    // parallel parse within each chunk. Peak raw-content memory = chunk_size × max_file_size
+    // instead of N_files × avg_file_size — eliminates OOM on large repos like astropy.
+    let chunk_size = rayon::current_num_threads().max(1);
+    let mut parsed: Vec<Vec<Fragment>> = Vec::with_capacity(files.len());
+    for chunk in files.chunks(chunk_size) {
+        let chunk_contents: Vec<(PathBuf, String)> = chunk
+            .iter()
+            .filter_map(|file_path| {
+                let content = read_file_content(
+                    file_path,
+                    root_dir,
+                    preferred_revs,
+                    batch_reader.as_deref_mut(),
+                )?;
+                Some((file_path.clone(), content))
+            })
+            .collect();
+        parsed.extend(
+            chunk_contents
+                .par_iter()
+                .map(|(file_path, content)| {
+                    let path_arc: Arc<str> = Arc::from(file_path.to_string_lossy().as_ref());
+                    let mut raw_frags = fragment_file(path_arc, content);
+                    let generated = is_generated_file(file_path, content);
+                    let cap = if generated { max_generated } else { max_frags };
+                    if raw_frags.len() > cap {
+                        raw_frags.sort_by(|a, b| b.line_count().cmp(&a.line_count()));
+                        raw_frags.truncate(cap);
+                    }
+                    if generated {
+                        raw_frags = truncate_generated_fragments(raw_frags);
+                    }
+                    raw_frags
+                })
+                .collect::<Vec<_>>(),
+        );
+        // chunk_contents dropped here — raw file text freed before next chunk
+    }
 
     let mut fragments: Vec<Fragment> = Vec::new();
     for file_frags in parsed {

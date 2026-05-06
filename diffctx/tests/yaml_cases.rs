@@ -237,7 +237,7 @@ fn run_case(case_path: &Path) -> Result<(), Failed> {
         0.0,
         false,
         false,
-        ScoringMode::Hybrid,
+        ScoringMode::Ego,
         60,
     )
     .map_err(|e| Failed::from(format!("pipeline: {e}")))?;

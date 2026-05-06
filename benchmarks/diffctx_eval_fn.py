@@ -116,11 +116,19 @@ def _ensure_worker_state(repos_dir_str: str) -> tuple[Path, UniversalEvaluator]:
 def _pool_eval(repos_dir_str: str, instance: BenchmarkInstance, params: RunParams) -> EvalResult:
     from benchmarks.common import apply_as_commit, ensure_repo, reset_to_parent
 
+    pid = os.getpid()
+    iid = instance.instance_id
+
     worktree_dir, evaluator = _ensure_worker_state(repos_dir_str)
 
     repo_url = str(instance.extra.get("repo_url") or f"https://github.com/{instance.repo}")
+    print(f"[pid={pid}] {iid} stage=clone repo={instance.repo}", flush=True)
+    t_clone = time.perf_counter()
     repo_dir = ensure_repo(repo_url, instance.repo, instance.base_commit, worktree_dir)
+    t_clone_s = round(time.perf_counter() - t_clone, 2)
+
     if repo_dir is None:
+        print(f"[pid={pid}] {iid} stage=clone FAIL t={t_clone_s}s", flush=True)
         result = EvalResult(
             instance_id=instance.instance_id,
             source_benchmark=instance.source_benchmark,
@@ -129,13 +137,20 @@ def _pool_eval(repos_dir_str: str, instance: BenchmarkInstance, params: RunParam
             budget=params.budget,
         )
         result.extra["status"] = "clone_fail"
+        result.extra["language"] = instance.language
+        result.extra["t_clone_s"] = t_clone_s
         return result
 
     prior_env = {k: os.environ.get(k) for k in params.to_env()}
     try:
         for k, v in params.to_env().items():
             os.environ[k] = v
+        print(f"[pid={pid}] {iid} stage=apply t_clone={t_clone_s}s", flush=True)
+        t_apply = time.perf_counter()
         apply_as_commit(repo_dir, instance.gold_patch, "diffctx-eval-gold")
+        t_apply_s = round(time.perf_counter() - t_apply, 2)
+
+        print(f"[pid={pid}] {iid} stage=diffctx t_apply={t_apply_s}s", flush=True)
         t0 = time.perf_counter()
         from treemapper.diffctx.pipeline import build_diff_context
 
@@ -157,6 +172,7 @@ def _pool_eval(repos_dir_str: str, instance: BenchmarkInstance, params: RunParam
             if timer is not None:
                 timer.cancel()
         elapsed = time.perf_counter() - t0
+        print(f"[pid={pid}] {iid} stage=done t_diffctx={elapsed:.2f}s", flush=True)
         if output is None:
             result = EvalResult(
                 instance_id=instance.instance_id,
@@ -167,6 +183,9 @@ def _pool_eval(repos_dir_str: str, instance: BenchmarkInstance, params: RunParam
                 elapsed_seconds=elapsed,
             )
             result.extra["status"] = "diffctx_fail"
+            result.extra["language"] = instance.language
+            result.extra["t_clone_s"] = t_clone_s
+            result.extra["t_apply_s"] = t_apply_s
             return result
         fragments = _output_fragments(output)
         used_tokens = _compute_used_tokens(output)
@@ -181,6 +200,8 @@ def _pool_eval(repos_dir_str: str, instance: BenchmarkInstance, params: RunParam
         result.extra["status"] = "ok"
         result.extra["language"] = instance.language
         result.extra["fragment_count"] = len(fragments)
+        result.extra["t_clone_s"] = t_clone_s
+        result.extra["t_apply_s"] = t_apply_s
         latency = output.get("latency") or {}
         if latency:
             result.extra["latency_total_ms"] = latency.get("total_ms")

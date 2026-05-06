@@ -72,7 +72,7 @@ across instances, multi-seed.
 | `--nontrivial-only` | true | Skip instances where gold ⊆ patch files |
 | `--seeds` | `42` | Comma-separated seeds for shuffle |
 | `--no-shuffle` | false | Use dataset order |
-| `--scoring` | `hybrid` | `hybrid` / `ppr` / `ego` / `bm25` |
+| `--scoring` | `ego` | `ppr` / `ego` / `bm25` |
 | `--baseline` | `treemapper` | `treemapper` / `patch_files` / `bm25` |
 | `--dataset` | `full` | `full` / `verified` |
 | `--tau` | 0.08 | Selection stopping threshold |
@@ -140,7 +140,7 @@ stdout: per-repo / per-language % found.
 **Sweep**:
 
 - Budgets: `[8000, 16000, 32000, 64000, 999999]`
-- Modes: `[hybrid, ppr, ego]`
+- Modes: `[ego, ppr]`
 
 **Workflow**: spawns one `python -m benchmarks cb` subprocess per
 (budget, mode) pair, skips configs whose result file already exists,

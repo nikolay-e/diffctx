@@ -78,6 +78,11 @@ WORKDIR /app
 COPY requirements-bench.txt ./
 RUN pip install --no-cache-dir -r requirements-bench.txt
 
+# uv is required by the Aider baseline (`uv tool run --from aider-chat ...`).
+# Without it, every aider cell crashes on first request with
+# "RuntimeError: `uv` not found on PATH".
+RUN pip install --no-cache-dir uv
+
 # Layer 3: Rust wheel (small, ~5 MB)
 COPY --from=rust-builder /wheels/*.whl /tmp/wheels/
 RUN pip install --no-cache-dir --force-reinstall /tmp/wheels/*.whl && rm -rf /tmp/wheels

@@ -102,19 +102,35 @@ pub fn calibrate_beta(
     let target = budget_tokens as f64;
     let tol = (target * epsilon).max(1.0);
 
+    // `boltzmann_select` budget-caps `used_tokens` at `target`, so the cost
+    // function is monotone non-increasing in β and saturates at `target` for
+    // small β. The well-defined calibration target is therefore "the largest
+    // β whose selection still saturates the budget" — symmetric `|cost−B|<ε`
+    // collapses to one-sided `cost ≥ B−tol` under this saturation. Both
+    // bisection branches stay live: `lo=mid` advances when cost still
+    // saturates (try larger β), `hi=mid` retreats when cost has dropped
+    // (try smaller β). Loop invariant: `cost(lo) ≥ target−tol`.
+
+    let cost_lo = boltzmann_select(fragments, core_ids, rel, budget_tokens, lo).used_tokens as f64;
+    if cost_lo < target - tol {
+        return lo;
+    }
+    let cost_hi = boltzmann_select(fragments, core_ids, rel, budget_tokens, hi).used_tokens as f64;
+    if cost_hi >= target - tol {
+        return hi;
+    }
+
     for _ in 0..cfg.bisect_iters {
         let mid = (lo * hi).sqrt();
-        let result = boltzmann_select(fragments, core_ids, rel, budget_tokens, mid);
-        let cost = result.used_tokens as f64;
-        if cost > target + tol {
+        let cost =
+            boltzmann_select(fragments, core_ids, rel, budget_tokens, mid).used_tokens as f64;
+        if cost >= target - tol {
             lo = mid;
-        } else if cost < target - tol {
-            hi = mid;
         } else {
-            return mid;
+            hi = mid;
         }
     }
-    (lo * hi).sqrt()
+    lo
 }
 
 #[cfg(test)]

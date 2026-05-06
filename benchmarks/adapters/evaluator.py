@@ -133,6 +133,8 @@ class UniversalEvaluator:
         output: SelectionOutput,
         budget: int,
     ) -> EvalResult:
+        from benchmarks.common import patch_size_metrics
+
         file_recall, file_precision = _file_metrics(output.selected_files, instance.gold_files)
         result = EvalResult(
             instance_id=instance.instance_id,
@@ -143,11 +145,36 @@ class UniversalEvaluator:
             budget=budget,
             elapsed_seconds=output.elapsed_seconds,
         )
+        n_gold = len(instance.gold_files)
+        result.extra["n_selected"] = len(output.selected_files)
+        result.extra["n_gold"] = n_gold
+        result.extra["selected_to_gold_ratio"] = len(output.selected_files) / n_gold if n_gold > 0 else 0.0
+        patch_stats = patch_size_metrics(instance.gold_patch)
+        result.extra.update(patch_stats)
+        n_changed = patch_stats["n_changed_files"]
+        # Difficulty proxy: |gold| / |changed_files|. Ratio==1 means gold == diff
+        # (trivial, no context discovery needed). Ratio>1 means real retrieval is required.
+        result.extra["gold_to_changed_ratio"] = n_gold / n_changed if n_changed > 0 else 0.0
+        result.extra["is_single_file_gold"] = n_gold == 1
+        result.extra["is_multi_file_gold"] = n_gold >= 2
+        if instance.gold_fragments is not None:
+            n_whole = sum(1 for g in instance.gold_fragments if g.is_whole_file())
+            n_hunk = len(instance.gold_fragments) - n_whole
+            n_gold_lines = sum(
+                ((g.end_line or 0) - (g.start_line or 0) + 1) if not g.is_whole_file() else 0 for g in instance.gold_fragments
+            )
+            result.extra["n_gold_fragments_total"] = len(instance.gold_fragments)
+            result.extra["n_gold_fragments_whole_file"] = n_whole
+            result.extra["n_gold_fragments_hunk"] = n_hunk
+            result.extra["n_gold_lines"] = n_gold_lines
+            result.extra["is_whole_file_gold"] = n_whole > 0 and n_hunk == 0
         if instance.gold_fragments is not None and output.selected_fragments is not None:
             frag_r, frag_p = _fragment_metrics(output.selected_fragments, instance.gold_fragments)
             result.fragment_recall = frag_r
             result.fragment_precision = frag_p
             result.line_f1 = _line_f1(output.selected_fragments, instance.gold_fragments)
+            result.extra["n_selected_fragments"] = len(output.selected_fragments)
+            result.extra["n_gold_fragments"] = len(instance.gold_fragments)
         return result
 
     def aggregate_per_benchmark(self, results: Iterable[EvalResult]) -> dict[str, dict[str, float]]:

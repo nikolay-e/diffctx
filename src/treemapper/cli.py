@@ -181,7 +181,7 @@ class ParsedArgs:
     budget: int | None = None
     alpha: float = _DEFAULT_ALPHA
     tau: float = _DEFAULT_TAU
-    scoring: str = "hybrid"
+    scoring: str = "ego"
     full_diff: bool = False
     command: str | None = None
     graph: GraphArgs | None = None
@@ -352,9 +352,9 @@ def _build_main_parser() -> argparse.ArgumentParser:
     )
     diff_group.add_argument(
         "--scoring",
-        choices=["hybrid", "ppr", "ego", "bm25"],
-        default="hybrid",
-        help="Scoring mode: hybrid (adapts to repo size), ppr (PageRank), ego (ego-graph)",
+        choices=["ppr", "ego", "bm25"],
+        default="ego",
+        help="Scoring mode: ego (bounded ego-network expansion, default), ppr (Personalized PageRank), bm25 (lexical fragment retrieval)",
     )
     diff_group.add_argument(
         "--full",
@@ -376,7 +376,7 @@ def _warn_diff_only_flags(args: argparse.Namespace) -> None:
         used.append("--tau")
     if args.full:
         used.append("--full")
-    if args.scoring != "hybrid":
+    if args.scoring != "ego":
         used.append("--scoring")
     if used:
         flags = ", ".join(used)

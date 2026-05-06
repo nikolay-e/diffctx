@@ -18,7 +18,7 @@ pub struct ScoringResult {
     pub filtered_fragments: Vec<Fragment>,
     pub graph: Graph,
     /// PPR push-iteration was cut by `max_pushes_cap` before convergence.
-    /// Always false for non-PPR strategies (EGO/BM25/Hybrid-EGO).
+    /// Always false for non-PPR strategies (EGO/BM25).
     pub ppr_truncated: bool,
     pub ppr_forward_pushes: usize,
     pub ppr_backward_pushes: usize,

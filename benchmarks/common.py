@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import fcntl
 import json
 import os
 import re
@@ -9,6 +8,11 @@ import subprocess
 import tempfile
 import time
 import uuid
+
+try:
+    import fcntl as _fcntl
+except ImportError:
+    _fcntl = None  # type: ignore[assignment]
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
@@ -67,14 +71,57 @@ def patch_files_detailed(patch: str) -> tuple[set[str], set[str], set[str]]:
             elif cur_a == cur_b and cur_a is not None:
                 modified.add(cur_a)
             elif cur_a is not None and cur_b is not None:
+                # Pure rename: old path is gone after the patch is applied,
+                # only the new path exists on the post-patch worktree.
+                deleted.add(cur_a)
                 modified.add(cur_b)
-                modified.add(cur_a)
     return added, deleted, modified
 
 
 def patch_files(patch: str) -> set[str]:
     added, deleted, modified = patch_files_detailed(patch)
     return added | deleted | modified
+
+
+def patch_size_metrics(patch: str) -> dict[str, int]:
+    """Lightweight per-instance descriptive numbers extracted from a unified diff.
+
+    Used by the evaluator to stamp `n_changed_files`, `n_hunks`, and
+    `diff_size_lines` into `EvalResult.extra` so cell aggregators can
+    stratify recall by patch difficulty without re-parsing the diff.
+    """
+    added, deleted, modified = patch_files_detailed(patch)
+    n_changed = len(added | deleted | modified)
+    n_hunks = 0
+    n_added_lines = 0
+    n_removed_lines = 0
+    for line in patch.splitlines():
+        if line.startswith("@@ "):
+            n_hunks += 1
+        elif line.startswith("+") and not line.startswith("+++"):
+            n_added_lines += 1
+        elif line.startswith("-") and not line.startswith("---"):
+            n_removed_lines += 1
+    return {
+        "n_changed_files": n_changed,
+        "n_added_files": len(added),
+        "n_deleted_files": len(deleted),
+        "n_modified_files": len(modified),
+        "n_hunks": n_hunks,
+        "diff_added_lines": n_added_lines,
+        "diff_removed_lines": n_removed_lines,
+        "diff_size_lines": n_added_lines + n_removed_lines,
+    }
+
+
+def patch_files_at_head(patch: str) -> set[str]:
+    """Files present on disk after the patch is applied — gold for file-recall metrics.
+
+    Excludes pure deletions and old paths of pure renames, which no
+    retrieval algorithm running against HEAD can return.
+    """
+    added, _, modified = patch_files_detailed(patch)
+    return added | modified
 
 
 _SHARED_CACHE = Path(os.environ.get("CB_REPOS_DIR", str(Path.home() / ".cache" / "contextbench_repos")))
@@ -106,7 +153,7 @@ def _clone_one_repo(args: tuple[str, str]) -> None:
     print(f"  Cloning {repo}...", flush=True)
     r = run_cmd(["git", "clone", "--quiet", "--bare", url, str(cache_dir)], check=False, timeout=600)
     if r.returncode != 0:
-        print(f"  CLONE FAIL {repo}: {r.stderr[:200]}")
+        print(f"  CLONE FAIL {repo}: {r.stderr}", flush=True)
         return
     _apply_perf_config(cache_dir)
 
@@ -149,11 +196,13 @@ def _cache_lock(cache_dir: Path) -> Generator[None, None, None]:
     lock_path = cache_dir.parent / f".{cache_dir.name}.lock"
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with open(lock_path, "w") as fd:
-        fcntl.flock(fd.fileno(), fcntl.LOCK_EX)
+        if _fcntl is not None:
+            _fcntl.flock(fd.fileno(), _fcntl.LOCK_EX)
         try:
             yield
         finally:
-            fcntl.flock(fd.fileno(), fcntl.LOCK_UN)
+            if _fcntl is not None:
+                _fcntl.flock(fd.fileno(), _fcntl.LOCK_UN)
 
 
 def _purge_cache_dir(cache_dir: Path) -> None:
@@ -169,7 +218,7 @@ def _clone_bare(url: str, cache_dir: Path, attempts: int = 3, base_backoff: floa
         if attempt < attempts:
             time.sleep(base_backoff * (2 ** (attempt - 1)))
         else:
-            print(f"  CLONE FAIL {url}: {r.stderr[:200]}")
+            print(f"  CLONE FAIL {url}: {r.stderr}", flush=True)
     return False
 
 
@@ -270,7 +319,7 @@ def ensure_repo(
     )
 
     if not _ensure_commit_present(cache_dir, base_commit):
-        print(f"  WORKTREE/CHECKOUT FAIL {base_commit[:12]}: unreachable_commit (not in cache and fetch failed)")
+        print(f"  WORKTREE/CHECKOUT FAIL {base_commit[:12]}: unreachable_commit (not in cache and fetch failed)", flush=True)
         return None
 
     # Per-worker isolated worktree path. `target_dir` is already per-worker
@@ -291,7 +340,7 @@ def ensure_repo(
         )
         if r.returncode == 0:
             return repo_dir
-        print(f"  RESET worktree {repo_name} ({r.stderr[:120]})", flush=True)
+        print(f"  RESET worktree {repo_name} ({r.stderr})", flush=True)
         _purge_cache_dir(repo_dir)
 
     r = _try_worktree_add(cache_dir, repo_dir, base_commit, checkout_timeout)
@@ -301,17 +350,17 @@ def ensure_repo(
         repo_dir = target_dir / f"{repo_name.replace('/', '__')}__{uuid.uuid4().hex[:8]}"
         r = _try_worktree_add(cache_dir, repo_dir, base_commit, checkout_timeout)
     if r.returncode != 0:
-        print(f"  worktree add failed for {repo_name}, retrying via _ensure_bare_cache: {r.stderr[:200]}", flush=True)
+        print(f"  worktree add failed for {repo_name}, retrying via _ensure_bare_cache: {r.stderr}", flush=True)
         cache_dir = _ensure_bare_cache(repo_url, repo_name)
         if not cache_dir:
             return None
         if not _ensure_commit_present(cache_dir, base_commit):
-            print(f"  WORKTREE/CHECKOUT FAIL {base_commit[:12]}: unreachable_commit after retry")
+            print(f"  WORKTREE/CHECKOUT FAIL {base_commit[:12]}: unreachable_commit after retry", flush=True)
             return None
         _purge_cache_dir(repo_dir)
         r = _try_worktree_add(cache_dir, repo_dir, base_commit, checkout_timeout)
         if r.returncode != 0:
-            print(f"  WORKTREE/CHECKOUT FAIL {base_commit[:12]}: {r.stderr[:200]}")
+            print(f"  WORKTREE/CHECKOUT FAIL {base_commit[:12]}: {r.stderr}", flush=True)
             return None
     _apply_perf_config(repo_dir)
     return repo_dir

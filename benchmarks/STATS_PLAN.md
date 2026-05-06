@@ -11,25 +11,25 @@ below have been run on the v1 test set with the methods listed in
 are confirmatory (FWER-corrected) and which are exploratory (FDR-controlled
 or descriptive only), to avoid post-hoc selection bias.
 
-The numbers already in the working draft (diffctx-hybrid @ B=8000 hybrid
-sweep, BM25 baseline @ B=8000) were collected before this prereg lands;
-the prereg therefore covers the **remaining** sweep cells (Aider, scoring
+The numbers already in the working draft (diffctx-ego @ B=8000 sweep,
+BM25 baseline @ B=8000) were collected before this prereg lands; the
+prereg therefore covers the **remaining** sweep cells (Aider, scoring
 ablation, budget curve) and the **headline statistical tests** computed
-from the existing diffctx-hybrid + BM25 data plus the new cells.
+from the existing diffctx-ego + BM25 data plus the new cells.
 
 ---
 
 ## Methods Under Comparison
 
-1. **diffctx-hybrid** (deployed default; calibrated τ=0.12, β_core=0.5).
-2. **diffctx-ppr** (PPR scoring mode in isolation).
-3. **diffctx-ego** (bounded ego-network expansion in isolation).
-4. **diffctx-bm25** (internal BM25 scoring mode of diffctx).
-5. **External BM25** over patch identifiers (file-level retrieval, no graph;
+1. **diffctx-ego** (deployed default — bounded ego-network expansion;
+   calibrated τ=0.12, β_core=0.5).
+2. **diffctx-ppr** (Personalized PageRank scoring mode in isolation).
+3. **diffctx-bm25** (internal BM25 scoring mode of diffctx).
+4. **External BM25** over patch identifiers (file-level retrieval, no graph;
    `benchmarks/baselines/bm25_baseline.py`).
-6. **Aider repo-map, fair-input mode** (`mentioned_fnames` restricted to
+5. **Aider repo-map, fair-input mode** (`mentioned_fnames` restricted to
    files visible in the input diff text — same information diffctx receives).
-7. **Aider repo-map, oracle-mentioned mode** (`mentioned_fnames`
+6. **Aider repo-map, oracle-mentioned mode** (`mentioned_fnames`
    = `instance.gold_files`; **upper-bound stress test, NOT a baseline**).
 
 ## Test Sets
@@ -63,10 +63,10 @@ the expected directions (B=0 → recall ≈ 0, B=-1 → recall ceiling).
 
 Holm-Bonferroni step-down across the three primary tests.
 
-### P1 — diffctx-hybrid vs External BM25 fair, B=8000
+### P1 — diffctx-ego vs External BM25 fair, B=8000
 
 - **Hypothesis:** at the same fixed budget on the same manifests with
-  paired instances, diffctx-hybrid attains higher mean file recall than
+  paired instances, diffctx-ego attains higher mean file recall than
   External BM25.
 - **Statistic:** per-instance paired delta in file recall.
 - **Estimator:** percentile bootstrap CI on Δ (B = 10 000 resamples,
@@ -82,8 +82,7 @@ Holm-Bonferroni step-down across the three primary tests.
 
 ### P2 — Scoring-mode ablation: Friedman omnibus + Nemenyi post-hoc
 
-- **Methods:** {diffctx-hybrid, diffctx-ppr, diffctx-ego, diffctx-bm25}
-  (k = 4).
+- **Methods:** {diffctx-ego, diffctx-ppr, diffctx-bm25} (k = 3).
 - **Per-instance score:** file recall at the matched B = 8000 cell on the
   same 1500 paired instances.
 - **Test:** Friedman χ² omnibus (Demšar 2006). If p < α, run Nemenyi
@@ -95,12 +94,12 @@ Holm-Bonferroni step-down across the three primary tests.
 ### P3 — Aider-oracle headroom (one-sided)
 
 - **Hypothesis:** even given oracle-mentioned files (gold_files), Aider
-  repo-map does not exceed diffctx-hybrid recall by more than 5% absolute
+  repo-map does not exceed diffctx-ego recall by more than 5% absolute
   on any test set. This bounds how much downstream value file-hint
   information could provide.
 - **Sample:** Aider-oracle on Lite-300 stratified subset across the three
   test sets (≈100 instances each).
-- **Test:** one-sided paired bootstrap on Δ_aider_oracle - Δ_diffctx_hybrid
+- **Test:** one-sided paired bootstrap on Δ_aider_oracle - Δ_diffctx_ego
   with H₀: Δ ≥ 0.05.
 - **Decision rule:** reject H₀ if upper 95% CI bound of Δ < 0.05.
 
@@ -110,7 +109,7 @@ Holm-Bonferroni step-down across the three primary tests.
 
 All other ~80 cells in the matrix:
 
-- 7 budgets × 4 scoring modes × 3 test sets × pairwise comparisons
+- 7 budgets × 3 scoring modes × 3 test sets × pairwise comparisons
 - BM25-internal vs External BM25 comparison
 - Per-language stratification
 

@@ -50,7 +50,7 @@ def is_nontrivial(gold: list[dict], patch: str) -> bool:
     return bool(gold_files(gold) - patch_files(patch))
 
 
-def run_diffctx(repo_dir: Path, budget: int = 8000, scoring_mode: str = "hybrid", tau: float = 0.08) -> dict | None:
+def run_diffctx(repo_dir: Path, budget: int = 8000, scoring_mode: str = "ego", tau: float = 0.08) -> dict | None:
     from treemapper.diffctx.pipeline import build_diff_context
 
     try:
@@ -243,7 +243,7 @@ def evaluate_instance(
     inst: dict,
     budget: int = 8000,
     repos_dir: Path = REPOS_DIR,
-    scoring_mode: str = "hybrid",
+    scoring_mode: str = "ego",
     baseline: str = "treemapper",
     tau: float = 0.08,
 ) -> dict | None:
@@ -477,7 +477,7 @@ def main():
     parser.add_argument("--nontrivial-only", action="store_true", default=True)
     parser.add_argument("--seeds", type=str, default="42")
     parser.add_argument("--no-shuffle", action="store_true")
-    parser.add_argument("--scoring", type=str, default="hybrid", choices=["hybrid", "ppr", "ego", "bm25"])
+    parser.add_argument("--scoring", type=str, default="ego", choices=["ppr", "ego", "bm25"])
     parser.add_argument("--baseline", type=str, default="treemapper", choices=["treemapper", "patch_files", "bm25"])
     parser.add_argument("--dataset", type=str, default="full", choices=["verified", "full"])
     parser.add_argument("--tau", type=float, default=0.08)

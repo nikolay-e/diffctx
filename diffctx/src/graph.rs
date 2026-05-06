@@ -2,6 +2,7 @@ use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::graph_filtering::GRAPH_FILTERING;
+use crate::config::scoring::EGO;
 use crate::types::{Fragment, FragmentId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -234,45 +235,46 @@ impl Graph {
             .filter_map(|s| fwd.node_to_idx.get(s).copied())
             .collect();
 
-        let per_seed: Vec<Vec<(u32, u32)>> = valid_seed_idxs
+        let per_seed: Vec<Vec<(u32, u32, f64)>> = valid_seed_idxs
             .par_iter()
-            .map(|&seed_idx| bfs_from_seed_csr(fwd, rev, seed_idx, radius))
+            .map(|&seed_idx| bfs_from_seed_with_path_weight(fwd, rev, seed_idx, radius))
             .collect();
 
-        let mut best_dist: FxHashMap<u32, u32> = FxHashMap::default();
+        let gamma = EGO.per_hop_decay;
+        let mut scores: FxHashMap<u32, f64> = FxHashMap::default();
         for visits in per_seed {
-            for (idx, dist) in visits {
-                let entry = best_dist.entry(idx).or_insert(u32::MAX);
-                if dist < *entry {
-                    *entry = dist;
-                }
+            for (idx, dist, w_path) in visits {
+                let contribution = gamma.powi(dist as i32) * w_path;
+                *scores.entry(idx).or_insert(0.0) += contribution;
             }
         }
 
-        let mut scores: FxHashMap<FragmentId, f64> = FxHashMap::default();
-        for (idx, dist) in best_dist {
-            let hop_score = if dist > 0 {
-                1.0 / (1 + dist) as f64
-            } else {
-                1.0
-            };
-            scores.insert(fwd.idx_to_node[idx as usize].clone(), hop_score);
-        }
-
         scores
+            .into_iter()
+            .map(|(idx, score)| (fwd.idx_to_node[idx as usize].clone(), score))
+            .collect()
     }
 }
 
-fn bfs_from_seed_csr(
+/// BFS over `fwd ∪ rev` from a single seed, tracking both the shortest
+/// hop distance and the max-product edge-weight path of that length.
+///
+/// Implements the paper's `R_ego` kernel (§4.4.2):
+/// `R_ego(v) = Σ_{u∈E_0} 1[d_hop(u,v) ≤ L] · γ^{d_hop} · W_path(u,v)`
+/// where `W_path(u,v) = max_π ∏_{(a,b)∈π} w_{ab}` over paths of length
+/// equal to `d_hop`. The `Σ` over seeds is performed in `ego_graph`;
+/// per-seed shortest-distance + max-product is computed here.
+fn bfs_from_seed_with_path_weight(
     fwd: &CsrGraph,
     rev: &CsrGraph,
     seed_idx: u32,
     radius: usize,
-) -> Vec<(u32, u32)> {
+) -> Vec<(u32, u32, f64)> {
     let n = fwd.n;
     let mut dist = vec![u32::MAX; n];
+    let mut max_w = vec![0.0_f64; n];
     dist[seed_idx as usize] = 0;
-    let mut result: Vec<(u32, u32)> = vec![(seed_idx, 0)];
+    max_w[seed_idx as usize] = 1.0;
     let mut frontier: Vec<u32> = vec![seed_idx];
 
     for step in 0..radius {
@@ -280,15 +282,21 @@ fn bfs_from_seed_csr(
         let mut next: Vec<u32> = Vec::new();
         for &u in &frontier {
             let ui = u as usize;
+            let w_u = max_w[ui];
             for csr in [fwd, rev] {
                 let s = csr.indptr[ui] as usize;
                 let e = csr.indptr[ui + 1] as usize;
                 for k in s..e {
                     let v = csr.indices[k];
-                    if dist[v as usize] == u32::MAX {
-                        dist[v as usize] = new_dist;
+                    let w_uv = csr.weights[k];
+                    let candidate = w_u * w_uv;
+                    let vi = v as usize;
+                    if dist[vi] == u32::MAX {
+                        dist[vi] = new_dist;
+                        max_w[vi] = candidate;
                         next.push(v);
-                        result.push((v, new_dist));
+                    } else if dist[vi] == new_dist && candidate > max_w[vi] {
+                        max_w[vi] = candidate;
                     }
                 }
             }
@@ -296,6 +304,12 @@ fn bfs_from_seed_csr(
         frontier = next;
     }
 
+    let mut result = Vec::new();
+    for i in 0..n {
+        if dist[i] != u32::MAX {
+            result.push((i as u32, dist[i], max_w[i]));
+        }
+    }
     result
 }
 
@@ -621,9 +635,66 @@ mod tests {
         seeds.insert(a.clone());
         let scores = g.ego_graph(&seeds, 2);
 
-        assert_eq!(scores[&a], 1.0);
-        assert!((scores[&b] - 0.5).abs() < 1e-9);
-        assert!((scores[&c] - 1.0 / 3.0).abs() < 1e-9);
+        let gamma = crate::config::scoring::EGO.per_hop_decay;
+        assert!((scores[&a] - 1.0).abs() < 1e-9);
+        assert!((scores[&b] - gamma).abs() < 1e-9);
+        assert!((scores[&c] - gamma * gamma).abs() < 1e-9);
+    }
+
+    #[test]
+    fn ego_graph_sums_over_seeds() {
+        let mut g = Graph::new();
+        let a = fid("a.rs", 1, 10);
+        let b = fid("b.rs", 1, 10);
+        let v = fid("v.rs", 1, 10);
+        g.add_node(a.clone());
+        g.add_node(b.clone());
+        g.add_node(v.clone());
+        g.add_edge(a.clone(), v.clone(), 1.0);
+        g.add_edge(b.clone(), v.clone(), 1.0);
+        g.freeze();
+
+        let mut seeds = FxHashSet::default();
+        seeds.insert(a.clone());
+        seeds.insert(b.clone());
+        let scores = g.ego_graph(&seeds, 1);
+
+        let gamma = crate::config::scoring::EGO.per_hop_decay;
+        assert!(
+            (scores[&v] - 2.0 * gamma).abs() < 1e-9,
+            "v reached by 2 seeds at d=1 must score 2·γ; got {}",
+            scores[&v]
+        );
+    }
+
+    #[test]
+    fn ego_graph_uses_path_weight() {
+        let mut g = Graph::new();
+        let a = fid("a.rs", 1, 10);
+        let b = fid("b.rs", 1, 10);
+        let c = fid("c.rs", 1, 10);
+        g.add_node(a.clone());
+        g.add_node(b.clone());
+        g.add_node(c.clone());
+        g.add_edge(a.clone(), b.clone(), 0.7);
+        g.add_edge(b.clone(), c.clone(), 0.4);
+        g.freeze();
+
+        let mut seeds = FxHashSet::default();
+        seeds.insert(a.clone());
+        let scores = g.ego_graph(&seeds, 2);
+
+        let gamma = crate::config::scoring::EGO.per_hop_decay;
+        assert!(
+            (scores[&b] - gamma * 0.7).abs() < 1e-9,
+            "1-hop weighted score = γ·0.7; got {}",
+            scores[&b]
+        );
+        assert!(
+            (scores[&c] - gamma * gamma * 0.7 * 0.4).abs() < 1e-9,
+            "2-hop product-of-weights score = γ²·0.7·0.4; got {}",
+            scores[&c]
+        );
     }
 
     #[test]

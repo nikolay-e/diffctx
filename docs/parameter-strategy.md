@@ -121,10 +121,6 @@ environment variables to enable the sweep without rebuild.
 | `FILTERING.definition_proximity_half_decay`      | `DIFFCTX_OP_FILTERING_DEFINITION_PROXIMITY_HALF_DECAY`   | 5.0     |
 | `BOLTZMANN.calibration_tolerance`                | `DIFFCTX_OP_BOLTZMANN_CALIBRATION_TOLERANCE`             | 0.05    |
 
-The `MODE.hybrid_large_candidate_threshold` discrete switch is also
-overridable via `DIFFCTX_OP_MODE_HYBRID_LARGE_CANDIDATE_THRESHOLD` for
-ablation, though it is not perturbed in the standard sweep.
-
 ## Tier ratios
 
 - Calibrated : domain priors : operational ≈ **10 : 265 : 15**

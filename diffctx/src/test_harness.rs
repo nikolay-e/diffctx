@@ -123,7 +123,7 @@ fn run_single_test(case: &TestCase) -> TestResult {
     let budget = calculate_budget(case);
 
     let output =
-        build_diff_context_in_memory(&repo, Some(budget), 0.60, 0.05, false, ScoringMode::Hybrid);
+        build_diff_context_in_memory(&repo, Some(budget), 0.60, 0.05, false, ScoringMode::Ego);
 
     let oracle = evaluate_oracle(case, &output);
     let xfail_active = case.xfail.as_ref().map(|x| x.is_active()).unwrap_or(false);

@@ -69,7 +69,7 @@ def main() -> int:
         help="Comma-separated core_budget_fraction values",
     )
     p.add_argument("--budget", type=int, default=8000)
-    p.add_argument("--scoring", default="hybrid")
+    p.add_argument("--scoring", default="ego")
     p.add_argument("--workers", type=int, default=40)
     p.add_argument("--top-k", type=int, default=3)
     p.add_argument("--out", type=Path, required=True)

@@ -188,6 +188,41 @@
   matching feature list (`lang-core` or `lang-extra`) WITHOUT `dep:` prefix,
   add `#[cfg]`-gated insert in `tree_sitter_strategy.rs::LANGUAGE_CACHE`
 
+## Windows CI Compatibility
+
+- `fcntl` is Unix-only; `msvcrt.locking` is the Windows equivalent. For code
+  that runs on CI (not on the bench server), guard Unix-only imports:
+
+  ```python
+  try:
+      import fcntl as _fcntl
+  except ImportError:
+      _fcntl = None  # type: ignore[assignment]
+  ```
+
+- Bench jobs (common.py, diffctx_eval_fn.py) import `fcntl` only for the
+  `_cache_lock` function — benchmark code never runs on Windows, but the
+  test suite imports these modules. The `try/except` pattern keeps tests
+  runnable on Windows while bench logic remains Linux-only.
+
+## Bench Sweep Smoke QA
+
+- **Always read GH Actions logs in full before diagnosing failures** — summary
+  counts (n_ok/n_total) do not distinguish between bugs and expected infra failures.
+  Two common false-positive patterns:
+  - `oom_kill` (SIGKILL -9) on large repos like `astropy/astropy` — expected on GH
+    runners with 7GB RAM; not a bug in the algorithm.
+  - `clone_fail` / `clone_timeout` — transient network or GH rate-limit; retry or
+    skip, not a code regression.
+- **Picklable eval functions** — eval_fn passed to pebble `ProcessPool.schedule()`
+  must be picklable. Local closures (`def eval_fn(...)` inside a factory function)
+  are NOT picklable. Use `functools.partial` + module-level function.
+  Attaching `.shutdown` as a lambda is also not picklable — use a module-level
+  `_noop_shutdown` function.
+- `make_aider_eval_fn` was fixed to use `functools.partial(_pool_eval_aider, ...)`.
+  The `_AiderProcess` is now created lazily per-worker-process via a module-level
+  `_AIDER_PROC` global (no inter-process sharing needed).
+
 ## actionlint context restrictions
 
 - `${{ env.X }}` is BANNED inside `env:` blocks at any level (workflow, job,
@@ -242,8 +277,53 @@ this QA pass (touching benchmark code = regression risk on v1 results):
   `# noqa: C901` for ruff (orchestration with timeout/exception/checkpoint dispatch
   does not factor cleanly without behavior change)
 - `benchmarks/adapters/evaluator.py:49` (32→15)
-- `scripts/bake_bench_cache.py:72` (16→15)
-
 Tactic from earlier passes (already in this file): extract `_collect_result`
 helpers and `_print_*_header`/`_print_*_dump` blocks. Pair with v2 evaluation
 re-run so any drift is caught.
+
+## Bench Sweep Workflow Trapdoors
+
+- `gh workflow run bench-sweep.yml -f mode=full --ref main` is the trigger.
+  `mode=smoke` (the default!) runs 4 cells on `ubuntu-latest`, NOT on
+  Hetzner — useful for sanity, useless for paper results. Always pass
+  `-f mode=full` explicitly when you want the real sweep.
+- Concurrency group `bench-sweep` is `cancel-in-progress: false`. A second
+  trigger while another sweep is running will QUEUE behind it, not run in
+  parallel and not cancel the first. Before triggering, check
+  `gh run list --workflow=bench-sweep.yml --limit 3` and verify there isn't
+  already an in-progress run from the IDE / a teammate / a webapp Claude
+  session — otherwise you waste Hetzner CCX63 credits when the queued run
+  finally fires.
+- The CCX63 cloud-init pulls `treemapper-bench:latest` at provision time.
+  CI on push to `main` rebuilds and re-tags `:latest` (~5-6 min). If you
+  push code and immediately trigger a full sweep, the `provision` job may
+  pull the OLD image. Safe order: push → wait for `treemapper CI` job to
+  hit `success` → trigger sweep. The smoke workflow (which runs from the
+  source branch directly, not from a docker image) is unaffected.
+
+## Paper-vs-Code Alignment (algorithmic fixes that ship together)
+
+Three Tier-0 fixes from the v2 paper audit landed as a single commit:
+
+1. EGO scoring kernel: `Σ_seeds γ^d · W_path` with `EgoScoringConfig.per_hop_decay`
+   (env `DIFFCTX_EGO_PER_HOP_DECAY`, default 0.5). Replaces the prior
+   `1/(1+d)` min-aggregation. Tests `ego_graph_sums_over_seeds` and
+   `ego_graph_uses_path_weight` lock in the new formula.
+2. Khuller H₁ over the FULL ground set with `|f| ≤ B` (paper's strict
+   formulation) — `find_best_singleton_full_set` in `select.rs`. The lone
+   H₁ alternative may return a singleton with no core; the
+   `ensure_changed_files_represented` post-pass restores changed-file
+   representation in that case.
+3. Boltzmann `calibrate_beta` rewritten as a boundary search.
+   `boltzmann_select` budget-caps `used_tokens` at the target, so the
+   symmetric `|cost − B| < ε` collapses to `cost ≥ B − tol`. Both bisection
+   branches stay live: `lo=mid` advances when cost saturates, `hi=mid`
+   retreats when cost drops.
+
+Algorithmic shifts of this magnitude **break locked yaml_cases assertions**
+(typically 10-20% of cases drop below `min_score=10%`). Don't rebaseline
+yaml_cases until the new sweep validates the algorithmic delta — otherwise
+you cement an oracle against a kernel you may revert.
+
+The paper-side audit document (`/think` protocol) lives outside git
+intentionally; consolidated findings are in commit messages and this file.

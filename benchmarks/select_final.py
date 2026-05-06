@@ -35,7 +35,7 @@ def _load_candidates(path: Path) -> list[RunParams]:
                 tau=float(c["tau"]),
                 core_budget_fraction=float(c["core_budget_fraction"]),
                 budget=int(c.get("budget", 8000)),
-                scoring=str(c.get("scoring", "hybrid")),
+                scoring=str(c.get("scoring", "ego")),
             )
         )
     return out

@@ -1,3 +1,7 @@
+use mimalloc::MiMalloc;
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
+
 use std::path::PathBuf;
 
 use anyhow::Result;
@@ -38,7 +42,7 @@ struct Cli {
     #[arg(long)]
     full: bool,
 
-    #[arg(long, default_value = "hybrid")]
+    #[arg(long, default_value = "ego")]
     scoring: String,
 
     #[arg(long, default_value_t = DEFAULT_PIPELINE_TIMEOUT_SECONDS)]

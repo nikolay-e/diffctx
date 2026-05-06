@@ -11,7 +11,7 @@ from pathlib import Path
 from benchmarks.common import load_results
 
 BUDGETS = [8000, 16000, 32000, 64000, 999999]
-MODES = ["hybrid", "ego", "ppr"]
+MODES = ["ego", "ppr"]
 
 
 def _clean_env() -> dict[str, str]:

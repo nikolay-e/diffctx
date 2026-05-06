@@ -96,8 +96,7 @@ pub fn build_diff_context_in_memory(
     all_fragments.extend(sig_frags);
 
     let effective_budget = budget_tokens.unwrap_or(BUDGET.unlimited);
-    let n_context = allowed_paths.len();
-    let config = PipelineConfig::from_mode(scoring_mode, n_context);
+    let config = PipelineConfig::from_mode(scoring_mode);
     let seed_weights = compute_seed_weights(&hunks, &core_ids, &all_fragments);
 
     let discovered_arc: FxHashSet<Arc<str>> = discovered_paths

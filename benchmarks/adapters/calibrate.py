@@ -18,7 +18,7 @@ class GridSpec:
     tau_values: tuple[float, ...]
     core_budget_fraction_values: tuple[float, ...]
     budget: int = 8000
-    scoring: str = "hybrid"
+    scoring: str = "ego"
 
     def __post_init__(self) -> None:
         if not self.tau_values:

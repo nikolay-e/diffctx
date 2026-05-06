@@ -211,7 +211,7 @@ impl FragmentIterator {
     no_default_ignores = false,
     full = false,
     whitelist_file = None,
-    scoring_mode = "hybrid",
+    scoring_mode = "ego",
     timeout = DEFAULT_PIPELINE_TIMEOUT_SECONDS,
 ))]
 fn build_diff_context<'py>(
@@ -322,7 +322,7 @@ fn build_diff_context<'py>(
     root_dir,
     diff_range,
     alpha = DEFAULT_PPR_ALPHA,
-    scoring_mode = "hybrid",
+    scoring_mode = "ego",
     timeout = DEFAULT_PIPELINE_TIMEOUT_SECONDS,
 ))]
 fn compute_scored_state(

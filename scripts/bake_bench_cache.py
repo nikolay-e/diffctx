@@ -82,6 +82,22 @@ def _apply_perf_config(cache_dir: Path) -> None:
         )
 
 
+def _clone_attempt(url: str, cache_dir: Path) -> str | None:
+    try:
+        r = subprocess.run(
+            ["git", "clone", "--bare", url, str(cache_dir)],
+            capture_output=True,
+            timeout=CLONE_TIMEOUT_SECS,
+        )
+    except subprocess.TimeoutExpired:
+        _purge(cache_dir)
+        return f"timeout after {CLONE_TIMEOUT_SECS}s"
+    if r.returncode != 0:
+        _purge(cache_dir)
+        return r.stderr.decode("utf-8", "replace")[:500]
+    return None
+
+
 def clone_one(repo: str, url: str, target: Path) -> tuple[str, bool, str]:
     cache_dir = target / safe_name(repo)
     if cache_dir.exists():
@@ -93,30 +109,14 @@ def clone_one(repo: str, url: str, target: Path) -> tuple[str, bool, str]:
     last_err = ""
     for attempt in range(1, NETWORK_RETRY_ATTEMPTS + 1):
         print(f"  CLONE {repo} <- {url} (attempt {attempt})", flush=True)
-        try:
-            r = subprocess.run(
-                ["git", "clone", "--bare", url, str(cache_dir)],
-                capture_output=True,
-                timeout=CLONE_TIMEOUT_SECS,
-            )
-        except subprocess.TimeoutExpired:
-            _purge(cache_dir)
-            last_err = f"timeout after {CLONE_TIMEOUT_SECS}s"
+        last_err = _clone_attempt(url, cache_dir) or ""
+        if last_err:
             if attempt < NETWORK_RETRY_ATTEMPTS:
                 time.sleep(NETWORK_RETRY_BACKOFF_SECS * (2 ** (attempt - 1)))
             continue
-
-        if r.returncode != 0:
-            _purge(cache_dir)
-            last_err = r.stderr.decode("utf-8", "replace")[:500]
-            if attempt < NETWORK_RETRY_ATTEMPTS:
-                time.sleep(NETWORK_RETRY_BACKOFF_SECS * (2 ** (attempt - 1)))
-            continue
-
         if not _is_valid_bare(cache_dir):
             _purge(cache_dir)
             return repo, False, "post-clone validation failed"
-
         _apply_perf_config(cache_dir)
         return repo, True, "cloned"
 

@@ -26,7 +26,7 @@ def compute_scored_state(
     root_dir: Path,
     diff_range: str,
     alpha: float = 0.60,
-    scoring_mode: str = "hybrid",
+    scoring_mode: str = "ego",
     timeout: int = _PIPELINE_TIMEOUT,
 ) -> Any:
     """Heavy-phase compute, returns an opaque PyScoredState. Reuse it
@@ -71,7 +71,7 @@ def build_diff_context(
     no_default_ignores: bool = False,
     full: bool = False,
     whitelist_file: Path | None = None,
-    scoring_mode: str = "hybrid",
+    scoring_mode: str = "ego",
     timeout: int = _PIPELINE_TIMEOUT,
 ) -> dict[str, Any]:
     from _diffctx import build_diff_context as _rust_build

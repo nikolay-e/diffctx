@@ -326,7 +326,7 @@ jobs:
   # ============================================================================
   smoke-bench:
     name: Trigger smoke sweep
-    needs: [test, bench-image]
+    needs: [bench-image]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
