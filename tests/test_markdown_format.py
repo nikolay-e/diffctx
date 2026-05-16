@@ -4,10 +4,10 @@ import re
 
 import pytest
 
-from treemapper import map_directory
-from treemapper.writer import _get_fence_length, _infer_language, _is_placeholder, tree_to_string, write_tree_markdown
+from diffctx import map_directory
+from diffctx.writer import _get_fence_length, _infer_language, _is_placeholder, tree_to_string, write_tree_markdown
 
-from .conftest import run_treemapper_subprocess
+from .conftest import run_diffctx_subprocess
 
 
 class TestMarkdownOutput:
@@ -273,7 +273,7 @@ class TestTreeToStringMarkdown:
 
 class TestMarkdownCLI:
     def test_md_format_cli(self, temp_project):
-        result = run_treemapper_subprocess([str(temp_project), "--format", "md"])
+        result = run_diffctx_subprocess([str(temp_project), "--format", "md"])
         assert result.returncode == 0
         assert f"# {temp_project.name}/" in result.stdout
 
@@ -289,7 +289,7 @@ class TestMarkdownCLI:
         test_file = temp_project / "test.py"
         test_file.write_text("def hello():\n    return 42\n", encoding="utf-8")
 
-        result = run_treemapper_subprocess([str(temp_project), "--format", "md"])
+        result = run_diffctx_subprocess([str(temp_project), "--format", "md"])
         assert result.returncode == 0
         assert "def hello():" in result.stdout
         assert "```python" in result.stdout

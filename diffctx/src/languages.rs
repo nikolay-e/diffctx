@@ -181,7 +181,7 @@ pub static FILENAME_TO_LANGUAGE: Lazy<FxHashMap<&'static str, &'static str>> = L
         (".gitattributes", "gitattributes"),
         (".gitignore", "gitignore"),
         (".dockerignore", "gitignore"),
-        (".treemapperignore", "gitignore"),
+        (".diffctxignore", "gitignore"),
         (".npmrc", "ini"),
         (".yarnrc", "yaml"),
         (".prettierrc", "json"),
@@ -243,9 +243,6 @@ pub static TREE_SITTER_LANGUAGES: Lazy<FxHashMap<&'static str, &'static str>> = 
         (".rake", "ruby"),
         (".gemspec", "ruby"),
         (".cs", "c_sharp"),
-        (".fs", "c_sharp"),
-        (".fsi", "c_sharp"),
-        (".fsx", "c_sharp"),
         (".php", "php"),
         (".phtml", "php"),
         (".scala", "scala"),
@@ -296,8 +293,6 @@ pub static TREE_SITTER_LANGUAGES: Lazy<FxHashMap<&'static str, &'static str>> = 
         (".yml", "yaml"),
         (".cmake", "cmake"),
         (".mk", "make"),
-        (".kt", "java"),
-        (".kts", "java"),
     ];
 
     let mut map = FxHashMap::with_capacity_and_hasher(entries.len(), Default::default());

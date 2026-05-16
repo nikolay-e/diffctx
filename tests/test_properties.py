@@ -9,9 +9,9 @@ pytest.importorskip("hypothesis")
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from treemapper import to_yaml
-from treemapper.ignore import read_ignore_file
-from treemapper.tree import _read_file_content
+from diffctx import to_yaml
+from diffctx.ignore import read_ignore_file
+from diffctx.tree import _read_file_content
 
 # Include problematic NEL character (U+0085) that was causing YAML roundtrip failures
 filename_chars_with_nel = st.text(
@@ -39,7 +39,7 @@ def test_file_content_no_null_bytes(content):
 )
 @settings(max_examples=50)
 def test_binary_detection_with_null_byte(data, null_offset):
-    from treemapper.tree import BINARY_DETECTION_SAMPLE_SIZE
+    from diffctx.tree import BINARY_DETECTION_SAMPLE_SIZE
 
     max_insert = min(len(data), BINARY_DETECTION_SAMPLE_SIZE - 1)
     insert_pos = null_offset % (max_insert + 1)
@@ -150,7 +150,7 @@ def test_yaml_roundtrip_nested_tree(tree):
 def test_json_roundtrip_preserves_structure(node):
     import json
 
-    from treemapper import to_json
+    from diffctx import to_json
 
     json_str = to_json(node)
     parsed = json.loads(json_str)

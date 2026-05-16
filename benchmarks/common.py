@@ -524,7 +524,7 @@ def _init_worker() -> None:
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
     for mod in (
-        "_diffctx",
+        "treemapper._diffctx",
         "treemapper.diffctx.pipeline",
         "tiktoken",
     ):

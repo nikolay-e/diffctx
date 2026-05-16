@@ -1,7 +1,7 @@
 # tests/test_options.py
-from treemapper import map_directory
+from diffctx import map_directory
 
-from .conftest import run_treemapper_subprocess
+from .conftest import run_diffctx_subprocess
 from .utils import load_yaml
 
 
@@ -174,7 +174,7 @@ def test_log_level_with_max_file_bytes(temp_project):
 
     output_file = temp_project / "output.yaml"
 
-    result = run_treemapper_subprocess(
+    result = run_diffctx_subprocess(
         [
             str(temp_project),
             "-o",
@@ -192,7 +192,7 @@ def test_log_level_with_max_file_bytes(temp_project):
 
 
 def test_max_file_bytes_zero_is_error(temp_project):
-    result = run_treemapper_subprocess([str(temp_project), "--max-file-bytes", "0"])
+    result = run_diffctx_subprocess([str(temp_project), "--max-file-bytes", "0"])
     assert result.returncode != 0
     assert "ambiguous" in result.stderr.lower()
     assert "--no-file-size-limit" in result.stderr
@@ -218,9 +218,9 @@ def test_no_file_size_limit_includes_all(run_mapper, temp_project):
 
 
 def test_default_max_file_bytes_limit(temp_project):
-    from treemapper.cli import DEFAULT_MAX_FILE_BYTES
+    from diffctx.cli import DEFAULT_MAX_FILE_BYTES
 
-    assert DEFAULT_MAX_FILE_BYTES == 10 * 1024 * 1024
+    assert DEFAULT_MAX_FILE_BYTES == 256 * 1024
 
 
 def test_known_binary_extension_detected(run_mapper, temp_project):
@@ -282,7 +282,7 @@ def test_output_file_without_argument_respects_format(run_mapper, temp_project):
 
 
 def test_max_safe_file_size_constant():
-    from treemapper.tree import MAX_SAFE_FILE_SIZE
+    from diffctx.tree import MAX_SAFE_FILE_SIZE
 
     assert MAX_SAFE_FILE_SIZE == 100 * 1024 * 1024
 
@@ -290,7 +290,7 @@ def test_max_safe_file_size_constant():
 def test_max_depth_zero_warning(temp_project):
     (temp_project / "test.txt").write_text("content", encoding="utf-8")
 
-    result = run_treemapper_subprocess([str(temp_project), "--max-depth", "0"])
+    result = run_diffctx_subprocess([str(temp_project), "--max-depth", "0"])
 
     assert result.returncode == 0
     assert "max-depth 0" in result.stderr.lower() or "empty tree" in result.stderr.lower()

@@ -28,7 +28,7 @@ def mcp_repo(tmp_path):
 
 @pytest.fixture
 def server():
-    from treemapper.mcp.server import mcp
+    from diffctx.mcp.server import mcp
 
     return mcp
 
@@ -92,7 +92,7 @@ class TestGetDiffContext:
 
     @pytest.mark.asyncio
     async def test_allowed_paths_enforcement(self, server, mcp_repo, monkeypatch):
-        monkeypatch.setenv("TREEMAPPER_ALLOWED_PATHS", "/some/other/path")
+        monkeypatch.setenv("DIFFCTX_ALLOWED_PATHS", "/some/other/path")
         with pytest.raises(ToolError, match="not in allowed paths"):
             await server.call_tool(
                 "get_diff_context",

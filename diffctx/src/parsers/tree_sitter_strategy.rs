@@ -711,29 +711,6 @@ const LANG_CONFIGS: &[LangConfig] = &[
             "enum_declaration",
         ],
     },
-    // --- Kotlin (parsed as Java - close enough for fragmentation) ---
-    LangConfig {
-        extension: ".kt",
-        ts_name: "java",
-        definition_types: &[
-            "method_declaration",
-            "class_declaration",
-            "interface_declaration",
-            "enum_declaration",
-            "constructor_declaration",
-        ],
-    },
-    LangConfig {
-        extension: ".kts",
-        ts_name: "java",
-        definition_types: &[
-            "method_declaration",
-            "class_declaration",
-            "interface_declaration",
-            "enum_declaration",
-            "constructor_declaration",
-        ],
-    },
     // --- C++ extra extensions ---
     LangConfig {
         extension: ".c++",
@@ -789,49 +766,6 @@ const LANG_CONFIGS: &[LangConfig] = &[
             "type_definition",
             "using_declaration",
             "alias_declaration",
-        ],
-    },
-    // --- F# (parsed as C# - closest available grammar) ---
-    LangConfig {
-        extension: ".fs",
-        ts_name: "c_sharp",
-        definition_types: &[
-            "method_declaration",
-            "class_declaration",
-            "interface_declaration",
-            "struct_declaration",
-            "enum_declaration",
-            "record_declaration",
-            "property_declaration",
-            "constructor_declaration",
-        ],
-    },
-    LangConfig {
-        extension: ".fsi",
-        ts_name: "c_sharp",
-        definition_types: &[
-            "method_declaration",
-            "class_declaration",
-            "interface_declaration",
-            "struct_declaration",
-            "enum_declaration",
-            "record_declaration",
-            "property_declaration",
-            "constructor_declaration",
-        ],
-    },
-    LangConfig {
-        extension: ".fsx",
-        ts_name: "c_sharp",
-        definition_types: &[
-            "method_declaration",
-            "class_declaration",
-            "interface_declaration",
-            "struct_declaration",
-            "enum_declaration",
-            "record_declaration",
-            "property_declaration",
-            "constructor_declaration",
         ],
     },
     // --- Makefile ---

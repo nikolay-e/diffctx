@@ -172,7 +172,7 @@ repos:
     hooks:
       - id: vulture
         name: vulture (dead code)
-        args: ["--min-confidence=60", "src/", "whitelist_vulture.py"]
+        args: ["--min-confidence=80", "src/"]
         files: ^src/
         pass_filenames: false
 

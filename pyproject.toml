@@ -1,10 +1,11 @@
 # pyproject.toml
 [build-system]
-build-backend = "setuptools.build_meta"
-requires = [ "setuptools>=77", "wheel" ]
+build-backend = "maturin"
+requires = [ "maturin>=1.10,<1.14" ]
 
 [project]
-name = "treemapper"
+name = "diffctx"
+version = "1.7.0"
 description = "Export codebase structure and contents for AI/LLM context"
 readme = "README.md"
 keywords = [
@@ -52,61 +53,39 @@ classifiers = [
   "Topic :: Utilities",
   "Typing :: Typed",
 ]
-dynamic = [ "version" ]  # Version is still managed in version.py
 dependencies = [
-  "numpy>=1.24,<3.0",
   "pathspec>=0.11,<2.0",
 ]
 optional-dependencies.dev = [
   "black>=23.0.0,<27.0",
-  # Build and release
-  "build>=0.10,<2.0",
   "charset-normalizer>=3.0,<4.0",
   "coverage>=7.0,<8.0",
+  "diffctx[tree-sitter]",
   "hypothesis>=6.0,<7.0",
   "import-linter>=2.0,<3.0",
-  "lxml>=5.0,<7.0",
-  "mistune>=3.0,<4.0",
-  "mutmut>=3.5,<4.0",
-  "mypy>=1.0,<2.0",
-  "pebble>=5.0,<6.0",
+  "mypy>=1.0,<3.0",
   "pre-commit>=3.0,<5.0",
   "pygit2>=1.12,<2.0",
-  "pyinstaller>=5.0,<7.0",
   "pytest>=7.0,<10.0",
   "pytest-cov>=3.0,<8.0",
   "pytest-timeout>=2.1,<3.0",
   "pytest-xdist>=3.0,<4.0",
   "pyyaml>=6.0.2,<8.0",
   "radon>=6.0,<7.0",
-  "rank-bm25>=0.2,<1.0",
-  "ruamel-yaml>=0.18,<1.0",
-  # Quality checks
   "ruff>=0.4,<1.0",
-  "tiktoken==0.12.0",
-  "treemapper[tree-sitter]",
-  # Type stubs
+  "tiktoken>=0.9,<1.0",
   "types-pyyaml>=6.0,<7.0",
 ]
-optional-dependencies.embeddings = [
-  # Semantic code embeddings for diffctx
-  "sentence-transformers>=3.0,<6.0",
+optional-dependencies.diffctx = [
+  "numpy>=1.24,<3.0",
 ]
 optional-dependencies.full = [
   "charset-normalizer>=3.0,<4.0",
-  "lxml>=5.0,<7.0",
-  "mistune>=3.0,<4.0",
-  "pysbd>=0.3,<1.0",
-  "ruamel-yaml>=0.18,<1.0",
-  "treemapper[tree-sitter]",
+  "diffctx[tree-sitter]",
 ]
 optional-dependencies.mcp = [
   "anyio>=4.5,<5.0",
   "mcp>=1.27,<2.0",
-]
-optional-dependencies.nlp = [
-  # Natural language processing for document tokenization
-  "spacy>=3.7,<4.0",
 ]
 optional-dependencies.tree-sitter = [
   "tree-sitter>=0.21,<1.0",
@@ -127,18 +106,33 @@ optional-dependencies.tree-sitter = [
   "tree-sitter-swift>=0.0.1,<1.0",
   "tree-sitter-typescript>=0.21,<1.0",
 ]
-urls.Changelog = "https://github.com/nikolay-e/treemapper/releases"
-urls.Homepage = "https://github.com/nikolay-e/treemapper"
-urls.Issues = "https://github.com/nikolay-e/treemapper/issues"
-urls.Repository = "https://github.com/nikolay-e/treemapper"
-scripts.treemapper = "treemapper.treemapper:main"
-scripts.treemapper-mcp = "treemapper.mcp.server:run_server"
+urls.Changelog = "https://github.com/nikolay-e/diffctx/releases"
+urls.Homepage = "https://github.com/nikolay-e/diffctx"
+urls.Issues = "https://github.com/nikolay-e/diffctx/issues"
+urls.Repository = "https://github.com/nikolay-e/diffctx"
+scripts.diffctx = "diffctx.main:main"
+scripts.diffctx-mcp = "diffctx.mcp.__main__:main"
 
-[tool.setuptools]
-package-dir = { "" = "src" }
-dynamic.version = { attr = "treemapper.version.__version__" }
-package-data.treemapper = [ "py.typed" ]
-packages.find.where = [ "src" ]
+[tool.maturin]
+python-source = "src"
+module-name = "diffctx._diffctx"
+manifest-path = "diffctx/Cargo.toml"
+features = [ "pyo3/extension-module", "python" ]
+# Single-source the wheel version from diffctx/Cargo.toml [package].version.
+# Maturin >= 1.8 reads the Cargo manifest version when `[project].dynamic`
+# contains "version" and the explicit `[project].version` line is removed
+# (PEP 621). On the next release, replace `version = "..."` in [project] with
+# `dynamic = ["version"]` to activate single-sourcing. Until then, keep the
+# two versions manually aligned (Cargo.toml = pyproject.toml = 1.7.0).
+include = [
+  { path = "LICENSE", format = "sdist" },
+  { path = "README.md", format = "sdist" },
+  { path = "CHANGELOG.md", format = "sdist" },
+  { path = "diffctx/Cargo.toml", format = "sdist" },
+  { path = "diffctx/Cargo.lock", format = "sdist" },
+  { path = "diffctx/src/**/*", format = "sdist" },
+  { path = "rust-toolchain.toml", format = "sdist" },
+]
 
 [tool.black]
 line-length = 130
@@ -148,7 +142,6 @@ target-version = "py310"
 line-length = 130
 lint.select = [ "C901", "E", "F", "I", "N", "RUF", "UP", "W" ]
 lint.ignore = [ "E501" ]  # Line length handled by black
-lint.per-file-ignores."whitelist_vulture.py" = [ "F401", "F821" ]
 lint.mccabe.max-complexity = 15
 
 [tool.pyproject-fmt]
@@ -169,7 +162,7 @@ run.omit = [
   "*/__pycache__/*",
   "*/tests/*",
 ]
-run.source = [ "treemapper" ]
+run.source = [ "diffctx" ]
 report.exclude_lines = [
   "@(abc\\.)?abstractmethod",
   "if __name__ == .__main__.:",
@@ -232,11 +225,12 @@ module = [
   "mcp.server",
   "mcp.server.fastmcp",
   "anyio",
+  "diffctx._diffctx",
   "_diffctx",
   "pathspec",
-  "treemapper.diffctx.edges",
-  "treemapper.diffctx.edges.*",
-  "treemapper.diffctx.embeddings",
+  "diffctx.diffctx.edges",
+  "diffctx.diffctx.edges.*",
+  "diffctx.diffctx.embeddings",
   "charset_normalizer",
   "datasets",
 ]
@@ -244,70 +238,70 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = [
-  "treemapper.ignore",
-  "treemapper.tree",
-  "treemapper.diffctx.universe",
+  "diffctx.ignore",
+  "diffctx.tree",
+  "diffctx.diffctx.universe",
 ]
 disable_error_code = [ "type-arg" ]
 
 [[tool.mypy.overrides]]
-module = [ "treemapper.mcp.*" ]
+module = [ "diffctx.mcp.*" ]
 disallow_untyped_decorators = false
 
 [tool.commitizen]
 name = "cz_conventional_commits"
 tag_format = "v$version"
-version_files = [ "src/treemapper/version.py:__version__" ]
+version_files = [ "src/diffctx/version.py:__version__" ]
 
 [tool.importlinter]
-root_package = "treemapper"
+root_package = "diffctx"
 
 [[tool.importlinter.contracts]]
 id = "no-cli-writer"
 name = "CLI should not import writer directly"
 type = "forbidden"
-source_modules = [ "treemapper.cli" ]
-forbidden_modules = [ "treemapper.writer" ]
+source_modules = [ "diffctx.cli" ]
+forbidden_modules = [ "diffctx.writer" ]
 
 [[tool.importlinter.contracts]]
 id = "no-tree-cli"
 name = "Tree building should not import CLI"
 type = "forbidden"
-source_modules = [ "treemapper.tree" ]
-forbidden_modules = [ "treemapper.cli" ]
+source_modules = [ "diffctx.tree" ]
+forbidden_modules = [ "diffctx.cli" ]
 
 [[tool.importlinter.contracts]]
 id = "no-diffctx-writer"
 name = "Diffctx should not import writer"
 type = "forbidden"
-source_modules = [ "treemapper.diffctx" ]
-forbidden_modules = [ "treemapper.writer" ]
+source_modules = [ "diffctx.diffctx" ]
+forbidden_modules = [ "diffctx.writer" ]
 
 [[tool.importlinter.contracts]]
 id = "no-mcp-cli"
 name = "MCP server must not import CLI"
 type = "forbidden"
-source_modules = [ "treemapper.mcp" ]
-forbidden_modules = [ "treemapper.cli", "treemapper.treemapper" ]
+source_modules = [ "diffctx.mcp" ]
+forbidden_modules = [ "diffctx.cli", "diffctx.main" ]
 
 [[tool.importlinter.contracts]]
 id = "no-writer-cli"
 name = "Writer should not import CLI"
 type = "forbidden"
-source_modules = [ "treemapper.writer" ]
-forbidden_modules = [ "treemapper.cli" ]
+source_modules = [ "diffctx.writer" ]
+forbidden_modules = [ "diffctx.cli" ]
 
 [[tool.importlinter.contracts]]
 id = "no-tree-writer"
 name = "Tree building should not import writer"
 type = "forbidden"
-source_modules = [ "treemapper.tree" ]
-forbidden_modules = [ "treemapper.writer" ]
+source_modules = [ "diffctx.tree" ]
+forbidden_modules = [ "diffctx.writer" ]
 
 [tool.mutmut]
-paths_to_mutate = [ "src/treemapper/" ]
+paths_to_mutate = [ "src/diffctx/" ]
 tests_dir = [ "tests/" ]
 do_not_mutate = [
-  "src/treemapper/diffctx/parsers/__init__.py",
-  "src/treemapper/diffctx/stopwords.py",
+  "src/diffctx/diffctx/parsers/__init__.py",
+  "src/diffctx/diffctx/stopwords.py",
 ]

@@ -1,5 +1,17 @@
 name: Dependabot auto-merge
 
+# Hardened against the CVE-2025-61671 pattern (and similar):
+#   * Trust the PR author via `github.event.pull_request.user.login` only as a
+#     coarse gate. The actual security boundary is the official
+#     dependabot/fetch-metadata action, which signs over the PR contents and
+#     exposes update-type / dependency metadata in a tamper-resistant way.
+#   * Only `version-update:semver-patch` and `version-update:semver-security`
+#     are eligible for `--merge`. Minor and major bumps get `--approve` only;
+#     a human must hit the merge button.
+#   * `gh pr merge --auto --squash` lets GitHub gate the actual merge on the
+#     repository's required status checks (configured via branch protection),
+#     so we do NOT need to wait for CI inside this workflow.
+
 'on':
   pull_request_target:
     types: [opened, synchronize, reopened]
@@ -13,8 +25,23 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event.pull_request.user.login == 'dependabot[bot]'
     steps:
-      - name: Enable auto-merge for Dependabot PRs
-        run: gh pr merge --auto --squash "$PR_URL"
+      - name: Fetch Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@21025c705c08248db411dc16f3619e6b5f9ea21a  # v2.5.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Approve PR (all update types)
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr review --approve "$PR_URL"
+
+      - name: Enable auto-merge (patch + security only)
+        if: |
+          steps.meta.outputs.update-type == 'version-update:semver-patch' ||
+          steps.meta.outputs.update-type == 'version-update:semver-security'
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr merge --auto --squash "$PR_URL"

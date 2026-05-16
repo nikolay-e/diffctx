@@ -2,7 +2,7 @@
 import sys
 from io import StringIO
 
-from treemapper.tokens import TokenCountResult, count_tokens, print_token_summary
+from diffctx.tokens import TokenCountResult, count_tokens, print_token_summary
 
 
 class TestCountTokens:

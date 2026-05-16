@@ -21,6 +21,14 @@ def bootstrap_ci(values: list[float], n_iter: int = 10000, alpha: float = 0.05, 
 
 
 def paired_bootstrap_delta(before: list[float], after: list[float], n_iter: int = 10000, seed: int = 42) -> dict:
+    """Paired bootstrap on the per-instance delta `after - before`.
+
+    Returns `delta_mean`, 95% CI bounds, and a one-sided p-value
+    `P(delta_mean ≤ 0 | bootstrap)`. The p-value is clamped to `[1/n_iter, 1]`
+    — exactly 0 cannot be observed (the smallest tail mass is one resample),
+    and rendering literal 0 is misleading. Single-pair calls return NaN p
+    so downstream multiple-testing corrections can drop them.
+    """
     if not before or not after or len(before) != len(after):
         return {"delta_mean": 0.0, "ci_lo": 0.0, "ci_hi": 0.0, "p_value": 1.0}
     b = np.asarray(before, dtype=np.float64)
@@ -28,34 +36,97 @@ def paired_bootstrap_delta(before: list[float], after: list[float], n_iter: int 
     diffs = a - b
     if len(diffs) == 1:
         d = float(diffs[0])
-        return {"delta_mean": d, "ci_lo": d, "ci_hi": d, "p_value": 0.0 if d > 0 else 1.0}
+        return {"delta_mean": d, "ci_lo": d, "ci_hi": d, "p_value": float("nan")}
     rng = np.random.default_rng(seed)
     samples = rng.choice(diffs, size=(n_iter, len(diffs)), replace=True)
     boot_deltas = samples.mean(axis=1)
+    p_raw = float((boot_deltas <= 0).mean())
+    p_floor = 1.0 / n_iter
     return {
         "delta_mean": float(diffs.mean()),
         "ci_lo": float(np.percentile(boot_deltas, 2.5)),
         "ci_hi": float(np.percentile(boot_deltas, 97.5)),
-        "p_value": float((boot_deltas <= 0).mean()),
+        "p_value": max(p_raw, p_floor),
     }
 
 
 def wilcoxon_paired(before: list[float], after: list[float]) -> dict:
+    """Two-sided exact Wilcoxon signed-rank.
+
+    Returns NaN p when fewer than 6 non-zero paired differences exist — the
+    two-sided exact test cannot reach p<0.05 with n_nonzero < 6, so reporting
+    a numeric value would be misleading (typically inflated to ≈1 by the
+    default `zero_method='wilcox'` which drops zeros).
+    """
     if not before or not after or len(before) != len(after):
-        return {"statistic": 0.0, "p_value": 1.0}
+        return {"statistic": float("nan"), "p_value": float("nan"), "note": "empty/mismatched"}
     b = np.asarray(before, dtype=np.float64)
     a = np.asarray(after, dtype=np.float64)
     diffs = a - b
-    nonzero = np.count_nonzero(diffs)
-    if nonzero < 2:
-        return {"statistic": 0.0, "p_value": 1.0}
+    nonzero = int(np.count_nonzero(diffs))
+    if nonzero < 6:
+        return {"statistic": float("nan"), "p_value": float("nan"), "note": f"only {nonzero} nonzero diffs"}
     from scipy.stats import wilcoxon as _wilcoxon
 
     try:
-        stat, p = _wilcoxon(a, b)
-        return {"statistic": float(stat), "p_value": float(p)}
+        result = _wilcoxon(a, b)
+        # scipy.stats.wilcoxon returns a namedtuple; access by index for stable typing.
+        stat = float(result[0])  # type: ignore[index]
+        p = float(result[1])  # type: ignore[index]
+        return {"statistic": stat, "p_value": p}
     except ValueError:
-        return {"statistic": 0.0, "p_value": 1.0}
+        return {"statistic": float("nan"), "p_value": float("nan"), "note": "scipy raised ValueError"}
+
+
+def tost_paired(
+    before: list[float],
+    after: list[float],
+    margin: float = 0.02,
+    n_iter: int = 10000,
+    seed: int = 42,
+    alpha: float = 0.05,
+) -> dict:
+    """Two One-Sided Tests on the paired delta `after - before`.
+
+    Equivalence is declared at level alpha iff both one-sided tests reject:
+    `P(boot_delta ≤ -margin) < alpha` and `P(boot_delta ≥ +margin) < alpha`.
+
+    HARK warning: `margin` MUST be pre-registered before looking at the data.
+    Default 0.02 (=2pp recall) is the smallest practically meaningful gap in
+    information-retrieval evaluation per Sakai/Smucker conventions, but
+    using it post-hoc on already-collected data is invalid (Lakens 2017).
+    """
+    if not before or not after or len(before) != len(after):
+        return {
+            "delta_mean": 0.0,
+            "p_lower": float("nan"),
+            "p_upper": float("nan"),
+            "equivalent": False,
+            "note": "empty/mismatched",
+        }
+    b = np.asarray(before, dtype=np.float64)
+    a = np.asarray(after, dtype=np.float64)
+    diffs = a - b
+    if len(diffs) < 6:
+        return {
+            "delta_mean": float(diffs.mean()),
+            "p_lower": float("nan"),
+            "p_upper": float("nan"),
+            "equivalent": False,
+            "note": f"n={len(diffs)} too small for TOST",
+        }
+    rng = np.random.default_rng(seed)
+    samples = rng.choice(diffs, size=(n_iter, len(diffs)), replace=True)
+    boot = samples.mean(axis=1)
+    p_lower = max(float((boot <= -margin).mean()), 1.0 / n_iter)
+    p_upper = max(float((boot >= +margin).mean()), 1.0 / n_iter)
+    return {
+        "delta_mean": float(diffs.mean()),
+        "margin": margin,
+        "p_lower": p_lower,
+        "p_upper": p_upper,
+        "equivalent": (p_lower < alpha) and (p_upper < alpha),
+    }
 
 
 def holm_correct(p_values: Iterable[float], alpha: float = 0.05) -> list[dict]:

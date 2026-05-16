@@ -1,0 +1,17 @@
+import logging
+import sys
+
+# Initialize logging early to avoid Python 3.13 issues with argparse
+# This ensures logging's internal state is fully set up before argparse runs
+try:
+    logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.ERROR)
+    # Force initialization of logging internals
+    logging.getLogger()
+except (OSError, ValueError) as e:
+    # If logging initialization fails, warn but continue
+    print(f"Warning: logging init failed: {e}", file=sys.stderr)
+
+from diffctx.main import main
+
+if __name__ == "__main__":
+    main()

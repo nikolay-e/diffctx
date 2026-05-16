@@ -114,14 +114,22 @@ impl DiffContextResult {
         Ok(dict)
     }
 
-    fn to_yaml(&self) -> String {
+    fn to_yaml(&self) -> PyResult<String> {
         let output = self.to_serializable();
-        serde_yaml::to_string(&output).unwrap_or_default()
+        serde_yaml::to_string(&output).map_err(|e| {
+            pyo3::exceptions::PyRuntimeError::new_err(format!(
+                "failed to serialize DiffContextResult to YAML: {e}"
+            ))
+        })
     }
 
-    fn to_json(&self) -> String {
+    fn to_json(&self) -> PyResult<String> {
         let output = self.to_serializable();
-        serde_json::to_string_pretty(&output).unwrap_or_default()
+        serde_json::to_string_pretty(&output).map_err(|e| {
+            pyo3::exceptions::PyRuntimeError::new_err(format!(
+                "failed to serialize DiffContextResult to JSON: {e}"
+            ))
+        })
     }
 
     fn __len__(&self) -> usize {
@@ -441,8 +449,9 @@ fn get_language_for_file(path: &str) -> Option<String> {
 }
 
 #[pyfunction]
-fn count_tokens(text: &str) -> u32 {
-    crate::tokenizer::count_tokens(text)
+fn count_tokens(text: &str) -> PyResult<u32> {
+    crate::tokenizer::try_count_tokens(text)
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
 }
 
 // -- Project graph + analytics + export (Python-facing wrappers) -------------

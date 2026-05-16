@@ -3,13 +3,13 @@ import sys
 
 import pytest
 
-from treemapper import __version__, map_directory, to_text, to_yaml
+from diffctx import __version__, map_directory, to_text, to_yaml
 
 from .utils import find_node_by_path, get_all_files_in_tree
 
 
 def test_version_exported_and_semver():
-    from treemapper.version import __version__ as version_str
+    from diffctx.version import __version__ as version_str
 
     assert isinstance(version_str, str)
     assert version_str == __version__
@@ -332,7 +332,7 @@ def test_empty_directory_handling(tmp_path):
 
 
 def test_binary_detection_at_exact_boundary(tmp_path):
-    from treemapper.tree import BINARY_DETECTION_SAMPLE_SIZE
+    from diffctx.tree import BINARY_DETECTION_SAMPLE_SIZE
 
     project = tmp_path / "project"
     project.mkdir()
@@ -406,9 +406,9 @@ def test_middle_slash_pattern_is_anchored(tmp_path):
 
 class TestTokenCountAlwaysDisplayed:
     def test_token_count_displayed_to_stderr(self, temp_project):
-        from .conftest import run_treemapper_subprocess
+        from .conftest import run_diffctx_subprocess
 
         (temp_project / "test.txt").write_text("hello world")
-        result = run_treemapper_subprocess([str(temp_project)])
+        result = run_diffctx_subprocess([str(temp_project)])
         assert result.returncode == 0
         assert "tokens" in result.stderr

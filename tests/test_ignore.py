@@ -71,7 +71,7 @@ def test_symlinks_and_special_files(temp_project, run_mapper):
             logging.warning(f"Could not create symlink: {e}, skipping symlink part.")
             can_symlink = False
 
-    config_dir = temp_project / ".treemapper"
+    config_dir = temp_project / ".diffctx"
     config_dir.mkdir(exist_ok=True)
     (config_dir / "ignore").write_text(".*\n!.gitignore\n")
     assert run_mapper([".", "-o", "directory_tree.yaml"])
@@ -87,7 +87,7 @@ def test_symlinks_and_special_files(temp_project, run_mapper):
 
 def test_empty_and_invalid_ignores(temp_project, run_mapper):
     (temp_project / ".gitignore").write_text("")
-    config_dir = temp_project / ".treemapper"
+    config_dir = temp_project / ".diffctx"
     config_dir.mkdir(exist_ok=True)
     (config_dir / "ignore").write_text("\n\n# Just comments\n\n")
     (temp_project / "empty.ignore").write_text("")
@@ -182,10 +182,10 @@ def test_no_default_ignores_flag(temp_project, run_mapper):
     (temp_project / "ignored_by_git.pyc").touch()
     (temp_project / ".gitignore").write_text("*.pyc\n")
 
-    treemapper_ignore = temp_project / ".tmignore_fortest"
-    treemapper_ignore.write_text("treemapper_ignored/\n")
-    (temp_project / "treemapper_ignored").mkdir()
-    (temp_project / "treemapper_ignored" / "file.txt").touch()
+    diffctx_ignore = temp_project / ".tmignore_fortest"
+    diffctx_ignore.write_text("diffctx_ignored/\n")
+    (temp_project / "diffctx_ignored").mkdir()
+    (temp_project / "diffctx_ignored" / "file.txt").touch()
     output_path = temp_project / "output_no_defaults.yaml"
 
     custom_ignore = temp_project / "custom_empty.ignore"
@@ -202,13 +202,13 @@ def test_no_default_ignores_flag(temp_project, run_mapper):
     )
     result = load_yaml(output_path)
     all_files = get_all_files_in_tree(result)
-    assert ".git" not in all_files, ".git/ in .treemapper/ignore should still be ignored"
+    assert ".git" not in all_files, ".git/ in .diffctx/ignore should still be ignored"
     assert "ignored_by_git.pyc" not in all_files, "*.pyc from .gitignore should still be ignored with --no-default-ignores"
-    assert "treemapper_ignored" in all_files, "'treemapper_ignored/' should NOT be ignored with --no-default-ignores"
+    assert "diffctx_ignored" in all_files, "'diffctx_ignored/' should NOT be ignored with --no-default-ignores"
     assert "file.txt" in all_files
     assert ".gitignore" in all_files
-    assert ".treemapper" in all_files
-    assert treemapper_ignore.name in all_files
+    assert ".diffctx" in all_files
+    assert diffctx_ignore.name in all_files
     assert custom_ignore.name in all_files
     assert (
         output_path.name not in all_files
@@ -220,12 +220,12 @@ def test_no_default_ignores_flag(temp_project, run_mapper):
     reason="os.chmod limited on Windows/WSL",
 )
 def test_unreadable_ignore_file(temp_project, run_mapper, set_perms, caplog):
-    config_dir = temp_project / ".treemapper"
+    config_dir = temp_project / ".diffctx"
     ignore_file = config_dir / "ignore"
     ignore_file.write_text(".git/\n")
     set_perms(ignore_file, 0o000)
 
-    with caplog.at_level(logging.WARNING, logger="treemapper"):
+    with caplog.at_level(logging.WARNING, logger="diffctx"):
         assert run_mapper([".", "-o", "directory_tree.yaml", "--log-level", "warning"])
 
     assert any(
@@ -236,7 +236,7 @@ def test_unreadable_ignore_file(temp_project, run_mapper, set_perms, caplog):
 
 
 def test_bad_encoding_ignore_file(temp_project, run_mapper, caplog):
-    config_dir = temp_project / ".treemapper"
+    config_dir = temp_project / ".diffctx"
     ignore_file = config_dir / "ignore"
     try:
         # Cyrillic text intentional for CP1251 encoding test
@@ -244,7 +244,7 @@ def test_bad_encoding_ignore_file(temp_project, run_mapper, caplog):
     except LookupError:
         pytest.skip("CP1251 codec not found")
 
-    with caplog.at_level(logging.WARNING, logger="treemapper"):
+    with caplog.at_level(logging.WARNING, logger="diffctx"):
         assert run_mapper([".", "-o", "directory_tree.yaml", "--log-level", "warning"])
 
     assert any(
@@ -283,9 +283,9 @@ def test_ignore_precedence_subdir_over_root(temp_project, run_mapper):
     assert "allow.txt" in all_files
 
 
-def test_ignore_precedence_treemapper_over_git(temp_project, run_mapper):
+def test_ignore_precedence_diffctx_over_git(temp_project, run_mapper):
     (temp_project / ".gitignore").write_text("*.pyc\n")
-    config_dir = temp_project / ".treemapper"
+    config_dir = temp_project / ".diffctx"
     config_dir.mkdir(exist_ok=True)
     (config_dir / "ignore").write_text("*.log\n.git/\n")
     (temp_project / "file.pyc").touch()
@@ -303,7 +303,7 @@ def test_ignore_precedence_treemapper_over_git(temp_project, run_mapper):
 
 def test_ignore_precedence_custom_over_defaults(temp_project, run_mapper):
     (temp_project / ".gitignore").write_text("*.pyc\n")
-    config_dir = temp_project / ".treemapper"
+    config_dir = temp_project / ".diffctx"
     config_dir.mkdir(exist_ok=True)
     (config_dir / "ignore").write_text("*.log\n.git/\n")
     custom_ignore = temp_project / "custom.ignore"
@@ -434,11 +434,11 @@ def test_combined_patterns(temp_project, run_mapper):
 def test_hierarchical_dir_ignore(temp_project, run_mapper):
     from .utils import find_node_by_path
 
-    config_dir = temp_project / ".treemapper"
+    config_dir = temp_project / ".diffctx"
     config_dir.mkdir(exist_ok=True)
     (config_dir / "ignore").write_text("*.tmp\n")
     (temp_project / "subdir").mkdir()
-    sub_config = temp_project / "subdir" / ".treemapper"
+    sub_config = temp_project / "subdir" / ".diffctx"
     sub_config.mkdir()
     (sub_config / "ignore").write_text("*.bak\n!important.bak\n")
     (temp_project / "root.tmp").touch()
@@ -499,7 +499,7 @@ def test_parent_ignore_integration(tmp_path, run_mapper):
     subdir = parent / "packages" / "app"
     subdir.mkdir(parents=True)
 
-    parent_config = parent / ".treemapper"
+    parent_config = parent / ".diffctx"
     parent_config.mkdir()
     (parent_config / "ignore").write_text("packages/app/ignored_dir/\npackages/app/data/\n")
     (subdir / "ignored_dir").mkdir()
@@ -526,14 +526,14 @@ def test_parent_ignore_stops_at_git_root(tmp_path, run_mapper):
 
     grandparent = tmp_path / "grandparent"
     grandparent.mkdir()
-    grandparent_config = grandparent / ".treemapper"
+    grandparent_config = grandparent / ".diffctx"
     grandparent_config.mkdir()
     (grandparent_config / "ignore").write_text("packages/app/beyond_git_root/\n")
 
     parent = grandparent / "parent"
     parent.mkdir()
     (parent / ".git").mkdir()
-    parent_config = parent / ".treemapper"
+    parent_config = parent / ".diffctx"
     parent_config.mkdir()
     (parent_config / "ignore").write_text("packages/app/from_parent/\n")
 
@@ -555,13 +555,13 @@ def test_parent_ignore_stops_at_git_root(tmp_path, run_mapper):
     assert find_node_by_path(result, ["keep.txt"]) is not None
 
 
-# --- .treemapper/ config directory tests ---
+# --- .diffctx/ config directory tests ---
 
 
-def test_treemapper_dir_ignore(temp_project, run_mapper):
+def test_diffctx_dir_ignore(temp_project, run_mapper):
     from .utils import find_node_by_path
 
-    config_dir = temp_project / ".treemapper"
+    config_dir = temp_project / ".diffctx"
     config_dir.mkdir(exist_ok=True)
     (config_dir / "ignore").write_text("*.log\ndocs/\n")
     (temp_project / "app.log").touch()
@@ -576,12 +576,12 @@ def test_treemapper_dir_ignore(temp_project, run_mapper):
     assert find_node_by_path(result, ["keep.txt"]) is not None
 
 
-def test_treemapper_dir_ignore_hierarchical(temp_project, run_mapper):
+def test_diffctx_dir_ignore_hierarchical(temp_project, run_mapper):
     from .utils import find_node_by_path
 
     subdir = temp_project / "subdir"
     subdir.mkdir()
-    sub_config = subdir / ".treemapper"
+    sub_config = subdir / ".diffctx"
     sub_config.mkdir()
     (sub_config / "ignore").write_text("*.secret\n")
 
@@ -598,13 +598,13 @@ def test_treemapper_dir_ignore_hierarchical(temp_project, run_mapper):
     assert find_node_by_path(result, ["subdir", "keep.txt"]) is not None
 
 
-def test_treemapper_dir_ignore_parent(tmp_path, run_mapper):
+def test_diffctx_dir_ignore_parent(tmp_path, run_mapper):
     from .utils import find_node_by_path
 
     parent = tmp_path / "parent_project"
     parent.mkdir()
     (parent / ".git").mkdir()
-    config_dir = parent / ".treemapper"
+    config_dir = parent / ".diffctx"
     config_dir.mkdir()
     (config_dir / "ignore").write_text("packages/app/secret_dir/\n")
 
@@ -623,8 +623,8 @@ def test_treemapper_dir_ignore_parent(tmp_path, run_mapper):
     assert find_node_by_path(result, ["src", "main.py"]) is not None
 
 
-def test_treemapper_dir_whitelist(temp_project, run_mapper):
-    config_dir = temp_project / ".treemapper"
+def test_diffctx_dir_whitelist(temp_project, run_mapper):
+    config_dir = temp_project / ".diffctx"
     config_dir.mkdir(exist_ok=True)
     (config_dir / "whitelist").write_text("src/**/*.py\n")
 
@@ -638,8 +638,8 @@ def test_treemapper_dir_whitelist(temp_project, run_mapper):
     assert "readme.md" not in all_files
 
 
-def test_treemapper_dir_hidden_from_output(temp_project, run_mapper):
-    config_dir = temp_project / ".treemapper"
+def test_diffctx_dir_hidden_from_output(temp_project, run_mapper):
+    config_dir = temp_project / ".diffctx"
     config_dir.mkdir(exist_ok=True)
     (config_dir / "ignore").write_text("*.log\n")
     (config_dir / "whitelist").write_text("src/**\n")
@@ -650,6 +650,6 @@ def test_treemapper_dir_hidden_from_output(temp_project, run_mapper):
     result = load_yaml(output_path)
     all_files = get_all_files_in_tree(result)
 
-    assert ".treemapper" not in all_files
+    assert ".diffctx" not in all_files
     assert "ignore" not in all_files
     assert "whitelist" not in all_files

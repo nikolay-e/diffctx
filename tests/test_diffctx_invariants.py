@@ -44,7 +44,7 @@ def _run(
     args: list[str],
     extra_env: dict[str, str] | None = None,
 ) -> tuple[str, str]:
-    cmd = [sys.executable, "-m", "treemapper", *args]
+    cmd = [sys.executable, "-m", "diffctx", *args]
     env = {"PYTHONPATH": str(SRC_DIR)}
     if extra_env:
         env.update(extra_env)
@@ -136,7 +136,7 @@ def test_fraction_param_rejects_negative_falls_back_to_default(tmp_path, env_var
 def test_unreachable_revision_raises_clear_error(tmp_path):
     repo, _ = _make_diff_repo(tmp_path)
     args = [".", "--diff", "1111111111111111111111111111111111111111..HEAD", "--budget", "1024"]
-    cmd = [sys.executable, "-m", "treemapper", *args]
+    cmd = [sys.executable, "-m", "diffctx", *args]
     env = {**dict(__import__("os").environ), "PYTHONPATH": str(SRC_DIR)}
     result = subprocess.run(cmd, cwd=repo.path, env=env, capture_output=True, text=True, check=False)
     assert result.returncode != 0, (
@@ -150,7 +150,7 @@ def test_zero_commit_repo_raises_clear_error(tmp_path):
     empty_repo.mkdir()
     Pygit2Repo(empty_repo)
     args = [".", "--diff", "HEAD~1..HEAD", "--budget", "1024"]
-    cmd = [sys.executable, "-m", "treemapper", *args]
+    cmd = [sys.executable, "-m", "diffctx", *args]
     env = {**dict(__import__("os").environ), "PYTHONPATH": str(SRC_DIR)}
     result = subprocess.run(cmd, cwd=empty_repo, env=env, capture_output=True, text=True, check=False)
     assert result.returncode != 0, (
@@ -162,11 +162,11 @@ def test_zero_commit_repo_raises_clear_error(tmp_path):
 def test_max_fragments_zero_falls_back_to_default(tmp_path):
     repo, diff_range = _make_diff_repo(tmp_path)
     args = [".", "--diff", diff_range, "--budget", "1024", "-f", "txt"]
-    out, err = _run(repo.path, args, {"TREEMAPPER_MAX_FRAGMENTS": "0"})
+    out, err = _run(repo.path, args, {"DIFFCTX_MAX_FRAGMENTS": "0"})
     tokens = _extract_tokens(out + err)
     assert (
         tokens > 0
-    ), f"TREEMAPPER_MAX_FRAGMENTS=0 produced empty output; should be rejected and fall back to default. tokens={tokens}"
+    ), f"DIFFCTX_MAX_FRAGMENTS=0 produced empty output; should be rejected and fall back to default. tokens={tokens}"
 
 
 def test_ppr_alpha_one_does_not_degenerate(tmp_path):

@@ -33,7 +33,7 @@ def test_default_python_ignores(temp_project, run_mapper):
     # Create normal Python file that should be included
     (temp_project / "actual_module.py").touch()
 
-    # Run treemapper and check results
+    # Run diffctx and check results
     assert run_mapper([".", "-o", "directory_tree.yaml"])
     result = load_yaml(temp_project / "directory_tree.yaml")
     all_files = get_all_files_in_tree(result)
@@ -71,7 +71,7 @@ def test_git_directory_ignored(temp_project, run_mapper):
     # Create a normal file that should be included
     (temp_project / "README.md").touch()
 
-    # Run treemapper and check results
+    # Run diffctx and check results
     assert run_mapper([".", "-o", "directory_tree.yaml"])
     result = load_yaml(temp_project / "directory_tree.yaml")
     all_files = get_all_files_in_tree(result)

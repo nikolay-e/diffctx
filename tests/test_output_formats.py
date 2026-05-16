@@ -5,10 +5,10 @@ import json
 import pytest
 import yaml
 
-from treemapper import map_directory, to_json, to_text, to_yaml
-from treemapper.writer import tree_to_string, write_string_to_file, write_tree_json, write_tree_text, write_tree_yaml
+from diffctx import map_directory, to_json, to_text, to_yaml
+from diffctx.writer import tree_to_string, write_string_to_file, write_tree_json, write_tree_text, write_tree_yaml
 
-from .conftest import run_treemapper_subprocess
+from .conftest import run_diffctx_subprocess
 from .utils import load_yaml
 
 
@@ -44,7 +44,7 @@ def test_format_output_to_file(run_mapper, temp_project, fmt, ext):
 
 @pytest.mark.parametrize("fmt", ["yaml", "json", "txt", "md"])
 def test_format_output_to_stdout(temp_project, fmt):
-    result = run_treemapper_subprocess([str(temp_project), "--format", fmt])
+    result = run_diffctx_subprocess([str(temp_project), "--format", fmt])
     assert result.returncode == 0
 
     if fmt == "yaml":
@@ -106,7 +106,7 @@ def test_multiline_content_preservation(run_mapper, temp_project):
 
 
 def test_format_option_invalid(temp_project):
-    result = run_treemapper_subprocess([str(temp_project), "--format", "invalid"])
+    result = run_diffctx_subprocess([str(temp_project), "--format", "invalid"])
     assert result.returncode != 0
     assert "invalid choice" in result.stderr.lower()
 

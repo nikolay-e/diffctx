@@ -18,15 +18,15 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
         with:
           python-version: '3.12'
 
       - name: Cache pre-commit
-        uses: actions/cache@v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
         with:
           path: ~/.cache/pre-commit
           key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
@@ -50,10 +50,10 @@ jobs:
       contents: read
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Set up Python 3.10
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
         with:
           python-version: '3.10'
           cache: 'pip'
@@ -82,7 +82,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # stable
@@ -91,7 +91,7 @@ jobs:
           components: rustfmt, clippy
 
       - name: Cache Cargo
-        uses: actions/cache@v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
         with:
           path: |
             ~/.cargo/registry
@@ -122,19 +122,18 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
+        python-version: ['3.10', '3.11', '3.12', '3.13']
 
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.python-version == '3.14' }}
     permissions:
       contents: read
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
@@ -147,7 +146,7 @@ jobs:
           components: rustfmt, clippy
 
       - name: Cache Cargo
-        uses: actions/cache@v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
         with:
           path: |
             ~/.cargo/registry
@@ -156,29 +155,26 @@ jobs:
           key: cargo-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('diffctx/Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-py${{ matrix.python-version }}-
 
-      - name: Install Dependencies
+      - name: Install build backend
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev,full]"
-          pip install "maturin>=1,<2"
+          pip install "maturin>=1.10,<1.11"
 
-      - name: Build and install diffctx Rust extension
+      - name: Build and install treemapper (with Rust _diffctx) and dev deps
         shell: bash
         env:
           PYO3_USE_ABI3_FORWARD_COMPATIBILITY: "1"
         run: |
-          cd diffctx
-          maturin build --release --out wheelhouse
-          pip install --force-reinstall --no-deps wheelhouse/*.whl
+          # PEP 660 editable install — maturin builds the Rust extension and
+          # pip installs everything (treemapper + [dev,full] extras). Skip build
+          # isolation since we just installed maturin in this env.
+          pip install -e ".[dev,full]" --no-build-isolation
 
       - name: Run Tests with Coverage
         shell: bash
         run: |
           pytest -v --cov=src/treemapper --cov-report=xml \
-            --cov-report=term-missing --cov-branch --junitxml=test-results.xml \
-            --ignore=tests/test_graph.py \
-            --ignore=tests/test_graph_cli.py \
-            --ignore=tests/test_graph_export.py
+            --cov-report=term-missing --cov-branch --junitxml=test-results.xml
 
       - name: Coverage report with threshold
         run: |
@@ -195,7 +191,7 @@ jobs:
           verbose: true
 
       - name: Upload coverage for SonarCloud
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
         with:
           name: coverage-report
@@ -214,10 +210,10 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
         with:
           python-version: '3.12'
 
@@ -251,10 +247,10 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
         with:
           python-version: '3.12'
 
@@ -265,78 +261,3 @@ jobs:
 
       - name: Check import contracts
         run: lint-imports
-
-  # ============================================================================
-  # Bench image — build and push to GHCR on every push to main
-  # ============================================================================
-  bench-image:
-    name: Build bench image
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
-          sudo docker image prune -af || true
-          df -h /
-
-      - uses: actions/checkout@v4
-
-      - uses: docker/setup-buildx-action@v3
-        with:
-          driver-opts: |
-            image=moby/buildkit:latest
-            network=host
-
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository_owner }}/treemapper-bench
-          tags: |
-            type=ref,event=branch
-            type=sha,prefix={{branch}}-,format=short
-            type=raw,value=latest,enable=true
-
-      - name: Build and push (amd64)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile.bench
-          platforms: linux/amd64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/treemapper-bench:buildcache
-          cache-to: >-
-            type=registry,ref=ghcr.io/${{ github.repository_owner }}/treemapper-bench:buildcache,
-            mode=max,image-manifest=true,oci-mediatypes=true
-
-  # ============================================================================
-  # Trigger smoke bench sweep after image is built and tests pass
-  # ============================================================================
-  smoke-bench:
-    name: Trigger smoke sweep
-    needs: [bench-image]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write
-    steps:
-      - name: Dispatch bench-sweep (smoke)
-        run: |
-          gh workflow run bench-sweep.yml \
-            --repo "${{ github.repository }}" \
-            --ref main \
-            --field mode=smoke
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

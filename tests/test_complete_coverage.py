@@ -3,9 +3,9 @@ import sys
 
 import pytest
 
-from treemapper import map_directory
+from diffctx import map_directory
 
-from .conftest import run_treemapper_subprocess
+from .conftest import run_diffctx_subprocess
 from .utils import find_node_by_path, get_all_files_in_tree
 
 
@@ -303,25 +303,25 @@ class TestDefaultIgnorePatterns:
 
 class TestCLIFeatures:
     def test_explicit_stdout_output_dash(self, temp_project):
-        result = run_treemapper_subprocess([".", "-o", "-"], cwd=temp_project)
+        result = run_diffctx_subprocess([".", "-o", "-"], cwd=temp_project)
         assert result.returncode == 0
         assert "name:" in result.stdout
         assert "type: directory" in result.stdout
 
     def test_explicit_stdout_output_long_flag(self, temp_project):
-        result = run_treemapper_subprocess([".", "--output-file", "-"], cwd=temp_project)
+        result = run_diffctx_subprocess([".", "--output-file", "-"], cwd=temp_project)
         assert result.returncode == 0
         assert "name:" in result.stdout
 
     def test_yaml_to_stdout_default(self, temp_project):
-        result = run_treemapper_subprocess(["."], cwd=temp_project)
+        result = run_diffctx_subprocess(["."], cwd=temp_project)
         assert result.returncode == 0
         assert "name:" in result.stdout
         assert "children:" in result.stdout
 
     def test_all_log_levels_cli(self, temp_project):
         for level in ["error", "warning", "info", "debug"]:
-            result = run_treemapper_subprocess([".", "--log-level", level], cwd=temp_project)
+            result = run_diffctx_subprocess([".", "--log-level", level], cwd=temp_project)
             assert result.returncode == 0
 
 

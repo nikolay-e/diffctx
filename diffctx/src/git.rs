@@ -262,8 +262,8 @@ fn parse_path_line(line: &str, repo_root: &Path) -> (&'static str, Option<PathBu
         return ("new", Some(repo_root.join(rel_path)));
     }
 
-    if line.starts_with("--- \"a/") {
-        let quoted = line.strip_prefix("--- ").unwrap().trim();
+    if let Some(rest) = line.strip_prefix("--- ").filter(|r| r.starts_with("\"a/")) {
+        let quoted = rest.trim();
         let unquoted = unquote_c_style(quoted);
         let rel_path = unquoted.strip_prefix("a/").unwrap_or(&unquoted);
         let resolved = (repo_root.join(rel_path))
@@ -275,8 +275,8 @@ fn parse_path_line(line: &str, repo_root: &Path) -> (&'static str, Option<PathBu
         return ("old", Some(repo_root.join(rel_path)));
     }
 
-    if line.starts_with("+++ \"b/") {
-        let quoted = line.strip_prefix("+++ ").unwrap().trim();
+    if let Some(rest) = line.strip_prefix("+++ ").filter(|r| r.starts_with("\"b/")) {
+        let quoted = rest.trim();
         let unquoted = unquote_c_style(quoted);
         let rel_path = unquoted.strip_prefix("b/").unwrap_or(&unquoted);
         let resolved = (repo_root.join(rel_path))
@@ -291,19 +291,29 @@ fn parse_path_line(line: &str, repo_root: &Path) -> (&'static str, Option<PathBu
     ("", None)
 }
 
-fn parse_hunk_header(caps: &regex::Captures, path: &Path) -> DiffHunk {
-    let old_start: u32 = caps[1].parse().unwrap();
-    let old_len: u32 = caps.get(2).map_or(1, |m| m.as_str().parse().unwrap());
-    let new_start: u32 = caps[3].parse().unwrap();
-    let new_len: u32 = caps.get(4).map_or(1, |m| m.as_str().parse().unwrap());
+fn parse_hunk_header(caps: &regex::Captures, path: &Path) -> Option<DiffHunk> {
+    // Adversarial-diff hardening: integers parsed from the hunk regex are
+    // small ASCII digits matched by `\d+`, so `parse::<u32>` can only fail
+    // on overflow (e.g. lines > 2^32). Skip such hunks instead of crashing
+    // the host process — they are degenerate and have no useful semantics.
+    let old_start: u32 = caps[1].parse().ok()?;
+    let old_len: u32 = match caps.get(2) {
+        Some(m) => m.as_str().parse().ok()?,
+        None => 1,
+    };
+    let new_start: u32 = caps[3].parse().ok()?;
+    let new_len: u32 = match caps.get(4) {
+        Some(m) => m.as_str().parse().ok()?,
+        None => 1,
+    };
 
-    DiffHunk {
+    Some(DiffHunk {
         path: Arc::from(path.to_string_lossy().as_ref()),
         new_start,
         new_len,
         old_start,
         old_len,
-    }
+    })
 }
 
 pub fn parse_diff(repo_root: &Path, diff_range: Option<&str>) -> Result<Vec<DiffHunk>> {
@@ -338,7 +348,9 @@ pub fn parse_diff(repo_root: &Path, diff_range: Option<&str>) -> Result<Vec<Diff
         if let Some(caps) = HUNK_RE.captures(line) {
             let current_path = new_path.as_deref().or(old_path.as_deref());
             if let Some(p) = current_path {
-                hunks.push(parse_hunk_header(&caps, p));
+                if let Some(hunk) = parse_hunk_header(&caps, p) {
+                    hunks.push(hunk);
+                }
             }
         }
     }
@@ -504,7 +516,9 @@ impl CatFileBatch {
                 .stdout(Stdio::piped())
                 .stderr(Stdio::null())
                 .spawn()?;
-            let stdout = child.stdout.take().unwrap();
+            let stdout = child.stdout.take().ok_or_else(|| {
+                GitError::CommandFailed("cat-file: failed to capture stdout pipe".into())
+            })?;
             self.reader = Some(BufReader::new(stdout));
             self.child = Some(child);
         }

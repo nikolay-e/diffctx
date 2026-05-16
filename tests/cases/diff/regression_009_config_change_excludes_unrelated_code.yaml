@@ -10,7 +10,7 @@ repo:
   initial_files:
     pyproject.toml: |
       [project]
-      name = "treemapper"
+      name = "diffctx"
       version = "1.2.0"
       description = "Directory structure to YAML converter for LLM analysis"
       requires-python = ">=3.11"
@@ -41,7 +41,7 @@ repo:
       ]
 
       [project.scripts]
-      treemapper = "treemapper.cli:main"
+      diffctx = "diffctx.cli:main"
 
       [tool.pytest.ini_options]
       testpaths = ["tests"]
@@ -62,7 +62,7 @@ repo:
       [build-system]
       requires = ["setuptools>=68.0", "wheel"]
       build-backend = "setuptools.backends._legacy:_Backend"
-    src/treemapper/cli.py: |
+    src/diffctx/cli.py: |
       import sys
       from pathlib import Path
       from typing import Optional
@@ -88,7 +88,7 @@ repo:
           entries = list(root.iterdir())
           filtered = [e for e in entries if not e.name.startswith(".")]
           return f"Processed {len(filtered)} entries in {fmt} format"
-    src/treemapper/tokens.py: |
+    src/diffctx/tokens.py: |
       from typing import List
 
       _encoder = None
@@ -107,7 +107,7 @@ repo:
       def count_tokens_batch(texts: List[str]) -> List[int]:
           encoder = _get_encoder()
           return [len(encoder.encode(t)) for t in texts]
-    src/treemapper/clipboard.py: |
+    src/diffctx/clipboard.py: |
       import subprocess
       import sys
 
@@ -139,7 +139,7 @@ repo:
   changed_files:
     pyproject.toml: |
       [project]
-      name = "treemapper"
+      name = "diffctx"
       version = "1.3.0"
       description = "Directory structure to YAML converter for LLM analysis"
       requires-python = ">=3.11"
@@ -171,7 +171,7 @@ repo:
       ]
 
       [project.scripts]
-      treemapper = "treemapper.cli:main"
+      diffctx = "diffctx.cli:main"
 
       [tool.pytest.ini_options]
       testpaths = ["tests"]
@@ -192,7 +192,7 @@ repo:
       [build-system]
       requires = ["setuptools>=68.0", "wheel"]
       build-backend = "setuptools.backends._legacy:_Backend"
-    src/treemapper/cli.py: |
+    src/diffctx/cli.py: |
       import sys
       from pathlib import Path
       from typing import Optional
@@ -218,7 +218,7 @@ repo:
           entries = list(root.iterdir())
           filtered = [e for e in entries if not e.name.startswith(".")]
           return f"Processed {len(filtered)} entries in {fmt} format"
-    src/treemapper/tokens.py: |
+    src/diffctx/tokens.py: |
       from typing import List
 
       _encoder = None
@@ -237,7 +237,7 @@ repo:
       def count_tokens_batch(texts: List[str]) -> List[int]:
           encoder = _get_encoder()
           return [len(encoder.encode(t)) for t in texts]
-    src/treemapper/clipboard.py: |
+    src/diffctx/clipboard.py: |
       import subprocess
       import sys
 
@@ -278,13 +278,13 @@ fragments:
     anchor: httpx>=0.25
 - id: no_cli
   selector:
-    path: src/treemapper/cli.py
+    path: src/diffctx/cli.py
 - id: no_tokens
   selector:
-    path: src/treemapper/tokens.py
+    path: src/diffctx/tokens.py
 - id: no_clipboard
   selector:
-    path: src/treemapper/clipboard.py
+    path: src/diffctx/clipboard.py
 - id: no_global_0
   selector:
     anchor: process_directory

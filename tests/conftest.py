@@ -1,4 +1,5 @@
 # tests/conftest.py
+import importlib.util
 import logging
 import os
 import subprocess
@@ -12,6 +13,14 @@ from tests.framework.pygit2_backend import Pygit2Repo
 PROJECT_ROOT = Path(__file__).parent.parent
 SRC_DIR = PROJECT_ROOT / "src"
 
+# Benchmark-only test files exercise `benchmarks/` adapters which depend on
+# `pebble` / `rank-bm25` — paper-track deps that the CLI release no longer
+# pulls into [dev]. Skip collection when the deps aren't installed so the
+# CLI test run stays green; benchmark devs install the deps explicitly.
+collect_ignore_glob: list[str] = []
+if importlib.util.find_spec("pebble") is None:
+    collect_ignore_glob.extend(["test_benchmark_runner.py", "test_benchmark_splits.py", "test_benchmark_adapters.py"])
+
 GITIGNORE = ".gitignore"
 
 _PROC_VERSION = Path("/proc/version")
@@ -20,7 +29,7 @@ IS_WSL = _PROC_VERSION.exists() and "microsoft" in _PROC_VERSION.read_text(error
 
 @pytest.fixture
 def temp_project(tmp_path):
-    temp_dir = tmp_path / "treemapper_test_project"
+    temp_dir = tmp_path / "diffctx_test_project"
     temp_dir.mkdir()
     (temp_dir / "src").mkdir()
     (temp_dir / "src" / "main.py").write_text("def main():\n    print('hello')\n", encoding="utf-8")
@@ -31,7 +40,7 @@ def temp_project(tmp_path):
     (temp_dir / ".git").mkdir()
     (temp_dir / ".git" / "config").write_text("git config file", encoding="utf-8")
     (temp_dir / GITIGNORE).write_text("*.pyc\n__pycache__/\n", encoding="utf-8")
-    config_dir = temp_dir / ".treemapper"
+    config_dir = temp_dir / ".diffctx"
     config_dir.mkdir()
     (config_dir / "ignore").write_text("output/\n.git/\n", encoding="utf-8")
     yield temp_dir
@@ -42,9 +51,9 @@ def run_mapper(monkeypatch, temp_project):
     def _run(args):
         with monkeypatch.context() as m:
             m.chdir(temp_project)
-            m.setattr(sys, "argv", ["treemapper", *args])
+            m.setattr(sys, "argv", ["diffctx", *args])
             try:
-                from treemapper.treemapper import main
+                from diffctx.main import main
 
                 main()
                 return True
@@ -54,8 +63,8 @@ def run_mapper(monkeypatch, temp_project):
     return _run
 
 
-def run_treemapper_subprocess(args, cwd=None, **kwargs):
-    command = [sys.executable, "-m", "treemapper", *args]
+def run_diffctx_subprocess(args, cwd=None, **kwargs):
+    command = [sys.executable, "-m", "diffctx", *args]
 
     env = os.environ.copy()
     pythonpath = str(SRC_DIR)
@@ -130,7 +139,7 @@ def set_perms():
 def project_builder(tmp_path):
     class ProjectBuilder:
         def __init__(self, base_path: Path):
-            self.root = base_path / "treemapper_test_project"
+            self.root = base_path / "diffctx_test_project"
             self.root.mkdir()
 
         def add_file(self, path: str, content: str = "") -> Path:
@@ -156,8 +165,8 @@ def project_builder(tmp_path):
             path.write_text("\n".join(patterns) + "\n", encoding="utf-8")
             return path
 
-        def add_treemapper_ignore(self, patterns: list[str]) -> Path:
-            config_dir = self.root / ".treemapper"
+        def add_diffctx_ignore(self, patterns: list[str]) -> Path:
+            config_dir = self.root / ".diffctx"
             config_dir.mkdir(exist_ok=True)
             path = config_dir / "ignore"
             path.write_text("\n".join(patterns) + "\n", encoding="utf-8")

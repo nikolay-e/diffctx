@@ -7,6 +7,8 @@ updates:
       day: "saturday"
       time: "10:00"
       timezone: "Europe/Berlin"
+    cooldown:
+      default-days: 3
     labels:
       - "dependencies"
     assignees:
@@ -26,6 +28,8 @@ updates:
       day: "sunday"
       time: "10:00"
       timezone: "Europe/Berlin"
+    cooldown:
+      default-days: 3
     labels:
       - "dependencies"
     assignees:
@@ -37,3 +41,20 @@ updates:
       all-dependencies:
         patterns:
           - "*"
+
+  - package-ecosystem: "cargo"
+    directory: "/diffctx"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "10:00"
+      timezone: "Europe/Berlin"
+    cooldown:
+      default-days: 3
+    labels:
+      - "dependencies"
+    assignees:
+      - "nikolay-e"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from .conftest import IS_WSL, run_treemapper_subprocess
+from .conftest import IS_WSL, run_diffctx_subprocess
 from .utils import find_node_by_path, load_yaml
 
 # --- Tests for invalid input ---
@@ -39,7 +39,7 @@ def test_unreadable_file(temp_project, run_mapper, set_perms, caplog):
     unreadable_file.write_text("secret")
     set_perms(unreadable_file, 0o000)
     output_path = temp_project / "output_unreadable.yaml"
-    with caplog.at_level(logging.ERROR, logger="treemapper"):
+    with caplog.at_level(logging.ERROR, logger="diffctx"):
         assert run_mapper([".", "-o", str(output_path)])
     assert output_path.exists(), f"Output file {output_path} was not created"
     result = load_yaml(output_path)
@@ -64,7 +64,7 @@ def test_unwritable_output_dir(temp_project, run_mapper, set_perms, caplog):
     read_execute_perms = stat.S_IRUSR | stat.S_IXUSR | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH
     set_perms(unwritable_dir, read_execute_perms)
     output_path = unwritable_dir / "output.yaml"
-    with caplog.at_level(logging.ERROR, logger="treemapper"):
+    with caplog.at_level(logging.ERROR, logger="diffctx"):
         run_mapper([".", "-o", str(output_path)])
     assert any(
         "Unable to write to file" in record.message and str(output_path) in record.message
@@ -92,14 +92,14 @@ def test_output_path_is_directory(temp_project, run_mapper, capsys):
 
 
 def test_negative_max_depth(temp_project):
-    result = run_treemapper_subprocess([".", "--max-depth", "-1"], cwd=temp_project)
+    result = run_diffctx_subprocess([".", "--max-depth", "-1"], cwd=temp_project)
     assert result.returncode != 0
     assert "Error:" in result.stderr
     assert "max-depth" in result.stderr.lower()
 
 
 def test_negative_max_file_bytes(temp_project):
-    result = run_treemapper_subprocess([".", "--max-file-bytes", "-1"], cwd=temp_project)
+    result = run_diffctx_subprocess([".", "--max-file-bytes", "-1"], cwd=temp_project)
     assert result.returncode != 0
     assert "Error:" in result.stderr
     assert "max-file-bytes" in result.stderr.lower()
@@ -108,7 +108,7 @@ def test_negative_max_file_bytes(temp_project):
 def test_oserror_accessing_directory(temp_project, monkeypatch, capsys):
     import sys
 
-    from treemapper.cli import parse_args
+    from diffctx.cli import parse_args
 
     test_dir = temp_project / "testdir"
     test_dir.mkdir()
@@ -121,7 +121,7 @@ def test_oserror_accessing_directory(temp_project, monkeypatch, capsys):
         return original_resolve(self, strict=strict)
 
     monkeypatch.setattr(Path, "resolve", mock_resolve)
-    monkeypatch.setattr(sys, "argv", ["treemapper", str(test_dir)])
+    monkeypatch.setattr(sys, "argv", ["diffctx", str(test_dir)])
 
     with pytest.raises(SystemExit) as exc_info:
         parse_args()
@@ -138,7 +138,7 @@ def test_oserror_accessing_directory(temp_project, monkeypatch, capsys):
 def test_logger_with_existing_handlers(caplog):
     import logging
 
-    from treemapper.logger import PACKAGE_LOGGER_NAME, setup_logging
+    from diffctx.logger import PACKAGE_LOGGER_NAME, setup_logging
 
     pkg_logger = logging.getLogger(PACKAGE_LOGGER_NAME)
     original_handlers = pkg_logger.handlers[:]
@@ -160,7 +160,7 @@ def test_logger_with_existing_handlers(caplog):
 def test_logger_with_handler_without_formatter():
     import logging
 
-    from treemapper.logger import PACKAGE_LOGGER_NAME, setup_logging
+    from diffctx.logger import PACKAGE_LOGGER_NAME, setup_logging
 
     pkg_logger = logging.getLogger(PACKAGE_LOGGER_NAME)
     original_handlers = pkg_logger.handlers[:]
@@ -182,7 +182,7 @@ def test_logger_with_handler_without_formatter():
 def test_logger_no_handlers():
     import logging
 
-    from treemapper.logger import PACKAGE_LOGGER_NAME, setup_logging
+    from diffctx.logger import PACKAGE_LOGGER_NAME, setup_logging
 
     pkg_logger = logging.getLogger(PACKAGE_LOGGER_NAME)
     original_handlers = pkg_logger.handlers[:]
@@ -214,7 +214,7 @@ def test_unreadable_directory(temp_project, set_perms):
     set_perms(unreadable_dir, 0o000)
 
     output_path = temp_project / "output.yaml"
-    result = run_treemapper_subprocess([".", "-o", str(output_path), "--log-level", "warning"], cwd=temp_project)
+    result = run_diffctx_subprocess([".", "-o", str(output_path), "--log-level", "warning"], cwd=temp_project)
 
     assert result.returncode == 0
     assert "Permission denied" in result.stderr
@@ -229,7 +229,7 @@ def test_file_with_null_bytes_detected_as_binary(temp_project, run_mapper, caplo
     file_with_nulls.write_bytes(b"hello\x00world\x00test")
 
     output_path = temp_project / "output.yaml"
-    with caplog.at_level(logging.WARNING, logger="treemapper"):
+    with caplog.at_level(logging.WARNING, logger="diffctx"):
         assert run_mapper([".", "-o", str(output_path)])
 
     result = load_yaml(output_path)
@@ -268,7 +268,7 @@ def test_oserror_during_read(temp_project, run_mapper, monkeypatch, caplog):
     monkeypatch.setattr(Path, "open", mock_open)
 
     output_path = temp_project / "output.yaml"
-    with caplog.at_level(logging.ERROR, logger="treemapper"):
+    with caplog.at_level(logging.ERROR, logger="diffctx"):
         assert run_mapper([".", "-o", str(output_path)])
 
     result = load_yaml(output_path)
@@ -282,14 +282,14 @@ def test_oserror_during_read(temp_project, run_mapper, monkeypatch, caplog):
 
 
 def test_read_ignore_file_nonexistent():
-    from treemapper.ignore import read_ignore_file
+    from diffctx.ignore import read_ignore_file
 
     result = read_ignore_file(Path("/nonexistent/path/.gitignore"))
     assert result == []
 
 
 def test_read_ignore_file_ioerror(temp_project, monkeypatch, caplog):
-    from treemapper.ignore import read_ignore_file
+    from diffctx.ignore import read_ignore_file
 
     ignore_file = temp_project / ".testignore"
     ignore_file.write_text("*.txt\n")
@@ -303,7 +303,7 @@ def test_read_ignore_file_ioerror(temp_project, monkeypatch, caplog):
 
     monkeypatch.setattr(Path, "open", mock_open)
 
-    with caplog.at_level(logging.WARNING, logger="treemapper"):
+    with caplog.at_level(logging.WARNING, logger="diffctx"):
         result = read_ignore_file(ignore_file)
 
     assert result == []
@@ -311,7 +311,7 @@ def test_read_ignore_file_ioerror(temp_project, monkeypatch, caplog):
 
 
 def test_get_output_file_pattern_oserror(temp_project, monkeypatch):
-    from treemapper.ignore import _get_output_file_pattern
+    from diffctx.ignore import _get_output_file_pattern
 
     output_file = temp_project / "output.yaml"
 
@@ -330,7 +330,7 @@ def test_get_output_file_pattern_oserror(temp_project, monkeypatch):
 def test_is_output_file_oserror(temp_project, monkeypatch):
     import pathspec
 
-    from treemapper.tree import TreeBuildContext
+    from diffctx.tree import TreeBuildContext
 
     output_file = temp_project / "output.yaml"
     spec = pathspec.PathSpec.from_lines("gitwildmatch", [])
@@ -358,7 +358,7 @@ def test_is_output_file_oserror(temp_project, monkeypatch):
 def test_process_entry_oserror(temp_project, monkeypatch, caplog):
     import pathspec
 
-    from treemapper.tree import TreeBuildContext, _process_entry
+    from diffctx.tree import TreeBuildContext, _process_entry
 
     test_file = temp_project / "problem.txt"
     test_file.write_text("content")
@@ -375,7 +375,7 @@ def test_process_entry_oserror(temp_project, monkeypatch, caplog):
 
     monkeypatch.setattr(Path, "relative_to", mock_relative_to)
 
-    with caplog.at_level(logging.WARNING, logger="treemapper"):
+    with caplog.at_level(logging.WARNING, logger="diffctx"):
         result = _process_entry(test_file, ctx, 0)
 
     assert result is None
@@ -385,7 +385,7 @@ def test_process_entry_oserror(temp_project, monkeypatch, caplog):
 def test_create_node_exception(temp_project, monkeypatch, caplog):
     import pathspec
 
-    from treemapper.tree import TreeBuildContext, _create_node
+    from diffctx.tree import TreeBuildContext, _create_node
 
     test_file = temp_project / "broken.txt"
     test_file.write_text("content")
@@ -402,7 +402,7 @@ def test_create_node_exception(temp_project, monkeypatch, caplog):
 
     monkeypatch.setattr(Path, "open", mock_open)
 
-    with caplog.at_level(logging.ERROR, logger="treemapper"):
+    with caplog.at_level(logging.ERROR, logger="diffctx"):
         result = _create_node(test_file, ctx, 0, is_dir=False)
 
     assert result is not None

@@ -1,0 +1,104 @@
+# diffctx MCP Server
+
+## Installation
+
+```bash
+pip install diffctx[mcp]
+```
+
+## Client Configuration
+
+### Claude Code
+
+Add to `~/.claude/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "diffctx": {
+      "command": "diffctx-mcp"
+    }
+  }
+}
+```
+
+### Cursor
+
+Add to `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "diffctx": {
+      "command": "diffctx-mcp"
+    }
+  }
+}
+```
+
+### Continue
+
+Add to `~/.continue/config.json`:
+
+```json
+{
+  "experimental": {
+    "modelContextProtocolServers": [
+      {
+        "transport": {
+          "type": "stdio",
+          "command": "diffctx-mcp"
+        }
+      }
+    ]
+  }
+}
+```
+
+### Windsurf
+
+Add to `~/.codeium/windsurf/mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "diffctx": {
+      "command": "diffctx-mcp"
+    }
+  }
+}
+```
+
+### Zed
+
+Add to `~/.config/zed/settings.json`:
+
+```json
+{
+  "context_servers": {
+    "diffctx": {
+      "command": {
+        "path": "diffctx-mcp"
+      }
+    }
+  }
+}
+```
+
+## Environment Variables
+
+- `DIFFCTX_ALLOWED_PATHS` — colon-separated list of directories the server is
+  allowed to access. When set, requests for repositories outside these paths are
+  rejected.
+
+## Available Tools
+
+### `get_diff_context`
+
+Returns the most relevant code fragments for understanding a git diff.
+
+Parameters:
+
+- `repo_path` (string, required) — absolute path to a git repository
+- `diff_range` (string, default `"HEAD~1..HEAD"`) — git diff range
+- `budget_tokens` (integer, default `8000`) — token budget for context selection

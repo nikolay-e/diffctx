@@ -14,7 +14,7 @@ pub struct AlgorithmLimits {
 
 impl Default for AlgorithmLimits {
     fn default() -> Self {
-        let max_fragments = std::env::var("TREEMAPPER_MAX_FRAGMENTS")
+        let max_fragments = std::env::var("DIFFCTX_MAX_FRAGMENTS")
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
             .filter(|&v| v >= 1)

@@ -1,29 +1,21 @@
-# TreeMapper
+# TreeMapper / diffctx
 
-[![CI](https://github.com/nikolay-e/treemapper/actions/workflows/ci.yml/badge.svg)](https://github.com/nikolay-e/treemapper/actions/workflows/ci.yml)
+[![CI](https://github.com/nikolay-e/diffctx/actions/workflows/ci.yml/badge.svg)](https://github.com/nikolay-e/diffctx/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/treemapper)](https://pypi.org/project/treemapper/)
-[![Downloads](https://img.shields.io/pypi/dm/treemapper)](https://pypi.org/project/treemapper/)
 [![License](https://img.shields.io/pypi/l/treemapper)](https://pypi.org/project/treemapper/)
 
-**Smart diff context for LLM code review.** Selects the minimal set of code
-fragments needed to understand a git change — instead of dumping entire files.
+**TreeMapper / diffctx selects the minimum code an LLM needs to review a git diff.**
+Instead of pasting whole files, it walks the dependency graph from the changed
+lines outward and stops as soon as additional context stops paying for itself.
 
-Also exports full codebase structure + contents in YAML/JSON/MD/txt.
-Works with any LLM. Available as CLI, Python API, and MCP server.
-100% local, free, no GitHub dependency.
-
-```bash
-pipx install treemapper
-
-treemapper . --diff HEAD~1       # smart context for last commit → paste into Claude/ChatGPT
-treemapper . -f md -c           # full export → clipboard in Markdown
-```
-
-![demo](docs/demo.gif)
+> The project is developed at [`github.com/nikolay-e/diffctx`](https://github.com/nikolay-e/diffctx);
+> the PyPI package and CLI are published as `treemapper`. Both names refer to
+> the same tool — `treemapper` is the historical name (and CLI binary today),
+> `diffctx` is the differentiated value proposition the project is built around.
 
 ## Why not just use `tree` or repomix?
 
-| | `tree` | repomix | Claude Code Review | **TreeMapper** |
+| | `tree` | repomix | Claude Code Review | **TreeMapper / diffctx** |
 |---|:---:|:---:|:---:|:---:|
 | **Primary use case** | directory listing | full repo export | automated PR review | **diff context for code review** |
 | Smart diff context | ✗ | ✗ | ✓ | ✓ |
@@ -34,24 +26,33 @@ treemapper . -f md -c           # full export → clipboard in Markdown
 | Python API | ✗ | ✗ | ✗ | ✓ |
 | MCP server | ✗ | ✗ | ✗ | ✓ |
 
-## Installation
+## Install (30 seconds)
 
 ```bash
-pipx install treemapper                    # recommended: isolated, no venv needed
-pip install treemapper                     # or with pip
+pip install treemapper                     # canonical
+pipx install treemapper                    # or: isolated, no venv needed
 pip install 'treemapper[tree-sitter]'      # + AST parsing for smarter diff context
-pip install 'treemapper[mcp]'             # + MCP server for AI assistants
+pip install 'treemapper[mcp]'              # + MCP server for AI assistants
 ```
 
+```bash
+treemapper . --diff HEAD~1       # smart context for last commit → paste into Claude/ChatGPT
+treemapper . -f md -c            # full export → clipboard in Markdown
+```
+
+![TreeMapper diff-context demo: running `treemapper . --diff HEAD~1` inside a git repo and copying the relevance-ranked YAML output to the clipboard for an LLM](https://raw.githubusercontent.com/nikolay-e/diffctx/main/docs/demo.gif)
+
+*Demo: `treemapper . --diff HEAD~1` selects only the fragments — functions,
+imports, type definitions — that an LLM actually needs to review the last
+commit, instead of dumping every changed file in full.*
+
 **Standalone binary** (no Python required): download from the
-[releases page](https://github.com/nikolay-e/treemapper/releases/latest).
+[releases page](https://github.com/nikolay-e/diffctx/releases/latest).
 
 > Diff context mode works out of the box. Adding `[tree-sitter]` enables AST-level
 > parsing for more accurate context selection across 12 languages.
 
 ## Diff Context Mode
-
-**Paper:** [Context-Selection for Git Diff (Zenodo, 2026)](https://doi.org/10.5281/zenodo.18824580)
 
 Automatically finds the minimal set of code fragments needed to understand
 a change — imports, callers, type definitions, config dependencies — without
@@ -73,16 +74,50 @@ fragments:
 
 ### How it works
 
-Uses Personalized PageRank on a code graph (imports, co-changes, type refs)
-to propagate relevance from changed lines outward. Stops when signal decays
-below threshold τ, or at an explicit `--budget` token limit.
+Builds a code graph (imports, co-changes, type refs) and propagates
+relevance from changed lines outward across it. Three scoring modes are
+available — pick one with `--scoring`:
 
-| Flag       | Default | Description                              |
-|------------|---------|------------------------------------------|
-| `--budget` | none    | Token limit (convergence-based by default) |
-| `--full`   | false   | Include all changed code, skip selection |
-| `--alpha`  | 0.60    | PPR damping factor                       |
-| `--tau`    | 0.08    | Convergence threshold                    |
+| `--scoring` | What it does                                              |
+|-------------|-----------------------------------------------------------|
+| `ego` (default) | Bounded ego-network expansion around changed nodes — fast, predictable radius, the current default |
+| `ppr`       | Personalized PageRank with damping `--alpha` — global, smoother decay, slower |
+| `bm25`      | Lexical fragment retrieval against the diff hunks — useful as a baseline / fallback when the graph is sparse |
+
+Selection stops when relevance drops below `--tau` (the minimum score a
+fragment must beat to be kept), or once `--budget` tokens have been
+emitted, whichever comes first.
+
+| Flag        | Default | Description                                                              |
+|-------------|---------|--------------------------------------------------------------------------|
+| `--scoring` | `ego`   | Scoring mode: `ego`, `ppr`, or `bm25`                                    |
+| `--budget`  | auto    | Token cap. `auto` lets selection converge; `-1` disables the cap; `N` enforces a fixed cap |
+| `--alpha`   | 0.60    | How tightly context clusters around changes (PPR damping; 0–1, higher = more focused) |
+| `--tau`     | 0.08    | Minimum relevance required to include a fragment (lower = more context)  |
+| `--full`    | false   | Include every changed fragment; skip the smart-selection step entirely   |
+
+Calibration of `--alpha`, `--tau`, and the edge-weight priors is documented
+in [`docs/parameter-strategy.md`](docs/parameter-strategy.md).
+
+*Theory: [Context-Selection for Git Diff (Zenodo, 2026)](https://doi.org/10.5281/zenodo.18824580).*
+
+### `graph` subcommand
+
+For exploring the underlying dependency graph directly (without a diff),
+use the `graph` subcommand:
+
+```bash
+treemapper graph .                                  # Mermaid graph of directory deps (default)
+treemapper graph . --summary                        # cycles, hotspots, coupling metrics
+treemapper graph . --level fragment -f json         # fragment-level graph as JSON
+treemapper graph . --level file -f graphml -o g.xml # file-level graph as GraphML
+```
+
+| Flag        | Default      | Description                                              |
+|-------------|--------------|----------------------------------------------------------|
+| `-f/--format` | `mermaid`  | Output format: `mermaid`, `json`, or `graphml`           |
+| `--level`   | `directory`  | Granularity: `fragment`, `file`, or `directory`          |
+| `--summary` | false        | Print graph statistics (cycles, hotspots, coupling)      |
 
 ## Usage
 
@@ -251,3 +286,10 @@ Auto-discovered files:
 ## License
 
 Apache 2.0
+
+---
+
+- [Changelog](CHANGELOG.md)
+- [Security policy](SECURITY.md) — threat model and vulnerability reporting
+- [Parameter strategy](docs/parameter-strategy.md) — how `--alpha`,
+  `--tau`, and edge weights are calibrated

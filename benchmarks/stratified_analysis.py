@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
@@ -29,23 +30,10 @@ from pathlib import Path
 
 import numpy as np
 
-from benchmarks.stats import bootstrap_ci, holm_correct, paired_bootstrap_delta, wilcoxon_paired
-
-_RATIO_BUCKETS: tuple[tuple[str, float, float | None], ...] = (
-    ("≤1.0", 0.0, 1.0),
-    ("1.0-1.5", 1.0 + 1e-9, 1.5),
-    ("1.5-2.0", 1.5 + 1e-9, 2.0),
-    ("2.0-3.0", 2.0 + 1e-9, 3.0),
-    ("3.0+", 3.0 + 1e-9, None),
-)
-_GOLD_BUCKETS: tuple[tuple[str, int, int | None], ...] = (
-    ("1", 1, 1),
-    ("2-3", 2, 3),
-    ("4-7", 4, 7),
-    ("8-15", 8, 15),
-    ("16+", 16, None),
-)
-
+# Bucket constants live in cell_metrics — single source of truth so the
+# per-cell aggregator and the cross-cell stratified analysis cannot drift.
+from benchmarks.cell_metrics import _GOLD_BUCKETS, _RATIO_BUCKETS
+from benchmarks.stats import bh_fdr, bootstrap_ci, holm_correct, paired_bootstrap_delta, wilcoxon_paired
 
 # ---------------------------------------------------------------------------
 # Long-form loader
@@ -147,7 +135,7 @@ def _bucket_by_ratio(values: np.ndarray) -> dict[str, np.ndarray]:
     for label, lo, hi in _RATIO_BUCKETS:
         mask = values >= lo
         if hi is not None:
-            mask &= values <= hi
+            mask &= values < hi  # half-open [lo, hi)
         out[label] = mask
     return out
 
@@ -157,7 +145,7 @@ def _bucket_by_gold(values: np.ndarray) -> dict[str, np.ndarray]:
     for label, lo, hi in _GOLD_BUCKETS:
         mask = values >= lo
         if hi is not None:
-            mask &= values <= hi
+            mask &= values < hi  # half-open [lo, hi)
         out[label] = mask
     return out
 
@@ -209,10 +197,19 @@ def _paired_pull(
     bucket_label: str,
     bucket_field: str,
     bucket_fn,
-) -> tuple[list[float], list[float]]:
+) -> tuple[list[float], list[float], int, int, int]:
+    """Return paired recalls and the (n_a_in_bucket, n_b_in_bucket, n_paired) tuple.
+
+    `n_paired` is the cardinality after instance-id intersection — what the
+    bootstrap actually sees. Exposing all three lets the renderer flag cells
+    where one side has more bucket members than the other (coverage gap).
+    """
     ids_a = {iid: idx for idx, iid in enumerate(cell_a["instance_id"])}
-    masks = bucket_fn(cell_a[bucket_field])
-    mask_a = masks[bucket_label]
+    masks_a = bucket_fn(cell_a[bucket_field])
+    masks_b = bucket_fn(cell_b[bucket_field])
+    mask_a = masks_a[bucket_label]
+    n_a = int(mask_a.sum())
+    n_b = int(masks_b[bucket_label].sum())
     a_vals: list[float] = []
     b_vals: list[float] = []
     for idx_b, iid in enumerate(cell_b["instance_id"]):
@@ -223,19 +220,32 @@ def _paired_pull(
             continue
         a_vals.append(float(cell_a["file_recall"][idx_a]))
         b_vals.append(float(cell_b["file_recall"][idx_b]))
-    return a_vals, b_vals
+    return a_vals, b_vals, n_a, n_b, len(a_vals)
 
 
 def pairwise_comparisons(
     by_cell: dict[tuple[str, int, int, str], dict[str, np.ndarray]],
-    pairs: Sequence[tuple[tuple[str, int, int], tuple[str, int, int], str]],
+    pairs: Sequence[tuple[tuple[str, int, int], tuple[str, int, int], str, str, str]],
     datasets: Iterable[str],
     bucket_field: str,
     bucket_fn,
 ) -> list[dict]:
-    """Paired bootstrap + Wilcoxon for each (pair, dataset, bucket)."""
+    """Paired bootstrap + Wilcoxon for each (pair, dataset, bucket).
+
+    Each pair entry is `(a_cfg, b_cfg, label, claim_id, correction)`. Multiple-
+    testing correction is applied **within `claim_id`** (Bender & Lange 2001:
+    the family is defined by the conclusion, not the test count). Pairs marked
+    `correction='holm'` use FWER control; pairs marked `'fdr'` use BH-FDR
+    (treated as exploratory).
+
+    Cells with `n_paired < 6` are skipped (the two-sided Wilcoxon cannot
+    reach p<0.05 below that). `mean_a_marginal` / `mean_b_marginal` are the
+    cell averages on the paired subset and are diagnostic only — the
+    HEADLINE Δ MUST be `delta` (paired). Renderers must surface that
+    distinction.
+    """
     out: list[dict] = []
-    for a_cfg, b_cfg, label in pairs:
+    for a_cfg, b_cfg, label, claim_id, correction in pairs:
         for ds in datasets:
             cell_a = by_cell.get((*a_cfg, ds))
             cell_b = by_cell.get((*b_cfg, ds))
@@ -244,21 +254,26 @@ def pairwise_comparisons(
             bucket_defs = _RATIO_BUCKETS if bucket_field == "gold_to_changed_ratio" else _GOLD_BUCKETS
             for bucket_def in bucket_defs:
                 bucket_label = bucket_def[0]
-                a_vals, b_vals = _paired_pull(cell_a, cell_b, bucket_label, bucket_field, bucket_fn)
-                if len(a_vals) < 5:
+                a_vals, b_vals, n_a, n_b, n_paired = _paired_pull(cell_a, cell_b, bucket_label, bucket_field, bucket_fn)
+                if n_paired < 6:
                     continue
                 boot = paired_bootstrap_delta(a_vals, b_vals, n_iter=5000)
                 wilc = wilcoxon_paired(a_vals, b_vals)
                 out.append(
                     {
+                        "claim_id": claim_id,
+                        "correction": correction,
                         "pair_label": label,
                         "a": f"{a_cfg[0]} b={a_cfg[1]} L={a_cfg[2]}",
                         "b": f"{b_cfg[0]} b={b_cfg[1]} L={b_cfg[2]}",
                         "dataset": ds,
                         "bucket": bucket_label,
-                        "n": len(a_vals),
-                        "mean_a": float(np.mean(a_vals)),
-                        "mean_b": float(np.mean(b_vals)),
+                        "n_a": n_a,
+                        "n_b": n_b,
+                        "n_paired": n_paired,
+                        # Cell-mean for diagnostic only; HEADLINE Δ must be `delta` (paired).
+                        "mean_a_marginal": float(np.mean(a_vals)),
+                        "mean_b_marginal": float(np.mean(b_vals)),
                         "delta": boot["delta_mean"],
                         "ci_lo": boot["ci_lo"],
                         "ci_hi": boot["ci_hi"],
@@ -266,13 +281,17 @@ def pairwise_comparisons(
                         "p_wilcoxon": wilc["p_value"],
                     }
                 )
-    # Holm correction across the family of bootstrap p-values
-    if out:
-        ps = [r["p_boot"] for r in out]
-        corrected = holm_correct(ps)
-        for r, c in zip(out, corrected):
-            r["p_holm"] = c["p_adj"]
-            r["holm_reject"] = c["rejected"]
+    # Apply correction within each (claim_id, correction) family separately.
+    by_claim: dict[tuple[str, str], list[int]] = defaultdict(list)
+    for i, r in enumerate(out):
+        by_claim[(r["claim_id"], r["correction"])].append(i)
+    for (_claim_id, correction), idxs in by_claim.items():
+        ps = [out[i]["p_boot"] for i in idxs]
+        corrected = bh_fdr(ps, q=0.10) if correction == "fdr" else holm_correct(ps)
+        for i, c in zip(idxs, corrected):
+            out[i]["p_adj"] = c["p_adj"]
+            out[i]["adj_reject"] = c["rejected"]
+            out[i]["family_size"] = len(idxs)
     return out
 
 
@@ -281,58 +300,101 @@ def pairwise_comparisons(
 # ---------------------------------------------------------------------------
 
 
+def _fit_regression_with_cluster_bootstrap(
+    recall: np.ndarray,
+    ratio: np.ndarray,
+    n_gold: np.ndarray,
+    instance_ids: np.ndarray,
+    n_boot: int = 1000,
+    seed: int = 42,
+) -> dict | None:
+    """OLS `recall ~ 1 + log1p(ratio) + log1p(n_gold)` with cluster bootstrap on instance_id.
+
+    Returns None if `var(log1p(ratio)) < 1e-6` (degenerate slope) or the
+    point fit is rank-deficient. Failing bootstrap resamples (rank-deficient
+    matrix) record NaN for the coefficient vector, and CIs are computed via
+    `np.nanpercentile` so partial degeneracy doesn't pull CIs toward the
+    point estimate.
+    """
+    if len(recall) < 30:
+        return None
+    x_ratio = np.log1p(ratio)
+    x_gold = np.log1p(n_gold)
+    if np.var(x_ratio) < 1e-6:
+        return None
+    x = np.column_stack([np.ones_like(recall), x_ratio, x_gold])
+    try:
+        coef = np.linalg.lstsq(x, recall, rcond=None)[0]
+    except np.linalg.LinAlgError:
+        return None
+    if not np.all(np.isfinite(coef)):
+        return None
+
+    # Cluster on unique instance_ids: resample clusters with replacement, take
+    # all rows in chosen clusters. This respects within-instance correlation
+    # (multiple budget/depth cells observe the same instance) without treating
+    # methods as exchangeable — this regression is fit on a single (method,
+    # budget, depth, dataset) cell so each instance contributes ≤1 row anyway,
+    # but clustering is still the principled bootstrap unit per IR convention.
+    cluster_ids, cluster_index = np.unique(instance_ids, return_inverse=True)
+    rng = np.random.default_rng(seed)
+    boot_coefs = np.full((n_boot, 3), np.nan, dtype=np.float64)
+    n_clusters = len(cluster_ids)
+    for i in range(n_boot):
+        chosen = rng.integers(0, n_clusters, n_clusters)
+        mask = np.isin(cluster_index, chosen)
+        if not mask.any():
+            continue
+        x_b = x[mask]
+        y_b = recall[mask]
+        if x_b.shape[0] < 4 or np.linalg.matrix_rank(x_b) < x_b.shape[1]:
+            continue
+        try:
+            boot_coefs[i] = np.linalg.lstsq(x_b, y_b, rcond=None)[0]
+        except np.linalg.LinAlgError:
+            continue
+    n_valid = int(np.sum(np.isfinite(boot_coefs[:, 0])))
+    if n_valid < 100:
+        return None
+    ci_lo = np.nanpercentile(boot_coefs, 2.5, axis=0)
+    ci_hi = np.nanpercentile(boot_coefs, 97.5, axis=0)
+    return {
+        "n": len(recall),
+        "n_clusters": int(n_clusters),
+        "n_boot_valid": n_valid,
+        "intercept": float(coef[0]),
+        "intercept_ci": (float(ci_lo[0]), float(ci_hi[0])),
+        "ratio_slope": float(coef[1]),
+        "ratio_slope_ci": (float(ci_lo[1]), float(ci_hi[1])),
+        "gold_slope": float(coef[2]),
+        "gold_slope_ci": (float(ci_lo[2]), float(ci_hi[2])),
+    }
+
+
 def regression_per_method(
     by_cell: dict[tuple[str, int, int, str], dict[str, np.ndarray]],
 ) -> list[dict]:
-    """Fit `recall = a + b * log1p(ratio) + c * log1p(n_gold)` per (method, budget, depth)."""
-    by_cfg: dict[tuple[str, int, int], list[dict[str, np.ndarray]]] = defaultdict(list)
+    """Per-(method, budget, depth, dataset) OLS with cluster-bootstrap CIs.
+
+    Pooled-across-datasets regression conflates Simpson-style between-dataset
+    mean shifts with within-dataset slope. We fit per-dataset and let the
+    reader compare. Datasets with ≤1e-6 variance in log1p(ratio) are skipped
+    automatically (e.g. swebench has ratio≡1 → no slope to fit).
+    """
+    out: list[dict] = []
     for cell_key, arrs in by_cell.items():
-        method, budget, depth, _dataset = cell_key
+        method, budget, depth, dataset = cell_key
         if budget == 0:
             continue
-        by_cfg[(method, budget, depth)].append(arrs)
-
-    out: list[dict] = []
-    for cfg, arr_list in by_cfg.items():
-        recall = np.concatenate([a["file_recall"] for a in arr_list]).astype(float)
-        ratio = np.concatenate([a["gold_to_changed_ratio"] for a in arr_list]).astype(float)
-        n_gold = np.concatenate([a["n_gold"] for a in arr_list]).astype(float)
-        if len(recall) < 30:
-            continue
-        x_ratio = np.log1p(ratio)
-        x_gold = np.log1p(n_gold)
-        x = np.column_stack([np.ones_like(recall), x_ratio, x_gold])
-        try:
-            coef = np.linalg.lstsq(x, recall, rcond=None)[0]
-        except np.linalg.LinAlgError:
-            continue
-        # Bootstrap CI on each coefficient
-        rng = np.random.default_rng(42)
-        boot_coefs = np.zeros((1000, 3), dtype=np.float64)
-        n = len(recall)
-        for i in range(1000):
-            idx = rng.integers(0, n, n)
-            try:
-                bc = np.linalg.lstsq(x[idx], recall[idx], rcond=None)[0]
-                boot_coefs[i] = bc
-            except np.linalg.LinAlgError:
-                boot_coefs[i] = coef
-        ci_lo = np.percentile(boot_coefs, 2.5, axis=0)
-        ci_hi = np.percentile(boot_coefs, 97.5, axis=0)
-        out.append(
-            {
-                "method": cfg[0],
-                "budget": cfg[1],
-                "depth": cfg[2],
-                "n": int(n),
-                "intercept": float(coef[0]),
-                "intercept_ci": (float(ci_lo[0]), float(ci_hi[0])),
-                "ratio_slope": float(coef[1]),
-                "ratio_slope_ci": (float(ci_lo[1]), float(ci_hi[1])),
-                "gold_slope": float(coef[2]),
-                "gold_slope_ci": (float(ci_lo[2]), float(ci_hi[2])),
-            }
+        fit = _fit_regression_with_cluster_bootstrap(
+            arrs["file_recall"].astype(float),
+            arrs["gold_to_changed_ratio"].astype(float),
+            arrs["n_gold"].astype(float),
+            np.asarray(arrs["instance_id"]),
         )
+        if fit is None:
+            continue
+        out.append({"method": method, "budget": budget, "depth": depth, "dataset": dataset, **fit})
     return out
 
 
@@ -342,11 +404,15 @@ def regression_per_method(
 
 
 def per_language_hard_regime(by_cell: dict[tuple[str, int, int, str], dict[str, np.ndarray]]) -> list[dict]:
+    """Per-language recall in the *hard* regime, defined as ratio in the
+    `1.5-2.0` bucket or higher (i.e. matches `_RATIO_BUCKETS[2:]`). Threshold
+    is taken from the bucket constants, not hard-coded, so it cannot drift."""
+    hard_bucket_lo = _RATIO_BUCKETS[2][1]  # lower bound of "1.5-2.0" bucket
     out: list[dict] = []
     for (method, budget, depth, dataset), arrs in by_cell.items():
         if budget == 0:
             continue
-        mask = arrs["gold_to_changed_ratio"] > 1.5
+        mask = arrs["gold_to_changed_ratio"] >= hard_bucket_lo
         if not mask.any():
             continue
         languages = arrs["language"][mask]
@@ -418,7 +484,16 @@ def matched_cardinality_scan(
 
 
 def _fmt_recall_ci(rec: dict) -> str:
-    return f"{rec['mean_recall']:.3f} [{rec['ci_lo']:.3f}, {rec['ci_hi']:.3f}] (n={rec['n']})"
+    """Render `mean [CI_lo, CI_hi] (n)`, flagging degenerate cells with `‡`.
+
+    A CI half-width below 1e-12 means the per-instance recall is constant
+    across the bucket (e.g. SWE-bench saturated cell where every instance
+    returns recall=1.0). Distinguishing these from honest narrow CIs avoids
+    misreading a constant as a tightly estimated value.
+    """
+    hw = (rec["ci_hi"] - rec["ci_lo"]) / 2
+    flag = "‡" if hw < 1e-12 else ""
+    return f"{rec['mean_recall']:.3f}{flag} [{rec['ci_lo']:.3f}, {rec['ci_hi']:.3f}] (n={rec['n']})"
 
 
 def render_per_bucket_table(rows: list[dict], buckets: Sequence[str], title: str) -> str:
@@ -448,15 +523,42 @@ def render_per_bucket_table(rows: list[dict], buckets: Sequence[str], title: str
 
 
 def render_pooled_per_bucket_table(rows: list[dict], buckets: Sequence[str], title: str) -> str:
-    """Pool over datasets, weighted by n. Shows one row per (method, budget, depth)."""
+    """Pool over datasets, weighted by n.
+
+    **Caveat surfaced explicitly per cell:** for buckets where only one
+    dataset contributes (e.g. ratio>1.0 is ContextBench-only because SWE-V
+    and PolyBench500 have ratio≡1 by construction), the cell is annotated
+    with the contributing dataset list. Without this annotation, "(pooled
+    across datasets)" is misleading framing.
+    """
     pooled: dict[tuple[str, int, int], dict[str, list[dict]]] = defaultdict(lambda: defaultdict(list))
     for r in rows:
         pooled[(r["method"], r["budget"], r["depth"])][r["bucket"]].append(r)
+    # Per-bucket coverage map: which datasets contributed at all (for any cfg)?
+    contributing: dict[str, set[str]] = defaultdict(set)
+    for r in rows:
+        contributing[r["bucket"]].add(r["dataset"])
 
     out: list[str] = [f"\n## {title} (pooled across datasets)", ""]
-    out.append("Pooled means weighted by per-dataset n. CI is half-width approximation `sqrt(Σnᵢ·varᵢ)/Σnᵢ`.")
+    out.append(
+        "Pooled means weighted by per-dataset n. CI is half-width approximation "
+        "`sqrt(Σnᵢ·varᵢ)/Σnᵢ`. Bucket header notes the *contributing* datasets — "
+        "for buckets where only one of {swebench, polybench, contextbench} has "
+        "any instances, this is **NOT** a cross-dataset pool but a single-dataset "
+        "result mislabelled by the convenience of the matrix shape."
+    )
     out.append("")
-    out.append("| method | budget | depth | " + " | ".join(buckets) + " |")
+    bucket_headers: list[str] = []
+    for b in buckets:
+        ds = sorted(contributing.get(b, set()))
+        if not ds:
+            bucket_headers.append(b)
+        elif len(ds) == 1:
+            bucket_headers.append(f"{b} (**{ds[0]} only**)")
+        else:
+            short = ",".join(d[:4] for d in ds)
+            bucket_headers.append(f"{b} ({short})")
+    out.append("| method | budget | depth | " + " | ".join(bucket_headers) + " |")
     out.append("|---|---:|---:|" + "---|" * len(buckets))
     method_order = ["aider", "bm25", "ppr", "ego"]
     keys = sorted(
@@ -479,23 +581,59 @@ def render_pooled_per_bucket_table(rows: list[dict], buckets: Sequence[str], tit
     return "\n".join(out) + "\n"
 
 
+def _fmt_p(p: float) -> str:
+    """Render a probability for the markdown table; tiny values clamp to `<1e-10`."""
+    if math.isnan(p):
+        return "n/a"
+    if p < 1e-10:
+        return "<1e-10"
+    return f"{p:.3g}"
+
+
 def render_pairwise_table(rows: list[dict], title: str) -> str:
     if not rows:
         return ""
     out: list[str] = [f"\n## {title}", ""]
     out.append(
-        "Δ is paired (instance-id matched). 95% bootstrap CI from 5000 resamples on the per-instance Δ. Holm-corrected p adjusts across the entire pair x dataset x bucket family below."
+        "**Δ is paired** (instance-id matched, computed on the same instances "
+        "for both methods). 95% bootstrap CI from 5000 resamples on the "
+        "per-instance Δ; rendered `<1e-10` when the bootstrap floor (1/n_iter) "
+        "is hit. The `mean_a / mean_b` columns are the *marginal* per-method "
+        "means on the paired subset and are diagnostic only — **the headline "
+        "effect is `Δ`, not `mean_b - mean_a`**, because group means do not "
+        "control for shared instance difficulty (Smucker, Allan, Carterette, "
+        "CIKM 2007). Multiple-testing correction is applied **within each "
+        "`claim_id` family**: pre-registered claims use Holm-Bonferroni "
+        "(FWER), exploratory claims use BH-FDR (q=0.10)."
     )
     out.append("")
-    out.append("| pair | dataset | bucket | n | mean_a | mean_b | Δ (b-a) | 95% CI | Wilcoxon p | Holm p | reject H₀? |")
-    out.append("|---|---|---|---:|---:|---:|---:|---|---:|---:|---|")
-    for r in rows:
+    out.append(
+        "| claim_id (correction) | pair | dataset | bucket | n_paired | "
+        "mean_a (marg) | mean_b (marg) | Δ paired | 95% CI | Wilcoxon p | "
+        "adj p | reject? | family |"
+    )
+    out.append("|---|---|---|---|---:|---:|---:|---:|---|---:|---:|---|---:|")
+    correction_order = {"holm": 0, "fdr": 1}
+    rows_sorted = sorted(
+        rows,
+        key=lambda r: (
+            r.get("claim_id", ""),
+            correction_order.get(r.get("correction", ""), 99),
+            r.get("pair_label", ""),
+            r.get("dataset", ""),
+            r.get("bucket", ""),
+        ),
+    )
+    for r in rows_sorted:
         ci = f"[{r['ci_lo']:+.3f}, {r['ci_hi']:+.3f}]"
-        reject = "✓" if r.get("holm_reject") else "—"
+        reject = "✓" if r.get("adj_reject") else "—"
         out.append(
-            f"| {r['pair_label']} | {r['dataset']} | {r['bucket']} | {r['n']} | "
-            f"{r['mean_a']:.3f} | {r['mean_b']:.3f} | {r['delta']:+.3f} | {ci} | "
-            f"{r['p_wilcoxon']:.3g} | {r['p_holm']:.3g} | {reject} |"
+            f"| **{r.get('claim_id', '?')}** ({r.get('correction', '?')}) | "
+            f"{r['pair_label']} | {r['dataset']} | {r['bucket']} | "
+            f"{r['n_paired']} | {r['mean_a_marginal']:.3f} | {r['mean_b_marginal']:.3f} | "
+            f"{r['delta']:+.3f} | {ci} | "
+            f"{_fmt_p(r['p_wilcoxon'])} | {_fmt_p(r['p_adj'])} | {reject} | "
+            f"{r.get('family_size', '?')} |"
         )
     return "\n".join(out) + "\n"
 
@@ -505,20 +643,33 @@ def render_regression_table(rows: list[dict]) -> str:
         return ""
     out: list[str] = ["\n## Continuous regression: recall ~ log(1+ratio) + log(1+|gold|)", ""]
     out.append(
-        "Larger `ratio_slope` (less negative) = better scaling on hard instances. Larger `gold_slope` (less negative) = better scaling on multi-file gold."
+        "**Per-(method, budget, depth, dataset)** OLS with cluster bootstrap on `instance_id`. "
+        "Pooled-across-datasets regression is omitted: it would mix Simpson-style between-dataset "
+        "mean shifts with within-dataset difficulty slopes (Cañamares & Castells, CIKM 2021). "
+        "Cells where `var(log1p(ratio)) < 1e-6` (e.g. swebench: every instance has ratio=1) are "
+        "skipped — no slope is fittable when the regressor is constant."
     )
     out.append("")
-    out.append("| method | budget | depth | n | intercept | ratio_slope | ratio CI | gold_slope | gold CI |")
-    out.append("|---|---:|---:|---:|---:|---:|---|---:|---|")
+    out.append("Larger (less negative) `ratio_slope` = better scaling on hard instances.")
+    out.append("")
+    out.append("| method | budget | depth | dataset | n | clusters | intercept | ratio_slope | ratio CI | gold_slope | gold CI |")
+    out.append("|---|---:|---:|---|---:|---:|---:|---:|---|---:|---|")
     method_order = ["aider", "bm25", "ppr", "ego"]
     rows_sorted = sorted(
-        rows, key=lambda r: (method_order.index(r["method"]) if r["method"] in method_order else 99, r["budget"], r["depth"])
+        rows,
+        key=lambda r: (
+            method_order.index(r["method"]) if r["method"] in method_order else 99,
+            r["budget"],
+            r["depth"],
+            r["dataset"],
+        ),
     )
     for r in rows_sorted:
         ratio_ci = f"[{r['ratio_slope_ci'][0]:+.3f}, {r['ratio_slope_ci'][1]:+.3f}]"
         gold_ci = f"[{r['gold_slope_ci'][0]:+.3f}, {r['gold_slope_ci'][1]:+.3f}]"
         out.append(
-            f"| **{r['method']}** | {r['budget']} | {r['depth']} | {r['n']} | "
+            f"| **{r['method']}** | {r['budget']} | {r['depth']} | {r['dataset']} | "
+            f"{r['n']} | {r['n_clusters']} | "
             f"{r['intercept']:+.3f} | {r['ratio_slope']:+.3f} | {ratio_ci} | "
             f"{r['gold_slope']:+.3f} | {gold_ci} |"
         )
@@ -591,20 +742,103 @@ def render_matched_cardinality(rows: list[dict]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _key_pairs() -> list[tuple[tuple[str, int, int], tuple[str, int, int], str]]:
-    """Headline method comparisons.
+def _render_structural_fact(rows: list[dict], _datasets: list[str]) -> str:
+    """Lead block: per-dataset coverage of the hard regime (ratio>1.5).
 
-    `(a_cfg, b_cfg, label)`. Δ in the table is `b - a` (so positive = b wins).
+    Surfaces the headline structural fact: only ContextBench has retrieval-
+    meaningful instances; SWE-bench and PolyBench are saturated by
+    construction (gold ⊆ diff). Without this, downstream pooled tables look
+    cross-benchmark when they are de facto single-benchmark.
+    """
+    if not rows:
+        return ""
+    hard_lo = _RATIO_BUCKETS[2][1]
+    by_ds: dict[str, dict[str, int]] = defaultdict(lambda: {"total": 0, "hard": 0, "trivial": 0})
+    seen: set[tuple[str, str]] = set()
+    for r in rows:
+        # Each instance may appear in many cells; count it once per dataset.
+        key = (r["dataset"], r["instance_id"])
+        if key in seen:
+            continue
+        seen.add(key)
+        ds = r["dataset"]
+        by_ds[ds]["total"] += 1
+        if r["gold_to_changed_ratio"] >= hard_lo:
+            by_ds[ds]["hard"] += 1
+        if r["gold_to_changed_ratio"] <= 1.0:
+            by_ds[ds]["trivial"] += 1
+
+    out: list[str] = ["## Structural fact (lead)", ""]
+    out.append(
+        "Only one of the three test sets has any instances where retrieval is "
+        "non-trivial (`|gold|/|changed| > 1.5`). On the other two, gold ⊆ diff "
+        "by construction, so every method recovers gold by returning the diff "
+        "itself — the recall ceiling is identical and method ranking is "
+        "uninformative. Pooling across all three dilutes any retrieval signal."
+    )
+    out.append("")
+    out.append("| dataset | n | trivial (ratio≤1.0) | hard (ratio>1.5) | hard fraction |")
+    out.append("|---|---:|---:|---:|---:|")
+    total_n = 0
+    total_hard = 0
+    for ds in sorted(by_ds.keys()):
+        info = by_ds[ds]
+        n = info["total"]
+        trivial = info["trivial"]
+        hard = info["hard"]
+        frac = hard / n if n else 0.0
+        total_n += n
+        total_hard += hard
+        out.append(f"| {ds} | {n} | {trivial} | {hard} | {frac * 100:.1f}% |")
+    if total_n:
+        out.append(
+            f"| **all** | **{total_n}** | "
+            f"**{sum(d['trivial'] for d in by_ds.values())}** | "
+            f"**{total_hard}** | **{total_hard / total_n * 100:.1f}%** |"
+        )
+    out.append("")
+    out.append(
+        "**Reading guide:** in tables below, the only cells that distinguish "
+        "retrieval methods are the ones populated by datasets with hard "
+        "instances. When a bucket header reads `(<dataset> only)` the row is "
+        "single-dataset by structural necessity, not by analyst choice."
+    )
+    return "\n".join(out) + "\n"
+
+
+def _key_pairs() -> list[tuple[tuple[str, int, int], tuple[str, int, int], str, str, str]]:
+    """Headline method comparisons grouped into pre-registered claim families.
+
+    Each entry: `(a_cfg, b_cfg, label, claim_id, correction)`. Δ in the table
+    is `b - a` (positive = b wins). Multiple-testing correction is applied
+    **within each `claim_id`**.
+
+    Two pre-registered FWER-controlled claims:
+      - "EGO_L4_vs_L0": does graph propagation (depth) help over no propagation?
+      - "EGO_L4_vs_PPR": does our scoring beat the baseline at the same budget?
+    Plus exploratory comparisons (BH-FDR):
+      - "EGO_vs_BM25_LARGE": does EGO match brute-force lexical retrieval at 16x budget?
+      - "EGO_INTERNAL_DEPTH": which depth is best (sweep)?
     """
     return [
-        (("ppr", 8000, -1), ("ego", 8000, 4), "EGO L=4 vs PPR @ b=8000"),
-        (("ppr", 8000, -1), ("ego", 8000, 2), "EGO L=2 vs PPR @ b=8000"),
-        (("ego", 8000, 0), ("ego", 8000, 4), "EGO L=4 vs L=0 @ b=8000"),
-        (("ego", 8000, 0), ("ego", 8000, 2), "EGO L=2 vs L=0 @ b=8000"),
-        (("ego", 8000, 2), ("ego", 8000, 4), "EGO L=4 vs L=2 @ b=8000"),
-        (("ppr", -1, -1), ("ego", -1, 4), "EGO L=4 vs PPR @ unbudgeted"),
-        (("bm25", 128000, -1), ("ego", -1, 4), "EGO L=4 ub vs bm25 128k"),
-        (("bm25", 128000, -1), ("ego", 8000, 4), "EGO L=4 b=8k vs bm25 128k"),
+        # Pre-registered claim 1: EGO L=4 vs no propagation (across budgets).
+        (("ego", 8000, 0), ("ego", 8000, 4), "L=4 vs L=0 @ b=8000", "EGO_L4_vs_L0", "holm"),
+        (("ego", 16000, 0), ("ego", 16000, 4), "L=4 vs L=0 @ b=16000", "EGO_L4_vs_L0", "holm"),
+        (("ego", 32000, 0), ("ego", 32000, 4), "L=4 vs L=0 @ b=32000", "EGO_L4_vs_L0", "holm"),
+        (("ego", -1, 0), ("ego", -1, 4), "L=4 vs L=0 @ unbudgeted", "EGO_L4_vs_L0", "holm"),
+        # Pre-registered claim 2: EGO depth=4 vs PPR baseline (same budget).
+        (("ppr", 8000, -1), ("ego", 8000, 4), "EGO L=4 vs PPR @ b=8000", "EGO_L4_vs_PPR", "holm"),
+        (("ppr", 16000, -1), ("ego", 16000, 4), "EGO L=4 vs PPR @ b=16000", "EGO_L4_vs_PPR", "holm"),
+        (("ppr", 32000, -1), ("ego", 32000, 4), "EGO L=4 vs PPR @ b=32000", "EGO_L4_vs_PPR", "holm"),
+        (("ppr", -1, -1), ("ego", -1, 4), "EGO L=4 vs PPR @ unbudgeted", "EGO_L4_vs_PPR", "holm"),
+        # Exploratory (BH-FDR): EGO vs bm25 at very different token budgets.
+        (("bm25", 128000, -1), ("ego", -1, 4), "EGO L=4 ub vs bm25 128k", "EGO_vs_BM25_LARGE", "fdr"),
+        (("bm25", 128000, -1), ("ego", 8000, 4), "EGO L=4 b=8k vs bm25 128k", "EGO_vs_BM25_LARGE", "fdr"),
+        # Exploratory (BH-FDR): internal depth sweep, post-hoc.
+        (("ppr", 8000, -1), ("ego", 8000, 2), "EGO L=2 vs PPR @ b=8000", "EGO_INTERNAL_DEPTH", "fdr"),
+        (("ego", 8000, 0), ("ego", 8000, 2), "L=2 vs L=0 @ b=8000", "EGO_INTERNAL_DEPTH", "fdr"),
+        (("ego", 8000, 2), ("ego", 8000, 4), "L=4 vs L=2 @ b=8000", "EGO_INTERNAL_DEPTH", "fdr"),
+        (("ego", -1, 2), ("ego", -1, 4), "L=4 vs L=2 @ unbudgeted", "EGO_INTERNAL_DEPTH", "fdr"),
     ]
 
 
@@ -667,6 +901,7 @@ def main() -> int:
     bucket_labels_ratio = [b[0] for b in _RATIO_BUCKETS]
     bucket_labels_gold = [b[0] for b in _GOLD_BUCKETS]
     md_parts: list[str] = ["# Stratified analysis\n"]
+    md_parts.append(_render_structural_fact(rows, datasets))
     md_parts.append(f"**Rows:** {len(rows)} per-instance records across {len(by_cell)} (method, budget, depth, dataset) cells.\n")
     md_parts.append(render_pooled_per_bucket_table(bucket_ratio, bucket_labels_ratio, "Recall by difficulty ratio"))
     md_parts.append(
@@ -674,8 +909,8 @@ def main() -> int:
     )
     md_parts.append(render_pooled_per_bucket_table(bucket_gold, bucket_labels_gold, "Recall by |gold| (file count)"))
     md_parts.append(render_per_bucket_table(bucket_gold, bucket_labels_gold, "Recall by |gold| (per-dataset, with CI)"))
-    md_parts.append(render_pairwise_table(pair_ratio, "Pairwise comparisons by difficulty ratio (Holm-corrected)"))
-    md_parts.append(render_pairwise_table(pair_gold, "Pairwise comparisons by |gold| bucket (Holm-corrected)"))
+    md_parts.append(render_pairwise_table(pair_ratio, "Pairwise comparisons by difficulty ratio"))
+    md_parts.append(render_pairwise_table(pair_gold, "Pairwise comparisons by |gold| bucket"))
     md_parts.append(render_regression_table(regs))
     md_parts.append(render_per_language_hard(lang_hard))
     md_parts.append(render_matched_cardinality(cardinality))

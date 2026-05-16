@@ -4,7 +4,7 @@ import sys
 import pytest
 import yaml
 
-from .conftest import run_treemapper_subprocess
+from .conftest import run_diffctx_subprocess
 from .utils import load_yaml
 
 
@@ -20,7 +20,7 @@ def test_stdout_output_flags(temp_project, output_flag):
     (temp_project / "subdir").mkdir()
     (temp_project / "subdir" / "file.py").write_text("print('hello')", encoding="utf-8")
 
-    result = run_treemapper_subprocess([".", *output_flag], cwd=temp_project)
+    result = run_diffctx_subprocess([".", *output_flag], cwd=temp_project)
 
     assert result.returncode == 0
     assert result.stdout.strip() != ""
@@ -37,7 +37,7 @@ def test_stdout_output_flags(temp_project, output_flag):
 
 
 def test_stdout_output_preserves_stderr_logging(temp_project):
-    result = run_treemapper_subprocess([".", "-o", "-", "--log-level", "info"], cwd=temp_project)
+    result = run_diffctx_subprocess([".", "-o", "-", "--log-level", "info"], cwd=temp_project)
 
     assert result.returncode == 0
     assert result.stdout.strip() != ""
@@ -52,7 +52,7 @@ def test_stdout_output_with_file_content(temp_project):
     test_content = "def hello():\n    print('Hello, World!')\n"
     (temp_project / "hello.py").write_text(test_content, encoding="utf-8")
 
-    result = run_treemapper_subprocess([".", "-o", "-"], cwd=temp_project)
+    result = run_diffctx_subprocess([".", "-o", "-"], cwd=temp_project)
     assert result.returncode == 0
 
     tree_data = yaml.safe_load(result.stdout)
@@ -70,7 +70,7 @@ def test_stdout_output_respects_ignore_patterns(temp_project):
     ignore_file = temp_project / "custom.ignore"
     ignore_file.write_text("exclude.txt\n")
 
-    result = run_treemapper_subprocess([".", "-o", "-", "-i", str(ignore_file)], cwd=temp_project)
+    result = run_diffctx_subprocess([".", "-o", "-", "-i", str(ignore_file)], cwd=temp_project)
     assert result.returncode == 0
 
     tree_data = yaml.safe_load(result.stdout)
@@ -83,7 +83,7 @@ def test_stdout_output_with_special_characters(temp_project):
     special_content = "Special chars: é ñ ü 中文 🚀\n"
     (temp_project / "special_chars.txt").write_text(special_content, encoding="utf-8")
 
-    result = run_treemapper_subprocess([".", "-o", "-"], cwd=temp_project)
+    result = run_diffctx_subprocess([".", "-o", "-"], cwd=temp_project)
     assert result.returncode == 0
 
     tree_data = yaml.safe_load(result.stdout)
@@ -102,7 +102,7 @@ def test_stdout_output_large_tree(temp_project):
             nested.mkdir()
             (nested / "deep.txt").write_text("Deep content", encoding="utf-8")
 
-    result = run_treemapper_subprocess([".", "-o", "-"], cwd=temp_project)
+    result = run_diffctx_subprocess([".", "-o", "-"], cwd=temp_project)
     assert result.returncode == 0
 
     tree_data = yaml.safe_load(result.stdout)
@@ -123,12 +123,12 @@ def test_stdout_vs_file_output_consistency(temp_project):
     (temp_project / "data").mkdir()
     (temp_project / "data" / "info.txt").write_text("data", encoding="utf-8")
 
-    result_stdout = run_treemapper_subprocess([".", "-o", "-"], cwd=temp_project)
+    result_stdout = run_diffctx_subprocess([".", "-o", "-"], cwd=temp_project)
     assert result_stdout.returncode == 0
     stdout_data = yaml.safe_load(result_stdout.stdout)
 
     output_file = temp_project / "output" / "test_output.yaml"
-    result_file = run_treemapper_subprocess([".", "-o", str(output_file)], cwd=temp_project)
+    result_file = run_diffctx_subprocess([".", "-o", str(output_file)], cwd=temp_project)
     assert result_file.returncode == 0
     file_data = load_yaml(output_file)
 
@@ -136,7 +136,7 @@ def test_stdout_vs_file_output_consistency(temp_project):
 
 
 def test_stdout_output_error_handling(temp_project):
-    result = run_treemapper_subprocess(["non_existent_dir", "-o", "-"], cwd=temp_project)
+    result = run_diffctx_subprocess(["non_existent_dir", "-o", "-"], cwd=temp_project)
     assert result.returncode != 0
     assert "Error:" in result.stderr
     assert result.stdout.strip() == ""
@@ -151,7 +151,7 @@ def test_stdout_output_with_permission_errors(temp_project, set_perms):
     unreadable.write_text("cannot read", encoding="utf-8")
     set_perms(unreadable, 0o000)
 
-    result = run_treemapper_subprocess([".", "-o", "-", "--log-level", "debug"], cwd=temp_project)
+    result = run_diffctx_subprocess([".", "-o", "-", "--log-level", "debug"], cwd=temp_project)
     assert result.returncode == 0
 
     tree_data = yaml.safe_load(result.stdout)

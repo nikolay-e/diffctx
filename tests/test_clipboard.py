@@ -2,9 +2,9 @@ import sys
 
 import pytest
 
-from tests.conftest import run_treemapper_subprocess
-from treemapper.clipboard import ClipboardError, clipboard_available, copy_to_clipboard, detect_clipboard_command
-from treemapper.tokens import _format_size
+from diffctx.clipboard import ClipboardError, clipboard_available, copy_to_clipboard, detect_clipboard_command
+from diffctx.tokens import _format_size
+from tests.conftest import run_diffctx_subprocess
 
 
 @pytest.fixture
@@ -53,7 +53,7 @@ class TestCopyToClipboard:
         copy_to_clipboard("\u65e5\u672c\u8a9e\u30c6\u30b9\u30c8")
 
     def test_raises_when_no_clipboard_command(self, monkeypatch):
-        monkeypatch.setattr("treemapper.clipboard.detect_clipboard_command", lambda: None)
+        monkeypatch.setattr("diffctx.clipboard.detect_clipboard_command", lambda: None)
         with pytest.raises(ClipboardError, match="No clipboard tool found"):
             copy_to_clipboard("test")
 
@@ -88,22 +88,22 @@ class TestFormatSize:
 
 class TestCliCopyFlags:
     def test_help_shows_copy_options(self, temp_project):
-        result = run_treemapper_subprocess(["--help"], cwd=temp_project)
+        result = run_diffctx_subprocess(["--help"], cwd=temp_project)
         assert "-c" in result.stdout
         assert "--copy" in result.stdout
 
     def test_copy_flag_accepted(self, temp_project):
-        result = run_treemapper_subprocess([".", "-c"], cwd=temp_project)
+        result = run_diffctx_subprocess([".", "-c"], cwd=temp_project)
         assert result.returncode == 0
 
     @pytest.mark.skipif(not clipboard_available(), reason="Clipboard not available (no display or clipboard tool)")
     def test_copy_suppresses_stdout(self, temp_project):
-        result = run_treemapper_subprocess([".", "-c"], cwd=temp_project)
+        result = run_diffctx_subprocess([".", "-c"], cwd=temp_project)
         assert result.returncode == 0
         assert result.stdout == ""
 
     def test_copy_with_file_still_writes_file(self, temp_project):
-        result = run_treemapper_subprocess([".", "-c", "-o", "out.yaml"], cwd=temp_project)
+        result = run_diffctx_subprocess([".", "-c", "-o", "out.yaml"], cwd=temp_project)
         assert result.returncode == 0
         assert result.stdout == ""
         assert (temp_project / "out.yaml").exists()
@@ -111,14 +111,14 @@ class TestCliCopyFlags:
 
 class TestClipboardWarnings:
     def test_no_clipboard_prints_warning(self, temp_project, capsys, monkeypatch, caplog):
-        monkeypatch.setattr("treemapper.clipboard.detect_clipboard_command", lambda: None)
+        monkeypatch.setattr("diffctx.clipboard.detect_clipboard_command", lambda: None)
         monkeypatch.chdir(temp_project)
-        monkeypatch.setattr("sys.argv", ["treemapper", ".", "-c"])
+        monkeypatch.setattr("sys.argv", ["diffctx", ".", "-c"])
         import logging
 
-        from treemapper.treemapper import main
+        from diffctx.main import main
 
-        with caplog.at_level(logging.ERROR, logger="treemapper"):
+        with caplog.at_level(logging.ERROR, logger="diffctx"):
             main()
         captured = capsys.readouterr()
         assert "Clipboard unavailable" in caplog.text
@@ -128,19 +128,19 @@ class TestClipboardWarnings:
 
 class TestForceStdout:
     def test_explicit_stdout_with_copy_flag(self, temp_project):
-        result = run_treemapper_subprocess([".", "-c", "-o", "-"], cwd=temp_project)
+        result = run_diffctx_subprocess([".", "-c", "-o", "-"], cwd=temp_project)
         assert result.returncode == 0
         assert result.stdout != ""
         assert "file.txt" in result.stdout
 
     def test_explicit_stdout_without_copy(self, temp_project):
-        result = run_treemapper_subprocess([".", "-o", "-"], cwd=temp_project)
+        result = run_diffctx_subprocess([".", "-o", "-"], cwd=temp_project)
         assert result.returncode == 0
         assert result.stdout != ""
         assert "file.txt" in result.stdout
 
     @pytest.mark.skipif(not clipboard_available(), reason="Clipboard not available (no display or clipboard tool)")
     def test_copy_without_explicit_stdout_suppresses_output(self, temp_project):
-        result = run_treemapper_subprocess([".", "-c"], cwd=temp_project)
+        result = run_diffctx_subprocess([".", "-c"], cwd=temp_project)
         assert result.returncode == 0
         assert result.stdout == ""

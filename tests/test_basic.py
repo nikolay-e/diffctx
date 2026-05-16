@@ -5,7 +5,7 @@ import sys
 
 import pytest
 
-from treemapper import map_directory, to_json, to_text, to_yaml
+from diffctx import map_directory, to_json, to_text, to_yaml
 
 from .utils import find_node_by_path, get_all_files_in_tree, load_yaml, make_hashable
 
@@ -23,7 +23,7 @@ def test_basic_mapping(temp_project, run_mapper):
     assert "main.py" in all_files
     assert "test.py" in all_files
     assert "docs" in all_files
-    assert ".git" not in all_files, ".git should be ignored by default .treemapper/ignore"
+    assert ".git" not in all_files, ".git should be ignored by default .diffctx/ignore"
     assert "output" not in all_files
     assert "directory_tree.yaml" not in all_files
 
@@ -246,7 +246,7 @@ def test_unicode_content_and_encoding_errors(temp_project, run_mapper, caplog):
     (temp_project / "binary.bin").write_bytes(binary_content)
 
     output_path = temp_project / "encodings_output.yaml"
-    with caplog.at_level(logging.WARNING, logger="treemapper"):
+    with caplog.at_level(logging.WARNING, logger="diffctx"):
         assert run_mapper([".", "-o", str(output_path), "--log-level", "warning"])
     result = load_yaml(output_path)
 
@@ -278,8 +278,8 @@ def test_unicode_content_and_encoding_errors(temp_project, run_mapper, caplog):
     assert binary_node is not None, "'binary.bin' not found"
     binary_content = binary_node.get("content", "")
     assert isinstance(binary_content, str)
-    assert binary_content.startswith("<unreadable content") or binary_content.startswith(
-        "<binary file:"
+    assert binary_content.startswith(
+        ("<unreadable content", "<binary file:")
     ), f"Binary file should be marked unreadable or binary, got: {binary_content!r}"
 
 
