@@ -1,5 +1,5 @@
 # .github/workflows/cd.yml
-name: treemapper CD
+name: diffctx CD
 
 permissions: {}
 
@@ -67,7 +67,7 @@ jobs:
         run: |
           CURRENT=$(python - <<'PY'
           import re
-          content = open('src/treemapper/version.py').read()
+          content = open('src/diffctx/version.py').read()
           m = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', content)
           print(m.group(1) if m else '')
           PY
@@ -87,7 +87,7 @@ jobs:
           import os, re, pathlib
           ver = os.environ["VERSION"]
 
-          p = pathlib.Path("src/treemapper/version.py")
+          p = pathlib.Path("src/diffctx/version.py")
           s = p.read_text(encoding="utf-8")
           s, n = re.subn(r'__version__\s*=\s*["\'].*?["\']', f'__version__ = "{ver}"', s, count=1)
           assert n == 1, "version.py: __version__ assignment not found"
@@ -100,7 +100,7 @@ jobs:
           py.write_text(s, encoding="utf-8")
           PY
           echo "version.py:"
-          cat src/treemapper/version.py
+          cat src/diffctx/version.py
           echo "pyproject.toml (version line):"
           grep -E '^version\s*=' pyproject.toml
 
@@ -111,7 +111,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/treemapper/version.py pyproject.toml
+          git add src/diffctx/version.py pyproject.toml
           if ! git diff --staged --quiet; then
             git commit -m "Release version ${VERSION}"
           else
@@ -203,7 +203,7 @@ jobs:
           git clone repo.bundle repo
           cd repo
           git checkout "$TAG_NAME"
-          cat src/treemapper/version.py
+          cat src/diffctx/version.py
           grep -E '^version\s*=' pyproject.toml
 
       - name: Set up Python
@@ -280,7 +280,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/treemapper
+      url: https://pypi.org/p/diffctx
     permissions:
       id-token: write
     steps:
@@ -343,17 +343,17 @@ jobs:
           python -m pip install --upgrade pip
           # Poll PyPI until the new version is installable. Up to 5 minutes.
           for attempt in 1 2 3 4 5 6 7 8 9 10; do
-            if python -m pip install "treemapper==${VERSION}"; then
-              echo "Installed treemapper ${VERSION} on attempt $attempt"
+            if python -m pip install "diffctx==${VERSION}"; then
+              echo "Installed diffctx ${VERSION} on attempt $attempt"
               break
             fi
             echo "PyPI not ready yet (attempt $attempt); sleeping 30s"
             sleep 30
           done
-          python -m pip show treemapper | grep -E '^(Name|Version)'
+          python -m pip show diffctx | grep -E '^(Name|Version)'
 
-      - name: Smoke - treemapper --version
-        run: treemapper --version
+      - name: Smoke - diffctx --version
+        run: diffctx --version
 
       - name: Smoke - tree mapping mode
         shell: bash
@@ -361,14 +361,14 @@ jobs:
           mkdir -p smoke-tree && cd smoke-tree
           echo "print('hello')" > a.py
           echo "x = 1" > b.py
-          treemapper . --no-content > /dev/null
+          diffctx . --no-content > /dev/null
           echo "OK: tree mode works"
 
       - name: Smoke - Rust _diffctx is shipped
         shell: bash
         run: |
           python - <<'PY'
-          from treemapper._diffctx import GitError, build_diff_context, count_tokens  # noqa: F401
+          from diffctx._diffctx import GitError, build_diff_context, count_tokens  # noqa: F401
           print("OK: _diffctx imported")
           PY
 
@@ -385,7 +385,7 @@ jobs:
           git add -A && git commit -q -m "initial"
           printf 'def add(a, b):\n    return a + b\n\ndef sub(a, b):\n    return a - b\n' > pkg/util.py
           git add -A && git commit -q -m "add sub"
-          treemapper . --diff HEAD~1..HEAD --no-content
+          diffctx . --diff HEAD~1..HEAD --no-content
           echo "OK: diff mode works (Rust extension present)"
 
   finalize-release:

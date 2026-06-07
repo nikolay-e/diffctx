@@ -96,7 +96,7 @@ def run_diffctx(repo_dir: Path, budget: int):
         [
             sys.executable,
             "-m",
-            "treemapper",
+            "diffctx",
             str(repo_dir),
             "--diff",
             "HEAD~1..HEAD",
@@ -150,7 +150,7 @@ def diagnose_missing_file(repo_dir: Path, file_path: str, was_deleted: bool):
         return f"NOT_IN_REPO at {abs_path}"
     ext = abs_path.suffix.lower()
     if ext not in RECOGNIZED_EXT:
-        return f"UNRECOGNIZED_EXT {ext!r} (treemapper would skip)"
+        return f"UNRECOGNIZED_EXT {ext!r} (diffctx would skip)"
     try:
         size = abs_path.stat().st_size
     except OSError as e:
@@ -328,7 +328,7 @@ def _print_threshold_sanity_check():
         [
             sys.executable,
             "-c",
-            "from treemapper.diffctx.filtering import _LOW_RELEVANCE_THRESHOLD; print(_LOW_RELEVANCE_THRESHOLD)",
+            "from diffctx.diffctx.filtering import _LOW_RELEVANCE_THRESHOLD; print(_LOW_RELEVANCE_THRESHOLD)",
         ],
         capture_output=True,
         text=True,

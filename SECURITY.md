@@ -9,7 +9,7 @@
 
 ## Threat model
 
-treemapper is a **local-only command-line tool**. The core CLI:
+diffctx is a **local-only command-line tool**. The core CLI:
 
 - walks the filesystem under user-supplied paths,
 - shells out to `git` (subprocess, UTF-8) to read diff hunks and commit history,
@@ -21,17 +21,17 @@ It does **not** open network sockets, does **not** download remote content,
 and does **not** execute any code it reads. Untrusted repositories are read
 as bytes; tree-sitter parsers (when the `[tree-sitter]` extra is installed)
 operate on those bytes in memory without `exec`/`eval`. The blast radius of
-a malicious file in a scanned tree is therefore bounded to "treemapper
-produces wrong output" — not "treemapper compromises the host".
+a malicious file in a scanned tree is therefore bounded to "diffctx
+produces wrong output" — not "diffctx compromises the host".
 
-The optional **MCP server** (`treemapper-mcp`, shipped via the `[mcp]`
+The optional **MCP server** (`diffctx-mcp`, shipped via the `[mcp]`
 extra) is the **only network-adjacent component**. It speaks the Model
 Context Protocol over stdio to a parent AI assistant and is intended to run
 under that assistant's process, not as a standalone daemon. Its filesystem
-reach is confined by the `TREEMAPPER_ALLOWED_PATHS` environment variable —
+reach is confined by the `DIFFCTX_ALLOWED_PATHS` environment variable —
 an OS-pathsep-separated list (`:` on POSIX, `;` on Windows) of directories
 the server is permitted to read. Paths outside the allow-list are rejected
-before any filesystem call. Operators running `treemapper-mcp` are
+before any filesystem call. Operators running `diffctx-mcp` are
 responsible for setting this envvar to the narrowest list of directories
 the assistant actually needs.
 
@@ -46,7 +46,7 @@ the MCP server.
 Preferred channel: [GitHub's private vulnerability reporting](https://github.com/nikolay-e/diffctx/security/advisories/new).
 
 Backup channel (e.g. if the GitHub form is unavailable): email
-**<nikolay.eremeev@outlook.com>** with `[treemapper-security]` in the subject
+**<nikolay.eremeev@outlook.com>** with `[diffctx-security]` in the subject
 line.
 
 Please include:

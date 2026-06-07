@@ -261,9 +261,9 @@ def _build_shared_parser() -> argparse.ArgumentParser:
     return shared
 
 
-def _build_graph_parser() -> argparse.ArgumentParser:
+def _build_graph_parser(prog: str = "diffctx graph") -> argparse.ArgumentParser:
     graph_parser = argparse.ArgumentParser(
-        prog="diffctx graph",
+        prog=prog,
         description="Build and analyze the project dependency graph",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         parents=[_build_shared_parser()],
@@ -288,9 +288,9 @@ def _build_graph_parser() -> argparse.ArgumentParser:
     return graph_parser
 
 
-def _build_main_parser() -> argparse.ArgumentParser:
+def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="diffctx",
+        prog=prog,
         description=(
             "Generate a structured representation of a directory tree (YAML, JSON, text, or Markdown). "
             "Supports diff context mode (--diff) for intelligent code change analysis.\n\n"
@@ -302,7 +302,7 @@ def _build_main_parser() -> argparse.ArgumentParser:
         parents=[_build_shared_parser()],
     )
 
-    parser.add_argument("-v", "--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument("-v", "--version", action="version", version=f"%(prog)s {version}")
     parser.add_argument("paths", nargs="*", default=["."], help="Directories, files, or glob patterns to analyze")
     parser.add_argument(
         "-f",
@@ -480,12 +480,12 @@ def _build_tree_parsed_args(args: argparse.Namespace) -> ParsedArgs:
     )
 
 
-def parse_args(argv: list[str] | None = None) -> ParsedArgs:
+def parse_args(argv: list[str] | None = None, *, prog: str = "diffctx", version: str = __version__) -> ParsedArgs:
     raw_args = sys.argv[1:] if argv is None else argv
 
     if raw_args and raw_args[0] == "graph":
-        args = _build_graph_parser().parse_args(raw_args[1:])
+        args = _build_graph_parser(prog=f"{prog} graph").parse_args(raw_args[1:])
         return _build_graph_parsed_args(args)
 
-    args = _build_main_parser().parse_args(raw_args)
+    args = _build_main_parser(prog=prog, version=version).parse_args(raw_args)
     return _build_tree_parsed_args(args)

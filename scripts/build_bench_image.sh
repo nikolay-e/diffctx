@@ -4,7 +4,7 @@
 # Usage:
 #   scripts/build_bench_image.sh                       # build linux/amd64 + linux/arm64, load native to local docker
 #   PLATFORMS=linux/arm64 scripts/build_bench_image.sh # single arch
-#   PUSH=1 IMAGE=ghcr.io/me/treemapper-bench:dev scripts/build_bench_image.sh  # push to remote
+#   PUSH=1 IMAGE=ghcr.io/me/diffctx-bench:dev scripts/build_bench_image.sh  # push to remote
 #   BAKE_LIMIT=20 scripts/build_bench_image.sh         # tiny cache (faster build for testing)
 #
 # Requirements: docker buildx (Docker Desktop / OrbStack / Linux docker-buildx).
@@ -14,7 +14,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT" || exit 1
 
-IMAGE="${IMAGE:-treemapper-bench:latest}"
+IMAGE="${IMAGE:-diffctx-bench:latest}"
 PLATFORMS="${PLATFORMS:-linux/amd64}"
 PUSH="${PUSH:-0}"
 BAKE_DATASET="${BAKE_DATASET:-full}"
@@ -22,7 +22,7 @@ BAKE_LIMIT="${BAKE_LIMIT:-0}"
 BAKE_PARALLELISM="${BAKE_PARALLELISM:-4}"
 CACHE_REF="${CACHE_REF:-}"
 
-BUILDER_NAME="treemapper-bench-builder"
+BUILDER_NAME="diffctx-bench-builder"
 
 # Ensure a buildx builder with multi-arch support exists
 if ! docker buildx inspect "$BUILDER_NAME" >/dev/null 2>&1; then

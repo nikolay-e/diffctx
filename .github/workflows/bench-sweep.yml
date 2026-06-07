@@ -26,7 +26,7 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_REF: ghcr.io/${{ github.repository_owner }}/treemapper-bench:latest
+  IMAGE_REF: ghcr.io/${{ github.repository_owner }}/diffctx-bench:latest
   MANIFESTS_SUBDIR: v1
   TIMEOUT_PER_INSTANCE: '600'
   TAU: '0.12'
@@ -105,7 +105,7 @@ jobs:
           useradd -m -s /bin/bash github
           usermod -aG docker github
           echo "${GH_TOKEN}" | docker login ghcr.io -u nikolay-e --password-stdin
-          docker pull ghcr.io/nikolay-e/treemapper-bench:latest
+          docker pull ghcr.io/nikolay-e/diffctx-bench:latest
           nohup bash -c '
             mkdir -p /data/bench_repos
             BAKE_LOG=/data/bench_repos/bake.log
@@ -113,7 +113,7 @@ jobs:
               --entrypoint python3 \
               -v /data/bench_repos:/cache/contextbench_repos \
               -e BAKE_PARALLELISM=16 \
-              ghcr.io/nikolay-e/treemapper-bench:latest \
+              ghcr.io/nikolay-e/diffctx-bench:latest \
               /app/scripts/bake_bench_cache.py /cache/contextbench_repos \
               >> "\${BAKE_LOG}" 2>&1; then
               touch /data/bench_repos/.ready
@@ -162,7 +162,7 @@ jobs:
           echo "server_ip=${SERVER_IP}" >> "${GITHUB_OUTPUT}"
           echo "${SERVER_ID}" > server_id.txt
           echo "Provisioned Hetzner CCX63 server_id=${SERVER_ID} ip=${SERVER_IP} name=${SERVER_NAME}"
-          SSHCMD="ssh root@${SERVER_IP} -i <(security find-generic-password -s treemapper-bench-ssh-key -a \$USER -w)"
+          SSHCMD="ssh root@${SERVER_IP} -i <(security find-generic-password -s diffctx-bench-ssh-key -a \$USER -w)"
           echo "SSH: ${SSHCMD}"
 
       - name: Upload server_id for cleanup workflow
@@ -212,7 +212,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     container:
-      image: ghcr.io/${{ github.repository_owner }}/treemapper-bench:latest
+      image: ghcr.io/${{ github.repository_owner }}/diffctx-bench:latest
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -404,7 +404,7 @@ jobs:
     runs-on: [self-hosted, large]
     timeout-minutes: 350
     container:
-      image: ghcr.io/${{ github.repository_owner }}/treemapper-bench:latest
+      image: ghcr.io/${{ github.repository_owner }}/diffctx-bench:latest
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}

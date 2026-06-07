@@ -39,7 +39,7 @@ def strip_file_from_patch(patch_text: str, file_to_hide: str) -> str:
 
 
 def run_diffctx(repo_dir: Path, budget: int, scoring_mode: str = "ego") -> set[str]:
-    from treemapper.diffctx.pipeline import build_diff_context
+    from diffctx.diffctx.pipeline import build_diff_context
 
     try:
         output = build_diff_context(repo_dir, "HEAD~1..HEAD", budget_tokens=budget, scoring_mode=scoring_mode)

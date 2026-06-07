@@ -4,7 +4,7 @@ installed, talks JSON over stdin/stdout to the parent benchmark process.
 The parent (`benchmarks.baselines.aider_baseline`) launches this with
 `uv tool run --from aider-chat==0.86.2 python <path-to-this-file>` so
 aider's heavy dep tree (litellm, prompt-toolkit, fastapi, etc.) never
-contaminates the main treemapper venv.
+contaminates the main diffctx venv.
 
 Protocol (NDJSON, one request → one response):
 

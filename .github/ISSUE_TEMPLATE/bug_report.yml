@@ -15,7 +15,7 @@ body:
     attributes:
       label: Steps to Reproduce
       placeholder: |
-        1. Run `treemapper . --diff HEAD~1..HEAD`
+        1. Run `diffctx . --diff HEAD~1..HEAD`
         2. See error
     validations:
       required: true
@@ -28,8 +28,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: TreeMapper Version
-      description: Output of `treemapper -v`
+      label: diffctx Version
+      description: Output of `diffctx -v`
       placeholder: "1.3.0"
     validations:
       required: true

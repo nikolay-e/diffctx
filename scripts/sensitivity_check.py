@@ -55,12 +55,12 @@ def jaccard(a: frozenset, b: frozenset) -> float:
     return len(a & b) / len(a | b)
 
 
-def run_treemapper(repo: str, diff_range: str, budget: int, env_overrides: dict[str, str]) -> RunResult:
+def run_diffctx(repo: str, diff_range: str, budget: int, env_overrides: dict[str, str]) -> RunResult:
     env = os.environ.copy()
     env.update(env_overrides)
     proc = subprocess.run(
         [
-            "treemapper",
+            "diffctx",
             repo,
             "--diff",
             diff_range,
@@ -96,7 +96,7 @@ def main() -> int:
     print(f"# Sensitivity analysis: {args.repo} {args.diff} budget={args.budget}")
     print()
     print("Baseline (all defaults)...", file=sys.stderr)
-    baseline = run_treemapper(args.repo, args.diff, args.budget, {})
+    baseline = run_diffctx(args.repo, args.diff, args.budget, {})
     print(f"# Baseline: tokens={baseline.tokens}  fragments={len(baseline.fragments)}")
     print()
 
@@ -108,7 +108,7 @@ def main() -> int:
         for factor in PERTURBATION_FACTORS:
             value = default * factor
             try:
-                r = run_treemapper(args.repo, args.diff, args.budget, {name: f"{value:.6g}"})
+                r = run_diffctx(args.repo, args.diff, args.budget, {name: f"{value:.6g}"})
             except subprocess.CalledProcessError as e:
                 print(
                     f"{name:<55} {factor:>6.2f} {value:>10.4g} ERROR: {e.stderr[:80]}",

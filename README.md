@@ -1,21 +1,16 @@
-# TreeMapper / diffctx
+# diffctx — smart diff context for LLM code review
 
 [![CI](https://github.com/nikolay-e/diffctx/actions/workflows/ci.yml/badge.svg)](https://github.com/nikolay-e/diffctx/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/treemapper)](https://pypi.org/project/treemapper/)
-[![License](https://img.shields.io/pypi/l/treemapper)](https://pypi.org/project/treemapper/)
+[![PyPI](https://img.shields.io/pypi/v/diffctx)](https://pypi.org/project/diffctx/)
+[![License](https://img.shields.io/pypi/l/diffctx)](https://pypi.org/project/diffctx/)
 
-**TreeMapper / diffctx selects the minimum code an LLM needs to review a git diff.**
+**diffctx selects the minimum code an LLM needs to review a git diff.**
 Instead of pasting whole files, it walks the dependency graph from the changed
 lines outward and stops as soon as additional context stops paying for itself.
 
-> The project is developed at [`github.com/nikolay-e/diffctx`](https://github.com/nikolay-e/diffctx);
-> the PyPI package and CLI are published as `treemapper`. Both names refer to
-> the same tool — `treemapper` is the historical name (and CLI binary today),
-> `diffctx` is the differentiated value proposition the project is built around.
-
 ## Why not just use `tree` or repomix?
 
-| | `tree` | repomix | Claude Code Review | **TreeMapper / diffctx** |
+| | `tree` | repomix | Claude Code Review | **diffctx** |
 |---|:---:|:---:|:---:|:---:|
 | **Primary use case** | directory listing | full repo export | automated PR review | **diff context for code review** |
 | Smart diff context | ✗ | ✗ | ✓ | ✓ |
@@ -29,20 +24,25 @@ lines outward and stops as soon as additional context stops paying for itself.
 ## Install (30 seconds)
 
 ```bash
-pip install treemapper                     # canonical
-pipx install treemapper                    # or: isolated, no venv needed
-pip install 'treemapper[tree-sitter]'      # + AST parsing for smarter diff context
-pip install 'treemapper[mcp]'              # + MCP server for AI assistants
+pipx install diffctx                    # recommended — isolated CLI, no venv needed
+pip install diffctx                     # or: into an active environment
+pipx install 'diffctx[tree-sitter]'     # + AST parsing for smarter diff context
+pipx install 'diffctx[mcp]'             # + MCP server for AI assistants
 ```
+
+> For everyday use, install once with `pipx` and call `diffctx` from any
+> directory. Do **not** `source` the project's `.venv` to run `diffctx` from
+> another repo — that runs a working-tree build and mutates the shell's
+> `PATH`/`PYTHONHOME` for every subsequent command.
 
 ```bash
-treemapper . --diff HEAD~1       # smart context for last commit → paste into Claude/ChatGPT
-treemapper . -f md -c            # full export → clipboard in Markdown
+diffctx . --diff HEAD~1       # smart context for last commit → paste into Claude/ChatGPT
+diffctx . -f md -c            # full export → clipboard in Markdown
 ```
 
-![TreeMapper diff-context demo: running `treemapper . --diff HEAD~1` inside a git repo and copying the relevance-ranked YAML output to the clipboard for an LLM](https://raw.githubusercontent.com/nikolay-e/diffctx/main/docs/demo.gif)
+![diffctx demo: running `diffctx . --diff HEAD~1` inside a git repo and copying the relevance-ranked YAML output to the clipboard for an LLM](https://raw.githubusercontent.com/nikolay-e/diffctx/main/docs/demo.gif)
 
-*Demo: `treemapper . --diff HEAD~1` selects only the fragments — functions,
+*Demo: `diffctx . --diff HEAD~1` selects only the fragments — functions,
 imports, type definitions — that an LLM actually needs to review the last
 commit, instead of dumping every changed file in full.*
 
@@ -107,10 +107,10 @@ For exploring the underlying dependency graph directly (without a diff),
 use the `graph` subcommand:
 
 ```bash
-treemapper graph .                                  # Mermaid graph of directory deps (default)
-treemapper graph . --summary                        # cycles, hotspots, coupling metrics
-treemapper graph . --level fragment -f json         # fragment-level graph as JSON
-treemapper graph . --level file -f graphml -o g.xml # file-level graph as GraphML
+diffctx graph .                                  # Mermaid graph of directory deps (default)
+diffctx graph . --summary                        # cycles, hotspots, coupling metrics
+diffctx graph . --level fragment -f json         # fragment-level graph as JSON
+diffctx graph . --level file -f graphml -o g.xml # file-level graph as GraphML
 ```
 
 | Flag        | Default      | Description                                              |
@@ -124,18 +124,18 @@ treemapper graph . --level file -f graphml -o g.xml # file-level graph as GraphM
 <!-- BEGIN USAGE -->
 ```bash
 # full codebase export:
-treemapper .                                # YAML to stdout + token count
-treemapper . -f md -c                       # Markdown → clipboard
-treemapper . -f json -o tree.json           # JSON → file
-treemapper . --no-content                   # structure only, no file contents
-treemapper . --max-depth 3                  # limit depth
-treemapper . -i custom.ignore               # custom ignore patterns
+diffctx .                                # YAML to stdout + token count
+diffctx . -f md -c                       # Markdown → clipboard
+diffctx . -f json -o tree.json           # JSON → file
+diffctx . --no-content                   # structure only, no file contents
+diffctx . --max-depth 3                  # limit depth
+diffctx . -i custom.ignore               # custom ignore patterns
 
 # diff context mode (requires git repo):
-treemapper . --diff HEAD~1                  # context for last commit
-treemapper . --diff main..feature           # context for feature branch
-treemapper . --diff HEAD~1 --budget 30000   # limit to ~30k tokens
-treemapper . --diff HEAD~1 -c               # diff context to clipboard
+diffctx . --diff HEAD~1                  # context for last commit
+diffctx . --diff main..feature           # context for feature branch
+diffctx . --diff HEAD~1 --budget 30000   # limit to ~30k tokens
+diffctx . --diff HEAD~1 -c               # diff context to clipboard
 ```
 <!-- END USAGE -->
 
@@ -181,8 +181,8 @@ Uses tiktoken with `o200k_base` encoding (GPT-4o tokenizer).
 Copy output directly to clipboard with `-c` or `--copy`:
 
 ```bash
-treemapper . -c                       # copy (stdout suppressed, stderr: token count)
-treemapper . -c -o tree.yaml          # copy + save to file
+diffctx . -c                       # copy (stdout suppressed, stderr: token count)
+diffctx . -c -o tree.yaml          # copy + save to file
 ```
 
 **System Requirements:**
@@ -195,8 +195,8 @@ treemapper . -c -o tree.yaml          # copy + save to file
 ## Python API
 
 ```python
-from treemapper import map_directory
-from treemapper import to_yaml, to_json, to_text, to_markdown
+from diffctx import map_directory
+from diffctx import to_yaml, to_json, to_text, to_markdown
 
 tree = map_directory(
     path,                     # directory path
@@ -215,7 +215,7 @@ md_str = to_markdown(tree)
 
 # Diff context mode
 from pathlib import Path
-from treemapper import build_diff_context, to_yaml
+from diffctx import build_diff_context, to_yaml
 
 ctx = build_diff_context(
     Path("."),                # repository root
@@ -233,12 +233,12 @@ yaml_str = to_yaml(ctx)
 
 ## MCP Server
 
-TreeMapper includes an [MCP](https://modelcontextprotocol.io) server that lets
+diffctx includes an [MCP](https://modelcontextprotocol.io) server that lets
 AI assistants (Claude Code, Cursor, Windsurf, etc.) call diff context analysis
 automatically during code review.
 
 ```bash
-pip install 'treemapper[mcp]'
+pip install 'diffctx[mcp]'
 ```
 
 Add to your MCP client config (e.g. `~/.claude/mcp.json` for Claude Code):
@@ -246,8 +246,8 @@ Add to your MCP client config (e.g. `~/.claude/mcp.json` for Claude Code):
 ```json
 {
   "mcpServers": {
-    "treemapper": {
-      "command": "treemapper-mcp"
+    "diffctx": {
+      "command": "diffctx-mcp"
     }
   }
 }
@@ -257,14 +257,14 @@ The server exposes a `get_diff_context` tool. Your AI assistant will
 automatically call it when reviewing PRs, explaining changes, or investigating
 broken tests — no manual invocation needed.
 
-See [`src/treemapper/mcp/README.md`](src/treemapper/mcp/README.md) for configs
+See [`src/diffctx/mcp/README.md`](src/diffctx/mcp/README.md) for configs
 for Cursor, Continue, Windsurf, and Zed.
 
 ## Ignore Patterns
 
-Respects `.gitignore` and `.treemapper/ignore` automatically.
+Respects `.gitignore` and `.diffctx/ignore` automatically.
 Use `--no-default-ignores` to disable built-in patterns
-(`.gitignore` and `.treemapper/ignore` still apply).
+(`.gitignore` and `.diffctx/ignore` still apply).
 
 - Hierarchical: nested ignore files at each directory level
 - Negation patterns: `!important.log` un-ignores a file
@@ -273,8 +273,8 @@ Use `--no-default-ignores` to disable built-in patterns
 
 Auto-discovered files:
 
-- `.treemapper/ignore` — TreeMapper-specific ignore patterns
-- `.treemapper/whitelist` — Include-only filter (only matched files included)
+- `.diffctx/ignore` — diffctx-specific ignore patterns
+- `.diffctx/whitelist` — Include-only filter (only matched files included)
 
 ## Content Placeholders
 

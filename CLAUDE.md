@@ -1,4 +1,4 @@
-# TreeMapper
+# diffctx
 
 <!-- Extends ../CLAUDE.md -->
 
@@ -13,7 +13,7 @@ to cross, but a direction to relentlessly pursue.**
 information — for any reader, in any scenario.**
 
 Whether the consumer is an LLM processing a context window or a
-human reviewing a code change, TreeMapper's job is the same:
+human reviewing a code change, diffctx's job is the same:
 extract the maximum signal from a codebase and present it in the
 clearest, most information-dense form possible. Every design
 decision optimizes for **comprehension-per-token** — the ratio
@@ -24,12 +24,12 @@ single lens through which all trade-offs are evaluated.
 
 ## Two Modes of Operation
 
-**Tree Mapping Mode** (`treemapper .`) — Filesystem-focused.
+**Tree Mapping Mode** (`diffctx .`) — Filesystem-focused.
 Walks the directory tree respecting hierarchical ignore patterns,
 reads file contents with binary/encoding detection, and serializes
 to YAML/JSON/text/Markdown. Deterministic, side-effect-free.
 
-**Diff Context Mode** (`treemapper . --diff`) — Semantics-focused.
+**Diff Context Mode** (`diffctx . --diff`) — Semantics-focused.
 Analyzes a git diff to intelligently select the minimal set of
 code fragments needed to understand a change. For the formal
 theoretical foundation, see the research paper:

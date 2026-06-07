@@ -1,10 +1,10 @@
-# Contributing to TreeMapper
+# Contributing to diffctx
 
 ## Getting Started
 
 ```bash
-git clone https://github.com/nikolay-e/treemapper.git
-cd treemapper
+git clone https://github.com/nikolay-e/diffctx.git
+cd diffctx
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev,tree-sitter]"
 pre-commit install && pre-commit install --hook-type commit-msg
@@ -49,7 +49,7 @@ chore(deps): bump pathspec to 0.12
 
 ## Reporting Bugs
 
-Use the [bug report template](https://github.com/nikolay-e/treemapper/issues/new?template=bug_report.yml).
+Use the [bug report template](https://github.com/nikolay-e/diffctx/issues/new?template=bug_report.yml).
 
 ## Security Vulnerabilities
 

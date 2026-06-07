@@ -152,7 +152,7 @@ def _pool_eval(repos_dir_str: str, instance: BenchmarkInstance, params: RunParam
 
         print(f"[pid={pid}] {iid} stage=diffctx t_apply={t_apply_s}s", flush=True)
         t0 = time.perf_counter()
-        from treemapper.diffctx.pipeline import build_diff_context
+        from diffctx.diffctx.pipeline import build_diff_context
 
         # Kill switch covers ONLY the diffctx call. Git ops above
         # (ensure_repo, apply_as_commit) and reset_to_parent below run
@@ -282,7 +282,7 @@ def pool_eval_all_cells(
     params_list: list[RunParams],
 ) -> list[tuple[RunParams, EvalResult]]:
     from benchmarks.common import apply_as_commit, ensure_repo, reset_to_parent
-    from treemapper.diffctx.pipeline import compute_scored_state, select_with_params
+    from diffctx.diffctx.pipeline import compute_scored_state, select_with_params
 
     if not params_list:
         return []

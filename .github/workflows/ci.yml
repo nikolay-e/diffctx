@@ -1,5 +1,5 @@
 # .github/workflows/ci.yml
-name: treemapper CI
+name: diffctx CI
 
 'on':
   pull_request:
@@ -114,7 +114,7 @@ jobs:
         run: ./target/release/diffctx-test || true
 
   # ============================================================================
-  # Cross-platform Python Testing (treemapper core, excludes diffctx)
+  # Cross-platform Python Testing (diffctx core)
   # ============================================================================
   test:
     needs: [lint-type-check]
@@ -160,20 +160,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install "maturin>=1.10,<1.11"
 
-      - name: Build and install treemapper (with Rust _diffctx) and dev deps
+      - name: Build and install diffctx (with Rust _diffctx) and dev deps
         shell: bash
         env:
           PYO3_USE_ABI3_FORWARD_COMPATIBILITY: "1"
         run: |
           # PEP 660 editable install — maturin builds the Rust extension and
-          # pip installs everything (treemapper + [dev,full] extras). Skip build
+          # pip installs everything (diffctx + [dev,full,mcp] extras). Skip build
           # isolation since we just installed maturin in this env.
-          pip install -e ".[dev,full]" --no-build-isolation
+          pip install -e ".[dev,full,mcp]" --no-build-isolation
 
       - name: Run Tests with Coverage
         shell: bash
         run: |
-          pytest -v --cov=src/treemapper --cov-report=xml \
+          pytest -v --cov=src/diffctx --cov-report=xml \
             --cov-report=term-missing --cov-branch --junitxml=test-results.xml
 
       - name: Coverage report with threshold
@@ -225,16 +225,16 @@ jobs:
       - name: Check cyclomatic complexity
         run: |
           echo "=== Cyclomatic Complexity Report ==="
-          radon cc src/treemapper/ --min B --show-complexity --total-average
+          radon cc src/diffctx/ --min B --show-complexity --total-average
 
       - name: Check maintainability index
         run: |
           echo "=== Maintainability Index Report ==="
-          radon mi src/treemapper/ --min B --show
+          radon mi src/diffctx/ --min B --show
 
       - name: Fail on high complexity
         run: |
-          radon cc src/treemapper/ --min C --total-average || \
+          radon cc src/diffctx/ --min C --total-average || \
             (echo "High complexity detected" && exit 1)
 
   # ============================================================================

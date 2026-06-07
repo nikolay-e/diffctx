@@ -73,7 +73,7 @@ across instances, multi-seed.
 | `--seeds` | `42` | Comma-separated seeds for shuffle |
 | `--no-shuffle` | false | Use dataset order |
 | `--scoring` | `ego` | `ppr` / `ego` / `bm25` |
-| `--baseline` | `treemapper` | `treemapper` / `patch_files` / `bm25` |
+| `--baseline` | `diffctx` | `diffctx` / `patch_files` / `bm25` |
 | `--dataset` | `full` | `full` / `verified` |
 | `--tau` | 0.08 | Selection stopping threshold |
 

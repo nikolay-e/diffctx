@@ -32,7 +32,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install treemapper with dev extras
+      - name: Install diffctx with dev extras
         run: pip install -e ".[dev,tree-sitter]"
 
       - name: Run sensitivity check

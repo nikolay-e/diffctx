@@ -8,19 +8,19 @@ from pathlib import Path
 
 _USAGE_EXAMPLES: list[tuple[str, str]] = [
     ("# full codebase export:", ""),
-    ("treemapper .", "YAML to stdout + token count"),
-    ("treemapper . -f md -c", "Markdown → clipboard"),
-    ("treemapper . -f json -o tree.json", "JSON → file"),
-    ("treemapper . --no-content", "structure only, no file contents"),
-    ("treemapper . --max-depth 3", "limit depth"),
-    ("treemapper . -i custom.ignore", "custom ignore patterns"),
+    ("diffctx .", "YAML to stdout + token count"),
+    ("diffctx . -f md -c", "Markdown → clipboard"),
+    ("diffctx . -f json -o tree.json", "JSON → file"),
+    ("diffctx . --no-content", "structure only, no file contents"),
+    ("diffctx . --max-depth 3", "limit depth"),
+    ("diffctx . -i custom.ignore", "custom ignore patterns"),
     # diff context mode
     ("", ""),
     ("# diff context mode (requires git repo):", ""),
-    ("treemapper . --diff HEAD~1", "context for last commit"),
-    ("treemapper . --diff main..feature", "context for feature branch"),
-    ("treemapper . --diff HEAD~1 --budget 30000", "limit to ~30k tokens"),
-    ("treemapper . --diff HEAD~1 -c", "diff context to clipboard"),
+    ("diffctx . --diff HEAD~1", "context for last commit"),
+    ("diffctx . --diff main..feature", "context for feature branch"),
+    ("diffctx . --diff HEAD~1 --budget 30000", "limit to ~30k tokens"),
+    ("diffctx . --diff HEAD~1 -c", "diff context to clipboard"),
 ]
 
 _BEGIN = "<!-- BEGIN USAGE -->"

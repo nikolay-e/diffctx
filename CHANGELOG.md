@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0]
+
+### Added
+
+- Public `diffctx.run(argv=None, *, prog=None, version=None)` engine entry. It
+  is the same execution path as the `diffctx` console script but accepts an
+  injected program name and version string, so a downstream wrapper (e.g. the
+  `treemapper` distribution) can present its own branding in `--help`,
+  `--version`, and error prefixes without duplicating the CLI. `main()` now
+  delegates to `run()` with the default `diffctx` identity — no behavior change
+  for existing callers.
+- `diffctx.mcp.__main__.main(prog=..., extra=...)` accepts an injected program
+  name and install-extra string for the missing-dependency hint, so wrappers
+  can re-expose the MCP entry point with their own name.
+
 ## [1.7.0] - 2026-05-22
 
 ### Added
@@ -14,21 +29,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - README documents the `graph` subcommand and the `--scoring {ppr,ego,bm25}`
   flag (default: `ego`); the absolutist "Uses Personalized PageRank" language
   has been replaced with a table covering all three scoring modes.
-- `SECURITY.md` now ships a "Threat model" section that scopes treemapper as a
+- `SECURITY.md` now ships a "Threat model" section that scopes diffctx as a
   local CLI (filesystem + git subprocess, no network) and documents that the
-  optional `treemapper-mcp` server confines its filesystem reach via
-  `TREEMAPPER_ALLOWED_PATHS`.
+  optional `diffctx-mcp` server confines its filesystem reach via
+  `DIFFCTX_ALLOWED_PATHS`.
 - Footer of `README.md` links `CHANGELOG.md`, `SECURITY.md`, and
   `docs/parameter-strategy.md` so they are no longer orphaned.
 
 ### Changed
 
+- **Package renamed from `treemapper` to `diffctx`.** PyPI distribution, CLI
+  binary, MCP server binary, and Python import path all use `diffctx`. The
+  `treemapper` PyPI package remains at 1.6.1 (frozen); install
+  `diffctx` for all new development. The `TREEMAPPER_ALLOWED_PATHS`
+  environment variable is now `DIFFCTX_ALLOWED_PATHS`.
 - Single source of truth for the package version: the Python wheel reads its
   version from `Cargo.toml` (via maturin) instead of duplicating it in
   `pyproject.toml`, eliminating the Rust-crate-vs-Python-package version
   desync that previously shipped to PyPI.
 - `--diff` now defaults to `HEAD` when no range is supplied, matching the
-  most common invocation (`treemapper . --diff` → diff of the working tree
+  most common invocation (`diffctx . --diff` → diff of the working tree
   against `HEAD`) and saving an argument in the 30-second demo path.
 - `numpy` moved from a required runtime dependency into the `[tree-sitter]`
   extra, so default installs no longer pull a ~20 MB scientific stack the
@@ -48,7 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `PyRuntimeError` / `GitError` propagation. A malformed diff, a missing
   BPE table, or an oversized hunk-header integer no longer aborts the
   Python interpreter via `panic = "abort"`.
-- `treemapper-mcp` entry point now guards against being launched without the
+- `diffctx-mcp` entry point now guards against being launched without the
   `[mcp]` extra installed and prints an install hint instead of an
   `ImportError` traceback.
 
@@ -61,67 +81,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-- MCP server (`treemapper-mcp`) now refuses to traverse outside the
-  directories listed in `TREEMAPPER_ALLOWED_PATHS` (OS-pathsep-separated)
+- MCP server (`diffctx-mcp`) now refuses to traverse outside the
+  directories listed in `DIFFCTX_ALLOWED_PATHS` (OS-pathsep-separated)
   and refuses to start if the envvar is unset when run as a network-facing
   process. See [`SECURITY.md`](SECURITY.md) for the threat model.
 
-## [1.6.1] - 2026-05-15
+## [1.6.1 and earlier]
 
-### Fixed
-
-- **`_diffctx` Rust extension was missing from PyPI wheels** — `pip install treemapper`
-  previously shipped a pure-Python wheel that lacked the compiled Rust core, causing
-  `treemapper . --diff HEAD~1..HEAD` (the headline diff-context mode) to crash with
-  `ModuleNotFoundError: No module named '_diffctx'`. The build backend is now
-  `maturin`, and CD builds and publishes ABI3 wheels for Linux (x86_64 + aarch64),
-  macOS (x86_64 + arm64) and Windows (x86_64). Token counting (`tokens.py`) and
-  language detection (`writer.py`) now use the Rust path on every install instead
-  of silently degrading.
-- CI no longer references three deleted test files (`tests/test_graph*.py`) via
-  `--ignore` flags.
-
-### Added
-
-- Post-publish CD smoke job installs the freshly published wheel from PyPI on a
-  clean runner and exercises `treemapper --version`, the tree-mapping mode, the
-  Rust extension import (`from treemapper._diffctx import …`) and the diff-context
-  mode end-to-end across {Linux, macOS, Windows} × Python {3.10, 3.13}. The
-  release fails (and is not finalized as a GitHub Release) if the smoke test
-  fails — preventing a recurrence of the silent-degradation defect above.
-- Output-size warning: when an emitted tree-mapping output exceeds 10 MB, a
-  stderr hint suggests using `--no-content` (structure only) or `--diff RANGE`
-  (relevance-ranked context).
-- `CHANGELOG.md` (Keep-a-Changelog 1.1.0 format).
-
-### Changed
-
-- `--max-file-bytes` default lowered from 10 MB to 256 KB to keep tree-mapping
-  output bounded on large repos (cpython would previously produce ~133 MB of
-  YAML with the old default). Use `--no-file-size-limit` to disable the
-  per-file cap.
-- `from _diffctx import …` paths refactored to `from treemapper._diffctx import …`
-  (the Rust extension is now a submodule of the `treemapper` package). External
-  consumers of the Python API are unaffected; this is purely an internal layout
-  change required by the unified maturin wheel.
-
-### Removed
-
-- `Programming Language :: Python :: 3.14` classifier (CI runs 3.14 as
-  best-effort only; classifier was premature).
-- Unused optional-dependency groups `[embeddings]` (sentence-transformers) and
-  `[nlp]` (spacy) — neither was imported anywhere in `src/`.
-- Stale paper-track scaffolding: `PAPER_DEVIATIONS.md`, `QA.md`,
-  `Dockerfile.bench`, `requirements-bench.{txt,lock}`, `sonar-project.properties`,
-  `treemapper.spec` (PyInstaller spec), `whitelist_vulture.py`.
-- PyInstaller binary build path in CD (was orphan after the Rust extension
-  began shipping via wheels; binary distribution is deferred).
-
-## [1.6.x and earlier]
-
-Release notes for `1.0.0` through `1.6.0` are published on GitHub:
-<https://github.com/nikolay-e/diffctx/releases>.
+Earlier releases shipped as `treemapper`; see
+<https://pypi.org/project/treemapper/#history> for legacy versions and
+<https://github.com/nikolay-e/diffctx/releases> for the corresponding GitHub
+release notes (`1.0.0` through `1.6.1`).
 
 [Unreleased]: https://github.com/nikolay-e/diffctx/compare/v1.7.0...HEAD
-[1.7.0]: https://github.com/nikolay-e/diffctx/releases/tag/v1.7.0
-[1.6.1]: https://github.com/nikolay-e/diffctx/releases/tag/v1.6.1
+[1.7.0]: https://github.com/nikolay-e/diffctx/compare/v1.6.1...v1.7.0

@@ -3,7 +3,7 @@
 Runs Aider's `RepoMap.get_repo_map` against the same repo+patch+budget
 inputs as diffctx, via a subprocess in an isolated `uv tool` venv (Aider
 hard-pins ~95 deps including litellm, numpy==1.26.4, fastapi — those would
-break the main treemapper env if installed in-process).
+break the main diffctx env if installed in-process).
 
 Spawn-once, reuse-many: one helper process per worker process is kept alive
 across all instances assigned to that worker, so we pay aider's import

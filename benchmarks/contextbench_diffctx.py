@@ -51,7 +51,7 @@ def is_nontrivial(gold: list[dict], patch: str) -> bool:
 
 
 def run_diffctx(repo_dir: Path, budget: int = 8000, scoring_mode: str = "ego", tau: float = 0.08) -> dict | None:
-    from treemapper.diffctx.pipeline import build_diff_context
+    from diffctx.diffctx.pipeline import build_diff_context
 
     try:
         return build_diff_context(repo_dir, _DEFAULT_DIFF_RANGE, budget_tokens=budget, scoring_mode=scoring_mode, tau=tau)
@@ -244,7 +244,7 @@ def evaluate_instance(
     budget: int = 8000,
     repos_dir: Path = REPOS_DIR,
     scoring_mode: str = "ego",
-    baseline: str = "treemapper",
+    baseline: str = "diffctx",
     tau: float = 0.08,
 ) -> dict | None:
     iid = inst["instance_id"]
@@ -478,7 +478,7 @@ def main():
     parser.add_argument("--seeds", type=str, default="42")
     parser.add_argument("--no-shuffle", action="store_true")
     parser.add_argument("--scoring", type=str, default="ego", choices=["ppr", "ego", "bm25"])
-    parser.add_argument("--baseline", type=str, default="treemapper", choices=["treemapper", "patch_files", "bm25"])
+    parser.add_argument("--baseline", type=str, default="diffctx", choices=["diffctx", "patch_files", "bm25"])
     parser.add_argument("--dataset", type=str, default="full", choices=["verified", "full"])
     parser.add_argument("--tau", type=float, default=0.08)
     args = parser.parse_args()
@@ -531,7 +531,7 @@ def main():
             tag = f"cb_{args.scoring}_n{args.limit}_b{args.budget}"
         else:
             tag = f"cb_{args.scoring}_n{args.limit}_b{args.budget}_s{seed}"
-        if args.baseline != "treemapper":
+        if args.baseline != "diffctx":
             tag = (
                 f"cb_{args.baseline}_n{args.limit}_b{args.budget}"
                 if len(seeds) == 1
