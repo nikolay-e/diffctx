@@ -2,6 +2,8 @@
 import pytest
 import yaml
 
+import diffctx
+
 from .conftest import run_diffctx_subprocess
 
 
@@ -44,3 +46,35 @@ def test_output_file_saved_message(temp_project):
     assert result.returncode == 0
     assert "Saved to" in result.stderr
     assert str(output_file) in result.stderr
+
+
+def test_run_injects_program_name_in_help(capsys):
+    with pytest.raises(SystemExit) as exc:
+        diffctx.run(["--help"], prog="treemapper", version="9.9.9")
+    assert exc.value.code == 0
+    out = capsys.readouterr().out
+    assert "usage: treemapper" in out.lower()
+    assert "diffctx" not in out.split("\n")[0].lower()
+
+
+def test_run_injects_version(capsys):
+    with pytest.raises(SystemExit) as exc:
+        diffctx.run(["--version"], prog="treemapper", version="9.9.9")
+    assert exc.value.code == 0
+    assert capsys.readouterr().out.strip() == "treemapper 9.9.9"
+
+
+def test_run_defaults_to_diffctx_identity(capsys):
+    with pytest.raises(SystemExit) as exc:
+        diffctx.run(["--version"])
+    assert exc.value.code == 0
+    out = capsys.readouterr().out.strip()
+    assert out == f"diffctx {diffctx.__version__}"
+
+
+def test_run_executes_tree_mode(temp_project):
+    output_file = temp_project / "via_run.yaml"
+    diffctx.run([str(temp_project), "-o", str(output_file)], prog="treemapper")
+    assert output_file.exists()
+    tree_data = yaml.safe_load(output_file.read_text(encoding="utf-8"))
+    assert tree_data["type"] == "directory"

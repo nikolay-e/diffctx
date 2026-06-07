@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0]
+
+### Added
+
+- Public `diffctx.run(argv=None, *, prog=None, version=None)` engine entry. It
+  is the same execution path as the `diffctx` console script but accepts an
+  injected program name and version string, so a downstream wrapper (e.g. the
+  `treemapper` distribution) can present its own branding in `--help`,
+  `--version`, and error prefixes without duplicating the CLI. `main()` now
+  delegates to `run()` with the default `diffctx` identity — no behavior change
+  for existing callers.
+- `diffctx.mcp.__main__.main(prog=..., extra=...)` accepts an injected program
+  name and install-extra string for the missing-dependency hint, so wrappers
+  can re-expose the MCP entry point with their own name.
+
 ## [1.7.0] - 2026-05-22
 
 ### Added

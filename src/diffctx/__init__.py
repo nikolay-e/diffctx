@@ -7,6 +7,7 @@ from typing import Any
 
 from .diffctx import build_diff_context
 from .ignore import get_ignore_specs, get_whitelist_spec
+from .main import run
 from .tree import TreeBuildContext, build_tree
 from .version import __version__
 from .writer import write_tree_json, write_tree_markdown, write_tree_text, write_tree_yaml
@@ -17,6 +18,7 @@ __all__ = [
     "__version__",
     "build_diff_context",
     "map_directory",
+    "run",
     "to_json",
     "to_markdown",
     "to_text",

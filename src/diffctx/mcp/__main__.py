@@ -3,12 +3,12 @@ from __future__ import annotations
 import sys
 
 
-def main() -> None:
+def main(prog: str = "diffctx-mcp", extra: str = "diffctx[mcp]") -> None:
     try:
         from diffctx.mcp.server import run_server
     except ImportError:
         print(
-            "diffctx-mcp: missing optional dependencies for MCP server mode.\n" "Install with: pip install 'diffctx[mcp]'",
+            f"{prog}: missing optional dependencies for MCP server mode.\n" f"Install with: pip install '{extra}'",
             file=sys.stderr,
         )
         sys.exit(2)

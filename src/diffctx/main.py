@@ -7,6 +7,8 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from .version import __version__
+
 if TYPE_CHECKING:
     from .cli import ParsedArgs
 
@@ -292,13 +294,13 @@ def _handle_graph_mode(args: ParsedArgs) -> str:
     return "\n".join(parts) + "\n" if parts else ""
 
 
-def _run() -> None:
+def _run(argv: list[str] | None = None, *, prog: str = "diffctx", version: str = __version__) -> None:
     from .cli import parse_args
     from .logger import setup_logging
     from .tokens import print_token_summary
     from .writer import tree_to_string
 
-    args = parse_args()
+    args = parse_args(argv, prog=prog, version=version)
     setup_logging(args.verbosity)
 
     if _is_graph_mode(args):
@@ -341,19 +343,21 @@ def _format_runtime_error(exc: BaseException) -> str:
     return msg if msg else exc.__class__.__name__
 
 
-def _handle_unexpected_exception(exc: BaseException) -> int:
+def _handle_unexpected_exception(exc: BaseException, prog: str = "diffctx") -> int:
     logger.debug("internal error", exc_info=exc)
     print(
-        f"diffctx: internal error: {exc.__class__.__name__}: {_format_runtime_error(exc)}",
+        f"{prog}: internal error: {exc.__class__.__name__}: {_format_runtime_error(exc)}",
         file=sys.stderr,
     )
     return _EXIT_RUNTIME
 
 
-def main() -> None:
+def run(argv: list[str] | None = None, *, prog: str | None = None, version: str | None = None) -> None:
+    prog = prog or "diffctx"
+    version = version or __version__
     _configure_windows_utf8()
     try:
-        _run()
+        _run(argv, prog=prog, version=version)
     except SystemExit:
         raise
     except KeyboardInterrupt:
@@ -362,16 +366,20 @@ def main() -> None:
     except BrokenPipeError:
         sys.exit(_EXIT_BROKEN_PIPE)
     except argparse.ArgumentError as exc:
-        print(f"diffctx: usage error: {_format_runtime_error(exc)}", file=sys.stderr)
+        print(f"{prog}: usage error: {_format_runtime_error(exc)}", file=sys.stderr)
         sys.exit(_EXIT_USAGE)
     except _KNOWN_RUNTIME_ERRORS as exc:
-        print(f"diffctx: {_format_runtime_error(exc)}", file=sys.stderr)
+        print(f"{prog}: {_format_runtime_error(exc)}", file=sys.stderr)
         sys.exit(_EXIT_RUNTIME)
     except OSError as exc:
-        print(f"diffctx: {_format_runtime_error(exc)}", file=sys.stderr)
+        print(f"{prog}: {_format_runtime_error(exc)}", file=sys.stderr)
         sys.exit(_EXIT_RUNTIME)
     except Exception as exc:
-        sys.exit(_handle_unexpected_exception(exc))
+        sys.exit(_handle_unexpected_exception(exc, prog=prog))
+
+
+def main() -> None:
+    run()
 
 
 if __name__ == "__main__":
