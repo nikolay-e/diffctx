@@ -5,9 +5,11 @@ name: Dependabot auto-merge
 #     coarse gate. The actual security boundary is the official
 #     dependabot/fetch-metadata action, which signs over the PR contents and
 #     exposes update-type / dependency metadata in a tamper-resistant way.
-#   * Only `version-update:semver-patch` and `version-update:semver-security`
-#     are eligible for `--merge`. Minor and major bumps get `--approve` only;
-#     a human must hit the merge button.
+#   * Only `version-update:semver-patch`, `version-update:semver-security`,
+#     and indirect (lockfile-resolution) bumps are eligible for `--merge` —
+#     indirect updates carry no update-type metadata but stay within the
+#     constraints declared in the manifest. Direct minor and major bumps get
+#     `--approve` only; a human must hit the merge button.
 #   * `gh pr merge --auto --squash` lets GitHub gate the actual merge on the
 #     repository's required status checks (configured via branch protection),
 #     so we do NOT need to wait for CI inside this workflow.
@@ -37,10 +39,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh pr review --approve "$PR_URL"
 
-      - name: Enable auto-merge (patch + security only)
+      - name: Enable auto-merge (patch, security, indirect)
         if: |
           steps.meta.outputs.update-type == 'version-update:semver-patch' ||
-          steps.meta.outputs.update-type == 'version-update:semver-security'
+          steps.meta.outputs.update-type == 'version-update:semver-security' ||
+          steps.meta.outputs.dependency-type == 'indirect'
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
