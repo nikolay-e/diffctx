@@ -13,6 +13,9 @@ name: Dependabot auto-merge
 #   * `gh pr merge --auto --squash` lets GitHub gate the actual merge on the
 #     repository's required status checks (configured via branch protection),
 #     so we do NOT need to wait for CI inside this workflow.
+#   * The merge step authenticates with AUTOMERGE_PAT (not GITHUB_TOKEN):
+#     pushes made with GITHUB_TOKEN do not trigger workflows, so the merged
+#     commit would never get a CI build or deploy.
 
 'on':
   pull_request_target:
@@ -46,5 +49,5 @@ jobs:
           steps.meta.outputs.dependency-type == 'indirect'
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.AUTOMERGE_PAT }}
         run: gh pr merge --auto --squash "$PR_URL"
