@@ -15,6 +15,12 @@ from .security import validate_dir_path, validate_repo_path
 
 logger = logging.getLogger(__name__)
 
+# Keep in sync with diffctx.cli._DEFAULT_TAU. The layering contract forbids
+# mcp -> cli, so this user-facing default is duplicated rather than imported.
+# Without it, build_diff_context falls back to the engine default (0.12),
+# silently selecting less context than the documented CLI default.
+_DEFAULT_TAU = 0.08
+
 mcp = FastMCP("diffctx")
 
 _DIFF_DESCRIPTION = (
@@ -47,6 +53,7 @@ async def get_diff_context(
                 root_dir=validated_path,
                 diff_range=diff_range,
                 budget_tokens=budget_tokens,
+                tau=_DEFAULT_TAU,
             )
         )
     except GitError as e:
