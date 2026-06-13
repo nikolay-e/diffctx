@@ -352,6 +352,14 @@ def _handle_unexpected_exception(exc: BaseException, prog: str = "diffctx") -> i
     return _EXIT_RUNTIME
 
 
+def _git_error_type() -> type[BaseException]:
+    from typing import cast
+
+    from .diffctx import GitError
+
+    return cast("type[BaseException]", GitError)
+
+
 def run(argv: list[str] | None = None, *, prog: str | None = None, version: str | None = None) -> None:
     prog = prog or "diffctx"
     version = version or __version__
@@ -365,6 +373,9 @@ def run(argv: list[str] | None = None, *, prog: str | None = None, version: str 
         sys.exit(_EXIT_INTERRUPTED)
     except BrokenPipeError:
         sys.exit(_EXIT_BROKEN_PIPE)
+    except _git_error_type() as exc:
+        print(f"{prog}: git error: {_format_runtime_error(exc)}", file=sys.stderr)
+        sys.exit(_EXIT_ENVIRONMENT)
     except argparse.ArgumentError as exc:
         print(f"{prog}: usage error: {_format_runtime_error(exc)}", file=sys.stderr)
         sys.exit(_EXIT_USAGE)
