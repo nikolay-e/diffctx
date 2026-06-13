@@ -27,7 +27,7 @@ fn map_pipeline_err(e: anyhow::Error) -> PyErr {
     pyo3::exceptions::PyRuntimeError::new_err(e.to_string())
 }
 
-#[pyclass]
+#[pyclass(skip_from_py_object)]
 #[derive(Clone)]
 pub struct PyFragment {
     #[pyo3(get)]
@@ -82,7 +82,7 @@ impl From<&FragmentEntry> for PyFragment {
     }
 }
 
-#[pyclass]
+#[pyclass(skip_from_py_object)]
 #[derive(Clone)]
 pub struct DiffContextResult {
     #[pyo3(get)]
@@ -258,7 +258,7 @@ fn build_diff_context<'py>(
 
     let start = std::time::Instant::now();
     let output = py
-        .allow_threads(|| {
+        .detach(|| {
             pipeline::build_diff_context(
                 path,
                 range,
@@ -350,7 +350,7 @@ fn compute_scored_state(
         Some(diff_range)
     };
     let state = py
-        .allow_threads(|| pipeline::compute_scored_state(path, range, alpha, mode, timeout))
+        .detach(|| pipeline::compute_scored_state(path, range, alpha, mode, timeout))
         .map_err(map_pipeline_err)?;
     Ok(PyScoredState {
         inner: Arc::new(state),
@@ -372,7 +372,7 @@ fn select_with_params<'py>(
     no_content: bool,
 ) -> PyResult<Bound<'py, PyDict>> {
     let inner = state.inner.clone();
-    let output = py.allow_threads(move || {
+    let output = py.detach(move || {
         if inner.all_fragments.is_empty() {
             return DiffContextOutput {
                 name: inner
@@ -515,7 +515,7 @@ impl PyQuotientGraph {
     }
 }
 
-#[pyclass]
+#[pyclass(skip_from_py_object)]
 #[derive(Clone)]
 pub struct PyModuleMetrics {
     #[pyo3(get)]
