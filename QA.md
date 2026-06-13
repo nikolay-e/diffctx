@@ -94,6 +94,38 @@ pipx-published binary. For QA code-review smoke, always use the absolute path
 `/Users/nikolay/.local/bin/diffctx`. Tests, builds, and pre-commit need the venv
 binary; only the user-facing smoke / review step needs the pipx one.
 
+## YAML Cases: CI Runs Only the First 20
+
+`ci.yml` sets `DIFFCTX_YAML_CASES_LIMIT: "20"`, so `cargo test --test yaml_cases`
+in CI runs only the first 20 discovered cases (sorted by filename). Everything
+alphabetically after that — `kubernetes_*`, later `bal2_*`, etc. — **never runs
+in CI**. A green CI does NOT mean the full case suite passes. On every QA pass,
+run the FULL suite locally (`cd diffctx && cargo test --release --test yaml_cases`)
+and triage cases below the score threshold (default `min_score=10`, override via
+`DIFFCTX_YAML_MIN_SCORE`). A failing case scores `100 * recall * (1 - forbidden_rate)`;
+`forbidden_rate=100%` means the selection pulled in every "unrelated" manifest.
+
+## Edge-Builder Regexes: Compile-Probe, Not Pipeline Coverage
+
+The diff pipeline does NOT force every edge-builder `Lazy<Regex>` for small test
+inputs (PPR can pull a fragment in via a structural edge without ever invoking
+the k8s selector/label extraction). So a YAML case that "passes" does not prove
+the edge regexes even compile. A nested bounded repetition of a Unicode negated
+class — `(?:...[^\n:]{1,200}\n){1,50}` — compiles past regex's default 10 MiB
+limit and `.unwrap()` aborts the process the first time it's forced (a real k8s
+repo via the CLI hits it; the test suite did not). The deterministic guard is a
+`#[cfg(test)]` probe that forces every regex in the module to compile
+(`kubernetes::tests::all_kubernetes_regexes_compile`). Unbound the value class
+(`[^\n:]+`) instead of bounding it — the regex crate is linear-time, so no ReDoS.
+
+## Building the Extension: maturin, Not `cargo build --features python`
+
+`cargo build --features python` fails at the link step (`linking with cc failed`,
+undefined Python symbols) because the `extension-module` pyo3 feature expects the
+host interpreter to provide symbols at import time. To compile-check the Python
+bridge, use `.venv/bin/python -m maturin develop --release` (or `cargo build`
+WITHOUT `--features python` / `cargo test --lib` for the pure-Rust paths).
+
 ## Empty-Diff Warning Is Expected on Docs-Only HEAD
 
 `diffctx --diff` (bare, no range → defaults to HEAD) on a docs-only HEAD prints
