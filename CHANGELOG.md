@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.2] - 2026-06-14
+
 ### Added
 
 - Private-key and keystore files are now excluded from output in **both** tree
@@ -18,6 +20,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   opt out of tree-mode default ignores. (`.env` files are intentionally still
   included — a changed `.env` is legitimate change context; redacting secret
   *values* is a separate planned content-scan feature.)
+
+### Fixed
+
+- **Diffs touching files larger than 100 KB no longer produce empty output.** A
+  changed file (e.g. a 142 KB `Math.h`) was subject to the same 100 KB cap as
+  context-discovery candidates, so the whole diff yielded "no semantic context".
+  Changed files — the subject of the diff — are now parsed up to 5 MB.
+- **C/C++ symbol names** for variable declarations now report the variable, not
+  the type: a changed `const unsigned blane = …` is labeled `blane`, not
+  `unsigned`. Covers `init`/`array`/pointer/function declarators and C++
+  `reference`/`parenthesized` declarators (`int &r`, `int (*f)()`).
+- Changed-file fragments are no longer dropped by the generated-file reduction
+  (cap of 5 + 30-line content truncation), which could discard the small
+  fragment covering the edited hunk and mislocate the change.
+- Binary detection no longer misclassifies changed text files that embed ANSI
+  escape / control bytes (snapshot and terminal-recording fixtures); it now uses
+  git's NUL-byte heuristic, so such files are no longer silently dropped.
+- Diff-context selection is now deterministic across processes: ego-graph score
+  accumulation, context-fragment capping, and the greedy selection heap use
+  stable tie-breaks, so identical inputs always yield byte-identical output.
+- Python module-import edges are bidirectional (matching every other language
+  and Python's own symbol references), so a changed imported module now
+  propagates relevance back to its importers.
+
+### Hardened
+
+- `git cat-file` blob reads are bounded (drain-and-reject above 16 MB) instead of
+  allocating an arbitrarily large buffer up front.
 
 ## [1.9.1] - 2026-06-14
 
