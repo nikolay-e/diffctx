@@ -42,6 +42,7 @@ pub struct ScoredState {
     pub needs: Vec<InformationNeed>,
     pub changed_files: Vec<PathBuf>,
     pub preferred_revs: Vec<String>,
+    pub commit_message: Option<String>,
     pub heavy_latency_ms: HeavyLatencyMs,
 }
 
@@ -157,6 +158,15 @@ pub fn compute_scored_state(
         .map(git::split_diff_range)
         .unwrap_or((None, None));
     let preferred_revs = build_preferred_revs(base_rev.as_deref(), head_rev.as_deref());
+    let commit_message = head_rev
+        .as_deref()
+        .and_then(|h| git::get_commit_message(&root_dir, h).ok())
+        .and_then(|m| {
+            m.lines()
+                .map(str::trim)
+                .find(|l| !l.is_empty())
+                .map(str::to_string)
+        });
 
     let t0 = Instant::now();
 
@@ -303,6 +313,7 @@ pub fn compute_scored_state(
         needs,
         changed_files,
         preferred_revs,
+        commit_message,
         heavy_latency_ms,
     })
 }
@@ -412,7 +423,27 @@ pub fn select_with_params(
         + select_ms;
 
     let cap_stats = state.scoring_result.graph.cap_stats;
-    let mut output = render::build_diff_context_output(&state.root_dir, &selected, no_content);
+    let change = render::ChangeSummary {
+        commit_message: state.commit_message.clone(),
+        changed_files: state
+            .changed_files
+            .iter()
+            .map(|p| {
+                p.strip_prefix(&state.root_dir)
+                    .unwrap_or(p)
+                    .to_string_lossy()
+                    .replace('\\', "/")
+            })
+            .collect(),
+    };
+    let mut output = render::build_diff_context_output(
+        &state.root_dir,
+        &selected,
+        no_content,
+        &state.core_ids,
+        &state.scoring_result.rel_scores,
+        change,
+    );
     output.latency = Some(render::LatencyBreakdown {
         parse_changed_ms: state.heavy_latency_ms.parse_changed,
         universe_walk_ms: state.heavy_latency_ms.universe_walk,
@@ -479,10 +510,37 @@ fn build_diff_context_full(
     assign_token_counts(&mut sig_frags);
     all_fragments.extend(sig_frags);
     changed_files.sort();
+    let core_ids = identify_core_fragments(&hunks, &all_fragments);
     let selected = select_full_mode(&all_fragments, &changed_files);
     batch_reader.close();
+    let commit_message = head_rev
+        .as_deref()
+        .and_then(|h| git::get_commit_message(&root_dir, h).ok())
+        .and_then(|m| {
+            m.lines()
+                .map(str::trim)
+                .find(|l| !l.is_empty())
+                .map(str::to_string)
+        });
+    let change = render::ChangeSummary {
+        commit_message,
+        changed_files: changed_files
+            .iter()
+            .map(|p| {
+                p.strip_prefix(&root_dir)
+                    .unwrap_or(p)
+                    .to_string_lossy()
+                    .replace('\\', "/")
+            })
+            .collect(),
+    };
     Ok(render::build_diff_context_output(
-        &root_dir, &selected, no_content,
+        &root_dir,
+        &selected,
+        no_content,
+        &core_ids,
+        &FxHashMap::default(),
+        change,
     ))
 }
 
@@ -504,6 +562,7 @@ fn empty_scored_state(root_dir: PathBuf) -> ScoredState {
         needs: Vec::new(),
         changed_files: Vec::new(),
         preferred_revs: Vec::new(),
+        commit_message: None,
         heavy_latency_ms: HeavyLatencyMs::default(),
     }
 }
@@ -519,6 +578,8 @@ fn empty_output(root_dir: &Path) -> DiffContextOutput {
     DiffContextOutput {
         name,
         output_type: "diff_context".to_string(),
+        commit_message: None,
+        changed_files: Vec::new(),
         fragment_count: 0,
         fragments: Vec::new(),
         latency: None,

@@ -1,19 +1,32 @@
-use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::Arc;
 
 use once_cell::sync::Lazy;
 use regex::Regex;
+use rustc_hash::{FxHashMap, FxHashSet};
 use serde::Serialize;
 
 use crate::config::render::RENDER;
-use crate::types::{Fragment, FragmentKind};
+use crate::types::{Fragment, FragmentId, FragmentKind};
+
+/// Orientation header for the diff-context output: tells the reader *what*
+/// changed before they read the fragments. Empty for working-tree / no-commit
+/// diffs.
+#[derive(Default)]
+pub struct ChangeSummary {
+    pub commit_message: Option<String>,
+    pub changed_files: Vec<String>,
+}
 
 #[derive(Serialize)]
 pub struct DiffContextOutput {
     pub name: String,
     #[serde(rename = "type")]
     pub output_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub commit_message: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub changed_files: Vec<String>,
     pub fragment_count: usize,
     pub fragments: Vec<FragmentEntry>,
     #[serde(skip)]
@@ -71,6 +84,11 @@ pub struct LatencyBreakdown {
 pub struct FragmentEntry {
     pub path: String,
     pub lines: String,
+    /// `Some("changed")` for fragments overlapping the diff hunks; omitted
+    /// (treated as supporting context) otherwise. This is the single signal a
+    /// reader needs to tell the change apart from its context.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
     pub kind: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub symbol: Option<String>,
@@ -189,35 +207,110 @@ fn create_fragment_entry(frag: &Fragment, path_str: &str) -> FragmentEntry {
     FragmentEntry {
         path: path_str.to_string(),
         lines: format!("{}-{}", frag.start_line(), frag.end_line()),
+        role: None,
         kind: frag.kind.as_str().to_string(),
         symbol,
         content,
     }
 }
 
+/// Collapse a file's fragments (sorted by start line) into the rendered
+/// entries, merging runs of same-role, line-contiguous fragments
+/// (`next.start == cur.end + 1`) into one. Merging touching ranges is lossless
+/// on line coverage and removes the per-fragment scaffolding tax that dominates
+/// output dominated by one-line snippets.
+fn merge_file_fragments(
+    rel_path: &str,
+    frags: &[&Fragment],
+    core_ids: &FxHashSet<FragmentId>,
+) -> Vec<(bool, u32, FragmentEntry)> {
+    let mut out: Vec<(bool, u32, FragmentEntry)> = Vec::new();
+    let mut i = 0;
+    while i < frags.len() {
+        let first = frags[i];
+        let role_changed = core_ids.contains(&first.id);
+        let mut end = first.end_line();
+        let mut parts: Vec<&str> = vec![first.content.trim_end_matches('\n')];
+        let mut j = i + 1;
+        while j < frags.len() {
+            let next = frags[j];
+            if core_ids.contains(&next.id) == role_changed && next.start_line() == end + 1 {
+                parts.push(next.content.trim_end_matches('\n'));
+                end = next.end_line();
+                j += 1;
+            } else {
+                break;
+            }
+        }
+
+        let mut entry = create_fragment_entry(first, rel_path);
+        if j > i + 1 {
+            entry.lines = format!("{}-{}", first.start_line(), end);
+            let merged = parts.join("\n");
+            entry.content = if merged.is_empty() {
+                None
+            } else {
+                Some(Arc::from(merged.as_str()))
+            };
+        }
+        entry.role = role_changed.then(|| "changed".to_string());
+        out.push((role_changed, first.start_line(), entry));
+        i = j;
+    }
+    out
+}
+
 pub fn build_diff_context_output(
     repo_root: &Path,
     selected: &[Fragment],
     no_content: bool,
+    core_ids: &FxHashSet<FragmentId>,
+    rel_scores: &FxHashMap<FragmentId, f64>,
+    change: ChangeSummary,
 ) -> DiffContextOutput {
-    let mut by_path: BTreeMap<String, Vec<&Fragment>> = BTreeMap::new();
+    let mut by_path: FxHashMap<String, Vec<&Fragment>> = FxHashMap::default();
     for frag in selected {
-        let rel_path = get_relative_path(frag, repo_root);
-        by_path.entry(rel_path).or_default().push(frag);
+        by_path
+            .entry(get_relative_path(frag, repo_root))
+            .or_default()
+            .push(frag);
     }
 
-    let mut fragments_out: Vec<FragmentEntry> = Vec::new();
+    // Changed code first (the answer to "what changed"), then supporting
+    // context ordered by descending per-file relevance so the reader's primacy
+    // attention lands on the most relevant material, not on alphabetical noise.
+    let mut changed: Vec<(String, u32, FragmentEntry)> = Vec::new();
+    let mut context: Vec<(f64, String, u32, FragmentEntry)> = Vec::new();
     for (rel_path, frags) in &by_path {
-        let mut sorted_frags: Vec<&&Fragment> = frags.iter().collect();
-        sorted_frags.sort_by_key(|f| f.start_line());
-        for frag in sorted_frags {
-            let mut entry = create_fragment_entry(frag, rel_path);
+        let mut sorted: Vec<&Fragment> = frags.clone();
+        sorted.sort_by_key(|f| f.start_line());
+        let file_rel = sorted
+            .iter()
+            .map(|f| rel_scores.get(&f.id).copied().unwrap_or(0.0))
+            .fold(0.0_f64, f64::max);
+        for (role_changed, start, mut entry) in merge_file_fragments(rel_path, &sorted, core_ids) {
             if no_content {
                 entry.content = None;
             }
-            fragments_out.push(entry);
+            if role_changed {
+                changed.push((rel_path.clone(), start, entry));
+            } else {
+                context.push((file_rel, rel_path.clone(), start, entry));
+            }
         }
     }
+
+    changed.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+    context.sort_by(|a, b| {
+        b.0.partial_cmp(&a.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.1.cmp(&b.1))
+            .then(a.2.cmp(&b.2))
+    });
+
+    let mut fragments_out: Vec<FragmentEntry> = Vec::with_capacity(changed.len() + context.len());
+    fragments_out.extend(changed.into_iter().map(|(_, _, e)| e));
+    fragments_out.extend(context.into_iter().map(|(_, _, _, e)| e));
 
     let resolved = repo_root
         .canonicalize()
@@ -230,6 +323,8 @@ pub fn build_diff_context_output(
     DiffContextOutput {
         name,
         output_type: "diff_context".to_string(),
+        commit_message: change.commit_message,
+        changed_files: change.changed_files,
         fragment_count: fragments_out.len(),
         fragments: fragments_out,
         latency: None,

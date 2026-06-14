@@ -98,6 +98,8 @@ def _write_yaml_node(file: TextIO, node: dict[str, Any], indent: str = "") -> No
 def _write_yaml_fragment(file: TextIO, frag: dict[str, Any], indent: str = "") -> None:
     file.write(f'{indent}- path: "{_escape_yaml_string(frag.get("path", ""))}"\n')
     file.write(f'{indent}  lines: "{_escape_yaml_string(frag.get("lines", ""))}"\n')
+    if frag.get("role"):
+        file.write(f'{indent}  role: "{_escape_yaml_string(frag["role"])}"\n')
     file.write(f'{indent}  kind: "{_escape_yaml_string(frag.get("kind", "unknown"))}"\n')
 
     if frag.get("symbol"):
@@ -113,6 +115,12 @@ def write_tree_yaml(file: TextIO, tree: dict[str, Any]) -> None:
     file.write(f"type: {tree['type']}\n")
 
     if tree.get("type") == "diff_context" and tree.get("fragments"):
+        if tree.get("commit_message"):
+            file.write(f'commit_message: "{_escape_yaml_string(str(tree["commit_message"]))}"\n')
+        if tree.get("changed_files"):
+            file.write("changed_files:\n")
+            for path in tree["changed_files"]:
+                file.write(f'  - "{_escape_yaml_string(str(path))}"\n')
         file.write(f"fragment_count: {len(tree['fragments'])}\n")
         file.write("fragments:\n")
         for frag in tree["fragments"]:
@@ -171,6 +179,8 @@ def _write_text_fragment(file: TextIO, frag: dict[str, Any], indent: str = "") -
         header += f" ({symbol})"
     if kind:
         header += f" [{kind}]"
+    if frag.get("role"):
+        header += f" <{frag['role']}>"
     file.write(f"{indent}{header}\n")
 
     if frag.get("content"):
@@ -192,6 +202,10 @@ def write_tree_text(file: TextIO, tree: dict[str, Any]) -> None:
         file.write(f"{name}/\n")
 
     if tree_type == "diff_context" and tree.get("fragments"):
+        if tree.get("commit_message"):
+            file.write(f"  change: {tree['commit_message']}\n")
+        if tree.get("changed_files"):
+            file.write(f"  changed files: {', '.join(str(p) for p in tree['changed_files'])}\n")
         for frag in tree["fragments"]:
             _write_text_fragment(file, frag, "  ")
     elif tree.get("children"):
@@ -301,6 +315,8 @@ def _write_markdown_fragment(file: TextIO, frag: dict[str, Any]) -> None:
         header += f" **{_escape_markdown(symbol)}**"
     if kind:
         header += f" _{_escape_markdown(kind)}_"
+    if frag.get("role") == "changed":
+        header = f"🔹 {header} — **changed**"
     file.write(f"## {header}\n\n")
 
     if frag.get("content"):
@@ -319,6 +335,13 @@ def write_tree_markdown(file: TextIO, tree: dict[str, Any]) -> None:
         file.write(f"# {name}/\n\n")
 
     if tree_type == "diff_context" and tree.get("fragments"):
+        if tree.get("commit_message"):
+            file.write(f"> {tree['commit_message']}\n\n")
+        if tree.get("changed_files"):
+            file.write("**Changed files:**\n\n")
+            for path in tree["changed_files"]:
+                file.write(f"- {_escape_md_inline_code(str(path))}\n")
+            file.write("\n")
         for frag in tree["fragments"]:
             _write_markdown_fragment(file, frag)
     elif tree.get("children"):

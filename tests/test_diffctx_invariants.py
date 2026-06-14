@@ -205,3 +205,39 @@ def test_tiktoken_o200k_base_encoding_is_pinned():
         11,
         287,
     ], f"tiktoken o200k_base BPE drift: first 5 tokens changed to {tokens[:5]}, expected [1314, 1147, 6271, 11, 287]."
+
+
+def test_diff_context_output_has_orientation_header_and_roles(tmp_path):
+    import json
+
+    repo, diff_range = _make_diff_repo(tmp_path)
+    stdout, _ = _run(repo.path, [".", "--diff", diff_range, "--budget", "2048", "-f", "json"])
+    out = json.loads(stdout)
+
+    assert out["commit_message"] == "add div"
+    assert "src/calc.py" in out["changed_files"]
+
+    fragments = out["fragments"]
+    roles = [f.get("role") for f in fragments]
+    changed_count = sum(1 for r in roles if r == "changed")
+    assert changed_count >= 1, "the changed code must be marked role=changed"
+
+    changed_positions = [i for i, r in enumerate(roles) if r == "changed"]
+    assert changed_positions == list(
+        range(changed_count)
+    ), f"changed fragments must come first; got positions {changed_positions}"
+
+    changed_paths = {f["path"] for f in fragments if f.get("role") == "changed"}
+    assert "src/calc.py" in changed_paths
+
+
+def test_diff_context_merges_contiguous_fragments(tmp_path):
+    import json
+
+    repo, diff_range = _make_diff_repo(tmp_path)
+    stdout, _ = _run(repo.path, [".", "--diff", diff_range, "--budget", "4096", "-f", "json"])
+    fragments = json.loads(stdout)["fragments"]
+
+    for f in fragments:
+        start, end = (int(x) for x in f["lines"].split("-"))
+        assert start <= end, f"fragment line range inverted: {f['lines']}"
