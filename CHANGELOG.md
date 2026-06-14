@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-06-14
+
+### Added
+
+- Diff-context output now leads with an orientation header — `commit_message`
+  and `changed_files` — in every format (YAML/JSON/Markdown/text), so a reader
+  sees *what* changed before reading any fragment.
+- Each fragment carries a `role` of `changed` when it overlaps the diff hunks
+  (omitted for supporting context). Changed code is emitted first; context
+  follows, ordered by descending per-file relevance instead of alphabetically.
+
+### Changed
+
+- Line-contiguous fragments of the same role within a file are merged into a
+  single entry, cutting the per-fragment scaffolding that dominated output made
+  up of one-line snippets (lossless on line coverage).
+
+### Fixed
+
+- `get_changed_files` and `get_untracked_files` canonicalize paths consistently
+  with deleted/discovered files, preventing duplicate fragments when a tracked
+  path traverses a symlinked directory.
+- Signature extraction no longer terminates at braces inside parameter defaults
+  or annotations (e.g. Python `def f(x={}):`), which previously truncated the
+  signature mid-parameter-list.
+- The post-pass that rescues unrepresented changed files reuses the open
+  `git cat-file --batch` reader instead of spawning a `git show` per file.
+- Degraded token-count fallback returns 0 for the empty string (was 1).
+
 ## [1.8.0]
 
 ### Added
