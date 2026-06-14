@@ -341,7 +341,7 @@ pub fn select_with_params(
             .all_fragments
             .iter()
             .filter(|f| state.core_ids.contains(&f.id))
-            .map(|f| f.token_count)
+            .map(|f| f.token_count.min(BUDGET.core_token_cap_per_fragment))
             .sum();
         let auto = (core_tokens as f64 * BUDGET.auto_multiplier) as u32;
         auto.clamp(BUDGET.auto_min, BUDGET.auto_max)
