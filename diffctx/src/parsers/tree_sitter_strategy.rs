@@ -1172,7 +1172,11 @@ fn unwrap_decorated<'a>(node: Node<'a>) -> Node<'a> {
 fn unwrap_declarator<'a>(mut name_node: Node<'a>) -> Node<'a> {
     loop {
         match name_node.kind() {
-            "pointer_declarator" | "function_declarator" => {
+            "pointer_declarator"
+            | "function_declarator"
+            | "init_declarator"
+            | "array_declarator"
+            | "reference_declarator" => {
                 if let Some(inner) = name_node.child_by_field_name("declarator") {
                     name_node = inner;
                 } else {
