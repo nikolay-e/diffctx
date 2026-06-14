@@ -4,6 +4,7 @@ use crate::config::env_overrides::{read_env_f64, read_env_fraction, read_env_ope
 
 pub struct AlgorithmLimits {
     pub max_file_size: usize,
+    pub max_changed_file_size: usize,
     pub max_fragments: usize,
     pub max_generated_fragments: usize,
     pub max_generated_lines: usize,
@@ -21,6 +22,7 @@ impl Default for AlgorithmLimits {
             .unwrap_or(200);
         Self {
             max_file_size: 100_000,
+            max_changed_file_size: 5_000_000,
             max_fragments,
             max_generated_fragments: 5,
             max_generated_lines: 30,

@@ -180,6 +180,7 @@ pub fn compute_scored_state(
         &preferred_revs,
         &mut seen_frag_ids,
         Some(&mut batch_reader),
+        true,
     );
 
     let t_parse_changed = Instant::now();
@@ -239,6 +240,7 @@ pub fn compute_scored_state(
         &preferred_revs,
         &mut seen_frag_ids,
         Some(&mut batch_reader),
+        false,
     ));
 
     let t_parse_discovered = Instant::now();
@@ -527,6 +529,7 @@ fn build_diff_context_full(
         &preferred_revs,
         &mut seen_frag_ids,
         Some(&mut batch_reader),
+        true,
     );
     assign_token_counts(&mut all_fragments);
     let mut sig_frags = generate_signature_variants(&all_fragments);

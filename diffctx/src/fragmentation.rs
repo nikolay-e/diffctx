@@ -193,6 +193,7 @@ fn read_file_content(
     root_dir: &Path,
     preferred_revs: &[String],
     mut batch_reader: Option<&mut CatFileBatch>,
+    is_changed: bool,
 ) -> Option<String> {
     let ext = file_path
         .extension()
@@ -208,7 +209,11 @@ fn read_file_content(
         .unwrap_or_else(|_| root_dir.to_path_buf());
     let rel = abs_path.strip_prefix(&resolved_root).ok()?;
 
-    let max_size = LIMITS.max_file_size;
+    let max_size = if is_changed {
+        LIMITS.max_changed_file_size
+    } else {
+        LIMITS.max_file_size
+    };
     for rev in preferred_revs {
         if let Some(reader) = batch_reader.as_deref_mut() {
             match reader.get(rev, rel) {
@@ -229,7 +234,7 @@ fn read_file_content(
 
     if abs_path.exists() && abs_path.is_file() {
         if let Ok(meta) = std::fs::metadata(&abs_path) {
-            if meta.len() as usize > LIMITS.max_file_size {
+            if meta.len() as usize > max_size {
                 return None;
             }
         }
@@ -249,6 +254,7 @@ pub fn process_files_for_fragments(
     preferred_revs: &[String],
     seen_frag_ids: &mut FxHashSet<FragmentId>,
     mut batch_reader: Option<&mut CatFileBatch>,
+    is_changed: bool,
 ) -> Vec<Fragment> {
     let max_frags = LIMITS.max_fragments;
     let max_generated = LIMITS.max_generated_fragments;
@@ -267,6 +273,7 @@ pub fn process_files_for_fragments(
                     root_dir,
                     preferred_revs,
                     batch_reader.as_deref_mut(),
+                    is_changed,
                 )?;
                 Some((file_path.clone(), content))
             })
@@ -310,7 +317,7 @@ pub fn create_whole_file_fragment(
     preferred_revs: &[String],
     batch_reader: Option<&mut CatFileBatch>,
 ) -> Option<Fragment> {
-    let content = read_file_content(path, root_dir, preferred_revs, batch_reader)?;
+    let content = read_file_content(path, root_dir, preferred_revs, batch_reader, true)?;
     let trimmed = content.trim();
     if trimmed.is_empty() {
         return None;
