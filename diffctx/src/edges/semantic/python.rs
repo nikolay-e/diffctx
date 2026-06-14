@@ -256,11 +256,13 @@ impl EdgeBuilder for PythonEdgeBuilder {
                         if tgt == &f.id {
                             continue;
                         }
-                        let key = (f.id.clone(), tgt.clone());
-                        let existing = edges.get(&key).copied().unwrap_or(0.0);
-                        if PYTHON_SEMANTIC.import_weight > existing {
-                            edges.insert(key, PYTHON_SEMANTIC.import_weight);
-                        }
+                        base::add_edge(
+                            &mut edges,
+                            &f.id,
+                            tgt,
+                            PYTHON_SEMANTIC.import_weight,
+                            PYTHON_SEMANTIC.reverse_factor,
+                        );
                     }
                 }
             }

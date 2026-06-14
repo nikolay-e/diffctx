@@ -72,7 +72,11 @@ fn find_signature_end(lines: &[&str]) -> usize {
         if op > 0 {
             seen_open_paren = true;
         }
-        if ob - cb > 0 {
+        // A body-opening brace only ends the signature once we are outside the
+        // parameter list. Braces inside parameter defaults or annotations
+        // (e.g. Python `def f(x={}):`) appear while `paren_depth > 0` and must
+        // not truncate the signature mid-parameter-list.
+        if paren_depth <= 0 && ob - cb > 0 {
             return i + 1;
         }
         if seen_open_paren && paren_depth <= 0 {

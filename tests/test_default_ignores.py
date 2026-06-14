@@ -87,6 +87,26 @@ def test_git_directory_ignored(temp_project, run_mapper):
     assert "README.md" in all_files
 
 
+def test_default_private_key_ignores(temp_project, run_mapper):
+    secrets = ["server.pem", "tls.key", "keystore.p12", "app.pfx", "app.jks", "id_rsa", "id_ed25519"]
+    for secret in secrets:
+        (temp_project / secret).write_text("-----BEGIN PRIVATE KEY-----\ndo-not-leak\n", encoding="utf-8")
+
+    kept = ["id_rsa.pub", "config.py", ".env"]
+    for f in kept:
+        (temp_project / f).write_text("ok\n", encoding="utf-8")
+
+    assert run_mapper([".", "-o", "directory_tree.yaml"])
+    result = load_yaml(temp_project / "directory_tree.yaml")
+    all_files = get_all_files_in_tree(result)
+
+    for secret in secrets:
+        assert secret not in all_files, secret
+
+    for f in kept:
+        assert f in all_files, f
+
+
 def test_default_directory_ignores(temp_project, run_mapper):
     for dir_name in ["node_modules", "venv", ".venv"]:
         d = temp_project / dir_name

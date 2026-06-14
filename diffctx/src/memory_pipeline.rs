@@ -165,7 +165,20 @@ pub fn build_diff_context_in_memory(
     );
 
     let dummy_root = Path::new(".");
-    build_diff_context_output(dummy_root, &selected, no_content)
+    let mut changed_list: Vec<String> = changed_paths.iter().cloned().collect();
+    changed_list.sort();
+    let change = crate::render::ChangeSummary {
+        commit_message: None,
+        changed_files: changed_list,
+    };
+    build_diff_context_output(
+        dummy_root,
+        &selected,
+        no_content,
+        &core_ids,
+        &scoring_result.rel_scores,
+        change,
+    )
 }
 
 fn compute_memory_hunks(
@@ -323,6 +336,8 @@ fn empty_output(name: &str) -> DiffContextOutput {
     DiffContextOutput {
         name: name.to_string(),
         output_type: "diff_context".to_string(),
+        commit_message: None,
+        changed_files: Vec::new(),
         fragment_count: 0,
         fragments: Vec::new(),
         latency: None,

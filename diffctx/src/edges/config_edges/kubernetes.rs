@@ -41,12 +41,11 @@ static IMAGE_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r##"(?m)^\s{1,20}image:\s?['"]?([^'"#\n]{1,300})"##).unwrap());
 
 static SELECTOR_MATCH_LABELS_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?m)selector:\s?\n\s{1,20}matchLabels:\s?\n((?:\s{1,20}[a-zA-Z0-9_./-]{1,100}:\s?[^\n:]{1,200}\n){1,50})")
+    Regex::new(r"(?m)selector:\s?\n\s{1,20}matchLabels:\s?\n((?:\s{1,20}[a-zA-Z0-9_./-]{1,100}:\s?[^\n:]+\n){1,50})")
         .unwrap()
 });
 static LABELS_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?m)labels:\s?\n((?:\s{1,20}[a-zA-Z0-9_./-]{1,100}:\s?[^\n:]{1,200}\n){1,50})")
-        .unwrap()
+    Regex::new(r"(?m)labels:\s?\n((?:\s{1,20}[a-zA-Z0-9_./-]{1,100}:\s?[^\n:]+\n){1,50})").unwrap()
 });
 static LABEL_PAIR_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
@@ -55,7 +54,7 @@ static LABEL_PAIR_RE: Lazy<Regex> = Lazy::new(|| {
     .unwrap()
 });
 static SIMPLE_SELECTOR_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?m)selector:\s?\n((?:\s{1,20}[a-zA-Z0-9_./-]{1,100}:\s?[^\n:]{1,200}\n){1,50})")
+    Regex::new(r"(?m)selector:\s?\n((?:\s{1,20}[a-zA-Z0-9_./-]{1,100}:\s?[^\n:]+\n){1,50})")
         .unwrap()
 });
 
@@ -513,5 +512,41 @@ impl EdgeBuilder for KubernetesEdgeBuilder {
         }
 
         discovered
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Regression for issue #58: these label/selector patterns nest a Unicode
+    // negated class under bounded repetition, which compiled past regex's
+    // default 10 MiB size limit and made `.unwrap()` abort the whole process
+    // the first time a workload manifest forced the Lazy static. Forcing every
+    // k8s regex here fails CI on any future reintroduction instead of a user.
+    #[test]
+    fn all_kubernetes_regexes_compile() {
+        for re in [
+            &*K8S_API_VERSION_RE,
+            &*K8S_KIND_RE,
+            &*K8S_METADATA_NAME_RE,
+            &*K8S_NAME_RE,
+            &*CONFIGMAP_REF_RE,
+            &*CONFIGMAP_NAME_RE,
+            &*SECRET_REF_RE,
+            &*SECRET_NAME_RE,
+            &*SERVICE_NAME_RE,
+            &*BACKEND_SERVICE_RE,
+            &*IMAGE_RE,
+            &*SELECTOR_MATCH_LABELS_RE,
+            &*LABELS_RE,
+            &*LABEL_PAIR_RE,
+            &*SIMPLE_SELECTOR_RE,
+            &*VOLUME_CONFIGMAP_RE,
+            &*VOLUME_SECRET_RE,
+            &*VOLUME_PVC_RE,
+        ] {
+            let _ = re.is_match("x");
+        }
     }
 }

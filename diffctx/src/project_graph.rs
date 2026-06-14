@@ -74,6 +74,7 @@ pub fn build_project_graph_with_options(
             &[],
             &mut seen_frag_ids,
             Some(&mut batch_reader),
+            false,
         );
         batch_reader.close();
         frags
@@ -84,6 +85,7 @@ pub fn build_project_graph_with_options(
             &[],
             &mut seen_frag_ids,
             None,
+            false,
         )
     };
 

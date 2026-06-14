@@ -27,7 +27,7 @@ fn map_pipeline_err(e: anyhow::Error) -> PyErr {
     pyo3::exceptions::PyRuntimeError::new_err(e.to_string())
 }
 
-#[pyclass]
+#[pyclass(skip_from_py_object)]
 #[derive(Clone)]
 pub struct PyFragment {
     #[pyo3(get)]
@@ -82,7 +82,7 @@ impl From<&FragmentEntry> for PyFragment {
     }
 }
 
-#[pyclass]
+#[pyclass(skip_from_py_object)]
 #[derive(Clone)]
 pub struct DiffContextResult {
     #[pyo3(get)]
@@ -156,6 +156,8 @@ impl DiffContextResult {
         DiffContextOutput {
             name: self.name.clone(),
             output_type: "diff_context".to_string(),
+            commit_message: None,
+            changed_files: Vec::new(),
             fragment_count: self.fragment_count,
             fragments: self
                 .fragments
@@ -163,6 +165,7 @@ impl DiffContextResult {
                 .map(|f| FragmentEntry {
                     path: f.path.clone(),
                     lines: f.lines.clone(),
+                    role: None,
                     kind: f.kind.clone(),
                     symbol: f.symbol.clone(),
                     content: f.content.clone(),
@@ -258,7 +261,7 @@ fn build_diff_context<'py>(
 
     let start = std::time::Instant::now();
     let output = py
-        .allow_threads(|| {
+        .detach(|| {
             pipeline::build_diff_context(
                 path,
                 range,
@@ -277,6 +280,12 @@ fn build_diff_context<'py>(
     let dict = PyDict::new(py);
     dict.set_item("name", &output.name)?;
     dict.set_item("type", "diff_context")?;
+    if let Some(ref msg) = output.commit_message {
+        dict.set_item("commit_message", msg)?;
+    }
+    if !output.changed_files.is_empty() {
+        dict.set_item("changed_files", &output.changed_files)?;
+    }
     dict.set_item("fragment_count", output.fragment_count)?;
 
     let frag_list = PyList::empty(py);
@@ -284,6 +293,9 @@ fn build_diff_context<'py>(
         let frag_dict = PyDict::new(py);
         frag_dict.set_item("path", &entry.path)?;
         frag_dict.set_item("lines", &entry.lines)?;
+        if let Some(ref role) = entry.role {
+            frag_dict.set_item("role", role)?;
+        }
         frag_dict.set_item("kind", &entry.kind)?;
         if let Some(ref s) = entry.symbol {
             frag_dict.set_item("symbol", s)?;
@@ -350,7 +362,7 @@ fn compute_scored_state(
         Some(diff_range)
     };
     let state = py
-        .allow_threads(|| pipeline::compute_scored_state(path, range, alpha, mode, timeout))
+        .detach(|| pipeline::compute_scored_state(path, range, alpha, mode, timeout))
         .map_err(map_pipeline_err)?;
     Ok(PyScoredState {
         inner: Arc::new(state),
@@ -372,7 +384,7 @@ fn select_with_params<'py>(
     no_content: bool,
 ) -> PyResult<Bound<'py, PyDict>> {
     let inner = state.inner.clone();
-    let output = py.allow_threads(move || {
+    let output = py.detach(move || {
         if inner.all_fragments.is_empty() {
             return DiffContextOutput {
                 name: inner
@@ -381,6 +393,8 @@ fn select_with_params<'py>(
                     .map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_else(|| inner.root_dir.to_string_lossy().to_string()),
                 output_type: "diff_context".to_string(),
+                commit_message: None,
+                changed_files: Vec::new(),
                 fragment_count: 0,
                 fragments: Vec::new(),
                 latency: None,
@@ -398,6 +412,12 @@ fn diff_context_output_to_dict<'py>(
     let dict = PyDict::new(py);
     dict.set_item("name", &output.name)?;
     dict.set_item("type", "diff_context")?;
+    if let Some(ref msg) = output.commit_message {
+        dict.set_item("commit_message", msg)?;
+    }
+    if !output.changed_files.is_empty() {
+        dict.set_item("changed_files", &output.changed_files)?;
+    }
     dict.set_item("fragment_count", output.fragment_count)?;
 
     let frag_list = PyList::empty(py);
@@ -405,6 +425,9 @@ fn diff_context_output_to_dict<'py>(
         let frag_dict = PyDict::new(py);
         frag_dict.set_item("path", &entry.path)?;
         frag_dict.set_item("lines", &entry.lines)?;
+        if let Some(ref role) = entry.role {
+            frag_dict.set_item("role", role)?;
+        }
         frag_dict.set_item("kind", &entry.kind)?;
         if let Some(ref s) = entry.symbol {
             frag_dict.set_item("symbol", s)?;
@@ -515,7 +538,7 @@ impl PyQuotientGraph {
     }
 }
 
-#[pyclass]
+#[pyclass(skip_from_py_object)]
 #[derive(Clone)]
 pub struct PyModuleMetrics {
     #[pyo3(get)]

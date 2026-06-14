@@ -4,6 +4,7 @@ use crate::config::env_overrides::{read_env_f64, read_env_fraction, read_env_ope
 
 pub struct AlgorithmLimits {
     pub max_file_size: usize,
+    pub max_changed_file_size: usize,
     pub max_fragments: usize,
     pub max_generated_fragments: usize,
     pub max_generated_lines: usize,
@@ -21,6 +22,7 @@ impl Default for AlgorithmLimits {
             .unwrap_or(200);
         Self {
             max_file_size: 100_000,
+            max_changed_file_size: 5_000_000,
             max_fragments,
             max_generated_fragments: 5,
             max_generated_lines: 30,
@@ -30,6 +32,12 @@ impl Default for AlgorithmLimits {
         }
     }
 }
+
+/// Hard ceiling for a single `git cat-file` blob read. Sized with headroom
+/// above `max_changed_file_size` (5 MB) so legitimate large changed files still
+/// load, while a pathological multi-hundred-MB blob is drained and rejected
+/// instead of allocated up front.
+pub const MAX_BLOB_READ_BYTES: usize = 16_000_000;
 
 pub const DEFAULT_PPR_ALPHA: f64 = 0.60;
 /// Calibrated on v1 manifest (2119 instances, 4 benchmarks). Winner

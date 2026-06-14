@@ -42,6 +42,7 @@ pub struct ScoredState {
     pub needs: Vec<InformationNeed>,
     pub changed_files: Vec<PathBuf>,
     pub preferred_revs: Vec<String>,
+    pub commit_message: Option<String>,
     pub heavy_latency_ms: HeavyLatencyMs,
 }
 
@@ -124,6 +125,8 @@ pub fn compute_scored_state(
         }
     }
 
+    hunks.retain(|h| !is_secret_path(Path::new(&*h.path)));
+
     if hunks.is_empty() {
         return Ok(empty_scored_state(root_dir));
     }
@@ -149,7 +152,7 @@ pub fn compute_scored_state(
         .into_iter()
         .filter(|f| {
             let resolved = f.canonicalize().unwrap_or_else(|_| f.clone());
-            !excluded.contains(&resolved)
+            !excluded.contains(&resolved) && !is_secret_path(f)
         })
         .collect();
 
@@ -157,6 +160,15 @@ pub fn compute_scored_state(
         .map(git::split_diff_range)
         .unwrap_or((None, None));
     let preferred_revs = build_preferred_revs(base_rev.as_deref(), head_rev.as_deref());
+    let commit_message = head_rev
+        .as_deref()
+        .and_then(|h| git::get_commit_message(&root_dir, h).ok())
+        .and_then(|m| {
+            m.lines()
+                .map(str::trim)
+                .find(|l| !l.is_empty())
+                .map(str::to_string)
+        });
 
     let t0 = Instant::now();
 
@@ -168,6 +180,7 @@ pub fn compute_scored_state(
         &preferred_revs,
         &mut seen_frag_ids,
         Some(&mut batch_reader),
+        true,
     );
 
     let t_parse_changed = Instant::now();
@@ -227,6 +240,7 @@ pub fn compute_scored_state(
         &preferred_revs,
         &mut seen_frag_ids,
         Some(&mut batch_reader),
+        false,
     ));
 
     let t_parse_discovered = Instant::now();
@@ -303,6 +317,7 @@ pub fn compute_scored_state(
         needs,
         changed_files,
         preferred_revs,
+        commit_message,
         heavy_latency_ms,
     })
 }
@@ -326,7 +341,7 @@ pub fn select_with_params(
             .all_fragments
             .iter()
             .filter(|f| state.core_ids.contains(&f.id))
-            .map(|f| f.token_count)
+            .map(|f| f.token_count.min(BUDGET.core_token_cap_per_fragment))
             .sum();
         let auto = (core_tokens as f64 * BUDGET.auto_multiplier) as u32;
         auto.clamp(BUDGET.auto_min, BUDGET.auto_max)
@@ -412,7 +427,27 @@ pub fn select_with_params(
         + select_ms;
 
     let cap_stats = state.scoring_result.graph.cap_stats;
-    let mut output = render::build_diff_context_output(&state.root_dir, &selected, no_content);
+    let change = render::ChangeSummary {
+        commit_message: state.commit_message.clone(),
+        changed_files: state
+            .changed_files
+            .iter()
+            .map(|p| {
+                p.strip_prefix(&state.root_dir)
+                    .unwrap_or(p)
+                    .to_string_lossy()
+                    .replace('\\', "/")
+            })
+            .collect(),
+    };
+    let mut output = render::build_diff_context_output(
+        &state.root_dir,
+        &selected,
+        no_content,
+        &state.core_ids,
+        &state.scoring_result.rel_scores,
+        change,
+    );
     output.latency = Some(render::LatencyBreakdown {
         parse_changed_ms: state.heavy_latency_ms.parse_changed,
         universe_walk_ms: state.heavy_latency_ms.universe_walk,
@@ -439,6 +474,25 @@ pub fn select_with_params(
 
 /// Special path for `--full` mode: bypass scoring entirely, return all
 /// changed-file fragments. Doesn't share the `ScoredState` plumbing.
+/// Private-key and keystore files must never reach LLM-bound diff context, even
+/// when they appear in the diff hunks — such material is never legitimate change
+/// context. Mirrors the Python tree-mode default ignores (`ignore.py`
+/// DEFAULT_IGNORE_PATTERNS). Matches by file name only, so public keys (`*.pub`)
+/// stay visible. `.env` files are intentionally NOT excluded here: a changed
+/// `.env` is legitimate change context (see the `*_env_file_change` cases).
+fn is_secret_path(path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+    if matches!(name, "id_rsa" | "id_dsa" | "id_ecdsa" | "id_ed25519") {
+        return true;
+    }
+    matches!(
+        path.extension().and_then(|e| e.to_str()),
+        Some("pem" | "key" | "pfx" | "p12" | "keystore" | "jks")
+    )
+}
+
 fn build_diff_context_full(
     root_dir: &Path,
     diff_range: Option<&str>,
@@ -453,11 +507,13 @@ fn build_diff_context_full(
     if !git::is_git_repo(&root_dir) {
         anyhow::bail!("'{}' is not a git repository", root_dir.display());
     }
-    let hunks = git::parse_diff(&root_dir, diff_range)?;
+    let mut hunks = git::parse_diff(&root_dir, diff_range)?;
+    hunks.retain(|h| !is_secret_path(Path::new(&*h.path)));
     if hunks.is_empty() {
         return Ok(empty_output(&root_dir));
     }
     let mut changed_files = git::get_changed_files(&root_dir, diff_range)?;
+    changed_files.retain(|f| !is_secret_path(f));
     if changed_files.is_empty() {
         return Ok(empty_output(&root_dir));
     }
@@ -473,16 +529,44 @@ fn build_diff_context_full(
         &preferred_revs,
         &mut seen_frag_ids,
         Some(&mut batch_reader),
+        true,
     );
     assign_token_counts(&mut all_fragments);
     let mut sig_frags = generate_signature_variants(&all_fragments);
     assign_token_counts(&mut sig_frags);
     all_fragments.extend(sig_frags);
     changed_files.sort();
+    let core_ids = identify_core_fragments(&hunks, &all_fragments);
     let selected = select_full_mode(&all_fragments, &changed_files);
     batch_reader.close();
+    let commit_message = head_rev
+        .as_deref()
+        .and_then(|h| git::get_commit_message(&root_dir, h).ok())
+        .and_then(|m| {
+            m.lines()
+                .map(str::trim)
+                .find(|l| !l.is_empty())
+                .map(str::to_string)
+        });
+    let change = render::ChangeSummary {
+        commit_message,
+        changed_files: changed_files
+            .iter()
+            .map(|p| {
+                p.strip_prefix(&root_dir)
+                    .unwrap_or(p)
+                    .to_string_lossy()
+                    .replace('\\', "/")
+            })
+            .collect(),
+    };
     Ok(render::build_diff_context_output(
-        &root_dir, &selected, no_content,
+        &root_dir,
+        &selected,
+        no_content,
+        &core_ids,
+        &FxHashMap::default(),
+        change,
     ))
 }
 
@@ -504,6 +588,7 @@ fn empty_scored_state(root_dir: PathBuf) -> ScoredState {
         needs: Vec::new(),
         changed_files: Vec::new(),
         preferred_revs: Vec::new(),
+        commit_message: None,
         heavy_latency_ms: HeavyLatencyMs::default(),
     }
 }
@@ -519,6 +604,8 @@ fn empty_output(root_dir: &Path) -> DiffContextOutput {
     DiffContextOutput {
         name,
         output_type: "diff_context".to_string(),
+        commit_message: None,
+        changed_files: Vec::new(),
         fragment_count: 0,
         fragments: Vec::new(),
         latency: None,

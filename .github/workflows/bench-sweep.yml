@@ -46,7 +46,7 @@ jobs:
       sweep_id: ${{ steps.id.outputs.sweep_id }}
       ts: ${{ steps.id.outputs.ts }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
       - id: id
         run: |
           ts=$(date -u +%Y%m%dT%H%M%SZ)
@@ -229,7 +229,7 @@ jobs:
       INPUT_TIMEOUT: '120'
       INPUT_MANIFESTS_SUBDIR: v1
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
 
       - name: Cell start metadata
         run: |
@@ -426,7 +426,7 @@ jobs:
       INPUT_TIMEOUT: '600'
       INPUT_MANIFESTS_SUBDIR: v1
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
 
       - name: Cell start metadata (write FIRST, before any failure point)
         run: |
@@ -761,7 +761,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
 
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
         with:

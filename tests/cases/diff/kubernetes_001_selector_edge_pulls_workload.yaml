@@ -1,0 +1,106 @@
+name: kubernetes_001_selector_edge_pulls_workload
+tags:
+- lang:yaml
+- domain:kubernetes
+- change:single_file
+- context:cross_file
+- distance:1hop
+- difficulty:medium
+- regression:issue_58_compiledtoobig
+fixtures:
+  auto_garbage: true
+repo:
+  initial_files:
+    k8s/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+      spec:
+        selector:
+          matchLabels:
+            app: web
+        template:
+          metadata:
+            labels:
+              app: web
+              tier: frontend
+          spec:
+            containers:
+            - name: web
+              image: nginx:1.25
+              envFrom:
+              - configMapRef:
+                  name: web-config
+    k8s/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: web
+      spec:
+        selector:
+          app: web
+        ports:
+        - port: 80
+          targetPort: 8080
+    k8s/configmap.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: web-config
+      data:
+        LOG_LEVEL: info
+  changed_files:
+    k8s/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+      spec:
+        selector:
+          matchLabels:
+            app: web
+        template:
+          metadata:
+            labels:
+              app: web
+              tier: frontend
+          spec:
+            containers:
+            - name: web
+              image: nginx:1.25
+              envFrom:
+              - configMapRef:
+                  name: web-config
+    k8s/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: web
+      spec:
+        selector:
+          app: web
+        ports:
+        - port: 8080
+          targetPort: 8080
+    k8s/configmap.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: web-config
+      data:
+        LOG_LEVEL: info
+  commit_message: change service port
+fragments:
+- id: deployment_via_selector
+  selector:
+    path: k8s/deployment.yaml
+    anchor: 'tier: frontend'
+- id: service_seed
+  selector:
+    path: k8s/service.yaml
+oracle:
+  required:
+  - deployment_via_selector
+  allowed: []
+  forbidden: []
