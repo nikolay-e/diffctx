@@ -1175,12 +1175,26 @@ fn unwrap_declarator<'a>(mut name_node: Node<'a>) -> Node<'a> {
             "pointer_declarator"
             | "function_declarator"
             | "init_declarator"
-            | "array_declarator"
-            | "reference_declarator" => {
+            | "array_declarator" => {
                 if let Some(inner) = name_node.child_by_field_name("declarator") {
                     name_node = inner;
                 } else {
                     break;
+                }
+            }
+            // C++ `reference_declarator` (`int &r`) and `parenthesized_declarator`
+            // (`int (*f)()`) hold their inner declarator as a positional child,
+            // NOT under a `declarator` field, so descend the first named
+            // declarator/identifier child instead of querying the field.
+            "reference_declarator" | "parenthesized_declarator" => {
+                match (0..name_node.named_child_count())
+                    .filter_map(|i| name_node.named_child(i))
+                    .find(|c| {
+                        let k = c.kind();
+                        k.ends_with("declarator") || k.ends_with("identifier")
+                    }) {
+                    Some(inner) => name_node = inner,
+                    None => break,
                 }
             }
             _ => break,
