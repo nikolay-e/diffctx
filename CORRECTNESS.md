@@ -188,6 +188,10 @@ not parallelism (reproduced with `RAYON_NUM_THREADS=1`).
 - The 467 standing eval-threshold failures are a ranking-quality tuning
   matter (out of scope here) — but now reproducible, so they can be worked
   on reliably.
+- Cross-process CLI determinism confirmed for BOTH modes (real
+  `python -m diffctx` runs, byte-identical output): tree-mapping
+  (`diffctx <dir>`, structure-only and full-content) over 8 runs, and
+  diff-context (`diffctx . --diff HEAD~1`) over 5 runs.
 
 ### Scouts/synthesis
 
