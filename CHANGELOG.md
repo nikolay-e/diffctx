@@ -7,7 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.9.0] - 2026-06-14
+## [1.9.1] - 2026-06-14
+
+> Supersedes 1.9.0, which was tagged but never published to PyPI (release-process
+> hiccup); 1.9.1 ships the same changes. There is no 1.9.0 on PyPI.
 
 ### Added
 
