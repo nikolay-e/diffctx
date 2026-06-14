@@ -280,6 +280,20 @@ DEFAULT_IGNORE_PATTERNS = [
     # OS files
     "**/.DS_Store",
     "**/Thumbs.db",
+    # Private keys and keystores (never legitimate LLM context). Public keys
+    # (*.pub) stay visible. .env files are intentionally NOT excluded: a changed
+    # .env is treated as legitimate change context, and a content-based redaction
+    # pass (not a blunt filename ignore) is the right tool for secret *values*.
+    "**/*.pem",
+    "**/*.key",
+    "**/*.pfx",
+    "**/*.p12",
+    "**/*.keystore",
+    "**/*.jks",
+    "**/id_rsa",
+    "**/id_dsa",
+    "**/id_ecdsa",
+    "**/id_ed25519",
     # diffctx config and output files
     "**/.diffctx/",
     "**/tree.yaml",

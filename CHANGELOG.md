@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Private-key and keystore files are now excluded from output in **both** tree
+  mapping and `--diff` context, since such material is never legitimate LLM
+  context: `*.pem`, `*.key`, `*.pfx`, `*.p12`, `*.keystore`, `*.jks`, and SSH
+  private keys `id_rsa`/`id_dsa`/`id_ecdsa`/`id_ed25519` (public `.pub` keys stay
+  visible). The `--diff` path previously applied no ignore filtering at all, so a
+  changed key file would have leaked into context. Use `--no-default-ignores` to
+  opt out of tree-mode default ignores. (`.env` files are intentionally still
+  included — a changed `.env` is legitimate change context; redacting secret
+  *values* is a separate planned content-scan feature.)
+
 ## [1.9.1] - 2026-06-14
 
 > Supersedes 1.9.0, which was tagged but never published to PyPI (release-process

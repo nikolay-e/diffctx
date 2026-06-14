@@ -125,6 +125,8 @@ pub fn compute_scored_state(
         }
     }
 
+    hunks.retain(|h| !is_secret_path(Path::new(&*h.path)));
+
     if hunks.is_empty() {
         return Ok(empty_scored_state(root_dir));
     }
@@ -150,7 +152,7 @@ pub fn compute_scored_state(
         .into_iter()
         .filter(|f| {
             let resolved = f.canonicalize().unwrap_or_else(|_| f.clone());
-            !excluded.contains(&resolved)
+            !excluded.contains(&resolved) && !is_secret_path(f)
         })
         .collect();
 
@@ -470,6 +472,25 @@ pub fn select_with_params(
 
 /// Special path for `--full` mode: bypass scoring entirely, return all
 /// changed-file fragments. Doesn't share the `ScoredState` plumbing.
+/// Private-key and keystore files must never reach LLM-bound diff context, even
+/// when they appear in the diff hunks — such material is never legitimate change
+/// context. Mirrors the Python tree-mode default ignores (`ignore.py`
+/// DEFAULT_IGNORE_PATTERNS). Matches by file name only, so public keys (`*.pub`)
+/// stay visible. `.env` files are intentionally NOT excluded here: a changed
+/// `.env` is legitimate change context (see the `*_env_file_change` cases).
+fn is_secret_path(path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+    if matches!(name, "id_rsa" | "id_dsa" | "id_ecdsa" | "id_ed25519") {
+        return true;
+    }
+    matches!(
+        path.extension().and_then(|e| e.to_str()),
+        Some("pem" | "key" | "pfx" | "p12" | "keystore" | "jks")
+    )
+}
+
 fn build_diff_context_full(
     root_dir: &Path,
     diff_range: Option<&str>,
@@ -484,11 +505,13 @@ fn build_diff_context_full(
     if !git::is_git_repo(&root_dir) {
         anyhow::bail!("'{}' is not a git repository", root_dir.display());
     }
-    let hunks = git::parse_diff(&root_dir, diff_range)?;
+    let mut hunks = git::parse_diff(&root_dir, diff_range)?;
+    hunks.retain(|h| !is_secret_path(Path::new(&*h.path)));
     if hunks.is_empty() {
         return Ok(empty_output(&root_dir));
     }
     let mut changed_files = git::get_changed_files(&root_dir, diff_range)?;
+    changed_files.retain(|f| !is_secret_path(f));
     if changed_files.is_empty() {
         return Ok(empty_output(&root_dir));
     }
