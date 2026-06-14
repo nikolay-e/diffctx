@@ -33,6 +33,12 @@ impl Default for AlgorithmLimits {
     }
 }
 
+/// Hard ceiling for a single `git cat-file` blob read. Sized with headroom
+/// above `max_changed_file_size` (5 MB) so legitimate large changed files still
+/// load, while a pathological multi-hundred-MB blob is drained and rejected
+/// instead of allocated up front.
+pub const MAX_BLOB_READ_BYTES: usize = 16_000_000;
+
 pub const DEFAULT_PPR_ALPHA: f64 = 0.60;
 /// Calibrated on v1 manifest (2119 instances, 4 benchmarks). Winner
 /// of (tau, cbf) grid = (0.12, 0.5) at min(per_benchmark file_recall)

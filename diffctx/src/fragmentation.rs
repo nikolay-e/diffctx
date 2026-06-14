@@ -14,7 +14,11 @@ use crate::parsers::fragment_file;
 use crate::tokenizer::count_tokens;
 use crate::types::{Fragment, FragmentId, FragmentKind, extract_identifiers};
 
-static BINARY_CTRL_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"[\x00-\x08\x0e-\x1f]").unwrap());
+// Content reaching here is already-decoded UTF-8 text, so the only reliable
+// binary signal is an embedded NUL (matching git's own heuristic). The old
+// range flagged ESC/BS/etc., wrongly dropping changed text fixtures that embed
+// ANSI escape codes (snapshot/terminal-recording files).
+static BINARY_CTRL_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\x00").unwrap());
 
 static GENERATED_FILENAME_PATTERNS: Lazy<FxHashSet<&'static str>> = Lazy::new(|| {
     [
@@ -284,7 +288,11 @@ pub fn process_files_for_fragments(
                 .map(|(file_path, content)| {
                     let path_arc: Arc<str> = Arc::from(file_path.to_string_lossy().as_ref());
                     let mut raw_frags = fragment_file(path_arc, content);
-                    let generated = is_generated_file(file_path, content);
+                    // Changed files are the subject of the diff: never apply the
+                    // aggressive generated-file reduction (cap=5 + 30-line content
+                    // truncation), which can drop the small fragment covering the
+                    // edited hunk before core identification runs.
+                    let generated = !is_changed && is_generated_file(file_path, content);
                     let cap = if generated { max_generated } else { max_frags };
                     if raw_frags.len() > cap {
                         raw_frags.sort_by(|a, b| b.line_count().cmp(&a.line_count()));

@@ -594,6 +594,28 @@ impl CatFileBatch {
             GitError::CommandFailed(format!("cat-file: invalid size in header: {}", header_str))
         })?;
 
+        // Guard against allocating an unbounded blob. Anything larger than the
+        // biggest size we will ever parse is drained from the stream in bounded
+        // chunks (to keep the cat-file pipe in sync for the next request) and
+        // rejected, instead of allocating `size` bytes up front (OOM on a
+        // pathological multi-hundred-MB blob).
+        if size > crate::config::limits::MAX_BLOB_READ_BYTES {
+            let mut remaining = size;
+            let mut scratch = [0u8; 65536];
+            while remaining > 0 {
+                let want = remaining.min(scratch.len());
+                reader.read_exact(&mut scratch[..want])?;
+                remaining -= want;
+            }
+            let mut trailing = [0u8; 1];
+            let _ = reader.read_exact(&mut trailing);
+            return Err(GitError::CommandFailed(format!(
+                "cat-file: blob too large ({} bytes): {}",
+                size,
+                spec.trim()
+            )));
+        }
+
         let mut content = vec![0u8; size];
         reader.read_exact(&mut content)?;
 
