@@ -107,3 +107,88 @@ correct. Real defects are three 🟡 edge/efficiency issues and a handful of
 ### Scouts/synthesis
 
 4/0 (module-scale, folded into verdict per pyramid).
+
+## 2026-06-14 17:21 · f44b2c74 · full engine (Rust: scoring/ppr/select/git/edges/render/parsers)
+
+### TL;DR
+
+Root-caused and FIXED the "mild flakiness" the previous entry accepted as
+noise: the diff-context pipeline was genuinely **nondeterministic across
+processes** (same input → different selection), violating the advertised
+"Deterministic, side-effect-free" guarantee. Also fixed a real
+cross-language inconsistency in Python import edges. After fixes,
+`cargo test --test yaml_cases` is **bit-for-bit deterministic** across runs
+(two full runs → identical failure sets); aggregate unchanged
+(2258/2725), so determinism gained with zero ranking regression.
+
+### Top Issues (fixed)
+
+1. 🔴 `graph.rs:233` (`ego_graph`) — `*scores.entry(idx).or_insert(0.0) +=
+   contribution` accumulated in **seed-iteration order**, where seeds is an
+   `FxHashSet<FragmentId>` keyed by absolute paths containing the per-run
+   random temp dir. Non-associative float `+=` in a per-process-varying
+   order → scores differing by ULPs → near-tie fragments flip in selection
+   → the same test case passes or fails at random across runs (persisted
+   even single-threaded). FIX: `valid_seed_idxs.sort_unstable()` before the
+   accumulation (seed indices are run-stable values via `freeze()`'s
+   `nodes.sort()`).
+2. 🔴 `filtering.rs:289` (`cap_context_fragments`) — within-file cap used an
+   **unstable** sort (`partial_cmp`, no tie-break) before `take(N)`, and the
+   candidate vector was emitted in `FxHashMap`(path)-iteration order. With
+   tied rel-scores, `take(N)` dropped different fragments per run. FIX:
+   `total_cmp().then_with(|| a.id.cmp(&b.id))` + final `result.sort_by(id)`
+   to canonicalize candidate order.
+3. 🟡 `select.rs:73` (`HeapEntry::cmp`) — greedy selection heap tie-broke on
+   density only; equal-density entries popped in insertion order. Added a
+   stable `frag_id` secondary key (defense-in-depth; the two leaks above
+   were the dominant cause).
+4. 🟡 `edges/semantic/python.rs:253` — Python **module-import** edges were
+   inserted forward-only (importer→module), bypassing `base::add_edge`,
+   while Python's own symbol-ref edges (same file, ~237) and every other
+   language's import edges (go/js/rust) are bidirectional via `add_edge`
+   (forward + `reverse_factor` reverse). The graph is built directed with no
+   symmetrization (`graph.rs:383`), so a changed imported module never
+   propagated relevance back to its importers. FIX: route through
+   `base::add_edge(..., import_weight, reverse_factor)`.
+
+### Systemic Pattern
+
+Per-process nondeterminism from iterating `FxHashMap`/`FxHashSet` **keyed by
+fragment paths/ids** (which embed the random temp dir in tests, and absolute
+paths in prod) and letting that order drive (a) non-associative float
+accumulation and (b) tie-affected truncation/selection. `FxHashMap` is only
+deterministic for *identical key sets in identical processes*; any output
+ordering derived from it must be re-sorted by a stable key. Root cause is
+not parallelism (reproduced with `RAYON_NUM_THREADS=1`).
+
+### False Positives (verified, no change)
+
+- 🔵 `scoring.rs:215` / `discovery.rs:240` BM25 IDF uses `.ln_1p()`
+  (= `log(1 + (N−df+0.5)/(df+0.5))`). NOT a bug — this is the
+  Lucene/Elasticsearch default BM25 IDF, deliberately chosen for
+  non-negativity; downstream code gates on `score > 0.0` and feeds PPR seed
+  weights, so plain `.ln()` (which can go negative when df > N/2) would
+  introduce a bug. Confirmed correct.
+- 🔵 Path-canonicalization "mismatch" in `git.rs`/`core.rs` — false alarm.
+  Both the diff-hunk key and the fragment key use the same non-canonical
+  `repo_root.join(rel)` form; `parse_path_line` canonicalizes only for the
+  containment guard. No lookup mismatch.
+- 🔵 PPR (`ppr.rs`) — verified correct: teleport `1−alpha`, sum-to-1
+  personalization, dangling handling, and a closed-form star-graph test to
+  <1e-3. Internally deterministic (`freeze()` sorts nodes).
+
+### Verification
+
+- `cargo build`, `cargo clippy --lib` clean (only a pre-existing
+  float-`!=` warning in `edges/mod.rs`); `cargo test --lib` 57/57.
+- Determinism proof: two consecutive `cargo test --test yaml_cases` runs →
+  **identical** failure sets (was ~463–466 fluctuating; now stable at 467).
+  gap_008 (the Python-import eval case) went from ~50/50 flaky to 10/10
+  stable. Aggregate pass count within prior noise band → no regression.
+- The 467 standing eval-threshold failures are a ranking-quality tuning
+  matter (out of scope here) — but now reproducible, so they can be worked
+  on reliably.
+
+### Scouts/synthesis
+
+5 scouts / 3 synthesis-verifiers (1 dedicated determinism root-cause hunt).

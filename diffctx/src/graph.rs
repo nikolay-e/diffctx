@@ -230,10 +230,11 @@ impl Graph {
             return FxHashMap::default();
         }
 
-        let valid_seed_idxs: Vec<u32> = seeds
+        let mut valid_seed_idxs: Vec<u32> = seeds
             .iter()
             .filter_map(|s| fwd.node_to_idx.get(s).copied())
             .collect();
+        valid_seed_idxs.sort_unstable();
 
         let per_seed: Vec<Vec<(u32, u32, f64)>> = valid_seed_idxs
             .par_iter()

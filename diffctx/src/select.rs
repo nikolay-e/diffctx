@@ -72,7 +72,10 @@ impl PartialOrd for HeapEntry {
 
 impl Ord for HeapEntry {
     fn cmp(&self, other: &Self) -> Ordering {
-        other.neg_density.total_cmp(&self.neg_density)
+        other
+            .neg_density
+            .total_cmp(&self.neg_density)
+            .then_with(|| other.frag_id.cmp(&self.frag_id))
     }
 }
 

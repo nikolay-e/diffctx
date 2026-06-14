@@ -289,7 +289,7 @@ pub fn cap_context_fragments(
             file_frags.sort_by(|a, b| {
                 let sa = rel.get(&a.id).copied().unwrap_or(0.0);
                 let sb = rel.get(&b.id).copied().unwrap_or(0.0);
-                sb.partial_cmp(&sa).unwrap_or(std::cmp::Ordering::Equal)
+                sb.total_cmp(&sa).then_with(|| a.id.cmp(&b.id))
             });
             result.extend(
                 file_frags
@@ -299,5 +299,6 @@ pub fn cap_context_fragments(
         }
     }
 
+    result.sort_by(|a, b| a.id.cmp(&b.id));
     result
 }
