@@ -376,7 +376,15 @@ pub fn get_changed_files(repo_root: &Path, diff_range: Option<&str>) -> Result<V
         args.push(range);
     }
     let parts = run_git_z(repo_root, &args)?;
-    Ok(parts.iter().map(|p| repo_root.join(p)).collect())
+    Ok(parts
+        .iter()
+        .map(|p| {
+            repo_root
+                .join(p)
+                .canonicalize()
+                .unwrap_or_else(|_| repo_root.join(p))
+        })
+        .collect())
 }
 
 pub fn get_deleted_files(repo_root: &Path, diff_range: Option<&str>) -> Result<FxHashSet<PathBuf>> {
@@ -481,7 +489,15 @@ pub fn get_untracked_files(repo_root: &Path) -> Result<Vec<PathBuf>> {
         repo_root,
         &["ls-files", "--others", "--exclude-standard", "-z"],
     )?;
-    Ok(parts.iter().map(|p| repo_root.join(p)).collect())
+    Ok(parts
+        .iter()
+        .map(|p| {
+            repo_root
+                .join(p)
+                .canonicalize()
+                .unwrap_or_else(|_| repo_root.join(p))
+        })
+        .collect())
 }
 
 pub struct CatFileBatch {

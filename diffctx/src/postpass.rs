@@ -207,7 +207,7 @@ pub fn ensure_changed_files_represented(
     remaining_budget: u32,
     root_dir: &Path,
     preferred_revs: &[String],
-    _batch_reader: Option<&mut CatFileBatch>,
+    mut batch_reader: Option<&mut CatFileBatch>,
 ) {
     let selected_paths: FxHashSet<String> = selected
         .iter()
@@ -245,7 +245,12 @@ pub fn ensure_changed_files_represented(
         let path_str = path.to_string_lossy().to_string();
         let candidates = frags_by_path.get(&path_str).cloned().unwrap_or_default();
         let candidates = if candidates.is_empty() {
-            match create_whole_file_fragment(path, root_dir, preferred_revs, None) {
+            match create_whole_file_fragment(
+                path,
+                root_dir,
+                preferred_revs,
+                batch_reader.as_deref_mut(),
+            ) {
                 Some(f) => vec![f],
                 None => continue,
             }

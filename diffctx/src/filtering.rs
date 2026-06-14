@@ -143,9 +143,8 @@ fn find_hub_noise_paths(graph: &Graph, changed_paths: &FxHashSet<Arc<str>>) -> F
 
     noise_counts
         .into_iter()
-        .filter(|(p, count)| {
-            *count >= 1
-                && !direct_edge_paths.contains(p)
+        .filter(|(p, _count)| {
+            !direct_edge_paths.contains(p)
                 && !changed_dirs.contains(
                     &Path::new(p.as_ref())
                         .parent()

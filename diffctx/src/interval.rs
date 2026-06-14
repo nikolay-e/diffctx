@@ -45,10 +45,12 @@ impl IntervalIndex {
                 continue;
             }
             // Strict `>`: a fragment starting on the very last line of an
-            // already-selected fragment is adjacent, not overlapping. Compact
-            // languages (Rust/Go/Scala one-liners, Lisp `}{` chains) routinely
-            // produce back-to-back fragments sharing exactly that boundary
-            // line; treating it as overlap silently drops the next fragment.
+            // already-selected fragment shares exactly one boundary line. We
+            // deliberately tolerate that one-line overlap rather than drop the
+            // candidate, because compact languages (Rust/Go/Scala one-liners,
+            // Lisp `}{` chains) routinely produce back-to-back fragments sharing
+            // that boundary line; rejecting them would silently discard the
+            // next fragment's unique content for the sake of one duplicated line.
             if end > frag.start_line() {
                 return true;
             }

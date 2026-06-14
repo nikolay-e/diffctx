@@ -40,6 +40,7 @@ pub fn count_tokens(text: &str) -> u32 {
     // aborting the host process.
     match try_count_tokens(text) {
         Ok(n) => n,
+        Err(_) if text.is_empty() => 0,
         Err(_) => ((text.len() as u32) / 4).max(1),
     }
 }
