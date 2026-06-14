@@ -8,6 +8,10 @@ name: diffctx CI
     branches:
       - main
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # ============================================================================
   # Pre-commit checks (fast feedback)
