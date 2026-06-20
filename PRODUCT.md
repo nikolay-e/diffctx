@@ -19,24 +19,18 @@ almost entirely **documentation-accuracy and cross-surface-consistency
 drift**, not broken runtime behavior. No 🔴 (no promised-but-absent feature,
 no broken runtime guarantee that users depend on).
 
-### 🟡 P1 — "12 languages" is stale; the engine supports ~36
+### 🟡 P1 — "12 languages" was stale (engine supports ~37) — RESOLVED
 
-- **Intent (strong, two sources):** README.md:53 "AST-level parsing for more
-  accurate context selection across **12 languages**"; CLAUDE.md Technology
-  Choices table "Parsing | tree-sitter | **12 languages**, AST-level".
-- **Actual:** `diffctx/Cargo.toml:24-63` declares **36 distinct
-  `tree-sitter-*` grammar crates**; `diffctx/src/edges/semantic/*.rs` has
-  **37 semantic edge-builder modules** (python, javascript, typescript, go,
-  rust, jvm, c_family, c#, dart, haskell, shell, ruby, php, swift, elixir,
-  sql, lua, css, protobuf, graphql, latex, prisma, openapi, dbt, r, perl,
-  julia, zig, nix, ocaml, nim, erlang, clojure, …).
-- **Kind:** stale-doc-vs-working-code conflict. The product does *more* than
-  the doc claims (undersells, not under-delivers), so no user is harmed — but
-  the headline number is wrong in the two places a user/marketer reads first.
-- **Acceptance:** docs state a count that matches the actually-wired grammar
-  set, OR define precisely what tier "supported language" denotes (full
-  semantic edges vs basic tags) and count that tier. One observable:
-  `grep '12 languages' README.md CLAUDE.md` returns nothing once reconciled.
+- **Was:** README.md:53 + CLAUDE.md Technology Choices table both claimed
+  AST-level parsing "across **12 languages**".
+- **Actual:** the real registration (`tree_sitter_strategy.rs` LANGUAGE_CACHE,
+  lines 916-1042) wires **37 tree-sitter grammar crates / 39 language names**
+  (28 programming languages + 11 markup/config formats). The "12" was simply
+  stale — the product does *more* than the doc claimed (undersold).
+- **Done (2026-06-20):** updated both sources to "**30+ languages**" — a
+  count that is comfortably true (37 crates) and resistant to upward drift, so
+  it won't go stale again the way a precise number did.
+  `grep '12 languages' README.md CLAUDE.md` now returns nothing.
 
 ### 🟡 P2 — `--tau` default diverged between the two shipped CLIs — RESOLVED
 
@@ -55,19 +49,15 @@ no broken runtime guarantee that users depend on).
 - **Acceptance:** `diffctx --diff` (Python) and the Rust binary on the same
   repo with no tuning flags now share the 0.12 default; README states 0.12.
 
-### 🟡 P3 — MCP README documents only 1 of 3 tools (truncated)
+### 🟡 P3 — MCP README documented only 1 of 3 tools (truncated) — RESOLVED
 
-- **Intent (strong):** `src/diffctx/mcp/README.md` has an "## Available Tools"
-  section — a published contract for MCP users.
-- **Actual:** the file ends at 104 lines mid-entry: it documents
-  `get_diff_context` and even that entry is cut off after `budget_tokens` (no
-  `clipboard` param), and never documents `get_tree_map` or
-  `get_file_context` — both fully implemented in `src/diffctx/mcp/server.py`.
-- **Kind:** incomplete-doc gap. NOT a functional break — MCP clients still
-  discover all three tools via the protocol's self-description in server.py —
-  so the tools *work*; the human-facing README just under-documents them.
-- **Acceptance:** the MCP README lists all three tools with their parameters
-  (incl. `clipboard` and the per-tool `max_file_bytes` default).
+- **Was:** `src/diffctx/mcp/README.md` ended at line 104 mid-entry — it
+  documented `get_diff_context` (cut off after `budget_tokens`, no
+  `clipboard`) and never documented `get_tree_map` or `get_file_context`.
+- **Done (2026-06-20):** completed the "Available Tools" section — finished
+  `get_diff_context` (added `clipboard`) and added full parameter docs for
+  `get_tree_map` and `get_file_context`, matching the signatures in
+  `server.py` (incl. each tool's `max_file_bytes` default of 100000).
 
 ### 🟡 P4 — `max_file_bytes` default differs across CLI / MCP / Python API
 
@@ -83,19 +73,16 @@ no broken runtime guarantee that users depend on).
 - **Acceptance:** the three surfaces share one default, OR each surface's
   default is documented with its rationale and the difference is intentional.
 
-### 🟡 P5 — Version inconsistency; the "keep aligned" comment is itself stale
+### 🟡 P5 — Version inconsistency (Rust binary mis-reported version) — RESOLVED
 
-- **Actual:** wheel ships **1.9.2** (`pyproject.toml:8` explicit `version`,
-  `version.py` `__version__ = "1.9.2"`), but `diffctx/Cargo.toml:3` is
-  **1.8.0**, so the standalone Rust binary's `--version` reports 1.8.0.
-  `pyproject.toml:122-127` says "keep the two versions manually aligned
-  (Cargo.toml = pyproject.toml = **1.7.0**)" — the comment's own numbers are
-  two releases stale and the alignment it mandates is currently violated.
-- **Kind:** do-not-change invariant at risk / acknowledged debt. Low user
-  impact for the primary Python product (single-sourcing isn't active yet, so
-  the wheel is correctly 1.9.2), but the Rust binary mis-reports its version.
-- **Acceptance:** `grep '^version' diffctx/Cargo.toml` == pyproject version,
-  OR activate the documented `dynamic = ["version"]` single-sourcing.
+- **Was:** wheel ships **1.9.2** but `diffctx/Cargo.toml` was **1.8.0**, so
+  the standalone Rust binary's `--version` reported 1.8.0. The pyproject
+  "keep aligned" comment itself said "= **1.7.0**" — two releases stale.
+- **Done (2026-06-20):** bumped `diffctx/Cargo.toml` to **1.9.2** (Cargo.lock
+  regenerated via `cargo check`) and corrected the pyproject comment to
+  "= 1.9.2". Now Cargo.toml == pyproject.toml == version.py == 1.9.2. The
+  documented `dynamic = ["version"]` single-sourcing remains the eventual fix
+  so they cannot drift again.
 
 ### 🟡 P6 — Undocumented env-var tuning knobs silently change selection
 

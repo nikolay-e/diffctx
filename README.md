@@ -50,7 +50,7 @@ commit, instead of dumping every changed file in full.*
 [releases page](https://github.com/nikolay-e/diffctx/releases/latest).
 
 > Diff context mode works out of the box. Adding `[tree-sitter]` enables AST-level
-> parsing for more accurate context selection across 12 languages.
+> parsing for more accurate context selection across 30+ languages.
 
 ## Diff Context Mode
 
