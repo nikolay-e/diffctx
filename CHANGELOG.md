@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-06-20
+
+### Changed
+
+- The default `--tau` (stopping threshold) is now **0.12** across the CLI, MCP,
+  and Python API — the calibrated grid optimum — bringing the Python side in
+  line with the standalone Rust binary (was 0.08). Diff-context selections are
+  slightly tighter by default.
+- The MCP `get_tree_map` / `get_file_context` default `max_file_bytes` is now
+  256 KB, matching the documented CLI default (was 100 KB).
+
+### Fixed
+
+- Document/citation edges can no longer create self-edges (a fragment linking to
+  itself); `Graph::add_edge` now rejects `src == dst`.
+- Test→source import edges no longer match `import` statements that appear inside
+  comments or string literals (the import regex is now line-anchored).
+- The MCP `get_file_context` clipboard confirmation now reports the number of
+  files actually copied, excluding files skipped for exceeding the size cap.
+
+### Docs
+
+- Corrected the AST-parsing language count (was "12 languages", now "30+"),
+  aligned the Rust crate version with the wheel, completed the MCP server README
+  (all three tools documented), and fixed the documented `EGO.per_hop_decay`
+  default (0.5). Documented the `scoring_mode` / `timeout` Python API params,
+  clarified `--budget` / `--tau` help text, and marked the `DIFFCTX_OP_*` /
+  `DIFFCTX_*` tuning env vars as an experimental, non-public interface.
+
 ## [1.9.2] - 2026-06-14
 
 ### Added
