@@ -102,8 +102,24 @@ log for `Failed`, don't trust the reported exit.
 
 `diffctx --diff <range>` runs on this repo's own history. The tool is its own
 test fixture. Use it during code review to surface the same semantic context an
-external user would see — large diffs (>10k tokens) are normal for big commits
-and are not regressions.
+external user would see.
+
+**Do NOT dismiss a large output as "normal for a big commit" — measure it.** A
+big *changed* diff is fine; a big *context* expansion is the over-selection bug
+(#65/#59). Triage discriminator on every diff-review run:
+
+- `role: "changed"` fragment count vs total fragment count, and
+- distinct files in the output vs `git diff <range> --stat` file count.
+
+If most fragments are context (not `changed`) and the output spans far more
+files than the diff touched, that is over-selection, not a big diff. (Observed:
+a docs-heavy range with ~12 changed files / 18 changed fragments expanded to
+160+ files / 540+ fragments — context, mentioned-path, and lexical edges from
+prose pulling in unrelated code.) The full `yaml_cases` suite quantifies the
+same bug: the large majority of its failures are `forbidden_rate=100%` (pure
+over-selection), not recall misses. Fixing it is a benchmark-validated
+recalibration coupled to the research paper — track on #65, do not blind-edit
+edge weights mid-QA.
 
 ## Local `which diffctx` Trap — diffctx specifics
 
