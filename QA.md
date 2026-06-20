@@ -16,6 +16,7 @@ each.
 | Pre-commit | yes | Full suite locally; see Pre-commit Caveats |
 | Code review | yes | Diff-mode of own tool: `diffctx --diff <range>` |
 | CLI smoke | yes | See CLI Smoke Recipes |
+| Real-world test-repo sweep | yes | MANDATORY every round — see Real-World Test-Repo Sweep |
 | SonarCloud | no | Project NOT registered on SonarCloud |
 | autoqa pipeline | no | CLI tool, no HTTP API surface |
 | K8s logs / ArgoCD | no | No deployment to a cluster |
@@ -120,6 +121,47 @@ same bug: the large majority of its failures are `forbidden_rate=100%` (pure
 over-selection), not recall misses. Fixing it is a benchmark-validated
 recalibration coupled to the research paper — track on #65, do not blind-edit
 edge weights mid-QA.
+
+## Real-World Test-Repo Sweep (every QA round, MANDATORY)
+
+`test-repos/` (git-ignored, local-only) holds ~15 real upstream clones across
+many languages — `linux`, `pytorch`, `react-native`, `sentry`, `gitpod`,
+`elasticsearch`, `numpy`, `ocaml`, `llama.cpp`, `onnxruntime`, `libc`,
+`luajit2`, `monitoring-observability`, `builder`, `vision`. `TOANALYZE.md` is
+the curated commit "todo"; the clones also carry live upstream HEADs. This is
+the dogfood that synthetic `yaml_cases` can't replace: real diffs, real over-
+dump, real crashes.
+
+**Every QA round, sweep the test repos against a NEW commit each** (one not
+exercised before — `git -C test-repos/<repo> pull` to fetch fresh upstream
+history, then diff its newest commit). Run the **pipx** binary, not a venv
+shadow:
+
+```bash
+cd test-repos/<repo>
+git pull --ff-only
+/Users/nikolay/.local/bin/diffctx . --diff HEAD~1   # or <prev-tested>..HEAD
+```
+
+**Per repo, judge:** did it (a) finish without panic / non-zero exit / hang,
+(b) honor the range — `changed_files` matches `git diff HEAD~1 --stat`, not a
+whole-tree dump, (c) avoid gross over-selection (mostly `role: changed` plus
+tight context, not 100+ unrelated files — measure as in Diff-Mode Self-Eat),
+(d) leak no secrets/garbage, (e) return in reasonable time. Any of these
+failing = an issue.
+
+**Stopping condition (the whole point):** sweep repos one at a time **until the
+first issue**.
+
+- On the first issue → `gh issue create -R nikolay-e/diffctx` with a generic,
+  reproducible report (repo name, commit SHA / range, observed vs expected,
+  token/fragment/file counts; **no sensitive repo contents**) → **stop the
+  sweep** and move on to the rest of the QA round.
+- If you get through **all** repos clean → also move on.
+
+Either outcome — **all clean OR ≥1 issue filed** — is a valid completion of
+this step; the QA round proceeds to its remaining items either way. Do not let
+a found issue halt the round, and do not keep sweeping after one is filed.
 
 ## Local `which diffctx` Trap — diffctx specifics
 
