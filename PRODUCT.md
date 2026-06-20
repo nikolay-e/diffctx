@@ -59,19 +59,18 @@ no broken runtime guarantee that users depend on).
   `get_tree_map` and `get_file_context`, matching the signatures in
   `server.py` (incl. each tool's `max_file_bytes` default of 100000).
 
-### 🟡 P4 — `max_file_bytes` default differs across CLI / MCP / Python API
+### 🟡 P4 — `max_file_bytes` default differed across CLI / MCP — RESOLVED
 
-- **Actual three defaults:** CLI **256 KB** (`src/diffctx/cli.py:14`
-  `DEFAULT_MAX_FILE_BYTES = 256*1024`); MCP `get_tree_map` &
-  `get_file_context` **100 KB** (`src/diffctx/mcp/server.py:102,209`); Python
-  API `map_directory` **None → 100 MB safe cap**
-  (`src/diffctx/__init__.py:50`, `tree.py` `MAX_SAFE_FILE_SIZE`).
-- **Intent:** README documents the CLI 256 KB (README:281) and the API `None`
-  (README:205); the MCP 100 KB is undocumented (see P3).
-- **Kind:** accidental/ambiguous behavior — a user moving CLI→MCP→library
-  gets silently different truncation for the same file.
-- **Acceptance:** the three surfaces share one default, OR each surface's
-  default is documented with its rationale and the difference is intentional.
+- **Was:** CLI **256 KB**, MCP `get_tree_map`/`get_file_context` **100 KB**,
+  Python API `map_directory` **None → 100 MB cap**. A user moving
+  CLI→MCP→library got silently different truncation.
+- **Done (2026-06-20):** unified MCP to the documented CLI default of
+  **256 KB** via a new `_DEFAULT_MAX_FILE_BYTES = 256*1024` constant in
+  `src/diffctx/mcp/server.py` (mirrors `cli.DEFAULT_MAX_FILE_BYTES` with a
+  sync comment, following the same layering convention as `_DEFAULT_TAU`);
+  updated the MCP README to "262144 = 256 KB". The Python API `None` default
+  is left as-is — it is a deliberate, documented library semantic (caller
+  opts into truncation), not part of the CLI/MCP inconsistency.
 
 ### 🟡 P5 — Version inconsistency (Rust binary mis-reported version) — RESOLVED
 
@@ -84,41 +83,41 @@ no broken runtime guarantee that users depend on).
   documented `dynamic = ["version"]` single-sourcing remains the eventual fix
   so they cannot drift again.
 
-### 🟡 P6 — Undocumented env-var tuning knobs silently change selection
+### 🟡 P6 — Undocumented env-var tuning knobs — RESOLVED (marked experimental)
 
-- **Actual:** `diffctx/src/config/env_overrides.rs` + callers read
-  `DIFFCTX_OP_*`, `DIFFCTX_EGO_PER_HOP_DECAY`, `DIFFCTX_OBJECTIVE`,
-  `DIFFCTX_NO_COMMIT_SIGNAL`, `DIFFCTX_MAX_FRAGMENTS`, etc. — each overrides a
-  scoring/selection parameter and changes output. None appear in README /
-  `--help` / SECURITY.md. (Tests *do* exercise some, e.g. `DIFFCTX_OBJECTIVE`,
-  `DIFFCTX_OP_SELECTION_CORE_BUDGET_FRACTION` — so they're intended internal
-  knobs, just unpublished.)
-- **Kind:** accidental public surface. A human decides: keep them internal
-  (note in CLAUDE.md as research-only) or document a supported subset.
-- **Acceptance:** docs state which env vars are supported-vs-internal;
-  unsupported ones are clearly marked experimental.
+- **Was:** `DIFFCTX_OP_*`, `DIFFCTX_EGO_*`, `DIFFCTX_OBJECTIVE`,
+  `DIFFCTX_NO_COMMIT_SIGNAL`, `DIFFCTX_MAX_FRAGMENTS` each override a
+  scoring/selection parameter and change output, with no statement of whether
+  they were a supported interface.
+- **Done (2026-06-20):** added a "Not a stable interface" callout to
+  `docs/parameter-strategy.md` (where the `DIFFCTX_OP_*` table already lives)
+  declaring all of these experimental research/calibration knobs — not a
+  public API, intentionally absent from `--help`, may change between releases
+  — and directing production use to the documented CLI flags. Decision: keep
+  them internal rather than promote any to a supported flag.
 
-### 🔵 P7 — `--budget` help says "0=auto (default)" but literal default is unset
+### 🔵 P7 — `--budget` help imprecise about the default — RESOLVED
 
-- `src/diffctx/cli.py` `--budget` help: "0=auto (default)". Argparse default
-  is actually a sentinel (`_UNSET` → `None`), which routes to the same auto
-  path as `0`. Functionally correct, literally imprecise.
+- **Done (2026-06-20):** reworded `cli.py` `--budget` help to "omit or 0 =
+  auto (default), -1 = unlimited, N = fixed cap", which matches the actual
+  sentinel default (no flag ⇒ auto) instead of implying the literal default
+  is `0`.
 
-### 🔵 P8 — Python API `build_diff_context` exposes undocumented params
+### 🔵 P8 — Python API `build_diff_context` undocumented params — RESOLVED
 
-- `pipeline.py` `build_diff_context(..., scoring_mode="ego", timeout=...)` —
-  neither appears in the README Python-API example (README:220-231), which
-  only shows `diff_range/budget_tokens/alpha/tau/full`. `timeout` is a quiet
-  foot-gun. A small doc addition would close it.
+- **Done (2026-06-20):** added `scoring_mode="ego"` and `timeout=300` to the
+  README Python-API example with inline comments, so the two previously
+  hidden parameters (the `timeout` foot-gun in particular) are discoverable.
 
-### 🔵 P9 — Bare `--diff` → `HEAD` yields empty context for uncommitted work
+### 🔵 P9 — Bare `--diff` behavior was undocumented — RESOLVED
 
-- `src/diffctx/cli.py` resolves bare `--diff` to `"HEAD"` (documented). For a
-  user with *uncommitted* changes, `--diff` (= `HEAD..HEAD`) produces "no
-  semantic context" (tested: `test_bare_diff_defaults_to_head`). Intended per
-  the test, but README examples never show the empty-on-dirty-tree footgun.
-  Is this the intended default, or should bare `--diff` mean working tree vs
-  HEAD?
+- **Clarified:** bare `--diff` resolves to `"HEAD"`, and the engine runs
+  `git diff HEAD` (git.rs:147-151) = **working tree vs HEAD = uncommitted
+  changes**. So it is empty only when the tree is clean (the
+  `test_bare_diff_defaults_to_head` fixture) — intuitive, not a bug.
+- **Done (2026-06-20):** added a README usage example
+  `diffctx . --diff   # uncommitted changes (working tree vs HEAD)` so the
+  behavior is shown rather than implied.
 
 ### Do-not-change invariants (named so a later cleanup doesn't break them)
 

@@ -132,6 +132,7 @@ diffctx . --max-depth 3                  # limit depth
 diffctx . -i custom.ignore               # custom ignore patterns
 
 # diff context mode (requires git repo):
+diffctx . --diff                         # uncommitted changes (working tree vs HEAD)
 diffctx . --diff HEAD~1                  # context for last commit
 diffctx . --diff main..feature           # context for feature branch
 diffctx . --diff HEAD~1 --budget 30000   # limit to ~30k tokens
@@ -227,6 +228,8 @@ ctx = build_diff_context(
     alpha=0.6,                # PPR damping factor
     tau=0.12,                 # stopping threshold
     full=False,               # skip smart selection
+    scoring_mode="ego",       # "ego" (default), "ppr", or "bm25"
+    timeout=300,              # seconds before the pipeline aborts
 )
 yaml_str = to_yaml(ctx)
 ```

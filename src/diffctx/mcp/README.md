@@ -119,7 +119,7 @@ Parameters:
 - `output_format` (string, default `"yaml"`) — `"yaml"` or `"md"`
 - `no_content` (boolean, default `false`) — emit structure only, skip contents
 - `max_depth` (integer, optional) — limit traversal depth
-- `max_file_bytes` (integer, default `100000`) — per-file content cap
+- `max_file_bytes` (integer, default `262144` = 256 KB) — per-file content cap
 - `clipboard` (boolean, default `false`) — copy to clipboard instead of
   returning the map
 
@@ -134,7 +134,7 @@ Parameters:
 - `patterns` (list of strings, required) — glob patterns, e.g.
   `["src/**/*.py"]`
 - `max_files` (integer, default `50`) — maximum number of files to include
-- `max_file_bytes` (integer, default `100000`) — per-file content cap; larger
+- `max_file_bytes` (integer, default `262144` = 256 KB) — per-file content cap; larger
   files are listed but their content is skipped
 - `clipboard` (boolean, default `false`) — copy to clipboard instead of
   returning the content

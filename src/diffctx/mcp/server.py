@@ -21,6 +21,11 @@ logger = logging.getLogger(__name__)
 # rather than imported.
 _DEFAULT_TAU = 0.12
 
+# Mirror diffctx.cli.DEFAULT_MAX_FILE_BYTES (256 KB) so the per-file content
+# cap is identical across the CLI, MCP, and the documented default. Same
+# layering constraint as above: duplicated rather than imported from cli.
+_DEFAULT_MAX_FILE_BYTES = 256 * 1024
+
 mcp = FastMCP("diffctx")
 
 _DIFF_DESCRIPTION = (
@@ -99,7 +104,7 @@ async def get_tree_map(
     output_format: str = "yaml",
     no_content: bool = False,
     max_depth: int | None = None,
-    max_file_bytes: int = 100_000,
+    max_file_bytes: int = _DEFAULT_MAX_FILE_BYTES,
     clipboard: bool = False,
 ) -> str:
     from diffctx.ignore import get_ignore_specs, get_whitelist_spec
@@ -206,7 +211,7 @@ async def get_file_context(
     repo_path: str,
     patterns: list[str],
     max_files: int = 50,
-    max_file_bytes: int = 100_000,
+    max_file_bytes: int = _DEFAULT_MAX_FILE_BYTES,
     clipboard: bool = False,
     dry_run: bool = False,
 ) -> str:

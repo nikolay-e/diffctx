@@ -103,6 +103,14 @@ that quantifies how much output changes under perturbation.
 All Tier-3 parameters are runtime-overridable via `DIFFCTX_OP_*`
 environment variables to enable the sweep without rebuild.
 
+> **Not a stable interface.** The `DIFFCTX_OP_*` overrides — along with the
+> other internal toggles (`DIFFCTX_OBJECTIVE`, `DIFFCTX_EGO_*`,
+> `DIFFCTX_NO_COMMIT_SIGNAL`, `DIFFCTX_MAX_FRAGMENTS`) — are experimental
+> calibration knobs for research and sensitivity analysis, not a supported
+> public API. They are undocumented in `--help` on purpose and may change or
+> disappear between releases. Production use should rely only on the
+> documented CLI flags (`--alpha`, `--tau`, `--budget`, `--scoring`).
+
 | Parameter                                        | Env var                                                  | Default |
 | ------------------------------------------------ | -------------------------------------------------------- | ------- |
 | `PPR.alpha` (damping $\alpha$)                   | `DIFFCTX_OP_PPR_ALPHA`                                   | 0.60    |

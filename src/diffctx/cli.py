@@ -346,7 +346,7 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
         type=int,
         default=_UNSET,
         metavar="N",
-        help="Token budget: 0=auto (default), -1=unlimited, N=fixed budget",
+        help="Token budget: omit or 0 = auto (default), -1 = unlimited, N = fixed cap",
     )
     diff_group.add_argument(
         "--alpha",
