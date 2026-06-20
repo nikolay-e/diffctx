@@ -190,6 +190,7 @@ def _build_dry_run_report(matched: list[Path], validated_path: Path) -> str:
 def _build_file_content_report(matched: list[Path], validated_path: Path, max_file_bytes: int) -> tuple[str, int, int]:
     parts = [f"# {len(matched)} files matched\n"]
     total_lines = 0
+    included_count = 0
     for p in matched:
         rel = p.relative_to(validated_path)
         try:
@@ -199,11 +200,12 @@ def _build_file_content_report(matched: list[Path], validated_path: Path, max_fi
                 continue
             content = p.read_text(encoding="utf-8", errors="replace")
             total_lines += content.count("\n") + 1
+            included_count += 1
             suffix = p.suffix.lstrip(".")
             parts.append(f"## {rel}\n```{suffix}\n{content}\n```\n")
         except OSError as e:
             parts.append(f"## {rel}\n*Error: {e}*\n")
-    return "\n".join(parts), len(matched), total_lines
+    return "\n".join(parts), included_count, total_lines
 
 
 @mcp.tool(description=_FILE_CONTEXT_DESCRIPTION)

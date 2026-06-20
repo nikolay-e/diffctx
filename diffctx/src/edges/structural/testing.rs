@@ -11,7 +11,7 @@ use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge_unidirectional, path_to_module};
 
 static IMPORT_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))").unwrap());
+    Lazy::new(|| Regex::new(r"(?m)^\s*(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))").unwrap());
 
 fn is_python_test(name: &str) -> bool {
     name.starts_with("test_") || name.ends_with("_test.py")

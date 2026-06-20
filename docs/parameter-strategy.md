@@ -115,7 +115,7 @@ environment variables to enable the sweep without rebuild.
 | ------------------------------------------------ | -------------------------------------------------------- | ------- |
 | `PPR.alpha` (damping $\alpha$)                   | `DIFFCTX_OP_PPR_ALPHA`                                   | 0.60    |
 | `PPR.forward_blend` ($\rho$)                     | `DIFFCTX_OP_PPR_FORWARD_BLEND`                           | 0.40    |
-| `EGO.per_hop_decay` ($\gamma$)                   | `DIFFCTX_OP_EGO_PER_HOP_DECAY`                           | 1.0     |
+| `EGO.per_hop_decay` ($\gamma$)                   | `DIFFCTX_OP_EGO_PER_HOP_DECAY`                           | 0.5     |
 | `UTILITY.eta` ($\eta$)                           | `DIFFCTX_OP_UTILITY_ETA`                                 | 0.20    |
 | `UTILITY.structural_bonus_weight`                | `DIFFCTX_OP_UTILITY_STRUCTURAL_BONUS_WEIGHT`             | 0.10    |
 | `UTILITY.r_cap_sigma`                            | `DIFFCTX_OP_UTILITY_R_CAP_SIGMA`                         | 2.0     |
