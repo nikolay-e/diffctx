@@ -15,11 +15,11 @@ from .security import validate_dir_path, validate_repo_path
 
 logger = logging.getLogger(__name__)
 
-# Keep in sync with diffctx.cli._DEFAULT_TAU. The layering contract forbids
-# mcp -> cli, so this user-facing default is duplicated rather than imported.
-# Without it, build_diff_context falls back to the engine default (0.12),
-# silently selecting less context than the documented CLI default.
-_DEFAULT_TAU = 0.08
+# Keep in sync with diffctx.cli._DEFAULT_TAU and the engine's
+# DEFAULT_STOPPING_THRESHOLD (the calibrated grid optimum). The layering
+# contract forbids mcp -> cli, so this user-facing default is duplicated
+# rather than imported.
+_DEFAULT_TAU = 0.12
 
 mcp = FastMCP("diffctx")
 

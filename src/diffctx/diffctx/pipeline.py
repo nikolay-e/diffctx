@@ -46,7 +46,7 @@ def compute_scored_state(
 def select_with_params(
     state: Any,
     budget_tokens: int | None = None,
-    tau: float = 0.08,
+    tau: float = 0.12,
     no_content: bool = False,
 ) -> dict[str, Any]:
     """Light-phase select+postpass+render against a precomputed state."""
@@ -65,7 +65,7 @@ def build_diff_context(
     diff_range: str,
     budget_tokens: int | None = None,
     alpha: float = 0.60,
-    tau: float = 0.08,
+    tau: float = 0.12,
     no_content: bool = False,
     ignore_file: Path | None = None,
     no_default_ignores: bool = False,

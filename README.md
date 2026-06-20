@@ -93,7 +93,7 @@ emitted, whichever comes first.
 | `--scoring` | `ego`   | Scoring mode: `ego`, `ppr`, or `bm25`                                    |
 | `--budget`  | auto    | Token cap. `auto` lets selection converge; `-1` disables the cap; `N` enforces a fixed cap |
 | `--alpha`   | 0.60    | How tightly context clusters around changes (PPR damping; 0–1, higher = more focused) |
-| `--tau`     | 0.08    | Minimum relevance required to include a fragment (lower = more context)  |
+| `--tau`     | 0.12    | Minimum relevance required to include a fragment (lower = more context)  |
 | `--full`    | false   | Include every changed fragment; skip the smart-selection step entirely   |
 
 Calibration of `--alpha`, `--tau`, and the edge-weight priors is documented
@@ -225,7 +225,7 @@ ctx = build_diff_context(
                               #  <0  = unlimited (10M-token soft ceiling)
                               #  >0  = explicit token cap
     alpha=0.6,                # PPR damping factor
-    tau=0.08,                 # stopping threshold
+    tau=0.12,                 # stopping threshold
     full=False,               # skip smart selection
 )
 yaml_str = to_yaml(ctx)
