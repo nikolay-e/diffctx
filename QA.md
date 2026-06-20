@@ -78,6 +78,26 @@ with `rm -rf .venv && python3 -m venv .venv && pip install "maturin>=1.10,<1.14"
 diffctx-specific hygiene: stale `src/treemapper.egg-info/` from a rebrand-era
 `pip install` is gitignored but may linger — delete on hygiene pass.
 
+## Secret-Handling Test Fixtures Break the Secret Hooks
+
+The private-key exclusion tests (`test_secret_ignores_diff.py`,
+`test_default_ignores.py`) assert that diffctx drops key/keystore files. Both the
+Rust `is_secret_path` and the Python `ignore.py` match **by filename only**
+(`id_rsa`, `*.pem`, `*.key`, …) — the fixture content is irrelevant to what they
+test. So fixtures must NOT embed a literal PEM `BEGIN…PRIVATE KEY` banner:
+`detect-private-key` (no pragma support) and `detect-secrets` both flag it, and a
+file committed past local hooks (e.g. `--no-verify`) then turns `Pre-commit
+hooks` + `Lint & Type Check` red on `--all-files` while a 20-case CI YAML subset
+stays green. Use inert content (`"private-key-material <MARKER>\n"`) plus
+`# pragma: allowlist secret` for the entropy detector; keep distinctive leak
+markers (`LEAK_RSA`, …) so leakage is still detectable. High-entropy base64
+findings come from concatenating tokens with no separator — keep a space.
+
+Catch this class only with the FULL local suite: `pre-commit run --all-files`
+(NOT a staged-files commit run, which skips clean files). When backgrounding it,
+note the shell exit code is the trailing `echo`'s, not pre-commit's — grep the
+log for `Failed`, don't trust the reported exit.
+
 ## Diff-Mode Self-Eat
 
 `diffctx --diff <range>` runs on this repo's own history. The tool is its own
