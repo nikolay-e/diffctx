@@ -140,9 +140,13 @@ shadow:
 ```bash
 cd test-repos/<repo>
 git pull --ff-only
-# Hard-cap runtime — diffctx does NOT bound its own (issue #70), so a runaway
-# repo hangs for hours then SIGKILLs (rc=137). macOS has no `timeout`; use:
+# Hard-cap runtime. As of 3725f51b the CLI enforces `--timeout` as a true total
+# wall-clock bound (worker thread + watchdog) and fast-fails rc=124 with the
+# actionable-error contract instead of hanging to OOM (#70) — BUT the external
+# perl cap is still needed when smoking the **pipx** binary until that fix ships
+# in a release (pipx 1.10.0 has no watchdog). macOS has no `timeout`; use:
 perl -e 'alarm 200; exec @ARGV' /Users/nikolay/.local/bin/diffctx . --diff HEAD~1
+# (or, on the dev build, just pass `--timeout 200` — the watchdog bounds it.)
 ```
 
 **A cap-hit IS the issue.** rc=142 (SIGALRM) or rc=137 (SIGKILL) with no output =
