@@ -103,17 +103,25 @@ that quantifies how much output changes under perturbation.
 All Tier-3 parameters are runtime-overridable via `DIFFCTX_OP_*`
 environment variables to enable the sweep without rebuild.
 
+> **Not a stable interface.** The `DIFFCTX_OP_*` overrides — along with the
+> other internal toggles (`DIFFCTX_OBJECTIVE`, `DIFFCTX_EGO_*`,
+> `DIFFCTX_NO_COMMIT_SIGNAL`, `DIFFCTX_MAX_FRAGMENTS`) — are experimental
+> calibration knobs for research and sensitivity analysis, not a supported
+> public API. They are undocumented in `--help` on purpose and may change or
+> disappear between releases. Production use should rely only on the
+> documented CLI flags (`--alpha`, `--tau`, `--budget`, `--scoring`).
+
 | Parameter                                        | Env var                                                  | Default |
 | ------------------------------------------------ | -------------------------------------------------------- | ------- |
 | `PPR.alpha` (damping $\alpha$)                   | `DIFFCTX_OP_PPR_ALPHA`                                   | 0.60    |
 | `PPR.forward_blend` ($\rho$)                     | `DIFFCTX_OP_PPR_FORWARD_BLEND`                           | 0.40    |
-| `EGO.per_hop_decay` ($\gamma$)                   | `DIFFCTX_OP_EGO_PER_HOP_DECAY`                           | 1.0     |
+| `EGO.per_hop_decay` ($\gamma$)                   | `DIFFCTX_OP_EGO_PER_HOP_DECAY`                           | 0.5     |
 | `UTILITY.eta` ($\eta$)                           | `DIFFCTX_OP_UTILITY_ETA`                                 | 0.20    |
 | `UTILITY.structural_bonus_weight`                | `DIFFCTX_OP_UTILITY_STRUCTURAL_BONUS_WEIGHT`             | 0.10    |
 | `UTILITY.r_cap_sigma`                            | `DIFFCTX_OP_UTILITY_R_CAP_SIGMA`                         | 2.0     |
 | `UTILITY.proximity_decay`                        | `DIFFCTX_OP_UTILITY_PROXIMITY_DECAY`                     | 0.30    |
 | `SELECTION.core_budget_fraction` ($\beta_{core}$) | `DIFFCTX_OP_SELECTION_CORE_BUDGET_FRACTION`              | 0.70    |
-| `SELECTION.stopping_threshold` ($\tau$)          | `DIFFCTX_OP_SELECTION_STOPPING_THRESHOLD`                | 0.08    |
+| `SELECTION.stopping_threshold` ($\tau$)          | `DIFFCTX_OP_SELECTION_STOPPING_THRESHOLD`                | 0.12    |
 | `SELECTION.r_cap_min`                            | `DIFFCTX_OP_SELECTION_R_CAP_MIN`                         | 0.01    |
 | `RESCUE.budget_fraction`                         | `DIFFCTX_OP_RESCUE_BUDGET_FRACTION`                      | 0.05    |
 | `RESCUE.min_score_percentile`                    | `DIFFCTX_OP_RESCUE_MIN_SCORE_PERCENTILE`                 | 0.80    |

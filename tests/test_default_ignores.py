@@ -90,7 +90,7 @@ def test_git_directory_ignored(temp_project, run_mapper):
 def test_default_private_key_ignores(temp_project, run_mapper):
     secrets = ["server.pem", "tls.key", "keystore.p12", "app.pfx", "app.jks", "id_rsa", "id_ed25519"]
     for secret in secrets:
-        (temp_project / secret).write_text("-----BEGIN PRIVATE KEY-----\ndo-not-leak\n", encoding="utf-8")
+        (temp_project / secret).write_text("private-key-material do-not-leak\n", encoding="utf-8")
 
     kept = ["id_rsa.pub", "config.py", ".env"]
     for f in kept:

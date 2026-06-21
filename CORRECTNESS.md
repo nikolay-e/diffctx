@@ -196,3 +196,74 @@ not parallelism (reproduced with `RAYON_NUM_THREADS=1`).
 ### Scouts/synthesis
 
 5 scouts / 3 synthesis-verifiers (1 dedicated determinism root-cause hunt).
+
+---
+
+## Run 2026-06-20 (commit f774165) — 8→4→2→1 pyramid
+
+Deterministic layer already green (pytest 413, `cargo test --lib` 57, clippy,
+mypy, full `yaml_cases`). 8 scouts → 4 adversarial verifiers → 2 final
+verifiers → orchestrator. Most scout "criticals" were REFUTED on verification;
+the pyramid's value showed twice (the Haskell "typo" and the role-stripping
+claim both flipped to refuted only at R2/R3).
+
+### Confirmed + fixed
+
+- 🟡 **Citation builder could emit self-edges.** `edges/document/mod.rs`
+  CitationEdgeBuilder pushes a fragment id once per regex match, so a fragment
+  citing the same key twice could become a `(hub, hub)` edge; `graph.rs
+  add_edge` had no `src == dst` guard (other builders like AnchorLink/
+  Containment guard locally). Fix: central guard `if src == dst { return; }`
+  in `add_edge` (graph.rs:116). Verified no algorithm relies on self-edges.
+- 🟡 **Test→source import edges matched imports in comments/strings.**
+  `edges/structural/testing.rs:14` `IMPORT_RE` lacked a line anchor, unlike the
+  Python semantic builder. Fix: `(?m)^\s*` prefix — still matches indented
+  imports, drops false matches inside comments/strings/docstrings.
+- 🟡 **MCP `get_file_context` over-reported copied file count.**
+  `mcp/server.py` `_build_file_content_report` returned `len(matched)` while
+  skipping size-exceeding files, so "Copied N files" overstated. Fix: return
+  `included_count` (only files whose content was actually emitted).
+- 🟡 **Stale normative parameter doc.** `docs/parameter-strategy.md`
+  documented `EGO.per_hop_decay (γ) = 1.0`, but the code default has been `0.5`
+  since commit 6c28522b ("paper-aligned EGO scoring"); ego is the default
+  scoring mode, and the env clamp `(EPS, 1-EPS)` makes 1.0 unreachable anyway.
+  Doc is the wrong side — updated to 0.5 (code is correct).
+- 🔵 **`--tau` had no upper bound and misleading help.** `cli.py _validate_tau`
+  allows tau>1, which silently keeps only changed code (`select.rs`:
+  `best_density < tau * peak_density` trips immediately). Clarified help text
+  ("typical 0-1; >1 keeps only changed code"); no behavior change.
+
+### Refuted (scout false positives — recorded so they aren't re-raised)
+
+- **NOT a bug: `node_end_line` `+1`** (`tree_sitter_strategy.rs`). tree-sitter
+  `end_position().row` is 0-indexed inclusive of the last content line; `+1`
+  yields the correct 1-indexed inclusive display end AND the correct exclusive
+  slice bound (`mod.rs create_snippet` uses `lines[start-1..end]`). Tests agree.
+- **NOT a bug: `role` stripped for consumers.** `pybridge.rs to_serializable`
+  / `PyFragment` do drop `role`, but the real path
+  (`#[pyfunction] build_diff_context` → dict) sets `role` directly from
+  `DiffContextOutput`; MCP/CLI use that path; the role invariant test passes.
+  `DiffContextResult.to_yaml/to_json` is a secondary path with no consumer
+  (🔵 latent only — left as-is).
+- **NOT a typo: Haskell `type_synomym`** (`tree_sitter_strategy.rs`). Matches
+  the actual tree-sitter-haskell 0.23.1 grammar node name (misspelled
+  upstream). "Fixing" to `type_synonym` would BREAK Haskell extraction.
+  Verified against the crate's `node-types.json`. All other definition_types
+  from commit 4d39f58b also match their grammars.
+- **NOT a bug:** lexical clamp `.max()` of per-language minimums (intentional
+  "stricter language wins"); sibling 20-file cap (configured perf cap);
+  hub-suppression `>` vs `>=` (`>` correct); `extract_identifiers` includes
+  keywords (two-phase design, filtered downstream); deletion `new_start` `.max(1)`
+  normalization (harmless); MCP double-`resolve()` (redundant but secure — no
+  traversal hole found).
+
+### Verification
+
+- `cargo test --lib` 57/57; full `yaml_cases` **2260 passed / 465 failed —
+  identical to pre-fix baseline** (self-edge guard + import anchor fix edge
+  cases the synthetic suite doesn't exercise; no regression). pytest 413 passed,
+  1 skipped; test_mcp + test_cli 27 passed.
+
+### Scouts/synthesis
+
+8 scouts / 4 adversarial verifiers / 2 final verifiers / 1 orchestrator.

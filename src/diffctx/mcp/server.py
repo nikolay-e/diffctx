@@ -15,11 +15,16 @@ from .security import validate_dir_path, validate_repo_path
 
 logger = logging.getLogger(__name__)
 
-# Keep in sync with diffctx.cli._DEFAULT_TAU. The layering contract forbids
-# mcp -> cli, so this user-facing default is duplicated rather than imported.
-# Without it, build_diff_context falls back to the engine default (0.12),
-# silently selecting less context than the documented CLI default.
-_DEFAULT_TAU = 0.08
+# Keep in sync with diffctx.cli._DEFAULT_TAU and the engine's
+# DEFAULT_STOPPING_THRESHOLD (the calibrated grid optimum). The layering
+# contract forbids mcp -> cli, so this user-facing default is duplicated
+# rather than imported.
+_DEFAULT_TAU = 0.12
+
+# Mirror diffctx.cli.DEFAULT_MAX_FILE_BYTES (256 KB) so the per-file content
+# cap is identical across the CLI, MCP, and the documented default. Same
+# layering constraint as above: duplicated rather than imported from cli.
+_DEFAULT_MAX_FILE_BYTES = 256 * 1024
 
 mcp = FastMCP("diffctx")
 
@@ -99,7 +104,7 @@ async def get_tree_map(
     output_format: str = "yaml",
     no_content: bool = False,
     max_depth: int | None = None,
-    max_file_bytes: int = 100_000,
+    max_file_bytes: int = _DEFAULT_MAX_FILE_BYTES,
     clipboard: bool = False,
 ) -> str:
     from diffctx.ignore import get_ignore_specs, get_whitelist_spec
@@ -185,6 +190,7 @@ def _build_dry_run_report(matched: list[Path], validated_path: Path) -> str:
 def _build_file_content_report(matched: list[Path], validated_path: Path, max_file_bytes: int) -> tuple[str, int, int]:
     parts = [f"# {len(matched)} files matched\n"]
     total_lines = 0
+    included_count = 0
     for p in matched:
         rel = p.relative_to(validated_path)
         try:
@@ -194,11 +200,12 @@ def _build_file_content_report(matched: list[Path], validated_path: Path, max_fi
                 continue
             content = p.read_text(encoding="utf-8", errors="replace")
             total_lines += content.count("\n") + 1
+            included_count += 1
             suffix = p.suffix.lstrip(".")
             parts.append(f"## {rel}\n```{suffix}\n{content}\n```\n")
         except OSError as e:
             parts.append(f"## {rel}\n*Error: {e}*\n")
-    return "\n".join(parts), len(matched), total_lines
+    return "\n".join(parts), included_count, total_lines
 
 
 @mcp.tool(description=_FILE_CONTEXT_DESCRIPTION)
@@ -206,7 +213,7 @@ async def get_file_context(
     repo_path: str,
     patterns: list[str],
     max_files: int = 50,
-    max_file_bytes: int = 100_000,
+    max_file_bytes: int = _DEFAULT_MAX_FILE_BYTES,
     clipboard: bool = False,
     dry_run: bool = False,
 ) -> str:

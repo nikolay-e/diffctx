@@ -113,6 +113,9 @@ impl Graph {
         if weight.is_nan() || weight.is_infinite() || weight <= 0.0 {
             return;
         }
+        if src == dst {
+            return;
+        }
         debug_assert!(
             self.csr_cache.is_none(),
             "add_edge called after Graph was frozen"

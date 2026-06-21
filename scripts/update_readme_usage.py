@@ -17,6 +17,7 @@ _USAGE_EXAMPLES: list[tuple[str, str]] = [
     # diff context mode
     ("", ""),
     ("# diff context mode (requires git repo):", ""),
+    ("diffctx . --diff", "uncommitted changes (working tree vs HEAD)"),
     ("diffctx . --diff HEAD~1", "context for last commit"),
     ("diffctx . --diff main..feature", "context for feature branch"),
     ("diffctx . --diff HEAD~1 --budget 30000", "limit to ~30k tokens"),

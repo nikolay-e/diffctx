@@ -50,7 +50,7 @@ commit, instead of dumping every changed file in full.*
 [releases page](https://github.com/nikolay-e/diffctx/releases/latest).
 
 > Diff context mode works out of the box. Adding `[tree-sitter]` enables AST-level
-> parsing for more accurate context selection across 12 languages.
+> parsing for more accurate context selection across 30+ languages.
 
 ## Diff Context Mode
 
@@ -93,7 +93,7 @@ emitted, whichever comes first.
 | `--scoring` | `ego`   | Scoring mode: `ego`, `ppr`, or `bm25`                                    |
 | `--budget`  | auto    | Token cap. `auto` lets selection converge; `-1` disables the cap; `N` enforces a fixed cap |
 | `--alpha`   | 0.60    | How tightly context clusters around changes (PPR damping; 0–1, higher = more focused) |
-| `--tau`     | 0.08    | Minimum relevance required to include a fragment (lower = more context)  |
+| `--tau`     | 0.12    | Minimum relevance required to include a fragment (lower = more context)  |
 | `--full`    | false   | Include every changed fragment; skip the smart-selection step entirely   |
 
 Calibration of `--alpha`, `--tau`, and the edge-weight priors is documented
@@ -132,6 +132,7 @@ diffctx . --max-depth 3                  # limit depth
 diffctx . -i custom.ignore               # custom ignore patterns
 
 # diff context mode (requires git repo):
+diffctx . --diff                         # uncommitted changes (working tree vs HEAD)
 diffctx . --diff HEAD~1                  # context for last commit
 diffctx . --diff main..feature           # context for feature branch
 diffctx . --diff HEAD~1 --budget 30000   # limit to ~30k tokens
@@ -225,8 +226,10 @@ ctx = build_diff_context(
                               #  <0  = unlimited (10M-token soft ceiling)
                               #  >0  = explicit token cap
     alpha=0.6,                # PPR damping factor
-    tau=0.08,                 # stopping threshold
+    tau=0.12,                 # stopping threshold
     full=False,               # skip smart selection
+    scoring_mode="ego",       # "ego" (default), "ppr", or "bm25"
+    timeout=300,              # seconds before the pipeline aborts
 )
 yaml_str = to_yaml(ctx)
 ```

@@ -16,6 +16,7 @@ each.
 | Pre-commit | yes | Full suite locally; see Pre-commit Caveats |
 | Code review | yes | Diff-mode of own tool: `diffctx --diff <range>` |
 | CLI smoke | yes | See CLI Smoke Recipes |
+| Real-world test-repo sweep | yes | MANDATORY every round — see Real-World Test-Repo Sweep |
 | SonarCloud | no | Project NOT registered on SonarCloud |
 | autoqa pipeline | no | CLI tool, no HTTP API surface |
 | K8s logs / ArgoCD | no | No deployment to a cluster |
@@ -78,12 +79,100 @@ with `rm -rf .venv && python3 -m venv .venv && pip install "maturin>=1.10,<1.14"
 diffctx-specific hygiene: stale `src/treemapper.egg-info/` from a rebrand-era
 `pip install` is gitignored but may linger — delete on hygiene pass.
 
+## Secret-Handling Test Fixtures Break the Secret Hooks
+
+The private-key exclusion tests (`test_secret_ignores_diff.py`,
+`test_default_ignores.py`) assert that diffctx drops key/keystore files. Both the
+Rust `is_secret_path` and the Python `ignore.py` match **by filename only**
+(`id_rsa`, `*.pem`, `*.key`, …) — the fixture content is irrelevant to what they
+test. So fixtures must NOT embed a literal PEM `BEGIN…PRIVATE KEY` banner:
+`detect-private-key` (no pragma support) and `detect-secrets` both flag it, and a
+file committed past local hooks (e.g. `--no-verify`) then turns `Pre-commit
+hooks` + `Lint & Type Check` red on `--all-files` while a 20-case CI YAML subset
+stays green. Use inert content (`"private-key-material <MARKER>\n"`) plus
+`# pragma: allowlist secret` for the entropy detector; keep distinctive leak
+markers (`LEAK_RSA`, …) so leakage is still detectable. High-entropy base64
+findings come from concatenating tokens with no separator — keep a space.
+
+Catch this class only with the FULL local suite: `pre-commit run --all-files`
+(NOT a staged-files commit run, which skips clean files). When backgrounding it,
+note the shell exit code is the trailing `echo`'s, not pre-commit's — grep the
+log for `Failed`, don't trust the reported exit.
+
 ## Diff-Mode Self-Eat
 
 `diffctx --diff <range>` runs on this repo's own history. The tool is its own
 test fixture. Use it during code review to surface the same semantic context an
-external user would see — large diffs (>10k tokens) are normal for big commits
-and are not regressions.
+external user would see.
+
+**Do NOT dismiss a large output as "normal for a big commit" — measure it.** A
+big *changed* diff is fine; a big *context* expansion is the over-selection bug
+(#65/#59). Triage discriminator on every diff-review run:
+
+- `role: "changed"` fragment count vs total fragment count, and
+- distinct files in the output vs `git diff <range> --stat` file count.
+
+If most fragments are context (not `changed`) and the output spans far more
+files than the diff touched, that is over-selection, not a big diff. (Observed:
+a docs-heavy range with ~12 changed files / 18 changed fragments expanded to
+160+ files / 540+ fragments — context, mentioned-path, and lexical edges from
+prose pulling in unrelated code.) The full `yaml_cases` suite quantifies the
+same bug: the large majority of its failures are `forbidden_rate=100%` (pure
+over-selection), not recall misses. Fixing it is a benchmark-validated
+recalibration coupled to the research paper — track on #65, do not blind-edit
+edge weights mid-QA.
+
+## Real-World Test-Repo Sweep (every QA round, MANDATORY)
+
+`test-repos/` (git-ignored, local-only) holds ~15 real upstream clones across
+many languages — `linux`, `pytorch`, `react-native`, `sentry`, `gitpod`,
+`elasticsearch`, `numpy`, `ocaml`, `llama.cpp`, `onnxruntime`, `libc`,
+`luajit2`, `monitoring-observability`, `builder`, `vision`. `TOANALYZE.md` is
+the curated commit "todo"; the clones also carry live upstream HEADs. This is
+the dogfood that synthetic `yaml_cases` can't replace: real diffs, real over-
+dump, real crashes.
+
+**Every QA round, sweep the test repos against a NEW commit each** (one not
+exercised before — `git -C test-repos/<repo> pull` to fetch fresh upstream
+history, then diff its newest commit). Run the **pipx** binary, not a venv
+shadow:
+
+```bash
+cd test-repos/<repo>
+git pull --ff-only
+# Hard-cap runtime. As of 3725f51b the CLI enforces `--timeout` as a true total
+# wall-clock bound (worker thread + watchdog) and fast-fails rc=124 with the
+# actionable-error contract instead of hanging to OOM (#70) — BUT the external
+# perl cap is still needed when smoking the **pipx** binary until that fix ships
+# in a release (pipx 1.10.0 has no watchdog). macOS has no `timeout`; use:
+perl -e 'alarm 200; exec @ARGV' /Users/nikolay/.local/bin/diffctx . --diff HEAD~1
+# (or, on the dev build, just pass `--timeout 200` — the watchdog bounds it.)
+```
+
+**A cap-hit IS the issue.** rc=142 (SIGALRM) or rc=137 (SIGKILL) with no output =
+diffctx hung on that repo — file it and stop the sweep (don't run the remaining
+giant repos like `linux`, they'll hang too and burn hours). Known so far:
+`gitpod` and `pytorch` hang on a trivial HEAD~1 diff (#70).
+
+**Per repo, judge:** did it (a) finish without panic / non-zero exit / hang,
+(b) honor the range — `changed_files` matches `git diff HEAD~1 --stat`, not a
+whole-tree dump, (c) avoid gross over-selection (mostly `role: changed` plus
+tight context, not 100+ unrelated files — measure as in Diff-Mode Self-Eat),
+(d) leak no secrets/garbage, (e) return in reasonable time. Any of these
+failing = an issue.
+
+**Stopping condition (the whole point):** sweep repos one at a time **until the
+first issue**.
+
+- On the first issue → `gh issue create -R nikolay-e/diffctx` with a generic,
+  reproducible report (repo name, commit SHA / range, observed vs expected,
+  token/fragment/file counts; **no sensitive repo contents**) → **stop the
+  sweep** and move on to the rest of the QA round.
+- If you get through **all** repos clean → also move on.
+
+Either outcome — **all clean OR ≥1 issue filed** — is a valid completion of
+this step; the QA round proceeds to its remaining items either way. Do not let
+a found issue halt the round, and do not keep sweeping after one is filed.
 
 ## Local `which diffctx` Trap — diffctx specifics
 

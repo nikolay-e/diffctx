@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_FILE_BYTES = 256 * 1024  # 256 KB
 _DEFAULT_ALPHA = 0.60
-_DEFAULT_TAU = 0.08
+_DEFAULT_TAU = 0.12
 
 
 class _Unset:
@@ -346,7 +346,7 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
         type=int,
         default=_UNSET,
         metavar="N",
-        help="Token budget: 0=auto (default), -1=unlimited, N=fixed budget",
+        help="Token budget: omit or 0 = auto (default), -1 = unlimited, N = fixed cap",
     )
     diff_group.add_argument(
         "--alpha",
@@ -360,7 +360,7 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
         type=float,
         default=_UNSET,
         metavar="F",
-        help="Minimum relevance to include a fragment (default: 0.08, lower = more context)",
+        help="Minimum relevance to include a fragment (default: 0.12, typical 0-1; lower = more context, >1 keeps only changed code)",
     )
     diff_group.add_argument(
         "--scoring",

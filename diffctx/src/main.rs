@@ -3,6 +3,9 @@ use mimalloc::MiMalloc;
 static GLOBAL: MiMalloc = MiMalloc;
 
 use std::path::PathBuf;
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
 
 use anyhow::Result;
 use clap::Parser;
@@ -60,17 +63,50 @@ fn main() -> Result<()> {
         eprintln!("error: {e}");
         std::process::exit(2);
     });
-    let output = build_diff_context(
-        &cli.path,
-        cli.diff_ref.as_deref(),
-        Some(cli.budget),
-        cli.alpha,
-        cli.tau,
-        cli.no_content,
-        cli.full,
-        scoring_mode,
-        cli.timeout,
-    )?;
+
+    // The per-phase git timeout does not bound in-process phases (parse, graph
+    // build, scoring), so a pathological repo can hang far past `--timeout`
+    // until OOM/SIGKILL (#70). Run the pipeline on a worker thread and enforce
+    // `--timeout` as a true total wall-clock ceiling: on expiry, fail fast with
+    // the actionable-error contract instead of hanging unbounded.
+    let timeout = cli.timeout;
+    let path = cli.path.clone();
+    let diff_ref = cli.diff_ref.clone();
+    let budget = cli.budget;
+    let alpha = cli.alpha;
+    let tau = cli.tau;
+    let no_content = cli.no_content;
+    let full = cli.full;
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+        let result = build_diff_context(
+            &path,
+            diff_ref.as_deref(),
+            Some(budget),
+            alpha,
+            tau,
+            no_content,
+            full,
+            scoring_mode,
+            timeout,
+        );
+        let _ = tx.send(result);
+    });
+
+    let output = match rx.recv_timeout(Duration::from_secs(timeout)) {
+        Ok(result) => result?,
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            eprintln!(
+                "diffctx: pipeline exceeded {timeout}s wall-clock deadline; aborting before \
+                 OOM/SIGKILL. Narrow the review with an explicit '--diff <from>..<to>' range or \
+                 run on a smaller subtree, or raise '--timeout'."
+            );
+            std::process::exit(124);
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            anyhow::bail!("diffctx: pipeline worker terminated unexpectedly");
+        }
+    };
 
     match cli.format.as_str() {
         "json" => {
