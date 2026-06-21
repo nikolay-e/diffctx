@@ -140,8 +140,15 @@ shadow:
 ```bash
 cd test-repos/<repo>
 git pull --ff-only
-/Users/nikolay/.local/bin/diffctx . --diff HEAD~1   # or <prev-tested>..HEAD
+# Hard-cap runtime — diffctx does NOT bound its own (issue #70), so a runaway
+# repo hangs for hours then SIGKILLs (rc=137). macOS has no `timeout`; use:
+perl -e 'alarm 200; exec @ARGV' /Users/nikolay/.local/bin/diffctx . --diff HEAD~1
 ```
+
+**A cap-hit IS the issue.** rc=142 (SIGALRM) or rc=137 (SIGKILL) with no output =
+diffctx hung on that repo — file it and stop the sweep (don't run the remaining
+giant repos like `linux`, they'll hang too and burn hours). Known so far:
+`gitpod` and `pytorch` hang on a trivial HEAD~1 diff (#70).
 
 **Per repo, judge:** did it (a) finish without panic / non-zero exit / hang,
 (b) honor the range — `changed_files` matches `git diff HEAD~1 --stat`, not a
