@@ -58,16 +58,7 @@ def _load_cell_info(cell: Path) -> dict | None:
     return {"method": method, "budget": budget, "depth": cell_info.get("depth"), "test_set": test_set}
 
 
-def _row_from_checkpoint_line(line: str, info: dict) -> dict | None:
-    """Parse one checkpoint JSONL line into a long-form row; None to skip."""
-    line = line.strip()
-    if not line:
-        return None
-    try:
-        r = json.loads(line)
-    except ValueError:
-        return None
-    ex = r.get("extra") or {}
+def _checkpoint_row_dict(r: dict, ex: dict, info: dict) -> dict:
     depth = info["depth"]
     return {
         "instance_id": r.get("instance_id"),
@@ -88,6 +79,19 @@ def _row_from_checkpoint_line(line: str, info: dict) -> dict | None:
         "n_selected": int(ex.get("n_selected") or ex.get("fragment_count") or 0),
         "status": str(ex.get("status") or "missing"),
     }
+
+
+def _row_from_checkpoint_line(line: str, info: dict) -> dict | None:
+    """Parse one checkpoint JSONL line into a long-form row; None to skip."""
+    line = line.strip()
+    if not line:
+        return None
+    try:
+        r = json.loads(line)
+    except ValueError:
+        return None
+    ex = r.get("extra") or {}
+    return _checkpoint_row_dict(r, ex, info)
 
 
 def load_long(cells_dir: Path) -> list[dict]:

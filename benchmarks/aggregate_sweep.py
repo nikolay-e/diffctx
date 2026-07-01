@@ -549,22 +549,34 @@ def render_per_language_tables(cells: list[dict], top_n: int = 7) -> str:
     return "\n".join(out) + "\n"
 
 
+def _or_empty(mapping: dict, key: str) -> dict:
+    return mapping.get(key) or {}
+
+
+def _csv_blocks(s: dict) -> dict[str, dict]:
+    file_recall = _or_empty(s, "file_recall")
+    line_block = _or_empty(s, "line_f1")
+    return {
+        "file_recall": file_recall,
+        "file_precision": _or_empty(s, "file_precision"),
+        "fbeta": _or_empty(s, "file_fbeta"),
+        "frag": _or_empty(s, "fragment_recall"),
+        "frag_prec": _or_empty(s, "fragment_precision"),
+        "frag_fbeta": _or_empty(s, "fragment_fbeta"),
+        "line": line_block,
+        "line_cond": _or_empty(line_block, "conditional_on_file_hit") if line_block else {},
+        "tokens": _or_empty(s, "used_tokens"),
+        "elapsed": _or_empty(s, "elapsed_seconds"),
+        "rec_hist": _or_empty(file_recall, "hist"),
+        "n_selected": _or_empty(s, "n_selected"),
+        "n_gold": _or_empty(s, "n_gold"),
+        "frag_count": _or_empty(s, "fragment_count"),
+    }
+
+
 def _csv_row_for_cell(c: dict) -> dict:
     s = c["summary"]
-    file_recall = s.get("file_recall") or {}
-    file_prec = s.get("file_precision") or {}
-    fbeta = s.get("file_fbeta") or {}
-    frag_block = s.get("fragment_recall") or {}
-    frag_prec_block = s.get("fragment_precision") or {}
-    frag_fbeta = s.get("fragment_fbeta") or {}
-    line_block = s.get("line_f1") or {}
-    line_cond = (line_block.get("conditional_on_file_hit") or {}) if line_block else {}
-    tokens = s.get("used_tokens") or {}
-    elapsed = s.get("elapsed_seconds") or {}
-    rec_hist = file_recall.get("hist") or {}
-    n_selected = s.get("n_selected") or {}
-    n_gold = s.get("n_gold") or {}
-    frag_count = s.get("fragment_count") or {}
+    b = _csv_blocks(s)
     return {
         "method": c["method"],
         "budget": c["budget"],
@@ -572,35 +584,35 @@ def _csv_row_for_cell(c: dict) -> dict:
         "test_set": c["test_set"],
         "n_instances": s.get("n", c["n_instances"]),
         "n_ok": s.get("ok", 0),
-        "mean_file_recall": file_recall.get("mean"),
-        "mean_file_precision": file_prec.get("mean"),
-        "mean_file_f1": (fbeta.get("f1") or {}).get("mean"),
-        "mean_file_f2": (fbeta.get("f2") or {}).get("mean"),
-        "mean_file_f0_5": (fbeta.get("f0.5") or {}).get("mean"),
-        "mean_fragment_recall": frag_block.get("mean"),
-        "mean_fragment_precision": frag_prec_block.get("mean"),
-        "mean_fragment_f1": (frag_fbeta.get("f1") or {}).get("mean") if frag_fbeta else None,
-        "mean_line_f1": line_block.get("mean"),
-        "mean_line_f1_given_file_hit": line_cond.get("mean"),
-        "n_with_fragment_gold": frag_block.get("n_with_gold"),
-        "recall_perfect_pct": rec_hist.get("perfect_pct"),
-        "recall_zero_pct": rec_hist.get("zero_pct"),
-        "recall_partial_pct": rec_hist.get("partial_pct"),
-        "recall_std": file_recall.get("std"),
-        "n_selected_p50": n_selected.get("median"),
-        "n_selected_p95": n_selected.get("p95"),
-        "n_gold_p50": n_gold.get("median"),
-        "fragment_count_p50": frag_count.get("median"),
-        "fragment_count_p95": frag_count.get("p95"),
-        "mean_used_tokens": tokens.get("mean"),
-        "tokens_p50": tokens.get("median"),
-        "tokens_p95": tokens.get("p95"),
-        "tokens_p99": tokens.get("p99"),
-        "mean_elapsed_seconds": elapsed.get("mean"),
-        "elapsed_p50": elapsed.get("median"),
-        "elapsed_p95": elapsed.get("p95"),
-        "elapsed_p99": elapsed.get("p99"),
-        "git_sha": (c["metadata"].get("git") or {}).get("sha"),
+        "mean_file_recall": b["file_recall"].get("mean"),
+        "mean_file_precision": b["file_precision"].get("mean"),
+        "mean_file_f1": _or_empty(b["fbeta"], "f1").get("mean"),
+        "mean_file_f2": _or_empty(b["fbeta"], "f2").get("mean"),
+        "mean_file_f0_5": _or_empty(b["fbeta"], "f0.5").get("mean"),
+        "mean_fragment_recall": b["frag"].get("mean"),
+        "mean_fragment_precision": b["frag_prec"].get("mean"),
+        "mean_fragment_f1": _or_empty(b["frag_fbeta"], "f1").get("mean") if b["frag_fbeta"] else None,
+        "mean_line_f1": b["line"].get("mean"),
+        "mean_line_f1_given_file_hit": b["line_cond"].get("mean"),
+        "n_with_fragment_gold": b["frag"].get("n_with_gold"),
+        "recall_perfect_pct": b["rec_hist"].get("perfect_pct"),
+        "recall_zero_pct": b["rec_hist"].get("zero_pct"),
+        "recall_partial_pct": b["rec_hist"].get("partial_pct"),
+        "recall_std": b["file_recall"].get("std"),
+        "n_selected_p50": b["n_selected"].get("median"),
+        "n_selected_p95": b["n_selected"].get("p95"),
+        "n_gold_p50": b["n_gold"].get("median"),
+        "fragment_count_p50": b["frag_count"].get("median"),
+        "fragment_count_p95": b["frag_count"].get("p95"),
+        "mean_used_tokens": b["tokens"].get("mean"),
+        "tokens_p50": b["tokens"].get("median"),
+        "tokens_p95": b["tokens"].get("p95"),
+        "tokens_p99": b["tokens"].get("p99"),
+        "mean_elapsed_seconds": b["elapsed"].get("mean"),
+        "elapsed_p50": b["elapsed"].get("median"),
+        "elapsed_p95": b["elapsed"].get("p95"),
+        "elapsed_p99": b["elapsed"].get("p99"),
+        "git_sha": _or_empty(c["metadata"], "git").get("sha"),
         "started_at_utc": c["metadata"].get("started_at_utc"),
     }
 
