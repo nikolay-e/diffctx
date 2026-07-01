@@ -500,6 +500,135 @@ pub fn get_untracked_files(repo_root: &Path) -> Result<Vec<PathBuf>> {
         .collect())
 }
 
+/// Rewrites one `.diffctx/ignore` pattern line to be anchored to the
+/// directory that contains the `.diffctx/` folder (`rel`, repo-root-relative,
+/// "" for the repo root itself). Mirrors `_process_ignore_line` in the
+/// Python tree-mode ignore resolver (`src/diffctx/ignore.py`) so a pattern
+/// declared in `sub/.diffctx/ignore` only ever matches within `sub/`.
+fn anchor_diffctx_ignore_line(line: &str, rel: &str) -> String {
+    let (neg, pat) = match line.strip_prefix('!') {
+        Some(rest) => (true, rest),
+        None => (false, line),
+    };
+    let pat_no_trailing_slash = pat.trim_end_matches('/');
+    let full = if pat_no_trailing_slash.starts_with('/') || pat_no_trailing_slash.contains('/') {
+        let anchored = pat.trim_start_matches('/');
+        if rel.is_empty() {
+            format!("/{anchored}")
+        } else {
+            format!("/{rel}/{anchored}")
+        }
+    } else if rel.is_empty() {
+        pat.to_string()
+    } else {
+        format!("{rel}/**/{pat}")
+    };
+    if neg { format!("!{full}") } else { full }
+}
+
+/// Finds every `.diffctx/ignore` file tracked or present in `repo_root`
+/// (any depth) and returns its patterns rewritten to be repo-root-relative,
+/// ready to feed into a combined gitignore-syntax exclude file.
+fn collect_diffctx_ignore_patterns(repo_root: &Path) -> Vec<String> {
+    let Ok(files) = run_git_z(
+        repo_root,
+        &[
+            "ls-files",
+            "-z",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "--",
+            ":(glob)**/.diffctx/ignore",
+        ],
+    ) else {
+        return Vec::new();
+    };
+
+    let mut patterns = Vec::new();
+    for raw in &files {
+        let rel_path = unquote_c_style(raw);
+        if !rel_path.ends_with(".diffctx/ignore") {
+            continue;
+        }
+        let rel_dir = rel_path
+            .strip_suffix(".diffctx/ignore")
+            .unwrap_or("")
+            .trim_end_matches('/');
+        let Ok(content) = std::fs::read_to_string(repo_root.join(&rel_path)) else {
+            continue;
+        };
+        for line in content.lines() {
+            let line = line.trim_end();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            patterns.push(anchor_diffctx_ignore_line(line, rel_dir));
+        }
+    }
+    patterns
+}
+
+/// Returns the subset of `rel_paths` (repo-root-relative) excluded by either
+/// `.gitignore` (via git's own engine, so nesting/negation/`**` are handled
+/// correctly) or `.diffctx/ignore` (patterns anchored per-directory and fed
+/// to git as a temporary `core.excludesFile`, so the same engine evaluates
+/// both mechanisms uniformly). Best-effort: any failure returns an empty set
+/// rather than blocking the diff pipeline on an ignore-resolution problem.
+pub fn find_ignored_paths(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<String> {
+    if rel_paths.is_empty() {
+        return FxHashSet::default();
+    }
+
+    let diffctx_patterns = collect_diffctx_ignore_patterns(repo_root);
+    let temp_excludes = if diffctx_patterns.is_empty() {
+        None
+    } else {
+        let path = std::env::temp_dir().join(format!("diffctx-ignore-{}.tmp", std::process::id()));
+        match std::fs::write(&path, diffctx_patterns.join("\n")) {
+            Ok(()) => Some(path),
+            Err(_) => None,
+        }
+    };
+
+    let mut args: Vec<String> = vec!["check-ignore".into(), "--no-index".into()];
+    if let Some(ref path) = temp_excludes {
+        args.insert(0, format!("core.excludesFile={}", path.display()));
+        args.insert(0, "-c".into());
+    }
+    args.push("--".into());
+    args.extend(rel_paths.iter().cloned());
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+
+    let result = (|| -> Result<FxHashSet<String>> {
+        let mut cmd = Command::new("git");
+        cmd.arg("-C")
+            .arg(repo_root)
+            .args(&arg_refs)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let child = cmd.spawn()?;
+        let output = wait_with_timeout(child, Duration::from_secs(git_timeout()), &arg_refs)?;
+        // Exit code 1 from `check-ignore` means "none of the given paths are
+        // ignored" — not a failure. Any other non-zero code is a real error.
+        if !output.status.success() && output.status.code() != Some(1) {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(GitError::CommandFailed(format!(
+                "git check-ignore failed: {}",
+                stderr.trim()
+            )));
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        Ok(stdout.lines().map(unquote_c_style).collect())
+    })();
+
+    if let Some(path) = temp_excludes {
+        let _ = std::fs::remove_file(path);
+    }
+
+    result.unwrap_or_default()
+}
+
 pub struct CatFileBatch {
     repo_root: PathBuf,
     child: Option<Child>,

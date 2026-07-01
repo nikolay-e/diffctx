@@ -108,9 +108,17 @@ def _process_ignore_line(line: str, rel: str) -> str:
     return ("!" + full) if neg else full
 
 
+_DIFFCTX_IGNORE_RELPATH = f"{DIFFCTX_CONFIG_DIR}/{DIFFCTX_DIR_IGNORE}"
+
+
 def _collect_from_git(ignore_files: list[Path], root: Path, out: list[str]) -> None:
     for ignore_path in ignore_files:
-        ignore_dir = ignore_path.parent
+        # .diffctx/ignore patterns are relative to the directory that
+        # *contains* .diffctx/, not to .diffctx/ itself.
+        if ignore_path.parent.name == DIFFCTX_CONFIG_DIR and ignore_path.name == DIFFCTX_DIR_IGNORE:
+            ignore_dir = ignore_path.parent.parent
+        else:
+            ignore_dir = ignore_path.parent
         rel = "" if ignore_dir == root else ignore_dir.relative_to(root).as_posix()
         for line in read_ignore_file(ignore_path):
             out.append(_process_ignore_line(line, rel))
@@ -146,9 +154,14 @@ def _aggregate_all_ignore_patterns(root: Path, ignore_filenames: list[str]) -> l
 def _find_ignore_files_via_git(root: Path, ignore_filenames: list[str]) -> list[Path] | None:
     import subprocess
 
+    # A bare filename pathspec (e.g. ".gitignore") only matches that exact
+    # path relative to `root` — it does NOT find nested occurrences. Use
+    # glob-magic pathspecs so nested .gitignore / .diffctx/ignore files are
+    # discovered the same way _collect_from_walk's os.walk fallback finds them.
+    pathspecs = [f":(glob)**/{name}" for name in ignore_filenames]
     try:
         result = subprocess.run(
-            ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", *ignore_filenames],
+            ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", *pathspecs],
             cwd=root,
             capture_output=True,
             text=False,
@@ -315,7 +328,7 @@ def get_ignore_specs(
         patterns.extend(DEFAULT_IGNORE_PATTERNS)
 
     patterns.extend(_collect_parent_ignore_patterns(root_dir, [".gitignore"]))
-    patterns.extend(_aggregate_all_ignore_patterns(root_dir, [".gitignore"]))
+    patterns.extend(_aggregate_all_ignore_patterns(root_dir, [".gitignore", _DIFFCTX_IGNORE_RELPATH]))
 
     if custom_ignore_file:
         patterns.extend(read_ignore_file(custom_ignore_file))
