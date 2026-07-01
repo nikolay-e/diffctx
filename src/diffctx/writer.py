@@ -190,6 +190,29 @@ def _write_text_fragment(file: TextIO, frag: dict[str, Any], indent: str = "") -
             file.write(f"{content_indent}{line}\n")
 
 
+def _write_tree_text_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
+    if tree.get("commit_message"):
+        file.write(f"  change: {tree['commit_message']}\n")
+    if tree.get("changed_files"):
+        file.write(f"  changed files: {', '.join(str(p) for p in tree['changed_files'])}\n")
+    for frag in tree["fragments"]:
+        _write_text_fragment(file, frag, "  ")
+
+
+def _write_tree_text_children(file: TextIO, children: list[dict[str, Any]]) -> None:
+    for i, child in enumerate(children):
+        connector = _TREE_LAST if i == len(children) - 1 else _TREE_BRANCH
+        _write_tree_text_node(file, child, "", connector)
+
+
+def _write_tree_text_content(file: TextIO, content: str) -> None:
+    if not content:
+        file.write("(empty file)\n")
+    else:
+        for line in content.rstrip("\n").split("\n"):
+            file.write(f"{line}\n")
+
+
 def write_tree_text(file: TextIO, tree: dict[str, Any]) -> None:
     name = tree.get("name", "")
     tree_type = tree.get("type", "")
@@ -202,24 +225,11 @@ def write_tree_text(file: TextIO, tree: dict[str, Any]) -> None:
         file.write(f"{name}/\n")
 
     if tree_type == "diff_context" and tree.get("fragments"):
-        if tree.get("commit_message"):
-            file.write(f"  change: {tree['commit_message']}\n")
-        if tree.get("changed_files"):
-            file.write(f"  changed files: {', '.join(str(p) for p in tree['changed_files'])}\n")
-        for frag in tree["fragments"]:
-            _write_text_fragment(file, frag, "  ")
+        _write_tree_text_diff_context(file, tree)
     elif tree.get("children"):
-        children = tree["children"]
-        for i, child in enumerate(children):
-            connector = _TREE_LAST if i == len(children) - 1 else _TREE_BRANCH
-            _write_tree_text_node(file, child, "", connector)
+        _write_tree_text_children(file, tree["children"])
     elif "content" in tree:
-        content = tree["content"]
-        if not content:
-            file.write("(empty file)\n")
-        else:
-            for line in content.rstrip("\n").split("\n"):
-                file.write(f"{line}\n")
+        _write_tree_text_content(file, tree["content"])
 
 
 def _is_placeholder(content: str) -> bool:
@@ -324,6 +334,18 @@ def _write_markdown_fragment(file: TextIO, frag: dict[str, Any]) -> None:
         _write_md_code_block(file, frag["content"], lang, "")
 
 
+def _write_markdown_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
+    if tree.get("commit_message"):
+        file.write(f"> {tree['commit_message']}\n\n")
+    if tree.get("changed_files"):
+        file.write("**Changed files:**\n\n")
+        for path in tree["changed_files"]:
+            file.write(f"- {_escape_md_inline_code(str(path))}\n")
+        file.write("\n")
+    for frag in tree["fragments"]:
+        _write_markdown_fragment(file, frag)
+
+
 def write_tree_markdown(file: TextIO, tree: dict[str, Any]) -> None:
     name = tree.get("name", "")
     tree_type = tree.get("type", "")
@@ -335,15 +357,7 @@ def write_tree_markdown(file: TextIO, tree: dict[str, Any]) -> None:
         file.write(f"# {name}/\n\n")
 
     if tree_type == "diff_context" and tree.get("fragments"):
-        if tree.get("commit_message"):
-            file.write(f"> {tree['commit_message']}\n\n")
-        if tree.get("changed_files"):
-            file.write("**Changed files:**\n\n")
-            for path in tree["changed_files"]:
-                file.write(f"- {_escape_md_inline_code(str(path))}\n")
-            file.write("\n")
-        for frag in tree["fragments"]:
-            _write_markdown_fragment(file, frag)
+        _write_markdown_diff_context(file, tree)
     elif tree.get("children"):
         for child in tree["children"]:
             _write_markdown_node(file, child, 1)

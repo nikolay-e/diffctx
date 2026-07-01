@@ -238,6 +238,48 @@ def run_eval_set(
     return results
 
 
+def _init_multi_budget_state(
+    params_list: list[RunParams], checkpoint_dir: Path | None, resume_dir: Path | None
+) -> tuple[dict[int, Path | None], dict[int, set[str]], dict[int, list[EvalResult]]]:
+    ckpts: dict[int, Path | None] = {
+        p.budget: ((checkpoint_dir / f"b{p.budget}.checkpoint.jsonl") if checkpoint_dir else None) for p in params_list
+    }
+    resume_paths: dict[int, Path | None] = {
+        p.budget: ((resume_dir / f"b{p.budget}.checkpoint.jsonl") if resume_dir else None) for p in params_list
+    }
+    done_ids: dict[int, set[str]] = {b: (read_checkpoint(p) if p else set()) for b, p in resume_paths.items()}
+    results_by_budget: dict[int, list[EvalResult]] = {
+        b: (_load_existing_results(p, done_ids[b]) if p else []) for b, p in resume_paths.items()
+    }
+    return ckpts, done_ids, results_by_budget
+
+
+def _pending_multi_budget_instances(
+    instances: list[BenchmarkInstance], params_list: list[RunParams], done_ids: dict[int, set[str]]
+) -> list[tuple[BenchmarkInstance, list[RunParams]]]:
+    """An instance is "pending" if any of its budgets isn't already on disk."""
+    pending: list[tuple[BenchmarkInstance, list[RunParams]]] = []
+    for inst in instances:
+        needed = [p for p in params_list if inst.instance_id not in done_ids[p.budget]]
+        if needed:
+            pending.append((inst, needed))
+    return pending
+
+
+def _record_multi_budget_cell(
+    per_cell: list[tuple[RunParams, EvalResult]],
+    results_by_budget: dict[int, list[EvalResult]],
+    ckpts: dict[int, Path | None],
+) -> None:
+    for params, r in per_cell:
+        results_by_budget[params.budget].append(r)
+        status = str((r.extra or {}).get("status", ""))
+        err = str((r.extra or {}).get("error", ""))
+        if status not in ("ok", "empty_query", "empty_corpus") and (status or err):
+            _log_non_ok_result(r, status, err)
+        _maybe_checkpoint(ckpts[params.budget], r, status, err)
+
+
 def run_eval_set_multi_budget(
     instances: list[BenchmarkInstance],
     eval_all_cells_fn: EvalAllCellsFn,
@@ -263,32 +305,11 @@ def run_eval_set_multi_budget(
     if not params_list:
         return {}
     budgets_in_order = [p.budget for p in params_list]
-    ckpts: dict[int, Path | None] = {
-        p.budget: ((checkpoint_dir / f"b{p.budget}.checkpoint.jsonl") if checkpoint_dir else None) for p in params_list
-    }
-    resume_paths: dict[int, Path | None] = {
-        p.budget: ((resume_dir / f"b{p.budget}.checkpoint.jsonl") if resume_dir else None) for p in params_list
-    }
-    done_ids: dict[int, set[str]] = {b: (read_checkpoint(p) if p else set()) for b, p in resume_paths.items()}
-    results_by_budget: dict[int, list[EvalResult]] = {
-        b: (_load_existing_results(p, done_ids[b]) if p else []) for b, p in resume_paths.items()
-    }
-
-    # An instance is "pending" if any of its budgets isn't already on disk.
-    pending: list[tuple[BenchmarkInstance, list[RunParams]]] = []
-    for inst in instances:
-        needed = [p for p in params_list if inst.instance_id not in done_ids[p.budget]]
-        if needed:
-            pending.append((inst, needed))
+    ckpts, done_ids, results_by_budget = _init_multi_budget_state(params_list, checkpoint_dir, resume_dir)
+    pending = _pending_multi_budget_instances(instances, params_list, done_ids)
 
     def _record_per_cell(per_cell: list[tuple[RunParams, EvalResult]]) -> None:
-        for params, r in per_cell:
-            results_by_budget[params.budget].append(r)
-            status = str((r.extra or {}).get("status", ""))
-            err = str((r.extra or {}).get("error", ""))
-            if status not in ("ok", "empty_query", "empty_corpus") and (status or err):
-                _log_non_ok_result(r, status, err)
-            _maybe_checkpoint(ckpts[params.budget], r, status, err)
+        _record_multi_budget_cell(per_cell, results_by_budget, ckpts)
 
     if not pending:
         return results_by_budget

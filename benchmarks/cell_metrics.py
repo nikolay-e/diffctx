@@ -181,58 +181,51 @@ def _conditional_line_f1(rows: Sequence[dict]) -> dict[str, float] | None:
     return {"mean": statistics.fmean(cond), "n": float(len(cond))}
 
 
+def _rows_in_bucket(rows: Sequence[dict], key_extractor, lo: float, hi: float | None) -> list[dict]:
+    bucket_rows = []
+    for r in rows:
+        val = key_extractor(r)
+        if val is None:
+            continue
+        if not bucket_match(float(val), float(lo), None if hi is None else float(hi)):
+            continue
+        bucket_rows.append(r)
+    return bucket_rows
+
+
+def _recall_precision_f_block(bucket_rows: list[dict], include_f2: bool) -> dict[str, float]:
+    recalls = [float(r.get("file_recall") or 0.0) for r in bucket_rows]
+    precs = [float(r.get("file_precision") or 0.0) for r in bucket_rows]
+    block = {
+        "n": float(len(bucket_rows)),
+        "file_recall": statistics.fmean(recalls),
+        "file_precision": statistics.fmean(precs),
+        "f1": _f_beta(statistics.fmean(precs), statistics.fmean(recalls), 1.0),
+    }
+    if include_f2:
+        block["f2"] = _f_beta(statistics.fmean(precs), statistics.fmean(recalls), 2.0)
+    return block
+
+
 def _stratified_recall(rows: Sequence[dict], key_extractor) -> dict[str, dict[str, float]] | None:
     """Generic stratification: group rows by a numeric key, compute mean recall per bucket."""
     out: dict[str, dict[str, float]] = {}
-    have_any = False
     for label, lo, hi in _GOLD_BUCKETS:
-        bucket_rows = []
-        for r in rows:
-            val = key_extractor(r)
-            if val is None:
-                continue
-            if not bucket_match(float(val), float(lo), None if hi is None else float(hi)):
-                continue
-            bucket_rows.append(r)
+        bucket_rows = _rows_in_bucket(rows, key_extractor, lo, hi)
         if not bucket_rows:
             continue
-        have_any = True
-        recalls = [float(r.get("file_recall") or 0.0) for r in bucket_rows]
-        precs = [float(r.get("file_precision") or 0.0) for r in bucket_rows]
-        out[label] = {
-            "n": float(len(bucket_rows)),
-            "file_recall": statistics.fmean(recalls),
-            "file_precision": statistics.fmean(precs),
-            "f1": _f_beta(statistics.fmean(precs), statistics.fmean(recalls), 1.0),
-            "f2": _f_beta(statistics.fmean(precs), statistics.fmean(recalls), 2.0),
-        }
-    return out if have_any else None
+        out[label] = _recall_precision_f_block(bucket_rows, include_f2=True)
+    return out if out else None
 
 
 def _stratified_recall_by_ratio(rows: Sequence[dict]) -> dict[str, dict[str, float]] | None:
     out: dict[str, dict[str, float]] = {}
-    have_any = False
     for label, lo, hi in _RATIO_BUCKETS:
-        bucket_rows = []
-        for r in rows:
-            val = (r.get("extra") or {}).get("gold_to_changed_ratio")
-            if val is None:
-                continue
-            if not bucket_match(float(val), lo, hi):
-                continue
-            bucket_rows.append(r)
+        bucket_rows = _rows_in_bucket(rows, lambda r: (r.get("extra") or {}).get("gold_to_changed_ratio"), lo, hi)
         if not bucket_rows:
             continue
-        have_any = True
-        recalls = [float(r.get("file_recall") or 0.0) for r in bucket_rows]
-        precs = [float(r.get("file_precision") or 0.0) for r in bucket_rows]
-        out[label] = {
-            "n": float(len(bucket_rows)),
-            "file_recall": statistics.fmean(recalls),
-            "file_precision": statistics.fmean(precs),
-            "f1": _f_beta(statistics.fmean(precs), statistics.fmean(recalls), 1.0),
-        }
-    return out if have_any else None
+        out[label] = _recall_precision_f_block(bucket_rows, include_f2=False)
+    return out if out else None
 
 
 def _gold_characterization(rows: Sequence[dict]) -> dict[str, float]:
@@ -308,6 +301,39 @@ def _collect_status_breakdown(rows: Sequence[dict]) -> tuple[dict[str, int], dic
     return statuses, errors
 
 
+def _optional_mean_block(values: list[float]) -> dict[str, float] | None:
+    return {"mean": statistics.fmean(values), "n_with_gold": len(values)} if values else None
+
+
+def _line_f1_block(rows: Sequence[dict], line_f1: list[float]) -> dict[str, object] | None:
+    if not line_f1:
+        return None
+    return {
+        "mean": statistics.fmean(line_f1),
+        "n_with_gold": len(line_f1),
+        "conditional_on_file_hit": _conditional_line_f1(rows),
+    }
+
+
+def _merge_cardinality(out: dict, cardinality: dict[str, list[float]]) -> None:
+    for key, values in cardinality.items():
+        if values:
+            out[key] = _percentile_block(values)
+
+
+def _merge_extras(out: dict, rows: Sequence[dict]) -> None:
+    extras: list[tuple[str, object]] = [
+        ("patch_size", _patch_size_distributions(rows)),
+        ("gold_characterization", _gold_characterization(rows)),
+        ("recall_by_gold_size", _stratified_recall(rows, lambda r: float((r.get("extra") or {}).get("n_gold") or 0))),
+        ("recall_by_difficulty_ratio", _stratified_recall_by_ratio(rows)),
+        ("latency_breakdown", _latency_breakdown(rows)),
+    ]
+    for key, value in extras:
+        if value:
+            out[key] = value
+
+
 def compute_cell_summary(rows: Sequence[dict]) -> dict:
     n = len(rows)
     if n == 0:
@@ -339,38 +365,16 @@ def compute_cell_summary(rows: Sequence[dict]) -> dict:
         "file_recall": rec_block,
         "file_precision": prec_block,
         "file_fbeta": _f_beta_block(precision, recall),
-        "fragment_recall": ({"mean": statistics.fmean(frag_recall), "n_with_gold": len(frag_recall)} if frag_recall else None),
-        "fragment_precision": (
-            {"mean": statistics.fmean(frag_precision), "n_with_gold": len(frag_precision)} if frag_precision else None
-        ),
+        "fragment_recall": _optional_mean_block(frag_recall),
+        "fragment_precision": _optional_mean_block(frag_precision),
         "fragment_fbeta": (_f_beta_block(frag_precision, frag_recall) if frag_recall and frag_precision else None),
-        "line_f1": (
-            {
-                "mean": statistics.fmean(line_f1),
-                "n_with_gold": len(line_f1),
-                "conditional_on_file_hit": _conditional_line_f1(rows),
-            }
-            if line_f1
-            else None
-        ),
+        "line_f1": _line_f1_block(rows, line_f1),
         "elapsed_seconds": _percentile_block(elapsed),
         "used_tokens": _percentile_block(tokens),
         "by_language": _by_language(rows),
     }
-    for key, values in cardinality.items():
-        if values:
-            out[key] = _percentile_block(values)
-
-    extras: list[tuple[str, object]] = [
-        ("patch_size", _patch_size_distributions(rows)),
-        ("gold_characterization", _gold_characterization(rows)),
-        ("recall_by_gold_size", _stratified_recall(rows, lambda r: float((r.get("extra") or {}).get("n_gold") or 0))),
-        ("recall_by_difficulty_ratio", _stratified_recall_by_ratio(rows)),
-        ("latency_breakdown", _latency_breakdown(rows)),
-    ]
-    for key, value in extras:
-        if value:
-            out[key] = value
+    _merge_cardinality(out, cardinality)
+    _merge_extras(out, rows)
     return out
 
 

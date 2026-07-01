@@ -32,12 +32,12 @@ jobs:
       commit_sha: ${{ steps.commit_version.outputs.commit_sha }}
     steps:
       - name: Checkout Code
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
         with:
           python-version: '3.12'
 
@@ -207,7 +207,7 @@ jobs:
           grep -E '^version\s*=' pyproject.toml
 
       - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
         with:
           python-version: '3.12'
 
@@ -250,7 +250,7 @@ jobs:
           git checkout "$TAG_NAME"
 
       - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
         with:
           python-version: '3.12'
 
@@ -298,7 +298,7 @@ jobs:
           ls -la dist/
 
       - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
         with:
           python-version: '3.12'
 
@@ -331,7 +331,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -411,7 +411,13 @@ jobs:
 
       - name: Restore repository from bundle
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # RELEASE_PUSH_TOKEN (not GITHUB_TOKEN): main requires 5 status
+          # checks on every commit, and a freshly-created local commit has
+          # none. GITHUB_TOKEN's push is treated as the github-actions[bot]
+          # identity, which branch protection does NOT exempt; an admin's
+          # PAT authenticates as an actual repo admin, which the branch
+          # protection settings (enforce_admins: false) already exempt (#69).
+          GH_TOKEN: ${{ secrets.RELEASE_PUSH_TOKEN }}
           COMMIT_SHA: ${{ needs.prepare-version.outputs.commit_sha }}
           REPO_FULL_NAME: ${{ github.repository }}
         run: |
@@ -454,7 +460,7 @@ jobs:
           ls -la release-assets/
 
       - name: Create GitHub Release with wheel and sdist assets
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda  # v2
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b  # v2
         with:
           tag_name: ${{ needs.prepare-version.outputs.tag_name }}
           name: Release ${{ needs.prepare-version.outputs.version }}

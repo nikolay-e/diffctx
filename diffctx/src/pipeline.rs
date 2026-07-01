@@ -131,6 +131,13 @@ pub fn compute_scored_state(
         return Ok(empty_scored_state(root_dir));
     }
 
+    let ignored_rel_paths = resolve_ignored_paths(&root_dir, &hunks);
+    hunks.retain(|h| !is_ignored_path(&root_dir, Path::new(&*h.path), &ignored_rel_paths));
+
+    if hunks.is_empty() {
+        return Ok(empty_scored_state(root_dir));
+    }
+
     let diff_text = git::get_diff_text(&root_dir, diff_range)?;
 
     let mut changed_files = git::get_changed_files(&root_dir, diff_range)?;
@@ -152,7 +159,9 @@ pub fn compute_scored_state(
         .into_iter()
         .filter(|f| {
             let resolved = f.canonicalize().unwrap_or_else(|_| f.clone());
-            !excluded.contains(&resolved) && !is_secret_path(f)
+            !excluded.contains(&resolved)
+                && !is_secret_path(f)
+                && !is_ignored_path(&root_dir, f, &ignored_rel_paths)
         })
         .collect();
 
@@ -412,6 +421,7 @@ pub fn select_with_params(
         &state.root_dir,
         &state.preferred_revs,
         batch_reader.as_mut(),
+        &state.core_ids,
     );
     if let Some(mut r) = batch_reader {
         r.close();
@@ -493,6 +503,31 @@ fn is_secret_path(path: &Path) -> bool {
     )
 }
 
+fn rel_path_string(root_dir: &Path, path: &Path) -> Option<String> {
+    path.strip_prefix(root_dir)
+        .ok()
+        .map(|p| p.to_string_lossy().replace('\\', "/"))
+}
+
+/// Resolves `.gitignore` / `.diffctx/ignore` exclusions (#85) for every path
+/// touched by `hunks`, in one batched git call. diff mode previously only
+/// ever excluded a hardcoded set of secret-like filenames (`is_secret_path`)
+/// — a file a user explicitly excluded via `.diffctx/ignore` still had its
+/// changed content surfaced in full.
+fn resolve_ignored_paths(root_dir: &Path, hunks: &[crate::types::DiffHunk]) -> FxHashSet<String> {
+    let rel_paths: Vec<String> = hunks
+        .iter()
+        .filter_map(|h| rel_path_string(root_dir, Path::new(&*h.path)))
+        .collect();
+    git::find_ignored_paths(root_dir, &rel_paths)
+}
+
+fn is_ignored_path(root_dir: &Path, path: &Path, ignored_rel_paths: &FxHashSet<String>) -> bool {
+    rel_path_string(root_dir, path)
+        .map(|rel| ignored_rel_paths.contains(&rel))
+        .unwrap_or(false)
+}
+
 fn build_diff_context_full(
     root_dir: &Path,
     diff_range: Option<&str>,
@@ -512,8 +547,14 @@ fn build_diff_context_full(
     if hunks.is_empty() {
         return Ok(empty_output(&root_dir));
     }
+    let ignored_rel_paths = resolve_ignored_paths(&root_dir, &hunks);
+    hunks.retain(|h| !is_ignored_path(&root_dir, Path::new(&*h.path), &ignored_rel_paths));
+    if hunks.is_empty() {
+        return Ok(empty_output(&root_dir));
+    }
     let mut changed_files = git::get_changed_files(&root_dir, diff_range)?;
-    changed_files.retain(|f| !is_secret_path(f));
+    changed_files
+        .retain(|f| !is_secret_path(f) && !is_ignored_path(&root_dir, f, &ignored_rel_paths));
     if changed_files.is_empty() {
         return Ok(empty_output(&root_dir));
     }

@@ -24,17 +24,28 @@ class _Unset:
 _UNSET: _Unset = _Unset()
 _DIFF_SENTINEL = "__DIFFCTX_DIFF_BARE__"
 
+# Set once at the top of parse_args(); read by _exit_error/_warn so every
+# CLI-side validation message is branded like argparse's own native errors
+# (`{prog}: error: ...`) instead of a bare, unbranded "Error: ...". Module
+# state (rather than threading `prog` through every _validate_* signature)
+# keeps this a same-session fix; see #89.
+_current_prog: str = "diffctx"
+
 
 def _exit_error(message: str) -> NoReturn:
-    print(f"Error: {message}", file=sys.stderr)
+    print(f"{_current_prog}: error: {message}", file=sys.stderr)
     sys.exit(1)
+
+
+def _warn(message: str) -> None:
+    print(f"{_current_prog}: warning: {message}", file=sys.stderr)
 
 
 def _validate_max_depth(max_depth: int | None) -> None:
     if max_depth is not None and max_depth < 0:
         _exit_error(f"--max-depth must be non-negative, got {max_depth}")
     if max_depth == 0:
-        print("Warning: --max-depth 0 produces empty tree (root only, no children)", file=sys.stderr)
+        _warn("--max-depth 0 produces empty tree (root only, no children)")
 
 
 def _validate_max_file_bytes(max_file_bytes: int, no_file_size_limit: bool) -> int | None:
@@ -196,6 +207,7 @@ class ParsedArgs:
     graph: GraphArgs | None = None
     extra_dirs: list[Path] | None = None
     extra_files: list[Path] | None = None
+    no_explicit_paths: bool = False
 
 
 DEFAULT_IGNORES_HELP = """
@@ -230,6 +242,8 @@ Examples:
   diffctx . --diff HEAD~1      Show context for last commit
   diffctx . -c                 Copy output to clipboard
   diffctx . --no-content       Structure only, no file contents
+  diffctx graph .              Build the project dependency graph (see: diffctx graph --help)
+  diffctx graph . --summary    Print graph stats (cycles, hotspots, coupling)
 
 Output routing:
   Default:      stdout
@@ -303,7 +317,7 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
     )
 
     parser.add_argument("-v", "--version", action="version", version=f"%(prog)s {version}")
-    parser.add_argument("paths", nargs="*", default=["."], help="Directories, files, or glob patterns to analyze")
+    parser.add_argument("paths", nargs="*", default=[], help="Directories, files, or glob patterns to analyze")
     parser.add_argument(
         "-f",
         "--format",
@@ -360,7 +374,11 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
         type=float,
         default=_UNSET,
         metavar="F",
-        help="Minimum relevance to include a fragment (default: 0.12, typical 0-1; lower = more context, >1 keeps only changed code)",
+        help=(
+            "Minimum relevance to include a fragment (default: 0.12, typical range 0-1; "
+            "lower = more surrounding context. E.g. --tau 2 excludes nearly everything but "
+            "the changed code itself, since only directly-changed fragments score that high)"
+        ),
     )
     diff_group.add_argument(
         "--scoring",
@@ -393,7 +411,7 @@ def _warn_diff_only_flags(args: argparse.Namespace) -> None:
         used.append("--scoring")
     if used:
         flags = ", ".join(used)
-        print(f"Warning: diff-mode flags ignored without --diff: {flags}", file=sys.stderr)
+        _warn(f"diff-mode flags ignored without --diff: {flags}")
 
 
 def _build_graph_parsed_args(args: argparse.Namespace) -> ParsedArgs:
@@ -477,10 +495,13 @@ def _build_tree_parsed_args(args: argparse.Namespace) -> ParsedArgs:
         full_diff=args.full,
         extra_dirs=extra_dirs,
         extra_files=extra_files,
+        no_explicit_paths=not args.paths,
     )
 
 
 def parse_args(argv: list[str] | None = None, *, prog: str = "diffctx", version: str = __version__) -> ParsedArgs:
+    global _current_prog
+    _current_prog = prog
     raw_args = sys.argv[1:] if argv is None else argv
 
     if raw_args and raw_args[0] == "graph":

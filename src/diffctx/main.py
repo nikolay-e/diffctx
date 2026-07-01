@@ -31,7 +31,7 @@ def _configure_windows_utf8() -> None:
         pass
 
 
-def _ensure_git_repo(root_dir: Path) -> None:
+def _ensure_git_repo(root_dir: Path, prog: str) -> None:
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--git-dir"],
@@ -40,16 +40,31 @@ def _ensure_git_repo(root_dir: Path) -> None:
             stderr=subprocess.DEVNULL,
             check=False,
         )
-    except (OSError, FileNotFoundError) as exc:
+    except OSError as exc:
         print(
-            f"diffctx: --diff requires git to be installed and on PATH ({exc}); " "install git or run without --diff.",
+            f"{prog}: --diff requires git to be installed and on PATH ({exc}); install git or run without --diff.",
             file=sys.stderr,
         )
         sys.exit(_EXIT_ENVIRONMENT)
     if result.returncode != 0:
         print(
-            f"diffctx: --diff requires a git repository (cwd: {root_dir}); "
+            f"{prog}: --diff requires a git repository (cwd: {root_dir}); "
             "run inside a working tree or pass --diff <range> with a valid git context.",
+            file=sys.stderr,
+        )
+        sys.exit(_EXIT_ENVIRONMENT)
+
+    head_result = subprocess.run(
+        ["git", "rev-parse", "--verify", "-q", "HEAD"],
+        cwd=str(root_dir),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if head_result.returncode != 0:
+        print(
+            f"{prog}: --diff requires at least one commit (no HEAD in this repository yet); "
+            "commit first, or run without --diff to map the working tree.",
             file=sys.stderr,
         )
         sys.exit(_EXIT_ENVIRONMENT)
@@ -65,21 +80,21 @@ def _diff_result_is_empty(result: dict[str, Any]) -> bool:
     return False
 
 
-def _warn_empty_diff_result(result: dict[str, Any]) -> None:
+def _warn_empty_diff_result(result: dict[str, Any], prog: str) -> None:
     if _diff_result_is_empty(result):
         print(
-            "diffctx: diff produced no semantic context "
+            f"{prog}: diff produced no semantic context "
             "(pure deletion, binary-only, or all files exceeded size cap); output empty.",
             file=sys.stderr,
         )
 
 
-def _build_diff_tree(args: ParsedArgs) -> dict[str, Any]:
+def _build_diff_tree(args: ParsedArgs, prog: str) -> dict[str, Any]:
     from .diffctx import build_diff_context
 
     if not args.diff_range:
         raise RuntimeError("diff_range is required in diff mode")
-    _ensure_git_repo(args.root_dir)
+    _ensure_git_repo(args.root_dir, prog)
     result = build_diff_context(
         root_dir=args.root_dir,
         diff_range=args.diff_range,
@@ -93,7 +108,7 @@ def _build_diff_tree(args: ParsedArgs) -> dict[str, Any]:
         whitelist_file=args.whitelist_file,
         scoring_mode=getattr(args, "scoring", "ego"),
     )
-    _warn_empty_diff_result(result)
+    _warn_empty_diff_result(result, prog)
     return result
 
 
@@ -103,13 +118,19 @@ def _root_display_name(root_dir: Any) -> str:
 
 
 _LARGE_OUTPUT_WARN_BYTES = 10 * 1024 * 1024
+# A bare `diffctx` with no path argument at all is the most common "just try
+# it" first invocation — and the easiest to run somewhere unintended (e.g.
+# /tmp, $HOME). Use a much lower bar for that specific case; an explicit path
+# argument is a stronger signal the user knows what they're pointing at (#87).
+_LARGE_OUTPUT_WARN_BYTES_NO_EXPLICIT_PATH = 1 * 1024 * 1024
 
 
 def _warn_if_output_oversized(output_content: str, args: ParsedArgs) -> None:
     if args.no_content or args.diff_range:
         return
+    threshold = _LARGE_OUTPUT_WARN_BYTES_NO_EXPLICIT_PATH if args.no_explicit_paths else _LARGE_OUTPUT_WARN_BYTES
     size_bytes = len(output_content.encode("utf-8"))
-    if size_bytes < _LARGE_OUTPUT_WARN_BYTES:
+    if size_bytes < threshold:
         return
     mb = size_bytes / (1024 * 1024)
     print(
@@ -312,7 +333,7 @@ def _run(argv: list[str] | None = None, *, prog: str = "diffctx", version: str =
             sys.stdout.write(output_content)
         return
 
-    directory_tree = _build_diff_tree(args) if args.diff_range else _build_standard_tree(args)
+    directory_tree = _build_diff_tree(args, prog) if args.diff_range else _build_standard_tree(args)
 
     output_content = tree_to_string(directory_tree, args.output_format)
     if not args.quiet:

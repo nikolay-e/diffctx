@@ -17,7 +17,7 @@ def test_invalid_directory_path(run_mapper, capsys):
     assert not run_mapper([dir_name])
     captured = capsys.readouterr()
 
-    assert "Error:" in captured.err
+    assert "diffctx: error:" in captured.err
     assert dir_name in captured.err
     assert "No matches" in captured.err or "does not exist" in captured.err
 
@@ -81,7 +81,7 @@ def test_output_path_is_directory(temp_project, run_mapper, capsys):
     assert not run_mapper([".", "-o", str(output_should_be_file)])
     captured = capsys.readouterr()
 
-    assert "Error:" in captured.err
+    assert "diffctx: error:" in captured.err
     assert "is a directory" in captured.err
 
     assert output_should_be_file.is_dir()
@@ -94,14 +94,14 @@ def test_output_path_is_directory(temp_project, run_mapper, capsys):
 def test_negative_max_depth(temp_project):
     result = run_diffctx_subprocess([".", "--max-depth", "-1"], cwd=temp_project)
     assert result.returncode != 0
-    assert "Error:" in result.stderr
+    assert "diffctx: error:" in result.stderr
     assert "max-depth" in result.stderr.lower()
 
 
 def test_negative_max_file_bytes(temp_project):
     result = run_diffctx_subprocess([".", "--max-file-bytes", "-1"], cwd=temp_project)
     assert result.returncode != 0
-    assert "Error:" in result.stderr
+    assert "diffctx: error:" in result.stderr
     assert "max-file-bytes" in result.stderr.lower()
 
 
@@ -128,7 +128,7 @@ def test_oserror_accessing_directory(temp_project, monkeypatch, capsys):
 
     assert exc_info.value.code == 1
     captured = capsys.readouterr()
-    assert "Error:" in captured.err
+    assert "diffctx: error:" in captured.err
     assert "Cannot access" in captured.err
 
 

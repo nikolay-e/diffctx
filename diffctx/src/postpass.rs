@@ -58,9 +58,16 @@ fn pick_smallest_fitting(
     candidates: &[Fragment],
     selected_ids: &FxHashSet<FragmentId>,
     budget_left: u32,
+    core_ids: &FxHashSet<FragmentId>,
 ) -> Option<Fragment> {
     let mut sorted: Vec<&Fragment> = candidates.iter().collect();
-    sorted.sort_by_key(|f| f.token_count);
+    // Prefer a fragment that actually covers the diff hunk (core_ids, i.e.
+    // what render.rs marks `role: "changed"`) over an unrelated same-file
+    // fragment (e.g. a one-line function_signature stub). Sorting by
+    // token_count alone picks whichever candidate is smallest regardless of
+    // relevance, which can silently hide the real change behind a tiny
+    // signature-only stub for the same file (#83).
+    sorted.sort_by_key(|f| (!core_ids.contains(&f.id), f.token_count));
     for cand in sorted {
         if cand.token_count == 0 || selected_ids.contains(&cand.id) {
             continue;
@@ -208,6 +215,7 @@ pub fn ensure_changed_files_represented(
     root_dir: &Path,
     preferred_revs: &[String],
     mut batch_reader: Option<&mut CatFileBatch>,
+    core_ids: &FxHashSet<FragmentId>,
 ) {
     let selected_paths: FxHashSet<String> = selected
         .iter()
@@ -258,7 +266,9 @@ pub fn ensure_changed_files_represented(
             candidates
         };
 
-        if let Some(picked) = pick_smallest_fitting(&candidates, &selected_ids, budget_left) {
+        if let Some(picked) =
+            pick_smallest_fitting(&candidates, &selected_ids, budget_left, core_ids)
+        {
             if !interval_idx.overlaps(&picked) {
                 budget_left = budget_left.saturating_sub(picked.token_count);
                 selected_ids.insert(picked.id.clone());
@@ -266,5 +276,98 @@ pub fn ensure_changed_files_represented(
                 selected.push(picked);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn frag(
+        path: &str,
+        start: u32,
+        end: u32,
+        kind: crate::types::FragmentKind,
+        tokens: u32,
+    ) -> Fragment {
+        Fragment {
+            id: FragmentId::new(Arc::from(path), start, end),
+            kind,
+            content: Arc::from(format!("fragment {path}:{start}-{end}")),
+            identifiers: FxHashSet::default(),
+            token_count: tokens,
+            symbol_name: None,
+        }
+    }
+
+    /// Regression for #83: when a changed file has no selected fragment and
+    /// the postpass fallback must pick one, a same-file signature stub that
+    /// is merely *smaller* must not be preferred over a same-file fragment
+    /// that actually covers the diff hunk (core_ids), as long as the core
+    /// fragment also fits the remaining budget.
+    #[test]
+    fn ensure_changed_files_represented_prefers_core_fragment_when_it_fits() {
+        let core = frag("a.ts", 10, 20, crate::types::FragmentKind::Function, 60);
+        let stub = frag(
+            "a.ts",
+            10,
+            10,
+            crate::types::FragmentKind::FunctionSignature,
+            10,
+        );
+        let all_fragments = vec![core.clone(), stub.clone()];
+        let core_ids: FxHashSet<FragmentId> = std::iter::once(core.id.clone()).collect();
+        let changed_files = vec![PathBuf::from("a.ts")];
+        let mut selected: Vec<Fragment> = Vec::new();
+
+        ensure_changed_files_represented(
+            &mut selected,
+            &all_fragments,
+            &changed_files,
+            100,
+            Path::new("."),
+            &[],
+            None,
+            &core_ids,
+        );
+
+        assert_eq!(selected.len(), 1, "expected exactly one fallback fragment");
+        assert_eq!(
+            selected[0].id, core.id,
+            "fallback picked the signature stub instead of the fragment covering the actual diff hunk"
+        );
+    }
+
+    /// When the core fragment does NOT fit the remaining budget, falling
+    /// back to the smaller non-core stub is still the correct behavior
+    /// (some representation beats none).
+    #[test]
+    fn ensure_changed_files_represented_falls_back_to_stub_when_core_does_not_fit() {
+        let core = frag("a.ts", 10, 20, crate::types::FragmentKind::Function, 60);
+        let stub = frag(
+            "a.ts",
+            10,
+            10,
+            crate::types::FragmentKind::FunctionSignature,
+            10,
+        );
+        let all_fragments = vec![core.clone(), stub.clone()];
+        let core_ids: FxHashSet<FragmentId> = std::iter::once(core.id.clone()).collect();
+        let changed_files = vec![PathBuf::from("a.ts")];
+        let mut selected: Vec<Fragment> = Vec::new();
+
+        ensure_changed_files_represented(
+            &mut selected,
+            &all_fragments,
+            &changed_files,
+            15,
+            Path::new("."),
+            &[],
+            None,
+            &core_ids,
+        );
+
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].id, stub.id);
     }
 }

@@ -17,7 +17,7 @@ each.
 | Code review | yes | Diff-mode of own tool: `diffctx --diff <range>` |
 | CLI smoke | yes | See CLI Smoke Recipes |
 | Real-world test-repo sweep | yes | MANDATORY every round — see Real-World Test-Repo Sweep |
-| SonarCloud | no | Project NOT registered on SonarCloud |
+| SonarCloud | yes | Project key `nikolay-e_TreeMapper` (legacy pre-rebrand name); see SonarCloud section below |
 | autoqa pipeline | no | CLI tool, no HTTP API surface |
 | K8s logs / ArgoCD | no | No deployment to a cluster |
 | Browser QA / Walkthrough | no | No UI |
@@ -222,6 +222,45 @@ WITHOUT `--features python` / `cargo test --lib` for the pure-Rust paths).
 all files exceeded size cap); output empty.` and emits an 11-token YAML
 skeleton. Not a regression — this is the actionable-error contract. CLI smoke
 check should accept the warning and the empty `fragments:` list, NOT fail on it.
+
+## SonarCloud IS Registered (project key `nikolay-e_TreeMapper`)
+
+The applicability matrix previously said "not registered" — wrong, and it sat
+uncorrected across at least one QA pass while every PR's `SonarCloud Code
+Analysis` check quietly passed unread. The project key still carries the
+pre-rebrand `TreeMapper` name; don't be thrown by the mismatch with the repo
+name. Run the standard `/qa` skill SonarCloud step (Keychain token, HTTP Basic,
+`projectKeys=nikolay-e_TreeMapper`) every pass — do not re-trust a stale
+"N/A" note in this matrix without checking `gh pr view <N> --json
+statusCheckRollup` for a `SonarCloud Code Analysis` entry first.
+
+## `pythonsecurity:S8707` / `S8705` — Bulk False-Positive for This Project
+
+New Sonar rule pair ("Agentic workflows should not be vulnerable to path/
+argument injection") flags any subprocess/file-path call built from CLI-args,
+framed around an LLM-orchestrator-with-adversarial-input threat model. For a
+local CLI tool whose entire job is reading/writing whatever path the invoking
+user names (diffctx itself), plus internal benchmark/dev scripts run directly
+by a trusted local operator, there is no privilege boundary being crossed —
+same category as `cat`/`cp`/`rm` taking a user-supplied path. Verified
+repo-wide zero `shell=True`/`os.system`/`os.popen` (all subprocess calls use
+safe list-argv form) before bulk-resolving 27 instances as `falsepositive` via
+`POST /api/issues/do_transition` (see `/qa` skill SonarCloud section for the
+token/auth pattern). Re-triage only if a NEW instance appears in code that
+crosses an actual trust boundary (e.g. a future HTTP-exposed surface).
+
+## Cognitive-Complexity Refactors Are Safe Mechanical Extractions Here
+
+`benchmarks/*.py` has no dedicated unit tests for its analysis/report
+functions (by design — no-unit-tests policy, and these are integration-style
+CLI scripts). When cutting Sonar's `python:S3776` cognitive-complexity
+findings there, verify behavior preservation via: `python -m py_compile` on
+every touched file, the full `pytest -q` suite (covers `benchmarks.adapters`
+indirectly), and `pre-commit run --all-files` (mypy strict + ruff + pylint
+duplicate-code all catch a surprising fraction of extraction mistakes). Pure
+extract-a-helper-function refactors (no logic change) are safe without
+dedicated coverage; do not attempt behavior-changing "simplifications" in the
+same pass.
 
 ---
 

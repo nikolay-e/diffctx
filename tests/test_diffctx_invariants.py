@@ -241,3 +241,29 @@ def test_diff_context_merges_contiguous_fragments(tmp_path):
     for f in fragments:
         start, end = (int(x) for x in f["lines"].split("-"))
         assert start <= end, f"fragment line range inverted: {f['lines']}"
+
+
+def test_diff_context_scopes_markdown_preamble_change_not_whole_file(tmp_path):
+    """Regression (#91): a change to a lone H1's own preamble (before its
+    first `##` child heading) used to select a fragment spanning the H1's
+    entire nested span — the rest of the document, down to EOF — instead of
+    just the touched paragraph, because a heading's fragment extended to the
+    next same-or-higher-level heading rather than the very next heading."""
+    import json
+
+    repo = Pygit2Repo(tmp_path / "repo")
+    body = "\n".join(f"## Section {i}\nBody text for section {i}.\n" for i in range(8))
+    repo.add_file("NOTES.md", f"# Notes\n\nOriginal preamble sentence.\n\n{body}")
+    base = repo.commit("initial")
+    repo.add_file("NOTES.md", f"# Notes\n\nUpdated preamble sentence.\n\n{body}")
+    head = repo.commit("update preamble")
+
+    stdout, _ = _run(repo.path, [".", "--diff", f"{base}..{head}", "-f", "json"])
+    fragments = json.loads(stdout)["fragments"]
+
+    changed = [f for f in fragments if f.get("role") == "changed" and f["path"] == "NOTES.md"]
+    assert changed, "expected a role=changed fragment for NOTES.md"
+    for f in changed:
+        start, end = (int(x) for x in f["lines"].split("-"))
+        assert end - start < 8, f"H1 preamble fragment should stay small, got lines {f['lines']} (whole-file dump?)"
+        assert "Section 7" not in f["content"], "fragment should not pull in the last child section"

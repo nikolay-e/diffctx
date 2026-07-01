@@ -443,5 +443,7 @@ def test_benchmark_instance_is_immutable():
         gold_files=frozenset(),
         language="python",
     )
-    with pytest.raises(Exception):  # FrozenInstanceError
+    import dataclasses
+
+    with pytest.raises(dataclasses.FrozenInstanceError):
         inst.repo = "other/repo"  # type: ignore[misc]

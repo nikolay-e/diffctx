@@ -161,7 +161,7 @@ def _process_manifest(
     )
 
 
-def main() -> int:
+def _build_argparser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--winner", type=Path, required=True)
     p.add_argument("--manifests-dir", type=Path, required=True)
@@ -203,58 +203,53 @@ def main() -> int:
         "DIFFCTX_OP_GRAPH_DEPTH is set in the calling shell). Non-EGO scoring "
         "modes ignore --depths (PPR uses alpha; BM25 has no graph traversal).",
     )
-    args = p.parse_args()
+    return p
 
-    repo_root = args.repos_dir or default_repos_dir()
-    report_and_maybe_exit(probe_resources(min_memory_gb=args.min_memory_gb, repos_dir=repo_root, min_disk_gb=args.min_disk_gb))
 
-    params = _load_winner(args.winner)
-    print(f"Method: {args.baseline} | budget={params.budget} τ={params.tau} cbf={params.core_budget_fraction}")
+def _parse_budgets_list(args: argparse.Namespace) -> list[int]:
+    if not args.budgets.strip():
+        return []
+    budgets_list = [int(x.strip()) for x in args.budgets.split(",") if x.strip()]
+    if args.baseline != "diffctx":
+        # The reuse optimization is diffctx-specific; bm25/aider have no
+        # shared state across budgets. Fall back to per-budget loops.
+        print(
+            f"--budgets set with non-diffctx baseline ({args.baseline}); looping per budget without compute_scored_state reuse."
+        )
+    return budgets_list
 
-    manifests = sorted(args.manifests_dir.glob("test_*.txt"))
-    if not manifests:
-        print(f"No test_*.txt in {args.manifests_dir}")
-        return 1
 
-    adapters = default_test_adapters() + default_calibration_pool_adapters()
+def _parse_depths_list(args: argparse.Namespace, params: RunParams) -> list[int]:
+    if not args.depths.strip():
+        return []
+    depths_list = [int(x.strip()) for x in args.depths.split(",") if x.strip()]
+    if args.baseline != "diffctx" or params.scoring != "ego":
+        print(f"--depths set but baseline={args.baseline} scoring={params.scoring}; depths only affect EGO. Ignoring.")
+        return []
+    return depths_list
 
+
+def _run_depth_manifest_sweep(
+    manifests: list[Path],
+    adapters,
+    args: argparse.Namespace,
+    params: RunParams,
+    budgets_list: list[int],
+    eval_fn,
+    eval_all_cells_fn,
+    loop_depths: list[int | None],
+) -> tuple[list, list]:
+    """Loop EGO traversal radius as the outer axis, manifests as the inner axis.
+
+    Heavy phase (graph build + scoring) re-runs per depth because rel_scores
+    depend on radius; budgets within a depth share scored state. When
+    `loop_depths == [None]`, depth is whatever DIFFCTX_OP_GRAPH_DEPTH the
+    parent shell set (default 2 from MODE.ego_depth_extended).
+    """
     import os as _os
 
-    _os.environ["DIFFCTX_BENCH_TIMEOUT_SEC"] = str(args.timeout_per_instance)
-
-    budgets_list: list[int] = []
-    if args.budgets.strip():
-        budgets_list = [int(x.strip()) for x in args.budgets.split(",") if x.strip()]
-        if args.baseline != "diffctx":
-            # The reuse optimization is diffctx-specific; bm25/aider have no
-            # shared state across budgets. Fall back to per-budget loops.
-            print(
-                f"--budgets set with non-diffctx baseline ({args.baseline}); "
-                "looping per budget without compute_scored_state reuse."
-            )
-
-    depths_list: list[int] = []
-    if args.depths.strip():
-        depths_list = [int(x.strip()) for x in args.depths.split(",") if x.strip()]
-        if args.baseline != "diffctx" or params.scoring != "ego":
-            print(f"--depths set but baseline={args.baseline} scoring={params.scoring}; " "depths only affect EGO. Ignoring.")
-            depths_list = []
-
-    eval_fn = _make_eval_fn(args.baseline, repo_root, request_timeout=args.timeout_per_instance)
-    eval_all_cells_fn = (
-        make_diffctx_eval_all_cells_fn(repo_root) if args.baseline == "diffctx" and len(budgets_list) > 1 else None
-    )
-
-    args.out.mkdir(parents=True, exist_ok=True)
     reports = []
     all_results = []
-
-    # When --depths is set, loop EGO traversal radius as the outer axis.
-    # Heavy phase (graph build + scoring) re-runs per depth because
-    # rel_scores depend on radius; budgets within a depth share scored state.
-    # When --depths is empty, the depth is whatever DIFFCTX_OP_GRAPH_DEPTH
-    # the parent shell set (default 2 from MODE.ego_depth_extended).
-    loop_depths: list[int | None] = list(depths_list) if depths_list else [None]
     for depth in loop_depths:
         if depth is not None:
             _os.environ["DIFFCTX_OP_GRAPH_DEPTH"] = str(depth)
@@ -276,11 +271,13 @@ def main() -> int:
                 if depth is not None:
                     r.extra.setdefault("ego_depth", depth)
             all_results.extend(results)
-            report = aggregate_test_set(name, results)
-            reports.append(report)
+            reports.append(aggregate_test_set(name, results))
             depth_suffix = f"_L{depth}" if depth is not None else ""
             (args.out / f"{name}{depth_suffix}.json").write_text(json.dumps([asdict(r) for r in results], indent=2, default=str))
+    return reports, all_results
 
+
+def _write_paper_summary(args: argparse.Namespace, params: RunParams, reports: list, all_results: list) -> None:
     paper_table = render_paper_table(reports)
     lang_agg = aggregate_by_language(all_results)
     lang_table = render_language_table(lang_agg)
@@ -298,6 +295,43 @@ def main() -> int:
     )
     (args.out / "PAPER_TABLE.md").write_text(summary)
     print(f"\nWrote per-benchmark JSON + PAPER_TABLE.md to {args.out}")
+
+
+def main() -> int:
+    args = _build_argparser().parse_args()
+
+    repo_root = args.repos_dir or default_repos_dir()
+    report_and_maybe_exit(probe_resources(min_memory_gb=args.min_memory_gb, repos_dir=repo_root, min_disk_gb=args.min_disk_gb))
+
+    params = _load_winner(args.winner)
+    print(f"Method: {args.baseline} | budget={params.budget} τ={params.tau} cbf={params.core_budget_fraction}")
+
+    manifests = sorted(args.manifests_dir.glob("test_*.txt"))
+    if not manifests:
+        print(f"No test_*.txt in {args.manifests_dir}")
+        return 1
+
+    adapters = default_test_adapters() + default_calibration_pool_adapters()
+
+    import os as _os
+
+    _os.environ["DIFFCTX_BENCH_TIMEOUT_SEC"] = str(args.timeout_per_instance)
+
+    budgets_list = _parse_budgets_list(args)
+    depths_list = _parse_depths_list(args, params)
+
+    eval_fn = _make_eval_fn(args.baseline, repo_root, request_timeout=args.timeout_per_instance)
+    eval_all_cells_fn = (
+        make_diffctx_eval_all_cells_fn(repo_root) if args.baseline == "diffctx" and len(budgets_list) > 1 else None
+    )
+
+    args.out.mkdir(parents=True, exist_ok=True)
+    loop_depths: list[int | None] = list(depths_list) if depths_list else [None]
+    reports, all_results = _run_depth_manifest_sweep(
+        manifests, adapters, args, params, budgets_list, eval_fn, eval_all_cells_fn, loop_depths
+    )
+
+    _write_paper_summary(args, params, reports, all_results)
 
     # Aider keeps a long-lived helper subprocess; shut it down cleanly.
     if hasattr(eval_fn, "shutdown"):

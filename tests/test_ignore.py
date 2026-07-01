@@ -598,6 +598,62 @@ def test_diffctx_dir_ignore_hierarchical(temp_project, run_mapper):
     assert find_node_by_path(result, ["subdir", "keep.txt"]) is not None
 
 
+def _git_init(project_dir):
+    import shutil
+    import subprocess
+
+    # temp_project seeds a fake .git/config (plain text, not real git-config
+    # syntax) so other tests can assert .git/ is excluded by default ignores.
+    # Remove it before a real `git init`, which otherwise chokes trying to
+    # parse that placeholder as an existing repo config.
+    shutil.rmtree(project_dir / ".git", ignore_errors=True)
+    subprocess.run(["git", "init", "-q"], cwd=project_dir, check=True)
+    subprocess.run(["git", "config", "user.email", "t@t.local"], cwd=project_dir, check=True)
+    subprocess.run(["git", "config", "user.name", "T"], cwd=project_dir, check=True)
+
+
+def test_diffctx_dir_ignore_inside_git_repo(temp_project, run_mapper):
+    """Regression: .diffctx/ignore was silently dropped whenever the scanned
+    directory was a git repository (#84) — _find_ignore_files_via_git never
+    searched for it at all."""
+    from .utils import find_node_by_path
+
+    _git_init(temp_project)
+    config_dir = temp_project / ".diffctx"
+    config_dir.mkdir(exist_ok=True)
+    (config_dir / "ignore").write_text("*.secret\n")
+    (temp_project / "passwords.secret").touch()
+    (temp_project / "keep.txt").touch()
+
+    output_path = temp_project / "git_dir_ignore_output.yaml"
+    assert run_mapper([".", "-o", str(output_path)])
+    result = load_yaml(output_path)
+
+    assert find_node_by_path(result, ["passwords.secret"]) is None
+    assert find_node_by_path(result, ["keep.txt"]) is not None
+
+
+def test_nested_gitignore_inside_git_repo(temp_project, run_mapper):
+    """Regression: nested (non-root) .gitignore files were silently dropped
+    inside a git repo (#84) — the git-based lookup used a literal pathspec
+    that only matches the exact root-level path, not recursively."""
+    from .utils import find_node_by_path
+
+    _git_init(temp_project)
+    subdir = temp_project / "sub"
+    subdir.mkdir()
+    (subdir / ".gitignore").write_text("*.tmp\n")
+    (subdir / "drop.tmp").touch()
+    (subdir / "keep.txt").touch()
+
+    output_path = temp_project / "nested_gitignore_output.yaml"
+    assert run_mapper([".", "-o", str(output_path)])
+    result = load_yaml(output_path)
+
+    assert find_node_by_path(result, ["sub", "drop.tmp"]) is None
+    assert find_node_by_path(result, ["sub", "keep.txt"]) is not None
+
+
 def test_diffctx_dir_ignore_parent(tmp_path, run_mapper):
     from .utils import find_node_by_path
 

@@ -138,7 +138,7 @@ def test_stdout_vs_file_output_consistency(temp_project):
 def test_stdout_output_error_handling(temp_project):
     result = run_diffctx_subprocess(["non_existent_dir", "-o", "-"], cwd=temp_project)
     assert result.returncode != 0
-    assert "Error:" in result.stderr
+    assert "diffctx: error:" in result.stderr
     assert result.stdout.strip() == ""
 
 

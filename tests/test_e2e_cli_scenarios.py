@@ -155,6 +155,28 @@ class TestOutputFeedbackJourneys:
         assert out.exists()
         assert "Saved to" not in result.stderr
 
+    @staticmethod
+    def _make_many_small_files(directory, count=200, size=10_000):
+        for i in range(count):
+            (directory / f"file_{i}.txt").write_text("x" * size)
+
+    def test_bare_invocation_warns_at_lower_size_threshold(self, tmp_path):
+        """Regression (#87): a bare `diffctx` with no path argument at all —
+        the most common "just try it" first invocation, and the easiest to
+        run somewhere unintended — used to share the same 10 MB warning
+        threshold as an explicit-path invocation, so a multi-MB accidental
+        dump (e.g. in /tmp) produced zero advisory."""
+        self._make_many_small_files(tmp_path)
+        result = run_diffctx_subprocess([], cwd=tmp_path)
+        assert result.returncode == EXIT_OK
+        assert "Warning: output is" in result.stderr
+
+    def test_explicit_path_keeps_higher_size_threshold(self, tmp_path):
+        self._make_many_small_files(tmp_path)
+        result = run_diffctx_subprocess(["."], cwd=tmp_path)
+        assert result.returncode == EXIT_OK
+        assert "Warning: output is" not in result.stderr
+
 
 class TestUsageErrorJourneys:
     @pytest.mark.parametrize(
@@ -239,6 +261,20 @@ class TestDiffModeJourneys:
         result = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD"], cwd=temp_project)
         assert result.returncode == EXIT_ENVIRONMENT
         assert "requires a git repository" in result.stderr
+
+    def test_diff_in_repo_with_no_commits_is_clean_environment_error(self, tmp_path):
+        """Regression (#86): a `git init`-only repo (no commits yet) used to
+        leak a raw `fatal: ambiguous argument 'HEAD'` git error plus git's
+        own unrelated `--` separator advice, instead of a diffctx-native
+        message like the "not a git repository at all" case already had."""
+        import subprocess
+
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        result = run_diffctx_subprocess([".", "--diff"], cwd=tmp_path)
+        assert result.returncode == EXIT_ENVIRONMENT
+        assert "requires at least one commit" in result.stderr
+        assert "ambiguous argument" not in result.stderr
+        assert "Use '--' to separate paths" not in result.stderr
 
     def test_diff_invalid_range_fails_cleanly(self, diff_repo):
         result = run_diffctx_subprocess([".", "--diff", "no_such_ref..HEAD"], cwd=diff_repo.path)
