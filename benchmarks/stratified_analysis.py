@@ -40,60 +40,73 @@ from benchmarks.stats import bh_fdr, bootstrap_ci, holm_correct, paired_bootstra
 # ---------------------------------------------------------------------------
 
 
+def _load_cell_info(cell: Path) -> dict | None:
+    """Read and validate a cell's metadata.json; None if unusable."""
+    meta_path = cell / "metadata.json"
+    if not meta_path.exists():
+        return None
+    try:
+        meta = json.loads(meta_path.read_text())
+    except (ValueError, OSError):
+        return None
+    cell_info = meta.get("cell") or {}
+    method = cell_info.get("method")
+    budget = cell_info.get("budget")
+    test_set = cell_info.get("test_set")
+    if not method or budget is None or test_set is None:
+        return None
+    return {"method": method, "budget": budget, "depth": cell_info.get("depth"), "test_set": test_set}
+
+
+def _row_from_checkpoint_line(line: str, info: dict) -> dict | None:
+    """Parse one checkpoint JSONL line into a long-form row; None to skip."""
+    line = line.strip()
+    if not line:
+        return None
+    try:
+        r = json.loads(line)
+    except ValueError:
+        return None
+    ex = r.get("extra") or {}
+    depth = info["depth"]
+    return {
+        "instance_id": r.get("instance_id"),
+        "dataset": info["test_set"],
+        "method": info["method"],
+        "budget": int(info["budget"]),
+        "depth": int(depth) if depth is not None else -1,
+        "file_recall": float(r.get("file_recall") or 0.0),
+        "file_precision": float(r.get("file_precision") or 0.0),
+        "used_tokens": int(r.get("used_tokens") or 0),
+        "elapsed_seconds": float(r.get("elapsed_seconds") or 0.0),
+        "language": str(ex.get("language") or "unknown"),
+        "n_gold": int(ex.get("n_gold") or 0),
+        "n_changed_files": int(ex.get("n_changed_files") or 0),
+        "diff_size_lines": int(ex.get("diff_size_lines") or 0),
+        "gold_to_changed_ratio": float(ex.get("gold_to_changed_ratio") or 0.0),
+        "fragment_count": int(ex.get("fragment_count") or 0),
+        "n_selected": int(ex.get("n_selected") or ex.get("fragment_count") or 0),
+        "status": str(ex.get("status") or "missing"),
+    }
+
+
 def load_long(cells_dir: Path) -> list[dict]:
     """Walk every cell-* checkpoint and emit one row per (instance, cell)."""
     rows: list[dict] = []
     for cell in sorted(cells_dir.iterdir()):
         if not cell.is_dir() or not cell.name.startswith("cell-"):
             continue
-        meta_path = cell / "metadata.json"
-        if not meta_path.exists():
-            continue
-        try:
-            meta = json.loads(meta_path.read_text())
-        except (ValueError, OSError):
-            continue
-        cell_info = meta.get("cell") or {}
-        method = cell_info.get("method")
-        budget = cell_info.get("budget")
-        depth = cell_info.get("depth")
-        test_set = cell_info.get("test_set")
-        if not method or budget is None or test_set is None:
+        info = _load_cell_info(cell)
+        if info is None:
             continue
         ckpts = list(cell.glob("*.checkpoint.jsonl"))
         if not ckpts:
             continue
         with ckpts[0].open() as f:
             for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    r = json.loads(line)
-                except ValueError:
-                    continue
-                ex = r.get("extra") or {}
-                rows.append(
-                    {
-                        "instance_id": r.get("instance_id"),
-                        "dataset": test_set,
-                        "method": method,
-                        "budget": int(budget),
-                        "depth": int(depth) if depth is not None else -1,
-                        "file_recall": float(r.get("file_recall") or 0.0),
-                        "file_precision": float(r.get("file_precision") or 0.0),
-                        "used_tokens": int(r.get("used_tokens") or 0),
-                        "elapsed_seconds": float(r.get("elapsed_seconds") or 0.0),
-                        "language": str(ex.get("language") or "unknown"),
-                        "n_gold": int(ex.get("n_gold") or 0),
-                        "n_changed_files": int(ex.get("n_changed_files") or 0),
-                        "diff_size_lines": int(ex.get("diff_size_lines") or 0),
-                        "gold_to_changed_ratio": float(ex.get("gold_to_changed_ratio") or 0.0),
-                        "fragment_count": int(ex.get("fragment_count") or 0),
-                        "n_selected": int(ex.get("n_selected") or ex.get("fragment_count") or 0),
-                        "status": str(ex.get("status") or "missing"),
-                    }
-                )
+                row = _row_from_checkpoint_line(line, info)
+                if row is not None:
+                    rows.append(row)
     return rows
 
 
@@ -223,6 +236,67 @@ def _paired_pull(
     return a_vals, b_vals, n_a, n_b, len(a_vals)
 
 
+def _pairwise_bucket_rows(
+    cell_a: dict[str, np.ndarray],
+    cell_b: dict[str, np.ndarray],
+    a_cfg: tuple[str, int, int],
+    b_cfg: tuple[str, int, int],
+    ds: str,
+    label: str,
+    claim_id: str,
+    correction: str,
+    bucket_field: str,
+    bucket_fn,
+) -> list[dict]:
+    """One dataset's worth of per-bucket paired comparisons for a single pair."""
+    bucket_defs = _RATIO_BUCKETS if bucket_field == "gold_to_changed_ratio" else _GOLD_BUCKETS
+    rows: list[dict] = []
+    for bucket_def in bucket_defs:
+        bucket_label = bucket_def[0]
+        a_vals, b_vals, n_a, n_b, n_paired = _paired_pull(cell_a, cell_b, bucket_label, bucket_field, bucket_fn)
+        if n_paired < 6:
+            continue
+        boot = paired_bootstrap_delta(a_vals, b_vals, n_iter=5000)
+        wilc = wilcoxon_paired(a_vals, b_vals)
+        rows.append(
+            {
+                "claim_id": claim_id,
+                "correction": correction,
+                "pair_label": label,
+                "a": f"{a_cfg[0]} b={a_cfg[1]} L={a_cfg[2]}",
+                "b": f"{b_cfg[0]} b={b_cfg[1]} L={b_cfg[2]}",
+                "dataset": ds,
+                "bucket": bucket_label,
+                "n_a": n_a,
+                "n_b": n_b,
+                "n_paired": n_paired,
+                # Cell-mean for diagnostic only; HEADLINE Δ must be `delta` (paired).
+                "mean_a_marginal": float(np.mean(a_vals)),
+                "mean_b_marginal": float(np.mean(b_vals)),
+                "delta": boot["delta_mean"],
+                "ci_lo": boot["ci_lo"],
+                "ci_hi": boot["ci_hi"],
+                "p_boot": boot["p_value"],
+                "p_wilcoxon": wilc["p_value"],
+            }
+        )
+    return rows
+
+
+def _apply_family_correction(out: list[dict]) -> None:
+    """Apply Holm/BH-FDR correction within each (claim_id, correction) family, in place."""
+    by_claim: dict[tuple[str, str], list[int]] = defaultdict(list)
+    for i, r in enumerate(out):
+        by_claim[(r["claim_id"], r["correction"])].append(i)
+    for (_claim_id, correction), idxs in by_claim.items():
+        ps = [out[i]["p_boot"] for i in idxs]
+        corrected = bh_fdr(ps, q=0.10) if correction == "fdr" else holm_correct(ps)
+        for i, c in zip(idxs, corrected):
+            out[i]["p_adj"] = c["p_adj"]
+            out[i]["adj_reject"] = c["rejected"]
+            out[i]["family_size"] = len(idxs)
+
+
 def pairwise_comparisons(
     by_cell: dict[tuple[str, int, int, str], dict[str, np.ndarray]],
     pairs: Sequence[tuple[tuple[str, int, int], tuple[str, int, int], str, str, str]],
@@ -251,47 +325,10 @@ def pairwise_comparisons(
             cell_b = by_cell.get((*b_cfg, ds))
             if cell_a is None or cell_b is None:
                 continue
-            bucket_defs = _RATIO_BUCKETS if bucket_field == "gold_to_changed_ratio" else _GOLD_BUCKETS
-            for bucket_def in bucket_defs:
-                bucket_label = bucket_def[0]
-                a_vals, b_vals, n_a, n_b, n_paired = _paired_pull(cell_a, cell_b, bucket_label, bucket_field, bucket_fn)
-                if n_paired < 6:
-                    continue
-                boot = paired_bootstrap_delta(a_vals, b_vals, n_iter=5000)
-                wilc = wilcoxon_paired(a_vals, b_vals)
-                out.append(
-                    {
-                        "claim_id": claim_id,
-                        "correction": correction,
-                        "pair_label": label,
-                        "a": f"{a_cfg[0]} b={a_cfg[1]} L={a_cfg[2]}",
-                        "b": f"{b_cfg[0]} b={b_cfg[1]} L={b_cfg[2]}",
-                        "dataset": ds,
-                        "bucket": bucket_label,
-                        "n_a": n_a,
-                        "n_b": n_b,
-                        "n_paired": n_paired,
-                        # Cell-mean for diagnostic only; HEADLINE Δ must be `delta` (paired).
-                        "mean_a_marginal": float(np.mean(a_vals)),
-                        "mean_b_marginal": float(np.mean(b_vals)),
-                        "delta": boot["delta_mean"],
-                        "ci_lo": boot["ci_lo"],
-                        "ci_hi": boot["ci_hi"],
-                        "p_boot": boot["p_value"],
-                        "p_wilcoxon": wilc["p_value"],
-                    }
-                )
-    # Apply correction within each (claim_id, correction) family separately.
-    by_claim: dict[tuple[str, str], list[int]] = defaultdict(list)
-    for i, r in enumerate(out):
-        by_claim[(r["claim_id"], r["correction"])].append(i)
-    for (_claim_id, correction), idxs in by_claim.items():
-        ps = [out[i]["p_boot"] for i in idxs]
-        corrected = bh_fdr(ps, q=0.10) if correction == "fdr" else holm_correct(ps)
-        for i, c in zip(idxs, corrected):
-            out[i]["p_adj"] = c["p_adj"]
-            out[i]["adj_reject"] = c["rejected"]
-            out[i]["family_size"] = len(idxs)
+            out.extend(
+                _pairwise_bucket_rows(cell_a, cell_b, a_cfg, b_cfg, ds, label, claim_id, correction, bucket_field, bucket_fn)
+            )
+    _apply_family_correction(out)
     return out
 
 

@@ -40,9 +40,9 @@ def _ensure_git_repo(root_dir: Path) -> None:
             stderr=subprocess.DEVNULL,
             check=False,
         )
-    except (OSError, FileNotFoundError) as exc:
+    except OSError as exc:
         print(
-            f"diffctx: --diff requires git to be installed and on PATH ({exc}); " "install git or run without --diff.",
+            f"diffctx: --diff requires git to be installed and on PATH ({exc}); install git or run without --diff.",
             file=sys.stderr,
         )
         sys.exit(_EXIT_ENVIRONMENT)

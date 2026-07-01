@@ -239,6 +239,8 @@ _AIDER_PROC: _AiderProcess | None = None
 
 
 def _noop_shutdown() -> None:
+    # Satisfies the eval_fn.shutdown() contract; this baseline holds no
+    # per-run resources to release (worker pool state is process-global).
     pass
 
 
