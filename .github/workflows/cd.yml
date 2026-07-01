@@ -411,7 +411,13 @@ jobs:
 
       - name: Restore repository from bundle
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # RELEASE_PUSH_TOKEN (not GITHUB_TOKEN): main requires 5 status
+          # checks on every commit, and a freshly-created local commit has
+          # none. GITHUB_TOKEN's push is treated as the github-actions[bot]
+          # identity, which branch protection does NOT exempt; an admin's
+          # PAT authenticates as an actual repo admin, which the branch
+          # protection settings (enforce_admins: false) already exempt (#69).
+          GH_TOKEN: ${{ secrets.RELEASE_PUSH_TOKEN }}
           COMMIT_SHA: ${{ needs.prepare-version.outputs.commit_sha }}
           REPO_FULL_NAME: ${{ github.repository }}
         run: |
