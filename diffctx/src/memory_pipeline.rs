@@ -162,6 +162,7 @@ pub fn build_diff_context_in_memory(
         Path::new("."),
         &[],
         None,
+        &core_ids,
     );
 
     let dummy_root = Path::new(".");

@@ -412,6 +412,7 @@ pub fn select_with_params(
         &state.root_dir,
         &state.preferred_revs,
         batch_reader.as_mut(),
+        &state.core_ids,
     );
     if let Some(mut r) = batch_reader {
         r.close();
