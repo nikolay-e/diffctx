@@ -54,8 +54,8 @@ impl FragmentationStrategy for MarkdownStrategy {
         let total_lines = lines.len() as u32;
         let mut fragments: Vec<Fragment> = Vec::new();
 
-        for (idx, &(start_line, level, _)) in headings.iter().enumerate() {
-            let end_line = find_section_end(&headings, idx, level, total_lines);
+        for (idx, &(start_line, _level, _)) in headings.iter().enumerate() {
+            let end_line = find_section_end(&headings, idx, total_lines);
             if end_line < start_line {
                 continue;
             }
@@ -90,16 +90,57 @@ impl FragmentationStrategy for MarkdownStrategy {
     }
 }
 
-fn find_section_end(
-    headings: &[(u32, u32, String)],
-    idx: usize,
-    level: u32,
-    total_lines: u32,
-) -> u32 {
-    for &(next_line, next_level, _) in &headings[idx + 1..] {
-        if next_level <= level {
-            return next_line - 1;
-        }
+/// A heading's own fragment ends at the very next heading, regardless of
+/// level — not at the next heading of the *same or higher* level. The old
+/// same-or-higher rule made a heading's span include every nested
+/// subsection beneath it, so a lone top-level `#` heading (the common case:
+/// one H1 title, many `##`/`###` children) spanned the entire rest of the
+/// document. A one-line change in the H1's own preamble then flagged that
+/// all-encompassing fragment as `role: "changed"`, dumping the whole file
+/// instead of just the touched paragraph (#91).
+fn find_section_end(headings: &[(u32, u32, String)], idx: usize, total_lines: u32) -> u32 {
+    match headings.get(idx + 1) {
+        Some(&(next_line, _, _)) => next_line - 1,
+        None => total_lines,
     }
-    total_lines
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression for #91: a lone H1 title followed only by `##` children
+    /// must not produce a single fragment spanning the whole document — the
+    /// H1's own fragment is just its direct preamble, up to the first child.
+    #[test]
+    fn h1_fragment_stops_at_first_child_heading_not_eof() {
+        let content =
+            "# Title\n\nPreamble line.\n\n## Section One\nBody one.\n\n## Section Two\nBody two.\n";
+        let fragments = MarkdownStrategy.fragment(Arc::from("doc.md"), content);
+
+        let title = fragments
+            .iter()
+            .find(|f| f.content.starts_with("# Title"))
+            .expect("Title fragment present");
+        assert_eq!(title.id.start_line, 1);
+        assert_eq!(
+            title.id.end_line, 4,
+            "H1 fragment should stop before '## Section One', not run to EOF"
+        );
+    }
+
+    #[test]
+    fn sibling_headings_still_each_get_their_own_fragment() {
+        let content =
+            "## Section One\nBody one.\n\n## Section Two\nBody two.\n### Nested\nNested body.\n";
+        let fragments = MarkdownStrategy.fragment(Arc::from("doc.md"), content);
+        assert_eq!(fragments.len(), 3);
+
+        let nested = fragments
+            .iter()
+            .find(|f| f.content.starts_with("### Nested"))
+            .expect("Nested fragment present");
+        assert_eq!(nested.id.start_line, 6);
+        assert_eq!(nested.id.end_line, 8);
+    }
 }
