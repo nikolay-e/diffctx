@@ -54,6 +54,21 @@ def _ensure_git_repo(root_dir: Path, prog: str) -> None:
         )
         sys.exit(_EXIT_ENVIRONMENT)
 
+    head_result = subprocess.run(
+        ["git", "rev-parse", "--verify", "-q", "HEAD"],
+        cwd=str(root_dir),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if head_result.returncode != 0:
+        print(
+            f"{prog}: --diff requires at least one commit (no HEAD in this repository yet); "
+            "commit first, or run without --diff to map the working tree.",
+            file=sys.stderr,
+        )
+        sys.exit(_EXIT_ENVIRONMENT)
+
 
 def _diff_result_is_empty(result: dict[str, Any]) -> bool:
     count = result.get("fragment_count")
@@ -103,13 +118,19 @@ def _root_display_name(root_dir: Any) -> str:
 
 
 _LARGE_OUTPUT_WARN_BYTES = 10 * 1024 * 1024
+# A bare `diffctx` with no path argument at all is the most common "just try
+# it" first invocation — and the easiest to run somewhere unintended (e.g.
+# /tmp, $HOME). Use a much lower bar for that specific case; an explicit path
+# argument is a stronger signal the user knows what they're pointing at (#87).
+_LARGE_OUTPUT_WARN_BYTES_NO_EXPLICIT_PATH = 1 * 1024 * 1024
 
 
 def _warn_if_output_oversized(output_content: str, args: ParsedArgs) -> None:
     if args.no_content or args.diff_range:
         return
+    threshold = _LARGE_OUTPUT_WARN_BYTES_NO_EXPLICIT_PATH if args.no_explicit_paths else _LARGE_OUTPUT_WARN_BYTES
     size_bytes = len(output_content.encode("utf-8"))
-    if size_bytes < _LARGE_OUTPUT_WARN_BYTES:
+    if size_bytes < threshold:
         return
     mb = size_bytes / (1024 * 1024)
     print(

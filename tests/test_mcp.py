@@ -38,6 +38,42 @@ def _get_text(call_result: tuple) -> str:
     return content_blocks[0].text
 
 
+def _run_with_argv(main, argv):
+    import sys
+
+    old_argv = sys.argv
+    sys.argv = ["diffctx-mcp", *argv]
+    try:
+        main()
+    finally:
+        sys.argv = old_argv
+
+
+class TestMcpMainEntrypoint:
+    """Regression (#88): `diffctx-mcp --help` used to produce zero output on
+    both stdout and stderr — main() never parsed sys.argv at all before
+    falling through to the blocking run_server() call."""
+
+    def test_help_prints_usage_and_exits_zero(self, capsys):
+        from diffctx.mcp.__main__ import main
+
+        with pytest.raises(SystemExit) as exc_info:
+            _run_with_argv(main, ["--help"])
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        assert "usage:" in captured.out
+        assert captured.err == ""
+
+    def test_unrecognized_argument_errors_cleanly(self, capsys):
+        from diffctx.mcp.__main__ import main
+
+        with pytest.raises(SystemExit) as exc_info:
+            _run_with_argv(main, ["--bogus"])
+        assert exc_info.value.code == 2
+        captured = capsys.readouterr()
+        assert "unrecognized arguments" in captured.err
+
+
 @pytest.mark.timeout(30)
 class TestGetDiffContext:
     @pytest.mark.asyncio
