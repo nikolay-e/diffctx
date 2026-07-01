@@ -224,8 +224,9 @@ def test_write_string_to_file_directory_error(tmp_path):
     tree = {"name": "test", "type": "directory", "children": []}
     output_dir = tmp_path / "output_dir"
     output_dir.mkdir()
+    content = tree_to_string(tree, "yaml")
     with pytest.raises(IOError, match="Is a directory"):
-        write_string_to_file(tree_to_string(tree, "yaml"), output_dir, "yaml")
+        write_string_to_file(content, output_dir, "yaml")
 
 
 def test_write_tree_yaml_multiline_content():

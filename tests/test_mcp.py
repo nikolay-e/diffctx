@@ -110,38 +110,30 @@ class TestGetDiffContext:
 
     @pytest.mark.asyncio
     async def test_invalid_repo_path(self, server, tmp_path):
+        args = {"repo_path": str(tmp_path / "nonexistent"), "diff_range": "HEAD~1..HEAD"}
         with pytest.raises(ToolError, match="Not a directory"):
-            await server.call_tool(
-                "get_diff_context",
-                {"repo_path": str(tmp_path / "nonexistent"), "diff_range": "HEAD~1..HEAD"},
-            )
+            await server.call_tool("get_diff_context", args)
 
     @pytest.mark.asyncio
     async def test_not_a_git_repo(self, server, tmp_path):
         plain_dir = tmp_path / "not_a_repo"
         plain_dir.mkdir()
+        args = {"repo_path": str(plain_dir), "diff_range": "HEAD~1..HEAD"}
         with pytest.raises(ToolError, match="Not a git repository"):
-            await server.call_tool(
-                "get_diff_context",
-                {"repo_path": str(plain_dir), "diff_range": "HEAD~1..HEAD"},
-            )
+            await server.call_tool("get_diff_context", args)
 
     @pytest.mark.asyncio
     async def test_allowed_paths_enforcement(self, server, mcp_repo, monkeypatch):
         monkeypatch.setenv("DIFFCTX_ALLOWED_PATHS", "/some/other/path")
+        args = {"repo_path": str(mcp_repo.path), "diff_range": "HEAD~1..HEAD"}
         with pytest.raises(ToolError, match="not in allowed paths"):
-            await server.call_tool(
-                "get_diff_context",
-                {"repo_path": str(mcp_repo.path), "diff_range": "HEAD~1..HEAD"},
-            )
+            await server.call_tool("get_diff_context", args)
 
     @pytest.mark.asyncio
     async def test_invalid_diff_range(self, server, mcp_repo):
+        args = {"repo_path": str(mcp_repo.path), "diff_range": "nonexistent_ref..HEAD"}
         with pytest.raises(ToolError):
-            await server.call_tool(
-                "get_diff_context",
-                {"repo_path": str(mcp_repo.path), "diff_range": "nonexistent_ref..HEAD"},
-            )
+            await server.call_tool("get_diff_context", args)
 
 
 class TestGetTreeMap:
@@ -230,8 +222,6 @@ class TestPathTraversalContainment:
 
     @pytest.mark.asyncio
     async def test_get_tree_map_subdirectory_traversal_rejected(self, server, mcp_repo):
+        args = {"repo_path": str(mcp_repo.path), "subdirectory": "../"}
         with pytest.raises((ToolError, ValueError), match=r"escapes|outside|not.*directory"):
-            await server.call_tool(
-                "get_tree_map",
-                {"repo_path": str(mcp_repo.path), "subdirectory": "../"},
-            )
+            await server.call_tool("get_tree_map", args)
