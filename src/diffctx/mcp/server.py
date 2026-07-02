@@ -39,6 +39,7 @@ def _over_token_budget_notice(tool: str, token_count: int, max_tokens: int, hint
         f"Narrow the request ({hint}), set clipboard=true, or raise max_tokens explicitly."
     )
 
+
 mcp = FastMCP("diffctx")
 
 _DIFF_DESCRIPTION = (

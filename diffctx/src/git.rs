@@ -473,7 +473,10 @@ pub fn get_renamed_paths(
 /// Rename pairs as repo-relative display paths (`old -> new`), for the output
 /// header. Unlike `get_renamed_paths` this preserves the pairing and does not
 /// canonicalize (the old path no longer exists on disk).
-pub fn get_rename_pairs(repo_root: &Path, diff_range: Option<&str>) -> Result<Vec<(String, String)>> {
+pub fn get_rename_pairs(
+    repo_root: &Path,
+    diff_range: Option<&str>,
+) -> Result<Vec<(String, String)>> {
     let mut args: Vec<&str> = vec!["diff"];
     args.extend_from_slice(SAFE_DIFF_FLAGS);
     args.extend_from_slice(&["--diff-filter=R", "--name-status", "-M", "-z"]);
@@ -489,7 +492,10 @@ pub fn get_rename_pairs(repo_root: &Path, diff_range: Option<&str>) -> Result<Ve
     while i < parts.len() {
         if parts[i].starts_with('R') {
             if i + 2 < parts.len() && !parts[i + 1].is_empty() && !parts[i + 2].is_empty() {
-                pairs.push((parts[i + 1].replace('\\', "/"), parts[i + 2].replace('\\', "/")));
+                pairs.push((
+                    parts[i + 1].replace('\\', "/"),
+                    parts[i + 2].replace('\\', "/"),
+                ));
             }
             i += 3;
         } else {

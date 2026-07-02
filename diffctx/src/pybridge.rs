@@ -158,8 +158,8 @@ impl DiffContextResult {
             output_type: "diff_context".to_string(),
             commit_message: None,
             changed_files: Vec::new(),
-        deleted_files: Vec::new(),
-        renamed_files: Vec::new(),
+            deleted_files: Vec::new(),
+            renamed_files: Vec::new(),
             fragment_count: self.fragment_count,
             fragments: self
                 .fragments
@@ -411,8 +411,8 @@ fn select_with_params<'py>(
                 output_type: "diff_context".to_string(),
                 commit_message: None,
                 changed_files: Vec::new(),
-        deleted_files: Vec::new(),
-        renamed_files: Vec::new(),
+                deleted_files: Vec::new(),
+                renamed_files: Vec::new(),
                 fragment_count: 0,
                 fragments: Vec::new(),
                 latency: None,

@@ -666,7 +666,10 @@ fn build_diff_context_full(
     ))
 }
 
-fn deletion_rename_displays(root_dir: &Path, diff_range: Option<&str>) -> (Vec<String>, Vec<(String, String)>) {
+fn deletion_rename_displays(
+    root_dir: &Path,
+    diff_range: Option<&str>,
+) -> (Vec<String>, Vec<(String, String)>) {
     let mut deleted: Vec<String> = git::get_deleted_files(root_dir, diff_range)
         .map(|set| {
             set.iter()

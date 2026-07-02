@@ -46,7 +46,10 @@ pub struct DiffContextOutput {
     pub changed_files: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub deleted_files: Vec<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty", serialize_with = "serialize_renames")]
+    #[serde(
+        skip_serializing_if = "Vec::is_empty",
+        serialize_with = "serialize_renames"
+    )]
     pub renamed_files: Vec<(String, String)>,
     pub fragment_count: usize,
     pub fragments: Vec<FragmentEntry>,
