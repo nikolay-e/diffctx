@@ -218,7 +218,7 @@ WITHOUT `--features python` / `cargo test --lib` for the pure-Rust paths).
 ## Empty-Diff Warning Is Expected on Docs-Only HEAD
 
 `diffctx --diff` (bare, no range → defaults to HEAD) on a docs-only HEAD prints
-`diffctx: diff produced no semantic context (pure deletion, binary-only, or
+`diffctx: diff produced no semantic context (clean working tree, binary-only, or
 all files exceeded size cap); output empty.` and emits an 11-token YAML
 skeleton with **exit code 4** (`_EXIT_EMPTY_DIFF`, since 065398c2 — was 0). Not
 a regression — this is the actionable-error contract. CLI smoke check should

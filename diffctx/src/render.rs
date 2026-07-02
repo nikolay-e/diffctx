@@ -16,6 +16,23 @@ use crate::types::{Fragment, FragmentId, FragmentKind};
 pub struct ChangeSummary {
     pub commit_message: Option<String>,
     pub changed_files: Vec<String>,
+    pub deleted_files: Vec<String>,
+    pub renamed_files: Vec<(String, String)>,
+}
+
+fn serialize_renames<S>(renames: &[(String, String)], serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    use serde::ser::SerializeSeq;
+    let mut seq = serializer.serialize_seq(Some(renames.len()))?;
+    for (from, to) in renames {
+        let mut m = std::collections::BTreeMap::new();
+        m.insert("from", from);
+        m.insert("to", to);
+        seq.serialize_element(&m)?;
+    }
+    seq.end()
 }
 
 #[derive(Serialize)]
@@ -27,6 +44,10 @@ pub struct DiffContextOutput {
     pub commit_message: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub changed_files: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub deleted_files: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty", serialize_with = "serialize_renames")]
+    pub renamed_files: Vec<(String, String)>,
     pub fragment_count: usize,
     pub fragments: Vec<FragmentEntry>,
     #[serde(skip)]
@@ -330,6 +351,8 @@ pub fn build_diff_context_output(
         output_type: "diff_context".to_string(),
         commit_message: change.commit_message,
         changed_files: change.changed_files,
+        deleted_files: change.deleted_files,
+        renamed_files: change.renamed_files,
         fragment_count: fragments_out.len(),
         fragments: fragments_out,
         latency: None,

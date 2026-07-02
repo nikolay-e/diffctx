@@ -287,7 +287,7 @@ Auto-discovered files:
 | `1`  | Runtime error (bad path, permission denied, etc.) |
 | `2`  | Usage error (invalid flags/arguments) |
 | `3`  | Environment error (`--diff` outside a git repo, git not installed, no commits yet) |
-| `4`  | `--diff` produced no semantic context (clean working tree, pure deletion, everything filtered out) — output is still emitted, but scripts can detect the empty case |
+| `4`  | `--diff` produced no semantic context (clean working tree, binary-only, everything filtered out) — output is still emitted, but scripts can detect the empty case. Deletion/rename-only diffs are NOT empty: they list `deleted_files`/`renamed_files` and exit `0` |
 | `130`| Interrupted (Ctrl-C) |
 | `141`| Broken pipe (e.g. piping into `head`) |
 

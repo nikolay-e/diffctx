@@ -158,6 +158,8 @@ impl DiffContextResult {
             output_type: "diff_context".to_string(),
             commit_message: None,
             changed_files: Vec::new(),
+        deleted_files: Vec::new(),
+        renamed_files: Vec::new(),
             fragment_count: self.fragment_count,
             fragments: self
                 .fragments
@@ -286,6 +288,19 @@ fn build_diff_context<'py>(
     if !output.changed_files.is_empty() {
         dict.set_item("changed_files", &output.changed_files)?;
     }
+    if !output.deleted_files.is_empty() {
+        dict.set_item("deleted_files", &output.deleted_files)?;
+    }
+    if !output.renamed_files.is_empty() {
+        let renames = PyList::empty(py);
+        for (from, to) in &output.renamed_files {
+            let pair = PyDict::new(py);
+            pair.set_item("from", from)?;
+            pair.set_item("to", to)?;
+            renames.append(pair)?;
+        }
+        dict.set_item("renamed_files", renames)?;
+    }
     dict.set_item("fragment_count", output.fragment_count)?;
 
     let frag_list = PyList::empty(py);
@@ -396,6 +411,8 @@ fn select_with_params<'py>(
                 output_type: "diff_context".to_string(),
                 commit_message: None,
                 changed_files: Vec::new(),
+        deleted_files: Vec::new(),
+        renamed_files: Vec::new(),
                 fragment_count: 0,
                 fragments: Vec::new(),
                 latency: None,
@@ -418,6 +435,19 @@ fn diff_context_output_to_dict<'py>(
     }
     if !output.changed_files.is_empty() {
         dict.set_item("changed_files", &output.changed_files)?;
+    }
+    if !output.deleted_files.is_empty() {
+        dict.set_item("deleted_files", &output.deleted_files)?;
+    }
+    if !output.renamed_files.is_empty() {
+        let renames = PyList::empty(py);
+        for (from, to) in &output.renamed_files {
+            let pair = PyDict::new(py);
+            pair.set_item("from", from)?;
+            pair.set_item("to", to)?;
+            renames.append(pair)?;
+        }
+        dict.set_item("renamed_files", renames)?;
     }
     dict.set_item("fragment_count", output.fragment_count)?;
 

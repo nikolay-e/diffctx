@@ -72,6 +72,8 @@ def _ensure_git_repo(root_dir: Path, prog: str) -> None:
 
 
 def _diff_result_is_empty(result: dict[str, Any]) -> bool:
+    if result.get("deleted_files") or result.get("renamed_files"):
+        return False
     count = result.get("fragment_count")
     if isinstance(count, int):
         return count == 0
@@ -85,7 +87,7 @@ def _warn_empty_diff_result(result: dict[str, Any], prog: str) -> None:
     if _diff_result_is_empty(result):
         print(
             f"{prog}: diff produced no semantic context "
-            "(pure deletion, binary-only, or all files exceeded size cap); output empty.",
+            "(clean working tree, binary-only, or all files exceeded size cap); output empty.",
             file=sys.stderr,
         )
 
