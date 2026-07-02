@@ -31,6 +31,7 @@ pub fn boltzmann_select(
             used_tokens: 0,
             utility: 0.0,
             greedy_iters: 0,
+            stopping_certificate: 0.0,
         };
     }
 
@@ -87,6 +88,7 @@ pub fn boltzmann_select(
         used_tokens: used,
         utility: total_utility,
         greedy_iters: final_count,
+        stopping_certificate: 0.0,
     }
 }
 

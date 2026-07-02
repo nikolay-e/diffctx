@@ -395,6 +395,7 @@ pub fn select_with_params(
     };
 
     let selection_iters = selection_result.greedy_iters;
+    let stopping_certificate = selection_result.stopping_certificate;
     let mut selected = selection_result.selected;
 
     postpass::coherence_post_pass(
@@ -481,6 +482,7 @@ pub fn select_with_params(
         nodes_capped: cap_stats.nodes_capped,
         max_out_edges_per_node: cap_stats.max_out_edges_per_node,
         ppr_truncated: state.scoring_result.ppr_truncated,
+        stopping_certificate,
         ppr_forward_pushes: state.scoring_result.ppr_forward_pushes,
         ppr_backward_pushes: state.scoring_result.ppr_backward_pushes,
     });

@@ -78,6 +78,11 @@ pub struct LatencyBreakdown {
     pub ppr_truncated: bool,
     pub ppr_forward_pushes: usize,
     pub ppr_backward_pushes: usize,
+    /// Additive stopping certificate: upper bound
+    /// (`tau * peak_density * remaining_budget`) on utility foregone by
+    /// adaptive stopping. 0 when the greedy loop ended for another
+    /// reason (budget exhausted, no candidates, singleton override).
+    pub stopping_certificate: f64,
 }
 
 #[derive(Serialize, Clone)]
