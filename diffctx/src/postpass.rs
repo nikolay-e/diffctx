@@ -22,11 +22,9 @@ fn find_dangling_semantic_names(
             if selected_ids.contains(nbr_id) {
                 return;
             }
-            let cat = graph
-                .edge_categories
-                .get(&(frag.id.clone(), nbr_id.clone()));
+            let cat = graph.edge_category(&frag.id, nbr_id);
             if cat
-                .map(|c| *c != crate::graph::EdgeCategory::Semantic)
+                .map(|c| c != crate::graph::EdgeCategory::Semantic)
                 .unwrap_or(true)
             {
                 return;
