@@ -76,6 +76,23 @@ def build_diff_context(
 ) -> dict[str, Any]:
     from diffctx._diffctx import build_diff_context as _rust_build
 
+    # The Rust diff-context backend does not yet apply a custom --ignore/
+    # --whitelist file (default .gitignore/.diffctx/ignore rules ARE applied).
+    # Silently accepting and dropping these was a security-adjacent footgun -
+    # a caller excluding a secrets file via -i would get no warning that the
+    # exclusion never took effect. Fail loudly instead until implemented.
+    if ignore_file is not None:
+        raise NotImplementedError(
+            "--ignore is not yet supported with --diff (default .gitignore/"
+            ".diffctx/ignore rules still apply); rerun without --ignore, or "
+            "without --diff to use it in tree-mapping mode"
+        )
+    if whitelist_file is not None:
+        raise NotImplementedError(
+            "--whitelist is not yet supported with --diff; rerun without "
+            "--whitelist, or without --diff to use it in tree-mapping mode"
+        )
+
     # Budget semantics:
     #   None:                   pipeline default (None passes through to Rust as no cap)
     #   budget_tokens < 0:      "unlimited" (10M-token soft ceiling, used as the recall ceiling

@@ -28,7 +28,10 @@ impl Default for AlgorithmLimits {
             max_generated_lines: 30,
             skip_expensive_threshold: 2000,
             rare_identifier_threshold: 3,
-            overhead_per_fragment: 18,
+            // Measured against real YAML serialization (path/lines/kind/symbol
+            // keys + quoting): actual scaffold runs ~40-45 tokens/fragment,
+            // not 18 - the old estimate let --budget overshoot by ~18%.
+            overhead_per_fragment: 40,
         }
     }
 }

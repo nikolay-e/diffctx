@@ -23,6 +23,7 @@ EXIT_OK = 0
 EXIT_RUNTIME = 1
 EXIT_USAGE = 2
 EXIT_ENVIRONMENT = 3
+EXIT_EMPTY_DIFF = 4
 
 
 @pytest.fixture
@@ -233,7 +234,7 @@ class TestDiffModeJourneys:
 
     def test_bare_diff_defaults_to_head(self, diff_repo):
         result = run_diffctx_subprocess([".", "--diff"], cwd=diff_repo.path)
-        assert result.returncode == EXIT_OK
+        assert result.returncode == EXIT_EMPTY_DIFF
         assert "no semantic context" in result.stderr
 
     def test_full_includes_all_changed_fragments(self, diff_repo):

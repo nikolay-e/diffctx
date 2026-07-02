@@ -156,11 +156,12 @@ def _write_tree_text_node(file: TextIO, node: dict[str, Any], prefix: str, conne
 
     if "content" in node:
         content = node["content"]
+        content_prefix = child_prefix.replace(_TREE_PIPE, _TREE_SPACE)
         if not content:
-            file.write(f"{child_prefix}(empty file)\n")
+            file.write(f"{content_prefix}(empty file)\n")
         else:
             for line in content.rstrip("\n").split("\n"):
-                file.write(f"{child_prefix}{line}\n")
+                file.write(f"{content_prefix}{line}\n")
 
     children = node.get("children", [])
     for i, child in enumerate(children):

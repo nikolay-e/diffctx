@@ -143,6 +143,21 @@ pub fn is_git_repo(path: &Path) -> bool {
     run_git(path, &["rev-parse", "--git-dir"]).is_ok()
 }
 
+/// Resolves the actual working-tree root for `path`, which may be a
+/// subdirectory of the repository. `git diff`/`git cat-file` paths are
+/// always reported relative to this root, not to an arbitrary `-C` cwd -
+/// running the pipeline with `path` still set to a subdirectory silently
+/// produces zero fragments because file lookups get double-prefixed
+/// (e.g. `src/src/app.py`).
+pub fn find_toplevel(path: &Path) -> Option<PathBuf> {
+    let out = run_git(path, &["rev-parse", "--show-toplevel"]).ok()?;
+    let trimmed = out.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(PathBuf::from(trimmed))
+}
+
 pub fn get_diff_text(repo_root: &Path, diff_range: Option<&str>) -> Result<String> {
     let mut args: Vec<&str> = vec!["diff"];
     args.extend_from_slice(SAFE_DIFF_FLAGS);

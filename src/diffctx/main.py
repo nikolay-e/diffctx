@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 _EXIT_RUNTIME = 1
 _EXIT_USAGE = 2
 _EXIT_ENVIRONMENT = 3
+_EXIT_EMPTY_DIFF = 4
 _EXIT_INTERRUPTED = 130
 _EXIT_BROKEN_PIPE = 141
 
@@ -334,6 +335,7 @@ def _run(argv: list[str] | None = None, *, prog: str = "diffctx", version: str =
         return
 
     directory_tree = _build_diff_tree(args, prog) if args.diff_range else _build_standard_tree(args)
+    is_empty_diff_result = bool(args.diff_range) and _diff_result_is_empty(directory_tree)
 
     output_content = tree_to_string(directory_tree, args.output_format)
     if not args.quiet:
@@ -348,6 +350,9 @@ def _run(argv: list[str] | None = None, *, prog: str = "diffctx", version: str =
         from .writer import write_string_to_file
 
         write_string_to_file(output_content, None, args.output_format)
+
+    if is_empty_diff_result:
+        sys.exit(_EXIT_EMPTY_DIFF)
 
 
 _KNOWN_RUNTIME_ERRORS: tuple[type[BaseException], ...] = (

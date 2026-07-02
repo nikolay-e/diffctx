@@ -96,13 +96,18 @@ pub fn compute_scored_state(
     if !git::is_git_repo(&root_dir) {
         anyhow::bail!("'{}' is not a git repository", root_dir.display());
     }
+    let root_dir = git::find_toplevel(&root_dir).unwrap_or(root_dir);
     if alpha <= 0.0 || alpha >= 1.0 {
         anyhow::bail!("alpha must be in (0, 1), got {}", alpha);
     }
 
     let mut hunks = git::parse_diff(&root_dir, diff_range)?;
 
-    let is_working_tree_diff = diff_range.is_none();
+    // Untracked files only matter when the diff includes the live working
+    // tree. `None` and the literal "HEAD" both mean that (the CLI resolves
+    // bare `--diff` to the string "HEAD" before reaching here) - a historical
+    // range like `HEAD~5..HEAD~3` does not include working-tree state.
+    let is_working_tree_diff = matches!(diff_range, None | Some("HEAD"));
     let mut untracked_files: Vec<PathBuf> = Vec::new();
     if is_working_tree_diff {
         if let Ok(files) = git::get_untracked_files(&root_dir) {
@@ -542,6 +547,7 @@ fn build_diff_context_full(
     if !git::is_git_repo(&root_dir) {
         anyhow::bail!("'{}' is not a git repository", root_dir.display());
     }
+    let root_dir = git::find_toplevel(&root_dir).unwrap_or(root_dir);
     let mut hunks = git::parse_diff(&root_dir, diff_range)?;
     hunks.retain(|h| !is_secret_path(Path::new(&*h.path)));
     if hunks.is_empty() {
