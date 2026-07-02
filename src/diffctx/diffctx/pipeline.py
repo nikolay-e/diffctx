@@ -116,10 +116,12 @@ def build_diff_context(
         alpha=alpha,
         tau=tau,
         no_content=no_content,
-        ignore_file=str(ignore_file) if ignore_file else None,
+        # Both are guaranteed None here: the guards above raise on any
+        # other value until the Rust backend implements them.
+        ignore_file=None,
         no_default_ignores=no_default_ignores,
         full=full,
-        whitelist_file=str(whitelist_file) if whitelist_file else None,
+        whitelist_file=None,
         scoring_mode=scoring_mode,
         timeout=timeout,
     )
