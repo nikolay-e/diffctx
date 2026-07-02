@@ -220,8 +220,10 @@ WITHOUT `--features python` / `cargo test --lib` for the pure-Rust paths).
 `diffctx --diff` (bare, no range → defaults to HEAD) on a docs-only HEAD prints
 `diffctx: diff produced no semantic context (pure deletion, binary-only, or
 all files exceeded size cap); output empty.` and emits an 11-token YAML
-skeleton. Not a regression — this is the actionable-error contract. CLI smoke
-check should accept the warning and the empty `fragments:` list, NOT fail on it.
+skeleton with **exit code 4** (`_EXIT_EMPTY_DIFF`, since 065398c2 — was 0). Not
+a regression — this is the actionable-error contract. CLI smoke check should
+accept the warning, the empty `fragments:` list, and rc=4; do NOT treat rc=4
+as a failure, and do NOT expect rc=0 on an empty diff result.
 
 ## SonarCloud IS Registered (project key `nikolay-e_TreeMapper`)
 

@@ -123,8 +123,8 @@ features = [ "pyo3/extension-module", "python" ]
 # Maturin >= 1.8 reads the Cargo manifest version when `[project].dynamic`
 # contains "version" and the explicit `[project].version` line is removed
 # (PEP 621). On the next release, replace `version = "..."` in [project] with
-# `dynamic = ["version"]` to activate single-sourcing. Until then, keep the
-# two versions manually aligned (Cargo.toml = pyproject.toml = 1.9.2).
+# `dynamic = ["version"]` to activate single-sourcing. Until then, the cd.yml
+# bump step patches version.py + pyproject.toml + Cargo.toml + Cargo.lock.
 include = [
   { path = "LICENSE", format = "sdist" },
   { path = "README.md", format = "sdist" },
