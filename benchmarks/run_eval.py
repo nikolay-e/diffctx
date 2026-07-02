@@ -75,6 +75,19 @@ def main() -> int:
 
     _os.environ["DIFFCTX_BENCH_TIMEOUT_SEC"] = str(args.timeout_per_instance)
 
+    from benchmarks.common import warm_cache
+
+    warm_cache(
+        [
+            {
+                "repo": i.repo,
+                "base_commit": i.base_commit,
+                "repo_url": i.extra.get("repo_url") or f"https://github.com/{i.repo}.git",
+            }
+            for i in instances
+        ]
+    )
+
     eval_fn = make_diffctx_eval_fn(repo_root)
     results = run_eval_set(
         instances,

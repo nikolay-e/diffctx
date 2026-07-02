@@ -354,6 +354,7 @@ jobs:
           path: ${{ env.CELL_DIR }}/
           retention-days: 30
           if-no-files-found: warn
+          overwrite: true
 
   # ============================================================================
   # 3b. Full sweep — Hetzner CCX63, complete 5×5×3 matrix, baked repo cache
@@ -617,6 +618,35 @@ jobs:
       - name: Install uv (required by aider baseline; safe no-op for others)
         run: pip install --no-cache-dir uv
 
+      # Resume across "Re-run failed jobs": artifacts persist across attempts
+      # of the same run, so a retried cell restores its previous attempt's
+      # checkpoints and run_final_eval's resume_from skips completed instances
+      # instead of re-running the whole cell from scratch.
+      - name: Restore previous attempt's checkpoints (resume)
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: cell-${{ matrix.method }}-b${{ matrix.budget }}-L${{ matrix.depth }}-${{ matrix.test_set }}
+          path: /tmp/prev_cell
+
+      - name: Seed checkpoints from previous attempt
+        shell: bash
+        run: |
+          if [ -d /tmp/prev_cell ]; then
+            restored=$(find /tmp/prev_cell -name '*.checkpoint.jsonl' | wc -l)
+            if [ "${restored}" -gt 0 ]; then
+              cd /tmp/prev_cell
+              find . -name '*.checkpoint.jsonl' \
+                -exec cp --parents {} "${GITHUB_WORKSPACE}/${CELL_DIR}/" \;
+              cd "${GITHUB_WORKSPACE}"
+              echo "Restored ${restored} checkpoint file(s) from previous attempt"
+            else
+              echo "Previous artifact present but no checkpoints inside"
+            fi
+          else
+            echo "No previous attempt artifact — fresh cell"
+          fi
+
       - name: Write checkpoint heartbeat script
         run: |
           cat > /tmp/heartbeat.py << 'PYEOF'
@@ -660,7 +690,7 @@ jobs:
               except Exception as e:
                   print(f"[heartbeat] put: {e}", file=sys.stderr, flush=True)
           while True:
-              time.sleep(600)
+              time.sleep(300)
               try:
                   try_upload()
               except Exception as e:
@@ -728,6 +758,9 @@ jobs:
           path: ${{ env.CELL_DIR }}/
           retention-days: 90
           if-no-files-found: warn
+          # A retried job must be able to replace its previous attempt's
+          # artifact (v4+ artifacts are immutable per name by default).
+          overwrite: true
 
       - name: Reclaim disk — drop this cell's per-worker worktrees
         if: always()
@@ -801,6 +834,7 @@ jobs:
           name: sweep-aggregated-${{ needs.prep.outputs.sweep_id }}
           path: aggregated/
           retention-days: 365
+          overwrite: true
 
       - name: Commit raw artifacts to results branch
         env:

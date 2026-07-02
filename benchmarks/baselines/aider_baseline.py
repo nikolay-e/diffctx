@@ -157,8 +157,21 @@ def _aider_eval(
         r.extra["language"] = instance.language
         return r
 
+    applied = False
     try:
-        apply_as_commit(repo_dir, instance.gold_patch, "aider-baseline-gold")
+        applied = apply_as_commit(repo_dir, instance.gold_patch, "aider-baseline-gold")
+        if not applied:
+            r = EvalResult(
+                instance_id=instance.instance_id,
+                source_benchmark=instance.source_benchmark,
+                file_recall=0.0,
+                file_precision=0.0,
+                budget=params.budget,
+            )
+            r.extra["status"] = "apply_fail"
+            r.extra["error"] = "gold patch did not apply as commit"
+            r.extra["language"] = instance.language
+            return r
         t0 = time.perf_counter()
         other_files = _walk_other_files(repo_dir)
         if aider_mode == "oracle":
@@ -229,10 +242,11 @@ def _aider_eval(
         result.extra["map_chars"] = len(resp.get("map_text", ""))
         return result
     finally:
-        try:
-            reset_to_parent(repo_dir)
-        except Exception:
-            pass
+        if applied:
+            try:
+                reset_to_parent(repo_dir)
+            except Exception:
+                pass
 
 
 _AIDER_PROC: _AiderProcess | None = None

@@ -43,7 +43,18 @@ def repos_dir(env_var: str = "CB_REPOS_DIR", suffix_var: str | None = None) -> P
 def run_cmd(
     cmd: list[str], cwd: str | Path | None = None, check: bool = True, timeout: int = 120
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, cwd=cwd, text=True, capture_output=True, check=check, timeout=timeout)
+    # check=False callers are written against returncode inspection; a raised
+    # TimeoutExpired would bypass every one of their fallback paths (observed:
+    # one `git clean` timeout in a worker's reused worktree escaped ensure_repo's
+    # purge-and-recreate branch and poisoned every subsequent instance mapped to
+    # that worktree — 5028/22968 results lost in the grid_p95_full run).
+    try:
+        return subprocess.run(cmd, cwd=cwd, text=True, capture_output=True, check=check, timeout=timeout)
+    except subprocess.TimeoutExpired as e:
+        if check:
+            raise
+        partial = e.stdout.decode(errors="replace") if isinstance(e.stdout, bytes) else (e.stdout or "")
+        return subprocess.CompletedProcess(cmd, returncode=124, stdout=partial, stderr=f"run_cmd timeout after {timeout}s: {e}")
 
 
 def _parse_diff_path(raw: str, prefix: str) -> str | None:
@@ -325,11 +336,7 @@ def ensure_repo(
 
     # Unconditional cleanup of orphan worktrees from previously killed processes.
     # No-op on a clean cache; rescues worktree/<name>/locked after SIGKILL/OOM.
-    subprocess.run(
-        ["git", "-C", str(cache_dir), "worktree", "prune", "--expire=now"],
-        capture_output=True,
-        timeout=30,
-    )
+    run_cmd(["git", "-C", str(cache_dir), "worktree", "prune", "--expire=now"], check=False, timeout=30)
 
     if not _ensure_commit_present(cache_dir, base_commit):
         print(f"  WORKTREE/CHECKOUT FAIL {base_commit[:12]}: unreachable_commit (not in cache and fetch failed)", flush=True)
@@ -348,7 +355,12 @@ def ensure_repo(
     repo_dir = target_dir / repo_name.replace("/", "__")
     if repo_dir.exists():
         _remove_stale_locks(_git_dir_for_repo(repo_dir))
-        run_cmd(["git", "-C", str(repo_dir), "clean", "-fd"], check=False, timeout=30)
+        # 30s was too tight for vscode/mui-scale worktrees: the clean timed
+        # out on every reuse, and (before run_cmd returned 124 instead of
+        # raising) the escaped exception poisoned the worktree for all
+        # subsequent instances. A timeout here now degrades to purge +
+        # fresh worktree add via the verification below.
+        run_cmd(["git", "-C", str(repo_dir), "clean", "-fd"], check=False, timeout=120)
         r = run_cmd(
             ["git", "-C", str(repo_dir), "checkout", "--force", base_commit],
             check=False,
@@ -589,11 +601,13 @@ def _run_serial(worker_fn, run_args: list, collect: str) -> list:
 
 
 def _run_pool(worker_fn, run_args: list, workers: int, collect: str) -> list:
+    import traceback
     from concurrent.futures import ProcessPoolExecutor, as_completed
     from concurrent.futures.process import BrokenProcessPool
 
     batch_size = int(os.environ.get("BENCH_BATCH_SIZE", str(max(workers * 4, 20))))
     results: list = []
+    dropped = 0
     for batch_start in range(0, len(run_args), batch_size):
         batch = run_args[batch_start : batch_start + batch_size]
         try:
@@ -603,11 +617,20 @@ def _run_pool(worker_fn, run_args: list, workers: int, collect: str) -> list:
                     try:
                         _collect_result(results, future.result(), collect)
                     except BrokenProcessPool as e:
+                        dropped += 1
                         print(f"  WORKER CRASH [{futures[future]}]: {type(e).__name__}", flush=True)
                     except Exception as e:
-                        print(f"  WORKER CRASH [{futures[future]}]: {type(e).__name__}: {e}", flush=True)
+                        dropped += 1
+                        print(
+                            f"  WORKER CRASH [{futures[future]}]: {type(e).__name__}: {e}\n{traceback.format_exc()}", flush=True
+                        )
         except BrokenProcessPool as e:
+            dropped += len(batch)
             print(f"  POOL CRASH batch {batch_start}-{batch_start+len(batch)}: {e}", flush=True)
+    if dropped:
+        # Dropped items produce NO result row — they vanish from every
+        # denominator downstream. Make the shrinkage impossible to miss.
+        print(f"  WARNING: {dropped}/{len(run_args)} tasks produced no result (worker/pool crashes above)", flush=True)
     return results
 
 
