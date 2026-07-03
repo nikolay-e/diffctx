@@ -109,22 +109,42 @@ def _write_yaml_fragment(file: TextIO, frag: dict[str, Any], indent: str = "") -
         _write_yaml_content(file, frag["content"], indent + "  ")
 
 
+def _has_diff_metadata(tree: dict[str, Any]) -> bool:
+    return bool(tree.get("fragments") or tree.get("deleted_files") or tree.get("renamed_files"))
+
+
+def _write_yaml_path_list(file: TextIO, key: str, paths: list[Any]) -> None:
+    file.write(f"{key}:\n")
+    for path in paths:
+        file.write(f'  - "{_escape_yaml_string(str(path))}"\n')
+
+
+def _write_yaml_diff_metadata(file: TextIO, tree: dict[str, Any]) -> None:
+    if tree.get("commit_message"):
+        file.write(f'commit_message: "{_escape_yaml_string(str(tree["commit_message"]))}"\n')
+    if tree.get("changed_files"):
+        _write_yaml_path_list(file, "changed_files", tree["changed_files"])
+    if tree.get("deleted_files"):
+        _write_yaml_path_list(file, "deleted_files", tree["deleted_files"])
+    if tree.get("renamed_files"):
+        file.write("renamed_files:\n")
+        for pair in tree["renamed_files"]:
+            file.write(f'  - from: "{_escape_yaml_string(str(pair.get("from", "")))}"\n')
+            file.write(f'    to: "{_escape_yaml_string(str(pair.get("to", "")))}"\n')
+    if tree.get("fragments"):
+        file.write(f"fragment_count: {len(tree['fragments'])}\n")
+        file.write("fragments:\n")
+        for frag in tree["fragments"]:
+            _write_yaml_fragment(file, frag, "  ")
+
+
 def write_tree_yaml(file: TextIO, tree: dict[str, Any]) -> None:
     name = _escape_yaml_string(str(tree["name"]))
     file.write(f'name: "{name}"\n')
     file.write(f"type: {tree['type']}\n")
 
-    if tree.get("type") == "diff_context" and tree.get("fragments"):
-        if tree.get("commit_message"):
-            file.write(f'commit_message: "{_escape_yaml_string(str(tree["commit_message"]))}"\n')
-        if tree.get("changed_files"):
-            file.write("changed_files:\n")
-            for path in tree["changed_files"]:
-                file.write(f'  - "{_escape_yaml_string(str(path))}"\n')
-        file.write(f"fragment_count: {len(tree['fragments'])}\n")
-        file.write("fragments:\n")
-        for frag in tree["fragments"]:
-            _write_yaml_fragment(file, frag, "  ")
+    if tree.get("type") == "diff_context" and _has_diff_metadata(tree):
+        _write_yaml_diff_metadata(file, tree)
     elif tree.get("children"):
         file.write("children:\n")
         for child in tree["children"]:
@@ -156,11 +176,12 @@ def _write_tree_text_node(file: TextIO, node: dict[str, Any], prefix: str, conne
 
     if "content" in node:
         content = node["content"]
+        content_prefix = child_prefix.replace(_TREE_PIPE, _TREE_SPACE)
         if not content:
-            file.write(f"{child_prefix}(empty file)\n")
+            file.write(f"{content_prefix}(empty file)\n")
         else:
             for line in content.rstrip("\n").split("\n"):
-                file.write(f"{child_prefix}{line}\n")
+                file.write(f"{content_prefix}{line}\n")
 
     children = node.get("children", [])
     for i, child in enumerate(children):
@@ -195,7 +216,11 @@ def _write_tree_text_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
         file.write(f"  change: {tree['commit_message']}\n")
     if tree.get("changed_files"):
         file.write(f"  changed files: {', '.join(str(p) for p in tree['changed_files'])}\n")
-    for frag in tree["fragments"]:
+    if tree.get("deleted_files"):
+        file.write(f"  deleted files: {', '.join(str(p) for p in tree['deleted_files'])}\n")
+    for pair in tree.get("renamed_files", []):
+        file.write(f"  renamed: {pair.get('from', '')} -> {pair.get('to', '')}\n")
+    for frag in tree.get("fragments", []):
         _write_text_fragment(file, frag, "  ")
 
 
@@ -224,7 +249,7 @@ def write_tree_text(file: TextIO, tree: dict[str, Any]) -> None:
     else:
         file.write(f"{name}/\n")
 
-    if tree_type == "diff_context" and tree.get("fragments"):
+    if tree_type == "diff_context" and _has_diff_metadata(tree):
         _write_tree_text_diff_context(file, tree)
     elif tree.get("children"):
         _write_tree_text_children(file, tree["children"])
@@ -326,7 +351,7 @@ def _write_markdown_fragment(file: TextIO, frag: dict[str, Any]) -> None:
     if kind:
         header += f" _{_escape_markdown(kind)}_"
     if frag.get("role") == "changed":
-        header = f"🔹 {header} — **changed**"
+        header = f"{header} — **changed**"
     file.write(f"## {header}\n\n")
 
     if frag.get("content"):
@@ -342,6 +367,18 @@ def _write_markdown_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
         for path in tree["changed_files"]:
             file.write(f"- {_escape_md_inline_code(str(path))}\n")
         file.write("\n")
+    if tree.get("deleted_files"):
+        file.write("**Deleted files:**\n\n")
+        for path in tree["deleted_files"]:
+            file.write(f"- {_escape_md_inline_code(str(path))}\n")
+        file.write("\n")
+    if tree.get("renamed_files"):
+        file.write("**Renamed files:**\n\n")
+        for pair in tree["renamed_files"]:
+            old_p = _escape_md_inline_code(str(pair.get("from", "")))
+            new_p = _escape_md_inline_code(str(pair.get("to", "")))
+            file.write(f"- {old_p} \u2192 {new_p}\n")
+        file.write("\n")
     for frag in tree["fragments"]:
         _write_markdown_fragment(file, frag)
 
@@ -356,7 +393,7 @@ def write_tree_markdown(file: TextIO, tree: dict[str, Any]) -> None:
     else:
         file.write(f"# {name}/\n\n")
 
-    if tree_type == "diff_context" and tree.get("fragments"):
+    if tree_type == "diff_context" and _has_diff_metadata(tree):
         _write_markdown_diff_context(file, tree)
     elif tree.get("children"):
         for child in tree["children"]:

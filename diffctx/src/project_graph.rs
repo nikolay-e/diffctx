@@ -7,7 +7,7 @@ use tracing::info;
 
 use crate::candidate_files::collect_candidate_files;
 use crate::config::limits::LIMITS;
-use crate::edges::{self, EdgeCategories};
+use crate::edges;
 use crate::fragmentation::process_files_for_fragments;
 use crate::git::CatFileBatch;
 use crate::graph::{self, Graph};
@@ -17,7 +17,6 @@ use crate::types::{Fragment, FragmentId};
 pub struct ProjectGraph {
     pub fragments: Vec<Fragment>,
     pub graph: Graph,
-    pub edge_categories: EdgeCategories,
     pub root_dir: PathBuf,
 }
 
@@ -101,19 +100,17 @@ pub fn build_project_graph_with_options(
         .skip_expensive_edges
         .unwrap_or_else(|| all_fragments.len() > LIMITS.skip_expensive_threshold);
 
-    let (edges, categories) = edges::collect_all_edges(
+    let compact = edges::collect_all_edges(
         &all_fragments,
         Some(resolved_root.as_path()),
         skip_expensive,
     );
 
-    let edge_categories_snapshot = categories.clone();
-    let graph = graph::build_graph(&all_fragments, edges, categories);
+    let graph = graph::build_graph_compact(&all_fragments, compact);
 
     Ok(ProjectGraph {
         fragments: all_fragments,
         graph,
-        edge_categories: edge_categories_snapshot,
         root_dir: resolved_root,
     })
 }
@@ -232,6 +229,6 @@ mod tests {
 
         let pg = build_project_graph(root).expect("build_project_graph");
         assert!(pg.fragments.len() >= 2);
-        assert_eq!(pg.edge_categories.len(), pg.graph.edge_count());
+        assert_eq!(pg.graph.categorized_edge_count(), pg.graph.edge_count());
     }
 }

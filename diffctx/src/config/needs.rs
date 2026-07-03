@@ -1,5 +1,7 @@
 use once_cell::sync::Lazy;
 
+use super::env_overrides::read_env_fraction;
+
 pub struct NeedsConfig {
     pub min_symbol_length: usize,
     pub background_min_ident_length: usize,
@@ -54,8 +56,8 @@ impl Default for NeedsConfig {
             test_mentions: 0.6,
             mentions_fallback: 0.3,
 
-            min_rel_for_bonus: 0.03,
-            relatedness_bonus: 0.25,
+            min_rel_for_bonus: read_env_fraction("DIFFCTX_MIN_REL_FOR_BONUS", 0.03),
+            relatedness_bonus: read_env_fraction("DIFFCTX_RELATEDNESS_BONUS", 0.25),
         }
     }
 }

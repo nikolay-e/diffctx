@@ -218,10 +218,12 @@ WITHOUT `--features python` / `cargo test --lib` for the pure-Rust paths).
 ## Empty-Diff Warning Is Expected on Docs-Only HEAD
 
 `diffctx --diff` (bare, no range → defaults to HEAD) on a docs-only HEAD prints
-`diffctx: diff produced no semantic context (pure deletion, binary-only, or
+`diffctx: diff produced no semantic context (clean working tree, binary-only, or
 all files exceeded size cap); output empty.` and emits an 11-token YAML
-skeleton. Not a regression — this is the actionable-error contract. CLI smoke
-check should accept the warning and the empty `fragments:` list, NOT fail on it.
+skeleton with **exit code 4** (`_EXIT_EMPTY_DIFF`, since 065398c2 — was 0). Not
+a regression — this is the actionable-error contract. CLI smoke check should
+accept the warning, the empty `fragments:` list, and rc=4; do NOT treat rc=4
+as a failure, and do NOT expect rc=0 on an empty diff result.
 
 ## SonarCloud IS Registered (project key `nikolay-e_TreeMapper`)
 
@@ -261,6 +263,72 @@ duplicate-code all catch a surprising fraction of extraction mistakes). Pure
 extract-a-helper-function refactors (no logic change) are safe without
 dedicated coverage; do not attempt behavior-changing "simplifications" in the
 same pass.
+
+## Bench Image (ghcr.io/nikolay-e/diffctx-bench)
+
+- **A renamed ghcr package starts PRIVATE.** First push under a new name
+  creates a fresh private package — the old package's public visibility does
+  not carry over, and there is NO REST/GraphQL API to flip it (web UI only:
+  package settings → Danger Zone). Symptom chain: cloud-init `docker pull`
+  → "not found" (not "denied"), provision's verify step fails the same way.
+  After any image rename, verify ANONYMOUS access:
+  `curl -sf "https://ghcr.io/token?scope=repository:<owner>/<pkg>:pull"` →
+  bearer GET `/v2/<owner>/<pkg>/manifests/latest` must be 200.
+- **Every COPY source in Dockerfile.bench must be git-tracked.** A local
+  untracked dir (stale `diffctx/python` build artifact) made the local buildx
+  succeed while the same build failed in CI/bench-image. Guarded by
+  `tests/test_bench_image_inputs.py`; keep it in sync with the Dockerfile.
+- **`build_script | tail` masks the build's exit code** — the pipeline exit is
+  tail's. Capture rc explicitly (`...; echo rc=$?` on the script itself) or
+  `set -o pipefail` in the *calling* shell.
+- The image is auto-published by `.github/workflows/bench-image.yml` on pushes
+  touching its inputs; bench-sweep's provision job fail-fasts on a missing
+  manifest BEFORE paying for the Hetzner server.
+
+## Sweep Result Layout (post-#52)
+
+- Full-sweep cells for ppr/ego/bm25 are multi-budget: artifact
+  `cell-<method>-bALL-L<depth>-<test_set>` with per-budget checkpoints at
+  `<test_set>_budget_sweep/b<budget>.checkpoint.jsonl` and summaries
+  `cell_summary_b<budget>.json`. Aider stays one-budget-per-cell
+  (`cell-aider-b<budget>-...`). `aggregate_sweep.collect_cells` expands bALL
+  artifacts into one record per budget; legacy artifacts still parse.
+- **Depth 0 is a real value, not "absent."** Any grouping key built as
+  `cell.get("depth") or -1` coerces a legitimate `depth=0` cell into the -1
+  ("depth doesn't apply") bucket, silently mislabeling every L0 row in the
+  rendered tables as depth-less. Use an explicit `isinstance(d, int)` check
+  (see `_depth_of` in `aggregate_sweep.py`) — same trap as any `or`-based
+  default for a falsy-but-valid value (budget=0 has the identical shape;
+  it currently escapes this because callers always compare `is not None`).
+- **The `aggregate` job runs `if: always()` and uploads a real
+  `sweep-aggregated-*` artifact even when the parent run is cancelled or
+  partially failed.** Before manually re-aggregating from `cell-*`
+  artifacts, check whether this artifact already exists — it's the
+  authoritative one-shot summary of whatever completed before the failure.
+- **`gh run download --pattern 'cell-*'` can silently under-fetch on a
+  large artifact set** — a first pass grabbed 123/148 cells with no error;
+  only comparing the downloaded count against the run's artifact list (or
+  the official `sweep-aggregated-*` row count) surfaced the gap. Always
+  cross-check `ls <dir> | wc -l` against `gh api .../artifacts --jq
+  .total_count` (minus non-cell artifacts) before trusting a partial
+  reaggregation.
+- Self-hosted bench runners are started via bare `nohup ./run.sh &` in
+  cloud-init — a host reboot (Hetzner-side infra event, not app-caused)
+  kills them permanently and orphans queued cells forever with no retry.
+  Tracked as its own fix (#98, systemd `svc.sh install`); until fixed, a
+  sweep that stalls with jobs stuck `queued` for a long time (not just
+  slow) means the host is gone — check `hcloud server list` / SSH before
+  assuming the job queue is merely backed up.
+- The full `yaml_cases` suite standing baseline: ~2262 passed / ~463 failed
+  (`forbidden_rate=100%` over-selection class, tracked on #65). Gate in
+  nightly-full-eval.yml is MIN_PASS_COUNT=2260 — compare against that, not
+  against zero failures.
+
+## Monitor Scripts in This Shell (zsh)
+
+`status` is a read-only zsh special variable — a polling monitor script using
+`status=$(...)` dies instantly with "read-only variable: status" (exit 1).
+Use `run_state=`/`st=` in any Monitor/background snippet.
 
 ---
 

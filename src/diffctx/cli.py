@@ -367,7 +367,10 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
         type=float,
         default=_UNSET,
         metavar="F",
-        help="How tightly context clusters around changes, 0-1 (default: 0.60, higher = more focused)",
+        help=(
+            "PPR damping: how tightly context clusters around changes, 0-1 "
+            "(default: 0.60, higher = more focused). Only affects --scoring ppr"
+        ),
     )
     diff_group.add_argument(
         "--tau",
@@ -457,6 +460,8 @@ def _build_tree_parsed_args(args: argparse.Namespace) -> ParsedArgs:
     _validate_alpha(alpha)
     _validate_tau(tau)
     _warn_diff_only_flags(args)
+    if args.diff_range and args.alpha is not _UNSET and scoring != "ppr":
+        _warn(f"--alpha only affects --scoring ppr (current scoring: {scoring}); value ignored")
 
     diff_range = args.diff_range
     if diff_range == _DIFF_SENTINEL:

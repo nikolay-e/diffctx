@@ -85,14 +85,14 @@ fn classify_semantic_edges(
     let mut reverse_deps: FxHashMap<Arc<str>, FxHashSet<Arc<str>>> = FxHashMap::default();
     let mut direct_edge_paths: FxHashSet<Arc<str>> = FxHashSet::default();
 
-    for ((src, dst), category) in &graph.edge_categories {
-        if *category != EdgeCategory::Semantic {
-            continue;
+    graph.for_each_categorized_edge(|src, dst, category| {
+        if category != EdgeCategory::Semantic {
+            return;
         }
         let src_changed = changed_paths.contains(&src.path);
         let dst_changed = changed_paths.contains(&dst.path);
         if !(src_changed ^ dst_changed) {
-            continue;
+            return;
         }
 
         let (changed_frag, other_frag) = if src_changed { (src, dst) } else { (dst, src) };
@@ -112,7 +112,7 @@ fn classify_semantic_edges(
         } else {
             direct_edge_paths.insert(other_frag.path.clone());
         }
-    }
+    });
 
     (reverse_deps, direct_edge_paths)
 }
@@ -172,11 +172,11 @@ fn find_config_generic_code_files(
         })
         .collect();
 
-    for ((src, dst), category) in &graph.edge_categories {
+    graph.for_each_categorized_edge(|src, dst, category| {
         let src_changed = changed_paths.contains(&src.path);
         let dst_changed = changed_paths.contains(&dst.path);
         if !(src_changed ^ dst_changed) {
-            continue;
+            return;
         }
         let other_path = if src_changed { &dst.path } else { &src.path };
         match category {
@@ -189,7 +189,7 @@ fn find_config_generic_code_files(
             }
             _ => {}
         }
-    }
+    });
 
     let generic_only: FxHashSet<Arc<str>> = has_generic_config
         .difference(&has_real_edge)

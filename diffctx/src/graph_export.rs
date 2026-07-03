@@ -172,14 +172,11 @@ fn collect_sorted_nodes<'a>(
 }
 
 fn collect_sorted_edges(graph: &Graph) -> Vec<(FragmentId, FragmentId, f64, EdgeCategory)> {
-    let mut entries: Vec<(FragmentId, FragmentId, f64, EdgeCategory)> = graph
-        .edge_categories
-        .iter()
-        .map(|((src, dst), cat)| {
-            let weight = graph.forward_edge_weight(src, dst).unwrap_or(0.0);
-            (src.clone(), dst.clone(), weight, *cat)
-        })
-        .collect();
+    let mut entries: Vec<(FragmentId, FragmentId, f64, EdgeCategory)> = Vec::new();
+    graph.for_each_categorized_edge(|src, dst, cat| {
+        let weight = graph.forward_edge_weight(src, dst).unwrap_or(0.0);
+        entries.push((src.clone(), dst.clone(), weight, cat));
+    });
     entries.sort_by(|a, b| {
         let key_a = format!("({}, {})", a.0, a.1);
         let key_b = format!("({}, {})", b.0, b.1);
@@ -333,9 +330,9 @@ fn collect_files(fragments: &FxHashMap<FragmentId, Fragment>) -> usize {
 
 fn compute_in_degree(graph: &Graph) -> FxHashMap<FragmentId, usize> {
     let mut counts: FxHashMap<FragmentId, usize> = FxHashMap::default();
-    for (_src, dst) in graph.edge_categories.keys() {
+    graph.for_each_categorized_edge(|_src, dst, _cat| {
         *counts.entry(dst.clone()).or_insert(0) += 1;
-    }
+    });
     counts
 }
 
@@ -351,9 +348,9 @@ pub fn graph_summary(view: &ProjectGraphView<'_>, top_n: usize) -> GraphSummary 
     };
 
     let mut type_counts: FxHashMap<String, usize> = FxHashMap::default();
-    for cat in view.graph.edge_categories.values() {
+    view.graph.for_each_categorized_edge(|_src, _dst, cat| {
         *type_counts.entry(cat.as_str().to_string()).or_insert(0) += 1;
-    }
+    });
 
     let in_deg = compute_in_degree(view.graph);
     let mut sorted: Vec<(FragmentId, usize)> = in_deg.into_iter().collect();

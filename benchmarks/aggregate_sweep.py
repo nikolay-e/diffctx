@@ -55,41 +55,93 @@ def _safe_load(path: Path) -> dict | None:
         return None
 
 
-def collect_cells(cells_dir: Path) -> list[dict]:
-    """Walk every cell-* artifact directory, return flat per-cell records."""
-    cells: list[dict] = []
-    for cell_root in sorted(cells_dir.iterdir()):
-        if not cell_root.is_dir() or not cell_root.name.startswith("cell-"):
+def _budget_sweep_records(cell_root: Path, meta: dict, method, depth, test_set) -> list[dict]:
+    """Expand a multi-budget cell (issue #52 layout) into one record per budget.
+
+    Layout: <cell>/<test_set>_budget_sweep/[L<depth>/]b<budget>.checkpoint.jsonl
+    with a sibling per-budget summary at <cell>/cell_summary_b<budget>.json.
+    """
+    records: list[dict] = []
+    for ckpt in sorted(cell_root.glob("*_budget_sweep/**/b*.checkpoint.jsonl")):
+        m = _BUDGET_CKPT_RE.match(ckpt.name)
+        if not m:
             continue
-        meta = _safe_load(cell_root / "metadata.json") or {}
-        summary = _safe_load(cell_root / "cell_summary.json") or {}
-        # Find the per-instance checkpoint
-        ckpts = sorted(cell_root.glob("*.checkpoint.jsonl"))
-        rows = _load_jsonl(ckpts[0]) if ckpts else []
-        cell_info = meta.get("cell") or {}
-        parsed = _parse_artifact(cell_root.name)
-        cells.append(
+        budget = int(m.group("budget"))
+        rows = _load_jsonl(ckpt)
+        summary = _safe_load(cell_root / f"cell_summary_b{budget}.json") or {}
+        records.append(
             {
                 "artifact_dir": cell_root.name,
-                "method": cell_info.get("method") or parsed[0],
-                "budget": cell_info.get("budget") if cell_info.get("budget") is not None else parsed[1],
-                "depth": cell_info.get("depth") if cell_info.get("depth") is not None else parsed[2],
-                "test_set": cell_info.get("test_set") or parsed[3],
+                "method": method,
+                "budget": budget,
+                "depth": depth,
+                "test_set": test_set,
                 "metadata": meta,
                 "summary": summary,
                 "n_instances": len(rows),
                 "instance_recall_values": [r.get("file_recall", 0.0) for r in rows],
             }
         )
+    return records
+
+
+def collect_cells(cells_dir: Path) -> list[dict]:
+    """Walk every cell-* artifact directory, return flat per-cell records.
+
+    A single-budget cell contributes one record; a multi-budget cell
+    (`--budgets` sweep, artifact `cell-<method>-bALL-...`) contributes one
+    record per budget checkpoint so downstream tables stay keyed by
+    (method, budget, depth, test_set) regardless of the producing layout.
+    """
+    cells: list[dict] = []
+    for cell_root in sorted(cells_dir.iterdir()):
+        if not cell_root.is_dir() or not cell_root.name.startswith("cell-"):
+            continue
+        meta = _safe_load(cell_root / "metadata.json") or {}
+        cell_info = meta.get("cell") or {}
+        parsed = _parse_artifact(cell_root.name)
+        method = cell_info.get("method") or parsed[0]
+        depth = cell_info.get("depth") if cell_info.get("depth") is not None else parsed[2]
+        test_set = cell_info.get("test_set") or parsed[3]
+
+        multi = _budget_sweep_records(cell_root, meta, method, depth, test_set)
+        if multi:
+            cells.extend(multi)
+        else:
+            cells.append(_single_budget_record(cell_root, meta, cell_info, parsed, method, depth, test_set))
     return cells
 
 
-# New artifact layout: cell-<method>-b<budget>-L<depth>-<test_set>
+def _single_budget_record(cell_root: Path, meta: dict, cell_info: dict, parsed, method, depth, test_set) -> dict:
+    summary = _safe_load(cell_root / "cell_summary.json") or {}
+    # Find the per-instance checkpoint
+    ckpts = sorted(cell_root.glob("*.checkpoint.jsonl"))
+    rows = _load_jsonl(ckpts[0]) if ckpts else []
+    meta_budget = cell_info.get("budget")
+    budget = meta_budget if isinstance(meta_budget, int) else parsed[1]
+    return {
+        "artifact_dir": cell_root.name,
+        "method": method,
+        "budget": budget,
+        "depth": depth,
+        "test_set": test_set,
+        "metadata": meta,
+        "summary": summary,
+        "n_instances": len(rows),
+        "instance_recall_values": [r.get("file_recall", 0.0) for r in rows],
+    }
+
+
+# New artifact layout: cell-<method>-b<budget>-L<depth>-<test_set>.
+# `bALL` marks a multi-budget cell (issue #52); its per-budget records are
+# expanded from the b<budget>.checkpoint.jsonl files inside.
 _ARTIFACT_RE_WITH_DEPTH = __import__("re").compile(
-    r"^cell-(?P<method>[a-zA-Z0-9_]+)-b(?P<budget>-?\d+)-L(?P<depth>-?\d+)-(?P<test_set>.+)$"
+    r"^cell-(?P<method>[a-zA-Z0-9_]+)-b(?P<budget>-?\d+|ALL)-L(?P<depth>-?\d+)-(?P<test_set>.+)$"
 )
 # Legacy artifact layout: cell-<method>-b<budget>-<test_set> (no depth segment)
 _ARTIFACT_RE_LEGACY = __import__("re").compile(r"^cell-(?P<method>[a-zA-Z0-9_]+)-b(?P<budget>-?\d+)-(?P<test_set>.+)$")
+
+_BUDGET_CKPT_RE = __import__("re").compile(r"^b(?P<budget>-?\d+)\.checkpoint\.jsonl$")
 
 
 def _parse_artifact(name: str) -> tuple[str | None, int | None, int | None, str | None]:
@@ -120,6 +172,14 @@ def _parse_artifact(name: str) -> tuple[str | None, int | None, int | None, str 
     except ValueError:
         budget = None
     return (m.group("method"), budget, -1, m.group("test_set"))
+
+
+def _depth_of(cell: dict) -> int:
+    """Depth key for grouping. NOT `get("depth") or -1`: depth 0 is a real
+    EGO radius and `or` coerced it to the -1 sentinel, mislabeling every
+    L0 cell as depth-less in the rendered tables."""
+    d = cell.get("depth")
+    return d if isinstance(d, int) else -1
 
 
 _METHOD_ORDER = ["ppr", "ego", "bm25", "aider"]
@@ -277,7 +337,7 @@ def render_headline_tables(cells: list[dict]) -> str:
     valid = [c for c in cells if c["method"] and c["budget"] is not None and c["test_set"]]
     by_cfg: dict[tuple[str, int, int], list[dict]] = defaultdict(list)
     for c in valid:
-        by_cfg[(c["method"], c["budget"], c.get("depth") or -1)].append(c)
+        by_cfg[(c["method"], c["budget"], _depth_of(c))].append(c)
 
     sorted_cfgs = sorted(by_cfg.keys(), key=lambda k: (_method_sort_key(k[0]), int(k[1]), int(k[2])))
 
@@ -319,7 +379,7 @@ def _finalize_language_stat(v: dict) -> dict[str, float]:
 def _aggregate_languages(cells: list[dict]) -> dict[tuple[str, int, int], dict[str, dict[str, float]]]:
     out: dict[tuple[str, int, int], dict[str, dict[str, float]]] = {}
     for c in cells:
-        m, b, d = c["method"], c["budget"], c.get("depth") or -1
+        m, b, d = c["method"], c["budget"], _depth_of(c)
         if m is None or b is None:
             continue
         cfg = (m, b, d)
@@ -389,7 +449,7 @@ def render_pipeline_tables(cells: list[dict]) -> str:
     valid = [c for c in cells if c["method"] and c["budget"] is not None and c["test_set"]]
     by_cfg: dict[tuple[str, int, int], list[dict]] = defaultdict(list)
     for c in valid:
-        by_cfg[(c["method"], c["budget"], c.get("depth") or -1)].append(c)
+        by_cfg[(c["method"], c["budget"], _depth_of(c))].append(c)
 
     cfgs = sorted(by_cfg.keys(), key=lambda k: (_method_sort_key(k[0]), int(k[1]), int(k[2])))
 
@@ -456,7 +516,7 @@ def render_stratification_tables(cells: list[dict]) -> str:
 
     by_cfg: dict[tuple[str, int, int], list[dict]] = defaultdict(list)
     for c in valid:
-        by_cfg[(c["method"], c["budget"], c.get("depth") or -1)].append(c)
+        by_cfg[(c["method"], c["budget"], _depth_of(c))].append(c)
     cfgs = sorted(by_cfg.keys(), key=lambda k: (_method_sort_key(k[0]), int(k[1]), int(k[2])))
 
     out: list[str] = []

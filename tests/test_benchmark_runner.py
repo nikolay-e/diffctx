@@ -315,3 +315,117 @@ def test_render_language_table_orders_by_count_desc():
     py_idx = table.index("python")
     java_idx = table.index("java")
     assert py_idx < java_idx  # higher count first
+
+
+def test_run_cmd_check_false_returns_returncode_on_timeout():
+    from benchmarks.common import run_cmd
+
+    r = run_cmd(["sleep", "5"], check=False, timeout=1)
+    assert r.returncode == 124
+    assert "timeout" in r.stderr
+
+
+def test_run_cmd_check_true_still_raises_on_timeout():
+    import subprocess
+
+    from benchmarks.common import run_cmd
+
+    with pytest.raises(subprocess.TimeoutExpired):
+        run_cmd(["sleep", "5"], check=True, timeout=1)
+
+
+def test_parallel_eval_records_apply_fail_not_garbage_score(tmp_path: Path, monkeypatch):
+    import json as _json
+    import subprocess
+
+    import benchmarks.common as bench_common
+    from benchmarks.common import apply_as_commit, ensure_repo
+
+    # _SHARED_CACHE is resolved at import time; redirect it so the test's
+    # bare clone lands under tmp_path instead of the user's real cache.
+    cache_root = tmp_path / "cache"
+    cache_root.mkdir()
+    monkeypatch.setattr(bench_common, "_SHARED_CACHE", cache_root)
+
+    origin = tmp_path / "origin"
+    origin.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=origin, check=True)
+    (origin / "app.py").write_text("def real_function():\n    return 1\n")
+    subprocess.run(["git", "add", "-A"], cwd=origin, check=True)
+    subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "base"],
+        cwd=origin,
+        check=True,
+    )
+    base_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=origin, capture_output=True, text=True, check=True
+    ).stdout.strip()
+
+    worktrees = tmp_path / "worktrees"
+    worktrees.mkdir()
+    repo_dir = ensure_repo(str(origin), "t/origin", base_commit, worktrees)
+    assert repo_dir is not None
+
+    non_applying_patch = (
+        "diff --git a/missing.py b/missing.py\n"
+        "--- a/missing.py\n"
+        "+++ b/missing.py\n"
+        "@@ -1,1 +1,1 @@\n"
+        "-nonexistent line\n"
+        "+replacement\n"
+    )
+    assert apply_as_commit(repo_dir, non_applying_patch, "should-fail") is False
+
+    head_after = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo_dir, capture_output=True, text=True, check=True
+    ).stdout.strip()
+    assert head_after == base_commit
+
+    ckpt = tmp_path / "ckpt.jsonl"
+
+    def _apply_gated_eval(instance: BenchmarkInstance, p: RunParams) -> EvalResult:
+        r = EvalResult(
+            instance_id=instance.instance_id,
+            source_benchmark=instance.source_benchmark,
+            file_recall=0.0,
+            file_precision=0.0,
+            budget=p.budget,
+        )
+        applied = apply_as_commit(repo_dir, non_applying_patch, "gold")
+        r.extra["status"] = "ok" if applied else "apply_fail"
+        return r
+
+    results = run_eval_set([_inst("a", 1)], _apply_gated_eval, RunParams(), workers=1, checkpoint_path=ckpt)
+    assert results[0].extra["status"] == "apply_fail"
+    rows = [_json.loads(line) for line in ckpt.read_text().splitlines()]
+    assert rows[0]["extra"]["status"] == "apply_fail"
+
+
+def test_aggregate_sweep_expands_multi_budget_cells(tmp_path: Path):
+    import json as _json
+
+    from benchmarks.aggregate_sweep import collect_cells
+
+    root = tmp_path / "all_cells"
+    multi = root / "cell-ego-bALL-L2-swebench_verified"
+    sweep_dir = multi / "swebench_verified_budget_sweep"
+    sweep_dir.mkdir(parents=True)
+    for b in (0, 8000):
+        (sweep_dir / f"b{b}.checkpoint.jsonl").write_text(_json.dumps({"instance_id": "i1", "file_recall": 0.5}) + "\n")
+        (multi / f"cell_summary_b{b}.json").write_text(_json.dumps({"n": 1}))
+    (multi / "metadata.json").write_text(
+        _json.dumps({"cell": {"method": "ego", "budget": "ALL", "depth": 2, "test_set": "swebench_verified"}})
+    )
+
+    legacy = root / "cell-aider-b8000-L-1-swebench_verified"
+    legacy.mkdir(parents=True)
+    (legacy / "swebench_verified.checkpoint.jsonl").write_text(_json.dumps({"instance_id": "i1", "file_recall": 0.4}) + "\n")
+    (legacy / "cell_summary.json").write_text(_json.dumps({"n": 1}))
+    (legacy / "metadata.json").write_text(
+        _json.dumps({"cell": {"method": "aider", "budget": 8000, "depth": -1, "test_set": "swebench_verified"}})
+    )
+
+    cells = collect_cells(root)
+    assert {(c["method"], c["budget"], c["depth"]) for c in cells} == {("ego", 0, 2), ("ego", 8000, 2), ("aider", 8000, -1)}
+    assert all(c["n_instances"] == 1 for c in cells)
+    assert all(c["summary"] for c in cells)

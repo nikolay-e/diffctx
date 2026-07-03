@@ -293,7 +293,18 @@ pub fn process_files_for_fragments(
                     // truncation), which can drop the small fragment covering the
                     // edited hunk before core identification runs.
                     let generated = !is_changed && is_generated_file(file_path, content);
-                    let cap = if generated { max_generated } else { max_frags };
+                    // Changed files also get 10x cap headroom: the biggest-N
+                    // truncation below keeps the LONGEST fragments, and the
+                    // edited hunk is typically a small leaf that would be
+                    // dropped first (hunks are only known later, in core
+                    // identification). max_changed_file_size still bounds cost.
+                    let cap = if generated {
+                        max_generated
+                    } else if is_changed {
+                        max_frags.saturating_mul(10)
+                    } else {
+                        max_frags
+                    };
                     if raw_frags.len() > cap {
                         raw_frags.sort_by(|a, b| b.line_count().cmp(&a.line_count()));
                         raw_frags.truncate(cap);

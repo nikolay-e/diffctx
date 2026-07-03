@@ -43,7 +43,18 @@ def repos_dir(env_var: str = "CB_REPOS_DIR", suffix_var: str | None = None) -> P
 def run_cmd(
     cmd: list[str], cwd: str | Path | None = None, check: bool = True, timeout: int = 120
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, cwd=cwd, text=True, capture_output=True, check=check, timeout=timeout)
+    # check=False callers are written against returncode inspection; a raised
+    # TimeoutExpired would bypass every one of their fallback paths (observed:
+    # one `git clean` timeout in a worker's reused worktree escaped ensure_repo's
+    # purge-and-recreate branch and poisoned every subsequent instance mapped to
+    # that worktree — 5028/22968 results lost in the grid_p95_full run).
+    try:
+        return subprocess.run(cmd, cwd=cwd, text=True, capture_output=True, check=check, timeout=timeout)
+    except subprocess.TimeoutExpired as e:
+        if check:
+            raise
+        partial = e.stdout.decode(errors="replace") if isinstance(e.stdout, bytes) else (e.stdout or "")
+        return subprocess.CompletedProcess(cmd, returncode=124, stdout=partial, stderr=f"run_cmd timeout after {timeout}s: {e}")
 
 
 def _parse_diff_path(raw: str, prefix: str) -> str | None:
@@ -299,6 +310,51 @@ def _try_worktree_add(
     )
 
 
+def _worktree_state_verified(repo_dir: Path, base_commit: str) -> bool:
+    head = run_cmd(["git", "-C", str(repo_dir), "rev-parse", "HEAD"], check=False, timeout=10)
+    want = run_cmd(
+        ["git", "-C", str(repo_dir), "rev-parse", f"{base_commit}^{{commit}}"],
+        check=False,
+        timeout=10,
+    )
+    if head.returncode != 0 or want.returncode != 0 or head.stdout.strip() != want.stdout.strip():
+        return False
+    status = run_cmd(["git", "-C", str(repo_dir), "status", "--porcelain"], check=False, timeout=30)
+    return status.returncode == 0 and not status.stdout.strip()
+
+
+def _try_reuse_worktree(repo_dir: Path, repo_name: str, base_commit: str, checkout_timeout: int) -> bool:
+    """Per-worker isolated worktree reuse. The parent dir is already
+    per-worker (UUID-keyed via `worker_dir`), so reusing the deterministic
+    path across instances of the same repo is safe and saves a worktree add.
+    Reuse is trusted ONLY after verifying HEAD == base_commit and a clean
+    status — a checkout that "succeeds" against a stale/dirty tree used to
+    be scored silently, producing run-to-run metric drift on a fully
+    deterministic engine. On verification failure the dir is purged so the
+    caller falls through to a fresh worktree add.
+    """
+    if not repo_dir.exists():
+        return False
+    _remove_stale_locks(_git_dir_for_repo(repo_dir))
+    # 30s was too tight for vscode/mui-scale worktrees: the clean timed
+    # out on every reuse, and (before run_cmd returned 124 instead of
+    # raising) the escaped exception poisoned the worktree for all
+    # subsequent instances. A timeout here now degrades to purge +
+    # fresh worktree add via the verification below.
+    run_cmd(["git", "-C", str(repo_dir), "clean", "-fd"], check=False, timeout=120)
+    r = run_cmd(
+        ["git", "-C", str(repo_dir), "checkout", "--force", base_commit],
+        check=False,
+        timeout=checkout_timeout,
+    )
+    if r.returncode == 0 and _worktree_state_verified(repo_dir, base_commit):
+        return True
+    reason = r.stderr.strip() if r.returncode != 0 else "stale HEAD or dirty tree after checkout"
+    print(f"  RESET worktree {repo_name} ({reason})", flush=True)
+    _purge_cache_dir(repo_dir)
+    return False
+
+
 def ensure_repo(
     repo_url: str,
     repo_name: str,
@@ -312,36 +368,15 @@ def ensure_repo(
 
     # Unconditional cleanup of orphan worktrees from previously killed processes.
     # No-op on a clean cache; rescues worktree/<name>/locked after SIGKILL/OOM.
-    subprocess.run(
-        ["git", "-C", str(cache_dir), "worktree", "prune", "--expire=now"],
-        capture_output=True,
-        timeout=30,
-    )
+    run_cmd(["git", "-C", str(cache_dir), "worktree", "prune", "--expire=now"], check=False, timeout=30)
 
     if not _ensure_commit_present(cache_dir, base_commit):
         print(f"  WORKTREE/CHECKOUT FAIL {base_commit[:12]}: unreachable_commit (not in cache and fetch failed)", flush=True)
         return None
 
-    # Per-worker isolated worktree path. `target_dir` is already per-worker
-    # (UUID-keyed via `worker_dir`), so reusing the deterministic path inside
-    # it across instances of the same repo is safe and saves a worktree add.
-    # If reuse fails, fall through to a fresh UUID-suffixed path so we never
-    # collide with a stale `worktrees/` registration in the shared bare cache.
-    # `git worktree add` against that bare cache is serialized by git's own
-    # `.git/worktrees.lock`; no userspace mutex needed.
     repo_dir = target_dir / repo_name.replace("/", "__")
-    if repo_dir.exists():
-        _remove_stale_locks(_git_dir_for_repo(repo_dir))
-        run_cmd(["git", "-C", str(repo_dir), "clean", "-fd"], check=False, timeout=30)
-        r = run_cmd(
-            ["git", "-C", str(repo_dir), "checkout", "--force", base_commit],
-            check=False,
-            timeout=checkout_timeout,
-        )
-        if r.returncode == 0:
-            return repo_dir
-        print(f"  RESET worktree {repo_name} ({r.stderr})", flush=True)
-        _purge_cache_dir(repo_dir)
+    if _try_reuse_worktree(repo_dir, repo_name, base_commit, checkout_timeout):
+        return repo_dir
 
     r = _try_worktree_add(cache_dir, repo_dir, base_commit, checkout_timeout)
     if r.returncode != 0:
@@ -439,7 +474,21 @@ def apply_as_commit(repo_dir: Path, patch_text: str, message: str = "bench") -> 
 
 
 def reset_to_parent(repo_dir: Path) -> None:
-    run_cmd(["git", "-C", str(repo_dir), "reset", "--hard", "HEAD~1"], check=False, timeout=30)
+    expected = run_cmd(["git", "-C", str(repo_dir), "rev-parse", "HEAD~1"], check=False, timeout=10)
+    r = run_cmd(["git", "-C", str(repo_dir), "reset", "--hard", "HEAD~1"], check=False, timeout=30)
+    after = run_cmd(["git", "-C", str(repo_dir), "rev-parse", "HEAD"], check=False, timeout=10)
+    restored = (
+        expected.returncode == 0
+        and r.returncode == 0
+        and after.returncode == 0
+        and expected.stdout.strip() == after.stdout.strip()
+    )
+    if not restored:
+        # The reuse path in ensure_repo re-verifies HEAD + cleanliness and
+        # recreates the worktree, so a failed reset degrades to one extra
+        # worktree add instead of silently scoring the next instance on a
+        # stale tree.
+        print(f"  RESET FAIL {repo_dir.name}: HEAD not restored ({r.stderr.strip()})", flush=True)
 
 
 def reset_to_commit(repo_dir: Path, commit: str) -> None:
@@ -558,11 +607,13 @@ def _run_serial(worker_fn, run_args: list, collect: str) -> list:
 
 
 def _run_pool(worker_fn, run_args: list, workers: int, collect: str) -> list:
+    import traceback
     from concurrent.futures import ProcessPoolExecutor, as_completed
     from concurrent.futures.process import BrokenProcessPool
 
     batch_size = int(os.environ.get("BENCH_BATCH_SIZE", str(max(workers * 4, 20))))
     results: list = []
+    dropped = 0
     for batch_start in range(0, len(run_args), batch_size):
         batch = run_args[batch_start : batch_start + batch_size]
         try:
@@ -572,11 +623,20 @@ def _run_pool(worker_fn, run_args: list, workers: int, collect: str) -> list:
                     try:
                         _collect_result(results, future.result(), collect)
                     except BrokenProcessPool as e:
+                        dropped += 1
                         print(f"  WORKER CRASH [{futures[future]}]: {type(e).__name__}", flush=True)
                     except Exception as e:
-                        print(f"  WORKER CRASH [{futures[future]}]: {type(e).__name__}: {e}", flush=True)
+                        dropped += 1
+                        print(
+                            f"  WORKER CRASH [{futures[future]}]: {type(e).__name__}: {e}\n{traceback.format_exc()}", flush=True
+                        )
         except BrokenProcessPool as e:
+            dropped += len(batch)
             print(f"  POOL CRASH batch {batch_start}-{batch_start+len(batch)}: {e}", flush=True)
+    if dropped:
+        # Dropped items produce NO result row — they vanish from every
+        # denominator downstream. Make the shrinkage impossible to miss.
+        print(f"  WARNING: {dropped}/{len(run_args)} tasks produced no result (worker/pool crashes above)", flush=True)
     return results
 
 

@@ -122,6 +122,9 @@ Parameters:
 - `max_file_bytes` (integer, default `262144` = 256 KB) — per-file content cap
 - `clipboard` (boolean, default `false`) — copy to clipboard instead of
   returning the map
+- `max_tokens` (integer, default `25000`) — ceiling on the returned output; if
+  the map exceeds it, an advisory message is returned instead of the content
+  (narrow with `subdirectory`/`no_content`/`max_depth`, or raise the ceiling)
 
 ### `get_file_context`
 
@@ -140,3 +143,6 @@ Parameters:
   returning the content
 - `dry_run` (boolean, default `false`) — preview which files match without
   reading their content
+- `max_tokens` (integer, default `25000`) — ceiling on the returned output; if
+  the content exceeds it, an advisory message is returned instead (tighten
+  `patterns`, lower `max_files`, use `dry_run=true`, or raise the ceiling)

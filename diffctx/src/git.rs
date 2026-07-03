@@ -143,6 +143,21 @@ pub fn is_git_repo(path: &Path) -> bool {
     run_git(path, &["rev-parse", "--git-dir"]).is_ok()
 }
 
+/// Resolves the actual working-tree root for `path`, which may be a
+/// subdirectory of the repository. `git diff`/`git cat-file` paths are
+/// always reported relative to this root, not to an arbitrary `-C` cwd -
+/// running the pipeline with `path` still set to a subdirectory silently
+/// produces zero fragments because file lookups get double-prefixed
+/// (e.g. `src/src/app.py`).
+pub fn find_toplevel(path: &Path) -> Option<PathBuf> {
+    let out = run_git(path, &["rev-parse", "--show-toplevel"]).ok()?;
+    let trimmed = out.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(PathBuf::from(trimmed))
+}
+
 pub fn get_diff_text(repo_root: &Path, diff_range: Option<&str>) -> Result<String> {
     let mut args: Vec<&str> = vec!["diff"];
     args.extend_from_slice(SAFE_DIFF_FLAGS);
@@ -453,6 +468,41 @@ pub fn get_renamed_paths(
     }
 
     Ok((old_paths, pure_new_paths))
+}
+
+/// Rename pairs as repo-relative display paths (`old -> new`), for the output
+/// header. Unlike `get_renamed_paths` this preserves the pairing and does not
+/// canonicalize (the old path no longer exists on disk).
+pub fn get_rename_pairs(
+    repo_root: &Path,
+    diff_range: Option<&str>,
+) -> Result<Vec<(String, String)>> {
+    let mut args: Vec<&str> = vec!["diff"];
+    args.extend_from_slice(SAFE_DIFF_FLAGS);
+    args.extend_from_slice(&["--diff-filter=R", "--name-status", "-M", "-z"]);
+    if let Some(range) = diff_range {
+        validate_diff_range(range)?;
+        args.push(range);
+    }
+    let output = run_git(repo_root, &args)?;
+    let parts: Vec<&str> = output.split('\0').collect();
+
+    let mut pairs = Vec::new();
+    let mut i = 0;
+    while i < parts.len() {
+        if parts[i].starts_with('R') {
+            if i + 2 < parts.len() && !parts[i + 1].is_empty() && !parts[i + 2].is_empty() {
+                pairs.push((
+                    parts[i + 1].replace('\\', "/"),
+                    parts[i + 2].replace('\\', "/"),
+                ));
+            }
+            i += 3;
+        } else {
+            i += 1;
+        }
+    }
+    Ok(pairs)
 }
 
 pub fn split_diff_range(range: &str) -> (Option<String>, Option<String>) {

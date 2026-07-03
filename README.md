@@ -24,9 +24,9 @@ lines outward and stops as soon as additional context stops paying for itself.
 ## Install (30 seconds)
 
 ```bash
-pipx install diffctx                    # recommended — isolated CLI, no venv needed
+uvx diffctx . --diff HEAD~1             # zero-install, run once via uv
+pipx install diffctx                    # recommended for repeat use — isolated CLI, no venv needed
 pip install diffctx                     # or: into an active environment
-pipx install 'diffctx[tree-sitter]'     # + AST parsing for smarter diff context
 pipx install 'diffctx[mcp]'             # + MCP server for AI assistants
 ```
 
@@ -278,6 +278,18 @@ Auto-discovered files:
 
 - `.diffctx/ignore` — diffctx-specific ignore patterns
 - `.diffctx/whitelist` — Include-only filter (only matched files included)
+
+## Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| `0`  | Success — output contains content |
+| `1`  | Runtime error (bad path, permission denied, etc.) |
+| `2`  | Usage error (invalid flags/arguments) |
+| `3`  | Environment error (`--diff` outside a git repo, git not installed, no commits yet) |
+| `4`  | `--diff` produced no semantic context (clean working tree, binary-only, everything filtered out) — output is still emitted, but scripts can detect the empty case. Deletion/rename-only diffs are NOT empty: they list `deleted_files`/`renamed_files` and exit `0` |
+| `130`| Interrupted (Ctrl-C) |
+| `141`| Broken pipe (e.g. piping into `head`) |
 
 ## Content Placeholders
 

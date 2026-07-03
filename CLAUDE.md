@@ -71,7 +71,7 @@ are unambiguously detectable.
 | Tokens      | tiktoken o200k    | GPT-4o standard, exact BPE   |
 | Ignores     | pathspec          | gitignore-compatible         |
 | Parsing     | tree-sitter       | 30+ languages, AST-level     |
-| Ranking     | PPR               | Relevance with natural decay |
+| Ranking     | ego (default), PPR, BM25 | Relevance with natural decay |
 | Selection   | Lazy greedy       | Near-optimal, linear time    |
 | Git         | subprocess UTF-8  | Platform-safe, non-ASCII     |
 | Diff        | git diff unified=0| Exact line ranges            |

@@ -67,6 +67,30 @@ jobs:
       server_id: ${{ steps.create.outputs.server_id }}
       server_ip: ${{ steps.create.outputs.server_ip }}
     steps:
+      # Fail fast BEFORE paying for a server: a missing image otherwise dies
+      # silently inside cloud-init and surfaces only as "runners never came
+      # online" 15 minutes later (observed after the treemapper->diffctx
+      # rebrand renamed the reference without republishing the image).
+      - name: Verify bench image exists in ghcr
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          set -euo pipefail
+          TOKEN=$(curl -sf -u "nikolay-e:${GH_TOKEN}" \
+            "https://ghcr.io/token?scope=repository:nikolay-e/diffctx-bench:pull" | jq -r '.token')
+          ACCEPT="application/vnd.oci.image.index.v1+json"
+          ACCEPT="${ACCEPT}, application/vnd.docker.distribution.manifest.list.v2+json"
+          ACCEPT="${ACCEPT}, application/vnd.docker.distribution.manifest.v2+json"
+          if ! curl -sf -o /dev/null \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H "Accept: ${ACCEPT}" \
+            "https://ghcr.io/v2/nikolay-e/diffctx-bench/manifests/latest"; then
+            echo "::error::ghcr.io/nikolay-e/diffctx-bench:latest not found — build via" \
+              "the bench-image workflow or PUSH=1 scripts/build_bench_image.sh" >&2
+            exit 1
+          fi
+          echo "Bench image present."
+
       - name: Create Hetzner CCX63 with 4 self-hosted runners
         id: create
         env:
@@ -101,7 +125,10 @@ jobs:
           mkdir -p /root/.ssh && chmod 700 /root/.ssh
           echo "${BENCH_SSH_PUBLIC_KEY}" >> /root/.ssh/authorized_keys
           chmod 600 /root/.ssh/authorized_keys
-          chage -M -1 root
+          # Hetzner marks the root password expired when the server is created
+          # without an API-level ssh_keys ref; -M -1 alone does not clear the
+          # forced-change flag, which blocks non-TTY SSH ("password expired").
+          chage -M -1 -d "\$(date +%Y-%m-%d)" root
           useradd -m -s /bin/bash github
           usermod -aG docker github
           echo "${GH_TOKEN}" | docker login ghcr.io -u nikolay-e --password-stdin
@@ -354,6 +381,7 @@ jobs:
           path: ${{ env.CELL_DIR }}/
           retention-days: 30
           if-no-files-found: warn
+          overwrite: true
 
   # ============================================================================
   # 3b. Full sweep — Hetzner CCX63, complete 5×5×3 matrix, baked repo cache
@@ -369,21 +397,21 @@ jobs:
       # 4 self-hosted runners on the CCX63 host; the queue can only drain at
       # that rate anyway, so cap the matrix-level parallelism to match.
       max-parallel: 4
+      # Budget axis collapsed (#52): diffctx methods and bm25 sweep every
+      # budget inside ONE cell via `run_final_eval --budgets ...` — the heavy
+      # phase (parse/graph/score) runs once per instance instead of once per
+      # budget. Budget lists per method are resolved in the `cfg` step.
+      # Aider has no shareable state across map_tokens values, so it keeps
+      # one budget per cell via `include` entries.
       matrix:
-        method: [ppr, ego, bm25, aider]
-        # B=0 is a recall-floor sanity bound (must report ≈ 0); B=-1 is the
-        # unlimited-budget ceiling. The 5 paying budgets {8k, 16k, 32k, 64k, 128k}
-        # form the budget curve referenced in STATS_PLAN.md.
-        budget: [-1, 0, 8000, 16000, 32000, 64000, 128000]
+        method: [ppr, ego, bm25]
         # `depth` is the EGO graph traversal radius; only meaningful for
-        # method=ego. PPR uses alpha (not depth), BM25 has no graph,
-        # Aider is its own subprocess. Sentinel -1 means "depth does not
-        # apply"; non-EGO methods run only with depth=-1.
+        # method=ego. PPR uses alpha (not depth), BM25 has no graph.
+        # Sentinel -1 means "depth does not apply"; non-EGO methods run
+        # only with depth=-1.
         depth: [-1, 0, 1, 2, 3, 4]
         test_set: [contextbench_verified, polybench500, swebench_verified]
         exclude:
-          - {method: bm25, budget: -1}
-          - {method: aider, budget: -1}
           # Non-EGO methods: only the depth=-1 cell.
           - {method: ppr, depth: 0}
           - {method: ppr, depth: 1}
@@ -395,12 +423,25 @@ jobs:
           - {method: bm25, depth: 2}
           - {method: bm25, depth: 3}
           - {method: bm25, depth: 4}
-          - {method: aider, depth: 0}
-          - {method: aider, depth: 1}
-          - {method: aider, depth: 2}
-          - {method: aider, depth: 3}
-          - {method: aider, depth: 4}
           - {method: ego, depth: -1}
+        include:
+          # Aider: one budget per cell (B=-1 unlimited and B=0 recall-floor
+          # do not apply to a repo-map subprocess).
+          - {method: aider, depth: -1, test_set: contextbench_verified, budget: 8000}
+          - {method: aider, depth: -1, test_set: contextbench_verified, budget: 16000}
+          - {method: aider, depth: -1, test_set: contextbench_verified, budget: 32000}
+          - {method: aider, depth: -1, test_set: contextbench_verified, budget: 64000}
+          - {method: aider, depth: -1, test_set: contextbench_verified, budget: 128000}
+          - {method: aider, depth: -1, test_set: polybench500, budget: 8000}
+          - {method: aider, depth: -1, test_set: polybench500, budget: 16000}
+          - {method: aider, depth: -1, test_set: polybench500, budget: 32000}
+          - {method: aider, depth: -1, test_set: polybench500, budget: 64000}
+          - {method: aider, depth: -1, test_set: polybench500, budget: 128000}
+          - {method: aider, depth: -1, test_set: swebench_verified, budget: 8000}
+          - {method: aider, depth: -1, test_set: swebench_verified, budget: 16000}
+          - {method: aider, depth: -1, test_set: swebench_verified, budget: 32000}
+          - {method: aider, depth: -1, test_set: swebench_verified, budget: 64000}
+          - {method: aider, depth: -1, test_set: swebench_verified, budget: 128000}
     runs-on: [self-hosted, large]
     timeout-minutes: 350
     container:
@@ -418,8 +459,12 @@ jobs:
         --ulimit nproc=65535:65535
         -v /data/bench_repos:/cache/contextbench_repos
     env:
-      CELL_TAG: ${{ matrix.method }}_b${{ matrix.budget }}_L${{ matrix.depth }}_${{ matrix.test_set }}
-      CELL_DIR: results/sweep/${{ matrix.method }}_b${{ matrix.budget }}_L${{ matrix.depth }}_${{ matrix.test_set }}
+      # `matrix.budget` exists only on aider include-cells; multi-budget
+      # cells (ppr/ego/bm25, #52) are labeled bALL and enumerate their
+      # budgets in the checkpoint filenames.
+      CELL_TAG: ${{ matrix.method }}_b${{ matrix.budget || 'ALL' }}_L${{ matrix.depth }}_${{ matrix.test_set }}
+      CELL_DIR: >-
+        results/sweep/${{ matrix.method }}_b${{ matrix.budget || 'ALL' }}_L${{ matrix.depth }}_${{ matrix.test_set }}
       MANIFESTS_DIR: benchmarks/manifests/v1
       INPUT_TAU: '0.12'
       INPUT_CBF: '0.5'
@@ -437,7 +482,7 @@ jobs:
             "mode": "full",
             "cell": {
               "method": "${{ matrix.method }}",
-              "budget": ${{ matrix.budget }},
+              "budget": "${{ matrix.budget || 'ALL' }}",
               "depth": ${{ matrix.depth }},
               "test_set": "${{ matrix.test_set }}",
               "tau": ${INPUT_TAU},
@@ -579,33 +624,45 @@ jobs:
           mkdir -p /tmp/manifest_one
           cp "${MANIFESTS_DIR}/test_${{ matrix.test_set }}.txt" /tmp/manifest_one/
 
-      - name: Resolve baseline + scoring
+      - name: Resolve baseline + scoring + budgets
         id: cfg
         run: |
           method="${{ matrix.method }}"
+          # Budget lists (#52): B=0 is the recall-floor sanity bound, B=-1 the
+          # unlimited-budget ceiling; {8k..128k} form the budget curve from
+          # STATS_PLAN.md. diffctx methods sweep all of them in one cell via
+          # compute_scored_state reuse; bm25 loops per budget in-process
+          # (no reuse but same artifact layout); aider gets its budget from
+          # the matrix include entry.
           case "$method" in
             ppr|ego)
               echo "baseline=diffctx" >> "$GITHUB_OUTPUT"
               echo "scoring=$method" >> "$GITHUB_OUTPUT"
+              echo "budgets=-1,0,8000,16000,32000,64000,128000" >> "$GITHUB_OUTPUT"
               ;;
             bm25)
               echo "baseline=bm25" >> "$GITHUB_OUTPUT"
               echo "scoring=ego" >> "$GITHUB_OUTPUT"
+              echo "budgets=0,8000,16000,32000,64000,128000" >> "$GITHUB_OUTPUT"
               ;;
             aider)
               echo "baseline=aider_fair" >> "$GITHUB_OUTPUT"
               echo "scoring=ego" >> "$GITHUB_OUTPUT"
+              echo "budgets=" >> "$GITHUB_OUTPUT"
               ;;
           esac
 
       - name: Build winner.json
         run: |
+          # Multi-budget cells still need a syntactically valid headline
+          # budget; 8000 is the calibrated default and is present in every
+          # budget list, so headline selection is always resolvable.
           cat > /tmp/winner.json <<JSON
           {
             "winner": {
               "tau": ${INPUT_TAU},
               "core_budget_fraction": ${INPUT_CBF},
-              "budget": ${{ matrix.budget }},
+              "budget": ${{ matrix.budget || 8000 }},
               "scoring": "${SCORING}",
               "extra_env": {}
             }
@@ -617,14 +674,49 @@ jobs:
       - name: Install uv (required by aider baseline; safe no-op for others)
         run: pip install --no-cache-dir uv
 
+      # Resume across "Re-run failed jobs": artifacts persist across attempts
+      # of the same run, so a retried cell restores its previous attempt's
+      # checkpoints and run_final_eval's resume_from skips completed instances
+      # instead of re-running the whole cell from scratch.
+      - name: Restore previous attempt's checkpoints (resume)
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: cell-${{ matrix.method }}-b${{ matrix.budget || 'ALL' }}-L${{ matrix.depth }}-${{ matrix.test_set }}
+          path: /tmp/prev_cell
+
+      - name: Seed checkpoints from previous attempt
+        shell: bash
+        run: |
+          if [ -d /tmp/prev_cell ]; then
+            restored=$(find /tmp/prev_cell -name '*.checkpoint.jsonl' | wc -l)
+            if [ "${restored}" -gt 0 ]; then
+              cd /tmp/prev_cell
+              find . -name '*.checkpoint.jsonl' \
+                -exec cp --parents {} "${GITHUB_WORKSPACE}/${CELL_DIR}/" \;
+              cd "${GITHUB_WORKSPACE}"
+              echo "Restored ${restored} checkpoint file(s) from previous attempt"
+            else
+              echo "Previous artifact present but no checkpoints inside"
+            fi
+          else
+            echo "No previous attempt artifact — fresh cell"
+          fi
+
       - name: Write checkpoint heartbeat script
         run: |
           cat > /tmp/heartbeat.py << 'PYEOF'
           import os, sys, time, json, pathlib, urllib.request
-          CKPT = pathlib.Path("${{ env.CELL_DIR }}/${{ matrix.test_set }}.checkpoint.jsonl")
+          # Single-budget cells write <test_set>.checkpoint.jsonl; multi-budget
+          # cells (#52) write <test_set>_budget_sweep/b<budget>.checkpoint.jsonl.
+          CELL = pathlib.Path("${{ env.CELL_DIR }}")
           ARTIFACT_NAME = "heartbeat-${{ env.CELL_TAG }}"
+          def _newest_checkpoint():
+              ckpts = sorted(CELL.glob("**/*.checkpoint.jsonl"), key=lambda p: p.stat().st_mtime)
+              return ckpts[-1] if ckpts else None
           def try_upload():
-              if not CKPT.exists():
+              CKPT = _newest_checkpoint()
+              if CKPT is None:
                   return
               rt_url = os.environ.get("ACTIONS_RUNTIME_URL", "")
               rt_tok = os.environ.get("ACTIONS_RUNTIME_TOKEN", "")
@@ -660,7 +752,7 @@ jobs:
               except Exception as e:
                   print(f"[heartbeat] put: {e}", file=sys.stderr, flush=True)
           while True:
-              time.sleep(600)
+              time.sleep(300)
               try:
                   try_upload()
               except Exception as e:
@@ -680,10 +772,15 @@ jobs:
           if [ "${MATRIX_DEPTH}" != "-1" ]; then
             export DIFFCTX_OP_GRAPH_DEPTH="${MATRIX_DEPTH}"
           fi
+          BUDGETS_ARGS=()
+          if [ -n "${BUDGETS}" ]; then
+            BUDGETS_ARGS=(--budgets "${BUDGETS}")
+          fi
           python -m benchmarks.run_final_eval \
             --baseline "${BASELINE}" \
             --winner /tmp/winner.json \
             --manifests-dir /tmp/manifest_one \
+            "${BUDGETS_ARGS[@]}" \
             --workers 10 \
             --timeout-per-instance "${INPUT_TIMEOUT}" \
             --min-memory-gb 32 \
@@ -692,16 +789,29 @@ jobs:
           kill "${HEARTBEAT_PID}" 2>/dev/null || true
         env:
           BASELINE: ${{ steps.cfg.outputs.baseline }}
+          BUDGETS: ${{ steps.cfg.outputs.budgets }}
           MATRIX_DEPTH: ${{ matrix.depth }}
 
       - name: Per-instance metric summary (always)
         if: always()
         run: |
+          # Multi-budget cells (#52): one summary per b<budget>.checkpoint.jsonl.
+          found=0
+          for ckpt in "${CELL_DIR}/${{ matrix.test_set }}_budget_sweep"/b*.checkpoint.jsonl; do
+            [ -f "${ckpt}" ] || continue
+            found=1
+            b=$(basename "${ckpt}" .checkpoint.jsonl)
+            python -m benchmarks.cell_metrics --ckpt "${ckpt}" --out "${CELL_DIR}/cell_summary_${b}.json"
+            echo "=== ${b} ==="
+            head -40 "${CELL_DIR}/cell_summary_${b}.json"
+          done
           ckpt="${CELL_DIR}/${{ matrix.test_set }}.checkpoint.jsonl"
           if [ -f "${ckpt}" ]; then
+            found=1
             python -m benchmarks.cell_metrics --ckpt "${ckpt}" --out "${CELL_DIR}/cell_summary.json"
             cat "${CELL_DIR}/cell_summary.json"
-          else
+          fi
+          if [ "${found}" = "0" ]; then
             printf '{"error": "no checkpoint produced", "expected_path": "%s"}\n' "${ckpt}" \
               > "${CELL_DIR}/cell_summary.json"
             ls -la "${CELL_DIR}" || true
@@ -724,10 +834,13 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
-          name: cell-${{ matrix.method }}-b${{ matrix.budget }}-L${{ matrix.depth }}-${{ matrix.test_set }}
+          name: cell-${{ matrix.method }}-b${{ matrix.budget || 'ALL' }}-L${{ matrix.depth }}-${{ matrix.test_set }}
           path: ${{ env.CELL_DIR }}/
           retention-days: 90
           if-no-files-found: warn
+          # A retried job must be able to replace its previous attempt's
+          # artifact (v4+ artifacts are immutable per name by default).
+          overwrite: true
 
       - name: Reclaim disk — drop this cell's per-worker worktrees
         if: always()
@@ -801,6 +914,7 @@ jobs:
           name: sweep-aggregated-${{ needs.prep.outputs.sweep_id }}
           path: aggregated/
           retention-days: 365
+          overwrite: true
 
       - name: Commit raw artifacts to results branch
         env:
@@ -882,7 +996,12 @@ jobs:
               "https://api.github.com/repos/${REPO}/actions/runners/${rid}" || true
           done
 
+      # continue-on-error: when provision fails before creating the server the
+      # artifact was never uploaded; that must not fail cleanup (observed on
+      # run 28648441942 — verify-image failed fast, no server existed, cleanup
+      # went red on a missing artifact and masked the real failure).
       - name: Download server_id artifact
+        continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
           name: hetzner-server-id
@@ -893,6 +1012,10 @@ jobs:
           HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
         run: |
           set -euo pipefail
+          if [ ! -f /tmp/hetzner/server_id.txt ]; then
+            echo "No server_id artifact — server was never provisioned, nothing to delete."
+            exit 0
+          fi
           SERVER_ID=$(cat /tmp/hetzner/server_id.txt)
           if [ -z "${SERVER_ID}" ] || [ "${SERVER_ID}" = "null" ]; then
             echo "No server ID found — nothing to delete."

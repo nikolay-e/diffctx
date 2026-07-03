@@ -26,6 +26,20 @@ _DEFAULT_TAU = 0.12
 # layering constraint as above: duplicated rather than imported from cli.
 _DEFAULT_MAX_FILE_BYTES = 256 * 1024
 
+# Hard ceiling on what a single tool call may inject into the client's
+# context window. Without it, get_tree_map on a mid-size repo returns
+# hundreds of thousands of tokens in one response.
+_DEFAULT_MAX_TOKENS = 25_000
+
+
+def _over_token_budget_notice(tool: str, token_count: int, max_tokens: int, hint: str) -> str:
+    return (
+        f"{tool}: output is {token_count:,} tokens, exceeding max_tokens={max_tokens:,}. "
+        f"Nothing was returned to protect your context window. "
+        f"Narrow the request ({hint}), set clipboard=true, or raise max_tokens explicitly."
+    )
+
+
 mcp = FastMCP("diffctx")
 
 _DIFF_DESCRIPTION = (
@@ -106,6 +120,7 @@ async def get_tree_map(
     max_depth: int | None = None,
     max_file_bytes: int = _DEFAULT_MAX_FILE_BYTES,
     clipboard: bool = False,
+    max_tokens: int = _DEFAULT_MAX_TOKENS,
 ) -> str:
     from diffctx.ignore import get_ignore_specs, get_whitelist_spec
     from diffctx.tokens import count_tokens
@@ -140,6 +155,14 @@ async def get_tree_map(
 
         await anyio.to_thread.run_sync(lambda: copy_to_clipboard(content))
         return f"Copied to clipboard ({token_info.count:,} tokens, {token_info.encoding})"
+
+    if token_info.count > max_tokens:
+        return _over_token_budget_notice(
+            "get_tree_map",
+            token_info.count,
+            max_tokens,
+            "use subdirectory, no_content=true, or max_depth",
+        )
 
     return f"<!-- {token_info.count:,} tokens ({token_info.encoding}) -->\n{content}"
 
@@ -216,6 +239,7 @@ async def get_file_context(
     max_file_bytes: int = _DEFAULT_MAX_FILE_BYTES,
     clipboard: bool = False,
     dry_run: bool = False,
+    max_tokens: int = _DEFAULT_MAX_TOKENS,
 ) -> str:
     validated_path = validate_dir_path(repo_path)
 
@@ -238,6 +262,17 @@ async def get_file_context(
 
         await anyio.to_thread.run_sync(lambda: copy_to_clipboard(content))
         return f"Copied {n_files} files ({n_lines:,} lines) to clipboard"
+
+    from diffctx.tokens import count_tokens
+
+    token_count = count_tokens(content).count
+    if token_count > max_tokens:
+        return _over_token_budget_notice(
+            "get_file_context",
+            token_count,
+            max_tokens,
+            "tighten patterns, lower max_files, or use dry_run=true first",
+        )
 
     return content
 

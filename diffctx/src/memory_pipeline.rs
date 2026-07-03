@@ -171,6 +171,8 @@ pub fn build_diff_context_in_memory(
     let change = crate::render::ChangeSummary {
         commit_message: None,
         changed_files: changed_list,
+        deleted_files: Vec::new(),
+        renamed_files: Vec::new(),
     };
     build_diff_context_output(
         dummy_root,
@@ -339,6 +341,8 @@ fn empty_output(name: &str) -> DiffContextOutput {
         output_type: "diff_context".to_string(),
         commit_message: None,
         changed_files: Vec::new(),
+        deleted_files: Vec::new(),
+        renamed_files: Vec::new(),
         fragment_count: 0,
         fragments: Vec::new(),
         latency: None,

@@ -69,17 +69,28 @@ def _enrich_extra(extra: dict, inst: BenchmarkInstance, n_selected_proxy: int | 
 
 
 def backfill_checkpoint(path: Path, index: dict[str, BenchmarkInstance]) -> tuple[int, int]:
-    """Rewrite checkpoint.jsonl in place. Returns (rows_total, rows_enriched)."""
-    rows: list[dict] = []
+    """Rewrite checkpoint.jsonl atomically (tmp + rename). Returns (rows_total, rows_enriched).
+
+    The checkpoint is the single source of truth for collected sweep data;
+    an in-place truncate-and-rewrite would destroy it on any crash mid-write.
+    Corrupt lines (torn tail after a kill) are preserved verbatim, matching
+    the tolerant readers in runner.py / aggregate_sweep.py.
+    """
+    rows: list[dict | str] = []
     with path.open() as f:
         for line in f:
             line = line.strip()
             if not line:
                 continue
-            rows.append(json.loads(line))
+            try:
+                rows.append(json.loads(line))
+            except ValueError:
+                rows.append(line)
 
     enriched = 0
     for r in rows:
+        if not isinstance(r, dict):
+            continue
         inst = index.get(r.get("instance_id", ""))
         if inst is None:
             continue
@@ -91,9 +102,11 @@ def backfill_checkpoint(path: Path, index: dict[str, BenchmarkInstance]) -> tupl
         _enrich_extra(extra, inst, n_sel_proxy)
         enriched += 1
 
-    with path.open("w") as f:
+    tmp_path = path.with_name(path.name + ".tmp")
+    with tmp_path.open("w") as f:
         for r in rows:
-            f.write(json.dumps(r, default=str) + "\n")
+            f.write((json.dumps(r, default=str) if isinstance(r, dict) else r) + "\n")
+    tmp_path.replace(path)
     return len(rows), enriched
 
 

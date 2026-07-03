@@ -48,6 +48,11 @@ pub struct SelectionResult {
     /// expected ≈ output size, pathological ≫ output size when
     /// stale-version rejections dominate.
     pub greedy_iters: usize,
+    /// Additive certificate for adaptive stopping: an upper bound
+    /// (`tau * peak_density * remaining_budget`) on the utility that
+    /// continuing the same greedy to the feasibility frontier could
+    /// still have added. 0 when the loop ended for any other reason.
+    pub stopping_certificate: f64,
 }
 
 struct HeapEntry {
@@ -552,6 +557,7 @@ pub fn lazy_greedy_select(
             used_tokens: 0,
             utility: 0.0,
             greedy_iters: 0,
+            stopping_certificate: 0.0,
         };
     }
 
@@ -573,6 +579,7 @@ pub fn lazy_greedy_select(
             used_tokens: used,
             utility: utility_value(&state.utility_state),
             greedy_iters: 0,
+            stopping_certificate: 0.0,
         };
     }
 
@@ -660,6 +667,7 @@ pub fn lazy_greedy_select(
             used_tokens: used,
             utility: best_alt_utility,
             greedy_iters,
+            stopping_certificate: 0.0,
         };
     }
 
@@ -676,11 +684,18 @@ pub fn lazy_greedy_select(
         SelectionReason::NoCandidates
     };
 
+    let stopping_certificate = if matches!(reason, SelectionReason::StoppedByTau) {
+        threshold * f64::from(state.remaining_budget)
+    } else {
+        0.0
+    };
+
     SelectionResult {
         selected: state.selected,
         reason,
         used_tokens: used,
         utility: greedy_utility,
         greedy_iters,
+        stopping_certificate,
     }
 }

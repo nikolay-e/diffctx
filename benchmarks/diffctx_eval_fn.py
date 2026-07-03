@@ -142,13 +142,21 @@ def _pool_eval(repos_dir_str: str, instance: BenchmarkInstance, params: RunParam
         return result
 
     prior_env = {k: os.environ.get(k) for k in params.to_env()}
+    applied = False
     try:
         for k, v in params.to_env().items():
             os.environ[k] = v
         print(f"[pid={pid}] {iid} stage=apply t_clone={t_clone_s}s", flush=True)
         t_apply = time.perf_counter()
-        apply_as_commit(repo_dir, instance.gold_patch, "diffctx-eval-gold")
+        applied = apply_as_commit(repo_dir, instance.gold_patch, "diffctx-eval-gold")
         t_apply_s = round(time.perf_counter() - t_apply, 2)
+        if not applied:
+            # Scoring would otherwise run HEAD~1..HEAD against the base
+            # commit's own diff — a garbage measurement recorded as "ok".
+            result = _failure_result(instance, params, "apply_fail", "gold patch did not apply as commit")
+            result.extra["t_clone_s"] = t_clone_s
+            result.extra["t_apply_s"] = t_apply_s
+            return result
 
         print(f"[pid={pid}] {iid} stage=diffctx t_apply={t_apply_s}s", flush=True)
         t0 = time.perf_counter()
@@ -213,10 +221,11 @@ def _pool_eval(repos_dir_str: str, instance: BenchmarkInstance, params: RunParam
                 os.environ.pop(k, None)
             else:
                 os.environ[k] = v
-        try:
-            reset_to_parent(repo_dir)
-        except Exception:
-            pass
+        if applied:
+            try:
+                reset_to_parent(repo_dir)
+            except Exception:
+                pass
 
 
 def make_diffctx_eval_fn(repos_dir: Path):
@@ -276,13 +285,46 @@ def _restore_params_env(prior: dict[str, str | None]) -> None:
             os.environ[k] = v
 
 
+def _eval_one_cell(
+    state: object,
+    instance: BenchmarkInstance,
+    params: RunParams,
+    evaluator: UniversalEvaluator,
+    bench_timeout: float,
+    heavy_elapsed: float,
+    out: list[tuple[RunParams, EvalResult]],
+) -> None:
+    from diffctx.diffctx.pipeline import select_with_params
+
+    prior_env = _apply_params_env(params)
+    try:
+        t_select_start = time.perf_counter()
+        cell_timer = _arm_diffctx_kill_switch(bench_timeout)
+        try:
+            output = select_with_params(state, budget_tokens=params.budget, tau=params.tau)
+        except Exception as e:
+            # One bad selection cell must not discard the budgets
+            # already computed for this instance.
+            out.append((params, _failure_result(instance, params, "diffctx_fail", f"{type(e).__name__}: {e}")))
+            return
+        finally:
+            if cell_timer is not None:
+                cell_timer.cancel()
+        select_elapsed = time.perf_counter() - t_select_start
+        # The heavy phase is charged to the first recorded cell only.
+        charged = heavy_elapsed + select_elapsed if not out else select_elapsed
+        out.append((params, _build_eval_result_from_output(output, instance, params, charged, evaluator)))
+    finally:
+        _restore_params_env(prior_env)
+
+
 def pool_eval_all_cells(
     repos_dir_str: str,
     instance: BenchmarkInstance,
     params_list: list[RunParams],
 ) -> list[tuple[RunParams, EvalResult]]:
     from benchmarks.common import apply_as_commit, ensure_repo, reset_to_parent
-    from diffctx.diffctx.pipeline import compute_scored_state, select_with_params
+    from diffctx.diffctx.pipeline import compute_scored_state
 
     if not params_list:
         return []
@@ -296,8 +338,11 @@ def pool_eval_all_cells(
 
     scoring_mode = params_list[0].scoring
     out: list[tuple[RunParams, EvalResult]] = []
+    applied = False
     try:
-        apply_as_commit(repo_dir, instance.gold_patch, "diffctx-eval-gold")
+        applied = apply_as_commit(repo_dir, instance.gold_patch, "diffctx-eval-gold")
+        if not applied:
+            return [(p, _failure_result(instance, p, "apply_fail", "gold patch did not apply as commit")) for p in params_list]
 
         t_heavy_start = time.perf_counter()
         bench_timeout = _read_diffctx_timeout_sec()
@@ -313,26 +358,13 @@ def pool_eval_all_cells(
         heavy_elapsed = time.perf_counter() - t_heavy_start
 
         for params in params_list:
-            prior_env = _apply_params_env(params)
-            try:
-                t_select_start = time.perf_counter()
-                cell_timer = _arm_diffctx_kill_switch(bench_timeout)
-                try:
-                    output = select_with_params(state, budget_tokens=params.budget, tau=params.tau)
-                finally:
-                    if cell_timer is not None:
-                        cell_timer.cancel()
-                select_elapsed = time.perf_counter() - t_select_start
-                charged = heavy_elapsed + select_elapsed if not out else select_elapsed
-                result = _build_eval_result_from_output(output, instance, params, charged, evaluator)
-                out.append((params, result))
-            finally:
-                _restore_params_env(prior_env)
+            _eval_one_cell(state, instance, params, evaluator, bench_timeout, heavy_elapsed, out)
     finally:
-        try:
-            reset_to_parent(repo_dir)
-        except Exception:
-            pass
+        if applied:
+            try:
+                reset_to_parent(repo_dir)
+            except Exception:
+                pass
 
     return out
 

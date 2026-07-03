@@ -199,8 +199,11 @@ def _drain_pebble_pool(
     results_by_cell: dict[str, list[EvalResult]],
 ) -> None:
     from concurrent.futures import TimeoutError as FuturesTimeoutError
+    from concurrent.futures import as_completed
 
     from pebble import ProcessExpired
+
+    from benchmarks.adapters.runner import _RunningStats
 
     futures: dict = {}
     for inst, params_list in pending:
@@ -211,7 +214,11 @@ def _drain_pebble_pool(
         )
         futures[future] = (inst, params_list)
 
-    for future, (inst, params_list) in futures.items():
+    stats = _RunningStats(len(pending))
+    # Completion-order drain: submission-order blocks checkpointing (and
+    # progress) behind the slowest early instance.
+    for future in as_completed(futures):
+        inst, params_list = futures[future]
         try:
             per_cell = future.result()
         except FuturesTimeoutError:
@@ -230,6 +237,9 @@ def _drain_pebble_pool(
         except Exception as e:
             per_cell = [(p, _failure_eval(inst, p, "error", f"{type(e).__name__}: {e}")) for p in params_list]
         _record_cell_results(per_cell, ckpts, results_by_cell)
+        for _, r in per_cell:
+            stats.add(r)
+        stats.finish_instance()
 
 
 def _build_pending_list(

@@ -1,0 +1,60 @@
+---
+name: Nightly full eval
+
+# ci.yml runs only the first 20 yaml cases (DIFFCTX_YAML_CASES_LIMIT=20);
+# everything alphabetically after that never executes per-push. This job
+# runs the FULL 2700+ case suite nightly and gates on the pass count so a
+# ranking regression in the untested tail cannot land silently. The suite
+# has a standing baseline of ~463 below-threshold cases (score < 10), so
+# the gate is a minimum pass count, not a zero-failure assertion.
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  yaml-cases-full:
+    name: Full yaml_cases suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      MIN_PASS_COUNT: "2260"
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537 # stable
+        with:
+          toolchain: "1.92.0"
+
+      - name: Cache Cargo
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            diffctx/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('diffctx/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Run full yaml_cases suite and gate on pass count
+        working-directory: diffctx
+        run: |
+          set -o pipefail
+          cargo test --release --test yaml_cases 2>&1 | tee full_eval.log || true
+          RESULT_LINE=$(grep -E '^test result:' full_eval.log | tail -1)
+          echo "Result: ${RESULT_LINE}"
+          PASSED=$(echo "${RESULT_LINE}" | sed -E 's/.* ([0-9]+) passed.*/\1/')
+          if ! [ "${PASSED}" -eq "${PASSED}" ] 2>/dev/null; then
+            echo "Could not parse pass count from test output" >&2
+            exit 1
+          fi
+          echo "Passed: ${PASSED} (gate: >= ${MIN_PASS_COUNT})"
+          if [ "${PASSED}" -lt "${MIN_PASS_COUNT}" ]; then
+            echo "Full-suite pass count ${PASSED} fell below ${MIN_PASS_COUNT} — ranking regression" >&2
+            exit 1
+          fi

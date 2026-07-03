@@ -79,10 +79,16 @@ def read_checkpoint(path: Path) -> set[str]:
     return done
 
 
+_last_fsync_by_path: dict[str, float] = {}
+
+
 def append_checkpoint(path: Path, result: EvalResult) -> None:
-    """Append one result as a JSONL row. fsync after each write so a
-    `os._exit(137)` kill in a sibling worker cannot leave a half-written
-    last line that breaks `jq` / line iteration on resume.
+    """Append one result as a JSONL row. flush() lands the line in the OS
+    page cache, which survives any process-level kill (SIGKILL, OOM,
+    os._exit in a worker) — only host death can lose it. fsync therefore
+    runs at most once per 5s per file: a per-line fsync serialized ~15k
+    blocking syscalls in the single drain thread on the headline grid for
+    protection that only matters against power loss.
     """
     import os as _os
 
@@ -91,7 +97,11 @@ def append_checkpoint(path: Path, result: EvalResult) -> None:
     with path.open("a") as f:
         f.write(line)
         f.flush()
-        _os.fsync(f.fileno())
+        now = _time.monotonic()
+        key = str(path)
+        if now - _last_fsync_by_path.get(key, 0.0) >= 5.0:
+            _os.fsync(f.fileno())
+            _last_fsync_by_path[key] = now
 
 
 def _load_existing_results(path: Path, allowed_ids: set[str]) -> list[EvalResult]:
@@ -336,12 +346,16 @@ def _run_multi_budget_serial(
     eval_all_cells_fn: EvalAllCellsFn,
     record: Callable[[list[tuple[RunParams, EvalResult]]], None],
 ) -> None:
+    stats = _RunningStats(len(pending))
     for inst, needed in pending:
         try:
             per_cell = eval_all_cells_fn(inst, needed)
         except Exception as e:
             per_cell = [(p, _failure_result(inst, p, "error", f"{type(e).__name__}: {e}")) for p in needed]
         record(per_cell)
+        for _, r in per_cell:
+            stats.add(r)
+        stats.finish_instance()
 
 
 def _resolve_multi_budget_future(
@@ -375,6 +389,49 @@ def _resolve_multi_budget_future(
         return [(p, _failure_result(inst, p, "error", err_msg)) for p in needed]
 
 
+class _RunningStats:
+    """In-flight aggregate printed alongside [progress] lines so a long
+    sweep exposes its status mix and headline metric without waiting for
+    cell_metrics at the end. Full aggregation stays offline — this is a
+    monitoring readout, not a results surface.
+    """
+
+    def __init__(self, total: int, interval_s: float = 30.0) -> None:
+        self.total = total
+        self.completed = 0
+        self.status_counts: dict[str, int] = {}
+        self.recall_sum = 0.0
+        self.recall_n = 0
+        self._t_start = _time.monotonic()
+        self._t_last = self._t_start
+        self._interval = interval_s
+
+    def add(self, r: EvalResult) -> None:
+        status = str((r.extra or {}).get("status", "")) or "unknown"
+        self.status_counts[status] = self.status_counts.get(status, 0) + 1
+        if status == "ok":
+            self.recall_sum += float(r.file_recall)
+            self.recall_n += 1
+
+    def finish_instance(self) -> None:
+        self.completed += 1
+        now = _time.monotonic()
+        if now - self._t_last >= self._interval or self.completed == self.total:
+            self._t_last = now
+            print(self.render(now), flush=True)
+
+    def render(self, now: float) -> str:
+        elapsed = now - self._t_start
+        eta = elapsed / self.completed * (self.total - self.completed) if self.completed else 0.0
+        statuses = " ".join(f"{k}={v}" for k, v in sorted(self.status_counts.items()))
+        recall = f" mean_file_recall={self.recall_sum / self.recall_n:.3f}" if self.recall_n else ""
+        return (
+            f"[progress] {self.completed}/{self.total} "
+            f"({100.0 * self.completed / max(self.total, 1):.0f}%) "
+            f"elapsed={elapsed:.0f}s eta={eta:.0f}s {statuses}{recall}"
+        )
+
+
 def _run_multi_budget_parallel(
     pending: list[tuple[BenchmarkInstance, list[RunParams]]],
     eval_all_cells_fn: EvalAllCellsFn,
@@ -383,19 +440,29 @@ def _run_multi_budget_parallel(
     n_budgets: int,
     record: Callable[[list[tuple[RunParams, EvalResult]]], None],
 ) -> None:
+    from concurrent.futures import as_completed
+
     from pebble import ProcessPool
 
     from benchmarks.common import _init_worker
 
     pebble_timeout = timeout_per_instance * n_budgets + 30.0
+    stats = _RunningStats(len(pending))
+    # Drain in COMPLETION order: an in-submission-order drain blocks the
+    # checkpoint (and progress) behind the slowest early instance, so a
+    # kill loses every finished-but-undrained result.
     with ProcessPool(max_workers=workers, max_tasks=40, initializer=_init_worker) as pool:
-        futures = [
-            (pool.schedule(eval_all_cells_fn, args=[inst, needed], timeout=pebble_timeout), inst, needed)
+        future_meta = {
+            pool.schedule(eval_all_cells_fn, args=[inst, needed], timeout=pebble_timeout): (inst, needed)
             for inst, needed in pending
-        ]
-        for future, inst, needed in futures:
+        }
+        for future in as_completed(future_meta):
+            inst, needed = future_meta[future]
             per_cell = _resolve_multi_budget_future(future, inst, needed, pebble_timeout, timeout_per_instance)
             record(per_cell)
+            for _, r in per_cell:
+                stats.add(r)
+            stats.finish_instance()
 
 
 def _run_serial(
@@ -404,11 +471,15 @@ def _run_serial(
     params: RunParams,
     record: Callable[[EvalResult], None],
 ) -> None:
+    stats = _RunningStats(len(pending))
     for inst in pending:
         try:
-            record(eval_fn(inst, params))
+            r = eval_fn(inst, params)
         except Exception as e:
-            record(_failure_result(inst, params, "error", f"{type(e).__name__}: {e}"))
+            r = _failure_result(inst, params, "error", f"{type(e).__name__}: {e}")
+        record(r)
+        stats.add(r)
+        stats.finish_instance()
 
 
 def _resolve_future(
@@ -484,13 +555,12 @@ def _run_parallel(
     # narrow 20s budget on the algorithm itself is enforced inside
     # eval_fn via threading.Timer + os._exit(137); this outer pebble
     # timeout is the upper bound for git ops on huge repos.
+    from concurrent.futures import as_completed
+
     pebble_timeout = max(timeout_per_instance + 30.0, 60.0)
+    stats = _RunningStats(len(pending))
 
-    _t_start = _time.monotonic()
-    _t_last_progress = _t_start
-    _completed = 0
-    _total = len(pending)
-
+    # Drain in COMPLETION order (see _run_multi_budget_parallel).
     with ProcessPool(
         max_workers=workers,
         max_tasks=50,
@@ -501,20 +571,9 @@ def _run_parallel(
             future = pp.schedule(eval_fn, args=[inst, params], timeout=pebble_timeout)
             futures[future] = inst
 
-        for future, inst in futures.items():
-            record(_resolve_future(future, inst, params, timeout_per_instance, pebble_timeout))
-            _completed += 1
-            _now = _time.monotonic()
-            if _now - _t_last_progress >= 30.0:
-                _elapsed = _now - _t_start
-                print(
-                    f"[progress] {_completed}/{_total} ({100.0 * _completed / _total:.0f}%) elapsed={_elapsed:.0f}s",
-                    flush=True,
-                )
-                _t_last_progress = _now
-
-    _elapsed_total = _time.monotonic() - _t_start
-    print(
-        f"[progress] {_completed}/{_total} (100%) elapsed={_elapsed_total:.0f}s done",
-        flush=True,
-    )
+        for future in as_completed(futures):
+            inst = futures[future]
+            r = _resolve_future(future, inst, params, timeout_per_instance, pebble_timeout)
+            record(r)
+            stats.add(r)
+            stats.finish_instance()

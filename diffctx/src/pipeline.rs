@@ -41,6 +41,8 @@ pub struct ScoredState {
     pub scoring_result: ScoringResult,
     pub needs: Vec<InformationNeed>,
     pub changed_files: Vec<PathBuf>,
+    pub deleted_files: Vec<String>,
+    pub renamed_files: Vec<(String, String)>,
     pub preferred_revs: Vec<String>,
     pub commit_message: Option<String>,
     pub heavy_latency_ms: HeavyLatencyMs,
@@ -72,7 +74,7 @@ pub fn build_diff_context(
     }
     let state = compute_scored_state(root_dir, diff_range, alpha, scoring_mode, timeout)?;
     if state.all_fragments.is_empty() {
-        return Ok(empty_output(&state.root_dir));
+        return Ok(empty_output_from_state(&state));
     }
     Ok(select_with_params(&state, budget_tokens, tau, no_content))
 }
@@ -96,13 +98,18 @@ pub fn compute_scored_state(
     if !git::is_git_repo(&root_dir) {
         anyhow::bail!("'{}' is not a git repository", root_dir.display());
     }
+    let root_dir = git::find_toplevel(&root_dir).unwrap_or(root_dir);
     if alpha <= 0.0 || alpha >= 1.0 {
         anyhow::bail!("alpha must be in (0, 1), got {}", alpha);
     }
 
     let mut hunks = git::parse_diff(&root_dir, diff_range)?;
 
-    let is_working_tree_diff = diff_range.is_none();
+    // Untracked files only matter when the diff includes the live working
+    // tree. `None` and the literal "HEAD" both mean that (the CLI resolves
+    // bare `--diff` to the string "HEAD" before reaching here) - a historical
+    // range like `HEAD~5..HEAD~3` does not include working-tree state.
+    let is_working_tree_diff = matches!(diff_range, None | Some("HEAD"));
     let mut untracked_files: Vec<PathBuf> = Vec::new();
     if is_working_tree_diff {
         if let Ok(files) = git::get_untracked_files(&root_dir) {
@@ -128,14 +135,14 @@ pub fn compute_scored_state(
     hunks.retain(|h| !is_secret_path(Path::new(&*h.path)));
 
     if hunks.is_empty() {
-        return Ok(empty_scored_state(root_dir));
+        return Ok(empty_scored_state_with_changes(root_dir, diff_range));
     }
 
     let ignored_rel_paths = resolve_ignored_paths(&root_dir, &hunks);
     hunks.retain(|h| !is_ignored_path(&root_dir, Path::new(&*h.path), &ignored_rel_paths));
 
     if hunks.is_empty() {
-        return Ok(empty_scored_state(root_dir));
+        return Ok(empty_scored_state_with_changes(root_dir, diff_range));
     }
 
     let diff_text = git::get_diff_text(&root_dir, diff_range)?;
@@ -143,7 +150,7 @@ pub fn compute_scored_state(
     let mut changed_files = git::get_changed_files(&root_dir, diff_range)?;
     changed_files.extend(untracked_files);
     if changed_files.is_empty() {
-        return Ok(empty_scored_state(root_dir));
+        return Ok(empty_scored_state_with_changes(root_dir, diff_range));
     }
 
     let deleted_files = git::get_deleted_files(&root_dir, diff_range)?;
@@ -154,6 +161,20 @@ pub fn compute_scored_state(
         diff_range,
         GRAPH_FILTERING.git_rename_similarity_threshold,
     )?;
+    // Display lists for the output header: deletions and renames produce no
+    // fragments, but silently omitting them misrepresents the diff (a
+    // deletion-only commit used to render as a bare two-line skeleton).
+    let mut deleted_display: Vec<String> = deleted_files
+        .iter()
+        .map(|p| {
+            p.strip_prefix(&root_dir)
+                .unwrap_or(p)
+                .to_string_lossy()
+                .replace('\\', "/")
+        })
+        .collect();
+    deleted_display.sort();
+    let renamed_display = git::get_rename_pairs(&root_dir, diff_range).unwrap_or_default();
     let excluded: FxHashSet<PathBuf> = deleted_files.into_iter().chain(renamed_old).collect();
     let changed_files: Vec<PathBuf> = changed_files
         .into_iter()
@@ -325,6 +346,8 @@ pub fn compute_scored_state(
         scoring_result,
         needs,
         changed_files,
+        deleted_files: deleted_display,
+        renamed_files: renamed_display,
         preferred_revs,
         commit_message,
         heavy_latency_ms,
@@ -390,6 +413,7 @@ pub fn select_with_params(
     };
 
     let selection_iters = selection_result.greedy_iters;
+    let stopping_certificate = selection_result.stopping_certificate;
     let mut selected = selection_result.selected;
 
     postpass::coherence_post_pass(
@@ -449,6 +473,8 @@ pub fn select_with_params(
                     .replace('\\', "/")
             })
             .collect(),
+        deleted_files: state.deleted_files.clone(),
+        renamed_files: state.renamed_files.clone(),
     };
     let mut output = render::build_diff_context_output(
         &state.root_dir,
@@ -476,6 +502,7 @@ pub fn select_with_params(
         nodes_capped: cap_stats.nodes_capped,
         max_out_edges_per_node: cap_stats.max_out_edges_per_node,
         ppr_truncated: state.scoring_result.ppr_truncated,
+        stopping_certificate,
         ppr_forward_pushes: state.scoring_result.ppr_forward_pushes,
         ppr_backward_pushes: state.scoring_result.ppr_backward_pushes,
     });
@@ -542,21 +569,34 @@ fn build_diff_context_full(
     if !git::is_git_repo(&root_dir) {
         anyhow::bail!("'{}' is not a git repository", root_dir.display());
     }
+    let root_dir = git::find_toplevel(&root_dir).unwrap_or(root_dir);
     let mut hunks = git::parse_diff(&root_dir, diff_range)?;
     hunks.retain(|h| !is_secret_path(Path::new(&*h.path)));
     if hunks.is_empty() {
-        return Ok(empty_output(&root_dir));
+        let (deleted, renamed) = deletion_rename_displays(&root_dir, diff_range);
+        let mut output = empty_output(&root_dir);
+        output.deleted_files = deleted;
+        output.renamed_files = renamed;
+        return Ok(output);
     }
     let ignored_rel_paths = resolve_ignored_paths(&root_dir, &hunks);
     hunks.retain(|h| !is_ignored_path(&root_dir, Path::new(&*h.path), &ignored_rel_paths));
     if hunks.is_empty() {
-        return Ok(empty_output(&root_dir));
+        let (deleted, renamed) = deletion_rename_displays(&root_dir, diff_range);
+        let mut output = empty_output(&root_dir);
+        output.deleted_files = deleted;
+        output.renamed_files = renamed;
+        return Ok(output);
     }
     let mut changed_files = git::get_changed_files(&root_dir, diff_range)?;
     changed_files
         .retain(|f| !is_secret_path(f) && !is_ignored_path(&root_dir, f, &ignored_rel_paths));
     if changed_files.is_empty() {
-        return Ok(empty_output(&root_dir));
+        let (deleted, renamed) = deletion_rename_displays(&root_dir, diff_range);
+        let mut output = empty_output(&root_dir);
+        output.deleted_files = deleted;
+        output.renamed_files = renamed;
+        return Ok(output);
     }
     let (base_rev, head_rev) = diff_range
         .map(git::split_diff_range)
@@ -589,6 +629,19 @@ fn build_diff_context_full(
                 .find(|l| !l.is_empty())
                 .map(str::to_string)
         });
+    let mut deleted_display: Vec<String> = git::get_deleted_files(&root_dir, diff_range)
+        .map(|set| {
+            set.iter()
+                .map(|p| {
+                    p.strip_prefix(&root_dir)
+                        .unwrap_or(p)
+                        .to_string_lossy()
+                        .replace('\\', "/")
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    deleted_display.sort();
     let change = render::ChangeSummary {
         commit_message,
         changed_files: changed_files
@@ -600,6 +653,8 @@ fn build_diff_context_full(
                     .replace('\\', "/")
             })
             .collect(),
+        deleted_files: deleted_display,
+        renamed_files: git::get_rename_pairs(&root_dir, diff_range).unwrap_or_default(),
     };
     Ok(render::build_diff_context_output(
         &root_dir,
@@ -609,6 +664,35 @@ fn build_diff_context_full(
         &FxHashMap::default(),
         change,
     ))
+}
+
+fn deletion_rename_displays(
+    root_dir: &Path,
+    diff_range: Option<&str>,
+) -> (Vec<String>, Vec<(String, String)>) {
+    let mut deleted: Vec<String> = git::get_deleted_files(root_dir, diff_range)
+        .map(|set| {
+            set.iter()
+                .map(|p| {
+                    p.strip_prefix(root_dir)
+                        .unwrap_or(p)
+                        .to_string_lossy()
+                        .replace('\\', "/")
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    deleted.sort();
+    let renamed = git::get_rename_pairs(root_dir, diff_range).unwrap_or_default();
+    (deleted, renamed)
+}
+
+fn empty_scored_state_with_changes(root_dir: PathBuf, diff_range: Option<&str>) -> ScoredState {
+    let (deleted, renamed) = deletion_rename_displays(&root_dir, diff_range);
+    let mut state = empty_scored_state(root_dir);
+    state.deleted_files = deleted;
+    state.renamed_files = renamed;
+    state
 }
 
 fn empty_scored_state(root_dir: PathBuf) -> ScoredState {
@@ -628,6 +712,8 @@ fn empty_scored_state(root_dir: PathBuf) -> ScoredState {
         },
         needs: Vec::new(),
         changed_files: Vec::new(),
+        deleted_files: Vec::new(),
+        renamed_files: Vec::new(),
         preferred_revs: Vec::new(),
         commit_message: None,
         heavy_latency_ms: HeavyLatencyMs::default(),
@@ -647,10 +733,24 @@ fn empty_output(root_dir: &Path) -> DiffContextOutput {
         output_type: "diff_context".to_string(),
         commit_message: None,
         changed_files: Vec::new(),
+        deleted_files: Vec::new(),
+        renamed_files: Vec::new(),
         fragment_count: 0,
         fragments: Vec::new(),
         latency: None,
     }
+}
+
+/// A deletion/rename-only diff has no fragmentable content, but the file
+/// lists themselves ARE the change - emit them instead of a bare skeleton.
+/// pub(crate): the pybridge select_with_params empty branch must emit the
+/// same lists, or MCP/benchmark consumers lose them while the CLI keeps them.
+pub(crate) fn empty_output_from_state(state: &ScoredState) -> DiffContextOutput {
+    let mut output = empty_output(&state.root_dir);
+    output.commit_message = state.commit_message.clone();
+    output.deleted_files = state.deleted_files.clone();
+    output.renamed_files = state.renamed_files.clone();
+    output
 }
 
 fn build_preferred_revs(base_rev: Option<&str>, head_rev: Option<&str>) -> Vec<String> {

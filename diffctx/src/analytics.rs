@@ -190,9 +190,7 @@ pub fn quotient_graph(
             None => return,
         };
         let cat = graph
-            .edge_categories
-            .get(&(src.clone(), dst.clone()))
-            .copied()
+            .edge_category(src, dst)
             .unwrap_or(EdgeCategory::Generic);
 
         if src_key == dst_key {
@@ -415,15 +413,15 @@ pub fn hotspots(
     }
 
     let mut out_deg: FxHashMap<Arc<str>, u32> = FxHashMap::default();
-    for ((src, _dst), cat) in &graph.edge_categories {
+    graph.for_each_categorized_edge(|src, _dst, cat| {
         if let Some(filter) = edge_types
-            && !filter.contains(cat)
+            && !filter.contains(&cat)
         {
-            continue;
+            return;
         }
         let rel: Arc<str> = Arc::from(relative_path(src.path.as_ref(), root));
         *out_deg.entry(rel).or_insert(0) += 1;
-    }
+    });
 
     let max_deg = out_deg.values().copied().max().unwrap_or(0).max(1);
     let max_churn = churn
@@ -601,7 +599,7 @@ mod tests {
         }
         for (s, d, w, c) in edges {
             g.add_edge(s.clone(), d.clone(), *w);
-            g.edge_categories.insert((s.clone(), d.clone()), *c);
+            g.insert_edge_category(s.clone(), d.clone(), *c);
         }
         g.freeze();
         g

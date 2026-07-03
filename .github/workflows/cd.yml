@@ -98,11 +98,30 @@ jobs:
           s, n = re.subn(r'(?m)^version\s*=\s*["\'][^"\']+["\']', f'version = "{ver}"', s, count=1)
           assert n == 1, "pyproject.toml: [project].version not found"
           py.write_text(s, encoding="utf-8")
+
+          cargo = pathlib.Path("diffctx/Cargo.toml")
+          s = cargo.read_text(encoding="utf-8")
+          s, n = re.subn(r'(?m)^version\s*=\s*"[^"]+"', f'version = "{ver}"', s, count=1)
+          assert n == 1, "Cargo.toml: [package].version not found"
+          cargo.write_text(s, encoding="utf-8")
+
+          lock = pathlib.Path("diffctx/Cargo.lock")
+          s = lock.read_text(encoding="utf-8")
+          s, n = re.subn(
+              r'(\[\[package\]\]\nname = "diffctx"\nversion = ")[^"]+',
+              lambda m: m.group(1) + ver,
+              s,
+              count=1,
+          )
+          assert n == 1, "Cargo.lock: diffctx package entry not found"
+          lock.write_text(s, encoding="utf-8")
           PY
           echo "version.py:"
           cat src/diffctx/version.py
           echo "pyproject.toml (version line):"
           grep -E '^version\s*=' pyproject.toml
+          echo "Cargo.toml (version line):"
+          grep -E '^version\s*=' diffctx/Cargo.toml
 
       - name: Commit version bump (locally only, no push yet)
         id: commit_version
@@ -111,7 +130,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/diffctx/version.py pyproject.toml
+          git add src/diffctx/version.py pyproject.toml diffctx/Cargo.toml diffctx/Cargo.lock
           if ! git diff --staged --quiet; then
             git commit -m "Release version ${VERSION}"
           else

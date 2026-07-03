@@ -12,7 +12,9 @@ use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use tracing::debug;
 
-use crate::graph::EdgeCategory;
+use crate::graph::{
+    CompactEdge, CompactEdges, EdgeCategory, dedup_compact_edges, intern_fragment_nodes,
+};
 use crate::types::FragmentId;
 
 pub type EdgeDict = FxHashMap<(FragmentId, FragmentId), f64>;
@@ -66,11 +68,18 @@ pub fn get_all_builders() -> Vec<Box<dyn EdgeBuilder>> {
     all
 }
 
+/// Collect edges from all builders directly into the interned compact
+/// representation. Each builder's FragmentId-keyed map is converted and
+/// dropped inside the parallel closure, so at no point does the full
+/// edge universe exist as string-keyed hashmaps — the peak that used to
+/// OOM-kill multi-million-edge instances. Merge semantics match the
+/// historical maps exactly: max weight across builders, category from
+/// the first builder (in registration order) that produced the edge.
 pub fn collect_all_edges(
     fragments: &[Fragment],
     repo_root: Option<&Path>,
     skip_expensive: bool,
-) -> (EdgeDict, EdgeCategories) {
+) -> CompactEdges {
     let mut all_builders: Vec<(&str, Box<dyn EdgeBuilder>)> = Vec::new();
     for cat in builder_categories() {
         if skip_expensive && EXPENSIVE_CATEGORIES.contains(&cat.name) {
@@ -82,39 +91,48 @@ pub fn collect_all_edges(
         }
     }
 
+    let (node_to_idx, idx_to_node) = intern_fragment_nodes(fragments);
     let category_weights = *crate::config::category_weights::CATEGORY_WEIGHTS;
-    let per_builder_edges: Vec<(EdgeDict, Vec<((FragmentId, FragmentId), EdgeCategory)>)> =
-        all_builders
-            .par_iter()
-            .map(|(cat_name, builder)| {
-                let cat_label = builder.category_label().unwrap_or(cat_name);
-                let category = EdgeCategory::from_str(cat_label);
-                let multiplier = category_weights.multiplier(category);
-                let mut edges = builder.build(fragments, repo_root);
-                if multiplier != 1.0 {
-                    for w in edges.values_mut() {
-                        *w *= multiplier;
-                    }
-                }
-                let cats: Vec<_> = edges.keys().map(|k| (k.clone(), category)).collect();
-                (edges, cats)
-            })
-            .collect();
-
-    let mut all_edges: EdgeDict = FxHashMap::default();
-    let mut edge_categories: EdgeCategories = FxHashMap::default();
-    for (edges, cats) in per_builder_edges {
-        for ((src, dst), weight) in edges {
-            if weight > *all_edges.get(&(src.clone(), dst.clone())).unwrap_or(&0.0) {
-                all_edges.insert((src.clone(), dst.clone()), weight);
+    let per_builder_edges: Vec<Vec<CompactEdge>> = all_builders
+        .par_iter()
+        .map(|(cat_name, builder)| {
+            let cat_label = builder.category_label().unwrap_or(cat_name);
+            let category = EdgeCategory::from_str(cat_label);
+            let multiplier = category_weights.multiplier(category);
+            let edges = builder.build(fragments, repo_root);
+            let mut compact = Vec::with_capacity(edges.len());
+            for ((src, dst), weight) in edges {
+                let s = match node_to_idx.get(&src) {
+                    Some(&i) => i,
+                    None => continue,
+                };
+                let d = match node_to_idx.get(&dst) {
+                    Some(&i) => i,
+                    None => continue,
+                };
+                compact.push(CompactEdge {
+                    src: s,
+                    dst: d,
+                    weight: weight * multiplier,
+                    category,
+                });
             }
-        }
-        for (key, cat) in cats {
-            edge_categories.entry(key).or_insert(cat);
-        }
-    }
+            compact
+        })
+        .collect();
 
-    (all_edges, edge_categories)
+    let total: usize = per_builder_edges.iter().map(|v| v.len()).sum();
+    let mut edges: Vec<CompactEdge> = Vec::with_capacity(total);
+    for v in per_builder_edges {
+        edges.extend(v);
+    }
+    dedup_compact_edges(&mut edges);
+
+    CompactEdges {
+        node_to_idx,
+        idx_to_node,
+        edges,
+    }
 }
 
 pub fn discover_all_related_files(

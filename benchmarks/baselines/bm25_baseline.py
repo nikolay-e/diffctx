@@ -111,8 +111,21 @@ def _bm25_eval(
         r.extra["language"] = instance.language
         return r
 
+    applied = False
     try:
-        apply_as_commit(repo_dir, instance.gold_patch, "bm25-baseline-gold")
+        applied = apply_as_commit(repo_dir, instance.gold_patch, "bm25-baseline-gold")
+        if not applied:
+            r = EvalResult(
+                instance_id=instance.instance_id,
+                source_benchmark=instance.source_benchmark,
+                file_recall=0.0,
+                file_precision=0.0,
+                budget=params.budget,
+            )
+            r.extra["status"] = "apply_fail"
+            r.extra["error"] = "gold patch did not apply as commit"
+            r.extra["language"] = instance.language
+            return r
         t0 = time.perf_counter()
 
         query_tokens = sorted(extract_idents_from_patch(instance.gold_patch))
@@ -162,10 +175,11 @@ def _bm25_eval(
         result.extra["query_terms"] = len(query_tokens)
         return result
     finally:
-        try:
-            reset_to_parent(repo_dir)
-        except Exception:
-            pass
+        if applied:
+            try:
+                reset_to_parent(repo_dir)
+            except Exception:
+                pass
 
 
 def _pool_eval_bm25(repos_dir_str: str, instance: BenchmarkInstance, params: RunParams) -> EvalResult:

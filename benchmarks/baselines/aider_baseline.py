@@ -132,6 +132,43 @@ def _patch_visible_paths(patch: str) -> set[str]:
     return out
 
 
+def _aider_failure(
+    instance: BenchmarkInstance,
+    params: RunParams,
+    status: str,
+    error: str | None = None,
+    elapsed_seconds: float = 0.0,
+) -> EvalResult:
+    r = EvalResult(
+        instance_id=instance.instance_id,
+        source_benchmark=instance.source_benchmark,
+        file_recall=0.0,
+        file_precision=0.0,
+        budget=params.budget,
+        elapsed_seconds=elapsed_seconds,
+    )
+    r.extra["status"] = status
+    if error is not None:
+        r.extra["error"] = error
+    r.extra["language"] = instance.language
+    return r
+
+
+def _build_aider_payload(instance: BenchmarkInstance, params: RunParams, repo_dir: Path, aider_mode: str) -> dict[str, Any]:
+    if aider_mode == "oracle":
+        mentioned_fnames = sorted(instance.gold_files)
+    else:
+        mentioned_fnames = sorted(_patch_visible_paths(instance.gold_patch))
+    return {
+        "repo_root": str(repo_dir),
+        "chat_files": [],
+        "other_files": _walk_other_files(repo_dir),
+        "mentioned_fnames": mentioned_fnames,
+        "mentioned_idents": sorted(extract_idents_from_patch(instance.gold_patch)),
+        "map_tokens": params.budget,
+    }
+
+
 def _aider_eval(
     instance: BenchmarkInstance,
     params: RunParams,
@@ -146,66 +183,25 @@ def _aider_eval(
     repo_url = str(instance.extra.get("repo_url") or f"https://github.com/{instance.repo}")
     repo_dir = ensure_repo(repo_url, instance.repo, instance.base_commit, worktree_dir)
     if repo_dir is None:
-        r = EvalResult(
-            instance_id=instance.instance_id,
-            source_benchmark=instance.source_benchmark,
-            file_recall=0.0,
-            file_precision=0.0,
-            budget=params.budget,
-        )
-        r.extra["status"] = "clone_fail"
-        r.extra["language"] = instance.language
-        return r
+        return _aider_failure(instance, params, "clone_fail")
 
+    applied = False
     try:
-        apply_as_commit(repo_dir, instance.gold_patch, "aider-baseline-gold")
+        applied = apply_as_commit(repo_dir, instance.gold_patch, "aider-baseline-gold")
+        if not applied:
+            return _aider_failure(instance, params, "apply_fail", "gold patch did not apply as commit")
         t0 = time.perf_counter()
-        other_files = _walk_other_files(repo_dir)
-        if aider_mode == "oracle":
-            mentioned_fnames = sorted(instance.gold_files)
-        else:
-            mentioned_fnames = sorted(_patch_visible_paths(instance.gold_patch))
-        mentioned_idents = sorted(extract_idents_from_patch(instance.gold_patch))
-
-        payload: dict[str, Any] = {
-            "repo_root": str(repo_dir),
-            "chat_files": [],
-            "other_files": other_files,
-            "mentioned_fnames": mentioned_fnames,
-            "mentioned_idents": mentioned_idents,
-            "map_tokens": params.budget,
-        }
+        payload = _build_aider_payload(instance, params, repo_dir, aider_mode)
         try:
             resp = aider.request(payload, timeout=request_timeout)
         except (TimeoutError, RuntimeError) as e:
-            r = EvalResult(
-                instance_id=instance.instance_id,
-                source_benchmark=instance.source_benchmark,
-                file_recall=0.0,
-                file_precision=0.0,
-                budget=params.budget,
-                elapsed_seconds=time.perf_counter() - t0,
-            )
-            r.extra["status"] = "aider_timeout" if isinstance(e, TimeoutError) else "aider_crash"
-            r.extra["error"] = str(e)
-            r.extra["language"] = instance.language
+            status = "aider_timeout" if isinstance(e, TimeoutError) else "aider_crash"
             aider.shutdown()
-            return r
+            return _aider_failure(instance, params, status, str(e), time.perf_counter() - t0)
 
         elapsed = time.perf_counter() - t0
         if not resp.get("ok"):
-            r = EvalResult(
-                instance_id=instance.instance_id,
-                source_benchmark=instance.source_benchmark,
-                file_recall=0.0,
-                file_precision=0.0,
-                budget=params.budget,
-                elapsed_seconds=elapsed,
-            )
-            r.extra["status"] = "aider_error"
-            r.extra["error"] = (resp.get("error") or "")[:500]
-            r.extra["language"] = instance.language
-            return r
+            return _aider_failure(instance, params, "aider_error", (resp.get("error") or "")[:500], elapsed)
 
         abs_root = str(repo_dir) + os.sep
         selected: list[str] = []
@@ -229,10 +225,11 @@ def _aider_eval(
         result.extra["map_chars"] = len(resp.get("map_text", ""))
         return result
     finally:
-        try:
-            reset_to_parent(repo_dir)
-        except Exception:
-            pass
+        if applied:
+            try:
+                reset_to_parent(repo_dir)
+            except Exception:
+                pass
 
 
 _AIDER_PROC: _AiderProcess | None = None
