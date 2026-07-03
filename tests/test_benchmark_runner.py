@@ -399,3 +399,33 @@ def test_parallel_eval_records_apply_fail_not_garbage_score(tmp_path: Path, monk
     assert results[0].extra["status"] == "apply_fail"
     rows = [_json.loads(line) for line in ckpt.read_text().splitlines()]
     assert rows[0]["extra"]["status"] == "apply_fail"
+
+
+def test_aggregate_sweep_expands_multi_budget_cells(tmp_path: Path):
+    import json as _json
+
+    from benchmarks.aggregate_sweep import collect_cells
+
+    root = tmp_path / "all_cells"
+    multi = root / "cell-ego-bALL-L2-swebench_verified"
+    sweep_dir = multi / "swebench_verified_budget_sweep"
+    sweep_dir.mkdir(parents=True)
+    for b in (0, 8000):
+        (sweep_dir / f"b{b}.checkpoint.jsonl").write_text(_json.dumps({"instance_id": "i1", "file_recall": 0.5}) + "\n")
+        (multi / f"cell_summary_b{b}.json").write_text(_json.dumps({"n": 1}))
+    (multi / "metadata.json").write_text(
+        _json.dumps({"cell": {"method": "ego", "budget": "ALL", "depth": 2, "test_set": "swebench_verified"}})
+    )
+
+    legacy = root / "cell-aider-b8000-L-1-swebench_verified"
+    legacy.mkdir(parents=True)
+    (legacy / "swebench_verified.checkpoint.jsonl").write_text(_json.dumps({"instance_id": "i1", "file_recall": 0.4}) + "\n")
+    (legacy / "cell_summary.json").write_text(_json.dumps({"n": 1}))
+    (legacy / "metadata.json").write_text(
+        _json.dumps({"cell": {"method": "aider", "budget": 8000, "depth": -1, "test_set": "swebench_verified"}})
+    )
+
+    cells = collect_cells(root)
+    assert {(c["method"], c["budget"], c["depth"]) for c in cells} == {("ego", 0, 2), ("ego", 8000, 2), ("aider", 8000, -1)}
+    assert all(c["n_instances"] == 1 for c in cells)
+    assert all(c["summary"] for c in cells)
