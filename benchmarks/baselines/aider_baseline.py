@@ -132,6 +132,28 @@ def _patch_visible_paths(patch: str) -> set[str]:
     return out
 
 
+def _aider_failure(
+    instance: BenchmarkInstance,
+    params: RunParams,
+    status: str,
+    error: str | None = None,
+    elapsed_seconds: float = 0.0,
+) -> EvalResult:
+    r = EvalResult(
+        instance_id=instance.instance_id,
+        source_benchmark=instance.source_benchmark,
+        file_recall=0.0,
+        file_precision=0.0,
+        budget=params.budget,
+        elapsed_seconds=elapsed_seconds,
+    )
+    r.extra["status"] = status
+    if error is not None:
+        r.extra["error"] = error
+    r.extra["language"] = instance.language
+    return r
+
+
 def _aider_eval(
     instance: BenchmarkInstance,
     params: RunParams,
@@ -146,32 +168,13 @@ def _aider_eval(
     repo_url = str(instance.extra.get("repo_url") or f"https://github.com/{instance.repo}")
     repo_dir = ensure_repo(repo_url, instance.repo, instance.base_commit, worktree_dir)
     if repo_dir is None:
-        r = EvalResult(
-            instance_id=instance.instance_id,
-            source_benchmark=instance.source_benchmark,
-            file_recall=0.0,
-            file_precision=0.0,
-            budget=params.budget,
-        )
-        r.extra["status"] = "clone_fail"
-        r.extra["language"] = instance.language
-        return r
+        return _aider_failure(instance, params, "clone_fail")
 
     applied = False
     try:
         applied = apply_as_commit(repo_dir, instance.gold_patch, "aider-baseline-gold")
         if not applied:
-            r = EvalResult(
-                instance_id=instance.instance_id,
-                source_benchmark=instance.source_benchmark,
-                file_recall=0.0,
-                file_precision=0.0,
-                budget=params.budget,
-            )
-            r.extra["status"] = "apply_fail"
-            r.extra["error"] = "gold patch did not apply as commit"
-            r.extra["language"] = instance.language
-            return r
+            return _aider_failure(instance, params, "apply_fail", "gold patch did not apply as commit")
         t0 = time.perf_counter()
         other_files = _walk_other_files(repo_dir)
         if aider_mode == "oracle":
@@ -191,34 +194,13 @@ def _aider_eval(
         try:
             resp = aider.request(payload, timeout=request_timeout)
         except (TimeoutError, RuntimeError) as e:
-            r = EvalResult(
-                instance_id=instance.instance_id,
-                source_benchmark=instance.source_benchmark,
-                file_recall=0.0,
-                file_precision=0.0,
-                budget=params.budget,
-                elapsed_seconds=time.perf_counter() - t0,
-            )
-            r.extra["status"] = "aider_timeout" if isinstance(e, TimeoutError) else "aider_crash"
-            r.extra["error"] = str(e)
-            r.extra["language"] = instance.language
+            status = "aider_timeout" if isinstance(e, TimeoutError) else "aider_crash"
             aider.shutdown()
-            return r
+            return _aider_failure(instance, params, status, str(e), time.perf_counter() - t0)
 
         elapsed = time.perf_counter() - t0
         if not resp.get("ok"):
-            r = EvalResult(
-                instance_id=instance.instance_id,
-                source_benchmark=instance.source_benchmark,
-                file_recall=0.0,
-                file_precision=0.0,
-                budget=params.budget,
-                elapsed_seconds=elapsed,
-            )
-            r.extra["status"] = "aider_error"
-            r.extra["error"] = (resp.get("error") or "")[:500]
-            r.extra["language"] = instance.language
-            return r
+            return _aider_failure(instance, params, "aider_error", (resp.get("error") or "")[:500], elapsed)
 
         abs_root = str(repo_dir) + os.sep
         selected: list[str] = []

@@ -323,6 +323,38 @@ def _worktree_state_verified(repo_dir: Path, base_commit: str) -> bool:
     return status.returncode == 0 and not status.stdout.strip()
 
 
+def _try_reuse_worktree(repo_dir: Path, repo_name: str, base_commit: str, checkout_timeout: int) -> bool:
+    """Per-worker isolated worktree reuse. The parent dir is already
+    per-worker (UUID-keyed via `worker_dir`), so reusing the deterministic
+    path across instances of the same repo is safe and saves a worktree add.
+    Reuse is trusted ONLY after verifying HEAD == base_commit and a clean
+    status — a checkout that "succeeds" against a stale/dirty tree used to
+    be scored silently, producing run-to-run metric drift on a fully
+    deterministic engine. On verification failure the dir is purged so the
+    caller falls through to a fresh worktree add.
+    """
+    if not repo_dir.exists():
+        return False
+    _remove_stale_locks(_git_dir_for_repo(repo_dir))
+    # 30s was too tight for vscode/mui-scale worktrees: the clean timed
+    # out on every reuse, and (before run_cmd returned 124 instead of
+    # raising) the escaped exception poisoned the worktree for all
+    # subsequent instances. A timeout here now degrades to purge +
+    # fresh worktree add via the verification below.
+    run_cmd(["git", "-C", str(repo_dir), "clean", "-fd"], check=False, timeout=120)
+    r = run_cmd(
+        ["git", "-C", str(repo_dir), "checkout", "--force", base_commit],
+        check=False,
+        timeout=checkout_timeout,
+    )
+    if r.returncode == 0 and _worktree_state_verified(repo_dir, base_commit):
+        return True
+    reason = r.stderr.strip() if r.returncode != 0 else "stale HEAD or dirty tree after checkout"
+    print(f"  RESET worktree {repo_name} ({reason})", flush=True)
+    _purge_cache_dir(repo_dir)
+    return False
+
+
 def ensure_repo(
     repo_url: str,
     repo_name: str,
@@ -342,35 +374,9 @@ def ensure_repo(
         print(f"  WORKTREE/CHECKOUT FAIL {base_commit[:12]}: unreachable_commit (not in cache and fetch failed)", flush=True)
         return None
 
-    # Per-worker isolated worktree path. `target_dir` is already per-worker
-    # (UUID-keyed via `worker_dir`), so reusing the deterministic path inside
-    # it across instances of the same repo is safe and saves a worktree add.
-    # Reuse is trusted ONLY after verifying HEAD == base_commit and a clean
-    # status — a checkout that "succeeds" against a stale/dirty tree used to
-    # be scored silently, producing run-to-run metric drift on a fully
-    # deterministic engine. If verification fails, fall through to a fresh
-    # UUID-suffixed path so we never collide with a stale `worktrees/`
-    # registration in the shared bare cache. `git worktree add` against that
-    # bare cache is serialized by git's own `.git/worktrees.lock`.
     repo_dir = target_dir / repo_name.replace("/", "__")
-    if repo_dir.exists():
-        _remove_stale_locks(_git_dir_for_repo(repo_dir))
-        # 30s was too tight for vscode/mui-scale worktrees: the clean timed
-        # out on every reuse, and (before run_cmd returned 124 instead of
-        # raising) the escaped exception poisoned the worktree for all
-        # subsequent instances. A timeout here now degrades to purge +
-        # fresh worktree add via the verification below.
-        run_cmd(["git", "-C", str(repo_dir), "clean", "-fd"], check=False, timeout=120)
-        r = run_cmd(
-            ["git", "-C", str(repo_dir), "checkout", "--force", base_commit],
-            check=False,
-            timeout=checkout_timeout,
-        )
-        if r.returncode == 0 and _worktree_state_verified(repo_dir, base_commit):
-            return repo_dir
-        reason = r.stderr.strip() if r.returncode != 0 else "stale HEAD or dirty tree after checkout"
-        print(f"  RESET worktree {repo_name} ({reason})", flush=True)
-        _purge_cache_dir(repo_dir)
+    if _try_reuse_worktree(repo_dir, repo_name, base_commit, checkout_timeout):
+        return repo_dir
 
     r = _try_worktree_add(cache_dir, repo_dir, base_commit, checkout_timeout)
     if r.returncode != 0:

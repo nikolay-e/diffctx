@@ -113,32 +113,38 @@ def _has_diff_metadata(tree: dict[str, Any]) -> bool:
     return bool(tree.get("fragments") or tree.get("deleted_files") or tree.get("renamed_files"))
 
 
+def _write_yaml_path_list(file: TextIO, key: str, paths: list[Any]) -> None:
+    file.write(f"{key}:\n")
+    for path in paths:
+        file.write(f'  - "{_escape_yaml_string(str(path))}"\n')
+
+
+def _write_yaml_diff_metadata(file: TextIO, tree: dict[str, Any]) -> None:
+    if tree.get("commit_message"):
+        file.write(f'commit_message: "{_escape_yaml_string(str(tree["commit_message"]))}"\n')
+    if tree.get("changed_files"):
+        _write_yaml_path_list(file, "changed_files", tree["changed_files"])
+    if tree.get("deleted_files"):
+        _write_yaml_path_list(file, "deleted_files", tree["deleted_files"])
+    if tree.get("renamed_files"):
+        file.write("renamed_files:\n")
+        for pair in tree["renamed_files"]:
+            file.write(f'  - from: "{_escape_yaml_string(str(pair.get("from", "")))}"\n')
+            file.write(f'    to: "{_escape_yaml_string(str(pair.get("to", "")))}"\n')
+    if tree.get("fragments"):
+        file.write(f"fragment_count: {len(tree['fragments'])}\n")
+        file.write("fragments:\n")
+        for frag in tree["fragments"]:
+            _write_yaml_fragment(file, frag, "  ")
+
+
 def write_tree_yaml(file: TextIO, tree: dict[str, Any]) -> None:
     name = _escape_yaml_string(str(tree["name"]))
     file.write(f'name: "{name}"\n')
     file.write(f"type: {tree['type']}\n")
 
     if tree.get("type") == "diff_context" and _has_diff_metadata(tree):
-        if tree.get("commit_message"):
-            file.write(f'commit_message: "{_escape_yaml_string(str(tree["commit_message"]))}"\n')
-        if tree.get("changed_files"):
-            file.write("changed_files:\n")
-            for path in tree["changed_files"]:
-                file.write(f'  - "{_escape_yaml_string(str(path))}"\n')
-        if tree.get("deleted_files"):
-            file.write("deleted_files:\n")
-            for path in tree["deleted_files"]:
-                file.write(f'  - "{_escape_yaml_string(str(path))}"\n')
-        if tree.get("renamed_files"):
-            file.write("renamed_files:\n")
-            for pair in tree["renamed_files"]:
-                file.write(f'  - from: "{_escape_yaml_string(str(pair.get("from", "")))}"\n')
-                file.write(f'    to: "{_escape_yaml_string(str(pair.get("to", "")))}"\n')
-        if tree.get("fragments"):
-            file.write(f"fragment_count: {len(tree['fragments'])}\n")
-            file.write("fragments:\n")
-            for frag in tree["fragments"]:
-                _write_yaml_fragment(file, frag, "  ")
+        _write_yaml_diff_metadata(file, tree)
     elif tree.get("children"):
         file.write("children:\n")
         for child in tree["children"]:

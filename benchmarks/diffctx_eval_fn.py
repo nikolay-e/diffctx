@@ -285,13 +285,46 @@ def _restore_params_env(prior: dict[str, str | None]) -> None:
             os.environ[k] = v
 
 
+def _eval_one_cell(
+    state: object,
+    instance: BenchmarkInstance,
+    params: RunParams,
+    evaluator: UniversalEvaluator,
+    bench_timeout: float,
+    heavy_elapsed: float,
+    out: list[tuple[RunParams, EvalResult]],
+) -> None:
+    from diffctx.diffctx.pipeline import select_with_params
+
+    prior_env = _apply_params_env(params)
+    try:
+        t_select_start = time.perf_counter()
+        cell_timer = _arm_diffctx_kill_switch(bench_timeout)
+        try:
+            output = select_with_params(state, budget_tokens=params.budget, tau=params.tau)
+        except Exception as e:
+            # One bad selection cell must not discard the budgets
+            # already computed for this instance.
+            out.append((params, _failure_result(instance, params, "diffctx_fail", f"{type(e).__name__}: {e}")))
+            return
+        finally:
+            if cell_timer is not None:
+                cell_timer.cancel()
+        select_elapsed = time.perf_counter() - t_select_start
+        # The heavy phase is charged to the first recorded cell only.
+        charged = heavy_elapsed + select_elapsed if not out else select_elapsed
+        out.append((params, _build_eval_result_from_output(output, instance, params, charged, evaluator)))
+    finally:
+        _restore_params_env(prior_env)
+
+
 def pool_eval_all_cells(
     repos_dir_str: str,
     instance: BenchmarkInstance,
     params_list: list[RunParams],
 ) -> list[tuple[RunParams, EvalResult]]:
     from benchmarks.common import apply_as_commit, ensure_repo, reset_to_parent
-    from diffctx.diffctx.pipeline import compute_scored_state, select_with_params
+    from diffctx.diffctx.pipeline import compute_scored_state
 
     if not params_list:
         return []
@@ -325,26 +358,7 @@ def pool_eval_all_cells(
         heavy_elapsed = time.perf_counter() - t_heavy_start
 
         for params in params_list:
-            prior_env = _apply_params_env(params)
-            try:
-                t_select_start = time.perf_counter()
-                cell_timer = _arm_diffctx_kill_switch(bench_timeout)
-                try:
-                    output = select_with_params(state, budget_tokens=params.budget, tau=params.tau)
-                except Exception as e:
-                    # One bad selection cell must not discard the budgets
-                    # already computed for this instance.
-                    out.append((params, _failure_result(instance, params, "diffctx_fail", f"{type(e).__name__}: {e}")))
-                    continue
-                finally:
-                    if cell_timer is not None:
-                        cell_timer.cancel()
-                select_elapsed = time.perf_counter() - t_select_start
-                charged = heavy_elapsed + select_elapsed if not out else select_elapsed
-                result = _build_eval_result_from_output(output, instance, params, charged, evaluator)
-                out.append((params, result))
-            finally:
-                _restore_params_env(prior_env)
+            _eval_one_cell(state, instance, params, evaluator, bench_timeout, heavy_elapsed, out)
     finally:
         if applied:
             try:

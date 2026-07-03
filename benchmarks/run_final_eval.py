@@ -278,7 +278,6 @@ def _run_depth_manifest_sweep(
     at the end (non-zero exit) instead of killing sibling manifests.
     """
     import os as _os
-    import traceback as _traceback
 
     reports = []
     all_results = []
@@ -288,31 +287,61 @@ def _run_depth_manifest_sweep(
             _os.environ["DIFFCTX_OP_GRAPH_DEPTH"] = str(depth)
             print(f"\n=== Sweep depth L={depth} (DIFFCTX_OP_GRAPH_DEPTH={depth}) ===")
         for manifest_path, instances in manifest_instances.items():
-            name = manifest_path.stem.removeprefix("test_")
-            depth_suffix = f"_L{depth}" if depth is not None else ""
-            try:
-                results = _process_manifest(
-                    manifest_path=manifest_path,
-                    instances=instances,
-                    args=args,
-                    params=params,
-                    budgets_list=budgets_list,
-                    eval_fn=eval_fn,
-                    eval_all_cells_fn=eval_all_cells_fn,
-                    depth=depth,
-                )
-            except Exception:
-                failed.append(f"{name}{depth_suffix}")
-                print(f"[{name}{depth_suffix}] MANIFEST FAILED:\n{_traceback.format_exc()}", flush=True)
-                continue
-            for r in results:
-                r.extra.setdefault("benchmark_manifest", name)
-                if depth is not None:
-                    r.extra.setdefault("ego_depth", depth)
-            all_results.extend(results)
-            reports.append(aggregate_test_set(name, results))
-            (args.out / f"{name}{depth_suffix}.json").write_text(json.dumps([asdict(r) for r in results], indent=2, default=str))
+            _run_one_manifest_guarded(
+                manifest_path,
+                instances,
+                args,
+                params,
+                budgets_list,
+                eval_fn,
+                eval_all_cells_fn,
+                depth,
+                reports,
+                all_results,
+                failed,
+            )
     return reports, all_results, failed
+
+
+def _run_one_manifest_guarded(
+    manifest_path: Path,
+    instances: list,
+    args: argparse.Namespace,
+    params: RunParams,
+    budgets_list: list[int],
+    eval_fn,
+    eval_all_cells_fn,
+    depth: int | None,
+    reports: list,
+    all_results: list,
+    failed: list[str],
+) -> None:
+    import traceback as _traceback
+
+    name = manifest_path.stem.removeprefix("test_")
+    depth_suffix = f"_L{depth}" if depth is not None else ""
+    try:
+        results = _process_manifest(
+            manifest_path=manifest_path,
+            instances=instances,
+            args=args,
+            params=params,
+            budgets_list=budgets_list,
+            eval_fn=eval_fn,
+            eval_all_cells_fn=eval_all_cells_fn,
+            depth=depth,
+        )
+    except Exception:
+        failed.append(f"{name}{depth_suffix}")
+        print(f"[{name}{depth_suffix}] MANIFEST FAILED:\n{_traceback.format_exc()}", flush=True)
+        return
+    for r in results:
+        r.extra.setdefault("benchmark_manifest", name)
+        if depth is not None:
+            r.extra.setdefault("ego_depth", depth)
+    all_results.extend(results)
+    reports.append(aggregate_test_set(name, results))
+    (args.out / f"{name}{depth_suffix}.json").write_text(json.dumps([asdict(r) for r in results], indent=2, default=str))
 
 
 def _warm_repo_cache(manifest_instances: dict[Path, list]) -> None:
