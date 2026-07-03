@@ -174,6 +174,14 @@ def _parse_artifact(name: str) -> tuple[str | None, int | None, int | None, str 
     return (m.group("method"), budget, -1, m.group("test_set"))
 
 
+def _depth_of(cell: dict) -> int:
+    """Depth key for grouping. NOT `get("depth") or -1`: depth 0 is a real
+    EGO radius and `or` coerced it to the -1 sentinel, mislabeling every
+    L0 cell as depth-less in the rendered tables."""
+    d = cell.get("depth")
+    return d if isinstance(d, int) else -1
+
+
 _METHOD_ORDER = ["ppr", "ego", "bm25", "aider"]
 
 
@@ -329,7 +337,7 @@ def render_headline_tables(cells: list[dict]) -> str:
     valid = [c for c in cells if c["method"] and c["budget"] is not None and c["test_set"]]
     by_cfg: dict[tuple[str, int, int], list[dict]] = defaultdict(list)
     for c in valid:
-        by_cfg[(c["method"], c["budget"], c.get("depth") or -1)].append(c)
+        by_cfg[(c["method"], c["budget"], _depth_of(c))].append(c)
 
     sorted_cfgs = sorted(by_cfg.keys(), key=lambda k: (_method_sort_key(k[0]), int(k[1]), int(k[2])))
 
@@ -371,7 +379,7 @@ def _finalize_language_stat(v: dict) -> dict[str, float]:
 def _aggregate_languages(cells: list[dict]) -> dict[tuple[str, int, int], dict[str, dict[str, float]]]:
     out: dict[tuple[str, int, int], dict[str, dict[str, float]]] = {}
     for c in cells:
-        m, b, d = c["method"], c["budget"], c.get("depth") or -1
+        m, b, d = c["method"], c["budget"], _depth_of(c)
         if m is None or b is None:
             continue
         cfg = (m, b, d)
@@ -441,7 +449,7 @@ def render_pipeline_tables(cells: list[dict]) -> str:
     valid = [c for c in cells if c["method"] and c["budget"] is not None and c["test_set"]]
     by_cfg: dict[tuple[str, int, int], list[dict]] = defaultdict(list)
     for c in valid:
-        by_cfg[(c["method"], c["budget"], c.get("depth") or -1)].append(c)
+        by_cfg[(c["method"], c["budget"], _depth_of(c))].append(c)
 
     cfgs = sorted(by_cfg.keys(), key=lambda k: (_method_sort_key(k[0]), int(k[1]), int(k[2])))
 
@@ -508,7 +516,7 @@ def render_stratification_tables(cells: list[dict]) -> str:
 
     by_cfg: dict[tuple[str, int, int], list[dict]] = defaultdict(list)
     for c in valid:
-        by_cfg[(c["method"], c["budget"], c.get("depth") or -1)].append(c)
+        by_cfg[(c["method"], c["budget"], _depth_of(c))].append(c)
     cfgs = sorted(by_cfg.keys(), key=lambda k: (_method_sort_key(k[0]), int(k[1]), int(k[2])))
 
     out: list[str] = []
