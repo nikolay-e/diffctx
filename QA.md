@@ -264,6 +264,46 @@ extract-a-helper-function refactors (no logic change) are safe without
 dedicated coverage; do not attempt behavior-changing "simplifications" in the
 same pass.
 
+## Bench Image (ghcr.io/nikolay-e/diffctx-bench)
+
+- **A renamed ghcr package starts PRIVATE.** First push under a new name
+  creates a fresh private package — the old package's public visibility does
+  not carry over, and there is NO REST/GraphQL API to flip it (web UI only:
+  package settings → Danger Zone). Symptom chain: cloud-init `docker pull`
+  → "not found" (not "denied"), provision's verify step fails the same way.
+  After any image rename, verify ANONYMOUS access:
+  `curl -sf "https://ghcr.io/token?scope=repository:<owner>/<pkg>:pull"` →
+  bearer GET `/v2/<owner>/<pkg>/manifests/latest` must be 200.
+- **Every COPY source in Dockerfile.bench must be git-tracked.** A local
+  untracked dir (stale `diffctx/python` build artifact) made the local buildx
+  succeed while the same build failed in CI/bench-image. Guarded by
+  `tests/test_bench_image_inputs.py`; keep it in sync with the Dockerfile.
+- **`build_script | tail` masks the build's exit code** — the pipeline exit is
+  tail's. Capture rc explicitly (`...; echo rc=$?` on the script itself) or
+  `set -o pipefail` in the *calling* shell.
+- The image is auto-published by `.github/workflows/bench-image.yml` on pushes
+  touching its inputs; bench-sweep's provision job fail-fasts on a missing
+  manifest BEFORE paying for the Hetzner server.
+
+## Sweep Result Layout (post-#52)
+
+- Full-sweep cells for ppr/ego/bm25 are multi-budget: artifact
+  `cell-<method>-bALL-L<depth>-<test_set>` with per-budget checkpoints at
+  `<test_set>_budget_sweep/b<budget>.checkpoint.jsonl` and summaries
+  `cell_summary_b<budget>.json`. Aider stays one-budget-per-cell
+  (`cell-aider-b<budget>-...`). `aggregate_sweep.collect_cells` expands bALL
+  artifacts into one record per budget; legacy artifacts still parse.
+- The full `yaml_cases` suite standing baseline: ~2262 passed / ~463 failed
+  (`forbidden_rate=100%` over-selection class, tracked on #65). Gate in
+  nightly-full-eval.yml is MIN_PASS_COUNT=2260 — compare against that, not
+  against zero failures.
+
+## Monitor Scripts in This Shell (zsh)
+
+`status` is a read-only zsh special variable — a polling monitor script using
+`status=$(...)` dies instantly with "read-only variable: status" (exit 1).
+Use `run_state=`/`st=` in any Monitor/background snippet.
+
 ---
 
 Generic QA patterns live in the `/qa` skill — do not duplicate here.
