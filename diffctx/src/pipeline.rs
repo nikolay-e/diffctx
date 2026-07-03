@@ -743,7 +743,9 @@ fn empty_output(root_dir: &Path) -> DiffContextOutput {
 
 /// A deletion/rename-only diff has no fragmentable content, but the file
 /// lists themselves ARE the change - emit them instead of a bare skeleton.
-fn empty_output_from_state(state: &ScoredState) -> DiffContextOutput {
+/// pub(crate): the pybridge select_with_params empty branch must emit the
+/// same lists, or MCP/benchmark consumers lose them while the CLI keeps them.
+pub(crate) fn empty_output_from_state(state: &ScoredState) -> DiffContextOutput {
     let mut output = empty_output(&state.root_dir);
     output.commit_message = state.commit_message.clone();
     output.deleted_files = state.deleted_files.clone();

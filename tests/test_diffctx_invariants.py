@@ -267,3 +267,23 @@ def test_diff_context_scopes_markdown_preamble_change_not_whole_file(tmp_path):
         start, end = (int(x) for x in f["lines"].split("-"))
         assert end - start < 8, f"H1 preamble fragment should stay small, got lines {f['lines']} (whole-file dump?)"
         assert "Section 7" not in f["content"], "fragment should not pull in the last child section"
+
+
+def test_deletion_only_diff_reports_deleted_files_via_bridge(tmp_path):
+    """The CLI path emits deleted_files/renamed_files on a deletion-only diff
+    (empty_output_from_state); the pybridge select_with_params empty branch
+    used to return a bare skeleton instead, so MCP/benchmark consumers lost
+    the only signal the diff carried."""
+    from diffctx._diffctx import compute_scored_state, select_with_params
+
+    repo = Pygit2Repo(tmp_path / "repo")
+    repo.add_file("kept.py", "def kept():\n    return 1\n")
+    repo.add_file("doomed.py", "def doomed():\n    return 2\n")
+    repo.commit("base")
+    repo.remove_file("doomed.py")
+    repo.commit("delete doomed")
+
+    state = compute_scored_state(str(repo.path), "HEAD~1..HEAD")
+    out = select_with_params(state, budget_tokens=8000, tau=0.12)
+    assert out.get("deleted_files") == ["doomed.py"]
+    assert out.get("fragment_count") == 0

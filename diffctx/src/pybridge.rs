@@ -402,21 +402,9 @@ fn select_with_params<'py>(
     let inner = state.inner.clone();
     let output = py.detach(move || {
         if inner.all_fragments.is_empty() {
-            return DiffContextOutput {
-                name: inner
-                    .root_dir
-                    .file_name()
-                    .map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_else(|| inner.root_dir.to_string_lossy().to_string()),
-                output_type: "diff_context".to_string(),
-                commit_message: None,
-                changed_files: Vec::new(),
-                deleted_files: Vec::new(),
-                renamed_files: Vec::new(),
-                fragment_count: 0,
-                fragments: Vec::new(),
-                latency: None,
-            };
+            // Same deletion/rename honesty as the CLI path: a deletion-only
+            // diff still reports its file lists instead of a bare skeleton.
+            return pipeline::empty_output_from_state(&inner);
         }
         pipeline::select_with_params(&inner, budget_tokens, tau, no_content)
     });
