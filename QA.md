@@ -293,6 +293,32 @@ same pass.
   `cell_summary_b<budget>.json`. Aider stays one-budget-per-cell
   (`cell-aider-b<budget>-...`). `aggregate_sweep.collect_cells` expands bALL
   artifacts into one record per budget; legacy artifacts still parse.
+- **Depth 0 is a real value, not "absent."** Any grouping key built as
+  `cell.get("depth") or -1` coerces a legitimate `depth=0` cell into the -1
+  ("depth doesn't apply") bucket, silently mislabeling every L0 row in the
+  rendered tables as depth-less. Use an explicit `isinstance(d, int)` check
+  (see `_depth_of` in `aggregate_sweep.py`) — same trap as any `or`-based
+  default for a falsy-but-valid value (budget=0 has the identical shape;
+  it currently escapes this because callers always compare `is not None`).
+- **The `aggregate` job runs `if: always()` and uploads a real
+  `sweep-aggregated-*` artifact even when the parent run is cancelled or
+  partially failed.** Before manually re-aggregating from `cell-*`
+  artifacts, check whether this artifact already exists — it's the
+  authoritative one-shot summary of whatever completed before the failure.
+- **`gh run download --pattern 'cell-*'` can silently under-fetch on a
+  large artifact set** — a first pass grabbed 123/148 cells with no error;
+  only comparing the downloaded count against the run's artifact list (or
+  the official `sweep-aggregated-*` row count) surfaced the gap. Always
+  cross-check `ls <dir> | wc -l` against `gh api .../artifacts --jq
+  .total_count` (minus non-cell artifacts) before trusting a partial
+  reaggregation.
+- Self-hosted bench runners are started via bare `nohup ./run.sh &` in
+  cloud-init — a host reboot (Hetzner-side infra event, not app-caused)
+  kills them permanently and orphans queued cells forever with no retry.
+  Tracked as its own fix (#98, systemd `svc.sh install`); until fixed, a
+  sweep that stalls with jobs stuck `queued` for a long time (not just
+  slow) means the host is gone — check `hcloud server list` / SSH before
+  assuming the job queue is merely backed up.
 - The full `yaml_cases` suite standing baseline: ~2262 passed / ~463 failed
   (`forbidden_rate=100%` over-selection class, tracked on #65). Gate in
   nightly-full-eval.yml is MIN_PASS_COUNT=2260 — compare against that, not
