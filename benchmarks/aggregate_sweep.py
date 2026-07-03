@@ -107,28 +107,29 @@ def collect_cells(cells_dir: Path) -> list[dict]:
         multi = _budget_sweep_records(cell_root, meta, method, depth, test_set)
         if multi:
             cells.extend(multi)
-            continue
-
-        summary = _safe_load(cell_root / "cell_summary.json") or {}
-        # Find the per-instance checkpoint
-        ckpts = sorted(cell_root.glob("*.checkpoint.jsonl"))
-        rows = _load_jsonl(ckpts[0]) if ckpts else []
-        meta_budget = cell_info.get("budget")
-        budget = meta_budget if isinstance(meta_budget, int) else parsed[1]
-        cells.append(
-            {
-                "artifact_dir": cell_root.name,
-                "method": method,
-                "budget": budget,
-                "depth": depth,
-                "test_set": test_set,
-                "metadata": meta,
-                "summary": summary,
-                "n_instances": len(rows),
-                "instance_recall_values": [r.get("file_recall", 0.0) for r in rows],
-            }
-        )
+        else:
+            cells.append(_single_budget_record(cell_root, meta, cell_info, parsed, method, depth, test_set))
     return cells
+
+
+def _single_budget_record(cell_root: Path, meta: dict, cell_info: dict, parsed, method, depth, test_set) -> dict:
+    summary = _safe_load(cell_root / "cell_summary.json") or {}
+    # Find the per-instance checkpoint
+    ckpts = sorted(cell_root.glob("*.checkpoint.jsonl"))
+    rows = _load_jsonl(ckpts[0]) if ckpts else []
+    meta_budget = cell_info.get("budget")
+    budget = meta_budget if isinstance(meta_budget, int) else parsed[1]
+    return {
+        "artifact_dir": cell_root.name,
+        "method": method,
+        "budget": budget,
+        "depth": depth,
+        "test_set": test_set,
+        "metadata": meta,
+        "summary": summary,
+        "n_instances": len(rows),
+        "instance_recall_values": [r.get("file_recall", 0.0) for r in rows],
+    }
 
 
 # New artifact layout: cell-<method>-b<budget>-L<depth>-<test_set>.

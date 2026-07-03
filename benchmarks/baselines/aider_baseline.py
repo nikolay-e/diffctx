@@ -154,6 +154,21 @@ def _aider_failure(
     return r
 
 
+def _build_aider_payload(instance: BenchmarkInstance, params: RunParams, repo_dir: Path, aider_mode: str) -> dict[str, Any]:
+    if aider_mode == "oracle":
+        mentioned_fnames = sorted(instance.gold_files)
+    else:
+        mentioned_fnames = sorted(_patch_visible_paths(instance.gold_patch))
+    return {
+        "repo_root": str(repo_dir),
+        "chat_files": [],
+        "other_files": _walk_other_files(repo_dir),
+        "mentioned_fnames": mentioned_fnames,
+        "mentioned_idents": sorted(extract_idents_from_patch(instance.gold_patch)),
+        "map_tokens": params.budget,
+    }
+
+
 def _aider_eval(
     instance: BenchmarkInstance,
     params: RunParams,
@@ -176,21 +191,7 @@ def _aider_eval(
         if not applied:
             return _aider_failure(instance, params, "apply_fail", "gold patch did not apply as commit")
         t0 = time.perf_counter()
-        other_files = _walk_other_files(repo_dir)
-        if aider_mode == "oracle":
-            mentioned_fnames = sorted(instance.gold_files)
-        else:
-            mentioned_fnames = sorted(_patch_visible_paths(instance.gold_patch))
-        mentioned_idents = sorted(extract_idents_from_patch(instance.gold_patch))
-
-        payload: dict[str, Any] = {
-            "repo_root": str(repo_dir),
-            "chat_files": [],
-            "other_files": other_files,
-            "mentioned_fnames": mentioned_fnames,
-            "mentioned_idents": mentioned_idents,
-            "map_tokens": params.budget,
-        }
+        payload = _build_aider_payload(instance, params, repo_dir, aider_mode)
         try:
             resp = aider.request(payload, timeout=request_timeout)
         except (TimeoutError, RuntimeError) as e:
