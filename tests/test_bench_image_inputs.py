@@ -30,10 +30,12 @@ def _dockerfile() -> str:
 
 
 def test_dockerfile_bench_copy_sources_exist():
-    copy_re = re.compile(r"^COPY\s+(?!--from)(.+?)\s+\S+$", re.MULTILINE)
     missing = []
-    for m in copy_re.finditer(_dockerfile()):
-        for src in m.group(1).split():
+    for line in _dockerfile().splitlines():
+        parts = line.split()
+        if len(parts) < 3 or parts[0] != "COPY" or parts[1].startswith("--from"):
+            continue
+        for src in parts[1:-1]:
             if not (REPO_ROOT / src).exists():
                 missing.append(src)
     assert not missing, f"Dockerfile.bench COPY sources missing from repo: {missing}"
@@ -50,7 +52,7 @@ def test_requirements_bench_covers_benchmark_imports():
         if line.strip() and not line.startswith("#")
     }
 
-    import_re = re.compile(r"^\s*(?:import|from)\s+([a-zA-Z_0-9]+)", re.MULTILINE)
+    import_re = re.compile(r"^\s*(?:import|from)\s+(\w+)", re.MULTILINE)
     stdlib = set(sys.stdlib_module_names)
     needed = set()
     for py in (REPO_ROOT / "benchmarks").rglob("*.py"):

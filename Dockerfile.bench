@@ -60,7 +60,6 @@ COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
 COPY diffctx/Cargo.toml diffctx/Cargo.lock ./diffctx/
 COPY diffctx/src ./diffctx/src
-COPY diffctx/python ./diffctx/python
 # Cargo.toml declares [[test]] targets; cargo refuses to parse the manifest
 # if their files are absent.
 COPY diffctx/tests ./diffctx/tests
@@ -88,14 +87,12 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 WORKDIR /app
 
-# Layer 2: Python deps (heavy, slow — install BEFORE source)
-COPY requirements-bench.txt ./
-RUN pip install --no-cache-dir -r requirements-bench.txt
-
-# uv is required by the Aider baseline (`uv tool run --from aider-chat ...`).
-# Without it, every aider cell crashes on first request with
+# Layer 2: Python deps (heavy, slow — install BEFORE source).
+# uv is required by the Aider baseline (`uv tool run --from aider-chat ...`);
+# without it, every aider cell crashes on first request with
 # "RuntimeError: `uv` not found on PATH".
-RUN pip install --no-cache-dir uv
+COPY requirements-bench.txt ./
+RUN pip install --no-cache-dir -r requirements-bench.txt uv
 
 # Layer 3: diffctx wheel with the compiled _diffctx extension
 COPY --from=rust-builder /wheels/*.whl /tmp/wheels/
