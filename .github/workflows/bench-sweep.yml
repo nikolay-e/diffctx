@@ -943,7 +943,12 @@ jobs:
               "https://api.github.com/repos/${REPO}/actions/runners/${rid}" || true
           done
 
+      # continue-on-error: when provision fails before creating the server the
+      # artifact was never uploaded; that must not fail cleanup (observed on
+      # run 28648441942 — verify-image failed fast, no server existed, cleanup
+      # went red on a missing artifact and masked the real failure).
       - name: Download server_id artifact
+        continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
           name: hetzner-server-id
@@ -954,6 +959,10 @@ jobs:
           HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
         run: |
           set -euo pipefail
+          if [ ! -f /tmp/hetzner/server_id.txt ]; then
+            echo "No server_id artifact — server was never provisioned, nothing to delete."
+            exit 0
+          fi
           SERVER_ID=$(cat /tmp/hetzner/server_id.txt)
           if [ -z "${SERVER_ID}" ] || [ "${SERVER_ID}" = "null" ]; then
             echo "No server ID found — nothing to delete."
