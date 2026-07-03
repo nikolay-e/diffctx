@@ -67,6 +67,30 @@ jobs:
       server_id: ${{ steps.create.outputs.server_id }}
       server_ip: ${{ steps.create.outputs.server_ip }}
     steps:
+      # Fail fast BEFORE paying for a server: a missing image otherwise dies
+      # silently inside cloud-init and surfaces only as "runners never came
+      # online" 15 minutes later (observed after the treemapper->diffctx
+      # rebrand renamed the reference without republishing the image).
+      - name: Verify bench image exists in ghcr
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          set -euo pipefail
+          TOKEN=$(curl -sf -u "nikolay-e:${GH_TOKEN}" \
+            "https://ghcr.io/token?scope=repository:nikolay-e/diffctx-bench:pull" | jq -r '.token')
+          ACCEPT="application/vnd.oci.image.index.v1+json"
+          ACCEPT="${ACCEPT}, application/vnd.docker.distribution.manifest.list.v2+json"
+          ACCEPT="${ACCEPT}, application/vnd.docker.distribution.manifest.v2+json"
+          if ! curl -sf -o /dev/null \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H "Accept: ${ACCEPT}" \
+            "https://ghcr.io/v2/nikolay-e/diffctx-bench/manifests/latest"; then
+            echo "::error::ghcr.io/nikolay-e/diffctx-bench:latest not found — build via" \
+              "the bench-image workflow or PUSH=1 scripts/build_bench_image.sh" >&2
+            exit 1
+          fi
+          echo "Bench image present."
+
       - name: Create Hetzner CCX63 with 4 self-hosted runners
         id: create
         env:
@@ -101,7 +125,10 @@ jobs:
           mkdir -p /root/.ssh && chmod 700 /root/.ssh
           echo "${BENCH_SSH_PUBLIC_KEY}" >> /root/.ssh/authorized_keys
           chmod 600 /root/.ssh/authorized_keys
-          chage -M -1 root
+          # Hetzner marks the root password expired when the server is created
+          # without an API-level ssh_keys ref; -M -1 alone does not clear the
+          # forced-change flag, which blocks non-TTY SSH ("password expired").
+          chage -M -1 -d "\$(date +%Y-%m-%d)" root
           useradd -m -s /bin/bash github
           usermod -aG docker github
           echo "${GH_TOKEN}" | docker login ghcr.io -u nikolay-e --password-stdin
