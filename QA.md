@@ -330,6 +330,43 @@ same pass.
 `status=$(...)` dies instantly with "read-only variable: status" (exit 1).
 Use `run_state=`/`st=` in any Monitor/background snippet.
 
+## Bash Tool cwd Does Not Reliably Persist Across Calls Mid-Session
+
+During the real-world test-repo sweep, `cd test-repos/<repo>` in one Bash call
+followed by `gh issue`/`gh pr` commands in later calls silently resolved
+against whichever repo's `origin` remote happened to be the last `cd`-ed-into
+directory — `gh issue view 65` returned a *closed react-native-navigation*
+issue with the same number, not diffctx#65. This self-corrected on a later
+call without any explicit `cd` back, so the tool's "cwd persists between
+commands" guarantee is not reliable across a long multi-step QA session (some
+other cwd-resetting event fires between calls). Mitigation: pass `-R
+nikolay-e/diffctx` explicitly on every `gh issue`/`gh pr` call rather than
+relying on directory context, especially in any step that also touches
+`test-repos/*` clones. Verify with `pwd && git remote -v` before any
+repo-context-sensitive command if in doubt.
+
+## `gh issue view <N> --comments` Prints Nothing When There Are Zero Comments
+
+Not a failure — `gh issue view 92 --comments` (an issue with `comments: 0`)
+returned empty stdout with rc 0, easy to misread as the command having failed
+or hit a transient error. Drop `--comments` (or check `comments:` in the
+default view output) to confirm zero-vs-broken before retrying.
+
+## Dependabot Squash-Merges via `gh pr merge` Land on GitHub Only, Not Forgejo
+
+Forgejo (`origin`) is source of truth and push-mirrors to GitHub, but
+`gh pr merge` operates against GitHub's API directly — the squash-merge commit
+only ever exists on `github/main`, never on `origin/main`. If local `main` also
+gained commits in the same session (e.g. QA-pass bug fixes), `git merge
+--ff-only origin/main` succeeds (local is already ahead of origin) while
+`github/main` has *diverged* (different squash commits on top of the same
+base) — needs a real `git merge github/main` (not `--ff-only`), then push the
+merge commit to **both** `origin` and `github`. Forgejo's branch-protection
+flags the resulting merge commit as a rule violation ("branch must not contain
+merge commits") but admin-bypasses it through — expected, not a failure to
+chase. Prefer resolving via rebase over merge when the local/dependabot diffs
+don't touch the same files, to avoid tripping that rule at all.
+
 ---
 
 Generic QA patterns live in the `/qa` skill — do not duplicate here.
