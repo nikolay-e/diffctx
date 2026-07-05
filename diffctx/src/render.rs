@@ -243,11 +243,17 @@ fn create_fragment_entry(frag: &Fragment, path_str: &str) -> FragmentEntry {
     }
 }
 
-/// Collapse a file's fragments (sorted by start line) into the rendered
-/// entries, merging runs of same-role, line-contiguous fragments
-/// (`next.start == cur.end + 1`) into one. Merging touching ranges is lossless
-/// on line coverage and removes the per-fragment scaffolding tax that dominates
-/// output dominated by one-line snippets.
+/// Collapse a file's fragments (sorted by start line, ties by descending end
+/// line) into the rendered entries. Two behaviors:
+/// - a same-role fragment fully contained in the running range (`next.end <=
+///   end`) is dropped: its content is already covered by the enclosing
+///   fragment (e.g. a symbol-level "function" extraction and a hunk-level
+///   "chunk" both covering the same edited lines), so keeping it is pure
+///   duplication, not additional information.
+/// - a same-role fragment that is line-contiguous with the running range
+///   (`next.start == end + 1`) is merged into it.
+/// Both are lossless on line coverage and remove the per-fragment scaffolding
+/// tax that dominates output on one-line/near-duplicate snippets.
 fn merge_file_fragments(
     rel_path: &str,
     frags: &[&Fragment],
@@ -263,7 +269,13 @@ fn merge_file_fragments(
         let mut j = i + 1;
         while j < frags.len() {
             let next = frags[j];
-            if core_ids.contains(&next.id) == role_changed && next.start_line() == end + 1 {
+            if core_ids.contains(&next.id) != role_changed {
+                break;
+            }
+            if next.end_line() <= end {
+                // Fully contained in the range covered so far - redundant.
+                j += 1;
+            } else if next.start_line() == end + 1 {
                 parts.push(next.content.trim_end_matches('\n'));
                 end = next.end_line();
                 j += 1;
@@ -312,7 +324,11 @@ pub fn build_diff_context_output(
     let mut context: Vec<(f64, String, u32, FragmentEntry)> = Vec::new();
     for (rel_path, frags) in &by_path {
         let mut sorted: Vec<&Fragment> = frags.clone();
-        sorted.sort_by_key(|f| f.start_line());
+        // Tie-break by descending end line so, among same-start fragments, the
+        // widest range sorts first and containment-absorption below (which scans
+        // forward from the first entry of a run) sees the enclosing range before
+        // any of its nested sub-fragments.
+        sorted.sort_by_key(|f| (f.start_line(), std::cmp::Reverse(f.end_line())));
         let file_rel = sorted
             .iter()
             .map(|f| rel_scores.get(&f.id).copied().unwrap_or(0.0))
