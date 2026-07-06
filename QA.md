@@ -198,6 +198,38 @@ diff's changed lines. A clean rc=0 with a plausible token count still hides this
 class — `role:`-absence is the tell. Contrast a healthy run (`numpy HEAD~1`:
 5 `role: "changed"` fragments, context scoped to 2 tightly-related stubs).
 
+## Varied-Diff-Shape Hunt: What's Confirmed-Correct (don't re-file)
+
+To find NEW defect classes (beyond #65 over-selection / #103 lost-change / #70
+hang), probe **diff shapes**, not just `HEAD~1` — the shape is what breeds new
+bugs. A pass across delete / rename / merge / big(40+ files) / binary / huge
+shapes on ~12 test-repos found NO new class; the following are **verified
+CORRECT** — do not chase them as findings, and beware a naive sweep classifier
+that flags them as `empty-on-real-diff`:
+
+- **Deletion-only / delete-heavy diffs** (e.g. builder `Remove … scripts`
+  9- & 48-file pure deletions; vision `Remove prototype folder` 81 files /
+  13k deletions): output has **no `fragments:`** (nothing to render — content
+  is gone) but a fully-populated **`deleted_files:`** list. Zero fragments here
+  is correct, NOT the #103 lost-change class. Any sweep check must consult
+  `deleted_files` before flagging "empty output".
+- **Binary-only diffs** (vision `76f0fdd`, 17 `.pkl` files, all `-\t-` in
+  `git diff --numstat`): correct **rc=4** + the `no semantic context` message.
+  Confirm binary-only via numstat (`awk '$1!="-"'` yields nothing) before
+  treating rc=4 as a bug.
+- **Binary+text mixed** (numpy/react-native/onnxruntime/ocaml): binary ignored,
+  text fragments clean, no mojibake/control-char leakage into YAML.
+- **Large multi-file diffs that complete** (onnxruntime 33f/505 changed,
+  llama.cpp 24f/256, elasticsearch 72f/116): all changed files represented.
+
+BSD `grep -P` is unavailable on macOS — detect binary commits with
+`git diff --numstat | awk '$1=="-"&&$2=="-"'`, not `grep -P '^-\t-'`.
+
+**#70 scope is broader than its title.** The unbounded hang also fires on
+**large diffs** (60–100+ files: onnxruntime `22ae796` 63f, elasticsearch
+`e24492c` 108f), not only "large repo + trivial diff". Verified rc=142 at the
+150s cap with zero stdout / empty stderr. Correlates with diff/graph size.
+
 ## Local `which diffctx` Trap — diffctx specifics
 
 See `/qa` skill: Packaging QA (`which`-vs-pipx). Concretely: when this project's
