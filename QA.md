@@ -140,11 +140,15 @@ shadow:
 ```bash
 cd test-repos/<repo>
 git pull --ff-only
-# Hard-cap runtime. As of 3725f51b the CLI enforces `--timeout` as a true total
-# wall-clock bound (worker thread + watchdog) and fast-fails rc=124 with the
-# actionable-error contract instead of hanging to OOM (#70) — BUT the external
-# perl cap is still needed when smoking the **pipx** binary until that fix ships
-# in a release (pipx 1.10.0 has no watchdog). macOS has no `timeout`; use:
+# Hard-cap runtime. `--timeout` (true wall-clock bound, worker thread + watchdog,
+# fast-fails instead of hanging to OOM, #70, 3725f51b) lives ONLY on the
+# standalone Rust binary `diffctx/src/main.rs`. The **Python pipx wrapper does
+# NOT expose `--timeout` at all** — verified on the released `1.10.2`:
+# `diffctx --diff --help | grep timeout` → empty, and `grep -r timeout
+# src/diffctx/cli.py` → empty (the flag never crossed into the Python CLI). So
+# the external perl cap is MANDATORY for every pipx smoke regardless of release,
+# not just "until it ships" — the wrapper needs its own watchdog around the
+# pyo3 `compute_scored_state` call first. macOS has no `timeout`; use:
 perl -e 'alarm 200; exec @ARGV' /Users/nikolay/.local/bin/diffctx . --diff HEAD~1
 # (or, on the dev build, just pass `--timeout 200` — the watchdog bounds it.)
 ```
@@ -173,6 +177,26 @@ first issue**.
 Either outcome — **all clean OR ≥1 issue filed** — is a valid completion of
 this step; the QA round proceeds to its remaining items either way. Do not let
 a found issue halt the round, and do not keep sweeping after one is filed.
+
+## Sweep Discriminator: EOF-Append to a Flat Data-List File (#103)
+
+A distinct symptom the file-count/token discriminators alone miss, surfaced
+sweeping `elasticsearch`: a diff whose ONLY change is a few lines **appended at
+EOF** of a large flat YAML/data-list file (e.g. `muted-tests.yml`, ~790 lines of
+top-level `- key: …` entries) produced an output with **zero `role: "changed"`
+fragments** — the changed lines never surfaced as a labeled change — while the
+whole file was exploded into ~118 per-entry `definition` context fragments plus
+a couple of unrelated files. Two separable defects: (A) **the change signal is
+lost** (correctness — worse than over-selection; `grep -c 'role:' out.yaml` → 0,
+and the max rendered line range stops BELOW the appended lines), and (B)
+whole-file fragmentation of a flat list (over-selection, overlaps #65). Tracked
+on #103, primarily for (A).
+
+**Add to the per-repo sweep judgment:** on any non-empty diff, assert
+`grep -c 'role: "changed"'` ≥ 1 AND that the output's max line range reaches the
+diff's changed lines. A clean rc=0 with a plausible token count still hides this
+class — `role:`-absence is the tell. Contrast a healthy run (`numpy HEAD~1`:
+5 `role: "changed"` fragments, context scoped to 2 tightly-related stubs).
 
 ## Local `which diffctx` Trap — diffctx specifics
 
