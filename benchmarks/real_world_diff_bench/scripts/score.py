@@ -37,7 +37,13 @@ def selected_files(d):
 
 
 def meta(d):
-    return {k: v for k, v in (line.rstrip("\n").split("\t", 1) for line in open(os.path.join(d, "meta.tsv")) if "\t" in line)}
+    out = {}
+    with open(os.path.join(d, "meta.tsv")) as fh:
+        for line in fh:
+            if "\t" in line:
+                key, value = line.rstrip("\n").split("\t", 1)
+                out[key] = value
+    return out
 
 
 records = []
