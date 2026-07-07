@@ -458,6 +458,43 @@ is the only honest verifier; (4) skip/void the full local `yaml_cases` run
 for the round and say so in the report. Root fix: parallel work belongs in
 `git worktree`s (workspace convention), one session per checkout.
 
+## Rust Binary vs Python CLI Render Differences (grep traps)
+
+The standalone Rust binary (`diffctx/target/release/diffctx`) renders YAML
+plainly (`role: changed`, `lines: 1-791`), while the Python CLI quotes
+(`role: "changed"`, `lines: "1-791"`). A `grep 'role: "changed"'` against
+standalone output silently reports 0 — use `grep -E 'role: "?changed"?'` in
+any check that may see either producer. Also: the standalone binary's clap
+parser rejects `--budget -1` (`use '-- -1'`); pass a large N instead.
+
+## Fast Pipeline Debug Cycle (no maturin rebuild)
+
+For selection/core debugging, add a temporary env-gated `eprintln!` in the
+Rust source and build ONLY the standalone binary: `cargo build --release
+--bin diffctx` (~35s incremental) — do not pay the maturin develop rebuild
+until the Python surface is involved. Revert the tracing with
+`git checkout <file>` before committing.
+
+## Mini-Repro Pattern for Sweep Findings
+
+A hand-written synthetic file may NOT reproduce a real-repo finding (a
+synthetic flat YAML list was clean while the real `muted-tests.yml`
+reproduced #103 — tree-sitter parse degradation depends on exact content
+like `{...}` flow-scalar braces). Extract the real file instead:
+`git -C test-repos/<repo> show <rev>:<path> > file` into a fresh throwaway
+repo, commit base + change, then iterate there — seconds per run instead of
+minutes on the full clone.
+
+## Whole-File-Chunk-as-Core Defect Class (#103/#105/#107)
+
+When fragmentation yields no narrow fragment covering a hunk (flat data
+files, non-tree-sitter languages, parse degradation), `find_core_for_hunk`
+falls back to a whole-file chunk as the core; chunk kinds have no signature
+stub, so at auto budget the core silently drops — change signal lost. The
+three issues are one class; the sketched fix (hunk-window excerpt core) is
+on #103. Selection-guarantee gaps of this shape are found fastest by
+comparing `--budget 999999` output against auto-budget output.
+
 ## Monitor Scripts in This Shell (zsh)
 
 `status` is a read-only zsh special variable — a polling monitor script using
