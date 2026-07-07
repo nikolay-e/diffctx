@@ -321,14 +321,16 @@ def get_ignore_specs(
     custom_ignore_file: Path | None = None,
     no_default_ignores: bool = False,
     output_file: Path | None = None,
+    no_ignores: bool = False,
 ) -> pathspec.PathSpec:
     patterns: list[str] = []
 
-    if not no_default_ignores:
+    if not no_default_ignores and not no_ignores:
         patterns.extend(DEFAULT_IGNORE_PATTERNS)
 
-    patterns.extend(_collect_parent_ignore_patterns(root_dir, [".gitignore"]))
-    patterns.extend(_aggregate_all_ignore_patterns(root_dir, [".gitignore", _DIFFCTX_IGNORE_RELPATH]))
+    if not no_ignores:
+        patterns.extend(_collect_parent_ignore_patterns(root_dir, [".gitignore"]))
+        patterns.extend(_aggregate_all_ignore_patterns(root_dir, [".gitignore", _DIFFCTX_IGNORE_RELPATH]))
 
     if custom_ignore_file:
         patterns.extend(read_ignore_file(custom_ignore_file))

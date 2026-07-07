@@ -52,6 +52,17 @@ fn pick_best_fragment<'a>(
     full.or(sig).map(|f| *f)
 }
 
+fn change_coverage_rank(f: &Fragment, core_ids: &FxHashSet<FragmentId>) -> u8 {
+    if core_ids.contains(&f.id) {
+        return 0;
+    }
+    let is_core_stub = f.kind.is_signature()
+        && core_ids
+            .iter()
+            .any(|c| c.path == f.id.path && c.start_line == f.id.start_line);
+    if is_core_stub { 1 } else { 2 }
+}
+
 fn pick_smallest_fitting(
     candidates: &[Fragment],
     selected_ids: &FxHashSet<FragmentId>,
@@ -60,21 +71,27 @@ fn pick_smallest_fitting(
 ) -> Option<Fragment> {
     let mut sorted: Vec<&Fragment> = candidates.iter().collect();
     // Prefer a fragment that actually covers the diff hunk (core_ids, i.e.
-    // what render.rs marks `role: "changed"`) over an unrelated same-file
-    // fragment (e.g. a one-line function_signature stub). Sorting by
-    // token_count alone picks whichever candidate is smallest regardless of
-    // relevance, which can silently hide the real change behind a tiny
-    // signature-only stub for the same file (#83).
-    sorted.sort_by_key(|f| (!core_ids.contains(&f.id), f.token_count));
-    for cand in sorted {
+    // what render.rs marks `role: "changed"`), then its signature stub, over
+    // an unrelated same-file fragment. Sorting by token_count alone picks
+    // whichever candidate is smallest regardless of relevance, which can
+    // silently hide the real change behind a tiny unrelated stub (#83).
+    sorted.sort_by_key(|f| (change_coverage_rank(f, core_ids), f.token_count));
+    for cand in &sorted {
         if cand.token_count == 0 || selected_ids.contains(&cand.id) {
             continue;
         }
         if cand.token_count <= budget_left {
-            return Some(cand.clone());
+            return Some((*cand).clone());
         }
     }
-    None
+    // Nothing fits: a changed file silently vanishing from the context is
+    // worse than a small budget overshoot, so keep the cheapest fragment
+    // that still shows the change (its signature stub usually wins here).
+    sorted.sort_by_key(|f| (change_coverage_rank(f, core_ids) == 2, f.token_count));
+    sorted
+        .into_iter()
+        .find(|c| c.token_count > 0 && !selected_ids.contains(&c.id))
+        .cloned()
 }
 
 pub fn coherence_post_pass(

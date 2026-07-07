@@ -62,6 +62,22 @@ fn count_brackets_outside_strings(line: &str) -> (i32, i32, i32, i32) {
     (open_parens, close_parens, open_braces, close_braces)
 }
 
+fn decorator_prefix_len(lines: &[&str]) -> usize {
+    let mut i = 0;
+    let mut paren_depth = 0i32;
+    while i < lines.len() {
+        let trimmed = lines[i].trim_start();
+        let starts_decorator = trimmed.starts_with('@') || trimmed.starts_with("#[");
+        if paren_depth <= 0 && !starts_decorator {
+            break;
+        }
+        let (op, cp, _, _) = count_brackets_outside_strings(lines[i]);
+        paren_depth += op - cp;
+        i += 1;
+    }
+    if i >= lines.len() { 0 } else { i }
+}
+
 fn find_signature_end(lines: &[&str]) -> usize {
     let mut paren_depth = 0i32;
     let mut seen_open_paren = false;
@@ -99,7 +115,8 @@ pub fn generate_signature_variants(fragments: &[Fragment]) -> Vec<Fragment> {
             continue;
         }
         let lines: Vec<&str> = frag.content.lines().collect();
-        let sig_end = find_signature_end(&lines);
+        let decorators = decorator_prefix_len(&lines);
+        let sig_end = decorators + find_signature_end(&lines[decorators..]);
         let sig_content: String = lines[..sig_end].join("\n");
         let sig_end_line = frag.start_line() + sig_end as u32 - 1;
         let sig_id = FragmentId::new(frag.id.path.clone(), frag.start_line(), sig_end_line);

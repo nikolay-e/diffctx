@@ -37,13 +37,18 @@ def _exit_error(message: str) -> NoReturn:
     sys.exit(1)
 
 
+def _exit_usage_error(message: str) -> NoReturn:
+    print(f"{_current_prog}: error: {message}", file=sys.stderr)
+    sys.exit(2)
+
+
 def _warn(message: str) -> None:
     print(f"{_current_prog}: warning: {message}", file=sys.stderr)
 
 
 def _validate_max_depth(max_depth: int | None) -> None:
     if max_depth is not None and max_depth < 0:
-        _exit_error(f"--max-depth must be non-negative, got {max_depth}")
+        _exit_usage_error(f"--max-depth must be non-negative, got {max_depth}")
     if max_depth == 0:
         _warn("--max-depth 0 produces empty tree (root only, no children)")
 
@@ -52,25 +57,25 @@ def _validate_max_file_bytes(max_file_bytes: int, no_file_size_limit: bool) -> i
     if no_file_size_limit:
         return None
     if max_file_bytes < 0:
-        _exit_error(f"--max-file-bytes must be non-negative, got {max_file_bytes}")
+        _exit_usage_error(f"--max-file-bytes must be non-negative, got {max_file_bytes}")
     if max_file_bytes == 0:
-        _exit_error("--max-file-bytes 0 is ambiguous. Use --no-file-size-limit to include all files regardless of size")
+        _exit_usage_error("--max-file-bytes 0 is ambiguous. Use --no-file-size-limit to include all files regardless of size")
     return max_file_bytes
 
 
 def _validate_budget(budget: int | None) -> None:
     if budget is not None and budget < -1:
-        _exit_error(f"--budget must be >= -1 (0=auto, -1=unlimited), got {budget}")
+        _exit_usage_error(f"--budget must be >= -1 (-1 = unlimited, 0 = changed code only), got {budget}")
 
 
 def _validate_alpha(alpha: float) -> None:
     if not (0 < alpha < 1):
-        _exit_error(f"--alpha must be between 0 and 1 (exclusive), got {alpha}")
+        _exit_usage_error(f"--alpha must be between 0 and 1 (exclusive), got {alpha}")
 
 
 def _validate_tau(tau: float) -> None:
     if tau < 0:
-        _exit_error(f"--tau must be non-negative, got {tau}")
+        _exit_usage_error(f"--tau must be non-negative, got {tau}")
 
 
 def _resolve_root_dir(directory: str) -> Path:
@@ -85,6 +90,14 @@ def _resolve_root_dir(directory: str) -> Path:
         _exit_error(f"Cannot access '{directory}': {e}")
 
 
+def _no_match_error(pattern: str) -> NoReturn:
+    if pattern == "graph":
+        _exit_error("No matches for 'graph'; if you meant the subcommand, it must come first: diffctx graph [options]")
+    if "*" in pattern and "**" not in pattern:
+        _exit_error(f"No matches for '{pattern}' (globs are not recursive; try '**/{pattern}')")
+    _exit_error(f"No matches for '{pattern}'")
+
+
 def _resolve_glob_pattern(pattern: str) -> list[str]:
     import glob as globmod
 
@@ -94,7 +107,7 @@ def _resolve_glob_pattern(pattern: str) -> list[str]:
     try:
         p = Path(pattern).resolve(strict=True)
     except FileNotFoundError:
-        _exit_error(f"No matches for '{pattern}'")
+        _no_match_error(pattern)
     except OSError as e:
         _exit_error(f"Cannot access '{pattern}': {e}")
     return [str(p)]
@@ -124,9 +137,34 @@ def _expand_paths(raw_paths: list[str]) -> tuple[list[Path], list[Path]]:
     return dirs, files
 
 
+_FORMAT_BY_EXTENSION = {
+    ".yaml": "yaml",
+    ".yml": "yaml",
+    ".json": "json",
+    ".md": "md",
+    ".markdown": "md",
+    ".txt": "txt",
+}
+
+
+def _infer_format_from_output_file(output_file_arg: str | None) -> str | None:
+    if not output_file_arg or output_file_arg == "-":
+        return None
+    return _FORMAT_BY_EXTENSION.get(Path(output_file_arg).suffix.lower())
+
+
+def _resolve_format(format_arg: str | _Unset, output_file_arg: str | None) -> str:
+    inferred = _infer_format_from_output_file(output_file_arg)
+    if isinstance(format_arg, str):
+        if inferred and inferred != format_arg:
+            _warn(f"-f {format_arg} does not match the '{output_file_arg}' extension; writing {format_arg}")
+        return format_arg
+    return inferred or "md"
+
+
 def _resolve_output_file(output_file_arg: str | None, save: bool, output_format: str) -> tuple[Path | None, bool]:
     if save and output_file_arg is not None:
-        _exit_error("--save and -o/--output-file are mutually exclusive")
+        _exit_usage_error("--save and -o/--output-file are mutually exclusive")
 
     if save:
         ext = "yaml" if output_format == "yaml" else output_format
@@ -139,7 +177,7 @@ def _resolve_output_file(output_file_arg: str | None, save: bool, output_format:
 
     output_file = Path(output_file_arg).resolve()
     if output_file.is_dir():
-        _exit_error(f"'{output_file_arg}' is a directory, not a file")
+        _exit_usage_error(f"'{output_file_arg}' is a directory, not a file")
     return output_file, False
 
 
@@ -197,6 +235,7 @@ class ParsedArgs:
     copy: bool
     force_stdout: bool
     quiet: bool = False
+    no_ignores: bool = False
     diff_range: str | None = None
     budget: int | None = None
     alpha: float = _DEFAULT_ALPHA
@@ -211,8 +250,8 @@ class ParsedArgs:
 
 
 DEFAULT_IGNORES_HELP = """
-Default ignored patterns (use --no-default-ignores to disable built-in patterns;
-project-level .gitignore and .diffctx/ignore still apply):
+Built-in ignored patterns (disable with --no-default-ignores; project .gitignore
+and .diffctx/ignore always apply unless --no-ignores is given):
   .git/, .svn/, .hg/    Version control directories
   __pycache__/, *.py[cod], *.so, venv/, .venv/, .tox/, .nox/  Python
   node_modules/, .npm/  JavaScript/Node
@@ -229,17 +268,18 @@ project-level .gitignore and .diffctx/ignore still apply):
 
 Ignore files (hierarchical, like git):
   .gitignore            Standard git ignore patterns
-  .diffctx/ignore    diffctx-specific patterns
+  .diffctx/ignore       diffctx-specific patterns
 
 Whitelist files (auto-discovered):
-  .diffctx/whitelist  Include-only filter
+  .diffctx/whitelist    Include-only filter
 
 Examples:
-  diffctx .                    Map current directory to YAML
+  diffctx .                    Map current directory to Markdown
   diffctx /path/to/project     Map a specific directory
   diffctx . -f json            Output as JSON
-  diffctx . -f md --save       Save as tree.md
-  diffctx . --diff HEAD~1      Show context for last commit
+  diffctx . --save             Save as tree.md
+  diffctx . --diff             Context for uncommitted changes
+  diffctx . --diff HEAD~1      Context for the last commit
   diffctx . -c                 Copy output to clipboard
   diffctx . --no-content       Structure only, no file contents
   diffctx graph .              Build the project dependency graph (see: diffctx graph --help)
@@ -247,25 +287,57 @@ Examples:
 
 Output routing:
   Default:      stdout
-  -o FILE:      write to FILE
-  --save:       write to tree.{ext} (e.g., tree.yaml)
+  -o FILE:      write to FILE (format inferred from extension unless -f is given)
+  -o -:         force stdout
+  --save:       write to tree.{ext} (tree.md by default; extension follows -f)
   -c:           copy to clipboard, suppress stdout
   -c -o FILE:   copy to clipboard AND write to FILE
+
+Exit codes:
+  0  success
+  1  runtime error (unreadable path, write failure)
+  2  usage error (unknown flag or invalid value)
+  3  environment error (git missing, not a repository, unknown revision)
+  4  --diff produced no context (clean tree or empty range)
 """
 
 
 def _build_shared_parser() -> argparse.ArgumentParser:
     shared = argparse.ArgumentParser(add_help=False)
-    shared.add_argument("-o", "--output-file", default=None, help="Write output to FILE")
-    shared.add_argument("-i", "--ignore", default=None, help="Path to custom ignore file")
-    shared.add_argument("-w", "--whitelist", default=None, help="Path to whitelist file (only matching files are included)")
+    shared.add_argument(
+        "-o", "--output-file", default=None, metavar="FILE", help="Write output to FILE instead of stdout ('-' forces stdout)"
+    )
+    shared.add_argument(
+        "-i",
+        "--ignore",
+        default=None,
+        metavar="FILE",
+        help="Custom ignore file (bare names also resolve inside .diffctx/; not yet supported with --diff)",
+    )
+    shared.add_argument(
+        "-w",
+        "--whitelist",
+        default=None,
+        metavar="FILE",
+        help="Whitelist file, only matching files are included (bare names also resolve inside .diffctx/; not yet supported with --diff)",
+    )
     shared.add_argument(
         "--no-default-ignores",
         action="store_true",
-        help="Disable built-in ignore patterns (project .gitignore and .diffctx/ignore still apply)",
+        help="Disable built-in ignore patterns only; project .gitignore and .diffctx/ignore still apply (see --no-ignores)",
     )
-    shared.add_argument("-c", "--copy", action="store_true", help="Copy to clipboard")
-    shared.add_argument("-q", "--quiet", action="store_true", help="Suppress all non-error output")
+    shared.add_argument(
+        "-c",
+        "--copy",
+        action="store_true",
+        help="Copy to clipboard instead of printing to stdout (combine with -o to also write a file)",
+    )
+    shared.add_argument(
+        "-q",
+        "--quiet",
+        action="store_true",
+        help="Suppress status messages (token summary, save/copy confirmations); overrides --log-level",
+    )
     shared.add_argument(
         "--log-level",
         choices=["error", "warning", "info", "debug"],
@@ -287,17 +359,19 @@ def _build_graph_parser(prog: str = "diffctx graph") -> argparse.ArgumentParser:
         "-f",
         "--format",
         choices=["mermaid", "json", "graphml"],
-        default="mermaid",
+        default=_UNSET,
         help="Graph output format (default: mermaid)",
     )
     graph_parser.add_argument(
-        "--summary", action="store_true", help="Print graph statistics (cycles, hotspots, coupling metrics)"
+        "--summary",
+        action="store_true",
+        help="Print graph statistics instead of the graph (cycles, hotspots, coupling); -f is ignored",
     )
     graph_parser.add_argument(
         "--level",
         choices=["fragment", "file", "directory"],
-        default="directory",
-        help="Granularity level for graph operations (default: directory)",
+        default=_UNSET,
+        help="Node granularity: directory, file, or fragment = function/class-level block (default: directory); applies to mermaid output and --summary",
     )
     return graph_parser
 
@@ -306,7 +380,7 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
     parser = argparse.ArgumentParser(
         prog=prog,
         description=(
-            "Generate a structured representation of a directory tree (YAML, JSON, text, or Markdown). "
+            "Generate a structured representation of a directory tree (Markdown, YAML, JSON, or text). "
             "Supports diff context mode (--diff) for intelligent code change analysis.\n\n"
             "Subcommands:\n"
             "  graph    Build and analyze the project dependency graph"
@@ -322,22 +396,27 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
         "-f",
         "--format",
         choices=["yaml", "json", "txt", "md"],
-        default="md",
-        help="Output format (default: md)",
+        default=_UNSET,
+        help="Output format (default: md; inferred from the -o FILE extension when omitted)",
     )
     parser.add_argument(
         "--save",
         action="store_true",
-        help="Save output to tree.{ext} (e.g., tree.yaml, tree.json)",
+        help="Save output to tree.{ext} in the current directory (tree.md by default; extension follows -f)",
     )
-    parser.add_argument("--max-depth", type=int, default=None, metavar="N", help="Maximum traversal depth")
+    parser.add_argument(
+        "--no-ignores",
+        action="store_true",
+        help="Disable all ignore rules: built-in patterns, project .gitignore, and .diffctx/ignore (a custom -i file still applies)",
+    )
+    parser.add_argument("--max-depth", type=int, default=None, metavar="N", help="Maximum traversal depth (default: unlimited)")
     parser.add_argument("--no-content", action="store_true", help="Skip file contents (structure only)")
     parser.add_argument(
         "--max-file-bytes",
         type=int,
-        default=DEFAULT_MAX_FILE_BYTES,
+        default=_UNSET,
         metavar="N",
-        help=f"Truncate per-file content at N bytes (default: {DEFAULT_MAX_FILE_BYTES // 1024} KB). Use --no-file-size-limit to disable.",
+        help=f"Omit content of files larger than N bytes (default: {DEFAULT_MAX_FILE_BYTES // 1024} KB). Use --no-file-size-limit to include all.",
     )
     parser.add_argument(
         "--no-file-size-limit",
@@ -353,22 +432,22 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
         const=_DIFF_SENTINEL,
         default=None,
         metavar="RANGE",
-        help="Git diff range (e.g., HEAD~1..HEAD, main..feature). Bare --diff defaults to HEAD.",
+        help="Git diff range (e.g., HEAD~1..HEAD, main..feature). Bare --diff shows uncommitted changes (working tree vs HEAD).",
     )
     diff_group.add_argument(
         "--budget",
         type=int,
         default=_UNSET,
-        metavar="N",
-        help="Token budget: omit or 0 = auto (default), -1 = unlimited, N = fixed cap",
+        metavar="TOKENS",
+        help="Token budget: omit = auto (default), N = fixed cap, -1 = unlimited, 0 = changed code only (no expansion)",
     )
     diff_group.add_argument(
         "--alpha",
         type=float,
         default=_UNSET,
-        metavar="F",
+        metavar="FLOAT",
         help=(
-            "PPR damping: how tightly context clusters around changes, 0-1 "
+            "PPR damping: how tightly context clusters around changes, 0-1 exclusive "
             "(default: 0.60, higher = more focused). Only affects --scoring ppr"
         ),
     )
@@ -376,24 +455,28 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
         "--tau",
         type=float,
         default=_UNSET,
-        metavar="F",
+        metavar="FLOAT",
         help=(
-            "Minimum relevance to include a fragment (default: 0.12, typical range 0-1; "
-            "lower = more surrounding context. E.g. --tau 2 excludes nearly everything but "
-            "the changed code itself, since only directly-changed fragments score that high)"
+            "Relevance threshold for full fragment content, >= 0 (default: 0.12). "
+            "Fragments scoring below it are reduced to signature stubs or dropped; "
+            "higher = leaner output, lower = more surrounding context"
         ),
     )
     diff_group.add_argument(
         "--scoring",
         choices=["ppr", "ego", "bm25"],
         default=_UNSET,
-        help="Scoring mode: ego (bounded ego-network expansion, default), ppr (Personalized PageRank), bm25 (lexical fragment retrieval)",
+        help=(
+            "Scoring mode: ego = structural neighbors of the change (default); "
+            "ppr = graph-wide relevance (Personalized PageRank), for far-reaching changes; "
+            "bm25 = lexical similarity, for sparse cross-file structure"
+        ),
     )
     diff_group.add_argument(
         "--full",
         action="store_true",
         default=False,
-        help="Include all changed code (skip smart selection algorithm)",
+        help="Include every fragment of the changed files and nothing else — no related-code context (ignores --budget/--tau/--alpha/--scoring)",
     )
     return parser
 
@@ -417,9 +500,21 @@ def _warn_diff_only_flags(args: argparse.Namespace) -> None:
         _warn(f"diff-mode flags ignored without --diff: {flags}")
 
 
+def _warn_quiet_log_level_conflict(args: argparse.Namespace) -> None:
+    if args.quiet and args.log_level != "error":
+        _warn(f"--log-level {args.log_level} ignored with -q")
+
+
 def _build_graph_parsed_args(args: argparse.Namespace) -> ParsedArgs:
     root_dir = _resolve_root_dir(args.directory)
-    output_file_path = Path(args.output_file).resolve() if args.output_file else None
+    graph_format = "mermaid" if args.format is _UNSET else args.format
+    graph_level = "directory" if args.level is _UNSET else args.level
+    if args.summary and args.format is not _UNSET:
+        _warn(f"-f {graph_format} ignored with --summary")
+    if not args.summary and args.level is not _UNSET and graph_format in ("json", "graphml"):
+        _warn(f"--level {graph_level} applies to mermaid output and --summary; ignored for -f {graph_format}")
+    _warn_quiet_log_level_conflict(args)
+    output_file_path, force_stdout = _resolve_output_file(args.output_file, False, graph_format)
     ignore_file = _resolve_ignore_file(args.ignore, root_dir)
     whitelist_file = _resolve_whitelist_file(args.whitelist, root_dir)
     verbosity = "error" if args.quiet else args.log_level
@@ -436,21 +531,40 @@ def _build_graph_parsed_args(args: argparse.Namespace) -> ParsedArgs:
         no_content=False,
         max_file_bytes=None,
         copy=args.copy,
-        force_stdout=False,
+        force_stdout=force_stdout,
         quiet=args.quiet,
         command="graph",
         graph=GraphArgs(
-            format=args.format,
+            format=graph_format,
             summary=args.summary,
-            level=args.level,
+            level=graph_level,
         ),
     )
 
 
-def _build_tree_parsed_args(args: argparse.Namespace) -> ParsedArgs:
-    _validate_max_depth(args.max_depth)
-    max_file_bytes = _validate_max_file_bytes(args.max_file_bytes, args.no_file_size_limit)
+def _warn_full_selection_conflict(args: argparse.Namespace) -> None:
+    if not (args.diff_range and args.full):
+        return
+    ignored = [
+        name
+        for name, value in (("--budget", args.budget), ("--alpha", args.alpha), ("--tau", args.tau), ("--scoring", args.scoring))
+        if value is not _UNSET
+    ]
+    if ignored:
+        _warn(f"selection flags ignored with --full: {', '.join(ignored)}")
 
+
+def _resolve_max_file_bytes(args: argparse.Namespace) -> int | None:
+    explicit = args.max_file_bytes is not _UNSET
+    value = DEFAULT_MAX_FILE_BYTES if not explicit else args.max_file_bytes
+    if explicit and args.no_file_size_limit:
+        _warn("--max-file-bytes ignored with --no-file-size-limit")
+    if explicit and args.no_content:
+        _warn("--max-file-bytes has no effect with --no-content")
+    return _validate_max_file_bytes(value, args.no_file_size_limit)
+
+
+def _resolve_diff_params(args: argparse.Namespace) -> tuple[str | None, int | None, float, float, str]:
     budget = None if args.budget is _UNSET else args.budget
     alpha = _DEFAULT_ALPHA if args.alpha is _UNSET else args.alpha
     tau = _DEFAULT_TAU if args.tau is _UNSET else args.tau
@@ -460,19 +574,30 @@ def _build_tree_parsed_args(args: argparse.Namespace) -> ParsedArgs:
     _validate_alpha(alpha)
     _validate_tau(tau)
     _warn_diff_only_flags(args)
-    if args.diff_range and args.alpha is not _UNSET and scoring != "ppr":
+    _warn_full_selection_conflict(args)
+    if args.diff_range and not args.full and args.alpha is not _UNSET and scoring != "ppr":
         _warn(f"--alpha only affects --scoring ppr (current scoring: {scoring}); value ignored")
 
     diff_range = args.diff_range
     if diff_range == _DIFF_SENTINEL:
         diff_range = "HEAD"
+    if diff_range and args.no_ignores:
+        _exit_usage_error("--no-ignores is not supported with --diff (git's own ignore rules always apply in diff mode)")
+    return diff_range, budget, alpha, tau, scoring
+
+
+def _build_tree_parsed_args(args: argparse.Namespace) -> ParsedArgs:
+    _validate_max_depth(args.max_depth)
+    max_file_bytes = _resolve_max_file_bytes(args)
+    diff_range, budget, alpha, tau, scoring = _resolve_diff_params(args)
+    _warn_quiet_log_level_conflict(args)
 
     dirs, files = _expand_paths(args.paths)
     root_dir = dirs[0] if dirs else Path(".").resolve()
     extra_dirs = dirs or None
     extra_files = files or None
 
-    output_format = args.format
+    output_format = _resolve_format(args.format, args.output_file)
     output_file, force_stdout = _resolve_output_file(args.output_file, args.save, output_format)
     ignore_file = _resolve_ignore_file(args.ignore, root_dir)
     whitelist_file = _resolve_whitelist_file(args.whitelist, root_dir)
@@ -492,6 +617,7 @@ def _build_tree_parsed_args(args: argparse.Namespace) -> ParsedArgs:
         copy=args.copy,
         force_stdout=force_stdout,
         quiet=args.quiet,
+        no_ignores=args.no_ignores,
         diff_range=diff_range,
         budget=budget,
         alpha=alpha,
@@ -510,6 +636,8 @@ def parse_args(argv: list[str] | None = None, *, prog: str = "diffctx", version:
     raw_args = sys.argv[1:] if argv is None else argv
 
     if raw_args and raw_args[0] == "graph":
+        if Path("graph").is_dir():
+            _warn("'graph' is the subcommand; to map the directory ./graph, run: diffctx ./graph")
         args = _build_graph_parser(prog=f"{prog} graph").parse_args(raw_args[1:])
         return _build_graph_parsed_args(args)
 

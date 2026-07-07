@@ -86,6 +86,9 @@ def _write_yaml_node(file: TextIO, node: dict[str, Any], indent: str = "") -> No
     file.write(f'{indent}- name: "{name}"\n')
     file.write(f"{indent}  type: {node['type']}\n")
 
+    if node.get("truncated"):
+        file.write(f"{indent}  truncated: true\n")
+
     if "content" in node:
         _write_yaml_content(file, node["content"], indent + "  ")
 
@@ -182,6 +185,10 @@ def _write_tree_text_node(file: TextIO, node: dict[str, Any], prefix: str, conne
         else:
             for line in content.rstrip("\n").split("\n"):
                 file.write(f"{content_prefix}{line}\n")
+
+    if node.get("truncated"):
+        content_prefix = child_prefix.replace(_TREE_PIPE, _TREE_SPACE)
+        file.write(f"{content_prefix}(children omitted: depth limit)\n")
 
     children = node.get("children", [])
     for i, child in enumerate(children):
@@ -324,7 +331,10 @@ def _write_markdown_node(file: TextIO, node: dict[str, Any], depth: int) -> None
     if "content" in node:
         _write_md_content(file, node, name, content_indent)
     elif is_dir and not node.get("children"):
-        file.write(f"{content_indent}_(empty directory)_\n\n")
+        if node.get("truncated"):
+            file.write(f"{content_indent}_(children omitted: --max-depth reached)_\n\n")
+        else:
+            file.write(f"{content_indent}_(empty directory)_\n\n")
 
     for child in node.get("children", []):
         _write_markdown_node(file, child, depth + 1)

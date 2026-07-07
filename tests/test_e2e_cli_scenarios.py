@@ -10,6 +10,7 @@ as a shell user would observe them.
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 import yaml
@@ -181,9 +182,9 @@ class TestUsageErrorJourneys:
     @pytest.mark.parametrize(
         "args,expected_exit,needle",
         [
-            (["--max-depth", "-1"], EXIT_RUNTIME, "non-negative"),
-            (["--max-file-bytes", "0"], EXIT_RUNTIME, "no-file-size-limit"),
-            (["--max-file-bytes", "-5"], EXIT_RUNTIME, "non-negative"),
+            (["--max-depth", "-1"], EXIT_USAGE, "non-negative"),
+            (["--max-file-bytes", "0"], EXIT_USAGE, "no-file-size-limit"),
+            (["--max-file-bytes", "-5"], EXIT_USAGE, "non-negative"),
             (["-f", "xml"], EXIT_USAGE, "invalid choice"),
             (["--log-level", "trace"], EXIT_USAGE, "invalid choice"),
             (["nonexistent_dir_xyz"], EXIT_RUNTIME, "No matches"),
@@ -196,12 +197,12 @@ class TestUsageErrorJourneys:
 
     def test_save_and_output_file_are_mutually_exclusive(self, temp_project):
         result = run_diffctx_subprocess([str(temp_project), "--save", "-o", "x.yaml"], cwd=temp_project)
-        assert result.returncode == EXIT_RUNTIME
+        assert result.returncode == EXIT_USAGE
         assert "mutually exclusive" in result.stderr
 
     def test_output_file_pointing_at_directory(self, temp_project):
         result = run_diffctx_subprocess([str(temp_project), "-o", str(temp_project / "docs")])
-        assert result.returncode == EXIT_RUNTIME
+        assert result.returncode == EXIT_USAGE
         assert "is a directory" in result.stderr
 
     def test_diff_flags_without_diff_emit_warning(self, temp_project):
@@ -278,7 +279,7 @@ class TestDiffModeJourneys:
     def test_diff_invalid_range_fails_cleanly(self, diff_repo):
         result = run_diffctx_subprocess([".", "--diff", "no_such_ref..HEAD"], cwd=diff_repo.path)
         assert result.returncode == EXIT_ENVIRONMENT
-        assert "git error" in result.stderr
+        assert "unknown git revision 'no_such_ref..HEAD'" in result.stderr
         assert "internal error" not in result.stderr
 
     def test_diff_to_clipboard_writes_file_too(self, diff_repo, tmp_path):
@@ -318,6 +319,51 @@ class TestGraphModeJourneys:
         result = run_diffctx_subprocess(["graph", ".", "--level", level], cwd=graph_repo.path)
         assert result.returncode == EXIT_OK
         assert result.stdout.strip()
+
+    def test_one_way_import_reports_no_cycles(self, graph_repo):
+        result = run_diffctx_subprocess(["graph", ".", "--summary", "--level", "file"], cwd=graph_repo.path)
+        assert result.returncode == EXIT_OK
+        assert "No dependency cycles detected." in result.stdout
+
+    def test_one_way_cross_directory_import_reports_no_cycles(self, tmp_path):
+        repo = Pygit2Repo(tmp_path / "layered_repo")
+        repo.add_file("pkg_a/entry.py", "from pkg_b.core import core_fn\n\n\ndef entry():\n    return core_fn()\n")
+        repo.add_file("pkg_b/core.py", "def core_fn():\n    return 1\n")
+        repo.commit("initial commit")
+        result = run_diffctx_subprocess(["graph", ".", "--summary"], cwd=repo.path)
+        assert result.returncode == EXIT_OK
+        assert "No dependency cycles detected." in result.stdout
+
+    def test_mutual_imports_report_a_cycle(self, tmp_path):
+        repo = Pygit2Repo(tmp_path / "mutual_repo")
+        repo.add_file("alpha.py", "from beta import beta_fn\n\n\ndef alpha_fn():\n    return beta_fn()\n")
+        repo.add_file("beta.py", "from alpha import alpha_fn\n\n\ndef beta_fn():\n    return alpha_fn()\n")
+        repo.commit("initial commit")
+        result = run_diffctx_subprocess(["graph", ".", "--summary", "--level", "file"], cwd=repo.path)
+        assert result.returncode == EXIT_OK
+        assert "1 dependency cycle(s) detected" in result.stdout
+        assert "alpha.py" in result.stdout
+        assert "beta.py" in result.stdout
+
+    def test_summary_edge_categories_are_shares(self, graph_repo):
+        result = run_diffctx_subprocess(["graph", ".", "--summary"], cwd=graph_repo.path)
+        assert result.returncode == EXIT_OK
+        assert "Edge categories (% of discovered relations):" in result.stdout
+        assert "%" in result.stdout.split("Edge categories")[1].splitlines()[1]
+
+    def test_hotspots_report_git_churn(self, graph_repo):
+        result = run_diffctx_subprocess(["graph", ".", "--summary"], cwd=graph_repo.path)
+        assert result.returncode == EXIT_OK
+        hotspot_lines = [line for line in result.stdout.splitlines() if "churn=" in line]
+        assert hotspot_lines
+        assert any("churn=0" not in line for line in hotspot_lines)
+
+    def test_mermaid_edge_weights_are_normalized(self, graph_repo):
+        result = run_diffctx_subprocess(["graph", ".", "--level", "file"], cwd=graph_repo.path)
+        assert result.returncode == EXIT_OK
+        edge_labels = re.findall(r'-->\|"([^"]+)"\|', result.stdout)
+        assert edge_labels
+        assert all(label.endswith("%") for label in edge_labels)
 
 
 class TestIdentityJourneys:
