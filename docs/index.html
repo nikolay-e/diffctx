@@ -1,0 +1,956 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>diffctx — smart diff context for LLM code review</title>
+<meta name="description" content="diffctx selects the minimum code an LLM needs to review a git diff. Watch the pipeline work: diff → fragments → code graph → relevance → greedy selection.">
+<meta property="og:title" content="diffctx — smart diff context for LLM code review">
+<meta property="og:description" content="Walks the dependency graph from changed lines outward and stops as soon as context stops paying for itself.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230b0f0d'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%2352f2a8'/%3E%3Ccircle cx='7' cy='9' r='2.2' fill='%23e8b44f'/%3E%3Ccircle cx='25' cy='10' r='2.2' fill='%2352f2a8' opacity='.55'/%3E%3Ccircle cx='24' cy='24' r='2.2' fill='%2352f2a8' opacity='.3'/%3E%3Cpath d='M16 16L7 9M16 16l9-6m-9 6l8 8' stroke='%2352f2a8' stroke-opacity='.4'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=JetBrains+Mono:ital,wght@0,300..700;1,300..700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0a0d0b;
+  --ink-2:#0f1512;
+  --ink-3:#141c17;
+  --line:#22302a;
+  --line-soft:#1a241f;
+  --fg:#d7e4dc;
+  --fg-dim:#8fa39a;
+  --fg-faint:#5c6f66;
+  --sig:#52f2a8;
+  --sig-dim:#2c8f63;
+  --seed:#e8b44f;
+  --noise:#4a5750;
+  --c-semantic:#4ce0a0;
+  --c-structural:#5aa9e6;
+  --c-config:#e8b44f;
+  --c-document:#b18cf0;
+  --c-similarity:#e77b9d;
+  --c-history:#d9c04a;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --serif:"Fraunces",Georgia,serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:var(--ink);
+  color:var(--fg);
+  font-family:var(--mono);
+  font-size:15px;
+  line-height:1.65;
+  overflow-x:hidden;
+}
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:
+    linear-gradient(var(--line-soft) 1px,transparent 1px),
+    linear-gradient(90deg,var(--line-soft) 1px,transparent 1px);
+  background-size:56px 56px;
+  mask-image:radial-gradient(ellipse 90% 70% at 50% 0%,black 0%,transparent 75%);
+  opacity:.5;
+}
+body::after{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:100;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E");
+  opacity:.035;mix-blend-mode:overlay;
+}
+a{color:var(--sig);text-decoration:none;border-bottom:1px solid var(--sig-dim)}
+a:hover{border-bottom-color:var(--sig)}
+::selection{background:var(--sig);color:var(--ink)}
+
+.wrap{max-width:1200px;margin:0 auto;padding:0 28px;position:relative;z-index:1}
+
+/* ---------- nav ---------- */
+nav{
+  position:sticky;top:0;z-index:50;
+  backdrop-filter:blur(12px);
+  background:color-mix(in srgb,var(--ink) 82%,transparent);
+  border-bottom:1px solid var(--line-soft);
+}
+nav .wrap{display:flex;align-items:center;gap:28px;height:58px}
+.brand{font-weight:700;letter-spacing:-.02em;color:var(--fg);border:none;display:flex;align-items:center;gap:10px}
+.brand .dot{width:9px;height:9px;border-radius:50%;background:var(--sig);box-shadow:0 0 12px var(--sig)}
+nav .links{margin-left:auto;display:flex;gap:22px;font-size:13px}
+nav .links a{color:var(--fg-dim);border:none}
+nav .links a:hover{color:var(--sig)}
+
+/* ---------- hero ---------- */
+header{position:relative;padding:96px 0 72px;overflow:hidden}
+.kicker{
+  font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--sig);
+  display:flex;align-items:center;gap:12px;margin-bottom:28px;
+}
+.kicker::before{content:"";display:block;width:44px;height:1px;background:var(--sig)}
+h1{
+  font-family:var(--serif);
+  font-weight:340;
+  font-size:clamp(42px,6.4vw,84px);
+  line-height:1.02;
+  letter-spacing:-.015em;
+  max-width:14ch;
+}
+h1 em{font-style:italic;font-weight:480;color:var(--sig)}
+.hero-sub{
+  margin-top:30px;max-width:58ch;color:var(--fg-dim);font-size:16px;
+}
+.hero-sub strong{color:var(--fg);font-weight:500}
+.hero-cta{margin-top:40px;display:flex;flex-wrap:wrap;gap:14px;align-items:center}
+.cmd{
+  font-family:var(--mono);
+  display:inline-flex;align-items:center;gap:14px;
+  background:var(--ink-2);border:1px solid var(--line);border-radius:8px;
+  padding:13px 18px;font-size:14px;cursor:pointer;color:var(--fg);
+  transition:border-color .2s;
+}
+.cmd:hover{border-color:var(--sig-dim)}
+.cmd .p{color:var(--sig)}
+.cmd .copy-hint{color:var(--fg-faint);font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+.btn-ghost{
+  padding:13px 20px;border:1px solid var(--line);border-radius:8px;
+  color:var(--fg-dim);font-size:13px;transition:.2s;
+}
+.btn-ghost:hover{color:var(--sig);border-color:var(--sig-dim)}
+.hero-reveal{opacity:0;transform:translateY(18px);animation:rise .8s cubic-bezier(.2,.7,.2,1) forwards}
+.hero-reveal:nth-child(2){animation-delay:.08s}
+.hero-reveal:nth-child(3){animation-delay:.16s}
+.hero-reveal:nth-child(4){animation-delay:.26s}
+@keyframes rise{to{opacity:1;transform:none}}
+
+/* hero background constellation */
+.constellation{
+  position:absolute;right:-40px;top:40px;width:520px;height:460px;opacity:.9;
+  pointer-events:none;
+}
+@media(max-width:1020px){.constellation{display:none}}
+.constellation .edge{stroke:var(--sig);stroke-opacity:.14;stroke-width:1}
+.constellation .n{fill:var(--sig);opacity:.35;animation:twinkle 4s ease-in-out infinite}
+.constellation .n.s{fill:var(--seed);opacity:.9;animation:pulse-seed 2.6s ease-in-out infinite}
+@keyframes twinkle{0%,100%{opacity:.2}50%{opacity:.55}}
+@keyframes pulse-seed{0%,100%{opacity:.9}50%{opacity:.5}}
+
+/* ---------- ratio strip ---------- */
+.ratio{border-top:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft);background:var(--ink-2)}
+.ratio .wrap{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0}
+.ratio .cell{padding:30px 26px;border-left:1px solid var(--line-soft)}
+.ratio .cell:first-child{border-left:none;padding-left:0}
+.ratio .num{font-family:var(--serif);font-size:38px;font-weight:400;color:var(--fg)}
+.ratio .num b{color:var(--sig);font-weight:400}
+.ratio .lbl{font-size:12px;color:var(--fg-faint);letter-spacing:.08em;text-transform:uppercase;margin-top:6px}
+@media(max-width:760px){.ratio .wrap{grid-template-columns:1fr}.ratio .cell{border-left:none;padding-left:0;border-top:1px solid var(--line-soft)}.ratio .cell:first-child{border-top:none}}
+
+/* ---------- sections ---------- */
+section{padding:104px 0}
+.sec-head{display:flex;align-items:baseline;gap:24px;margin-bottom:18px}
+.sec-num{font-size:13px;color:var(--sig);letter-spacing:.15em}
+h2{font-family:var(--serif);font-weight:360;font-size:clamp(30px,4vw,48px);letter-spacing:-.01em;line-height:1.1}
+h2 em{font-style:italic;color:var(--sig);font-weight:440}
+.sec-sub{color:var(--fg-dim);max-width:64ch;margin-top:14px}
+
+/* ---------- problem: token bars ---------- */
+.bars{margin-top:56px;display:grid;gap:34px}
+.bar-row .bar-label{display:flex;justify-content:space-between;font-size:13px;margin-bottom:10px}
+.bar-row .who{color:var(--fg)}
+.bar-row .tok{color:var(--fg-dim);font-variant-numeric:tabular-nums}
+.bar-track{height:34px;background:var(--ink-2);border:1px solid var(--line-soft);border-radius:6px;overflow:hidden;position:relative}
+.bar-fill{height:100%;width:0;transition:width 1.4s cubic-bezier(.2,.7,.2,1);display:flex;align-items:center;position:relative}
+.bar-fill.noise-fill{background:repeating-linear-gradient(-45deg,#2a332e 0 8px,#242c28 8px 16px)}
+.bar-fill.sig-fill{background:linear-gradient(90deg,var(--sig-dim),var(--sig));box-shadow:0 0 24px rgba(82,242,168,.25)}
+.bar-note{font-size:12px;color:var(--fg-faint);margin-top:8px}
+.bar-note b{color:var(--sig);font-weight:500}
+
+/* ---------- lab (pipeline) ---------- */
+#lab{padding-top:88px}
+.lab-grid{display:grid;grid-template-columns:390px 1fr;gap:44px;margin-top:54px;align-items:start}
+@media(max-width:980px){.lab-grid{grid-template-columns:1fr}}
+.stages{display:flex;flex-direction:column;gap:6px}
+.stage{
+  text-align:left;border:1px solid transparent;border-radius:10px;
+  padding:20px 22px;cursor:pointer;background:transparent;color:var(--fg-dim);
+  font-family:var(--mono);font-size:14px;line-height:1.6;transition:.25s;
+  position:relative;
+}
+.stage:hover{background:var(--ink-2)}
+.stage.active{background:var(--ink-2);border-color:var(--line);color:var(--fg)}
+.stage.active::before{
+  content:"";position:absolute;left:-1px;top:14px;bottom:14px;width:2px;border-radius:2px;
+  background:var(--sig);box-shadow:0 0 10px var(--sig);
+}
+.stage .s-num{font-size:11px;letter-spacing:.18em;color:var(--fg-faint);text-transform:uppercase}
+.stage.active .s-num{color:var(--sig)}
+.stage .s-title{font-family:var(--serif);font-size:21px;font-weight:420;margin:4px 0 6px;color:inherit}
+.stage .s-desc{font-size:13px;color:var(--fg-faint);display:none}
+.stage.active .s-desc{display:block;color:var(--fg-dim)}
+.stage .s-desc code{color:var(--sig);font-size:12px}
+
+.lab-stick{position:sticky;top:78px}
+.scope{
+  background:radial-gradient(120% 100% at 50% 0%,#101713 0%,var(--ink-2) 60%);
+  border:1px solid var(--line);border-radius:14px;overflow:hidden;
+  box-shadow:0 30px 80px -30px rgba(0,0,0,.8);
+}
+.scope-bar{
+  display:flex;align-items:center;gap:10px;padding:11px 16px;
+  border-bottom:1px solid var(--line-soft);font-size:12px;color:var(--fg-faint);
+}
+.scope-bar .lights{display:flex;gap:6px}
+.scope-bar .lights i{width:9px;height:9px;border-radius:50%;background:var(--line);display:block}
+.scope-bar .stage-name{margin-left:auto;color:var(--sig);letter-spacing:.1em;text-transform:uppercase;font-size:11px}
+#graph{display:block;width:100%;height:auto}
+
+/* graph elements */
+.g-edge{stroke-width:1.3;fill:none;stroke-linecap:round;opacity:0;transition:opacity .5s, stroke-width .3s}
+.g-edge.on{opacity:.55}
+.g-edge.faded{opacity:.08}
+.g-node{cursor:default}
+.g-node circle.core{transition:fill .4s, r .4s, opacity .4s}
+.g-node .halo{fill:var(--sig);opacity:0;transition:opacity .6s, r .6s}
+.g-node.seed .halo{fill:var(--seed)}
+.g-node text{
+  font-family:var(--mono);font-size:9.5px;fill:var(--fg-dim);
+  transition:opacity .4s, fill .4s;
+}
+.g-node .kind{font-size:8px;fill:var(--fg-faint)}
+.g-node.hidden-node{opacity:0}
+.g-node{opacity:1;transition:opacity .5s}
+.g-node.dimmed{opacity:.22}
+.g-node.selected circle.core{stroke:var(--sig);stroke-width:2}
+.g-node.seed circle.core{stroke:var(--seed);stroke-width:2}
+.sel-ring{fill:none;stroke:var(--sig);stroke-width:1;opacity:0;transition:opacity .4s}
+.g-node.selected .sel-ring{opacity:.8;animation:ringpop .5s cubic-bezier(.2,.9,.3,1.4)}
+@keyframes ringpop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:.8}}
+.seed-pulse{fill:none;stroke:var(--seed);stroke-width:1.5;opacity:0}
+.g-node.seed.lit .seed-pulse{animation:seedwave 2.4s ease-out infinite}
+@keyframes seedwave{0%{opacity:.8;transform:scale(.5)}100%{opacity:0;transform:scale(2.4)}}
+
+/* controls */
+.controls{
+  border-top:1px solid var(--line-soft);padding:18px 20px;
+  display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;
+  background:var(--ink-2);
+  transition:opacity .4s;
+}
+.controls.disabled{opacity:.35;pointer-events:none}
+.ctl label{display:flex;justify-content:space-between;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--fg-faint);margin-bottom:8px}
+.ctl label b{color:var(--sig);font-variant-numeric:tabular-nums;font-weight:500}
+input[type=range]{width:100%;-webkit-appearance:none;appearance:none;background:transparent;cursor:pointer}
+input[type=range]::-webkit-slider-runnable-track{height:3px;background:var(--line);border-radius:2px}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;appearance:none;width:15px;height:15px;border-radius:50%;
+  background:var(--sig);margin-top:-6px;box-shadow:0 0 10px rgba(82,242,168,.5);
+  border:2px solid var(--ink);
+}
+input[type=range]::-moz-range-track{height:3px;background:var(--line);border-radius:2px}
+input[type=range]::-moz-range-thumb{width:13px;height:13px;border-radius:50%;background:var(--sig);border:2px solid var(--ink)}
+@media(max-width:700px){.controls{grid-template-columns:1fr}}
+
+/* budget + readout */
+.readout{
+  display:flex;align-items:center;gap:16px;padding:14px 20px;
+  border-top:1px solid var(--line-soft);font-size:12px;color:var(--fg-dim);
+  background:var(--ink-2);
+}
+.budget-track{flex:1;height:8px;background:var(--line-soft);border-radius:4px;overflow:hidden}
+.budget-fill{height:100%;width:0;background:linear-gradient(90deg,var(--sig-dim),var(--sig));transition:width .5s cubic-bezier(.2,.7,.2,1)}
+.readout .r-tok{font-variant-numeric:tabular-nums;color:var(--sig);min-width:170px;text-align:right}
+
+/* legend */
+.legend{display:flex;flex-wrap:wrap;gap:8px 18px;padding:14px 20px;border-top:1px solid var(--line-soft);font-size:11.5px;color:var(--fg-dim)}
+.legend .li{display:flex;align-items:center;gap:8px}
+.legend .sw{width:16px;height:2px;border-radius:2px;display:block}
+
+/* yaml panel */
+.yaml-panel{
+  margin-top:22px;background:var(--ink-2);border:1px solid var(--line);border-radius:12px;overflow:hidden;
+}
+.yaml-panel .scope-bar .stage-name{color:var(--fg-faint)}
+.yaml-body{
+  padding:18px 22px;font-size:12.5px;line-height:1.7;max-height:340px;overflow:auto;
+  white-space:pre;color:var(--fg-dim);
+}
+.yaml-body .yk{color:var(--c-structural)}
+.yaml-body .yv{color:var(--fg)}
+.yaml-body .ys{color:var(--sig)}
+.yaml-body .yc{color:var(--fg-faint)}
+.yaml-body .yseed{color:var(--seed)}
+
+/* ---------- edge categories ---------- */
+.cat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line-soft);border:1px solid var(--line-soft);border-radius:14px;overflow:hidden;margin-top:56px}
+@media(max-width:900px){.cat-grid{grid-template-columns:1fr}}
+.cat{background:var(--ink-2);padding:30px 28px;position:relative;transition:background .3s}
+.cat:hover{background:var(--ink-3)}
+.cat .c-mark{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;margin-bottom:18px}
+.cat h3{font-family:var(--serif);font-size:21px;font-weight:440;margin-bottom:8px}
+.cat p{font-size:13px;color:var(--fg-dim)}
+.cat .c-ex{margin-top:14px;font-size:11.5px;color:var(--fg-faint)}
+.cat .c-ex code{color:var(--fg-dim)}
+
+/* ---------- scoring ---------- */
+.modes{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:56px}
+@media(max-width:900px){.modes{grid-template-columns:1fr}}
+.mode{border:1px solid var(--line);border-radius:14px;padding:30px 28px;background:var(--ink-2);position:relative}
+.mode.default::after{
+  content:"default";position:absolute;top:-10px;right:20px;background:var(--sig);color:var(--ink);
+  font-size:10px;letter-spacing:.14em;text-transform:uppercase;padding:3px 10px;border-radius:20px;font-weight:700;
+}
+.mode h3{font-family:var(--serif);font-size:24px;font-weight:440}
+.mode .m-flag{font-size:12px;color:var(--sig);margin:6px 0 14px}
+.mode p{font-size:13px;color:var(--fg-dim)}
+.mode svg{margin-top:20px;width:100%;height:64px}
+
+/* ---------- install ---------- */
+.install-box{
+  margin-top:56px;background:var(--ink-2);border:1px solid var(--line);border-radius:14px;
+  padding:34px 36px;
+}
+.install-box .row{display:flex;gap:20px;align-items:baseline;padding:10px 0;border-bottom:1px dashed var(--line-soft);font-size:14px;flex-wrap:wrap}
+.install-box .row:last-child{border-bottom:none}
+.install-box .row code{color:var(--fg)}
+.install-box .row code .p{color:var(--sig)}
+.install-box .row .why{color:var(--fg-faint);font-size:12px;margin-left:auto}
+
+footer{border-top:1px solid var(--line-soft);padding:44px 0 60px;font-size:13px;color:var(--fg-faint)}
+footer .wrap{display:flex;flex-wrap:wrap;gap:16px 36px;align-items:center}
+footer .fbrand{color:var(--fg-dim)}
+footer a{color:var(--fg-dim);border-bottom-color:var(--line)}
+footer a:hover{color:var(--sig)}
+
+.reveal{opacity:0;transform:translateY(24px);transition:opacity .7s cubic-bezier(.2,.7,.2,1),transform .7s cubic-bezier(.2,.7,.2,1)}
+.reveal.in{opacity:1;transform:none}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.01ms !important;transition-duration:.01ms !important}
+  html{scroll-behavior:auto}
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#"><span class="dot"></span>diffctx</a>
+    <div class="links">
+      <a href="#lab">pipeline</a>
+      <a href="#edges">graph</a>
+      <a href="#scoring">scoring</a>
+      <a href="#install">install</a>
+      <a href="https://github.com/nikolay-e/diffctx">github ↗</a>
+      <a href="https://pypi.org/project/diffctx/">pypi ↗</a>
+    </div>
+  </div>
+</nav>
+
+<header>
+  <svg class="constellation" viewBox="0 0 520 460" aria-hidden="true">
+    <g id="hero-net"></g>
+  </svg>
+  <div class="wrap">
+    <div class="kicker hero-reveal">codebase → context engine</div>
+    <h1 class="hero-reveal">The minimum code an LLM needs to review <em>a git diff.</em></h1>
+    <p class="hero-sub hero-reveal">Instead of pasting whole files, <strong>diffctx</strong> walks the
+    dependency graph from the changed lines outward — and stops as soon as
+    additional context stops paying for itself. Every trade-off optimized for
+    <strong>comprehension-per-token</strong>.</p>
+    <div class="hero-cta hero-reveal">
+      <button class="cmd" data-copy="uvx diffctx . --diff HEAD~1">
+        <span><span class="p">$</span> uvx diffctx . --diff HEAD~1</span>
+        <span class="copy-hint">copy</span>
+      </button>
+      <a class="btn-ghost" href="#lab">watch it work ↓</a>
+    </div>
+  </div>
+</header>
+
+<div class="ratio">
+  <div class="wrap">
+    <div class="cell">
+      <div class="num" data-count="48210">0</div>
+      <div class="lbl">tokens — changed files pasted whole</div>
+    </div>
+    <div class="cell">
+      <div class="num"><b data-count="6930">0</b></div>
+      <div class="lbl">tokens — diffctx selection, same review</div>
+    </div>
+    <div class="cell">
+      <div class="num"><b>7×</b> <span style="font-size:20px;color:var(--fg-dim)">denser signal</span></div>
+      <div class="lbl">imports · callers · types · config · docs</div>
+    </div>
+  </div>
+</div>
+
+<section id="lab">
+  <div class="wrap">
+    <div class="sec-head reveal"><span class="sec-num">01</span>
+      <h2>Five stages, <em>one pass.</em></h2>
+    </div>
+    <p class="sec-sub reveal">This is a live model of the pipeline — a toy repository of 18 fragments,
+    scored and selected in your browser with the same rules the engine uses:
+    relevance decays with graph distance, selection is greedy, and the budget is a hard wall.
+    Step through the stages, then drag the dials.</p>
+
+    <div class="lab-grid">
+      <div class="stages" id="stages">
+        <button class="stage" data-stage="0">
+          <span class="s-num">stage 1 / git</span>
+          <span class="s-title" style="display:block">Read the diff</span>
+          <span class="s-desc"><code>git diff --unified=0</code> gives exact changed line
+          ranges. Two functions were touched — they become the <b style="color:var(--seed)">seeds</b>.
+          Everything else is, so far, darkness.</span>
+        </button>
+        <button class="stage" data-stage="1">
+          <span class="s-num">stage 2 / tree-sitter</span>
+          <span class="s-title" style="display:block">Fragment the codebase</span>
+          <span class="s-desc">Candidate files are parsed into AST-level fragments —
+          functions, classes, imports, config keys, doc sections. 30+ languages.
+          Fragments, not files, are the unit of selection.</span>
+        </button>
+        <button class="stage" data-stage="2">
+          <span class="s-num">stage 3 / graph</span>
+          <span class="s-title" style="display:block">Build the code graph</span>
+          <span class="s-desc">Six families of edge builders connect fragments:
+          <b style="color:var(--c-semantic)">semantic</b>, <b style="color:var(--c-structural)">structural</b>,
+          <b style="color:var(--c-config)">config</b>, <b style="color:var(--c-document)">document</b>,
+          <b style="color:var(--c-similarity)">similarity</b>, <b style="color:var(--c-history)">history</b>.
+          Weights are calibrated priors, not guesses.</span>
+        </button>
+        <button class="stage" data-stage="3">
+          <span class="s-num">stage 4 / scoring</span>
+          <span class="s-title" style="display:block">Propagate relevance</span>
+          <span class="s-desc">Score flows outward from the seeds across weighted edges,
+          decaying by <code>α</code> per hop (bounded ego-network by default; PPR and BM25
+          are alternatives). The billing module three hops away barely registers — that's the point.</span>
+        </button>
+        <button class="stage" data-stage="4">
+          <span class="s-num">stage 5 / selection</span>
+          <span class="s-title" style="display:block">Select under budget</span>
+          <span class="s-desc">Lazy-greedy picks fragments by score until relevance drops
+          below <code>τ</code> or the token budget is spent — whichever comes first.
+          The output is the YAML below. Drag the dials and watch the cut move.</span>
+        </button>
+      </div>
+
+      <div class="lab-stick">
+        <div class="scope">
+          <div class="scope-bar">
+            <span class="lights"><i></i><i></i><i></i></span>
+            <span>diffctx · toy-repo</span>
+            <span class="stage-name" id="stage-name">stage 1 — diff</span>
+          </div>
+          <svg id="graph" viewBox="0 0 720 500" role="img" aria-label="Animated dependency graph: relevance propagates from changed fragments outward, selection happens under a token budget"></svg>
+          <div class="legend" id="legend"></div>
+          <div class="controls disabled" id="controls">
+            <div class="ctl">
+              <label><span><span style="text-transform:none">α</span> · decay</span> <b id="alpha-v">0.60</b></label>
+              <input type="range" id="alpha" min="30" max="90" value="60">
+            </div>
+            <div class="ctl">
+              <label><span><span style="text-transform:none">τ</span> · threshold</span> <b id="tau-v">0.12</b></label>
+              <input type="range" id="tau" min="2" max="40" value="12">
+            </div>
+            <div class="ctl">
+              <label>budget · tokens <b id="budget-v">8,000</b></label>
+              <input type="range" id="budget" min="1000" max="16000" step="250" value="8000">
+            </div>
+          </div>
+          <div class="readout">
+            <span>context</span>
+            <div class="budget-track"><div class="budget-fill" id="budget-fill"></div></div>
+            <span class="r-tok" id="tok-readout">0 tokens · 0 fragments</span>
+          </div>
+        </div>
+
+        <div class="yaml-panel">
+          <div class="scope-bar">
+            <span class="lights"><i></i><i></i><i></i></span>
+            <span>stdout</span>
+            <span class="stage-name">yaml · o200k_base</span>
+          </div>
+          <div class="yaml-body" id="yaml"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="edges" style="background:var(--ink-2);border-top:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft)">
+  <div class="wrap">
+    <div class="sec-head reveal"><span class="sec-num">02</span>
+      <h2>Six ways code <em>is related.</em></h2>
+    </div>
+    <p class="sec-sub reveal">A diff rarely lives inside one file. Each edge family is a separate
+    builder; their weighted union is the graph relevance flows across.</p>
+    <div class="cat-grid reveal" id="cats"></div>
+  </div>
+</section>
+
+<section id="scoring">
+  <div class="wrap">
+    <div class="sec-head reveal"><span class="sec-num">03</span>
+      <h2>Three scoring <em>modes.</em></h2>
+    </div>
+    <p class="sec-sub reveal">Pick one with <code style="color:var(--sig)">--scoring</code>.
+    All three feed the same greedy selector.</p>
+    <div class="modes reveal">
+      <div class="mode default">
+        <h3>ego</h3>
+        <div class="m-flag">--scoring ego</div>
+        <p>Bounded ego-network expansion around the changed nodes. Fast, predictable
+        radius, natural decay with distance.</p>
+        <svg viewBox="0 0 220 64" aria-hidden="true">
+          <circle cx="40" cy="32" r="7" fill="var(--seed)"/>
+          <circle cx="90" cy="18" r="5" fill="var(--sig)" opacity=".8"/>
+          <circle cx="95" cy="46" r="5" fill="var(--sig)" opacity=".7"/>
+          <circle cx="145" cy="26" r="4" fill="var(--sig)" opacity=".4"/>
+          <circle cx="150" cy="50" r="4" fill="var(--sig)" opacity=".35"/>
+          <circle cx="195" cy="36" r="3" fill="var(--sig)" opacity=".12"/>
+          <path d="M47 30L84 20M46 36l43 9M95 20l45 5M100 46l44 3M149 28l41 7" stroke="var(--sig)" stroke-opacity=".3"/>
+          <circle cx="40" cy="32" r="16" fill="none" stroke="var(--seed)" stroke-opacity=".35"/>
+          <circle cx="40" cy="32" r="70" fill="none" stroke="var(--sig)" stroke-opacity=".18" stroke-dasharray="3 5"/>
+        </svg>
+      </div>
+      <div class="mode">
+        <h3>ppr</h3>
+        <div class="m-flag">--scoring ppr --alpha 0.6</div>
+        <p>Personalized PageRank with damping α. Global view, smoother decay,
+        catches long-range structure — at a cost in speed.</p>
+        <svg viewBox="0 0 220 64" aria-hidden="true">
+          <path d="M10 54 C 60 54, 60 12, 110 12 S 160 54, 210 54" fill="none" stroke="var(--sig)" stroke-opacity=".6" stroke-width="1.5"/>
+          <path d="M10 54 C 70 54, 70 26, 110 26 S 150 54, 210 54" fill="none" stroke="var(--sig)" stroke-opacity=".25" stroke-width="1.5"/>
+          <circle cx="110" cy="12" r="4" fill="var(--seed)"/>
+          <text x="110" y="58" text-anchor="middle" font-size="8" fill="var(--fg-faint)" font-family="var(--mono)">stationary distribution</text>
+        </svg>
+      </div>
+      <div class="mode">
+        <h3>bm25</h3>
+        <div class="m-flag">--scoring bm25</div>
+        <p>Lexical retrieval of fragments against the diff hunks. The honest baseline —
+        and the fallback when the graph is sparse.</p>
+        <svg viewBox="0 0 220 64" aria-hidden="true">
+          <g fill="var(--sig)">
+            <rect x="14" y="14" width="10" height="42" opacity=".9"/>
+            <rect x="34" y="24" width="10" height="32" opacity=".7"/>
+            <rect x="54" y="30" width="10" height="26" opacity=".55"/>
+            <rect x="74" y="38" width="10" height="18" opacity=".4"/>
+            <rect x="94" y="42" width="10" height="14" opacity=".3"/>
+            <rect x="114" y="46" width="10" height="10" opacity=".2"/>
+            <rect x="134" y="49" width="10" height="7" opacity=".15"/>
+            <rect x="154" y="51" width="10" height="5" opacity=".1"/>
+            <rect x="174" y="52" width="10" height="4" opacity=".08"/>
+          </g>
+          <line x1="10" y1="56" x2="210" y2="56" stroke="var(--line)"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="install" style="padding-top:0">
+  <div class="wrap">
+    <div class="sec-head reveal"><span class="sec-num">04</span>
+      <h2>Thirty <em>seconds.</em></h2>
+    </div>
+    <div class="install-box reveal">
+      <div class="row"><code><span class="p">$</span> uvx diffctx . --diff HEAD~1</code><span class="why">zero-install, run once via uv</span></div>
+      <div class="row"><code><span class="p">$</span> pipx install diffctx</code><span class="why">recommended — isolated CLI</span></div>
+      <div class="row"><code><span class="p">$</span> pipx install 'diffctx[mcp]'</code><span class="why">+ MCP server for Claude Code / Cursor / Zed</span></div>
+      <div class="row"><code><span class="p">$</span> diffctx . --diff main..feature -c</code><span class="why">branch context → clipboard → any LLM</span></div>
+      <div class="row"><code><span class="p">$</span> diffctx graph . --summary</code><span class="why">cycles, hotspots, coupling</span></div>
+    </div>
+    <p class="sec-sub reveal" style="margin-top:26px">Free, local, offline. Works with any LLM. Python API and standalone
+    binaries included. Theory: <a href="https://doi.org/10.5281/zenodo.18824580">Context-Selection for Git Diff (Zenodo, 2026)</a>.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span class="fbrand">diffctx · Apache 2.0</span>
+    <a href="https://github.com/nikolay-e/diffctx">source</a>
+    <a href="https://pypi.org/project/diffctx/">pypi</a>
+    <a href="https://github.com/nikolay-e/diffctx/releases/latest">binaries</a>
+    <a href="https://github.com/nikolay-e/diffctx/blob/main/CHANGELOG.md">changelog</a>
+    <a href="https://doi.org/10.5281/zenodo.18824580">paper</a>
+  </div>
+</footer>
+
+<script>
+/* ============ data: toy repo ============ */
+const CAT = {
+  semantic:   {color:'var(--c-semantic)',   hex:'#4ce0a0'},
+  structural: {color:'var(--c-structural)', hex:'#5aa9e6'},
+  config:     {color:'var(--c-config)',     hex:'#e8b44f'},
+  document:   {color:'var(--c-document)',   hex:'#b18cf0'},
+  similarity: {color:'var(--c-similarity)', hex:'#e77b9d'},
+  history:    {color:'var(--c-history)',    hex:'#d9c04a'},
+};
+
+const NODES = [
+  {id:'A', label:'verify_token',   file:'src/auth/token.py',      kind:'function', x:250, y:225, tok:640,  seed:true,  lines:'41-78'},
+  {id:'B', label:'refresh_session',file:'src/auth/session.py',    kind:'function', x:360, y:310, tok:580,  seed:true,  lines:'102-139'},
+  {id:'C', label:'TokenClaims',    file:'src/auth/types.py',      kind:'class',    x:150, y:120, tok:410,  lines:'12-38'},
+  {id:'D', label:'decode_jwt',     file:'src/utils/crypto.py',    kind:'function', x:395, y:120, tok:520,  lines:'55-91'},
+  {id:'E', label:'session.ttl',    file:'config/settings.yaml',   kind:'config',   x:540, y:250, tok:180,  lines:'23-31'},
+  {id:'F', label:'test_refresh',   file:'tests/test_session.py',  kind:'test',     x:490, y:400, tok:730,  lines:'88-134'},
+  {id:'G', label:'User.sessions',  file:'src/models/user.py',     kind:'method',   x:250, y:400, tok:390,  lines:'147-171'},
+  {id:'H', label:'routes.login',   file:'src/api/routes.py',      kind:'function', x:110, y:300, tok:610,  lines:'201-243'},
+  {id:'I', label:'auth.md §tokens',file:'docs/auth.md',           kind:'doc',      x:120, y:435, tok:340,  lines:'60-92'},
+  {id:'J', label:'imports',        file:'src/auth/session.py',    kind:'imports',  x:480, y:60,  tok:120,  lines:'1-14'},
+  {id:'K', label:'hash_password',  file:'src/utils/crypto.py',    kind:'function', x:300, y:55,  tok:450,  lines:'19-47'},
+  {id:'L', label:'RateLimiter',    file:'src/api/middleware.py',  kind:'class',    x:45,  y:190, tok:560,  lines:'30-77'},
+  {id:'M', label:'render_invoice', file:'src/billing/invoice.py', kind:'function', x:585, y:120, tok:820},
+  {id:'N', label:'csv_export',     file:'src/reports/export.py',  kind:'function', x:665, y:190, tok:640},
+  {id:'O', label:'cron_cleanup',   file:'src/jobs/cleanup.py',    kind:'function', x:640, y:330, tok:480},
+  {id:'P', label:'Palette',        file:'src/ui/theme.py',        kind:'class',    x:660, y:435, tok:300},
+  {id:'Q', label:'migrate_0042',   file:'migrations/0042.py',     kind:'migration',x:585, y:470, tok:410},
+  {id:'R', label:'legacy_soap',    file:'src/legacy/soap.py',     kind:'function', x:60,  y:60,  tok:900},
+];
+
+const EDGES = [
+  ['A','C',0.90,'semantic'],   // type reference
+  ['A','D',0.85,'semantic'],   // call
+  ['A','H',0.72,'semantic'],   // caller
+  ['A','B',0.75,'history'],    // co-change
+  ['A','I',0.55,'document'],   // doc section mentions token flow
+  ['B','E',0.80,'config'],     // reads session.ttl
+  ['B','F',0.66,'history'],    // test co-changes
+  ['B','G',0.70,'semantic'],   // touches User.sessions
+  ['B','J',0.62,'structural'], // same file
+  ['B','D',0.58,'semantic'],
+  ['D','K',0.50,'structural'], // same file
+  ['D','J',0.44,'semantic'],
+  ['H','L',0.46,'similarity'], // similar identifiers
+  ['H','I',0.40,'document'],
+  ['C','G',0.42,'semantic'],
+  ['G','I',0.30,'document'],
+  // noise cluster — real edges, wrong neighborhood
+  ['M','N',0.70,'semantic'],
+  ['N','O',0.60,'structural'],
+  ['O','Q',0.55,'history'],
+  ['M','O',0.45,'similarity'],
+  ['P','Q',0.40,'structural'],
+  ['N','P',0.35,'similarity'],
+  // weak bridges into noise — decay must kill these
+  ['E','O',0.18,'config'],
+  ['H','R',0.15,'similarity'],
+  ['F','Q',0.12,'history'],
+];
+
+/* ============ svg build ============ */
+const svg = document.getElementById('graph');
+const NS = 'http://www.w3.org/2000/svg';
+const nodeById = {}; NODES.forEach(n => nodeById[n.id] = n);
+
+const edgeLayer = document.createElementNS(NS,'g');
+const nodeLayer = document.createElementNS(NS,'g');
+svg.appendChild(edgeLayer); svg.appendChild(nodeLayer);
+
+const edgeEls = EDGES.map(([s,d,w,cat]) => {
+  const a = nodeById[s], b = nodeById[d];
+  const p = document.createElementNS(NS,'path');
+  const mx = (a.x+b.x)/2 + (a.y-b.y)*0.12;
+  const my = (a.y+b.y)/2 + (b.x-a.x)*0.12;
+  p.setAttribute('d', `M${a.x} ${a.y} Q${mx} ${my} ${b.x} ${b.y}`);
+  p.setAttribute('class','g-edge');
+  p.setAttribute('stroke', CAT[cat].hex);
+  p.setAttribute('stroke-width', (0.8 + w*1.6).toFixed(2));
+  edgeLayer.appendChild(p);
+  return {el:p, s, d, w, cat};
+});
+
+const nodeEls = {};
+NODES.forEach(n => {
+  const g = document.createElementNS(NS,'g');
+  g.setAttribute('class','g-node' + (n.seed ? ' seed' : ''));
+  g.setAttribute('transform',`translate(${n.x},${n.y})`);
+
+  const halo = document.createElementNS(NS,'circle');
+  halo.setAttribute('class','halo'); halo.setAttribute('r','0');
+  g.appendChild(halo);
+
+  if (n.seed){
+    const pw = document.createElementNS(NS,'circle');
+    pw.setAttribute('class','seed-pulse'); pw.setAttribute('r','14');
+    pw.style.transformOrigin='center'; pw.style.transformBox='fill-box';
+    g.appendChild(pw);
+  }
+
+  const ring = document.createElementNS(NS,'circle');
+  ring.setAttribute('class','sel-ring'); ring.setAttribute('r','13');
+  ring.style.transformOrigin='center'; ring.style.transformBox='fill-box';
+  g.appendChild(ring);
+
+  const core = document.createElementNS(NS,'circle');
+  core.setAttribute('class','core'); core.setAttribute('r', n.seed ? 8 : 6.5);
+  core.setAttribute('fill', n.seed ? 'var(--seed)' : 'var(--noise)');
+  g.appendChild(core);
+
+  const t = document.createElementNS(NS,'text');
+  t.setAttribute('y','-13'); t.setAttribute('text-anchor','middle');
+  t.textContent = n.label;
+  g.appendChild(t);
+
+  const k = document.createElementNS(NS,'text');
+  k.setAttribute('class','kind'); k.setAttribute('y','22'); k.setAttribute('text-anchor','middle');
+  k.textContent = n.file.split('/').pop();
+  g.appendChild(k);
+
+  const title = document.createElementNS(NS,'title');
+  title.textContent = `${n.file} · ${n.kind} · ~${n.tok} tok`;
+  g.appendChild(title);
+
+  nodeLayer.appendChild(g);
+  nodeEls[n.id] = g;
+});
+
+/* ============ legend ============ */
+const legend = document.getElementById('legend');
+Object.entries(CAT).forEach(([name,c]) => {
+  const li = document.createElement('span');
+  li.className='li';
+  li.innerHTML = `<span class="sw" style="background:${c.hex}"></span>${name}`;
+  legend.appendChild(li);
+});
+legend.style.opacity = 0; legend.style.transition = 'opacity .5s';
+
+/* ============ scoring & selection (the real toy algorithm) ============ */
+const adj = {};
+NODES.forEach(n => adj[n.id] = []);
+EDGES.forEach(([s,d,w]) => { adj[s].push([d,w]); adj[d].push([s,w]); });
+
+function computeScores(alpha){
+  const score = {};
+  NODES.forEach(n => score[n.id] = n.seed ? 1 : 0);
+  for (let hop=0; hop<4; hop++){
+    const next = {...score};
+    for (const [id, nbrs] of Object.entries(adj)){
+      for (const [nb, w] of nbrs){
+        const flow = score[id] * w * alpha;
+        if (flow > next[nb]) next[nb] = flow;
+      }
+    }
+    Object.assign(score, next);
+  }
+  return score;
+}
+
+function selectFragments(score, tau, budget){
+  const ranked = NODES
+    .filter(n => score[n.id] >= tau)
+    .sort((a,b) => score[b.id] - score[a.id] || a.tok - b.tok);
+  const picked = []; let spent = 0;
+  for (const n of ranked){
+    if (n.seed){ picked.push(n); spent += n.tok; continue; }
+    if (spent + n.tok <= budget){ picked.push(n); spent += n.tok; }
+  }
+  return {picked, spent};
+}
+
+/* ============ yaml renderer ============ */
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;')}
+function renderYaml(picked, spent){
+  const el = document.getElementById('yaml');
+  if (!picked.length){
+    el.innerHTML = `<span class="yc"># run stages 4–5 to produce context…</span>`;
+    return;
+  }
+  let out = '';
+  out += `<span class="yk">name</span>: <span class="yv">toy-repo</span>\n`;
+  out += `<span class="yk">type</span>: <span class="yv">diff_context</span>\n`;
+  out += `<span class="yk">fragment_count</span>: <span class="ys">${picked.length}</span>\n`;
+  out += `<span class="yk">fragments</span>:\n`;
+  picked.forEach(n => {
+    const cls = n.seed ? 'yseed' : 'ys';
+    out += `  - <span class="yk">path</span>: <span class="yv">${esc(n.file)}</span>\n`;
+    out += `    <span class="yk">lines</span>: <span class="yv">"${n.lines || '1-40'}"</span>\n`;
+    out += `    <span class="yk">kind</span>: <span class="yv">${n.kind}</span>\n`;
+    out += `    <span class="yk">symbol</span>: <span class="${cls}">${esc(n.label)}</span>${n.seed ? '  <span class="yc"># changed</span>' : ''}\n`;
+  });
+  out += `<span class="yc"># ${spent.toLocaleString('en-US')} tokens (o200k_base)</span>`;
+  el.innerHTML = out;
+}
+
+/* ============ stage machine ============ */
+const stageNames = ['stage 1 — diff','stage 2 — fragments','stage 3 — graph','stage 4 — scoring','stage 5 — selection'];
+let currentStage = -1;
+
+const alphaIn = document.getElementById('alpha');
+const tauIn = document.getElementById('tau');
+const budgetIn = document.getElementById('budget');
+
+function params(){
+  return {
+    alpha: alphaIn.value/100,
+    tau: tauIn.value/100,
+    budget: +budgetIn.value,
+  };
+}
+
+function applyStage(stage){
+  currentStage = stage;
+  document.querySelectorAll('.stage').forEach(b =>
+    b.classList.toggle('active', +b.dataset.stage === stage));
+  document.getElementById('stage-name').textContent = stageNames[stage];
+  document.getElementById('controls').classList.toggle('disabled', stage < 3);
+  legend.style.opacity = stage >= 2 ? 1 : 0;
+
+  const {alpha, tau, budget} = params();
+  const score = stage >= 3 ? computeScores(alpha) : null;
+  const sel = stage >= 4 ? selectFragments(score, tau, budget) : null;
+  const pickedIds = sel ? new Set(sel.picked.map(n=>n.id)) : null;
+
+  NODES.forEach((n,i) => {
+    const g = nodeEls[n.id];
+    const core = g.querySelector('.core');
+    const halo = g.querySelector('.halo');
+
+    const visible = stage >= 1 || n.seed;
+    g.classList.toggle('hidden-node', !visible);
+    if (visible && stage <= 1){
+      g.style.transitionDelay = stage === 1 ? (i*28)+'ms' : '0ms';
+    } else g.style.transitionDelay = '0ms';
+
+    g.classList.toggle('lit', n.seed && stage >= 0);
+
+    if (stage >= 3 && score){
+      const s = score[n.id];
+      halo.setAttribute('r', (8 + s*26).toFixed(1));
+      halo.style.opacity = (s*0.28).toFixed(3);
+      if (!n.seed){
+        core.setAttribute('fill', s > 0.05 ? 'var(--sig)' : 'var(--noise)');
+        core.style.opacity = (0.35 + Math.min(s,1)*0.65).toFixed(2);
+        core.setAttribute('r', (5 + s*4).toFixed(1));
+      }
+    } else {
+      halo.style.opacity = 0; halo.setAttribute('r','0');
+      if (!n.seed){
+        core.setAttribute('fill','var(--noise)');
+        core.style.opacity = 1; core.setAttribute('r','6.5');
+      }
+    }
+
+    if (stage >= 4 && pickedIds){
+      const inSel = pickedIds.has(n.id);
+      g.classList.toggle('selected', inSel && !n.seed);
+      g.classList.toggle('dimmed', !inSel);
+    } else {
+      g.classList.remove('selected','dimmed');
+    }
+  });
+
+  edgeEls.forEach((e,i) => {
+    e.el.classList.toggle('on', stage >= 2);
+    e.el.style.transitionDelay = stage === 2 ? (i*35)+'ms' : '0ms';
+    if (stage >= 4 && pickedIds){
+      e.el.classList.toggle('faded', !(pickedIds.has(e.s) && pickedIds.has(e.d)));
+    } else e.el.classList.remove('faded');
+  });
+
+  const fill = document.getElementById('budget-fill');
+  const readout = document.getElementById('tok-readout');
+  if (sel){
+    fill.style.width = Math.min(100, sel.spent / params().budget * 100) + '%';
+    readout.textContent = `${sel.spent.toLocaleString('en-US')} tokens · ${sel.picked.length} fragments`;
+    renderYaml(sel.picked, sel.spent);
+  } else {
+    fill.style.width = '0%';
+    readout.textContent = '0 tokens · 0 fragments';
+    renderYaml([], 0);
+  }
+}
+
+document.querySelectorAll('.stage').forEach(b =>
+  b.addEventListener('click', () => applyStage(+b.dataset.stage)));
+
+[['alpha','alpha-v',v=>(v/100).toFixed(2)],
+ ['tau','tau-v',v=>(v/100).toFixed(2)],
+ ['budget','budget-v',v=>(+v).toLocaleString('en-US')]].forEach(([id,out,fmt])=>{
+  document.getElementById(id).addEventListener('input', e=>{
+    document.getElementById(out).textContent = fmt(e.target.value);
+    if (currentStage >= 3) applyStage(currentStage);
+  });
+});
+
+/* autoplay through stages the first time the lab scrolls in */
+let played = false;
+const lab = document.getElementById('lab');
+new IntersectionObserver((entries)=>{
+  if (entries[0].isIntersecting && !played){
+    played = true;
+    [0,1,2,3,4].forEach((s,i)=>setTimeout(()=>applyStage(s), 400 + i*1600));
+  }
+},{threshold:0.25}).observe(document.querySelector('.scope'));
+applyStage(0);
+
+/* ============ edge category cards ============ */
+const CATS_INFO = [
+  ['semantic','Semantic','Imports, calls, type references. verify_token calls decode_jwt — the reviewer needs both.', 'from utils.crypto import decode_jwt'],
+  ['structural','Structural','Same file, same module, sibling fragments. Proximity in the tree is weak but real evidence.', 'src/auth/session.py :: imports ↔ refresh_session'],
+  ['config','Config','Code that reads a key is bound to the file that defines it — across languages and formats.', 'settings.yaml: session.ttl ← get("session.ttl")'],
+  ['document','Document','Docs and READMEs that describe the changed symbol. Stale docs are review findings too.', 'docs/auth.md §Tokens mentions verify_token'],
+  ['similarity','Similarity','Lexically similar fragments elsewhere — near-duplicates that likely need the same fix.', 'RateLimiter.check() ≈ routes.login() guard'],
+  ['history','History','Files that historically change together. git log knows couplings the AST cannot see.', 'session.py + test_session.py: 34 co-commits'],
+];
+document.getElementById('cats').innerHTML = CATS_INFO.map(([key,name,desc,ex])=>`
+  <div class="cat">
+    <div class="c-mark" style="background:color-mix(in srgb, ${CAT[key].hex} 16%, transparent)">
+      <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="4" cy="12" r="2.4" fill="${CAT[key].hex}"/><circle cx="12" cy="4" r="2.4" fill="${CAT[key].hex}" opacity=".6"/><line x1="5.5" y1="10.5" x2="10.5" y2="5.5" stroke="${CAT[key].hex}" stroke-width="1.4"/></svg>
+    </div>
+    <h3>${name}</h3>
+    <p>${desc}</p>
+    <div class="c-ex"><code>${ex}</code></div>
+  </div>`).join('');
+
+/* ============ hero constellation ============ */
+(function(){
+  const g = document.getElementById('hero-net');
+  const pts = [];
+  let seedRand = 7;
+  const rand = () => (seedRand = (seedRand * 16807) % 2147483647) / 2147483647;
+  for (let i=0;i<26;i++) pts.push([30+rand()*460, 20+rand()*420]);
+  let html = '';
+  for (let i=0;i<pts.length;i++){
+    for (let j=i+1;j<pts.length;j++){
+      const dx=pts[i][0]-pts[j][0], dy=pts[i][1]-pts[j][1];
+      if (Math.hypot(dx,dy) < 110)
+        html += `<line class="edge" x1="${pts[i][0]}" y1="${pts[i][1]}" x2="${pts[j][0]}" y2="${pts[j][1]}"/>`;
+    }
+  }
+  pts.forEach((p,i)=>{
+    const seed = i===8 || i===15;
+    html += `<circle class="n ${seed?'s':''}" cx="${p[0]}" cy="${p[1]}" r="${seed?5:2.5}" style="animation-delay:${(i*0.37)%4}s"/>`;
+  });
+  g.innerHTML = html;
+})();
+
+/* ============ counters + reveals ============ */
+function animateCount(el){
+  const target = +el.dataset.count, dur = 1400, t0 = performance.now();
+  const step = (t)=>{
+    const k = Math.min(1,(t-t0)/dur), e = 1-Math.pow(1-k,3);
+    el.textContent = Math.round(target*e).toLocaleString('en-US');
+    if (k<1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+new IntersectionObserver((es,obs)=>es.forEach(e=>{
+  if(!e.isIntersecting) return;
+  e.target.querySelectorAll('[data-count]').forEach(animateCount);
+  obs.unobserve(e.target);
+}),{threshold:.4}).observe(document.querySelector('.ratio'));
+
+const revObs = new IntersectionObserver((es)=>es.forEach(e=>{
+  if(e.isIntersecting){ e.target.classList.add('in'); revObs.unobserve(e.target);}
+}),{threshold:.12});
+document.querySelectorAll('.reveal').forEach(el=>revObs.observe(el));
+
+/* copy button */
+document.querySelectorAll('[data-copy]').forEach(b=>b.addEventListener('click',()=>{
+  navigator.clipboard.writeText(b.dataset.copy).then(()=>{
+    const hint=b.querySelector('.copy-hint'); hint.textContent='copied ✓';
+    setTimeout(()=>hint.textContent='copy',1600);
+  });
+}));
+</script>
+</body>
+</html>
