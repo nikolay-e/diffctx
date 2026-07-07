@@ -6,7 +6,11 @@ REPOS=/Users/nikolay/diffctx/test-repos
 BASE=/tmp/bench_corpus
 CAP=30
 mkdir -p "$BASE"
-tok() { grep -oE '^[0-9,]+ tokens' "$1" 2>/dev/null | head -1 | grep -oE '[0-9,]+' | tr -d ','; }
+tok() {
+  local f="$1"
+  grep -oE '^[0-9,]+ tokens' "$f" 2>/dev/null | head -1 | grep -oE '[0-9,]+' | tr -d ','
+  return 0
+}
 
 while IFS=$'\t' read -r repo idx sha _ desc; do
   d="$BASE/$repo/$(printf '%03d' "$idx")-${sha:0:7}"
@@ -28,7 +32,7 @@ while IFS=$'\t' read -r repo idx sha _ desc; do
   changed=0
   frags=0
   ctxfiles=0
-  if [ "$rcmd" = "0" ]; then
+  if [[ $rcmd == "0" ]]; then
     perl -e "alarm $CAP; exec @ARGV" "$D" . --diff "$rng" -f yaml >"$d/ctx.yaml" 2>"$d/yaml.err"
     rcyaml=$?
     ymltok=$(tok "$d/yaml.err")
@@ -37,9 +41,9 @@ while IFS=$'\t' read -r repo idx sha _ desc; do
     ctxfiles=$(grep -oE 'path: "[^"]+"' "$d/ctx.yaml" 2>/dev/null | sort -u | wc -l | tr -d ' ')
   fi
   status=ok
-  { [ "$rcmd" = "142" ] || [ "$rcmd" = "137" ]; } && status=hang
-  [ "$rcmd" = "4" ] && status=empty
-  { [ "$status" = ok ] && [ "${mdtok:-0}" -gt 20000 ]; } && status=over_dump
+  { [[ $rcmd == "142" ]] || [[ $rcmd == "137" ]]; } && status=hang
+  [[ $rcmd == "4" ]] && status=empty
+  { [[ $status == ok ]] && [[ ${mdtok:-0} -gt 20000 ]]; } && status=over_dump
   printf 'repo\t%s\nidx\t%s\nsha\t%s\ndesc\t%s\ngit_files\t%s\nrc_md\t%s\nrc_yaml\t%s\nmd_tokens\t%s\nyaml_tokens\t%s\nchanged_frags\t%s\ntotal_frags\t%s\nctx_files\t%s\nstatus\t%s\n' \
     "$repo" "$idx" "$sha" "$desc" "$gf" "$rcmd" "$rcyaml" "${mdtok:-0}" "${ymltok:-0}" "${changed:-0}" "${frags:-0}" "$ctxfiles" "$status" >"$d/meta.tsv"
   echo "$repo/$idx ${sha:0:7} status=$status gitfiles=$gf md_tok=${mdtok:-0} yaml_tok=${ymltok:-0} changed=$changed ctxfiles=$ctxfiles"

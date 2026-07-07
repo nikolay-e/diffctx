@@ -13,7 +13,9 @@ import os
 import re
 import sys
 
-CORPUS = sys.argv[1] if len(sys.argv) > 1 else "/tmp/bench_corpus"
+if len(sys.argv) < 2:
+    sys.exit("usage: score.py <corpus_dir>  (dir produced by gen_corpus.sh)")
+CORPUS = sys.argv[1]
 HERE = os.path.dirname(os.path.abspath(__file__))
 gold = {c["commit"]: c for c in json.load(open(os.path.join(HERE, "..", "gold_labels.json")))}
 
@@ -31,11 +33,11 @@ def selected_files(d):
     if not os.path.exists(y):
         return set()
     txt = open(y, errors="ignore").read()
-    return {norm(m.group(1)) for m in re.finditer(r'^  - path: "([^"]+)"', txt, re.M)}
+    return {norm(m.group(1)) for m in re.finditer(r'^ {2}- path: "([^"]+)"', txt, re.M)}
 
 
 def meta(d):
-    return dict(line.rstrip("\n").split("\t", 1) for line in open(os.path.join(d, "meta.tsv")) if "\t" in line)
+    return {k: v for k, v in (line.rstrip("\n").split("\t", 1) for line in open(os.path.join(d, "meta.tsv")) if "\t" in line)}
 
 
 records = []
@@ -50,7 +52,10 @@ for d in sorted(glob.glob(f"{CORPUS}/*/*")):
     gexc = {norm(x) for x in c.get("should_not_include", [])}
     inter = len(sel & ginc)
     prec = inter / len(sel) if sel else 0.0
-    rec = inter / len(ginc) if ginc else (1.0 if not sel else 0.0)
+    if ginc:
+        rec = inter / len(ginc)
+    else:
+        rec = 1.0 if not sel else 0.0
     forb = len(sel & gexc) / len(sel) if sel else 0.0
     records.append(
         {
