@@ -56,12 +56,10 @@ def graph_repo(tmp_path):
 
 
 class TestTreeModeJourneys:
-    def test_default_stdout_is_yaml_directory(self, temp_project):
+    def test_default_stdout_is_md_directory(self, temp_project):
         result = run_diffctx_subprocess([str(temp_project)])
         assert result.returncode == EXIT_OK
-        tree = yaml.safe_load(result.stdout)
-        assert tree["type"] == "directory"
-        assert tree["name"] == temp_project.name
+        assert result.stdout.startswith(f"# {temp_project.name}/")
 
     def test_json_format_is_valid_json(self, temp_project):
         result = run_diffctx_subprocess([str(temp_project), "-f", "json"])
@@ -76,8 +74,8 @@ class TestTreeModeJourneys:
         assert result.stdout.strip()
 
     def test_no_content_omits_file_bodies(self, temp_project):
-        with_content = run_diffctx_subprocess([str(temp_project)])
-        without_content = run_diffctx_subprocess([str(temp_project), "--no-content"])
+        with_content = run_diffctx_subprocess([str(temp_project), "-f", "yaml"])
+        without_content = run_diffctx_subprocess([str(temp_project), "-f", "yaml", "--no-content"])
         assert "content:" in with_content.stdout
         assert "content:" not in without_content.stdout
 
@@ -105,13 +103,13 @@ class TestTreeModeJourneys:
         assert str(out) in result.stderr
 
     def test_dash_output_forces_stdout(self, temp_project):
-        result = run_diffctx_subprocess([str(temp_project), "-o", "-"])
+        result = run_diffctx_subprocess([str(temp_project), "-f", "yaml", "-o", "-"])
         assert result.returncode == EXIT_OK
         assert yaml.safe_load(result.stdout)["type"] == "directory"
 
     def test_single_file_argument(self, temp_project):
         target = temp_project / "src" / "main.py"
-        result = run_diffctx_subprocess([str(target)])
+        result = run_diffctx_subprocess([str(target), "-f", "yaml"])
         assert result.returncode == EXIT_OK
         node = yaml.safe_load(result.stdout)
         assert node["type"] == "file"
@@ -216,7 +214,7 @@ class TestUsageErrorJourneys:
 
 class TestDiffModeJourneys:
     def test_diff_selects_changed_symbols_and_excludes_garbage(self, diff_repo):
-        result = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD"], cwd=diff_repo.path)
+        result = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "-f", "yaml"], cwd=diff_repo.path)
         assert result.returncode == EXIT_OK
         doc = yaml.safe_load(result.stdout)
         assert doc["type"] == "diff_context"
@@ -238,8 +236,8 @@ class TestDiffModeJourneys:
         assert "no semantic context" in result.stderr
 
     def test_full_includes_all_changed_fragments(self, diff_repo):
-        smart = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD"], cwd=diff_repo.path)
-        full = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "--full"], cwd=diff_repo.path)
+        smart = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "-f", "yaml"], cwd=diff_repo.path)
+        full = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "--full", "-f", "yaml"], cwd=diff_repo.path)
         assert full.returncode == EXIT_OK
         smart_doc = yaml.safe_load(smart.stdout)
         full_doc = yaml.safe_load(full.stdout)
@@ -254,7 +252,7 @@ class TestDiffModeJourneys:
 
     @pytest.mark.parametrize("scoring", ["ego", "ppr", "bm25"])
     def test_scoring_modes_all_produce_context(self, diff_repo, scoring):
-        result = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "--scoring", scoring], cwd=diff_repo.path)
+        result = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "--scoring", scoring, "-f", "yaml"], cwd=diff_repo.path)
         assert result.returncode == EXIT_OK
         assert yaml.safe_load(result.stdout)["type"] == "diff_context"
 
@@ -285,7 +283,7 @@ class TestDiffModeJourneys:
 
     def test_diff_to_clipboard_writes_file_too(self, diff_repo, tmp_path):
         out = tmp_path / "diff.yaml"
-        result = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "-o", str(out)], cwd=diff_repo.path)
+        result = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "-f", "yaml", "-o", str(out)], cwd=diff_repo.path)
         assert result.returncode == EXIT_OK
         assert out.exists()
         assert "diff_context" in out.read_text(encoding="utf-8")

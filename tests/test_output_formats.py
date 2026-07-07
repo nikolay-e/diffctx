@@ -111,11 +111,11 @@ def test_format_option_invalid(temp_project):
     assert "invalid choice" in result.stderr.lower()
 
 
-def test_default_format_is_yaml(run_mapper, temp_project):
-    output_file = temp_project / "output.yaml"
-    assert run_mapper([str(temp_project), "-o", str(output_file)])
-    tree = load_yaml(output_file)
-    assert tree["name"] == temp_project.name
+def test_default_format_is_md(temp_project):
+    # Bypass run_mapper (which pins yaml) to exercise the real CLI default.
+    result = run_diffctx_subprocess([".", "-o", "-"], cwd=temp_project)
+    assert result.returncode == 0
+    assert result.stdout.startswith(f"# {temp_project.name}/")
 
 
 # --- Direct writer function tests ---

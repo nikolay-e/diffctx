@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-07-07
+
+### Changed
+
+- **The default `--format` is now `md` (Markdown), previously `yaml`.** Markdown
+  is ~7% more token-efficient than YAML on real diffs and is preferred by
+  reviewers for code-fragment-heavy output (evidence:
+  `benchmarks/real_world_diff_bench/`). YAML remains available via `-f yaml`.
+  This also changes the default stdout format of `treemapper` (a passthrough
+  wrapper over this engine); downstream scripts that parse the default output
+  must now pass `-f yaml` explicitly. (#104)
+
 ## [1.10.0] - 2026-06-20
 
 ### Changed

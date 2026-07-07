@@ -124,7 +124,7 @@ diffctx graph . --level file -f graphml -o g.xml # file-level graph as GraphML
 <!-- BEGIN USAGE -->
 ```bash
 # full codebase export:
-diffctx .                                # YAML to stdout + token count
+diffctx .                                # Markdown to stdout + token count
 diffctx . -f md -c                       # Markdown → clipboard
 diffctx . -f json -o tree.json           # JSON → file
 diffctx . --no-content                   # structure only, no file contents

@@ -322,8 +322,8 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
         "-f",
         "--format",
         choices=["yaml", "json", "txt", "md"],
-        default="yaml",
-        help="Output format (default: yaml)",
+        default="md",
+        help="Output format (default: md)",
     )
     parser.add_argument(
         "--save",

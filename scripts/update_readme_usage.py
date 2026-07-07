@@ -8,7 +8,7 @@ from pathlib import Path
 
 _USAGE_EXAMPLES: list[tuple[str, str]] = [
     ("# full codebase export:", ""),
-    ("diffctx .", "YAML to stdout + token count"),
+    ("diffctx .", "Markdown to stdout + token count"),
     ("diffctx . -f md -c", "Markdown → clipboard"),
     ("diffctx . -f json -o tree.json", "JSON → file"),
     ("diffctx . --no-content", "structure only, no file contents"),
