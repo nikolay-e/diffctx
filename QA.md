@@ -230,6 +230,20 @@ BSD `grep -P` is unavailable on macOS — detect binary commits with
 `e24492c` 108f), not only "large repo + trivial diff". Verified rc=142 at the
 150s cap with zero stdout / empty stderr. Correlates with diff/graph size.
 
+## Real-World Quality Benchmark (`benchmarks/real_world_diff_bench/`)
+
+Beyond "does it crash": a committed 109-commit benchmark scoring the QUALITY of
+extracted context against gold `should_include`/`should_not_include` labels
+(hand-labeled by 10 Sonnet-5 reviewers over react-native/gitpod/sentry real
+commits). Baseline of the shipped `1.10.2`: **66% hang, 31% over-dump, 3%
+usable; precision 0.176 / recall 0.90 on produced output; MD 7.2% cheaper
+than YAML.** Re-score after any selection change with `scripts/score.py`
+against the frozen `gold_labels.json` (gold labels are the stable contract,
+diffctx's rendered file set is the variable). The score formula
+`100·recall·(1−forbidden)` does NOT penalize over-selection — add a
+precision/F1 term before trusting a high score. Feeds issues 65
+(over-selection), 70 (hang), 103 (lost-change), 104 (MD default).
+
 ## Local `which diffctx` Trap — diffctx specifics
 
 See `/qa` skill: Packaging QA (`which`-vs-pipx). Concretely: when this project's
