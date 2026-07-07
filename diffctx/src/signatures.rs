@@ -6,6 +6,9 @@ use crate::config::graph_filtering::GRAPH_FILTERING;
 use crate::types::{Fragment, FragmentId, FragmentKind};
 
 fn is_signature_eligible(kind: FragmentKind) -> bool {
+    // Variable covers TS/JS arrow-function bindings (`const f = (...) => {...}`);
+    // without a stub variant a large changed arrow function that misses the core
+    // budget vanishes from the output entirely (#106).
     matches!(
         kind,
         FragmentKind::Function
@@ -13,6 +16,7 @@ fn is_signature_eligible(kind: FragmentKind) -> bool {
             | FragmentKind::Struct
             | FragmentKind::Interface
             | FragmentKind::Enum
+            | FragmentKind::Variable
     )
 }
 
