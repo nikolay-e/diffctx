@@ -214,52 +214,66 @@ def _relabel_mermaid_nodes(text: str, keys: dict[str, str]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _strongly_connected_components(adjacency: dict[str, list[str]]) -> list[list[str]]:
-    next_index = 0
-    indices: dict[str, int] = {}
-    lowlinks: dict[str, int] = {}
-    on_stack: set[str] = set()
-    stack: list[str] = []
-    components: list[list[str]] = []
+class _TarjanState:
+    def __init__(self) -> None:
+        self.next_index = 0
+        self.indices: dict[str, int] = {}
+        self.lowlinks: dict[str, int] = {}
+        self.on_stack: set[str] = set()
+        self.stack: list[str] = []
+        self.components: list[list[str]] = []
 
-    for root in adjacency:
-        if root in indices:
+    def discover(self, node: str) -> None:
+        self.indices[node] = self.lowlinks[node] = self.next_index
+        self.next_index += 1
+        self.stack.append(node)
+        self.on_stack.add(node)
+
+    def descend_into_unvisited(
+        self, node: str, neighbors: Any, adjacency: dict[str, list[str]], work: list[tuple[str, Any]]
+    ) -> bool:
+        for neighbor in neighbors:
+            if neighbor not in self.indices:
+                self.discover(neighbor)
+                work.append((neighbor, iter(adjacency[neighbor])))
+                return True
+            if neighbor in self.on_stack:
+                self.lowlinks[node] = min(self.lowlinks[node], self.indices[neighbor])
+        return False
+
+    def pop_component_root(self, node: str) -> None:
+        if self.lowlinks[node] != self.indices[node]:
+            return
+        component: list[str] = []
+        while True:
+            member = self.stack.pop()
+            self.on_stack.discard(member)
+            component.append(member)
+            if member == node:
+                break
+        self.components.append(component)
+
+
+def _tarjan_walk(root: str, adjacency: dict[str, list[str]], state: _TarjanState) -> None:
+    state.discover(root)
+    work: list[tuple[str, Any]] = [(root, iter(adjacency[root]))]
+    while work:
+        node, neighbors = work[-1]
+        if state.descend_into_unvisited(node, neighbors, adjacency, work):
             continue
-        indices[root] = lowlinks[root] = next_index
-        next_index += 1
-        stack.append(root)
-        on_stack.add(root)
-        work: list[tuple[str, Any]] = [(root, iter(adjacency[root]))]
-        while work:
-            node, neighbors = work[-1]
-            descended = False
-            for neighbor in neighbors:
-                if neighbor not in indices:
-                    indices[neighbor] = lowlinks[neighbor] = next_index
-                    next_index += 1
-                    stack.append(neighbor)
-                    on_stack.add(neighbor)
-                    work.append((neighbor, iter(adjacency[neighbor])))
-                    descended = True
-                    break
-                if neighbor in on_stack:
-                    lowlinks[node] = min(lowlinks[node], indices[neighbor])
-            if descended:
-                continue
-            work.pop()
-            if lowlinks[node] == indices[node]:
-                component: list[str] = []
-                while True:
-                    member = stack.pop()
-                    on_stack.discard(member)
-                    component.append(member)
-                    if member == node:
-                        break
-                components.append(component)
-            if work:
-                parent = work[-1][0]
-                lowlinks[parent] = min(lowlinks[parent], lowlinks[node])
-    return components
+        work.pop()
+        state.pop_component_root(node)
+        if work:
+            parent = work[-1][0]
+            state.lowlinks[parent] = min(state.lowlinks[parent], state.lowlinks[node])
+
+
+def _strongly_connected_components(adjacency: dict[str, list[str]]) -> list[list[str]]:
+    state = _TarjanState()
+    for root in adjacency:
+        if root not in state.indices:
+            _tarjan_walk(root, adjacency, state)
+    return state.components
 
 
 def _normalize_mermaid_edge_weights(text: str) -> str:
