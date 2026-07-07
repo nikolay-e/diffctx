@@ -124,13 +124,25 @@ edge weights mid-QA.
 
 ## Real-World Test-Repo Sweep (every QA round, MANDATORY)
 
-`test-repos/` (git-ignored, local-only) holds ~15 real upstream clones across
-many languages — `linux`, `pytorch`, `react-native`, `sentry`, `gitpod`,
-`elasticsearch`, `numpy`, `ocaml`, `llama.cpp`, `onnxruntime`, `libc`,
-`luajit2`, `monitoring-observability`, `builder`, `vision`. `TOANALYZE.md` is
-the curated commit "todo"; the clones also carry live upstream HEADs. This is
-the dogfood that synthetic `yaml_cases` can't replace: real diffs, real over-
-dump, real crashes.
+`test-repos/` (git-ignored, local-only) holds ~27 real upstream clones across
+many languages — the original ~15 (`linux`, `pytorch`, `react-native`,
+`sentry`, `gitpod`, `elasticsearch`, `numpy`, `ocaml`, `llama.cpp`,
+`onnxruntime`, `libc`, `luajit2`, `monitoring-observability`, `builder`,
+`vision`) plus 12 grammar/structural-coverage additions (2026-07-07: `spark`,
+`gitlab-foss`, `neovim`, `tokio`, `polars`, `aspnetcore`, `plausible`,
+`firefox-ios`, `nextcloud`, `kubernetes`, `home-assistant`, `envoy`).
+`TOANALYZE.md` is the curated commit "todo" (109 original + 263 curated for
+the new repos, all SHAs verified); the clones also carry live upstream HEADs.
+This is the dogfood that synthetic `yaml_cases` can't replace: real diffs,
+real over-dump, real crashes.
+
+**The 12 new clones are `--filter=tree:0` partial clones.** Two consequences
+for sweeps: (1) any git operation needing old trees/blobs lazy-fetches over
+the network, so **wall-clock timing is NOT a clean diffctx signal there** —
+before judging "slow/hang", re-run with a warmed object cache (first run
+populates it); a double rc=142 with warm cache IS a real hang (that
+discriminator confirmed the aspnetcore C# repro on #70). (2) First diff runs
+need network; offline sweeps should use the original full clones.
 
 **Every QA round, sweep the test repos against a NEW commit each** (one not
 exercised before — `git -C test-repos/<repo> pull` to fetch fresh upstream
@@ -156,7 +168,14 @@ perl -e 'alarm 200; exec @ARGV' /Users/nikolay/.local/bin/diffctx . --diff HEAD~
 **A cap-hit IS the issue.** rc=142 (SIGALRM) or rc=137 (SIGKILL) with no output =
 diffctx hung on that repo — file it and stop the sweep (don't run the remaining
 giant repos like `linux`, they'll hang too and burn hours). Known so far:
-`gitpod` and `pytorch` hang on a trivial HEAD~1 diff (#70).
+`gitpod` and `pytorch` hang on a trivial HEAD~1 diff (#70); `aspnetcore`
+(56k-commit C# corpus) reproduces the same class on a 17-file HEAD~1 (#70,
+2026-07-07 comment). Don't re-file — comment new repros on #70.
+
+**Bash-tool timeout must exceed the perl alarm.** The Bash tool's default
+120s kills the command BEFORE the 200s alarm fires (rc=143, looks like a
+mystery kill). Pass `timeout: 260000` on every sweep invocation so the perl
+cap stays the binding constraint and rc=142 keeps its meaning.
 
 **Per repo, judge:** did it (a) finish without panic / non-zero exit / hang,
 (b) honor the range — `changed_files` matches `git diff HEAD~1 --stat`, not a
@@ -418,6 +437,26 @@ same pass.
   (`forbidden_rate=100%` over-selection class, tracked on #65). Gate in
   nightly-full-eval.yml is MIN_PASS_COUNT=2260 — compare against that, not
   against zero failures.
+
+## Concurrent-Session Hazard: /qa While Another Session Develops in the Same Checkout
+
+A `/qa` round ran while a parallel Claude session actively edited the engine
+in the SAME working tree (16 source files mutating mid-pass). Consequences
+observed: `cargo test`/full `yaml_cases` compiled the other session's
+half-written Rust ("could not compile diffctx" — NOT a HEAD defect);
+pre-commit's stash/restore cycle conflicted with hook auto-fixes ("Stashed
+changes conflicted with hook auto-fixes... Rolling back"); a commit's hook
+run timed out at the tool's 2min default mid-restore (the commit itself
+landed — verify with `git log` before retrying, don't double-commit).
+
+Protocol when `git status` shows substantive modifications you didn't make:
+(1) STOP before any commit/revert — check mtimes (`stat -f "%m %Sm %N"`) and
+`ps aux | grep claude` to confirm a live concurrent writer; (2) never revert
+or blanket-`git add` — stage YOUR files by explicit path only; (3) treat all
+local cargo/pre-commit results as invalid for HEAD — CI on the pushed commit
+is the only honest verifier; (4) skip/void the full local `yaml_cases` run
+for the round and say so in the report. Root fix: parallel work belongs in
+`git worktree`s (workspace convention), one session per checkout.
 
 ## Monitor Scripts in This Shell (zsh)
 
