@@ -244,6 +244,31 @@ diffctx's rendered file set is the variable). The score formula
 precision/F1 term before trusting a high score. Feeds issues 65
 (over-selection), 70 (hang), 103 (lost-change), 104 (MD default).
 
+## SonarCloud on `benchmarks/**` Scripts (shelldre + S7494↔S7500 conflict)
+
+Benchmark/dev scripts under `benchmarks/**` are analyzed by SonarCloud like any
+other source — a new `.sh`/`.py` there can flip the quality gate to ERROR on
+its own. Two traps seen shipping `benchmarks/real_world_diff_bench/scripts/`:
+
+- **`shelldre:S7688`** wants `[[ … ]]` not `[ … ]`; **S7679/S7682** want a
+  positional param assigned to a `local` var + an explicit `return` in shell
+  functions. Cheap mechanical fixes.
+- **`python:S7494` and `python:S7500` are mutually contradictory** on the same
+  code: S7494 says "replace `dict(genexpr)` with a dict comprehension", then the
+  comprehension trips S7500 "replace this comprehension by passing the iterable
+  to `dict()`". Do NOT ping-pong between them — rewrite as an explicit `for`
+  loop (with `with open(...)`), which satisfies both and is more readable.
+- **`pythonsecurity:S8707`** (path/arg injection) fires on any `glob`/`open`
+  built from `sys.argv` even in a trusted local dev script — same bulk-FP class
+  documented above for the main tree. Resolve via `POST /api/issues/do_transition`
+  `transition=falsepositive` (not NOSONAR — taint rules ignore it), with a
+  one-line comment naming the trust boundary.
+- **`python:S5443`** flags a hardcoded `/tmp` default — drop the default and
+  require the corpus dir as an explicit CLI arg.
+
+SonarCloud here is CI-integrated (scans on each `diffctx CI` run), so the fix
+loop is: push → wait for that run → re-fetch issues → mark remaining FPs → gate.
+
 ## Local `which diffctx` Trap — diffctx specifics
 
 See `/qa` skill: Packaging QA (`which`-vs-pipx). Concretely: when this project's
