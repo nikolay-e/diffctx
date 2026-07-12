@@ -107,6 +107,41 @@ def test_default_private_key_ignores(temp_project, run_mapper):
         assert f in all_files, f
 
 
+def test_default_lockfile_ignores(temp_project, run_mapper):
+    lockfiles = [
+        "package-lock.json",
+        "yarn.lock",
+        "pnpm-lock.yaml",
+        "bun.lock",
+        "bun.lockb",
+        "deno.lock",
+        "Pipfile.lock",
+        "poetry.lock",
+        "uv.lock",
+        "pdm.lock",
+        "Cargo.lock",
+        "composer.lock",
+        "Gemfile.lock",
+        "flake.lock",
+    ]
+    for lockfile in lockfiles:
+        (temp_project / lockfile).write_text("generated lock content\n", encoding="utf-8")
+
+    kept = ["pyproject.toml", "package.json", "Cargo.toml"]
+    for f in kept:
+        (temp_project / f).write_text("real manifest\n", encoding="utf-8")
+
+    assert run_mapper([".", "-o", "directory_tree.yaml"])
+    result = load_yaml(temp_project / "directory_tree.yaml")
+    all_files = get_all_files_in_tree(result)
+
+    for lockfile in lockfiles:
+        assert lockfile not in all_files, lockfile
+
+    for f in kept:
+        assert f in all_files, f
+
+
 def test_default_directory_ignores(temp_project, run_mapper):
     for dir_name in ["node_modules", "venv", ".venv"]:
         d = temp_project / dir_name
