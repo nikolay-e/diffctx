@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 import re
 import subprocess
 import sys
@@ -241,6 +242,55 @@ def test_diff_context_merges_contiguous_fragments(tmp_path):
     for f in fragments:
         start, end = (int(x) for x in f["lines"].split("-"))
         assert start <= end, f"fragment line range inverted: {f['lines']}"
+
+
+def test_diff_context_no_contained_or_unmerged_fragments(tmp_path):
+    """Regression (f1a1647d): the render merge pass must, per (path, role),
+    drop any fragment fully contained in another and merge line-contiguous
+    runs. A change editing several functions in one file produces multiple
+    same-role fragments, exercising that pass; the output must never carry a
+    range nested inside a sibling nor an unmerged `next.start == cur.end + 1`
+    pair (both are pure per-fragment scaffolding duplication)."""
+    import json
+    from collections import defaultdict
+
+    repo = Pygit2Repo(tmp_path / "repo")
+    base_src = "".join(f"def f{i}(x):\n    y = x + {i}\n    return y\n\n" for i in range(12))
+    repo.add_file("src/mod.py", base_src)
+    repo.add_file("src/other.py", "from mod import f0, f5, f11\n\ndef run():\n    return f0(1) + f5(2) + f11(3)\n")
+    base = repo.commit("init")
+    edited_src = "".join(
+        (
+            f"def f{i}(x):\n    y = x * {i}\n    z = y + 1\n    return z\n\n"
+            if i in (2, 5, 9)
+            else f"def f{i}(x):\n    y = x + {i}\n    return y\n\n"
+        )
+        for i in range(12)
+    )
+    repo.add_file("src/mod.py", edited_src)
+    head = repo.commit("edit several functions")
+
+    stdout, _ = _run(repo.path, [".", "--diff", f"{base}..{head}", "--budget", "8000", "-f", "json"])
+    fragments = json.loads(stdout)["fragments"]
+
+    by_key: dict[tuple[str, str | None], list[tuple[int, int]]] = defaultdict(list)
+    for f in fragments:
+        start, end = (int(x) for x in f["lines"].split("-"))
+        by_key[(f["path"], f.get("role"))].append((start, end))
+
+    assert any(
+        len(ranges) >= 2 for ranges in by_key.values()
+    ), "fixture must yield a multi-fragment group to exercise the merge pass"
+
+    for (path, role), ranges in by_key.items():
+        ordered = sorted(ranges)
+        for (a_start, a_end), (b_start, b_end) in itertools.pairwise(ordered):
+            assert not (
+                b_start >= a_start and b_end <= a_end
+            ), f"contained fragment {(b_start, b_end)} inside {(a_start, a_end)} for {path} role={role}"
+            assert (
+                b_start != a_end + 1
+            ), f"unmerged contiguous fragments {(a_start, a_end)} and {(b_start, b_end)} for {path} role={role}"
 
 
 def test_diff_context_scopes_markdown_preamble_change_not_whole_file(tmp_path):

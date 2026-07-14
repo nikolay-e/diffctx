@@ -303,18 +303,18 @@ class TestDefaultIgnorePatterns:
 
 class TestCLIFeatures:
     def test_explicit_stdout_output_dash(self, temp_project):
-        result = run_diffctx_subprocess([".", "-o", "-"], cwd=temp_project)
+        result = run_diffctx_subprocess([".", "-f", "yaml", "-o", "-"], cwd=temp_project)
         assert result.returncode == 0
         assert "name:" in result.stdout
         assert "type: directory" in result.stdout
 
     def test_explicit_stdout_output_long_flag(self, temp_project):
-        result = run_diffctx_subprocess([".", "--output-file", "-"], cwd=temp_project)
+        result = run_diffctx_subprocess([".", "-f", "yaml", "--output-file", "-"], cwd=temp_project)
         assert result.returncode == 0
         assert "name:" in result.stdout
 
-    def test_yaml_to_stdout_default(self, temp_project):
-        result = run_diffctx_subprocess(["."], cwd=temp_project)
+    def test_yaml_to_stdout(self, temp_project):
+        result = run_diffctx_subprocess([".", "-f", "yaml"], cwd=temp_project)
         assert result.returncode == 0
         assert "name:" in result.stdout
         assert "children:" in result.stdout

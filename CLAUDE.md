@@ -67,7 +67,7 @@ are unambiguously detectable.
 
 | Decision    | Choice            | Rationale                    |
 |-------------|-------------------|------------------------------|
-| Output      | YAML              | LLM-readable, literal blocks |
+| Output      | MD default; YAML/JSON/txt | MD ~7% cheaper on real diffs (#104) |
 | Tokens      | tiktoken o200k    | GPT-4o standard, exact BPE   |
 | Ignores     | pathspec          | gitignore-compatible         |
 | Parsing     | tree-sitter       | 30+ languages, AST-level     |

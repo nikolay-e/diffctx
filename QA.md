@@ -124,13 +124,25 @@ edge weights mid-QA.
 
 ## Real-World Test-Repo Sweep (every QA round, MANDATORY)
 
-`test-repos/` (git-ignored, local-only) holds ~15 real upstream clones across
-many languages — `linux`, `pytorch`, `react-native`, `sentry`, `gitpod`,
-`elasticsearch`, `numpy`, `ocaml`, `llama.cpp`, `onnxruntime`, `libc`,
-`luajit2`, `monitoring-observability`, `builder`, `vision`. `TOANALYZE.md` is
-the curated commit "todo"; the clones also carry live upstream HEADs. This is
-the dogfood that synthetic `yaml_cases` can't replace: real diffs, real over-
-dump, real crashes.
+`test-repos/` (git-ignored, local-only) holds ~27 real upstream clones across
+many languages — the original ~15 (`linux`, `pytorch`, `react-native`,
+`sentry`, `gitpod`, `elasticsearch`, `numpy`, `ocaml`, `llama.cpp`,
+`onnxruntime`, `libc`, `luajit2`, `monitoring-observability`, `builder`,
+`vision`) plus 12 grammar/structural-coverage additions (2026-07-07: `spark`,
+`gitlab-foss`, `neovim`, `tokio`, `polars`, `aspnetcore`, `plausible`,
+`firefox-ios`, `nextcloud`, `kubernetes`, `home-assistant`, `envoy`).
+`TOANALYZE.md` is the curated commit "todo" (109 original + 263 curated for
+the new repos, all SHAs verified); the clones also carry live upstream HEADs.
+This is the dogfood that synthetic `yaml_cases` can't replace: real diffs,
+real over-dump, real crashes.
+
+**The 12 new clones are `--filter=tree:0` partial clones.** Two consequences
+for sweeps: (1) any git operation needing old trees/blobs lazy-fetches over
+the network, so **wall-clock timing is NOT a clean diffctx signal there** —
+before judging "slow/hang", re-run with a warmed object cache (first run
+populates it); a double rc=142 with warm cache IS a real hang (that
+discriminator confirmed the aspnetcore C# repro on #70). (2) First diff runs
+need network; offline sweeps should use the original full clones.
 
 **Every QA round, sweep the test repos against a NEW commit each** (one not
 exercised before — `git -C test-repos/<repo> pull` to fetch fresh upstream
@@ -140,11 +152,14 @@ shadow:
 ```bash
 cd test-repos/<repo>
 git pull --ff-only
-# Hard-cap runtime. As of 3725f51b the CLI enforces `--timeout` as a true total
-# wall-clock bound (worker thread + watchdog) and fast-fails rc=124 with the
-# actionable-error contract instead of hanging to OOM (#70) — BUT the external
-# perl cap is still needed when smoking the **pipx** binary until that fix ships
-# in a release (pipx 1.10.0 has no watchdog). macOS has no `timeout`; use:
+# Hard-cap runtime. `--timeout` (true wall-clock bound, worker thread + watchdog,
+# fast-fails instead of hanging to OOM, #70, 3725f51b) exists on the standalone
+# Rust binary AND — since the 2026-07-14 QA pass — on the Python CLI
+# (`_call_with_wall_clock_deadline` in `src/diffctx/main.py`, exit 124, daemon
+# worker + `os._exit` because a runaway pyo3 call cannot be cancelled). The
+# perl cap stays MANDATORY for pipx smokes until a release ≥1.12 ships that
+# commit (the released binary on PATH predates it); after that, `--timeout 200`
+# on the pipx binary replaces the perl wrapper. macOS has no `timeout`; use:
 perl -e 'alarm 200; exec @ARGV' /Users/nikolay/.local/bin/diffctx . --diff HEAD~1
 # (or, on the dev build, just pass `--timeout 200` — the watchdog bounds it.)
 ```
@@ -152,7 +167,14 @@ perl -e 'alarm 200; exec @ARGV' /Users/nikolay/.local/bin/diffctx . --diff HEAD~
 **A cap-hit IS the issue.** rc=142 (SIGALRM) or rc=137 (SIGKILL) with no output =
 diffctx hung on that repo — file it and stop the sweep (don't run the remaining
 giant repos like `linux`, they'll hang too and burn hours). Known so far:
-`gitpod` and `pytorch` hang on a trivial HEAD~1 diff (#70).
+`gitpod` and `pytorch` hang on a trivial HEAD~1 diff (#70); `aspnetcore`
+(56k-commit C# corpus) reproduces the same class on a 17-file HEAD~1 (#70,
+2026-07-07 comment). Don't re-file — comment new repros on #70.
+
+**Bash-tool timeout must exceed the perl alarm.** The Bash tool's default
+120s kills the command BEFORE the 200s alarm fires (rc=143, looks like a
+mystery kill). Pass `timeout: 260000` on every sweep invocation so the perl
+cap stays the binding constraint and rc=142 keeps its meaning.
 
 **Per repo, judge:** did it (a) finish without panic / non-zero exit / hang,
 (b) honor the range — `changed_files` matches `git diff HEAD~1 --stat`, not a
@@ -173,6 +195,97 @@ first issue**.
 Either outcome — **all clean OR ≥1 issue filed** — is a valid completion of
 this step; the QA round proceeds to its remaining items either way. Do not let
 a found issue halt the round, and do not keep sweeping after one is filed.
+
+## Sweep Discriminator: EOF-Append to a Flat Data-List File (#103)
+
+A distinct symptom the file-count/token discriminators alone miss, surfaced
+sweeping `elasticsearch`: a diff whose ONLY change is a few lines **appended at
+EOF** of a large flat YAML/data-list file (e.g. `muted-tests.yml`, ~790 lines of
+top-level `- key: …` entries) produced an output with **zero `role: "changed"`
+fragments** — the changed lines never surfaced as a labeled change — while the
+whole file was exploded into ~118 per-entry `definition` context fragments plus
+a couple of unrelated files. Two separable defects: (A) **the change signal is
+lost** (correctness — worse than over-selection; `grep -c 'role:' out.yaml` → 0,
+and the max rendered line range stops BELOW the appended lines), and (B)
+whole-file fragmentation of a flat list (over-selection, overlaps #65). Tracked
+on #103, primarily for (A).
+
+**Add to the per-repo sweep judgment:** on any non-empty diff, assert
+`grep -c 'role: "changed"'` ≥ 1 AND that the output's max line range reaches the
+diff's changed lines. A clean rc=0 with a plausible token count still hides this
+class — `role:`-absence is the tell. Contrast a healthy run (`numpy HEAD~1`:
+5 `role: "changed"` fragments, context scoped to 2 tightly-related stubs).
+
+## Varied-Diff-Shape Hunt: What's Confirmed-Correct (don't re-file)
+
+To find NEW defect classes (beyond #65 over-selection / #103 lost-change / #70
+hang), probe **diff shapes**, not just `HEAD~1` — the shape is what breeds new
+bugs. A pass across delete / rename / merge / big(40+ files) / binary / huge
+shapes on ~12 test-repos found NO new class; the following are **verified
+CORRECT** — do not chase them as findings, and beware a naive sweep classifier
+that flags them as `empty-on-real-diff`:
+
+- **Deletion-only / delete-heavy diffs** (e.g. builder `Remove … scripts`
+  9- & 48-file pure deletions; vision `Remove prototype folder` 81 files /
+  13k deletions): output has **no `fragments:`** (nothing to render — content
+  is gone) but a fully-populated **`deleted_files:`** list. Zero fragments here
+  is correct, NOT the #103 lost-change class. Any sweep check must consult
+  `deleted_files` before flagging "empty output".
+- **Binary-only diffs** (vision `76f0fdd`, 17 `.pkl` files, all `-\t-` in
+  `git diff --numstat`): correct **rc=4** + the `no semantic context` message.
+  Confirm binary-only via numstat (`awk '$1!="-"'` yields nothing) before
+  treating rc=4 as a bug.
+- **Binary+text mixed** (numpy/react-native/onnxruntime/ocaml): binary ignored,
+  text fragments clean, no mojibake/control-char leakage into YAML.
+- **Large multi-file diffs that complete** (onnxruntime 33f/505 changed,
+  llama.cpp 24f/256, elasticsearch 72f/116): all changed files represented.
+
+BSD `grep -P` is unavailable on macOS — detect binary commits with
+`git diff --numstat | awk '$1=="-"&&$2=="-"'`, not `grep -P '^-\t-'`.
+
+**#70 scope is broader than its title.** The unbounded hang also fires on
+**large diffs** (60–100+ files: onnxruntime `22ae796` 63f, elasticsearch
+`e24492c` 108f), not only "large repo + trivial diff". Verified rc=142 at the
+150s cap with zero stdout / empty stderr. Correlates with diff/graph size.
+
+## Real-World Quality Benchmark (`benchmarks/real_world_diff_bench/`)
+
+Beyond "does it crash": a committed 109-commit benchmark scoring the QUALITY of
+extracted context against gold `should_include`/`should_not_include` labels
+(hand-labeled by 10 Sonnet-5 reviewers over react-native/gitpod/sentry real
+commits). Baseline of the shipped `1.10.2`: **66% hang, 31% over-dump, 3%
+usable; precision 0.176 / recall 0.90 on produced output; MD 7.2% cheaper
+than YAML.** Re-score after any selection change with `scripts/score.py`
+against the frozen `gold_labels.json` (gold labels are the stable contract,
+diffctx's rendered file set is the variable). The score formula
+`100·recall·(1−forbidden)` does NOT penalize over-selection — add a
+precision/F1 term before trusting a high score. Feeds issues 65
+(over-selection), 70 (hang), 103 (lost-change), 104 (MD default).
+
+## SonarCloud on `benchmarks/**` Scripts (shelldre + S7494↔S7500 conflict)
+
+Benchmark/dev scripts under `benchmarks/**` are analyzed by SonarCloud like any
+other source — a new `.sh`/`.py` there can flip the quality gate to ERROR on
+its own. Two traps seen shipping `benchmarks/real_world_diff_bench/scripts/`:
+
+- **`shelldre:S7688`** wants `[[ … ]]` not `[ … ]`; **S7679/S7682** want a
+  positional param assigned to a `local` var + an explicit `return` in shell
+  functions. Cheap mechanical fixes.
+- **`python:S7494` and `python:S7500` are mutually contradictory** on the same
+  code: S7494 says "replace `dict(genexpr)` with a dict comprehension", then the
+  comprehension trips S7500 "replace this comprehension by passing the iterable
+  to `dict()`". Do NOT ping-pong between them — rewrite as an explicit `for`
+  loop (with `with open(...)`), which satisfies both and is more readable.
+- **`pythonsecurity:S8707`** (path/arg injection) fires on any `glob`/`open`
+  built from `sys.argv` even in a trusted local dev script — same bulk-FP class
+  documented above for the main tree. Resolve via `POST /api/issues/do_transition`
+  `transition=falsepositive` (not NOSONAR — taint rules ignore it), with a
+  one-line comment naming the trust boundary.
+- **`python:S5443`** flags a hardcoded `/tmp` default — drop the default and
+  require the corpus dir as an explicit CLI arg.
+
+SonarCloud here is CI-integrated (scans on each `diffctx CI` run), so the fix
+loop is: push → wait for that run → re-fetch issues → mark remaining FPs → gate.
 
 ## Local `which diffctx` Trap — diffctx specifics
 
@@ -324,11 +437,105 @@ same pass.
   nightly-full-eval.yml is MIN_PASS_COUNT=2260 — compare against that, not
   against zero failures.
 
+## Concurrent-Session Hazard: /qa While Another Session Develops in the Same Checkout
+
+A `/qa` round ran while a parallel Claude session actively edited the engine
+in the SAME working tree (16 source files mutating mid-pass). Consequences
+observed: `cargo test`/full `yaml_cases` compiled the other session's
+half-written Rust ("could not compile diffctx" — NOT a HEAD defect);
+pre-commit's stash/restore cycle conflicted with hook auto-fixes ("Stashed
+changes conflicted with hook auto-fixes... Rolling back"); a commit's hook
+run timed out at the tool's 2min default mid-restore (the commit itself
+landed — verify with `git log` before retrying, don't double-commit).
+
+Protocol when `git status` shows substantive modifications you didn't make:
+(1) STOP before any commit/revert — check mtimes (`stat -f "%m %Sm %N"`) and
+`ps aux | grep claude` to confirm a live concurrent writer; (2) never revert
+or blanket-`git add` — stage YOUR files by explicit path only; (3) treat all
+local cargo/pre-commit results as invalid for HEAD — CI on the pushed commit
+is the only honest verifier; (4) skip/void the full local `yaml_cases` run
+for the round and say so in the report. Root fix: parallel work belongs in
+`git worktree`s (workspace convention), one session per checkout.
+
+## Rust Binary vs Python CLI Render Differences (grep traps)
+
+The standalone Rust binary (`diffctx/target/release/diffctx`) renders YAML
+plainly (`role: changed`, `lines: 1-791`), while the Python CLI quotes
+(`role: "changed"`, `lines: "1-791"`). A `grep 'role: "changed"'` against
+standalone output silently reports 0 — use `grep -E 'role: "?changed"?'` in
+any check that may see either producer. Also: the standalone binary's clap
+parser rejects `--budget -1` (`use '-- -1'`); pass a large N instead.
+
+## Fast Pipeline Debug Cycle (no maturin rebuild)
+
+For selection/core debugging, add a temporary env-gated `eprintln!` in the
+Rust source and build ONLY the standalone binary: `cargo build --release
+--bin diffctx` (~35s incremental) — do not pay the maturin develop rebuild
+until the Python surface is involved. Revert the tracing with
+`git checkout <file>` before committing.
+
+## Mini-Repro Pattern for Sweep Findings
+
+A hand-written synthetic file may NOT reproduce a real-repo finding (a
+synthetic flat YAML list was clean while the real `muted-tests.yml`
+reproduced #103 — tree-sitter parse degradation depends on exact content
+like `{...}` flow-scalar braces). Extract the real file instead:
+`git -C test-repos/<repo> show <rev>:<path> > file` into a fresh throwaway
+repo, commit base + change, then iterate there — seconds per run instead of
+minutes on the full clone.
+
+## Whole-File-Chunk-as-Core Defect Class (#103/#105/#107)
+
+When fragmentation yields no narrow fragment covering a hunk (flat data
+files, non-tree-sitter languages, parse degradation), `find_core_for_hunk`
+falls back to a whole-file chunk as the core; chunk kinds have no signature
+stub, so at auto budget the core silently drops — change signal lost. The
+three issues are one class; the sketched fix (hunk-window excerpt core) is
+on #103. Selection-guarantee gaps of this shape are found fastest by
+comparing `--budget 999999` output against auto-budget output.
+
 ## Monitor Scripts in This Shell (zsh)
 
 `status` is a read-only zsh special variable — a polling monitor script using
 `status=$(...)` dies instantly with "read-only variable: status" (exit 1).
 Use `run_state=`/`st=` in any Monitor/background snippet.
+
+## Bash Tool cwd Does Not Reliably Persist Across Calls Mid-Session
+
+During the real-world test-repo sweep, `cd test-repos/<repo>` in one Bash call
+followed by `gh issue`/`gh pr` commands in later calls silently resolved
+against whichever repo's `origin` remote happened to be the last `cd`-ed-into
+directory — `gh issue view 65` returned a *closed react-native-navigation*
+issue with the same number, not diffctx#65. This self-corrected on a later
+call without any explicit `cd` back, so the tool's "cwd persists between
+commands" guarantee is not reliable across a long multi-step QA session (some
+other cwd-resetting event fires between calls). Mitigation: pass `-R
+nikolay-e/diffctx` explicitly on every `gh issue`/`gh pr` call rather than
+relying on directory context, especially in any step that also touches
+`test-repos/*` clones. Verify with `pwd && git remote -v` before any
+repo-context-sensitive command if in doubt.
+
+## `gh issue view <N> --comments` Prints Nothing When There Are Zero Comments
+
+Not a failure — `gh issue view 92 --comments` (an issue with `comments: 0`)
+returned empty stdout with rc 0, easy to misread as the command having failed
+or hit a transient error. Drop `--comments` (or check `comments:` in the
+default view output) to confirm zero-vs-broken before retrying.
+
+## Dependabot Squash-Merges via `gh pr merge` Land on GitHub Only, Not Forgejo
+
+Forgejo (`origin`) is source of truth and push-mirrors to GitHub, but
+`gh pr merge` operates against GitHub's API directly — the squash-merge commit
+only ever exists on `github/main`, never on `origin/main`. If local `main` also
+gained commits in the same session (e.g. QA-pass bug fixes), `git merge
+--ff-only origin/main` succeeds (local is already ahead of origin) while
+`github/main` has *diverged* (different squash commits on top of the same
+base) — needs a real `git merge github/main` (not `--ff-only`), then push the
+merge commit to **both** `origin` and `github`. Forgejo's branch-protection
+flags the resulting merge commit as a rule violation ("branch must not contain
+merge commits") but admin-bypasses it through — expected, not a failure to
+chase. Prefer resolving via rebase over merge when the local/dependabot diffs
+don't touch the same files, to avoid tripping that rule at all.
 
 ---
 

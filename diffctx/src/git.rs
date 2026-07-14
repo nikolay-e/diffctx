@@ -34,7 +34,7 @@ static SAFE_RANGE_RE: Lazy<Regex> =
 
 #[derive(Debug, thiserror::Error)]
 pub enum GitError {
-    #[error("git command failed: {0}")]
+    #[error("{0}")]
     CommandFailed(String),
     #[error("not a git repository: {0}")]
     NotARepo(PathBuf),
@@ -83,10 +83,19 @@ pub fn run_git(repo_root: &Path, args: &[&str]) -> Result<String> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        let subcommand = args
+            .iter()
+            .find(|a| !a.starts_with('-'))
+            .copied()
+            .unwrap_or("command");
+        let reason = stderr
+            .lines()
+            .map(str::trim)
+            .find(|l| l.starts_with("fatal:") || l.starts_with("error:"))
+            .or_else(|| stderr.lines().map(str::trim).find(|l| !l.is_empty()))
+            .unwrap_or("unknown error");
         return Err(GitError::CommandFailed(format!(
-            "git {} failed: {}",
-            args.join(" "),
-            stderr.trim()
+            "git {subcommand} failed: {reason}"
         )));
     }
 

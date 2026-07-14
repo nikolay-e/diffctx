@@ -91,10 +91,11 @@ emitted, whichever comes first.
 | Flag        | Default | Description                                                              |
 |-------------|---------|--------------------------------------------------------------------------|
 | `--scoring` | `ego`   | Scoring mode: `ego`, `ppr`, or `bm25`                                    |
-| `--budget`  | auto    | Token cap. `auto` lets selection converge; `-1` disables the cap; `N` enforces a fixed cap |
-| `--alpha`   | 0.60    | How tightly context clusters around changes (PPR damping; 0–1, higher = more focused) |
-| `--tau`     | 0.12    | Minimum relevance required to include a fragment (lower = more context)  |
-| `--full`    | false   | Include every changed fragment; skip the smart-selection step entirely   |
+| `--budget`  | auto    | Token cap. Omit for auto; `N` enforces a fixed cap; `-1` disables the cap; `0` keeps only the changed code (no expansion) |
+| `--alpha`   | 0.60    | How tightly context clusters around changes (PPR damping; 0–1 exclusive, higher = more focused; only affects `--scoring ppr`) |
+| `--tau`     | 0.12    | Relevance threshold for full fragment content; lower-scoring fragments are stubbed or dropped (lower = more context) |
+| `--full`    | false   | Only the changed files, every fragment, no related-code context; ignores `--budget`/`--tau`/`--alpha`/`--scoring` |
+| `--timeout` | 300     | Wall-clock deadline in seconds for the whole analysis; on expiry diffctx aborts with exit code 124 instead of hanging |
 
 Calibration of `--alpha`, `--tau`, and the edge-weight priors is documented
 in [`docs/parameter-strategy.md`](docs/parameter-strategy.md).
@@ -124,7 +125,7 @@ diffctx graph . --level file -f graphml -o g.xml # file-level graph as GraphML
 <!-- BEGIN USAGE -->
 ```bash
 # full codebase export:
-diffctx .                                # YAML to stdout + token count
+diffctx .                                # Markdown to stdout + token count
 diffctx . -f md -c                       # Markdown → clipboard
 diffctx . -f json -o tree.json           # JSON → file
 diffctx . --no-content                   # structure only, no file contents
@@ -267,7 +268,8 @@ for Cursor, Continue, Windsurf, and Zed.
 
 Respects `.gitignore` and `.diffctx/ignore` automatically.
 Use `--no-default-ignores` to disable built-in patterns
-(`.gitignore` and `.diffctx/ignore` still apply).
+(`.gitignore` and `.diffctx/ignore` still apply),
+or `--no-ignores` to disable all ignore rules (tree mode only).
 
 - Hierarchical: nested ignore files at each directory level
 - Negation patterns: `!important.log` un-ignores a file

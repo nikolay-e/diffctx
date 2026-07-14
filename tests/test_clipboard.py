@@ -110,19 +110,16 @@ class TestCliCopyFlags:
 
 
 class TestClipboardWarnings:
-    def test_no_clipboard_prints_warning(self, temp_project, capsys, monkeypatch, caplog):
+    def test_no_clipboard_prints_warning(self, temp_project, capsys, monkeypatch):
         monkeypatch.setattr("diffctx.clipboard.detect_clipboard_command", lambda: None)
         monkeypatch.chdir(temp_project)
         monkeypatch.setattr("sys.argv", ["diffctx", ".", "-c"])
-        import logging
-
         from diffctx.main import main
 
-        with caplog.at_level(logging.ERROR, logger="diffctx"):
-            main()
+        main()
         captured = capsys.readouterr()
-        assert "Clipboard unavailable" in caplog.text
-        assert "No clipboard tool found" in caplog.text
+        assert "clipboard unavailable" in captured.err
+        assert "writing to stdout instead" in captured.err
         assert captured.out.strip() != ""
 
 

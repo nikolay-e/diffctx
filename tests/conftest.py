@@ -49,6 +49,13 @@ def temp_project(tmp_path):
 @pytest.fixture
 def run_mapper(monkeypatch, temp_project):
     def _run(args):
+        # This harness exists to produce machine-parseable tree output for
+        # behavior assertions (ignores, options, structure) — not to exercise
+        # the CLI default format (which is Markdown and is covered separately by
+        # test_default_format_is_md / test_default_stdout_is_md_directory). Pin
+        # yaml when the caller did not pick a format so load_yaml() keeps working.
+        if "-f" not in args and "--format" not in args:
+            args = [*args, "-f", "yaml"]
         with monkeypatch.context() as m:
             m.chdir(temp_project)
             m.setattr(sys, "argv", ["diffctx", *args])

@@ -214,7 +214,7 @@ def test_unreadable_directory(temp_project, set_perms):
     set_perms(unreadable_dir, 0o000)
 
     output_path = temp_project / "output.yaml"
-    result = run_diffctx_subprocess([".", "-o", str(output_path), "--log-level", "warning"], cwd=temp_project)
+    result = run_diffctx_subprocess([".", "-f", "yaml", "-o", str(output_path), "--log-level", "warning"], cwd=temp_project)
 
     assert result.returncode == 0
     assert "Permission denied" in result.stderr

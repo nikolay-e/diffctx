@@ -20,8 +20,9 @@ def setup_logging(verbosity: int | str) -> None:
     pkg_logger = logging.getLogger(PACKAGE_LOGGER_NAME)
     pkg_logger.setLevel(level)
 
-    if pkg_logger.handlers:
-        for handler in pkg_logger.handlers:
+    real_handlers = [h for h in pkg_logger.handlers if not isinstance(h, logging.NullHandler)]
+    if real_handlers:
+        for handler in real_handlers:
             handler.setLevel(level)
             if not handler.formatter:
                 handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))

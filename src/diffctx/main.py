@@ -2,10 +2,16 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
+import re
+import signal
 import subprocess
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from .version import __version__
 
@@ -18,6 +24,7 @@ _EXIT_RUNTIME = 1
 _EXIT_USAGE = 2
 _EXIT_ENVIRONMENT = 3
 _EXIT_EMPTY_DIFF = 4
+_EXIT_TIMEOUT = 124
 _EXIT_INTERRUPTED = 130
 _EXIT_BROKEN_PIPE = 141
 
@@ -83,13 +90,60 @@ def _diff_result_is_empty(result: dict[str, Any]) -> bool:
     return False
 
 
-def _warn_empty_diff_result(result: dict[str, Any], prog: str) -> None:
+def _empty_diff_hint(args: ParsedArgs) -> str:
+    if args.budget == 0:
+        return "--budget 0 selects only the changed code itself; omit --budget for auto sizing"
+    if args.budget is not None and args.budget > 0:
+        return f"--budget {args.budget} may be too small to fit any fragment; raise it or omit for auto sizing"
+    if args.diff_range == "HEAD":
+        return "the working tree matches HEAD; try --diff HEAD~1 for the last commit"
+    return f"check the range with: git diff --stat {args.diff_range}"
+
+
+def _warn_empty_diff_result(result: dict[str, Any], prog: str, args: ParsedArgs) -> None:
     if _diff_result_is_empty(result):
         print(
             f"{prog}: diff produced no semantic context "
-            "(clean working tree, binary-only, or all files exceeded size cap); output empty.",
+            f"(clean working tree, binary-only, or files over the size cap); {_empty_diff_hint(args)}",
             file=sys.stderr,
         )
+
+
+def _call_with_wall_clock_deadline(build: Callable[[], dict[str, Any]], timeout_seconds: int, prog: str) -> dict[str, Any]:
+    # The Rust extension releases the GIL but offers no cancellation, so a
+    # pathological repo can hang far past any per-phase git timeout (#70).
+    # Mirror the standalone binary's watchdog: run the pipeline on a worker
+    # thread and hard-exit 124 on deadline — the runaway worker cannot be
+    # stopped, so finalizers must not run (os._exit, not sys.exit).
+    import threading
+
+    outcome: list[Any] = []
+
+    def worker() -> None:
+        try:
+            outcome.append(("ok", build()))
+        except Exception as exc:  # KeyboardInterrupt/SystemExit stay on the main thread
+            outcome.append(("err", exc))
+
+    thread = threading.Thread(target=worker, name="diffctx-pipeline", daemon=True)
+    thread.start()
+    thread.join(timeout_seconds)
+    if thread.is_alive():
+        print(
+            f"{prog}: pipeline exceeded {timeout_seconds}s wall-clock deadline; aborting before "
+            "OOM/SIGKILL. Narrow the review with an explicit '--diff <from>..<to>' range, "
+            "run on a smaller subtree, or raise '--timeout'.",
+            file=sys.stderr,
+        )
+        sys.stderr.flush()
+        sys.stdout.flush()
+        os._exit(_EXIT_TIMEOUT)
+    if not outcome:
+        raise RuntimeError("pipeline worker terminated unexpectedly")
+    status, value = outcome[0]
+    if status == "err":
+        raise value
+    return value  # type: ignore[no-any-return]
 
 
 def _build_diff_tree(args: ParsedArgs, prog: str) -> dict[str, Any]:
@@ -98,20 +152,25 @@ def _build_diff_tree(args: ParsedArgs, prog: str) -> dict[str, Any]:
     if not args.diff_range:
         raise RuntimeError("diff_range is required in diff mode")
     _ensure_git_repo(args.root_dir, prog)
-    result = build_diff_context(
-        root_dir=args.root_dir,
-        diff_range=args.diff_range,
-        budget_tokens=args.budget,
-        alpha=args.alpha,
-        tau=args.tau,
-        no_content=args.no_content,
-        ignore_file=args.ignore_file,
-        no_default_ignores=args.no_default_ignores,
-        full=args.full_diff,
-        whitelist_file=args.whitelist_file,
-        scoring_mode=getattr(args, "scoring", "ego"),
+    result = _call_with_wall_clock_deadline(
+        lambda: build_diff_context(
+            root_dir=args.root_dir,
+            diff_range=args.diff_range or "HEAD",
+            budget_tokens=args.budget,
+            alpha=args.alpha,
+            tau=args.tau,
+            no_content=args.no_content,
+            ignore_file=args.ignore_file,
+            no_default_ignores=args.no_default_ignores,
+            full=args.full_diff,
+            whitelist_file=args.whitelist_file,
+            scoring_mode=getattr(args, "scoring", "ego"),
+            timeout=args.timeout,
+        ),
+        args.timeout,
+        prog,
     )
-    _warn_empty_diff_result(result, prog)
+    _warn_empty_diff_result(result, prog, args)
     return result
 
 
@@ -137,8 +196,8 @@ def _warn_if_output_oversized(output_content: str, args: ParsedArgs) -> None:
         return
     mb = size_bytes / (1024 * 1024)
     print(
-        f"Warning: output is {mb:.1f} MB. For large repos try --no-content (structure only) "
-        f"or --diff RANGE (relevance-ranked context).",
+        f"Warning: output is {mb:.1f} MB. For large repos try --no-content (structure only), "
+        f"--diff RANGE (relevance-ranked context), or --save / -o FILE to keep it off the terminal.",
         file=sys.stderr,
     )
 
@@ -149,7 +208,10 @@ def _build_file_node(file_path: Path, base_dir: Path, no_content: bool, max_file
     try:
         rel = file_path.relative_to(base_dir).as_posix()
     except ValueError:
-        rel = file_path.name
+        try:
+            rel = file_path.relative_to(Path.cwd()).as_posix()
+        except ValueError:
+            rel = file_path.name
     node: dict[str, Any] = {"name": rel, "type": "file"}
     if no_content:
         return node
@@ -163,7 +225,9 @@ def _build_single_dir_tree(root_dir: Path, args: ParsedArgs) -> dict[str, Any]:
 
     ctx = TreeBuildContext(
         base_dir=root_dir,
-        combined_spec=get_ignore_specs(root_dir, args.ignore_file, args.no_default_ignores, args.output_file),
+        combined_spec=get_ignore_specs(
+            root_dir, args.ignore_file, args.no_default_ignores, args.output_file, no_ignores=args.no_ignores
+        ),
         output_file=args.output_file,
         max_depth=args.max_depth,
         no_content=args.no_content,
@@ -196,7 +260,7 @@ def _build_standard_tree(args: ParsedArgs) -> dict[str, Any]:
     return {"name": ".", "type": "directory", "children": children}
 
 
-def _handle_clipboard(output_content: str, args: ParsedArgs) -> bool:
+def _handle_clipboard(output_content: str, args: ParsedArgs, prog: str) -> bool:
     from .clipboard import ClipboardError, copy_to_clipboard
 
     if not args.copy:
@@ -206,12 +270,12 @@ def _handle_clipboard(output_content: str, args: ParsedArgs) -> bool:
         if not args.quiet:
             print("Copied to clipboard", file=sys.stderr)
         return True
-    except ClipboardError:
-        logger.exception("Clipboard unavailable")
+    except ClipboardError as exc:
+        print(f"{prog}: warning: clipboard unavailable ({exc}); writing to stdout instead", file=sys.stderr)
         return False
 
 
-def _handle_output_file(output_content: str, args: ParsedArgs) -> None:
+def _handle_output_file(output_content: str, args: ParsedArgs, prog: str) -> None:
     from .writer import write_string_to_file
 
     if not args.output_file:
@@ -221,11 +285,11 @@ def _handle_output_file(output_content: str, args: ParsedArgs) -> None:
         if not args.quiet:
             print(f"Saved to {args.output_file}", file=sys.stderr)
     except IsADirectoryError:
-        logger.error("'%s' is a directory", args.output_file)
-        sys.exit(1)
-    except OSError:
-        logger.exception("Cannot write '%s'", args.output_file)
-        sys.exit(1)
+        print(f"{prog}: error: '{args.output_file}' is a directory, not a file", file=sys.stderr)
+        sys.exit(_EXIT_RUNTIME)
+    except OSError as exc:
+        print(f"{prog}: error: cannot write '{args.output_file}': {exc.strerror or exc}", file=sys.stderr)
+        sys.exit(_EXIT_RUNTIME)
 
 
 def _is_graph_mode(args: ParsedArgs) -> bool:
@@ -329,8 +393,10 @@ def _run(argv: list[str] | None = None, *, prog: str = "diffctx", version: str =
 
     if _is_graph_mode(args):
         output_content = _handle_graph_mode(args)
-        clipboard_ok = _handle_clipboard(output_content, args)
-        _handle_output_file(output_content, args)
+        if not args.quiet:
+            print_token_summary(output_content)
+        clipboard_ok = _handle_clipboard(output_content, args, prog)
+        _handle_output_file(output_content, args, prog)
         should_write_stdout = args.force_stdout or not args.copy or not clipboard_ok
         if not args.output_file and should_write_stdout:
             sys.stdout.write(output_content)
@@ -344,8 +410,8 @@ def _run(argv: list[str] | None = None, *, prog: str = "diffctx", version: str =
         print_token_summary(output_content)
         _warn_if_output_oversized(output_content, args)
 
-    clipboard_ok = _handle_clipboard(output_content, args)
-    _handle_output_file(output_content, args)
+    clipboard_ok = _handle_clipboard(output_content, args, prog)
+    _handle_output_file(output_content, args, prog)
 
     should_write_stdout = args.force_stdout or not args.copy or not clipboard_ok
     if not args.output_file and should_write_stdout:
@@ -369,6 +435,15 @@ _KNOWN_RUNTIME_ERRORS: tuple[type[BaseException], ...] = (
 def _format_runtime_error(exc: BaseException) -> str:
     msg = str(exc).strip()
     return msg if msg else exc.__class__.__name__
+
+
+def _format_git_error(exc: BaseException) -> str:
+    msg = _format_runtime_error(exc)
+    if "unknown revision" in msg:
+        match = re.search(r"ambiguous argument '([^']+)'", msg)
+        if match:
+            return f"unknown git revision '{match.group(1)}'; check refs with: git log --oneline"
+    return f"git error: {msg}" if not msg.startswith("git ") else msg
 
 
 def _handle_unexpected_exception(exc: BaseException, prog: str = "diffctx") -> int:
@@ -397,12 +472,13 @@ def run(argv: list[str] | None = None, *, prog: str | None = None, version: str 
     except SystemExit:
         raise
     except KeyboardInterrupt:
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
         print("\nInterrupted", file=sys.stderr)
         sys.exit(_EXIT_INTERRUPTED)
     except BrokenPipeError:
         sys.exit(_EXIT_BROKEN_PIPE)
     except _git_error_type() as exc:
-        print(f"{prog}: git error: {_format_runtime_error(exc)}", file=sys.stderr)
+        print(f"{prog}: {_format_git_error(exc)}", file=sys.stderr)
         sys.exit(_EXIT_ENVIRONMENT)
     except argparse.ArgumentError as exc:
         print(f"{prog}: usage error: {_format_runtime_error(exc)}", file=sys.stderr)

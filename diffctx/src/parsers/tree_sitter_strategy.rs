@@ -1392,7 +1392,12 @@ fn try_container_split(
     kind: &str,
     sym_name: Option<&str>,
 ) -> bool {
-    let first_child_start = match first_child_def_line(node, definition_types, 0) {
+    // For a `decorated_definition` the inner class/def node is itself a
+    // definition type, so searching from the wrapper would report the header
+    // line as the "first child" and truncate the container header to the
+    // decorator alone. Search from the unwrapped definition instead.
+    let search_root = unwrap_decorated(*node);
+    let first_child_start = match first_child_def_line(&search_root, definition_types, 0) {
         Some(l) => l,
         None => return false,
     };

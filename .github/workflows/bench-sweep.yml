@@ -166,9 +166,12 @@ jobs:
                 --labels 'self-hosted,large' \
                 --unattended \
                 --replace"
-            nohup sudo -u github bash -c \
-              "cd /home/github/runner-\${N} && ./run.sh" \
-              >> "/home/github/runner-\${N}/runner.log" 2>&1 &
+            # Installed as a systemd service (not nohup'd) so a host reboot
+            # (transient Hetzner-side infra event, not app-caused - see #98)
+            # brings the runner back instead of orphaning queued cells forever.
+            cd "/home/github/runner-\${N}"
+            ./svc.sh install github
+            ./svc.sh start
           done
           ENDINIT
 

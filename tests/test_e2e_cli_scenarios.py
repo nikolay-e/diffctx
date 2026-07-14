@@ -10,6 +10,10 @@ as a shell user would observe them.
 from __future__ import annotations
 
 import json
+import os
+import re
+import subprocess
+import sys
 
 import pytest
 import yaml
@@ -17,13 +21,14 @@ import yaml
 from tests.framework.pygit2_backend import Pygit2Repo
 from tests.garbage_data import GARBAGE_FILES
 
-from .conftest import run_diffctx_subprocess
+from .conftest import SRC_DIR, run_diffctx_subprocess
 
 EXIT_OK = 0
 EXIT_RUNTIME = 1
 EXIT_USAGE = 2
 EXIT_ENVIRONMENT = 3
 EXIT_EMPTY_DIFF = 4
+EXIT_TIMEOUT = 124
 
 
 @pytest.fixture
@@ -56,12 +61,10 @@ def graph_repo(tmp_path):
 
 
 class TestTreeModeJourneys:
-    def test_default_stdout_is_yaml_directory(self, temp_project):
+    def test_default_stdout_is_md_directory(self, temp_project):
         result = run_diffctx_subprocess([str(temp_project)])
         assert result.returncode == EXIT_OK
-        tree = yaml.safe_load(result.stdout)
-        assert tree["type"] == "directory"
-        assert tree["name"] == temp_project.name
+        assert result.stdout.startswith(f"# {temp_project.name}/")
 
     def test_json_format_is_valid_json(self, temp_project):
         result = run_diffctx_subprocess([str(temp_project), "-f", "json"])
@@ -76,8 +79,8 @@ class TestTreeModeJourneys:
         assert result.stdout.strip()
 
     def test_no_content_omits_file_bodies(self, temp_project):
-        with_content = run_diffctx_subprocess([str(temp_project)])
-        without_content = run_diffctx_subprocess([str(temp_project), "--no-content"])
+        with_content = run_diffctx_subprocess([str(temp_project), "-f", "yaml"])
+        without_content = run_diffctx_subprocess([str(temp_project), "-f", "yaml", "--no-content"])
         assert "content:" in with_content.stdout
         assert "content:" not in without_content.stdout
 
@@ -105,13 +108,13 @@ class TestTreeModeJourneys:
         assert str(out) in result.stderr
 
     def test_dash_output_forces_stdout(self, temp_project):
-        result = run_diffctx_subprocess([str(temp_project), "-o", "-"])
+        result = run_diffctx_subprocess([str(temp_project), "-f", "yaml", "-o", "-"])
         assert result.returncode == EXIT_OK
         assert yaml.safe_load(result.stdout)["type"] == "directory"
 
     def test_single_file_argument(self, temp_project):
         target = temp_project / "src" / "main.py"
-        result = run_diffctx_subprocess([str(target)])
+        result = run_diffctx_subprocess([str(target), "-f", "yaml"])
         assert result.returncode == EXIT_OK
         node = yaml.safe_load(result.stdout)
         assert node["type"] == "file"
@@ -183,9 +186,9 @@ class TestUsageErrorJourneys:
     @pytest.mark.parametrize(
         "args,expected_exit,needle",
         [
-            (["--max-depth", "-1"], EXIT_RUNTIME, "non-negative"),
-            (["--max-file-bytes", "0"], EXIT_RUNTIME, "no-file-size-limit"),
-            (["--max-file-bytes", "-5"], EXIT_RUNTIME, "non-negative"),
+            (["--max-depth", "-1"], EXIT_USAGE, "non-negative"),
+            (["--max-file-bytes", "0"], EXIT_USAGE, "no-file-size-limit"),
+            (["--max-file-bytes", "-5"], EXIT_USAGE, "non-negative"),
             (["-f", "xml"], EXIT_USAGE, "invalid choice"),
             (["--log-level", "trace"], EXIT_USAGE, "invalid choice"),
             (["nonexistent_dir_xyz"], EXIT_RUNTIME, "No matches"),
@@ -198,12 +201,12 @@ class TestUsageErrorJourneys:
 
     def test_save_and_output_file_are_mutually_exclusive(self, temp_project):
         result = run_diffctx_subprocess([str(temp_project), "--save", "-o", "x.yaml"], cwd=temp_project)
-        assert result.returncode == EXIT_RUNTIME
+        assert result.returncode == EXIT_USAGE
         assert "mutually exclusive" in result.stderr
 
     def test_output_file_pointing_at_directory(self, temp_project):
         result = run_diffctx_subprocess([str(temp_project), "-o", str(temp_project / "docs")])
-        assert result.returncode == EXIT_RUNTIME
+        assert result.returncode == EXIT_USAGE
         assert "is a directory" in result.stderr
 
     def test_diff_flags_without_diff_emit_warning(self, temp_project):
@@ -216,7 +219,7 @@ class TestUsageErrorJourneys:
 
 class TestDiffModeJourneys:
     def test_diff_selects_changed_symbols_and_excludes_garbage(self, diff_repo):
-        result = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD"], cwd=diff_repo.path)
+        result = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "-f", "yaml"], cwd=diff_repo.path)
         assert result.returncode == EXIT_OK
         doc = yaml.safe_load(result.stdout)
         assert doc["type"] == "diff_context"
@@ -238,8 +241,8 @@ class TestDiffModeJourneys:
         assert "no semantic context" in result.stderr
 
     def test_full_includes_all_changed_fragments(self, diff_repo):
-        smart = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD"], cwd=diff_repo.path)
-        full = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "--full"], cwd=diff_repo.path)
+        smart = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "-f", "yaml"], cwd=diff_repo.path)
+        full = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "--full", "-f", "yaml"], cwd=diff_repo.path)
         assert full.returncode == EXIT_OK
         smart_doc = yaml.safe_load(smart.stdout)
         full_doc = yaml.safe_load(full.stdout)
@@ -254,7 +257,7 @@ class TestDiffModeJourneys:
 
     @pytest.mark.parametrize("scoring", ["ego", "ppr", "bm25"])
     def test_scoring_modes_all_produce_context(self, diff_repo, scoring):
-        result = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "--scoring", scoring], cwd=diff_repo.path)
+        result = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "--scoring", scoring, "-f", "yaml"], cwd=diff_repo.path)
         assert result.returncode == EXIT_OK
         assert yaml.safe_load(result.stdout)["type"] == "diff_context"
 
@@ -280,12 +283,52 @@ class TestDiffModeJourneys:
     def test_diff_invalid_range_fails_cleanly(self, diff_repo):
         result = run_diffctx_subprocess([".", "--diff", "no_such_ref..HEAD"], cwd=diff_repo.path)
         assert result.returncode == EXIT_ENVIRONMENT
-        assert "git error" in result.stderr
+        assert "unknown git revision 'no_such_ref..HEAD'" in result.stderr
         assert "internal error" not in result.stderr
+
+    def test_timeout_flag_accepted_and_diff_completes(self, diff_repo):
+        result = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "--timeout", "300", "-f", "yaml"], cwd=diff_repo.path)
+        assert result.returncode == EXIT_OK
+        assert yaml.safe_load(result.stdout)["type"] == "diff_context"
+
+    def test_timeout_below_one_second_is_usage_error(self, diff_repo):
+        result = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "--timeout", "0"], cwd=diff_repo.path)
+        assert result.returncode == EXIT_USAGE
+        assert "--timeout must be >= 1" in result.stderr
+
+    def test_timeout_without_diff_warns_and_is_ignored(self, temp_project):
+        result = run_diffctx_subprocess([".", "--timeout", "5"], cwd=temp_project)
+        assert result.returncode == EXIT_OK
+        assert "diff-mode flags ignored without --diff" in result.stderr
+        assert "--timeout" in result.stderr
+
+    def test_expired_deadline_aborts_with_exit_124(self):
+        """The wall-clock watchdog must hard-abort a pipeline that outlives
+        --timeout (#70): a runaway Rust computation cannot be cancelled from
+        Python, so the process exits 124 like the standalone binary. Exercised
+        in a real subprocess with a genuinely slow (sleeping) pipeline call."""
+        watchdog_script = (
+            "import time\n"
+            "from diffctx.main import _call_with_wall_clock_deadline\n"
+            "_call_with_wall_clock_deadline(lambda: time.sleep(60), 1, 'diffctx')\n"
+        )
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(SRC_DIR)
+        result = subprocess.run(
+            [sys.executable, "-c", watchdog_script],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=30,
+            check=False,
+        )
+        assert result.returncode == EXIT_TIMEOUT
+        assert "wall-clock deadline" in result.stderr
+        assert "--timeout" in result.stderr
 
     def test_diff_to_clipboard_writes_file_too(self, diff_repo, tmp_path):
         out = tmp_path / "diff.yaml"
-        result = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "-o", str(out)], cwd=diff_repo.path)
+        result = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "-f", "yaml", "-o", str(out)], cwd=diff_repo.path)
         assert result.returncode == EXIT_OK
         assert out.exists()
         assert "diff_context" in out.read_text(encoding="utf-8")
@@ -320,6 +363,51 @@ class TestGraphModeJourneys:
         result = run_diffctx_subprocess(["graph", ".", "--level", level], cwd=graph_repo.path)
         assert result.returncode == EXIT_OK
         assert result.stdout.strip()
+
+    def test_one_way_import_reports_no_cycles(self, graph_repo):
+        result = run_diffctx_subprocess(["graph", ".", "--summary", "--level", "file"], cwd=graph_repo.path)
+        assert result.returncode == EXIT_OK
+        assert "No dependency cycles detected." in result.stdout
+
+    def test_one_way_cross_directory_import_reports_no_cycles(self, tmp_path):
+        repo = Pygit2Repo(tmp_path / "layered_repo")
+        repo.add_file("pkg_a/entry.py", "from pkg_b.core import core_fn\n\n\ndef entry():\n    return core_fn()\n")
+        repo.add_file("pkg_b/core.py", "def core_fn():\n    return 1\n")
+        repo.commit("initial commit")
+        result = run_diffctx_subprocess(["graph", ".", "--summary"], cwd=repo.path)
+        assert result.returncode == EXIT_OK
+        assert "No dependency cycles detected." in result.stdout
+
+    def test_mutual_imports_report_a_cycle(self, tmp_path):
+        repo = Pygit2Repo(tmp_path / "mutual_repo")
+        repo.add_file("alpha.py", "from beta import beta_fn\n\n\ndef alpha_fn():\n    return beta_fn()\n")
+        repo.add_file("beta.py", "from alpha import alpha_fn\n\n\ndef beta_fn():\n    return alpha_fn()\n")
+        repo.commit("initial commit")
+        result = run_diffctx_subprocess(["graph", ".", "--summary", "--level", "file"], cwd=repo.path)
+        assert result.returncode == EXIT_OK
+        assert "1 dependency cycle(s) detected" in result.stdout
+        assert "alpha.py" in result.stdout
+        assert "beta.py" in result.stdout
+
+    def test_summary_edge_categories_are_shares(self, graph_repo):
+        result = run_diffctx_subprocess(["graph", ".", "--summary"], cwd=graph_repo.path)
+        assert result.returncode == EXIT_OK
+        assert "Edge categories (% of discovered relations):" in result.stdout
+        assert "%" in result.stdout.split("Edge categories")[1].splitlines()[1]
+
+    def test_hotspots_report_git_churn(self, graph_repo):
+        result = run_diffctx_subprocess(["graph", ".", "--summary"], cwd=graph_repo.path)
+        assert result.returncode == EXIT_OK
+        hotspot_lines = [line for line in result.stdout.splitlines() if "churn=" in line]
+        assert hotspot_lines
+        assert any("churn=0" not in line for line in hotspot_lines)
+
+    def test_mermaid_edge_weights_are_normalized(self, graph_repo):
+        result = run_diffctx_subprocess(["graph", ".", "--level", "file"], cwd=graph_repo.path)
+        assert result.returncode == EXIT_OK
+        edge_labels = re.findall(r'-->\|"([^"]+)"\|', result.stdout)
+        assert edge_labels
+        assert all(label.endswith("%") for label in edge_labels)
 
 
 class TestIdentityJourneys:

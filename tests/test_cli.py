@@ -32,7 +32,7 @@ def test_cli_version_display(temp_project):
 
 def test_main_module_execution(temp_project):
     output_file = temp_project / "output" / "output.yaml"
-    result = run_diffctx_subprocess([str(temp_project), "-o", str(output_file)])
+    result = run_diffctx_subprocess([str(temp_project), "-f", "yaml", "-o", str(output_file)])
     assert result.returncode == 0
     assert output_file.exists()
     tree_data = yaml.safe_load(output_file.read_text(encoding="utf-8"))
@@ -74,7 +74,7 @@ def test_run_defaults_to_diffctx_identity(capsys):
 
 def test_run_executes_tree_mode(temp_project):
     output_file = temp_project / "via_run.yaml"
-    diffctx.run([str(temp_project), "-o", str(output_file)], prog="treemapper")
+    diffctx.run([str(temp_project), "-f", "yaml", "-o", str(output_file)], prog="treemapper")
     assert output_file.exists()
     tree_data = yaml.safe_load(output_file.read_text(encoding="utf-8"))
     assert tree_data["type"] == "directory"

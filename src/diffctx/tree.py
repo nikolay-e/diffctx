@@ -176,6 +176,15 @@ def _process_entry(entry: Path, ctx: TreeBuildContext, current_depth: int) -> di
     return _create_node(entry, ctx, current_depth, is_dir)
 
 
+def _is_depth_pruned(entry: Path, ctx: TreeBuildContext, child_depth: int) -> bool:
+    if ctx.max_depth is None or child_depth < ctx.max_depth:
+        return False
+    try:
+        return next(iter(entry.iterdir()), None) is not None
+    except OSError:
+        return False
+
+
 def _create_node(entry: Path, ctx: TreeBuildContext, current_depth: int, is_dir: bool) -> dict[str, Any] | None:
     try:
         node: dict[str, Any] = {"name": entry.name, "type": "directory" if is_dir else "file"}
@@ -184,6 +193,8 @@ def _create_node(entry: Path, ctx: TreeBuildContext, current_depth: int, is_dir:
             children = build_tree(entry, ctx, current_depth + 1)
             if children:
                 node["children"] = children
+            elif _is_depth_pruned(entry, ctx, current_depth + 1):
+                node["truncated"] = True
             elif ctx.whitelist_spec is not None:
                 return None
         elif not ctx.no_content:
