@@ -95,6 +95,7 @@ emitted, whichever comes first.
 | `--alpha`   | 0.60    | How tightly context clusters around changes (PPR damping; 0–1 exclusive, higher = more focused; only affects `--scoring ppr`) |
 | `--tau`     | 0.12    | Relevance threshold for full fragment content; lower-scoring fragments are stubbed or dropped (lower = more context) |
 | `--full`    | false   | Only the changed files, every fragment, no related-code context; ignores `--budget`/`--tau`/`--alpha`/`--scoring` |
+| `--timeout` | 300     | Wall-clock deadline in seconds for the whole analysis; on expiry diffctx aborts with exit code 124 instead of hanging |
 
 Calibration of `--alpha`, `--tau`, and the edge-weight priors is documented
 in [`docs/parameter-strategy.md`](docs/parameter-strategy.md).
