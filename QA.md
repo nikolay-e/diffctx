@@ -153,14 +153,13 @@ shadow:
 cd test-repos/<repo>
 git pull --ff-only
 # Hard-cap runtime. `--timeout` (true wall-clock bound, worker thread + watchdog,
-# fast-fails instead of hanging to OOM, #70, 3725f51b) lives ONLY on the
-# standalone Rust binary `diffctx/src/main.rs`. The **Python pipx wrapper does
-# NOT expose `--timeout` at all** — verified on the released `1.10.2`:
-# `diffctx --diff --help | grep timeout` → empty, and `grep -r timeout
-# src/diffctx/cli.py` → empty (the flag never crossed into the Python CLI). So
-# the external perl cap is MANDATORY for every pipx smoke regardless of release,
-# not just "until it ships" — the wrapper needs its own watchdog around the
-# pyo3 `compute_scored_state` call first. macOS has no `timeout`; use:
+# fast-fails instead of hanging to OOM, #70, 3725f51b) exists on the standalone
+# Rust binary AND — since the 2026-07-14 QA pass — on the Python CLI
+# (`_call_with_wall_clock_deadline` in `src/diffctx/main.py`, exit 124, daemon
+# worker + `os._exit` because a runaway pyo3 call cannot be cancelled). The
+# perl cap stays MANDATORY for pipx smokes until a release ≥1.12 ships that
+# commit (the released binary on PATH predates it); after that, `--timeout 200`
+# on the pipx binary replaces the perl wrapper. macOS has no `timeout`; use:
 perl -e 'alarm 200; exec @ARGV' /Users/nikolay/.local/bin/diffctx . --diff HEAD~1
 # (or, on the dev build, just pass `--timeout 200` — the watchdog bounds it.)
 ```

@@ -10,7 +10,10 @@ as a shell user would observe them.
 from __future__ import annotations
 
 import json
+import os
 import re
+import subprocess
+import sys
 
 import pytest
 import yaml
@@ -18,13 +21,14 @@ import yaml
 from tests.framework.pygit2_backend import Pygit2Repo
 from tests.garbage_data import GARBAGE_FILES
 
-from .conftest import run_diffctx_subprocess
+from .conftest import SRC_DIR, run_diffctx_subprocess
 
 EXIT_OK = 0
 EXIT_RUNTIME = 1
 EXIT_USAGE = 2
 EXIT_ENVIRONMENT = 3
 EXIT_EMPTY_DIFF = 4
+EXIT_TIMEOUT = 124
 
 
 @pytest.fixture
@@ -281,6 +285,46 @@ class TestDiffModeJourneys:
         assert result.returncode == EXIT_ENVIRONMENT
         assert "unknown git revision 'no_such_ref..HEAD'" in result.stderr
         assert "internal error" not in result.stderr
+
+    def test_timeout_flag_accepted_and_diff_completes(self, diff_repo):
+        result = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "--timeout", "300", "-f", "yaml"], cwd=diff_repo.path)
+        assert result.returncode == EXIT_OK
+        assert yaml.safe_load(result.stdout)["type"] == "diff_context"
+
+    def test_timeout_below_one_second_is_usage_error(self, diff_repo):
+        result = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "--timeout", "0"], cwd=diff_repo.path)
+        assert result.returncode == EXIT_USAGE
+        assert "--timeout must be >= 1" in result.stderr
+
+    def test_timeout_without_diff_warns_and_is_ignored(self, temp_project):
+        result = run_diffctx_subprocess([".", "--timeout", "5"], cwd=temp_project)
+        assert result.returncode == EXIT_OK
+        assert "diff-mode flags ignored without --diff" in result.stderr
+        assert "--timeout" in result.stderr
+
+    def test_expired_deadline_aborts_with_exit_124(self):
+        """The wall-clock watchdog must hard-abort a pipeline that outlives
+        --timeout (#70): a runaway Rust computation cannot be cancelled from
+        Python, so the process exits 124 like the standalone binary. Exercised
+        in a real subprocess with a genuinely slow (sleeping) pipeline call."""
+        watchdog_script = (
+            "import time\n"
+            "from diffctx.main import _call_with_wall_clock_deadline\n"
+            "_call_with_wall_clock_deadline(lambda: time.sleep(60), 1, 'diffctx')\n"
+        )
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(SRC_DIR)
+        result = subprocess.run(
+            [sys.executable, "-c", watchdog_script],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=30,
+            check=False,
+        )
+        assert result.returncode == EXIT_TIMEOUT
+        assert "wall-clock deadline" in result.stderr
+        assert "--timeout" in result.stderr
 
     def test_diff_to_clipboard_writes_file_too(self, diff_repo, tmp_path):
         out = tmp_path / "diff.yaml"

@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_MAX_FILE_BYTES = 256 * 1024  # 256 KB
 _DEFAULT_ALPHA = 0.60
 _DEFAULT_TAU = 0.12
+# Mirrors DEFAULT_PIPELINE_TIMEOUT_SECONDS in diffctx/src/config/limits.rs.
+_DEFAULT_TIMEOUT = 300
 
 
 class _Unset:
@@ -66,6 +68,11 @@ def _validate_max_file_bytes(max_file_bytes: int, no_file_size_limit: bool) -> i
 def _validate_budget(budget: int | None) -> None:
     if budget is not None and budget < -1:
         _exit_usage_error(f"--budget must be >= -1 (-1 = unlimited, 0 = changed code only), got {budget}")
+
+
+def _validate_timeout(timeout: int) -> None:
+    if timeout < 1:
+        _exit_usage_error(f"--timeout must be >= 1 second, got {timeout}")
 
 
 def _validate_alpha(alpha: float) -> None:
@@ -241,6 +248,7 @@ class ParsedArgs:
     alpha: float = _DEFAULT_ALPHA
     tau: float = _DEFAULT_TAU
     scoring: str = "ego"
+    timeout: int = _DEFAULT_TIMEOUT
     full_diff: bool = False
     command: str | None = None
     graph: GraphArgs | None = None
@@ -299,6 +307,7 @@ Exit codes:
   2  usage error (unknown flag or invalid value)
   3  environment error (git missing, not a repository, unknown revision)
   4  --diff produced no context (clean tree or empty range)
+  124  --diff exceeded the --timeout wall-clock deadline
 """
 
 
@@ -473,6 +482,16 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
         ),
     )
     diff_group.add_argument(
+        "--timeout",
+        type=int,
+        default=_UNSET,
+        metavar="SECONDS",
+        help=(
+            f"Wall-clock deadline for --diff analysis (default: {_DEFAULT_TIMEOUT}); "
+            "on expiry diffctx aborts with exit code 124 instead of hanging"
+        ),
+    )
+    diff_group.add_argument(
         "--full",
         action="store_true",
         default=False,
@@ -495,6 +514,8 @@ def _warn_diff_only_flags(args: argparse.Namespace) -> None:
         used.append("--full")
     if args.scoring is not _UNSET:
         used.append("--scoring")
+    if args.timeout is not _UNSET:
+        used.append("--timeout")
     if used:
         flags = ", ".join(used)
         _warn(f"diff-mode flags ignored without --diff: {flags}")
@@ -564,15 +585,17 @@ def _resolve_max_file_bytes(args: argparse.Namespace) -> int | None:
     return _validate_max_file_bytes(value, args.no_file_size_limit)
 
 
-def _resolve_diff_params(args: argparse.Namespace) -> tuple[str | None, int | None, float, float, str]:
+def _resolve_diff_params(args: argparse.Namespace) -> tuple[str | None, int | None, float, float, str, int]:
     budget = None if args.budget is _UNSET else args.budget
     alpha = _DEFAULT_ALPHA if args.alpha is _UNSET else args.alpha
     tau = _DEFAULT_TAU if args.tau is _UNSET else args.tau
     scoring = "ego" if args.scoring is _UNSET else args.scoring
+    timeout = _DEFAULT_TIMEOUT if args.timeout is _UNSET else args.timeout
 
     _validate_budget(budget)
     _validate_alpha(alpha)
     _validate_tau(tau)
+    _validate_timeout(timeout)
     _warn_diff_only_flags(args)
     _warn_full_selection_conflict(args)
     if args.diff_range and not args.full and args.alpha is not _UNSET and scoring != "ppr":
@@ -583,13 +606,13 @@ def _resolve_diff_params(args: argparse.Namespace) -> tuple[str | None, int | No
         diff_range = "HEAD"
     if diff_range and args.no_ignores:
         _exit_usage_error("--no-ignores is not supported with --diff (git's own ignore rules always apply in diff mode)")
-    return diff_range, budget, alpha, tau, scoring
+    return diff_range, budget, alpha, tau, scoring, timeout
 
 
 def _build_tree_parsed_args(args: argparse.Namespace) -> ParsedArgs:
     _validate_max_depth(args.max_depth)
     max_file_bytes = _resolve_max_file_bytes(args)
-    diff_range, budget, alpha, tau, scoring = _resolve_diff_params(args)
+    diff_range, budget, alpha, tau, scoring, timeout = _resolve_diff_params(args)
     _warn_quiet_log_level_conflict(args)
 
     dirs, files = _expand_paths(args.paths)
@@ -623,6 +646,7 @@ def _build_tree_parsed_args(args: argparse.Namespace) -> ParsedArgs:
         alpha=alpha,
         tau=tau,
         scoring=scoring,
+        timeout=timeout,
         full_diff=args.full,
         extra_dirs=extra_dirs,
         extra_files=extra_files,

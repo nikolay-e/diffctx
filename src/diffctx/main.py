@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import re
 import signal
 import subprocess
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from .version import __version__
 
@@ -20,6 +24,7 @@ _EXIT_RUNTIME = 1
 _EXIT_USAGE = 2
 _EXIT_ENVIRONMENT = 3
 _EXIT_EMPTY_DIFF = 4
+_EXIT_TIMEOUT = 124
 _EXIT_INTERRUPTED = 130
 _EXIT_BROKEN_PIPE = 141
 
@@ -104,24 +109,64 @@ def _warn_empty_diff_result(result: dict[str, Any], prog: str, args: ParsedArgs)
         )
 
 
+def _call_with_wall_clock_deadline(build: Callable[[], dict[str, Any]], timeout_seconds: int, prog: str) -> dict[str, Any]:
+    # The Rust extension releases the GIL but offers no cancellation, so a
+    # pathological repo can hang far past any per-phase git timeout (#70).
+    # Mirror the standalone binary's watchdog: run the pipeline on a worker
+    # thread and hard-exit 124 on deadline — the runaway worker cannot be
+    # stopped, so finalizers must not run (os._exit, not sys.exit).
+    import threading
+
+    outcome: list[Any] = []
+
+    def worker() -> None:
+        try:
+            outcome.append(("ok", build()))
+        except BaseException as exc:
+            outcome.append(("err", exc))
+
+    thread = threading.Thread(target=worker, name="diffctx-pipeline", daemon=True)
+    thread.start()
+    thread.join(timeout_seconds)
+    if thread.is_alive():
+        print(
+            f"{prog}: pipeline exceeded {timeout_seconds}s wall-clock deadline; aborting before "
+            "OOM/SIGKILL. Narrow the review with an explicit '--diff <from>..<to>' range, "
+            "run on a smaller subtree, or raise '--timeout'.",
+            file=sys.stderr,
+        )
+        sys.stderr.flush()
+        sys.stdout.flush()
+        os._exit(_EXIT_TIMEOUT)
+    status, value = outcome[0]
+    if status == "err":
+        raise value
+    return value  # type: ignore[no-any-return]
+
+
 def _build_diff_tree(args: ParsedArgs, prog: str) -> dict[str, Any]:
     from .diffctx import build_diff_context
 
     if not args.diff_range:
         raise RuntimeError("diff_range is required in diff mode")
     _ensure_git_repo(args.root_dir, prog)
-    result = build_diff_context(
-        root_dir=args.root_dir,
-        diff_range=args.diff_range,
-        budget_tokens=args.budget,
-        alpha=args.alpha,
-        tau=args.tau,
-        no_content=args.no_content,
-        ignore_file=args.ignore_file,
-        no_default_ignores=args.no_default_ignores,
-        full=args.full_diff,
-        whitelist_file=args.whitelist_file,
-        scoring_mode=getattr(args, "scoring", "ego"),
+    result = _call_with_wall_clock_deadline(
+        lambda: build_diff_context(
+            root_dir=args.root_dir,
+            diff_range=args.diff_range or "HEAD",
+            budget_tokens=args.budget,
+            alpha=args.alpha,
+            tau=args.tau,
+            no_content=args.no_content,
+            ignore_file=args.ignore_file,
+            no_default_ignores=args.no_default_ignores,
+            full=args.full_diff,
+            whitelist_file=args.whitelist_file,
+            scoring_mode=getattr(args, "scoring", "ego"),
+            timeout=args.timeout,
+        ),
+        args.timeout,
+        prog,
     )
     _warn_empty_diff_result(result, prog, args)
     return result
