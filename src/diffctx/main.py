@@ -122,7 +122,7 @@ def _call_with_wall_clock_deadline(build: Callable[[], dict[str, Any]], timeout_
     def worker() -> None:
         try:
             outcome.append(("ok", build()))
-        except BaseException as exc:
+        except Exception as exc:  # KeyboardInterrupt/SystemExit stay on the main thread
             outcome.append(("err", exc))
 
     thread = threading.Thread(target=worker, name="diffctx-pipeline", daemon=True)
@@ -138,6 +138,8 @@ def _call_with_wall_clock_deadline(build: Callable[[], dict[str, Any]], timeout_
         sys.stderr.flush()
         sys.stdout.flush()
         os._exit(_EXIT_TIMEOUT)
+    if not outcome:
+        raise RuntimeError("pipeline worker terminated unexpectedly")
     status, value = outcome[0]
     if status == "err":
         raise value
