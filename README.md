@@ -8,6 +8,11 @@
 Instead of pasting whole files, it walks the dependency graph from the changed
 lines outward and stops as soon as additional context stops paying for itself.
 
+> Coming from [`treemapper`](https://pypi.org/project/treemapper/)? That package
+> was a thin wrapper around diffctx and is deprecated as of 2.4.0. Install
+> `diffctx` instead — every `treemapper` command, flag, and API call works
+> unchanged under the `diffctx` name (`treemapper-mcp` → `diffctx-mcp`).
+
 ## Why not just use `tree` or repomix?
 
 | | `tree` | repomix | Claude Code Review | **diffctx** |
