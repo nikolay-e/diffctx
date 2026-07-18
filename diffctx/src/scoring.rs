@@ -1,5 +1,6 @@
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Instant;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -17,6 +18,11 @@ pub struct ScoringResult {
     pub rel_scores: FxHashMap<FragmentId, f64>,
     pub filtered_fragments: Vec<Fragment>,
     pub graph: Graph,
+    /// Wall time spent constructing the typed dependency graph (edge
+    /// builders + dedup + hub suppression + per-source cap). Reported
+    /// separately so `scoring_ms` stays pure rank computation. Zero for
+    /// BM25 (no graph built).
+    pub graph_build_ms: f64,
     /// PPR push-iteration was cut by `max_pushes_cap` before convergence.
     /// Always false for non-PPR strategies (EGO/BM25).
     pub ppr_truncated: bool,
@@ -61,8 +67,10 @@ impl ScoringStrategy for PPRScoring {
         _discovered_paths: Option<&FxHashSet<Arc<str>>>,
     ) -> ScoringResult {
         let skip_expensive = all_fragments.len() > LIMITS.skip_expensive_threshold;
-        let compact = edges::collect_all_edges(all_fragments, repo_root, skip_expensive);
-        let mut g = graph::build_graph_compact(all_fragments, compact);
+        let t_graph = Instant::now();
+        let capped = edges::collect_capped_edges(all_fragments, repo_root, skip_expensive);
+        let mut g = graph::build_graph_capped(all_fragments, capped);
+        let graph_build_ms = t_graph.elapsed().as_secs_f64() * 1000.0;
         let ppr = personalized_pagerank(
             &mut g,
             core_ids,
@@ -94,6 +102,7 @@ impl ScoringStrategy for PPRScoring {
             rel_scores,
             filtered_fragments: filtered,
             graph: g,
+            graph_build_ms,
             ppr_truncated: ppr.truncated,
             ppr_forward_pushes: ppr.forward_pushes,
             ppr_backward_pushes: ppr.backward_pushes,
@@ -122,8 +131,10 @@ impl ScoringStrategy for EgoGraphScoring {
         _discovered_paths: Option<&FxHashSet<Arc<str>>>,
     ) -> ScoringResult {
         let skip_expensive = all_fragments.len() > LIMITS.skip_expensive_threshold;
-        let compact = edges::collect_all_edges(all_fragments, repo_root, skip_expensive);
-        let g = graph::build_graph_compact(all_fragments, compact);
+        let t_graph = Instant::now();
+        let capped = edges::collect_capped_edges(all_fragments, repo_root, skip_expensive);
+        let g = graph::build_graph_capped(all_fragments, capped);
+        let graph_build_ms = t_graph.elapsed().as_secs_f64() * 1000.0;
         let mut rel_scores = g.ego_graph(core_ids, self.max_depth);
 
         let diff_idents: FxHashSet<String> = all_fragments
@@ -155,6 +166,7 @@ impl ScoringStrategy for EgoGraphScoring {
             rel_scores,
             filtered_fragments: filtered,
             graph: g,
+            graph_build_ms,
             ppr_truncated: false,
             ppr_forward_pushes: 0,
             ppr_backward_pushes: 0,
@@ -263,6 +275,7 @@ impl ScoringStrategy for BM25Scoring {
             rel_scores,
             filtered_fragments: filtered,
             graph: g,
+            graph_build_ms: 0.0,
             ppr_truncated: false,
             ppr_forward_pushes: 0,
             ppr_backward_pushes: 0,

@@ -45,6 +45,19 @@ pytest
 pre-commit run --all-files
 ```
 
+## Performance-change discipline (E/Q classes)
+
+Every change is either **E-class** (bit-equivalent: identical selection
+output on identical input) or **Q-class** (output-changing). E-class
+changes may land any time but must pass
+`python -m benchmarks.equivalence_gate --a <old-run> --b <new-run>` on the
+stratified 40-instance sample (`results/sweep_v2_local/equiv/manifests`),
+plus a double-run determinism check. Q-class changes are frozen during an
+evaluation cycle (calibration -> validation -> sweep) — they invalidate
+the calibration and force a full rerun. The shared token corpus, the
+per-blob token cache, and the two-pass edge cap are all E-class precedents;
+fragmentation or scoring changes are Q-class.
+
 ## Testing
 
 Integration tests only — test against real filesystem and real git

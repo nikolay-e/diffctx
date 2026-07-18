@@ -227,6 +227,8 @@ def _paired_pull(
     mask_a = masks_a[bucket_label]
     n_a = int(mask_a.sum())
     n_b = int(masks_b[bucket_label].sum())
+    status_a = cell_a.get("status")
+    status_b = cell_b.get("status")
     a_vals: list[float] = []
     b_vals: list[float] = []
     for idx_b, iid in enumerate(cell_b["instance_id"]):
@@ -234,6 +236,13 @@ def _paired_pull(
             continue
         idx_a = ids_a[iid]
         if not mask_a[idx_a]:
+            continue
+        # Both-OK pairing (STATS_PLAN P1): an infrastructure failure on one
+        # side (ITT recall 0) must not be paired against the other side's
+        # real recall — that measures runner robustness, not retrieval.
+        if status_a is not None and str(status_a[idx_a]) != "ok":
+            continue
+        if status_b is not None and str(status_b[idx_b]) != "ok":
             continue
         a_vals.append(float(cell_a["file_recall"][idx_a]))
         b_vals.append(float(cell_b["file_recall"][idx_b]))

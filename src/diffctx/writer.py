@@ -73,8 +73,21 @@ def _write_yaml_content(file: TextIO, content: str, base_indent: str) -> None:
     elif _has_problematic_chars(content) or not content.strip():
         file.write(f'{base_indent}content: "{_escape_yaml_content(content)}"\n')
     else:
-        file.write(f"{base_indent}content: |2\n")
-        for line in content.rstrip("\n").split("\n"):
+        # Chomping must match the tail exactly: clip (|) normalizes any tail
+        # to one newline, silently adding one to newline-less files and
+        # eating trailing blank lines.
+        trailing_newlines = len(content) - len(content.rstrip("\n"))
+        if trailing_newlines == 0:
+            chomping = "-"
+            body_lines = content.split("\n")
+        elif trailing_newlines == 1:
+            chomping = ""
+            body_lines = content[:-1].split("\n")
+        else:
+            chomping = "+"
+            body_lines = content[:-1].split("\n")
+        file.write(f"{base_indent}content: |2{chomping}\n")
+        for line in body_lines:
             if line:
                 file.write(f"{content_indent}{line}\n")
             else:

@@ -63,29 +63,48 @@ def _parse_diff_path(raw: str, prefix: str) -> str | None:
     return raw[len(prefix) :] if raw.startswith(prefix) else raw
 
 
+def _classify_header_pair(cur_a: str | None, cur_b: str | None, added: set[str], deleted: set[str], modified: set[str]) -> None:
+    if cur_a is None and cur_b is not None:
+        added.add(cur_b)
+    elif cur_a is not None and cur_b is None:
+        deleted.add(cur_a)
+    elif cur_a == cur_b and cur_a is not None:
+        modified.add(cur_a)
+    elif cur_a is not None and cur_b is not None:
+        # Pure rename: old path is gone after the patch is applied,
+        # only the new path exists on the post-patch worktree.
+        deleted.add(cur_a)
+        modified.add(cur_b)
+
+
 def patch_files_detailed(patch: str) -> tuple[set[str], set[str], set[str]]:
     added: set[str] = set()
     deleted: set[str] = set()
     modified: set[str] = set()
     cur_a = cur_b = None
+    rename_from: str | None = None
     for line in patch.splitlines():
         if line.startswith("diff --git "):
             cur_a = cur_b = None
+            rename_from = None
+        elif line.startswith("rename from "):
+            rename_from = line[len("rename from ") :]
+        elif line.startswith("rename to "):
+            # 100%-similarity renames carry no ---/+++ body; without this the
+            # new path never enters the gold set and pure-rename instances
+            # silently drop out of the sweep.
+            target = line[len("rename to ") :]
+            if rename_from is not None:
+                deleted.add(rename_from)
+            modified.add(target)
+            rename_from = None
+        elif line.startswith("copy to "):
+            added.add(line[len("copy to ") :])
         elif line.startswith("--- "):
             cur_a = _parse_diff_path(line[4:], "a/")
         elif line.startswith("+++ "):
             cur_b = _parse_diff_path(line[4:], "b/")
-            if cur_a is None and cur_b is not None:
-                added.add(cur_b)
-            elif cur_a is not None and cur_b is None:
-                deleted.add(cur_a)
-            elif cur_a == cur_b and cur_a is not None:
-                modified.add(cur_a)
-            elif cur_a is not None and cur_b is not None:
-                # Pure rename: old path is gone after the patch is applied,
-                # only the new path exists on the post-patch worktree.
-                deleted.add(cur_a)
-                modified.add(cur_b)
+            _classify_header_pair(cur_a, cur_b, added, deleted, modified)
     return added, deleted, modified
 
 

@@ -84,14 +84,10 @@ fn pick_smallest_fitting(
             return Some((*cand).clone());
         }
     }
-    // Nothing fits: a changed file silently vanishing from the context is
-    // worse than a small budget overshoot, so keep the cheapest fragment
-    // that still shows the change (its signature stub usually wins here).
-    sorted.sort_by_key(|f| (change_coverage_rank(f, core_ids) == 2, f.token_count));
-    sorted
-        .into_iter()
-        .find(|c| c.token_count > 0 && !selected_ids.contains(&c.id))
-        .cloned()
+    // Nothing fits: the budget cap is a hard contract (cost(C) <= B). The
+    // changed file stays unrepresented and shows up downstream as
+    // changed-file retention < 1 rather than as a silent budget overrun.
+    None
 }
 
 pub fn coherence_post_pass(

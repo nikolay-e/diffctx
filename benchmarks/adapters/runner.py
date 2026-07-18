@@ -33,8 +33,10 @@ class RunParams:
     extra_env: dict[str, str] = field(default_factory=dict)
 
     def to_env(self) -> dict[str, str]:
+        # tau reaches Rust as a function argument, not an env var; emitting a
+        # DIFFCTX_OP_SELECTION_STOPPING_THRESHOLD here would be inert and
+        # invite "swept tau via env, saw no effect" mistakes.
         env = dict(self.extra_env)
-        env["DIFFCTX_OP_SELECTION_STOPPING_THRESHOLD"] = f"{self.tau}"
         env["DIFFCTX_OP_SELECTION_CORE_BUDGET_FRACTION"] = f"{self.core_budget_fraction}"
         return env
 
@@ -154,6 +156,7 @@ def _failure_result(
     r.extra["status"] = status
     r.extra["error"] = error
     r.extra["language"] = instance.language
+    r.extra["repo"] = instance.repo
     return r
 
 
@@ -396,7 +399,13 @@ class _RunningStats:
     monitoring readout, not a results surface.
     """
 
-    def __init__(self, total: int, interval_s: float = 30.0) -> None:
+    def __init__(
+        self,
+        total: int,
+        interval_s: float = 30.0,
+        workers: int = 1,
+        timeout_s: float | None = None,
+    ) -> None:
         self.total = total
         self.completed = 0
         self.status_counts: dict[str, int] = {}
@@ -405,6 +414,9 @@ class _RunningStats:
         self._t_start = _time.monotonic()
         self._t_last = self._t_start
         self._interval = interval_s
+        self._workers = max(1, workers)
+        self._timeout_s = timeout_s
+        self._recent: list[float] = []
 
     def add(self, r: EvalResult) -> None:
         status = str((r.extra or {}).get("status", "")) or "unknown"
@@ -416,19 +428,40 @@ class _RunningStats:
     def finish_instance(self) -> None:
         self.completed += 1
         now = _time.monotonic()
+        self._recent.append(now)
+        if len(self._recent) > 50:
+            self._recent.pop(0)
         if now - self._t_last >= self._interval or self.completed == self.total:
             self._t_last = now
             print(self.render(now), flush=True)
 
+    def _eta_str(self, elapsed: float) -> str:
+        remaining = self.total - self.completed
+        if remaining <= 0 or not self.completed:
+            return "eta=0s"
+        if remaining <= self._workers:
+            # The tail cannot parallelize below the worker count: each
+            # straggler runs alone and a throughput extrapolation lies by
+            # orders of magnitude here. The per-instance timeout is the only
+            # honest bound available without in-flight start times.
+            bound = f"≤{self._timeout_s:.0f}s" if self._timeout_s else "unbounded"
+            return f"eta={bound} (tail of {remaining})"
+        if len(self._recent) >= 2:
+            window = self._recent[-1] - self._recent[0]
+            rate = (len(self._recent) - 1) / window if window > 0 else 0.0
+        else:
+            rate = self.completed / elapsed if elapsed > 0 else 0.0
+        eta = remaining / rate if rate > 0 else 0.0
+        return f"eta~{eta:.0f}s"
+
     def render(self, now: float) -> str:
         elapsed = now - self._t_start
-        eta = elapsed / self.completed * (self.total - self.completed) if self.completed else 0.0
         statuses = " ".join(f"{k}={v}" for k, v in sorted(self.status_counts.items()))
         recall = f" mean_file_recall={self.recall_sum / self.recall_n:.3f}" if self.recall_n else ""
         return (
             f"[progress] {self.completed}/{self.total} "
             f"({100.0 * self.completed / max(self.total, 1):.0f}%) "
-            f"elapsed={elapsed:.0f}s eta={eta:.0f}s {statuses}{recall}"
+            f"elapsed={elapsed:.0f}s {self._eta_str(elapsed)} {statuses}{recall}"
         )
 
 
@@ -447,7 +480,7 @@ def _run_multi_budget_parallel(
     from benchmarks.common import _init_worker
 
     pebble_timeout = timeout_per_instance * n_budgets + 30.0
-    stats = _RunningStats(len(pending))
+    stats = _RunningStats(len(pending), workers=workers, timeout_s=pebble_timeout)
     # Drain in COMPLETION order: an in-submission-order drain blocks the
     # checkpoint (and progress) behind the slowest early instance, so a
     # kill loses every finished-but-undrained result.
@@ -558,7 +591,7 @@ def _run_parallel(
     from concurrent.futures import as_completed
 
     pebble_timeout = max(timeout_per_instance + 30.0, 60.0)
-    stats = _RunningStats(len(pending))
+    stats = _RunningStats(len(pending), workers=workers, timeout_s=pebble_timeout)
 
     # Drain in COMPLETION order (see _run_multi_budget_parallel).
     with ProcessPool(

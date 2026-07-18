@@ -58,9 +58,11 @@ _LATENCY_BREAKDOWN_FIELDS: tuple[str, ...] = (
     "discovery_ms",
     "parse_discovered_ms",
     "tokenization_ms",
+    "graph_build_ms",
     "scoring_selection_ms",
     "scoring_ms",
     "selection_ms",
+    "peak_rss_bytes",
     "candidate_count",
     "edge_count",
     "edges_before_cap",
@@ -167,8 +169,8 @@ def _by_language(rows: Sequence[dict]) -> dict[str, dict[str, float]]:
             "n": float(n),
             "file_recall": mean_r,
             "file_precision": mean_p,
-            "f1": _f_beta(mean_p, mean_r, 1.0),
-            "f2": _f_beta(mean_p, mean_r, 2.0),
+            "f1": statistics.fmean([_f_beta(p, r, 1.0) for p, r in zip(precs, recalls)]),
+            "f2": statistics.fmean([_f_beta(p, r, 2.0) for p, r in zip(precs, recalls)]),
         }
     return out
 
@@ -200,10 +202,10 @@ def _recall_precision_f_block(bucket_rows: list[dict], include_f2: bool) -> dict
         "n": float(len(bucket_rows)),
         "file_recall": statistics.fmean(recalls),
         "file_precision": statistics.fmean(precs),
-        "f1": _f_beta(statistics.fmean(precs), statistics.fmean(recalls), 1.0),
+        "f1": statistics.fmean([_f_beta(p, r, 1.0) for p, r in zip(precs, recalls)]),
     }
     if include_f2:
-        block["f2"] = _f_beta(statistics.fmean(precs), statistics.fmean(recalls), 2.0)
+        block["f2"] = statistics.fmean([_f_beta(p, r, 2.0) for p, r in zip(precs, recalls)])
     return block
 
 
@@ -356,12 +358,14 @@ def compute_cell_summary(rows: Sequence[dict]) -> dict:
     rec_block["hist"] = _recall_histogram(recall)
     prec_block = _percentile_block(precision)
 
+    ok_recall = [float(r.get("file_recall") or 0.0) for r in rows if str((r.get("extra") or {}).get("status", "")) == "ok"]
     out: dict = {
         "n": n,
         "ok": ok,
         "ok_pct": 100.0 * ok / n,
         "statuses": statuses,
         "errors": dict(sorted(errors.items(), key=lambda x: -x[1])[:10]),
+        "file_recall_ok_only": statistics.fmean(ok_recall) if ok_recall else 0.0,
         "file_recall": rec_block,
         "file_precision": prec_block,
         "file_fbeta": _f_beta_block(precision, recall),
@@ -379,17 +383,23 @@ def compute_cell_summary(rows: Sequence[dict]) -> dict:
 
 
 def load_jsonl(path: Path) -> list[dict]:
-    rows: list[dict] = []
+    by_id: dict[str, dict] = {}
+    anonymous: list[dict] = []
     with path.open() as f:
         for line in f:
             line = line.strip()
             if not line:
                 continue
             try:
-                rows.append(json.loads(line))
+                row = json.loads(line)
             except ValueError:
                 continue
-    return rows
+            iid = row.get("instance_id")
+            if iid:
+                by_id[str(iid)] = row
+            else:
+                anonymous.append(row)
+    return list(by_id.values()) + anonymous
 
 
 def main() -> int:

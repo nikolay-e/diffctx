@@ -67,7 +67,9 @@ def _validate_max_file_bytes(max_file_bytes: int, no_file_size_limit: bool) -> i
 
 def _validate_budget(budget: int | None) -> None:
     if budget is not None and budget < -1:
-        _exit_usage_error(f"--budget must be >= -1 (-1 = unlimited, 0 = changed code only), got {budget}")
+        _exit_usage_error(
+            f"--budget must be >= -1 (-1 = unlimited, 0 = strict-zero floor; use --full for changed files only), got {budget}"
+        )
 
 
 def _validate_timeout(timeout: int) -> None:
@@ -448,7 +450,7 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
         type=int,
         default=_UNSET,
         metavar="TOKENS",
-        help="Token budget: omit = auto (default), N = fixed cap, -1 = unlimited, 0 = changed code only (no expansion)",
+        help="Token budget: omit = auto (default), N = fixed cap, -1 = unlimited, 0 = strict-zero floor (empty selection; use --full for changed files only)",
     )
     diff_group.add_argument(
         "--alpha",

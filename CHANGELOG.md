@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **diffctx invoked from inside a git hook silently analyzed the wrong
+  repository.** Git exports repo-locating env vars (`GIT_DIR`,
+  `GIT_INDEX_FILE`, `GIT_WORK_TREE`, ...) to hook subprocesses; inherited,
+  they overrode `-C` on every internal git call. All git spawns now scrub
+  these variables (`git_command()` in `git.rs`).
+- Large-repo hangs/OOM on trivial diffs (#70, #95): discovery no longer
+  re-reads and re-tokenizes the whole candidate universe per ensemble
+  strategy (one shared pass + a persistent per-blob token cache keyed by
+  `(blob OID, tokenizer epoch)`), and edge construction is two-pass with a
+  bounded per-source top-K instead of materializing up to tens of millions
+  of raw edges before the cap; pass 2 replays a compact 16-byte-per-emission
+  log instead of re-running the builders, so generation cost stays 1x.
+  Verified: gitpod 8000s-hang -> 35.7s,
+  pytorch 1848s-SIGKILL -> 7.4s, mui/material-ui OOM class recovered.
+  Outputs are bit-identical (gated by `benchmarks/equivalence_gate.py`).
+
+### Known limitations
+
+- Near-dense edge emission on huge same-directory trees (observed: 199M
+  raw edges, 37GB peak on one mui/material-ui instance) remains expensive
+  even with bounded construction; tracked in #116.
+
+### Changed
+
+- **The token budget is now a hard cap.** The changed-files post-pass no
+  longer exceeds the budget to guarantee representation: a changed file
+  whose cheapest representative does not fit stays unrepresented (visible
+  as changed-file retention < 1). `--budget 0` therefore yields an empty
+  selection (use `--full` for changed files only); CLI help updated.
+- Latency telemetry: new `graph_build_ms` phase (graph construction was
+  previously misattributed to `scoring_ms`, which now measures pure
+  ranking) and `peak_rss_bytes` (in-process peak memory). Release builds
+  carry line tables (`debug = "line-tables-only"`) for profiling at no
+  runtime cost.
+
 ## [1.11.0] - 2026-07-07
 
 ### Changed
