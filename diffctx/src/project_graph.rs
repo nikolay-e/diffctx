@@ -100,13 +100,13 @@ pub fn build_project_graph_with_options(
         .skip_expensive_edges
         .unwrap_or_else(|| all_fragments.len() > LIMITS.skip_expensive_threshold);
 
-    let compact = edges::collect_all_edges(
+    let capped = edges::collect_capped_edges(
         &all_fragments,
         Some(resolved_root.as_path()),
         skip_expensive,
     );
 
-    let graph = graph::build_graph_compact(&all_fragments, compact);
+    let graph = graph::build_graph_capped(&all_fragments, capped);
 
     Ok(ProjectGraph {
         fragments: all_fragments,
@@ -141,6 +141,7 @@ mod tests {
         git(dir, &["init", "-q", "-b", "main"]);
         git(dir, &["config", "user.email", "test@example.com"]);
         git(dir, &["config", "user.name", "Test"]);
+        git(dir, &["config", "commit.gpgsign", "false"]);
     }
 
     fn commit_all(dir: &Path) {

@@ -1,3 +1,6 @@
+use std::cmp::{Ordering, Reverse};
+use std::collections::BinaryHeap;
+
 use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -537,61 +540,85 @@ fn build_csr_owned(
     }
 }
 
+/// Hub-suppression damping factors, precomputed from dedup-aware degree
+/// counters so the damped weight of any edge can be evaluated without
+/// materializing the edge universe. The per-edge arithmetic is identical
+/// to the historical in-place suppression loops: at most one division,
+/// by `ln(1+in_degree)` for non-exempt edges into hub destinations or by
+/// `sqrt(fan)` for Semantic edges out of wide-fan sources.
+pub struct SuppressionFactors {
+    in_degree: Vec<u32>,
+    d_p95: f64,
+    sem_file_deg: Vec<u32>,
+}
+
+impl SuppressionFactors {
+    pub fn from_counters(in_degree: Vec<u32>, sem_file_deg: Vec<u32>) -> Self {
+        let mut degrees_sorted: Vec<u32> = in_degree.iter().copied().filter(|&d| d > 0).collect();
+        degrees_sorted.sort_unstable();
+        let d_p95 = if degrees_sorted.is_empty() {
+            0.0
+        } else {
+            let n = degrees_sorted.len();
+            let idx = ((n as f64 * 0.95).ceil() as usize)
+                .saturating_sub(1)
+                .min(n - 1);
+            degrees_sorted[idx] as f64
+        };
+        Self {
+            in_degree,
+            d_p95,
+            sem_file_deg,
+        }
+    }
+
+    fn from_edges(edges: &[CompactEdge], idx_to_node: &[FragmentId]) -> Self {
+        let n_nodes = idx_to_node.len();
+        let mut in_degree = vec![0u32; n_nodes];
+        for e in edges {
+            in_degree[e.dst as usize] += 1;
+        }
+
+        let mut sem_out_files: FxHashMap<u32, FxHashSet<&str>> = FxHashMap::default();
+        for e in edges {
+            if e.category == EdgeCategory::Semantic {
+                sem_out_files
+                    .entry(e.src)
+                    .or_default()
+                    .insert(idx_to_node[e.dst as usize].path.as_ref());
+            }
+        }
+        let mut sem_file_deg = vec![0u32; n_nodes];
+        for (&src, files) in &sem_out_files {
+            sem_file_deg[src as usize] = files.len() as u32;
+        }
+
+        Self::from_counters(in_degree, sem_file_deg)
+    }
+
+    pub fn damp(&self, weight: f64, category: EdgeCategory, src: u32, dst: u32) -> f64 {
+        let mut w = weight;
+        let dst_deg = self.in_degree[dst as usize] as f64;
+        if dst_deg > self.d_p95 && !category.is_suppression_exempt() {
+            w /= dst_deg.ln_1p().max(1.0);
+        }
+        if category == EdgeCategory::Semantic {
+            let src_deg = self.sem_file_deg[src as usize];
+            if src_deg >= GRAPH_FILTERING.hub_out_degree_threshold as u32 {
+                w /= (src_deg as f64).sqrt();
+            }
+        }
+        w
+    }
+}
+
 fn apply_hub_suppression(edges: &mut [CompactEdge], idx_to_node: &[FragmentId]) {
     if edges.is_empty() {
         return;
     }
-    let n_nodes = idx_to_node.len();
-
-    let mut in_degree = vec![0u32; n_nodes];
-    for e in edges.iter() {
-        in_degree[e.dst as usize] += 1;
-    }
-
-    let mut degrees_sorted: Vec<u32> = in_degree.iter().copied().filter(|&d| d > 0).collect();
-    degrees_sorted.sort_unstable();
-    let d_p95 = if degrees_sorted.is_empty() {
-        0.0
-    } else {
-        let n = degrees_sorted.len();
-        let idx = ((n as f64 * 0.95).ceil() as usize)
-            .saturating_sub(1)
-            .min(n - 1);
-        degrees_sorted[idx] as f64
-    };
-
+    let factors = SuppressionFactors::from_edges(edges, idx_to_node);
     for e in edges.iter_mut() {
-        let dst_deg = in_degree[e.dst as usize] as f64;
-        if dst_deg > d_p95 && !e.category.is_suppression_exempt() {
-            let divisor = dst_deg.ln_1p().max(1.0);
-            e.weight /= divisor;
-        }
-    }
-
-    let mut sem_out_files: FxHashMap<u32, FxHashSet<&str>> = FxHashMap::default();
-    for e in edges.iter() {
-        if e.category == EdgeCategory::Semantic {
-            sem_out_files
-                .entry(e.src)
-                .or_default()
-                .insert(idx_to_node[e.dst as usize].path.as_ref());
-        }
-    }
-
-    if !sem_out_files.is_empty() {
-        let mut sem_file_deg: Vec<u32> = vec![0; n_nodes];
-        for (&si, files) in &sem_out_files {
-            sem_file_deg[si as usize] = files.len() as u32;
-        }
-
-        for e in edges.iter_mut() {
-            if e.category == EdgeCategory::Semantic {
-                let src_deg = sem_file_deg[e.src as usize];
-                if src_deg >= GRAPH_FILTERING.hub_out_degree_threshold as u32 {
-                    e.weight /= (src_deg as f64).sqrt();
-                }
-            }
-        }
+        e.weight = factors.damp(e.weight, e.category, e.src, e.dst);
     }
 }
 
@@ -611,7 +638,10 @@ const DEFAULT_MAX_OUT_EDGES_PER_NODE: usize = 64;
 /// Returns the cap stats for diagnostic surfacing into `LatencyBreakdown`.
 /// Keeps each source's top-K neighbors by weight (ties broken by dst
 /// index for determinism), truncating the rest in place.
-fn cap_out_edges_per_source(edges: &mut Vec<CompactEdge>, max_per_node: usize) -> EdgeCapStats {
+pub(crate) fn cap_out_edges_per_source(
+    edges: &mut Vec<CompactEdge>,
+    max_per_node: usize,
+) -> EdgeCapStats {
     let edges_before = edges.len();
 
     edges.sort_unstable_by(|a, b| {
@@ -656,12 +686,78 @@ fn cap_out_edges_per_source(edges: &mut Vec<CompactEdge>, max_per_node: usize) -
     }
 }
 
-fn read_max_out_edges_per_node() -> usize {
+pub(crate) fn read_max_out_edges_per_node() -> usize {
     std::env::var("DIFFCTX_MAX_EDGES_PER_NODE")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
         .filter(|&v| v > 0)
         .unwrap_or(DEFAULT_MAX_OUT_EDGES_PER_NODE)
+}
+
+/// Candidate out-edge ranked by post-suppression weight. The ordering
+/// replicates the sort in `cap_out_edges_per_source` (descending weight,
+/// ties by ascending dst index), so a bounded min-heap of these keeps
+/// exactly the edges the full sort-and-truncate would keep.
+#[derive(Clone, Copy)]
+pub struct RankedCandidate {
+    pub weight: f64,
+    pub dst: u32,
+    pub category: EdgeCategory,
+}
+
+impl RankedCandidate {
+    fn rank(&self, other: &Self) -> Ordering {
+        self.weight
+            .partial_cmp(&other.weight)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| other.dst.cmp(&self.dst))
+    }
+}
+
+impl PartialEq for RankedCandidate {
+    fn eq(&self, other: &Self) -> bool {
+        self.rank(other) == Ordering::Equal
+    }
+}
+
+impl Eq for RankedCandidate {}
+
+impl PartialOrd for RankedCandidate {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.rank(other))
+    }
+}
+
+impl Ord for RankedCandidate {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.rank(other)
+    }
+}
+
+pub type SourceTopK = BinaryHeap<Reverse<RankedCandidate>>;
+
+pub fn push_bounded_top_k(heap: &mut SourceTopK, candidate: RankedCandidate, k: usize) {
+    if heap.len() < k {
+        heap.push(Reverse(candidate));
+        return;
+    }
+    if let Some(Reverse(worst)) = heap.peek() {
+        if candidate.rank(worst) == Ordering::Greater {
+            heap.pop();
+            heap.push(Reverse(candidate));
+        }
+    }
+}
+
+/// Output of the two-pass edge construction: the final damped, deduped,
+/// per-source-capped edge set plus the full pre-cap category table and
+/// cap stats derived from pass-1 counters.
+pub struct CappedEdges {
+    pub node_to_idx: FxHashMap<FragmentId, u32>,
+    pub idx_to_node: Vec<FragmentId>,
+    pub edges: Vec<CompactEdge>,
+    pub category_entries: Vec<(u32, u32, EdgeCategory)>,
+    pub cap_stats: EdgeCapStats,
 }
 
 /// Build a CSR from (src, dst, weight) triples over the interned node
@@ -714,9 +810,38 @@ fn build_csr_from_pairs(
     }
 }
 
-/// Main graph-construction path: hub suppression, per-source cap, and
-/// CSR assembly all run on the interned edge array, never materializing
-/// FragmentId-keyed maps of the full edge universe.
+/// Graph-construction path for pre-capped edges from the two-pass
+/// pipeline: suppression and the per-source cap already ran, so only
+/// the category table and CSR assembly remain.
+pub fn build_graph_capped(fragments: &[Fragment], capped: CappedEdges) -> Graph {
+    let CappedEdges {
+        node_to_idx,
+        idx_to_node,
+        edges,
+        category_entries,
+        cap_stats,
+    } = capped;
+    tracing::debug!(
+        "edge cap K={}: {} -> {} (dropped {} from {} nodes)",
+        cap_stats.max_out_edges_per_node,
+        cap_stats.edges_before_cap,
+        cap_stats.edges_after_cap,
+        cap_stats.edges_dropped_by_cap,
+        cap_stats.nodes_capped,
+    );
+    assemble_graph(
+        fragments,
+        node_to_idx,
+        idx_to_node,
+        edges,
+        category_entries,
+        cap_stats,
+    )
+}
+
+/// Materialized-edge construction path kept for the map-based adapter
+/// and small callers: hub suppression, per-source cap, and CSR assembly
+/// all run on the interned edge array.
 pub fn build_graph_compact(fragments: &[Fragment], compact: CompactEdges) -> Graph {
     let CompactEdges {
         node_to_idx,
@@ -740,6 +865,24 @@ pub fn build_graph_compact(fragments: &[Fragment], compact: CompactEdges) -> Gra
         cap_stats.nodes_capped,
     );
 
+    assemble_graph(
+        fragments,
+        node_to_idx,
+        idx_to_node,
+        edges,
+        category_entries,
+        cap_stats,
+    )
+}
+
+fn assemble_graph(
+    fragments: &[Fragment],
+    node_to_idx: FxHashMap<FragmentId, u32>,
+    idx_to_node: Vec<FragmentId>,
+    edges: Vec<CompactEdge>,
+    category_entries: Vec<(u32, u32, EdgeCategory)>,
+    cap_stats: EdgeCapStats,
+) -> Graph {
     let fwd_pairs: Vec<(u32, u32, f64)> = edges
         .iter()
         .filter(|e| e.weight > 0.0)
