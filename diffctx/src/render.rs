@@ -63,13 +63,19 @@ pub struct LatencyBreakdown {
     pub discovery_ms: f64,
     pub parse_discovered_ms: f64,
     pub tokenization_ms: f64,
-    /// Combined scoring + selection time. Kept for backward
-    /// compatibility with the existing checkpoint schema; the split
-    /// values below are the new diagnostic signal.
+    /// Typed dependency graph construction: edge builders + dedup + hub
+    /// suppression + per-source cap. Carved out of `scoring_ms` (which
+    /// used to absorb it) so the cost distribution is truthful. Zero for
+    /// BM25 mode (no graph built).
+    pub graph_build_ms: f64,
+    /// Combined graph build + scoring + selection time. Kept for
+    /// backward compatibility with the existing checkpoint schema; the
+    /// split values below are the new diagnostic signal.
     pub scoring_selection_ms: f64,
     pub total_ms: f64,
-    /// Heavy-phase scoring only (PPR/EGO/BM25 + edge construction +
-    /// graph build), excludes the selection stage.
+    /// Heavy-phase rank computation only (PPR/EGO/BM25 + relevance
+    /// filtering). Graph construction is reported in `graph_build_ms`;
+    /// the selection stage is excluded.
     pub scoring_ms: f64,
     /// Selection stage only (lazy greedy / Boltzmann + post-passes).
     pub selection_ms: f64,
@@ -107,6 +113,9 @@ pub struct LatencyBreakdown {
     /// adaptive stopping. 0 when the greedy loop ended for another
     /// reason (budget exhausted, no candidates, singleton override).
     pub stopping_certificate: f64,
+    /// Lifetime peak physical memory of the process, sampled in-process
+    /// at the end of the run. 0 when the platform query fails.
+    pub peak_rss_bytes: u64,
 }
 
 #[derive(Serialize, Clone)]

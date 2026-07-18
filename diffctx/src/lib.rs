@@ -14,6 +14,7 @@ pub mod languages;
 pub mod memory_pipeline;
 pub mod mode;
 pub mod parsers;
+pub mod peak_rss;
 pub mod pipeline;
 pub mod postpass;
 pub mod ppr;

@@ -330,6 +330,7 @@ fn build_diff_context<'py>(
         latency.set_item("discovery_ms", r(lb.discovery_ms))?;
         latency.set_item("parse_discovered_ms", r(lb.parse_discovered_ms))?;
         latency.set_item("tokenization_ms", r(lb.tokenization_ms))?;
+        latency.set_item("graph_build_ms", r(lb.graph_build_ms))?;
         latency.set_item("scoring_selection_ms", r(lb.scoring_selection_ms))?;
         latency.set_item("total_ms", r(lb.total_ms))?;
         latency.set_item("scoring_ms", r(lb.scoring_ms))?;
@@ -345,6 +346,7 @@ fn build_diff_context<'py>(
         latency.set_item("ppr_forward_pushes", lb.ppr_forward_pushes)?;
         latency.set_item("ppr_backward_pushes", lb.ppr_backward_pushes)?;
         latency.set_item("stopping_certificate", lb.stopping_certificate)?;
+        latency.set_item("peak_rss_bytes", lb.peak_rss_bytes)?;
     } else {
         latency.set_item("total_ms", (total_ms * 10.0).round() / 10.0)?;
     }
@@ -466,6 +468,7 @@ fn diff_context_output_to_dict<'py>(
         latency.set_item("discovery_ms", r(lb.discovery_ms))?;
         latency.set_item("parse_discovered_ms", r(lb.parse_discovered_ms))?;
         latency.set_item("tokenization_ms", r(lb.tokenization_ms))?;
+        latency.set_item("graph_build_ms", r(lb.graph_build_ms))?;
         latency.set_item("scoring_selection_ms", r(lb.scoring_selection_ms))?;
         latency.set_item("total_ms", r(lb.total_ms))?;
         latency.set_item("scoring_ms", r(lb.scoring_ms))?;
@@ -481,6 +484,7 @@ fn diff_context_output_to_dict<'py>(
         latency.set_item("ppr_forward_pushes", lb.ppr_forward_pushes)?;
         latency.set_item("ppr_backward_pushes", lb.ppr_backward_pushes)?;
         latency.set_item("stopping_certificate", lb.stopping_certificate)?;
+        latency.set_item("peak_rss_bytes", lb.peak_rss_bytes)?;
     }
     dict.set_item("latency", latency)?;
     Ok(dict)

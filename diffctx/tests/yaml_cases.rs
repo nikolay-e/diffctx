@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use _diffctx::mode::ScoringMode;
 use _diffctx::pipeline::build_diff_context;
@@ -67,9 +66,8 @@ fn discover_cases() -> Vec<DiscoveredCase> {
 }
 
 fn run_git(repo: &Path, args: &[&str]) -> Result<(), String> {
-    let out = Command::new("git")
+    let out = _diffctx::git::git_command(repo)
         .args(args)
-        .current_dir(repo)
         .env("GIT_AUTHOR_NAME", "test")
         .env("GIT_AUTHOR_EMAIL", "test@example.com")
         .env("GIT_COMMITTER_NAME", "test")
@@ -98,9 +96,8 @@ fn write_files(repo: &Path, files: &BTreeMap<String, String>) -> Result<(), Stri
 }
 
 fn rev_parse_head(repo: &Path) -> Result<String, String> {
-    let out = Command::new("git")
+    let out = _diffctx::git::git_command(repo)
         .args(["rev-parse", "HEAD"])
-        .current_dir(repo)
         .output()
         .map_err(|e| format!("spawn git: {e}"))?;
     if !out.status.success() {

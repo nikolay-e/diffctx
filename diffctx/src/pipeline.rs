@@ -55,6 +55,7 @@ pub struct HeavyLatencyMs {
     pub discovery: f64,
     pub parse_discovered: f64,
     pub tokenization: f64,
+    pub graph_build: f64,
     pub scoring: f64,
 }
 
@@ -316,6 +317,7 @@ pub fn compute_scored_state(
     let t_done = Instant::now();
     batch_reader.close();
 
+    let graph_build_ms = scoring_result.graph_build_ms;
     let heavy_latency_ms = HeavyLatencyMs {
         parse_changed: t_parse_changed.duration_since(t0).as_secs_f64() * 1000.0,
         universe_walk: t_universe.duration_since(t_parse_changed).as_secs_f64() * 1000.0,
@@ -325,16 +327,19 @@ pub fn compute_scored_state(
             .duration_since(t_parse_discovered)
             .as_secs_f64()
             * 1000.0,
-        scoring: t_done.duration_since(t_tokenization).as_secs_f64() * 1000.0,
+        graph_build: graph_build_ms,
+        scoring: (t_done.duration_since(t_tokenization).as_secs_f64() * 1000.0 - graph_build_ms)
+            .max(0.0),
     };
 
     tracing::debug!(
-        "diffctx heavy: parse_changed {:.3}s, universe {:.3}s, discovery {:.3}s, parse_discovered {:.3}s, tokenization {:.3}s, scoring {:.3}s",
+        "diffctx heavy: parse_changed {:.3}s, universe {:.3}s, discovery {:.3}s, parse_discovered {:.3}s, tokenization {:.3}s, graph_build {:.3}s, scoring {:.3}s",
         heavy_latency_ms.parse_changed / 1000.0,
         heavy_latency_ms.universe_walk / 1000.0,
         heavy_latency_ms.discovery / 1000.0,
         heavy_latency_ms.parse_discovered / 1000.0,
         heavy_latency_ms.tokenization / 1000.0,
+        heavy_latency_ms.graph_build / 1000.0,
         heavy_latency_ms.scoring / 1000.0,
     );
 
@@ -457,6 +462,7 @@ pub fn select_with_params(
         + state.heavy_latency_ms.discovery
         + state.heavy_latency_ms.parse_discovered
         + state.heavy_latency_ms.tokenization
+        + state.heavy_latency_ms.graph_build
         + state.heavy_latency_ms.scoring
         + select_ms;
 
@@ -490,7 +496,10 @@ pub fn select_with_params(
         discovery_ms: state.heavy_latency_ms.discovery,
         parse_discovered_ms: state.heavy_latency_ms.parse_discovered,
         tokenization_ms: state.heavy_latency_ms.tokenization,
-        scoring_selection_ms: state.heavy_latency_ms.scoring + select_ms,
+        graph_build_ms: state.heavy_latency_ms.graph_build,
+        scoring_selection_ms: state.heavy_latency_ms.graph_build
+            + state.heavy_latency_ms.scoring
+            + select_ms,
         total_ms,
         scoring_ms: state.heavy_latency_ms.scoring,
         selection_ms: select_ms,
@@ -505,6 +514,7 @@ pub fn select_with_params(
         stopping_certificate,
         ppr_forward_pushes: state.scoring_result.ppr_forward_pushes,
         ppr_backward_pushes: state.scoring_result.ppr_backward_pushes,
+        peak_rss_bytes: crate::peak_rss::peak_rss_bytes(),
     });
     output
 }
@@ -706,6 +716,7 @@ fn empty_scored_state(root_dir: PathBuf) -> ScoredState {
             rel_scores: FxHashMap::default(),
             filtered_fragments: Vec::new(),
             graph: crate::graph::Graph::new(),
+            graph_build_ms: 0.0,
             ppr_truncated: false,
             ppr_forward_pushes: 0,
             ppr_backward_pushes: 0,
