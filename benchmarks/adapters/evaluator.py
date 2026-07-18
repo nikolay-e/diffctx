@@ -133,7 +133,7 @@ class UniversalEvaluator:
         output: SelectionOutput,
         budget: int,
     ) -> EvalResult:
-        from benchmarks.common import patch_size_metrics
+        from benchmarks.common import patch_files_at_head, patch_size_metrics
 
         file_recall, file_precision = _file_metrics(output.selected_files, instance.gold_files)
         result = EvalResult(
@@ -157,11 +157,21 @@ class UniversalEvaluator:
         result.extra["gold_to_changed_ratio"] = n_gold / n_changed if n_changed > 0 else 0.0
         result.extra["is_single_file_gold"] = n_gold == 1
         result.extra["is_multi_file_gold"] = n_gold >= 2
+        result.extra["repo"] = instance.repo
+        result.extra["selected_files"] = sorted(output.selected_files)
+        changed = frozenset(patch_files_at_head(instance.gold_patch))
+        nontrivial_gold = instance.gold_files - changed
+        result.extra["n_nontrivial_gold"] = len(nontrivial_gold)
+        if nontrivial_gold:
+            result.extra["nontrivial_file_recall"] = len(output.selected_files & nontrivial_gold) / len(nontrivial_gold)
+        if changed:
+            result.extra["changed_file_retention"] = len(output.selected_files & changed) / len(changed)
         if instance.gold_fragments is not None:
             n_whole = sum(1 for g in instance.gold_fragments if g.is_whole_file())
             n_hunk = len(instance.gold_fragments) - n_whole
             n_gold_lines = sum(
-                ((g.end_line or 0) - (g.start_line or 0) + 1) if not g.is_whole_file() else 0 for g in instance.gold_fragments
+                max(0, (g.end_line or 0) - (g.start_line or 0) + 1) if not g.is_whole_file() else 0
+                for g in instance.gold_fragments
             )
             result.extra["n_gold_fragments_total"] = len(instance.gold_fragments)
             result.extra["n_gold_fragments_whole_file"] = n_whole

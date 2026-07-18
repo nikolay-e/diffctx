@@ -195,7 +195,5 @@ def make_bm25_eval_fn(repos_dir: Path):
     try:
         import rank_bm25 as _  # noqa: F401
     except ImportError as e:
-        raise RuntimeError(
-            "rank-bm25 not installed; expected to be in requirements-bench.lock. Run: pip install rank-bm25"
-        ) from e
+        raise RuntimeError("rank-bm25 not installed; expected from requirements-bench.txt. Run: pip install rank-bm25") from e
     return functools.partial(_pool_eval_bm25, str(repos_dir))

@@ -81,10 +81,11 @@ def _stub_eval_fn(instance: BenchmarkInstance, params: RunParams) -> EvalResult:
     )
 
 
-def test_run_params_to_env_includes_both_calibrated_knobs():
-    env = RunParams(tau=0.123, core_budget_fraction=0.456).to_env()
-    assert env["DIFFCTX_OP_SELECTION_STOPPING_THRESHOLD"] == "0.123"
+def test_run_params_to_env_emits_cbf_and_extra_env_only():
+    env = RunParams(tau=0.123, core_budget_fraction=0.456, extra_env={"DIFFCTX_EGO_LEXICAL_EPS": "0"}).to_env()
     assert env["DIFFCTX_OP_SELECTION_CORE_BUDGET_FRACTION"] == "0.456"
+    assert env["DIFFCTX_EGO_LEXICAL_EPS"] == "0"
+    assert "DIFFCTX_OP_SELECTION_STOPPING_THRESHOLD" not in env
 
 
 def test_run_params_label_is_filename_safe():

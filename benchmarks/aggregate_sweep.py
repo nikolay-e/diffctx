@@ -196,7 +196,7 @@ def _format_sweep_cell(cell: dict | None) -> str:
     fr = (summary.get("file_recall") or {}).get("mean")
     n = summary.get("n", 0)
     ok = summary.get("ok", 0)
-    return f"| n={n}" if fr is None else f"| {fr:.3f} (n={ok}/{n})"
+    return f"| n={n}" if fr is None else f"| {fr:.3f} (ok={ok}, n={n}, ITT)"
 
 
 def render_sweep_table(cells: list[dict]) -> str:

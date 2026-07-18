@@ -82,6 +82,7 @@ def _arm_diffctx_kill_switch(timeout_s: float):
     because they are benchmark scaffolding, not part of the algorithm
     under measurement.
     """
+    import multiprocessing
     import threading
 
     if timeout_s <= 0:
@@ -93,6 +94,19 @@ def _arm_diffctx_kill_switch(timeout_s: float):
                 flush=True,
             )
             _arm_diffctx_kill_switch._warned_no_timeout = True  # type: ignore[attr-defined]
+        return None
+    if multiprocessing.parent_process() is None:
+        # Serial mode runs eval in the orchestrator process itself, where
+        # os._exit(137) would tear down the whole run (and every checkpoint
+        # in flight) instead of recording one timeout row. The hard timeout
+        # only exists inside pool workers; serial mode runs unbounded.
+        if not getattr(_arm_diffctx_kill_switch, "_warned_serial", False):
+            print(
+                f"[pid={os.getpid()}] WARN: serial mode — per-instance hard timeout disabled "
+                "(kill switch would exit the orchestrator); use workers>1 for enforced timeouts",
+                flush=True,
+            )
+            _arm_diffctx_kill_switch._warned_serial = True  # type: ignore[attr-defined]
         return None
     timer = threading.Timer(timeout_s, lambda: os._exit(137))
     timer.daemon = True
@@ -339,6 +353,11 @@ def pool_eval_all_cells(
     scoring_mode = params_list[0].scoring
     out: list[tuple[RunParams, EvalResult]] = []
     applied = False
+    # Heavy-phase env (DIFFCTX_OBJECTIVE, DIFFCTX_EGO_LEXICAL_EPS,
+    # DIFFCTX_RELATEDNESS_BONUS, graph depth) is read inside
+    # compute_scored_state; applying it only per selection cell in
+    # _eval_one_cell would silently no-op those axes in this reuse path.
+    prior_env = _apply_params_env(params_list[0])
     try:
         applied = apply_as_commit(repo_dir, instance.gold_patch, "diffctx-eval-gold")
         if not applied:
@@ -360,6 +379,7 @@ def pool_eval_all_cells(
         for params in params_list:
             _eval_one_cell(state, instance, params, evaluator, bench_timeout, heavy_elapsed, out)
     finally:
+        _restore_params_env(prior_env)
         if applied:
             try:
                 reset_to_parent(repo_dir)

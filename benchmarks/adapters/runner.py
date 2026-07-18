@@ -33,8 +33,10 @@ class RunParams:
     extra_env: dict[str, str] = field(default_factory=dict)
 
     def to_env(self) -> dict[str, str]:
+        # tau reaches Rust as a function argument, not an env var; emitting a
+        # DIFFCTX_OP_SELECTION_STOPPING_THRESHOLD here would be inert and
+        # invite "swept tau via env, saw no effect" mistakes.
         env = dict(self.extra_env)
-        env["DIFFCTX_OP_SELECTION_STOPPING_THRESHOLD"] = f"{self.tau}"
         env["DIFFCTX_OP_SELECTION_CORE_BUDGET_FRACTION"] = f"{self.core_budget_fraction}"
         return env
 

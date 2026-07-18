@@ -8,15 +8,14 @@ of each benchmark, see the project paper and `CLAUDE.md`.
 
 | You want to … | Use |
 |---|---|
-| Single ContextBench run | `python -m benchmarks cb --limit 50 --budget 8000` |
-| Diagnose why diffctx missed a file on a specific instance | `python -m benchmarks cb --forensic --limit 5` |
-| Test robustness via leave-one-out | `python -m benchmarks loo --limit 50` |
-| Sweep budget across modes | `python -m benchmarks curve --limit 50` |
-| Combine N seed runs into mean ± std | `python -m benchmarks aggregate results/*.json` |
-| Compare two result sets (A/B) | `python benchmarks/compare_runs.py after.json before.json` |
-| Probe one-at-a-time parameter sensitivity | `python scripts/sensitivity_check.py` |
-| Run the full 12-config sweep (4 modes × 3 budgets) | `bash scripts/sweep_orchestrator.sh` |
-| Generate the markdown summary report | `python scripts/aggregate_sweep_report.py` |
+| Final eval / any baseline / budget grid (CURRENT pipeline) | `python -m benchmarks.run_final_eval --winner ... --manifests-dir benchmarks/manifests/v1 --out results/...` |
+| Full sweep (CI) | `.github/workflows/bench-sweep.yml` (`workflow_dispatch`, mode=smoke\|full) |
+| Per-cell metrics / sweep aggregation | `python -m benchmarks.cell_metrics ...` / `python -m benchmarks.aggregate_sweep ...` |
+| Probe one-at-a-time parameter sensitivity | `bash scripts/sensitivity_check.sh` |
+| LEGACY: single ContextBench run | `python -m benchmarks cb --limit 50 --budget 8000` |
+| LEGACY: forensic per-instance diagnosis | `python -m benchmarks cb --forensic --limit 5` |
+| LEGACY: leave-one-out / budget curve / seed aggregate | `python -m benchmarks loo\|curve\|aggregate` |
+| LEGACY: A/B compare two result JSONs | `python benchmarks/compare_runs.py after.json before.json` |
 
 ## Datasets
 
@@ -201,36 +200,19 @@ Highlights:
 - `warm_cache(instances)`: pre-clone + fetch all repos before parallel.
 - `WORKERS`: env var `BENCH_WORKERS` (default 11).
 
-## Orchestration scripts (`scripts/`)
+## Sweep orchestration (current)
 
-### `scripts/sweep_orchestrator.sh` — full sweep
+The full sweep runs via `.github/workflows/bench-sweep.yml`
+(`workflow_dispatch`; `mode=smoke` is a 4-cell hosted-runner sanity pass,
+`mode=full` provisions a Hetzner host with self-hosted runners). Each matrix
+cell calls `python -m benchmarks.run_final_eval` (multi-budget reuse via
+`--budgets`, EGO depth axis via `--depths`, ablations via `--extra-env` /
+`--scoring` / `--tau`), computes per-cell summaries with
+`benchmarks.cell_metrics`, and the aggregate job merges everything with
+`benchmarks.aggregate_sweep`. Run provenance for published sweeps lives in
+`results/sweep/README.md`.
 
-Runs the 12-config matrix (4 modes × 3 budgets) inside Docker with
-adaptive resource scaling. Skips configs whose result file already has
-≥550 ok runs. Tries two resource tiers if the first fails:
-`(workers=7, batch=20)` → `(workers=4, batch=12)`.
-
-**Env**: `BENCH_WORKERS`, `BENCH_BATCH_SIZE`.
-
-**Output**:
-
-- `results/cb_{mode}_n9999_b{budget}.json` — one per config.
-- `results/logs/sweep_orchestrator.log` — orchestration log.
-
-After all configs complete, calls `aggregate_sweep_report.py`.
-
-### `scripts/aggregate_sweep_report.py` — markdown summary
-
-Reads the 12 sweep result files; produces `results/SWEEP_REPORT.md`
-with sections:
-
-- Per-config summary (ok count, failure breakdown, metrics).
-- Head-to-head by budget (mode × budget recall matrix).
-- Budget impact per mode.
-- Per-language `nontrivial_file_recall` at `b=16000`.
-- Raw files index.
-
-### `scripts/sensitivity_check.py` — parameter sensitivity
+### `scripts/sensitivity_check.sh` — parameter sensitivity
 
 One-at-a-time perturbation of the 15 Group-C operational parameters.
 Pertubation factors `[0.50, 0.75, 1.25, 1.50]` → 61 runs total
@@ -255,13 +237,11 @@ optimization. For real calibration use ContextBench.
 
 ```text
 results/
-├── cb_{scoring}_n{limit}_b{budget}.json      # contextbench_diffctx
-├── cb_{scoring}_n{limit}_b{budget}_s{seed}.json   # multi-seed runs
-├── loo_{scoring}_n{limit}_b{budget}.json     # leave-one-out
-├── curve.json                                 # budget_curve aggregate
-├── SWEEP_REPORT.md                            # aggregated sweep report
-└── logs/
-    └── sweep_orchestrator.log
+├── final/v1/                                  # final eval outputs (paper tables)
+├── sweep/run_<gh_run_id>/                     # per-cell sweep artifacts + provenance
+│   └── cell-<method>-b<budget>-L<depth>-<test_set>/
+├── cb_{scoring}_n{limit}_b{budget}.json       # LEGACY contextbench_diffctx outputs
+└── loo_{scoring}_n{limit}_b{budget}.json      # LEGACY leave-one-out
 ```
 
 JSON record schema (per instance, abbreviated):
@@ -336,7 +316,7 @@ manifests.
 | Cargo deps | `diffctx/Cargo.lock` (committed) |
 | Python deps | `requirements-bench.lock` from `uv pip compile`; install with `pip install --require-hashes -r requirements-bench.lock` (committed) |
 | HuggingFace datasets | `benchmarks/dataset_revisions.json` from `python -m benchmarks.pin_revisions` (committed) |
-| tiktoken BPE | `tiktoken==0.12.0` + `tiktoken-rs=0.6.0` exact-pinned; drift snapshot test `test_tiktoken_o200k_base_encoding_is_pinned` |
+| tiktoken BPE | Python `tiktoken` pinned via `requirements-bench.lock` (currently 0.13.0); Rust `tiktoken-rs = "=0.12.0"` in `Cargo.toml`; drift snapshot test `test_tiktoken_o200k_base_encoding_is_pinned` |
 | Build determinism | NOT bit-for-bit — Rust release builds carry HashMap ordering non-determinism per `cargo#16693`. Documented limitation; reviewers don't ask for byte-identical `.so`. |
 
 ## Multi-benchmark adapter layer

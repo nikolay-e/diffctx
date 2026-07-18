@@ -14,10 +14,15 @@ from benchmarks.adapters.dataset_pins import resolve_revision
 class _PolyBenchAdapterBase(BenchmarkAdapter):
     """Adapter for amazon-science SWE-PolyBench family (Java / JS / TS / Python).
 
-    PolyBench ships CST node-level annotations alongside the gold patch when
-    available. The annotations live in `gold_nodes` (or `cst_nodes`) and are
-    optional; instances without them still expose file-level recall via the
-    patch.
+    PolyBench ships CST node-level annotations alongside the gold patch in the
+    `modified_nodes` column: a JSON string holding a list of node-identity
+    strings of the form
+    `"path/to/File.java->program->class_declaration:Name->method_declaration:name"`.
+    The annotations carry no line numbers; resolving them to line ranges needs
+    a tree-sitter pass over the base-commit worktree (open work). Until then
+    the nodes are surfaced as whole-file golden fragments so fragment-level
+    metrics are defined at file granularity. Instances without annotations
+    still expose file-level recall via the patch.
 
     The upstream layout (verified 2026-04-29 against the live HF API):
     - `AmazonScience/SWE-PolyBench`     — full ~2110, `PolyBenchAdapter`
@@ -76,15 +81,19 @@ class _PolyBenchAdapterBase(BenchmarkAdapter):
 
     @staticmethod
     def _extract_cst_fragments(row: dict) -> list[GoldenFragment]:
-        """PolyBench CST nodes carry (file, start_line, end_line, node_type).
+        """Parse the `modified_nodes` column into golden fragments.
 
-        The exact field name varies by upstream snapshot; we accept several
-        common spellings and tolerate missing or malformed entries.
+        The column is a JSON string of node-identity strings
+        (`"path->program->kind:name[->kind:name...]"`), without line numbers.
+        Each node becomes a whole-file fragment carrying the terminal node
+        kind, deduplicated per (path, kind:name).
         """
-        raw = row.get("gold_nodes") or row.get("cst_nodes") or row.get("retrieval_targets") or []
-        if isinstance(raw, str):
-            import json
+        import json
 
+        raw = row.get("modified_nodes")
+        if not raw:
+            return []
+        if isinstance(raw, str):
             try:
                 raw = json.loads(raw)
             except (ValueError, TypeError):
@@ -92,22 +101,21 @@ class _PolyBenchAdapterBase(BenchmarkAdapter):
         if not isinstance(raw, list):
             return []
         out: list[GoldenFragment] = []
+        seen: set[tuple[str, str]] = set()
         for n in raw:
-            if not isinstance(n, dict):
+            if not isinstance(n, str) or "->" not in n:
                 continue
-            path = n.get("file") or n.get("path")
-            start = n.get("start_line") or n.get("start")
-            end = n.get("end_line") or n.get("end")
-            if not path or start is None or end is None:
+            segments = n.split("->")
+            path = segments[0].strip()
+            if not path:
                 continue
-            out.append(
-                GoldenFragment(
-                    path=str(path),
-                    start_line=int(start),
-                    end_line=int(end),
-                    kind=str(n.get("node_type") or n.get("kind") or "node"),
-                )
-            )
+            terminal = segments[-1].strip()
+            kind = terminal.split(":", 1)[0] if ":" in terminal else (terminal or "node")
+            key = (path, terminal)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(GoldenFragment(path=path, start_line=None, end_line=None, kind=kind))
         return out
 
 

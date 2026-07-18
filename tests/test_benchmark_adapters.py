@@ -226,10 +226,13 @@ def test_polybench_extracts_cst_node_fragments():
         "base_commit": "1" * 40,
         "patch": _SAMPLE_PATCH,
         "language": "Java",
-        "gold_nodes": [
-            {"file": "src/auth.py", "start_line": 10, "end_line": 20, "node_type": "method"},
-            {"file": "src/Helper.java", "start_line": 5, "end_line": 50, "node_type": "class"},
-        ],
+        "modified_nodes": json.dumps(
+            [
+                "src/auth.py->program->class_declaration:Auth->method_declaration:login",
+                "src/Helper.java->program->class_declaration:Helper",
+                "src/Helper.java->program->class_declaration:Helper",
+            ]
+        ),
     }
     adapter = _StubPolyBenchAdapter([row])
     inst = next(iter(adapter.load()))
@@ -237,7 +240,9 @@ def test_polybench_extracts_cst_node_fragments():
     assert inst.language == "java"
     assert inst.gold_fragments is not None
     assert len(inst.gold_fragments) == 2
-    assert inst.gold_fragments[1].kind == "class"
+    assert inst.gold_fragments[0].kind == "method_declaration"
+    assert inst.gold_fragments[0].is_whole_file()
+    assert inst.gold_fragments[1].kind == "class_declaration"
     assert "src/Helper.java" in inst.gold_files
 
 

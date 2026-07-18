@@ -54,7 +54,7 @@ def _infer_language(row: dict, gold_files: frozenset[str]) -> str:
             counts[lang] = counts.get(lang, 0) + 1
     if not counts:
         return "unknown"
-    return max(counts.items(), key=lambda kv: kv[1])[0]
+    return max(sorted(counts.items()), key=lambda kv: kv[1])[0]
 
 
 class _MultiSWEBenchAdapterBase(BenchmarkAdapter):
@@ -87,14 +87,17 @@ class _MultiSWEBenchAdapterBase(BenchmarkAdapter):
         # Streaming bypasses Arrow column-type casting: as of 2026-04-29 the
         # bytedance-research/Multi-SWE-bench dataset has shards with
         # inconsistent null-vs-string typing that breaks the bulk loader.
-        # The streaming iterator can still raise on a malformed shard part-
-        # way through; we treat that as end-of-stream and warn so we keep
-        # whatever rows came through cleanly.
+        # A mid-stream failure is fatal by default: silently keeping a prefix
+        # would make the evaluated instance count depend on where a transient
+        # shard error happened. MULTISWE_ALLOW_TRUNCATED=1 restores the old
+        # keep-what-loaded behavior for exploratory use.
+        import os
         import sys
 
         from datasets import load_dataset
         from datasets.exceptions import DatasetGenerationError
 
+        allow_truncated = os.environ.get("MULTISWE_ALLOW_TRUNCATED") == "1"
         ds = load_dataset(self.hf_path, split="train", revision=self.revision, streaming=True)
         it = iter(ds)
         n = 0
@@ -104,11 +107,17 @@ class _MultiSWEBenchAdapterBase(BenchmarkAdapter):
             except StopIteration:
                 break
             except (DatasetGenerationError, TypeError, ValueError) as e:
-                print(
-                    f"[WARN] {self.name}: stream stopped early at row {n} ({type(e).__name__}: {str(e)[:200]})",
-                    file=sys.stderr,
-                )
-                break
+                if allow_truncated:
+                    print(
+                        f"[WARN] {self.name}: stream stopped early at row {n} ({type(e).__name__}: {str(e)[:200]})",
+                        file=sys.stderr,
+                    )
+                    break
+                raise RuntimeError(
+                    f"{self.name}: stream failed at row {n} ({type(e).__name__}: {str(e)[:200]}); "
+                    "refusing to evaluate a silently truncated dataset "
+                    "(set MULTISWE_ALLOW_TRUNCATED=1 to keep the loaded prefix)"
+                ) from e
             n += 1
             yield dict(row)
 

@@ -45,6 +45,14 @@ def _make_eval_fn(baseline: str, repo_root: Path, request_timeout: float):
         from benchmarks.baselines.bm25_baseline import make_bm25_eval_fn
 
         return make_bm25_eval_fn(repo_root)
+    if baseline == "patch_files":
+        from benchmarks.baselines.patch_files_baseline import make_patch_files_eval_fn
+
+        return make_patch_files_eval_fn(repo_root)
+    if baseline == "random":
+        from benchmarks.baselines.random_baseline import make_random_eval_fn
+
+        return make_random_eval_fn(repo_root)
     if baseline in {"aider", "aider_fair"}:
         from benchmarks.baselines.aider_baseline import make_aider_eval_fn
 
@@ -64,6 +72,7 @@ def _load_winner(path: Path) -> RunParams:
         core_budget_fraction=float(w["core_budget_fraction"]),
         budget=int(w.get("budget", 8000)),
         scoring=str(w.get("scoring", "ego")),
+        extra_env={str(k): str(v) for k, v in (w.get("extra_env") or {}).items()},
     )
 
 
@@ -128,6 +137,9 @@ def _process_manifest(
     name = manifest_path.stem.removeprefix("test_")
     depth_label = f" L={depth}" if depth is not None else ""
     print(f"\n[{name}{depth_label}] {len(instances)} instances")
+    # Distinct checkpoint names per method: two baselines sharing one --out
+    # must not cross-resume each other's rows.
+    ckpt_name = name if args.baseline == "diffctx" else f"{args.baseline}__{name}"
 
     if eval_all_cells_fn is not None:
         params_list = [
@@ -136,10 +148,11 @@ def _process_manifest(
                 core_budget_fraction=params.core_budget_fraction,
                 budget=b,
                 scoring=params.scoring,
+                extra_env=params.extra_env,
             )
             for b in budgets_list
         ]
-        ckpt_dir = _sweep_dir(args.out, name, depth)
+        ckpt_dir = _sweep_dir(args.out, ckpt_name, depth)
         results_by_budget = run_eval_set_multi_budget(
             instances,
             eval_all_cells_fn,
@@ -153,7 +166,7 @@ def _process_manifest(
         return results_by_budget[headline_budget]
 
     if len(budgets_list) > 1:
-        ckpt_dir = _sweep_dir(args.out, name, depth)
+        ckpt_dir = _sweep_dir(args.out, ckpt_name, depth)
         results_by_budget: dict[int, list[Any]] = {}
         for b in budgets_list:
             cell_params = RunParams(
@@ -161,6 +174,7 @@ def _process_manifest(
                 core_budget_fraction=params.core_budget_fraction,
                 budget=b,
                 scoring=params.scoring,
+                extra_env=params.extra_env,
             )
             ckpt_b = ckpt_dir / f"b{b}.checkpoint.jsonl"
             rs = run_eval_set(
@@ -177,7 +191,7 @@ def _process_manifest(
         return results_by_budget[headline_budget]
 
     depth_suffix = f"_L{depth}" if depth is not None else ""
-    ckpt = args.out / f"{name}{depth_suffix}.checkpoint.jsonl"
+    ckpt = args.out / f"{ckpt_name}{depth_suffix}.checkpoint.jsonl"
     return run_eval_set(
         instances,
         eval_fn,
@@ -202,10 +216,42 @@ def _build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--limit", type=int, default=0, help="Cap instances per manifest (0 = all)")
     p.add_argument(
         "--baseline",
-        choices=["diffctx", "bm25", "aider", "aider_fair", "aider_oracle"],
+        choices=["diffctx", "bm25", "patch_files", "random", "aider", "aider_fair", "aider_oracle"],
         default="diffctx",
         help="Which method to evaluate. Non-diffctx baselines ignore τ/cbf/scoring "
-        "(budget is the only RunParam they consume). 'aider' is alias for 'aider_fair'.",
+        "(budget is the only RunParam they consume). 'aider' is alias for 'aider_fair'. "
+        "'patch_files' = changed-files-only floor; 'random' = seeded-random file packing "
+        "on the BM25 protocol.",
+    )
+    p.add_argument(
+        "--aider-request-timeout",
+        type=float,
+        default=600.0,
+        help="Per-request wait for the Aider helper subprocess (seconds). Separate from "
+        "--timeout-per-instance, which is the diffctx kill-switch and defaults far too "
+        "low for Aider repo-map builds on large repos.",
+    )
+    p.add_argument(
+        "--scoring",
+        choices=["ego", "ppr", "bm25"],
+        default=None,
+        help="Override winner.json scoring mode for --baseline=diffctx (e.g. the "
+        "internal-BM25 ablation cell: --baseline diffctx --scoring bm25).",
+    )
+    p.add_argument(
+        "--tau",
+        type=float,
+        default=None,
+        help="Override winner.json tau (0 disables adaptive stopping).",
+    )
+    p.add_argument(
+        "--extra-env",
+        action="append",
+        default=[],
+        metavar="KEY=VAL",
+        help="Extra env var for the diffctx pipeline, repeatable (e.g. "
+        "--extra-env DIFFCTX_EGO_LEXICAL_EPS=0 --extra-env DIFFCTX_OBJECTIVE=boltzmann). "
+        "Applied around the heavy phase in the multi-budget reuse path.",
     )
     p.add_argument(
         "--budgets",
@@ -391,7 +437,25 @@ def main() -> int:
     report_and_maybe_exit(probe_resources(min_memory_gb=args.min_memory_gb, repos_dir=repo_root, min_disk_gb=args.min_disk_gb))
 
     params = _load_winner(args.winner)
-    print(f"Method: {args.baseline} | budget={params.budget} τ={params.tau} cbf={params.core_budget_fraction}")
+    cli_env: dict[str, str] = {}
+    for kv in args.extra_env:
+        key, sep, val = kv.partition("=")
+        if not sep or not key:
+            print(f"Bad --extra-env entry (expected KEY=VAL): {kv!r}")
+            return 1
+        cli_env[key] = val
+    if args.scoring is not None or args.tau is not None or cli_env:
+        params = RunParams(
+            tau=params.tau if args.tau is None else args.tau,
+            core_budget_fraction=params.core_budget_fraction,
+            budget=params.budget,
+            scoring=params.scoring if args.scoring is None else args.scoring,
+            extra_env={**params.extra_env, **cli_env},
+        )
+    print(
+        f"Method: {args.baseline} | budget={params.budget} τ={params.tau} cbf={params.core_budget_fraction} "
+        f"scoring={params.scoring} extra_env={params.extra_env or '{}'}"
+    )
 
     manifests = sorted(args.manifests_dir.glob("test_*.txt"))
     if not manifests:
@@ -407,7 +471,7 @@ def main() -> int:
     budgets_list = _parse_budgets_list(args)
     depths_list = _parse_depths_list(args, params)
 
-    eval_fn = _make_eval_fn(args.baseline, repo_root, request_timeout=args.timeout_per_instance)
+    eval_fn = _make_eval_fn(args.baseline, repo_root, request_timeout=args.aider_request_timeout)
     eval_all_cells_fn = (
         make_diffctx_eval_all_cells_fn(repo_root) if args.baseline == "diffctx" and len(budgets_list) > 1 else None
     )

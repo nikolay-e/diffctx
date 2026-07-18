@@ -260,3 +260,59 @@ def stouffer_combine(p_values: Iterable[float], weights: Iterable[float] | None 
         z_combined = float(np.sum(z) / np.sqrt(len(z)))
     p_combined = float(norm.sf(z_combined))
     return {"z": z_combined, "p_value": p_combined}
+
+
+def permutation_paired(before: list[float], after: list[float], n_perm: int = 100_000, seed: int = 42) -> dict:
+    """Exact-style sign-flip permutation test on paired deltas.
+
+    One-sided (H1: after > before). Reports the permutation p-value with the
+    add-one correction, valid regardless of the delta distribution — the
+    replacement for asymptotic Wilcoxon p-values far below machine precision.
+    """
+    deltas = np.asarray(after, dtype=float) - np.asarray(before, dtype=float)
+    deltas = deltas[deltas != 0.0]
+    if deltas.size == 0:
+        return {"p_value": 1.0, "n_nonzero": 0, "observed_mean_delta": 0.0}
+    rng = np.random.default_rng(seed)
+    observed = float(deltas.mean())
+    signs = rng.choice([-1.0, 1.0], size=(n_perm, deltas.size))
+    perm_means = (signs * deltas).mean(axis=1)
+    p = float((np.sum(perm_means >= observed) + 1) / (n_perm + 1))
+    return {"p_value": p, "n_nonzero": int(deltas.size), "observed_mean_delta": observed, "n_perm": n_perm}
+
+
+def paired_cluster_bootstrap(
+    before: list[float],
+    after: list[float],
+    cluster_ids: list[str],
+    n_iter: int = 10_000,
+    seed: int = 42,
+) -> dict:
+    """Cluster bootstrap on the paired recall delta, resampling clusters
+    (e.g. `(benchmark, repo)`) with replacement instead of instances.
+
+    Instances from one repository are not independent; instance-level
+    resampling understates the CI width whenever within-repo correlation is
+    positive. Returns the percentile CI of the mean delta.
+    """
+    deltas = np.asarray(after, dtype=float) - np.asarray(before, dtype=float)
+    if deltas.size == 0 or len(cluster_ids) != deltas.size:
+        return {"mean_delta": 0.0, "ci_low": 0.0, "ci_high": 0.0, "n_clusters": 0}
+    by_cluster: dict[str, list[int]] = {}
+    for idx, cid in enumerate(cluster_ids):
+        by_cluster.setdefault(str(cid), []).append(idx)
+    clusters = [np.asarray(v) for v in by_cluster.values()]
+    rng = np.random.default_rng(seed)
+    means = np.empty(n_iter)
+    k = len(clusters)
+    for i in range(n_iter):
+        picked = rng.integers(0, k, size=k)
+        idx = np.concatenate([clusters[j] for j in picked])
+        means[i] = deltas[idx].mean()
+    return {
+        "mean_delta": float(deltas.mean()),
+        "ci_low": float(np.percentile(means, 2.5)),
+        "ci_high": float(np.percentile(means, 97.5)),
+        "n_clusters": k,
+        "n": int(deltas.size),
+    }

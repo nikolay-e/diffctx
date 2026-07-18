@@ -68,9 +68,24 @@ def patch_files_detailed(patch: str) -> tuple[set[str], set[str], set[str]]:
     deleted: set[str] = set()
     modified: set[str] = set()
     cur_a = cur_b = None
+    rename_from: str | None = None
     for line in patch.splitlines():
         if line.startswith("diff --git "):
             cur_a = cur_b = None
+            rename_from = None
+        elif line.startswith("rename from "):
+            rename_from = line[len("rename from ") :]
+        elif line.startswith("rename to "):
+            # 100%-similarity renames carry no ---/+++ body; without this the
+            # new path never enters the gold set and pure-rename instances
+            # silently drop out of the sweep.
+            target = line[len("rename to ") :]
+            if rename_from is not None:
+                deleted.add(rename_from)
+            modified.add(target)
+            rename_from = None
+        elif line.startswith("copy to "):
+            added.add(line[len("copy to ") :])
         elif line.startswith("--- "):
             cur_a = _parse_diff_path(line[4:], "a/")
         elif line.startswith("+++ "):

@@ -25,6 +25,10 @@ def _parse_gold_context(raw: str) -> list[dict]:
     for g in items:
         if not g.get("file") or g.get("start_line") is None:
             continue
+        if g.get("end_line") is None:
+            # A start without an end would make the fragment unhittable in
+            # recall while still counting in the denominator.
+            g["end_line"] = g["start_line"]
         g["file"] = normalize_gold_path(g["file"])
         out.append(g)
     return out
