@@ -75,24 +75,31 @@ fn pack_pair(src: u32, dst: u32) -> u64 {
     ((src as u64) << 32) | dst as u64
 }
 
-/// Two-pass edge construction that never retains the raw edge universe.
+struct LoggedEmission {
+    src: u32,
+    dst: u32,
+    weight: f64,
+}
+
+/// Two-pass edge construction that never retains the raw edge universe
+/// as keyed dictionaries and runs every builder exactly once.
 ///
-/// Pass 1 runs every builder and reduces its emissions to packed
-/// (src, dst) pairs; a first-seen scan in builder registration order
-/// reproduces `dedup_compact_edges` semantics exactly (each pair counted
-/// once, category from the first builder that produced it) and yields
-/// per-node in-degree, per-source out-degree, the semantic distinct-file
-/// fan counts, and the sorted category table.
+/// Pass 1 runs every builder and records its emissions into a compact
+/// per-builder log of (src, dst, weight) triples (16 bytes/edge, builder
+/// tag implicit in the outer index); a first-seen scan in builder
+/// registration order reproduces `dedup_compact_edges` semantics exactly
+/// (each pair counted once, category from the first builder that
+/// produced it) and yields per-node in-degree, per-source out-degree,
+/// the semantic distinct-file fan counts, and the sorted category table.
 ///
-/// Pass 2 reruns the builders (accepted 2x generation CPU for the memory
-/// bound; every builder is a pure function of fragments + repo state),
-/// damps each emission on the fly with the pass-1 hub-suppression
-/// factors — always under the pair's canonical first-builder category —
-/// and keeps at most K candidates per source per builder in a bounded
-/// min-heap. Any edge evicted from a per-builder heap is outranked by K
-/// surviving same-source edges, so the final merge + dedup + cap over
-/// the survivors is bit-identical to capping the full materialized
-/// universe.
+/// Pass 2 replays the log instead of rerunning the builders, damps each
+/// emission on the fly with the pass-1 hub-suppression factors — always
+/// under the pair's canonical first-builder category — and keeps at most
+/// K candidates per source per builder in a bounded min-heap, freeing
+/// each builder's log shard as it is consumed. Any edge evicted from a
+/// per-builder heap is outranked by K surviving same-source edges, so
+/// the final merge + dedup + cap over the survivors is bit-identical to
+/// capping the full materialized universe.
 pub fn collect_capped_edges(
     fragments: &[Fragment],
     repo_root: Option<&Path>,
@@ -119,20 +126,25 @@ pub fn collect_capped_edges(
         })
         .collect();
 
-    let per_builder_pairs: Vec<Vec<u64>> = all_builders
+    let per_builder_log: Vec<Vec<LoggedEmission>> = all_builders
         .par_iter()
         .map(|(_, builder)| {
             let edges = builder.build(fragments, repo_root);
-            let mut pairs = Vec::with_capacity(edges.len());
-            for ((src, dst), _) in edges {
+            let mut log = Vec::with_capacity(edges.len());
+            for ((src, dst), weight) in edges {
                 let (Some(&s), Some(&d)) = (node_to_idx.get(&src), node_to_idx.get(&dst)) else {
                     continue;
                 };
-                pairs.push(pack_pair(s, d));
+                log.push(LoggedEmission {
+                    src: s,
+                    dst: d,
+                    weight,
+                });
             }
-            pairs
+            log
         })
         .collect();
+    drop(all_builders);
 
     let n_nodes = idx_to_node.len();
     let mut in_degree = vec![0u32; n_nodes];
@@ -140,27 +152,24 @@ pub fn collect_capped_edges(
     let mut category_entries: Vec<(u32, u32, EdgeCategory)> = Vec::new();
     let mut sem_out_files: FxHashMap<u32, FxHashSet<&str>> = FxHashMap::default();
     let mut seen: FxHashSet<u64> = FxHashSet::default();
-    for (builder_idx, pairs) in per_builder_pairs.iter().enumerate() {
+    for (builder_idx, log) in per_builder_log.iter().enumerate() {
         let (category, _) = builder_meta[builder_idx];
-        for &pair in pairs {
-            if !seen.insert(pair) {
+        for e in log {
+            if !seen.insert(pack_pair(e.src, e.dst)) {
                 continue;
             }
-            let src = (pair >> 32) as u32;
-            let dst = pair as u32;
-            in_degree[dst as usize] += 1;
-            out_degree[src as usize] += 1;
-            category_entries.push((src, dst, category));
+            in_degree[e.dst as usize] += 1;
+            out_degree[e.src as usize] += 1;
+            category_entries.push((e.src, e.dst, category));
             if category == EdgeCategory::Semantic {
                 sem_out_files
-                    .entry(src)
+                    .entry(e.src)
                     .or_default()
-                    .insert(idx_to_node[dst as usize].path.as_ref());
+                    .insert(idx_to_node[e.dst as usize].path.as_ref());
             }
         }
     }
     drop(seen);
-    drop(per_builder_pairs);
     category_entries.sort_unstable_by_key(|e| (e.0, e.1));
 
     let mut sem_file_deg = vec![0u32; n_nodes];
@@ -173,27 +182,23 @@ pub fn collect_capped_edges(
     let factors = SuppressionFactors::from_counters(in_degree, sem_file_deg);
     let max_per_node = read_max_out_edges_per_node();
 
-    let capped_per_builder: Vec<Vec<CompactEdge>> = all_builders
-        .par_iter()
+    let capped_per_builder: Vec<Vec<CompactEdge>> = per_builder_log
+        .into_par_iter()
         .enumerate()
-        .map(|(builder_idx, (_, builder))| {
+        .map(|(builder_idx, log)| {
             let (builder_category, multiplier) = builder_meta[builder_idx];
-            let raw = builder.build(fragments, repo_root);
             let mut per_source: FxHashMap<u32, SourceTopK> = FxHashMap::default();
-            for ((src, dst), weight) in raw {
-                let (Some(&s), Some(&d)) = (node_to_idx.get(&src), node_to_idx.get(&dst)) else {
-                    continue;
-                };
+            for e in log {
                 let category = category_entries
-                    .binary_search_by_key(&(s, d), |e| (e.0, e.1))
+                    .binary_search_by_key(&(e.src, e.dst), |c| (c.0, c.1))
                     .map(|k| category_entries[k].2)
                     .unwrap_or(builder_category);
-                let damped = factors.damp(weight * multiplier, category, s, d);
+                let damped = factors.damp(e.weight * multiplier, category, e.src, e.dst);
                 push_bounded_top_k(
-                    per_source.entry(s).or_default(),
+                    per_source.entry(e.src).or_default(),
                     RankedCandidate {
                         weight: damped,
-                        dst: d,
+                        dst: e.dst,
                         category,
                     },
                     max_per_node,
