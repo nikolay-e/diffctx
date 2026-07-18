@@ -100,13 +100,13 @@ pub fn build_project_graph_with_options(
         .skip_expensive_edges
         .unwrap_or_else(|| all_fragments.len() > LIMITS.skip_expensive_threshold);
 
-    let compact = edges::collect_all_edges(
+    let capped = edges::collect_capped_edges(
         &all_fragments,
         Some(resolved_root.as_path()),
         skip_expensive,
     );
 
-    let graph = graph::build_graph_compact(&all_fragments, compact);
+    let graph = graph::build_graph_capped(&all_fragments, capped);
 
     Ok(ProjectGraph {
         fragments: all_fragments,
@@ -130,35 +130,30 @@ mod tests {
     use std::process::Command;
     use tempfile::TempDir;
 
+    /// Scrubs the repo-targeting env vars git exports to hook subprocesses
+    /// (e.g. pre-commit running `cargo test --lib`); without this the test
+    /// repos would operate on the enclosing checkout instead of `dir`.
+    fn run_git(dir: &Path, args: &[&str]) {
+        Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_INDEX_FILE")
+            .status()
+            .unwrap_or_else(|e| panic!("git {}: {e}", args.join(" ")));
+    }
+
     fn init_git_repo(dir: &Path) {
-        Command::new("git")
-            .args(["init", "-q", "-b", "main"])
-            .current_dir(dir)
-            .status()
-            .expect("git init");
-        Command::new("git")
-            .args(["config", "user.email", "test@example.com"])
-            .current_dir(dir)
-            .status()
-            .expect("git config email");
-        Command::new("git")
-            .args(["config", "user.name", "Test"])
-            .current_dir(dir)
-            .status()
-            .expect("git config name");
+        run_git(dir, &["init", "-q", "-b", "main"]);
+        run_git(dir, &["config", "user.email", "test@example.com"]);
+        run_git(dir, &["config", "user.name", "Test"]);
+        run_git(dir, &["config", "commit.gpgsign", "false"]);
     }
 
     fn commit_all(dir: &Path) {
-        Command::new("git")
-            .args(["add", "-A"])
-            .current_dir(dir)
-            .status()
-            .expect("git add");
-        Command::new("git")
-            .args(["commit", "-q", "-m", "initial"])
-            .current_dir(dir)
-            .status()
-            .expect("git commit");
+        run_git(dir, &["add", "-A"]);
+        run_git(dir, &["commit", "-q", "-m", "initial"]);
     }
 
     fn write_file(root: &Path, rel: &str, content: &str) {

@@ -61,8 +61,8 @@ impl ScoringStrategy for PPRScoring {
         _discovered_paths: Option<&FxHashSet<Arc<str>>>,
     ) -> ScoringResult {
         let skip_expensive = all_fragments.len() > LIMITS.skip_expensive_threshold;
-        let compact = edges::collect_all_edges(all_fragments, repo_root, skip_expensive);
-        let mut g = graph::build_graph_compact(all_fragments, compact);
+        let capped = edges::collect_capped_edges(all_fragments, repo_root, skip_expensive);
+        let mut g = graph::build_graph_capped(all_fragments, capped);
         let ppr = personalized_pagerank(
             &mut g,
             core_ids,
@@ -122,8 +122,8 @@ impl ScoringStrategy for EgoGraphScoring {
         _discovered_paths: Option<&FxHashSet<Arc<str>>>,
     ) -> ScoringResult {
         let skip_expensive = all_fragments.len() > LIMITS.skip_expensive_threshold;
-        let compact = edges::collect_all_edges(all_fragments, repo_root, skip_expensive);
-        let g = graph::build_graph_compact(all_fragments, compact);
+        let capped = edges::collect_capped_edges(all_fragments, repo_root, skip_expensive);
+        let g = graph::build_graph_capped(all_fragments, capped);
         let mut rel_scores = g.ego_graph(core_ids, self.max_depth);
 
         let diff_idents: FxHashSet<String> = all_fragments

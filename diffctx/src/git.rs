@@ -22,6 +22,25 @@ pub fn set_git_timeout(secs: u64) {
 fn git_timeout() -> u64 {
     GIT_TIMEOUT_SECS.load(Ordering::Relaxed)
 }
+
+/// A `git` command that only targets the explicitly given repo. Git
+/// exports repo-locating env vars to hook subprocesses (GIT_DIR,
+/// GIT_INDEX_FILE, ...); inherited, they override `-C` and silently
+/// redirect every git call to the hook's repository, so diffctx invoked
+/// from a git hook would read the wrong repo.
+pub(crate) fn git_command() -> Command {
+    let mut cmd = Command::new("git");
+    for var in [
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_COMMON_DIR",
+    ] {
+        cmd.env_remove(var);
+    }
+    cmd
+}
 const SAFE_DIFF_FLAGS: &[&str] = &["--no-textconv", "--no-ext-diff"];
 
 static HUNK_RE: Lazy<Regex> =
@@ -64,7 +83,7 @@ fn validate_diff_range(diff_range: &str) -> Result<()> {
 }
 
 pub fn run_git(repo_root: &Path, args: &[&str]) -> Result<String> {
-    let mut cmd = Command::new("git");
+    let mut cmd = git_command();
     cmd.arg("-C")
         .arg(repo_root)
         .args(args)
@@ -660,7 +679,7 @@ pub fn find_ignored_paths(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<S
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
 
     let result = (|| -> Result<FxHashSet<String>> {
-        let mut cmd = Command::new("git");
+        let mut cmd = git_command();
         cmd.arg("-C")
             .arg(repo_root)
             .args(&arg_refs)
@@ -712,7 +731,7 @@ impl CatFileBatch {
         };
 
         if needs_restart {
-            let mut child = Command::new("git")
+            let mut child = git_command()
                 .arg("-C")
                 .arg(&self.repo_root)
                 .args(["cat-file", "--batch"])

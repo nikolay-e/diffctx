@@ -66,8 +66,25 @@ fn discover_cases() -> Vec<DiscoveredCase> {
     entries
 }
 
+/// Scrubs the repo-targeting env vars git exports to hook subprocesses
+/// (e.g. pre-commit running this suite); without this the test repos
+/// would operate on the enclosing checkout instead of `repo`.
+fn scrubbed_git() -> Command {
+    let mut cmd = Command::new("git");
+    for var in [
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_COMMON_DIR",
+    ] {
+        cmd.env_remove(var);
+    }
+    cmd
+}
+
 fn run_git(repo: &Path, args: &[&str]) -> Result<(), String> {
-    let out = Command::new("git")
+    let out = scrubbed_git()
         .args(args)
         .current_dir(repo)
         .env("GIT_AUTHOR_NAME", "test")
@@ -98,7 +115,7 @@ fn write_files(repo: &Path, files: &BTreeMap<String, String>) -> Result<(), Stri
 }
 
 fn rev_parse_head(repo: &Path) -> Result<String, String> {
-    let out = Command::new("git")
+    let out = scrubbed_git()
         .args(["rev-parse", "HEAD"])
         .current_dir(repo)
         .output()

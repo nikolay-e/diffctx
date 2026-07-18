@@ -1,5 +1,4 @@
 use std::path::Path;
-use std::process::Command;
 
 use rustc_hash::FxHashMap;
 
@@ -14,7 +13,7 @@ pub struct CochangeEdgeBuilder;
 
 impl CochangeEdgeBuilder {
     fn get_git_log_files(&self, repo_root: &Path) -> Option<Vec<Vec<String>>> {
-        let output = Command::new("git")
+        let output = crate::git::git_command()
             .args([
                 "-C",
                 &repo_root.to_string_lossy(),
