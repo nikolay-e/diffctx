@@ -63,7 +63,7 @@ relevance from the changed lines outward, and stops when relevance drops below
 | Flag        | Default | Description                                                              |
 |-------------|---------|--------------------------------------------------------------------------|
 | `--scoring` | `ego`   | `ego` = bounded expansion around changed nodes (fast, predictable radius); `ppr` = Personalized PageRank (global, smoother decay, slower); `bm25` = lexical retrieval against the diff hunks (baseline for sparse graphs) |
-| `--budget`  | auto    | Token cap: `N` enforces a fixed cap, `-1` disables it, `0` keeps only the changed code |
+| `--budget`  | auto    | Hard token cap: `N` enforces a fixed cap, `-1` disables it, `0` is a strict-zero floor (empty selection; use `--full` for changed files only) |
 | `--alpha`   | 0.60    | PPR damping; higher = context clusters tighter around changes (`--scoring ppr` only) |
 | `--tau`     | 0.12    | Relevance threshold for full fragment content; lower-scoring fragments are stubbed or dropped (lower = more context) |
 | `--full`    | false   | Only the changed files, every fragment, no related-code context          |
@@ -121,7 +121,7 @@ from diffctx import build_diff_context, map_directory, to_json, to_markdown, to_
 ctx = build_diff_context(
     Path("."),
     "HEAD~1..HEAD",
-    budget_tokens=None,       # None = auto; 0 = diff only; -1 = uncapped; N = fixed cap
+    budget_tokens=None,       # None = auto; 0 = strict-zero floor (empty); -1 = uncapped; N = hard cap
     alpha=0.6,
     tau=0.12,
     full=False,

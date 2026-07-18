@@ -9,6 +9,10 @@ of each benchmark, see the project paper and `CLAUDE.md`.
 | You want to … | Use |
 |---|---|
 | Final eval / any baseline / budget grid (CURRENT pipeline) | `python -m benchmarks.run_final_eval --winner ... --manifests-dir benchmarks/manifests/v1 --out results/...` |
+| Ablation cells | `run_final_eval` flags: `--scoring ego\|ppr\|bm25` (internal-BM25 cell), `--tau 0` (stopping off), `--extra-env DIFFCTX_EGO_LEXICAL_EPS=0` / `DIFFCTX_OBJECTIVE=boltzmann` / `DIFFCTX_RELATEDNESS_BONUS=0` (repeatable; applied around the heavy phase in the multi-budget reuse path) |
+| Floor baselines | `--baseline patch_files` (changed-files-only) and `--baseline random` (seeded-random packing on the BM25 protocol, `DIFFCTX_RANDOM_BASELINE_SEED`) |
+| Aider baselines | `--baseline aider_fair\|aider_oracle --aider-request-timeout 600` (separate from the diffctx kill-switch `--timeout-per-instance`) |
+| Bit-equivalence gate (mandatory for perf refactors) | `python -m benchmarks.equivalence_gate --a <run_old> --b <run_new>` — identical selected sets / used_tokens / metrics; baseline sample in `results/sweep_v2_local/equiv/` |
 | Full sweep (CI) | `.github/workflows/bench-sweep.yml` (`workflow_dispatch`, mode=smoke\|full) |
 | Per-cell metrics / sweep aggregation | `python -m benchmarks.cell_metrics ...` / `python -m benchmarks.aggregate_sweep ...` |
 | Probe one-at-a-time parameter sensitivity | `bash scripts/sensitivity_check.sh` |
@@ -16,6 +20,17 @@ of each benchmark, see the project paper and `CLAUDE.md`.
 | LEGACY: forensic per-instance diagnosis | `python -m benchmarks cb --forensic --limit 5` |
 | LEGACY: leave-one-out / budget curve / seed aggregate | `python -m benchmarks loo\|curve\|aggregate` |
 | LEGACY: A/B compare two result JSONs | `python benchmarks/compare_runs.py after.json before.json` |
+
+Protocol notes: per-instance timeout for evaluation runs is **600s**
+(`--timeout-per-instance 600`; calibrate.py defaults to 20s — always pass the
+flag). Multi-SWE-bench streaming fails deterministically on a malformed shard
+at the pinned revision; calibration/validation runs need
+`MULTISWE_ALLOW_TRUNCATED=1` (the v1 manifests were built from the same loadable
+prefix). Progress `eta~` is a rolling-window estimate; the final `tail of N`
+line is bounded by the per-instance timeout, not extrapolated. Failure rows
+carry `repo`/`language` for cluster diagnostics; ok rows additionally carry
+`selected_files`, `nontrivial_file_recall`, `changed_file_retention`,
+`graph_build_ms`, and `peak_rss_bytes`.
 
 ## Datasets
 
