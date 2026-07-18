@@ -63,13 +63,24 @@ fn validate_diff_range(diff_range: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn run_git(repo_root: &Path, args: &[&str]) -> Result<String> {
+/// Always targets the repo via `-C`.
+///
+/// Repo-locating variables inherited from a parent process (e.g. a git
+/// hook exporting `GIT_DIR` / `GIT_INDEX_FILE`) must be scrubbed or they
+/// silently redirect every command to the wrong repository.
+pub fn git_command(repo_root: &Path) -> Command {
     let mut cmd = Command::new("git");
     cmd.arg("-C")
         .arg(repo_root)
-        .args(args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .env_remove("GIT_INDEX_FILE");
+    cmd
+}
+
+pub fn run_git(repo_root: &Path, args: &[&str]) -> Result<String> {
+    let mut cmd = git_command(repo_root);
+    cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
 
     let child = cmd.spawn().map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
@@ -660,10 +671,8 @@ pub fn find_ignored_paths(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<S
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
 
     let result = (|| -> Result<FxHashSet<String>> {
-        let mut cmd = Command::new("git");
-        cmd.arg("-C")
-            .arg(repo_root)
-            .args(&arg_refs)
+        let mut cmd = git_command(repo_root);
+        cmd.args(&arg_refs)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         let child = cmd.spawn()?;
@@ -712,9 +721,7 @@ impl CatFileBatch {
         };
 
         if needs_restart {
-            let mut child = Command::new("git")
-                .arg("-C")
-                .arg(&self.repo_root)
+            let mut child = git_command(&self.repo_root)
                 .args(["cat-file", "--batch"])
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())

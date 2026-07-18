@@ -127,38 +127,25 @@ fn assign_token_counts(fragments: &mut [Fragment]) {
 mod tests {
     use super::*;
     use std::fs;
-    use std::process::Command;
     use tempfile::TempDir;
 
+    fn git(dir: &Path, args: &[&str]) {
+        let status = crate::git::git_command(dir)
+            .args(args)
+            .status()
+            .unwrap_or_else(|e| panic!("git {args:?}: {e}"));
+        assert!(status.success(), "git {args:?} failed");
+    }
+
     fn init_git_repo(dir: &Path) {
-        Command::new("git")
-            .args(["init", "-q", "-b", "main"])
-            .current_dir(dir)
-            .status()
-            .expect("git init");
-        Command::new("git")
-            .args(["config", "user.email", "test@example.com"])
-            .current_dir(dir)
-            .status()
-            .expect("git config email");
-        Command::new("git")
-            .args(["config", "user.name", "Test"])
-            .current_dir(dir)
-            .status()
-            .expect("git config name");
+        git(dir, &["init", "-q", "-b", "main"]);
+        git(dir, &["config", "user.email", "test@example.com"]);
+        git(dir, &["config", "user.name", "Test"]);
     }
 
     fn commit_all(dir: &Path) {
-        Command::new("git")
-            .args(["add", "-A"])
-            .current_dir(dir)
-            .status()
-            .expect("git add");
-        Command::new("git")
-            .args(["commit", "-q", "-m", "initial"])
-            .current_dir(dir)
-            .status()
-            .expect("git commit");
+        git(dir, &["add", "-A"]);
+        git(dir, &["commit", "-q", "-m", "initial"]);
     }
 
     fn write_file(root: &Path, rel: &str, content: &str) {
