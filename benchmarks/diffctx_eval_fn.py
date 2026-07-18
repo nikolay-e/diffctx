@@ -405,6 +405,7 @@ def _failure_result(
     r.extra["status"] = status
     r.extra["error"] = error
     r.extra["language"] = instance.language
+    r.extra["repo"] = instance.repo
     return r
 
 
