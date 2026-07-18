@@ -55,7 +55,7 @@ We address this gap by formalizing diff context selection as \textbf{budgeted su
     \item A typed-edge dependency-graph framework with per-category extraction and treatment (e.g., hub-suppression exemption), generalizing flat code-graph approaches
     \item A pluggable relevance-scoring abstraction $\hat{w}(f, \Delta)$ where three algorithm families (bounded ego-network expansion, Personalized PageRank, BM25) instantiate the abstract signal under a single retrieval framework
     \item An evaluation protocol using file-level recall against annotated golden contexts at a fixed token budget on multi-language software-engineering benchmarks, with paired-bootstrap statistical comparison against external baselines (BM25 over patch identifiers; Aider repo-map)
-    \item A reference implementation with tree-sitter parsing for 42 source and configuration formats and dedicated semantic edge builders for 36 of them (Appendix~\ref{sec:impl-inventory}). Of these, eight (Python, JavaScript, TypeScript, Java, Go, Rust, C, C++) appear in the empirical evaluation with $n{\geq}10$ instances; the rest are supported but unvalidated at scale (Section~\ref{sec:impl-inventory}, Table~\ref{tab:language-support})
+    \item A reference implementation with structural parsing for $\approx$40 source and configuration formats and 36 dedicated semantic edge-builder modules covering 45+ languages/formats, plus a six-builder config-edge family (Appendix~\ref{sec:impl-inventory}). Eight languages (Python, JavaScript, TypeScript, Java, Go, Rust, C, C++) appear in the empirical evaluation with $n{\geq}10$ instances; the rest are supported but unvalidated at scale (Table~\ref{tab:language-support})
 \end{enumerate}
 
 \newpage
@@ -751,7 +751,7 @@ The numbers in this section reflect the v2 sweep at commit \texttt{7458eced}. Th
 \section{Discussion and Limitations}
 
 \paragraph{Language Coverage.}
-The framework requires language-specific tooling for AST parsing and name resolution. Coverage follows the taxonomy of Appendix~\ref{sec:impl-inventory} (Table~\ref{tab:language-support}): tree-sitter parser support for 42 source and configuration formats; dedicated semantic edge builders for 36 of them; structural fragmentation without semantic edges for the remainder; and empirical validation ($n \geq 10$ evaluation instances) for eight languages only (Python, TypeScript, JavaScript, Java, Go, C, Rust, C++). Everything outside that validated tier is a code-level claim, not an empirical one. Dynamic languages present challenges due to incomplete static analysis of dynamic dispatch.
+The framework requires language-specific tooling for AST parsing and name resolution. Coverage follows the taxonomy of Appendix~\ref{sec:impl-inventory} (Table~\ref{tab:language-support}): structural parsing for $\approx$40 formats; 36 dedicated semantic edge-builder modules (a module may cover several languages) plus a separate config-edge family; structural fragmentation without semantic edges for the remainder; and empirical validation ($n \geq 10$ evaluation instances) for eight languages only (Python, TypeScript, JavaScript, Java, Go, C, Rust, C++). Everything outside that validated tier is a code-level claim, not an empirical one. Dynamic languages present challenges due to incomplete static analysis of dynamic dispatch.
 
 \paragraph{Symbol Reference vs. Data-Flow.}
 Our ``symbol reference'' edges use lexical name matching within function scope as a heuristic. This is \textbf{not} true data-flow analysis, which requires CFG construction and reaching definitions computation---infeasible for incomplete code in git working trees. We explicitly acknowledge this limitation.
@@ -861,34 +861,37 @@ The following tactics are useful in practice but lack strong theoretical or empi
 \section{Language Support}
 \label{sec:impl-inventory}
 
-The reference implementation includes tree-sitter parsing for 42 source and configuration formats and dedicated semantic edge builders for 36 of them. Coverage is uneven: a handful of languages have been used extensively in the evaluation; most others are present at the parser/edge-builder level but unvalidated against a benchmark of meaningful size. Table~\ref{tab:language-support} groups languages by tier of empirical exercise so the contribution and the open work are not conflated.
+Two independent layers make up language support, and they are counted separately because neither is a subset of the other. \emph{Structural parsing} (fragmentation): 39 registered tree-sitter grammar keys (38 distinct grammars; JSX aliases the JavaScript grammar) plus a regex-structural TOML splitter and a heading-based Markdown splitter --- about 40 structurally parsed formats. \emph{Semantic edge extraction}: 36 dedicated edge-builder \emph{modules} (excluding one generic cross-file identifier linker), where a single module may cover several languages (one JVM builder serves Java/Kotlin/Scala/Groovy; one C-family builder serves C/C++/Objective-C; the JavaScript builder also serves TypeScript), so the tier rows below enumerate \emph{languages} and legitimately exceed 36. Three builders (LaTeX, Perl, Nim) operate on generically fragmented text without a dedicated parser --- edge building keys off file extension and raw text, not the parse tree. A separate family of six \emph{config} edge builders (Dockerfile, Kubernetes, Helm, CI/CD pipelines, build systems, generic config$\to$code) emits the \texttt{Config}/\texttt{ConfigGeneric} categories of Table~\ref{tab:edge-categories}; the domain builders listed in Tier 2 (Ansible, dbt, OpenAPI, Cargo) sit on generic serialization formats at the parsing layer but re-parse raw text with dedicated extractors and emit \texttt{Semantic} edges. Coverage is uneven: a handful of languages have been exercised extensively in the evaluation; the rest are code-level claims. Table~\ref{tab:language-support} groups by tier of empirical exercise.
 
 \begin{table}[h]
 \centering
 \small
 \begin{tabular}{p{4.2cm}p{10.2cm}}
 \toprule
-\textbf{Tier} & \textbf{Languages} \\
+\textbf{Tier} & \textbf{Languages / formats} \\
 \midrule
 Tier 1 — empirically validated ($n{\geq}10$ in evaluation) &
 Python ($n{=}891$), TypeScript ($n{=}191$), JavaScript ($n{=}185$),
 Java ($n{=}140$), Go ($n{=}40$), C ($n{=}23$), Rust ($n{=}20$), C++ ($n{=}10$) \\
 \midrule
 Tier 2 — semantic edge builders, no large-scale empirical validation &
-C\#, Kotlin, Ruby, PHP, Swift, Scala (general-purpose);
+C\#, F\#, VB, Kotlin, Ruby, PHP, Swift, Scala (general-purpose);
 Haskell, Elixir, Erlang, OCaml, Clojure, Julia (functional);
-Lua, R, Perl, Bash/Zsh/Fish/Ksh, Dart, Groovy, Objective-C (scripting);
-HTML, CSS/SCSS/LESS, GraphQL, HCL/Terraform, CMake, Make, Nix (markup/build);
-Cargo, Bazel, dbt, OpenAPI, Prisma, Protobuf, SQL, Ansible (domain) \\
+Lua, R, Perl, Bash/Zsh/Fish/Ksh, Dart, Groovy, Objective-C, Zig, Nim (scripting/systems);
+CSS/SCSS/LESS, GraphQL, HCL/Terraform, Nix, LaTeX (markup/infra);
+Cargo, Bazel, dbt, OpenAPI, Prisma, Protobuf, SQL, Ansible (domain; \texttt{Semantic} edges over generic serialization formats) \\
+\midrule
+Config edge builders (\texttt{Config}/\texttt{ConfigGeneric} categories) &
+Dockerfile/Compose, Kubernetes manifests, Helm charts, CI/CD pipelines, build-system files, generic config$\to$code references \\
 \midrule
 Tier 3 — parser only, structural fragmentation without semantic edges &
-YAML, JSON, TOML \\
+YAML, JSON, TOML, Svelte, HTML, CMake, Make (bare files; CMake/Make cross-references are reachable via the build-system config builder) \\
 \midrule
 Generic fallback &
-Markdown, plain text, dotfiles, unparsed sources (paragraph or statement fragmentation) \\
+Markdown (structural heading splitter), plain text, dotfiles, unparsed sources (paragraph or statement fragmentation) \\
 \bottomrule
 \end{tabular}
-\caption{Tiered coverage of the reference implementation. Tier 1 has both edge builders and per-language recall numbers in Table~\ref{tab:prelim-lang}. Tier 2 implements the same edge builders but is not exercised against a benchmark of meaningful size in this paper; its inclusion is a code-level claim, not an empirical one. Tier 3 supplies parsing only — sufficient to fragment files for selection but not to draw structural edges. Treat the count of supported formats as an implementation upper bound; only Tier 1 carries empirical evidence.}
+\caption{Tiered coverage of the reference implementation. Tier 1 has both edge builders and per-language recall numbers in Table~\ref{tab:prelim-lang}. Tier 2 lists \emph{languages} covered by the 36 dedicated semantic edge-builder modules (a module may serve several languages, so rows exceed 36 by design); its inclusion is a code-level claim, not an empirical one. The config-builder family is a separate edge layer, not a language tier. Tier 3 supplies parsing only. Only Tier 1 carries empirical evidence.}
 \label{tab:language-support}
 \end{table}
 
