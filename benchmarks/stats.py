@@ -270,7 +270,7 @@ def permutation_paired(before: list[float], after: list[float], n_perm: int = 10
     replacement for asymptotic Wilcoxon p-values far below machine precision.
     """
     deltas = np.asarray(after, dtype=float) - np.asarray(before, dtype=float)
-    deltas = deltas[deltas != 0.0]
+    deltas = deltas[np.nonzero(deltas)]
     if deltas.size == 0:
         return {"p_value": 1.0, "n_nonzero": 0, "observed_mean_delta": 0.0}
     rng = np.random.default_rng(seed)

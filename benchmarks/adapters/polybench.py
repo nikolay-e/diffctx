@@ -11,6 +11,18 @@ from benchmarks.adapters.base import (
 from benchmarks.adapters.dataset_pins import resolve_revision
 
 
+def _parse_node_identity(node: object) -> tuple[str, str, str] | None:
+    if not isinstance(node, str) or "->" not in node:
+        return None
+    segments = node.split("->")
+    path = segments[0].strip()
+    if not path:
+        return None
+    terminal = segments[-1].strip()
+    kind = terminal.split(":", 1)[0] if ":" in terminal else (terminal or "node")
+    return path, terminal, kind
+
+
 class _PolyBenchAdapterBase(BenchmarkAdapter):
     """Adapter for amazon-science SWE-PolyBench family (Java / JS / TS / Python).
 
@@ -103,18 +115,11 @@ class _PolyBenchAdapterBase(BenchmarkAdapter):
         out: list[GoldenFragment] = []
         seen: set[tuple[str, str]] = set()
         for n in raw:
-            if not isinstance(n, str) or "->" not in n:
+            parsed = _parse_node_identity(n)
+            if parsed is None or parsed[:2] in seen:
                 continue
-            segments = n.split("->")
-            path = segments[0].strip()
-            if not path:
-                continue
-            terminal = segments[-1].strip()
-            kind = terminal.split(":", 1)[0] if ":" in terminal else (terminal or "node")
-            key = (path, terminal)
-            if key in seen:
-                continue
-            seen.add(key)
+            path, terminal, kind = parsed
+            seen.add((path, terminal))
             out.append(GoldenFragment(path=path, start_line=None, end_line=None, kind=kind))
         return out
 

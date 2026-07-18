@@ -430,28 +430,39 @@ def _write_paper_summary(args: argparse.Namespace, params: RunParams, reports: l
     print(f"\nWrote per-benchmark JSON + PAPER_TABLE.md to {args.out}")
 
 
+def _parse_cli_extra_env(entries: list[str]) -> dict[str, str] | None:
+    cli_env: dict[str, str] = {}
+    for kv in entries:
+        key, sep, val = kv.partition("=")
+        if not sep or not key:
+            print(f"Bad --extra-env entry (expected KEY=VAL): {kv!r}")
+            return None
+        cli_env[key] = val
+    return cli_env
+
+
+def _apply_cli_overrides(params: RunParams, args: argparse.Namespace, cli_env: dict[str, str]) -> RunParams:
+    if args.scoring is None and args.tau is None and not cli_env:
+        return params
+    return RunParams(
+        tau=params.tau if args.tau is None else args.tau,
+        core_budget_fraction=params.core_budget_fraction,
+        budget=params.budget,
+        scoring=params.scoring if args.scoring is None else args.scoring,
+        extra_env={**params.extra_env, **cli_env},
+    )
+
+
 def main() -> int:
     args = _build_argparser().parse_args()
 
     repo_root = args.repos_dir or default_repos_dir()
     report_and_maybe_exit(probe_resources(min_memory_gb=args.min_memory_gb, repos_dir=repo_root, min_disk_gb=args.min_disk_gb))
 
-    params = _load_winner(args.winner)
-    cli_env: dict[str, str] = {}
-    for kv in args.extra_env:
-        key, sep, val = kv.partition("=")
-        if not sep or not key:
-            print(f"Bad --extra-env entry (expected KEY=VAL): {kv!r}")
-            return 1
-        cli_env[key] = val
-    if args.scoring is not None or args.tau is not None or cli_env:
-        params = RunParams(
-            tau=params.tau if args.tau is None else args.tau,
-            core_budget_fraction=params.core_budget_fraction,
-            budget=params.budget,
-            scoring=params.scoring if args.scoring is None else args.scoring,
-            extra_env={**params.extra_env, **cli_env},
-        )
+    cli_env = _parse_cli_extra_env(args.extra_env)
+    if cli_env is None:
+        return 1
+    params = _apply_cli_overrides(_load_winner(args.winner), args, cli_env)
     print(
         f"Method: {args.baseline} | budget={params.budget} τ={params.tau} cbf={params.core_budget_fraction} "
         f"scoring={params.scoring} extra_env={params.extra_env or '{}'}"

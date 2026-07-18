@@ -63,6 +63,20 @@ def _parse_diff_path(raw: str, prefix: str) -> str | None:
     return raw[len(prefix) :] if raw.startswith(prefix) else raw
 
 
+def _classify_header_pair(cur_a: str | None, cur_b: str | None, added: set[str], deleted: set[str], modified: set[str]) -> None:
+    if cur_a is None and cur_b is not None:
+        added.add(cur_b)
+    elif cur_a is not None and cur_b is None:
+        deleted.add(cur_a)
+    elif cur_a == cur_b and cur_a is not None:
+        modified.add(cur_a)
+    elif cur_a is not None and cur_b is not None:
+        # Pure rename: old path is gone after the patch is applied,
+        # only the new path exists on the post-patch worktree.
+        deleted.add(cur_a)
+        modified.add(cur_b)
+
+
 def patch_files_detailed(patch: str) -> tuple[set[str], set[str], set[str]]:
     added: set[str] = set()
     deleted: set[str] = set()
@@ -90,17 +104,7 @@ def patch_files_detailed(patch: str) -> tuple[set[str], set[str], set[str]]:
             cur_a = _parse_diff_path(line[4:], "a/")
         elif line.startswith("+++ "):
             cur_b = _parse_diff_path(line[4:], "b/")
-            if cur_a is None and cur_b is not None:
-                added.add(cur_b)
-            elif cur_a is not None and cur_b is None:
-                deleted.add(cur_a)
-            elif cur_a == cur_b and cur_a is not None:
-                modified.add(cur_a)
-            elif cur_a is not None and cur_b is not None:
-                # Pure rename: old path is gone after the patch is applied,
-                # only the new path exists on the post-patch worktree.
-                deleted.add(cur_a)
-                modified.add(cur_b)
+            _classify_header_pair(cur_a, cur_b, added, deleted, modified)
     return added, deleted, modified
 
 
