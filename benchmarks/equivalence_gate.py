@@ -22,19 +22,24 @@ from pathlib import Path
 def load_run(d: Path) -> dict[str, dict]:
     out: dict[str, dict] = {}
     for f in glob.glob(str(d / "**" / "*.checkpoint.jsonl"), recursive=True):
-        for line in open(f):
-            line = line.strip()
-            if not line:
-                continue
-            r = json.loads(line)
-            ex = r.get("extra", {})
-            out[f"{Path(f).stem}::{r['instance_id']}"] = {
-                "status": ex.get("status"),
-                "selected_files": tuple(sorted(ex.get("selected_files") or [])),
-                "used_tokens": r.get("used_tokens"),
-                "file_recall": float(r.get("file_recall") or 0.0),
-                "file_precision": float(r.get("file_precision") or 0.0),
-            }
+        # Key by run-relative path, not stem: multi-depth layouts produce
+        # L0/b8000.checkpoint.jsonl and L1/b8000.checkpoint.jsonl whose
+        # identical stems would silently overwrite each other's rows.
+        rel = Path(f).relative_to(d).as_posix()
+        with open(f) as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                r = json.loads(line)
+                ex = r.get("extra", {})
+                out[f"{rel}::{r['instance_id']}"] = {
+                    "status": ex.get("status"),
+                    "selected_files": tuple(sorted(ex.get("selected_files") or [])),
+                    "used_tokens": r.get("used_tokens"),
+                    "file_recall": float(r.get("file_recall") or 0.0),
+                    "file_precision": float(r.get("file_precision") or 0.0),
+                }
     return out
 
 
