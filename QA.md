@@ -228,6 +228,15 @@ stubs of the siblings — 1 changed file → 64 output files at a modest ~7.6k
 tokens. Same #65 class, but triggered by directory shape, not prose edges;
 any repo with a large flat plugin/model/handler directory reproduces it.
 
+Third facet (neovim a2dfa195b, 2026-07-18): moderate file expansion
+(14 changed → 39 output) that the file-count discriminator alone under-rates,
+because the damage is **byte-share, not file-count** — two UNCHANGED C files
+pulled via symbol edges carried the two largest fragments of the whole output
+(36KB + 32KB = 37% of bytes), dwarfing every changed file. Add a per-file
+byte-share check to the sweep judgment: if the top files by rendered bytes are
+not in the changed set, that is #65-class over-selection even at a tame file
+ratio.
+
 ## Sweep Discriminator: EOF-Append to a Flat Data-List File (#103)
 
 A distinct symptom the file-count/token discriminators alone miss, surfaced
