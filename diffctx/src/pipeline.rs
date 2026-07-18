@@ -252,6 +252,7 @@ pub fn compute_scored_state(
         diff_text: diff_text.clone(),
         expansion_concepts,
         file_cache,
+        token_corpus: std::sync::OnceLock::new(),
     };
 
     let discovered_files = create_discovery(&config).discover(&discovery_ctx);

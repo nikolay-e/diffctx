@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use once_cell::sync::Lazy;
 use regex::Regex;
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FragmentKind {
@@ -280,4 +280,17 @@ pub fn extract_identifier_list(text: &str, min_length: usize) -> Vec<String> {
         .filter(|m| m.as_str().len() >= min_length)
         .map(|m| m.as_str().to_lowercase())
         .collect()
+}
+
+pub fn extract_identifier_counts(text: &str, min_length: usize) -> (FxHashMap<String, u32>, u32) {
+    let mut counts: FxHashMap<String, u32> = FxHashMap::default();
+    let mut total = 0u32;
+    for m in IDENT_RE.find_iter(text) {
+        if m.as_str().len() < min_length {
+            continue;
+        }
+        *counts.entry(m.as_str().to_lowercase()).or_insert(0) += 1;
+        total += 1;
+    }
+    (counts, total)
 }

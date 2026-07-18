@@ -1,11 +1,12 @@
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::bm25::BM25;
-use crate::config::tokenization::TOKENIZATION;
+use crate::token_corpus::{DocTokens, TokenCorpus};
 use crate::types::extract_identifier_list;
 
 pub struct DiscoveryContext {
@@ -15,6 +16,7 @@ pub struct DiscoveryContext {
     pub diff_text: String,
     pub expansion_concepts: FxHashSet<String>,
     pub file_cache: FxHashMap<PathBuf, String>,
+    pub token_corpus: OnceLock<TokenCorpus>,
 }
 
 impl DiscoveryContext {
@@ -23,6 +25,10 @@ impl DiscoveryContext {
             return Some(Cow::Borrowed(content.as_str()));
         }
         std::fs::read_to_string(path).ok().map(Cow::Owned)
+    }
+
+    pub fn shared_corpus(&self) -> &TokenCorpus {
+        self.token_corpus.get_or_init(|| TokenCorpus::build(self))
     }
 }
 
@@ -44,7 +50,7 @@ impl DiscoveryStrategy for DefaultDiscovery {
         );
         discovered.retain(|p| !changed_set.contains(p.as_path()));
 
-        let rare_files = expand_by_rare_identifiers(ctx, &changed_set);
+        let rare_files = expand_by_rare_identifiers(ctx);
         let existing: FxHashSet<PathBuf> = discovered.iter().cloned().collect();
         for f in rare_files {
             if !existing.contains(&f) {
@@ -56,29 +62,17 @@ impl DiscoveryStrategy for DefaultDiscovery {
     }
 }
 
-fn expand_by_rare_identifiers(
-    ctx: &DiscoveryContext,
-    changed_set: &FxHashSet<&Path>,
-) -> Vec<PathBuf> {
+fn expand_by_rare_identifiers(ctx: &DiscoveryContext) -> Vec<PathBuf> {
     let rare_threshold = crate::config::limits::LIMITS.rare_identifier_threshold;
 
     let mut ident_to_files: FxHashMap<String, Vec<PathBuf>> = FxHashMap::default();
-    for f in &ctx.all_candidates {
-        if changed_set.contains(f.as_path()) {
-            continue;
-        }
-        if let Some(content) = ctx.read_file(f) {
-            let idents: FxHashSet<String> = crate::types::extract_identifiers(
-                &content,
-                TOKENIZATION.query_min_identifier_length,
-            );
-            for ident in &ctx.expansion_concepts {
-                if idents.contains(ident) {
-                    ident_to_files
-                        .entry(ident.clone())
-                        .or_default()
-                        .push(f.clone());
-                }
+    for (path, doc) in &ctx.shared_corpus().docs {
+        for ident in &ctx.expansion_concepts {
+            if doc.term_counts.contains_key(ident) {
+                ident_to_files
+                    .entry(ident.clone())
+                    .or_default()
+                    .push(path.clone());
             }
         }
     }
@@ -154,19 +148,15 @@ impl BM25Discovery {
     }
 
     fn bm25_score(
-        doc: &[String],
+        doc: &DocTokens,
         query_set: &FxHashSet<String>,
         idf: &FxHashMap<String, f64>,
         avgdl: f64,
     ) -> f64 {
-        let dl = doc.len() as f64;
-        let mut tf: FxHashMap<&str, u32> = FxHashMap::default();
-        for t in doc {
-            *tf.entry(t.as_str()).or_insert(0) += 1;
-        }
+        let dl = doc.total_len as f64;
         let mut s = 0.0;
         for t in query_set {
-            let freq = tf.get(t.as_str()).copied().unwrap_or(0) as f64;
+            let freq = doc.term_counts.get(t).copied().unwrap_or(0) as f64;
             if freq == 0.0 {
                 continue;
             }
@@ -186,23 +176,7 @@ impl DiscoveryStrategy for BM25Discovery {
         }
         let query_set: FxHashSet<String> = query_tokens.into_iter().collect();
 
-        let changed_set: FxHashSet<&Path> = ctx.changed_files.iter().map(|p| p.as_path()).collect();
-
-        // Parallel tokenization: previously a serial loop, the dominant
-        // cost on mega-repos (vscode/mui ~5k TS files). par_iter saturates
-        // available rayon threads.
-        let pairs: Vec<(PathBuf, Vec<String>)> = ctx
-            .all_candidates
-            .par_iter()
-            .filter(|f| !changed_set.contains(f.as_path()))
-            .filter_map(|f| {
-                let content = ctx.read_file(f)?;
-                Some((
-                    f.clone(),
-                    extract_identifier_list(&content, BM25.min_query_token_length),
-                ))
-            })
-            .collect();
+        let pairs = &ctx.shared_corpus().docs;
 
         if pairs.is_empty() {
             return Vec::new();
@@ -221,12 +195,11 @@ impl DiscoveryStrategy for BM25Discovery {
         let mut postings: FxHashMap<String, Vec<usize>> = FxHashMap::default();
         let mut total_len: usize = 0;
         for (doc_id, (_, doc)) in pairs.iter().enumerate() {
-            total_len += doc.len();
-            let unique: FxHashSet<&str> = doc.iter().map(|s| s.as_str()).collect();
-            for term in unique {
-                *df.entry(term.to_string()).or_insert(0) += 1;
-                if query_set.contains(term) {
-                    postings.entry(term.to_string()).or_default().push(doc_id);
+            total_len += doc.total_len as usize;
+            for term in doc.term_counts.keys() {
+                *df.entry(term.clone()).or_insert(0) += 1;
+                if query_set.contains(term.as_str()) {
+                    postings.entry(term.clone()).or_default().push(doc_id);
                 }
             }
         }
