@@ -169,7 +169,10 @@ diffctx hung on that repo — file it and stop the sweep (don't run the remainin
 giant repos like `linux`, they'll hang too and burn hours). Known so far:
 `gitpod` and `pytorch` hang on a trivial HEAD~1 diff (#70); `aspnetcore`
 (56k-commit C# corpus) reproduces the same class on a 17-file HEAD~1 (#70,
-2026-07-07 comment). Don't re-file — comment new repros on #70.
+2026-07-07 comment). **#70 is CLOSED (fix in dev, NOT in released 1.11.0)** —
+a hang on the pipx binary in one of those repos is expected until a release
+ships the fix; verify any new hang against the dev standalone binary
+(`cargo build --release --bin diffctx`) before reopening #70 or filing new.
 
 **Bash-tool timeout must exceed the perl alarm.** The Bash tool's default
 120s kills the command BEFORE the 200s alarm fires (rc=143, looks like a
@@ -217,6 +220,13 @@ over-selection on demand: 4–8 changed files expand to 60–70 output files via
 prose/lexical edges into unrelated tests, while token cost stays deceptively
 modest (~8k, mostly stubs). Judge by file-level precision, not tokens. Known
 class — comment the repro on #65, do not file a new issue.
+
+Second on-demand shape (llama.cpp 571d0d54, 2026-07-18): a single-file code
+change inside a **wide flat directory of peer files** (src/models/, ~100
+model .cpp files) fans out via sibling/structural edges to 60+ declaration
+stubs of the siblings — 1 changed file → 64 output files at a modest ~7.6k
+tokens. Same #65 class, but triggered by directory shape, not prose edges;
+any repo with a large flat plugin/model/handler directory reproduces it.
 
 ## Sweep Discriminator: EOF-Append to a Flat Data-List File (#103)
 
