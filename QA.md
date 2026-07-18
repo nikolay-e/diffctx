@@ -196,6 +196,28 @@ Either outcome — **all clean OR ≥1 issue filed** — is a valid completion o
 this step; the QA round proceeds to its remaining items either way. Do not let
 a found issue halt the round, and do not keep sweeping after one is filed.
 
+## Hypothesis Deadline Flakes Can Unmask Real Bugs
+
+`tests/test_properties.py` property tests that write into a TemporaryDirectory
+per example flake with `DeadlineExceeded` (200ms default) whenever a concurrent
+cargo release build saturates the cores. Fix is `deadline=None` on the
+I/O-bound tests (assertions untouched; deadline is a per-example perf
+health-check, not a functional one) — precedent already in the file. After
+silencing deadlines, RE-RUN the whole module: the freed example budget can
+surface a genuine falsifying example the deadline abort was masking (this is
+how the YAML block-scalar chomping bug — trailing newlines gained/lost on
+roundtrip — was found and fixed; deterministic regression:
+`test_yaml_roundtrip_trailing_newlines`).
+
+## Sweep Shape: Release/Version-Bump Commits Are a Reliable #65 Repro
+
+A `chore: prepare vX.Y.Z` upstream commit (CHANGELOG + README + manifest
+bumps, tokio be689a3, polars 434fa104a) reproduces the #65 docs-heavy
+over-selection on demand: 4–8 changed files expand to 60–70 output files via
+prose/lexical edges into unrelated tests, while token cost stays deceptively
+modest (~8k, mostly stubs). Judge by file-level precision, not tokens. Known
+class — comment the repro on #65, do not file a new issue.
+
 ## Sweep Discriminator: EOF-Append to a Flat Data-List File (#103)
 
 A distinct symptom the file-count/token discriminators alone miss, surfaced
