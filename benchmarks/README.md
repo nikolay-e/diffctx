@@ -21,7 +21,9 @@ of each benchmark, see the project paper and `CLAUDE.md`.
 | LEGACY: leave-one-out / budget curve / seed aggregate | `python -m benchmarks loo\|curve\|aggregate` |
 | LEGACY: A/B compare two result JSONs | `python benchmarks/compare_runs.py after.json before.json` |
 
-Protocol notes: per-instance timeout for evaluation runs is **600s**
+Protocol notes: per-instance timeout for evaluation runs is **600s**;
+sweeps use **900s** to keep the near-dense #116 class measured rather
+than censored
 (`--timeout-per-instance 600`; calibrate.py defaults to 20s — always pass the
 flag). Multi-SWE-bench streaming fails deterministically on a malformed shard
 at the pinned revision; calibration/validation runs need

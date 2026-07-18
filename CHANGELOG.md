@@ -19,9 +19,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   strategy (one shared pass + a persistent per-blob token cache keyed by
   `(blob OID, tokenizer epoch)`), and edge construction is two-pass with a
   bounded per-source top-K instead of materializing up to tens of millions
-  of raw edges before the cap. Verified: gitpod 8000s-hang -> 35.7s,
+  of raw edges before the cap; pass 2 replays a compact 16-byte-per-emission
+  log instead of re-running the builders, so generation cost stays 1x.
+  Verified: gitpod 8000s-hang -> 35.7s,
   pytorch 1848s-SIGKILL -> 7.4s, mui/material-ui OOM class recovered.
   Outputs are bit-identical (gated by `benchmarks/equivalence_gate.py`).
+
+### Known limitations
+
+- Near-dense edge emission on huge same-directory trees (observed: 199M
+  raw edges, 37GB peak on one mui/material-ui instance) remains expensive
+  even with bounded construction; tracked in #116.
 
 ### Changed
 
