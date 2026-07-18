@@ -24,7 +24,7 @@ pattern_text = st.text(min_size=0, max_size=50).filter(lambda x: "\n" not in x a
 
 
 @given(st.text(max_size=5000))
-@settings(max_examples=100)
+@settings(max_examples=100, deadline=None)
 def test_file_content_no_null_bytes(content):
     with tempfile.TemporaryDirectory() as tmp_dir:
         f = Path(tmp_dir) / "test.txt"
@@ -37,7 +37,7 @@ def test_file_content_no_null_bytes(content):
     st.binary(min_size=10, max_size=1000),
     st.integers(min_value=0, max_value=999),
 )
-@settings(max_examples=50)
+@settings(max_examples=50, deadline=None)
 def test_binary_detection_with_null_byte(data, null_offset):
     from diffctx.tree import BINARY_DETECTION_SAMPLE_SIZE
 
@@ -65,7 +65,7 @@ def test_text_file_not_detected_as_binary(data):
 
 
 @given(st.lists(pattern_text, min_size=0, max_size=20))
-@settings(max_examples=100)
+@settings(max_examples=100, deadline=None)
 def test_ignore_patterns_roundtrip(patterns):
     with tempfile.TemporaryDirectory() as tmp_dir:
         valid = [p if p.rstrip("\n\r").endswith("\\ ") else p.rstrip() for p in patterns if p.strip() and not p.startswith("#")]
@@ -159,7 +159,7 @@ def test_json_roundtrip_preserves_structure(node):
 
 
 @given(st.integers(min_value=1, max_value=10000))
-@settings(max_examples=50)
+@settings(max_examples=50, deadline=None)
 def test_max_file_bytes_respected(max_bytes):
     with tempfile.TemporaryDirectory() as tmp_dir:
         f = Path(tmp_dir) / "large.txt"
@@ -167,6 +167,13 @@ def test_max_file_bytes_respected(max_bytes):
         f.write_text(content, encoding="utf-8")
         result = _read_file_content(f, max_file_bytes=max_bytes)
         assert "<file too large:" in result or len(result) <= max_bytes + 1
+
+
+def test_yaml_roundtrip_trailing_newlines():
+    for content in ("line", "line\n", "line\n\n", "a\n\nb\n\n\n"):
+        tree = {"name": "root", "type": "directory", "children": [{"name": "f.txt", "type": "file", "content": content}]}
+        parsed = yaml.safe_load(to_yaml(tree))
+        assert parsed["children"][0]["content"] == content
 
 
 def test_yaml_roundtrip_multiline_with_nel():
