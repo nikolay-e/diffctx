@@ -77,9 +77,6 @@ optional-dependencies.dev = [
   "tiktoken>=0.9,<1.0",
   "types-pyyaml>=6.0,<7.0",
 ]
-optional-dependencies.diffctx = [
-  "numpy>=1.24,<3.0",
-]
 optional-dependencies.full = [
   "charset-normalizer>=3.0,<4.0",
   "diffctx[tree-sitter]",
@@ -222,7 +219,6 @@ module = [
   "spacy.cli",
   "spacy.cli.download",
   "spacy.language",
-  "numpy",
   "mcp",
   "mcp.server",
   "mcp.server.fastmcp",
@@ -230,9 +226,6 @@ module = [
   "diffctx._diffctx",
   "_diffctx",
   "pathspec",
-  "diffctx.diffctx.edges",
-  "diffctx.diffctx.edges.*",
-  "diffctx.diffctx.embeddings",
   "charset_normalizer",
   "datasets",
 ]
@@ -242,7 +235,6 @@ ignore_missing_imports = true
 module = [
   "diffctx.ignore",
   "diffctx.tree",
-  "diffctx.diffctx.universe",
 ]
 disable_error_code = [ "type-arg" ]
 
@@ -299,11 +291,3 @@ name = "Tree building should not import writer"
 type = "forbidden"
 source_modules = [ "diffctx.tree" ]
 forbidden_modules = [ "diffctx.writer" ]
-
-[tool.mutmut]
-paths_to_mutate = [ "src/diffctx/" ]
-tests_dir = [ "tests/" ]
-do_not_mutate = [
-  "src/diffctx/diffctx/parsers/__init__.py",
-  "src/diffctx/diffctx/stopwords.py",
-]
