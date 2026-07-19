@@ -29,10 +29,9 @@ _YAML_BASE_ESCAPE_MAP = {
     "\u2028": "\\u2028",
     "\u2029": "\\u2029",
 }
-_YAML_STRING_ESCAPE_MAP = _YAML_BASE_ESCAPE_MAP
 _YAML_CONTENT_ESCAPE_MAP = {**_YAML_BASE_ESCAPE_MAP, "\t": "\\t"}
 
-_YAML_STRING_ESCAPE_PATTERN = re.compile("[" + re.escape("".join(_YAML_STRING_ESCAPE_MAP)) + "]")
+_YAML_STRING_ESCAPE_PATTERN = re.compile("[" + re.escape("".join(_YAML_BASE_ESCAPE_MAP)) + "]")
 _YAML_CONTENT_ESCAPE_PATTERN = re.compile("[" + re.escape("".join(_YAML_CONTENT_ESCAPE_MAP)) + "]")
 
 _BACKTICK_RUN_PATTERN = re.compile(r"`+")
@@ -49,7 +48,7 @@ PLACEHOLDER_PATTERNS = [
 def _escape_yaml_string(s: str) -> str:
     if not _YAML_STRING_ESCAPE_PATTERN.search(s):
         return s
-    return _YAML_STRING_ESCAPE_PATTERN.sub(lambda m: _YAML_STRING_ESCAPE_MAP[m.group()], s)
+    return _YAML_STRING_ESCAPE_PATTERN.sub(lambda m: _YAML_BASE_ESCAPE_MAP[m.group()], s)
 
 
 def _escape_yaml_content(s: str) -> str:

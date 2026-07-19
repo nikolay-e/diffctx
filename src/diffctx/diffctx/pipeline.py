@@ -3,11 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-
-class DiffContextTimeoutError(Exception):
-    pass
-
-
 _PIPELINE_TIMEOUT = 300
 
 
@@ -99,15 +94,7 @@ def build_diff_context(
     #                            sanity bound in evaluation matrices)
     #   budget_tokens == 0:     "no context" (recall floor; only the diff itself, no expansion)
     #   budget_tokens > 0:      explicit cap
-    if budget_tokens is None:
-        effective_budget: int | None = None
-    elif budget_tokens < 0:
-        effective_budget = _UNLIMITED_BUDGET
-    elif budget_tokens == 0:
-        effective_budget = 0
-    else:
-        effective_budget = budget_tokens
-    _ = _normalize_budget  # keep helper available; mirrors the same semantics
+    effective_budget: int | None = _normalize_budget(budget_tokens)
 
     return _rust_build(  # type: ignore[no-any-return]
         str(root_dir),

@@ -164,7 +164,7 @@ def _build_diff_tree(args: ParsedArgs, prog: str) -> dict[str, Any]:
             no_default_ignores=args.no_default_ignores,
             full=args.full_diff,
             whitelist_file=args.whitelist_file,
-            scoring_mode=getattr(args, "scoring", "ego"),
+            scoring_mode=args.scoring,
             timeout=args.timeout,
         ),
         args.timeout,
