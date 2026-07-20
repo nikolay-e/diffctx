@@ -151,13 +151,17 @@ pub fn collect_capped_edges(
     let mut out_degree = vec![0u32; n_nodes];
     let mut category_entries: Vec<(u32, u32, EdgeCategory)> = Vec::new();
     let mut sem_out_files: FxHashMap<u32, FxHashSet<&str>> = FxHashMap::default();
+    let mut raw_by_category: FxHashMap<EdgeCategory, u64> = FxHashMap::default();
+    let mut deduped_by_category: FxHashMap<EdgeCategory, u64> = FxHashMap::default();
     let mut seen: FxHashSet<u64> = FxHashSet::default();
     for (builder_idx, log) in per_builder_log.iter().enumerate() {
         let (category, _) = builder_meta[builder_idx];
+        *raw_by_category.entry(category).or_default() += log.len() as u64;
         for e in log {
             if !seen.insert(pack_pair(e.src, e.dst)) {
                 continue;
             }
+            *deduped_by_category.entry(category).or_default() += 1;
             in_degree[e.dst as usize] += 1;
             out_degree[e.src as usize] += 1;
             category_entries.push((e.src, e.dst, category));
@@ -170,6 +174,14 @@ pub fn collect_capped_edges(
         }
     }
     drop(seen);
+    let mut emissions_by_category: Vec<(EdgeCategory, u64, u64)> = raw_by_category
+        .iter()
+        .map(|(&category, &raw)| {
+            let deduped = deduped_by_category.get(&category).copied().unwrap_or(0);
+            (category, raw, deduped)
+        })
+        .collect();
+    emissions_by_category.sort_unstable_by_key(|e| e.0.as_str());
     category_entries.sort_unstable_by_key(|e| (e.0, e.1));
 
     let mut sem_file_deg = vec![0u32; n_nodes];
@@ -238,6 +250,7 @@ pub fn collect_capped_edges(
         edges_dropped_by_cap: deduped_edge_count - edges.len(),
         nodes_capped,
         max_out_edges_per_node: max_per_node,
+        emissions_by_category,
     };
 
     CappedEdges {

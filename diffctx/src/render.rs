@@ -116,6 +116,11 @@ pub struct LatencyBreakdown {
     /// Lifetime peak physical memory of the process, sampled in-process
     /// at the end of the run. 0 when the platform query fails.
     pub peak_rss_bytes: u64,
+    /// Per-category (raw, first-seen deduped) edge emission counts from
+    /// pass 1 of the two-pass edge build, sorted by category name. Names
+    /// the builder category behind near-dense emission blowups (#116).
+    /// Empty for BM25 mode (no graph built).
+    pub edge_emissions_by_category: Vec<(&'static str, u64, u64)>,
 }
 
 #[derive(Serialize, Clone)]

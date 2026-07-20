@@ -72,7 +72,7 @@ pub struct CsrGraph {
 /// `build_graph` after `apply_hub_suppression`. Surfaced to Python
 /// via `LatencyBreakdown` so calibration runs can quantify how often
 /// the cap fires and how many edges it discards.
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone)]
 pub struct EdgeCapStats {
     /// Edge count after merge + hub suppression, before cap.
     pub edges_before_cap: usize,
@@ -85,6 +85,11 @@ pub struct EdgeCapStats {
     pub nodes_capped: usize,
     /// The `max_per_node` value actually applied (after env-var override).
     pub max_out_edges_per_node: usize,
+    /// Per-category (raw emissions, first-seen deduped) counts from
+    /// pass 1 of the two-pass edge build, sorted by category name.
+    /// Names the builder category responsible for near-dense emission
+    /// blowups (#116). Empty on the materialized-edge path.
+    pub emissions_by_category: Vec<(EdgeCategory, u64, u64)>,
 }
 
 /// A single node-interned edge. 24 bytes instead of a string-keyed
@@ -683,6 +688,7 @@ pub(crate) fn cap_out_edges_per_source(
         edges_dropped_by_cap: edges_before - edges.len(),
         nodes_capped,
         max_out_edges_per_node: max_per_node,
+        emissions_by_category: Vec::new(),
     }
 }
 

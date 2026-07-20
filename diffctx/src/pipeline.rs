@@ -467,7 +467,7 @@ pub fn select_with_params(
         + state.heavy_latency_ms.scoring
         + select_ms;
 
-    let cap_stats = state.scoring_result.graph.cap_stats;
+    let cap_stats = state.scoring_result.graph.cap_stats.clone();
     let change = render::ChangeSummary {
         commit_message: state.commit_message.clone(),
         changed_files: state
@@ -516,6 +516,11 @@ pub fn select_with_params(
         ppr_forward_pushes: state.scoring_result.ppr_forward_pushes,
         ppr_backward_pushes: state.scoring_result.ppr_backward_pushes,
         peak_rss_bytes: crate::peak_rss::peak_rss_bytes(),
+        edge_emissions_by_category: cap_stats
+            .emissions_by_category
+            .iter()
+            .map(|&(category, raw, deduped)| (category.as_str(), raw, deduped))
+            .collect(),
     });
     output
 }

@@ -347,6 +347,14 @@ fn build_diff_context<'py>(
         latency.set_item("ppr_backward_pushes", lb.ppr_backward_pushes)?;
         latency.set_item("stopping_certificate", lb.stopping_certificate)?;
         latency.set_item("peak_rss_bytes", lb.peak_rss_bytes)?;
+        let emissions = PyDict::new(py);
+        for &(category, raw, deduped) in &lb.edge_emissions_by_category {
+            let counts = PyDict::new(py);
+            counts.set_item("raw", raw)?;
+            counts.set_item("deduped", deduped)?;
+            emissions.set_item(category, counts)?;
+        }
+        latency.set_item("edge_emissions_by_category", emissions)?;
     } else {
         latency.set_item("total_ms", (total_ms * 10.0).round() / 10.0)?;
     }
@@ -485,6 +493,14 @@ fn diff_context_output_to_dict<'py>(
         latency.set_item("ppr_backward_pushes", lb.ppr_backward_pushes)?;
         latency.set_item("stopping_certificate", lb.stopping_certificate)?;
         latency.set_item("peak_rss_bytes", lb.peak_rss_bytes)?;
+        let emissions = PyDict::new(py);
+        for &(category, raw, deduped) in &lb.edge_emissions_by_category {
+            let counts = PyDict::new(py);
+            counts.set_item("raw", raw)?;
+            counts.set_item("deduped", deduped)?;
+            emissions.set_item(category, counts)?;
+        }
+        latency.set_item("edge_emissions_by_category", emissions)?;
     }
     dict.set_item("latency", latency)?;
     Ok(dict)
