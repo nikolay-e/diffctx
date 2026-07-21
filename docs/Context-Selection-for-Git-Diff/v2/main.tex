@@ -35,7 +35,7 @@
 \maketitle
 
 \begin{abstract}
-Retrieving optimal context for Large Language Models to understand code changes is a critical challenge in automated software engineering. Current approaches rely on naive windowing or purely lexical retrieval, missing complex structural dependencies. We formulate diff-aware code context selection as \textbf{budgeted utility maximization} over multi-resolution fragments on a typed dependency graph. The deployed system maximizes a monotone submodular concept-coverage objective (concave saturation over per-concept relevance derived from the diff) with lazy-greedy budgeted selection and engineering heuristics; a modular cost-penalized (Boltzmann) ranking variant is available as an opt-in ablation, and we identify clean analyzable variants whose approximation guarantees are known. Two structural components ground the framework: (i) a partition matroid over multi-resolution fragments enforcing structural non-redundancy, and (ii) a pluggable relevance signal $\hat{w}(f, \Delta)$ instantiated via three families---bounded ego-network expansion (the deployed default), Personalized PageRank, and BM25 lexical retrieval. The framework is evaluated by file-level recall against annotated golden contexts at a fixed token budget across three multi-language software-engineering benchmarks (1500 instances total). At an $8000$-token budget under bounded ego-network scoring, diffctx achieves pooled file recall $0.833$ [95\% CI $0.816, 0.850$], with per-benchmark recall $0.913$ on SWE-bench Verified, $0.847$ on PolyBench-500, and $0.739$ on ContextBench Verified. A paired-bootstrap comparison against a same-budget BM25-over-patch-identifiers baseline shows pooled diffctx recall $0.833$ vs.\ BM25 $0.566$ (paired $\Delta \approx +0.267$, 95\% CI $[+0.245, +0.290]$, one-sided Wilcoxon $p < 2.2\times10^{-16}$ on $n=1500$ paired instances). An Aider repo-map baseline (fair-input mode) at the same $B{=}8000$ budget achieves pooled file recall $0.457$ [$0.434, 0.481$] (per-benchmark: SWE-bench Verified $0.657$, ContextBench Verified $0.432$, PolyBench-500 $0.284$); the paired-bootstrap delta against diffctx-EGO is $+0.376$ [$+0.348, +0.403$], $p < 2.2\times10^{-16}$ ($n{=}1500$). A scoring-mode ablation (EGO vs.\ PPR, with the external BM25 baseline as a reference point) at $B{=}8000$, and budget-grid sweeps over $\{$0, 8k, 16k, 32k, 64k, 128k, $-1\}$ for EGO and both external baselines, are reported in Section~\ref{sec:prelim-results}.
+Retrieving optimal context for Large Language Models to understand code changes is a critical challenge in automated software engineering. Current approaches rely on naive windowing or purely lexical retrieval, missing complex structural dependencies. We formulate diff-aware code context selection as \textbf{budgeted utility maximization} over multi-resolution fragments on a typed dependency graph. The deployed system maximizes a monotone submodular concept-coverage objective (concave saturation over per-concept relevance derived from the diff) with lazy-greedy budgeted selection and engineering heuristics; a modular cost-penalized (Boltzmann) ranking variant is available as an opt-in ablation, and we identify clean analyzable variants whose approximation guarantees are known. Two structural components ground the framework: (i) a partition matroid over multi-resolution fragments enforcing structural non-redundancy, and (ii) a pluggable relevance signal $\hat{w}(f, \Delta)$ instantiated via three families---bounded ego-network expansion (the deployed default), Personalized PageRank, and BM25 lexical retrieval. The framework is evaluated by file-level recall against annotated golden contexts at a fixed token budget across three multi-language software-engineering benchmarks (1500 instances total; consolidated rerun, v4-calibrated). At an $8000$-token budget under bounded ego-network scoring, diffctx achieves pooled file recall $0.919$ [95\% CI $0.908, 0.929$], with per-benchmark recall $0.998$ on SWE-bench Verified, $0.942$ on PolyBench-500, and $0.816$ on ContextBench Verified. Decomposing recall into changed-file retention and genuine context retrieval reveals that only ContextBench Verified carries gold files beyond the input diff; on that retrieval subset (213 instances), the internal BM25 lexical mode is the strongest single signal ($0.402$ nontrivial recall) versus $0.352$ for the deployed graph-lexical mixture and $0.244$ for PPR, while the union of graph and lexical hits reaches $0.473$ --- the two signals are complementary, and calibrating their combination is identified as the highest-leverage open item. A within-framework scoring-mode ablation (EGO vs.\ PPR vs.\ internal BM25), operational ablations (lexical component, relatedness bonus, adaptive stopping, Boltzmann objective), trivial floors (changed-files-only, random packing), and budget-grid sweeps over $\{$0, 8k, 16k, 32k, 64k, 128k, $-1\}$ are reported in Section~\ref{sec:prelim-results}; paired comparisons against external baselines (whole-file BM25 packing, Aider repo-map) are TBD pending the rerun's remaining cells.
 \end{abstract}
 
 \newpage
@@ -484,7 +484,7 @@ Sourcegraph Cody~\cite{hartman2024recsys} is cited as related work but cannot be
 \section{Empirical Evaluation}
 \label{sec:prelim-results}
 
-This section instantiates the protocol of Section~\ref{sec:eval} and reports the v2 evaluation run. The diffctx-EGO (deployed default) run, the BM25 file-level baseline, and the Aider repo-map fair-input baseline have completed on the full 1500-instance test set; the Aider oracle-mentioned stress test is part of the consolidated rerun.
+This section instantiates the protocol of Section~\ref{sec:eval} and reports the consolidated rerun at commit \texttt{9eed77aa} (v4 calibration, status-gated patch application, two-pass edge construction). All diffctx cells --- the three scoring modes on the full budget grid, four operational ablations, and the two trivial floors --- have completed on the full 1500-instance test set; the external-baseline cells (whole-file BM25, Aider fair-input, Aider oracle-mentioned) are still executing and their entries are marked TBD.
 
 \subsection{Setup}
 
@@ -500,16 +500,17 @@ Cross-benchmark contamination is filtered by \texttt{(repo, base\_commit)} key (
 
 \begin{table}[h]
 \centering
-\caption{Calibration grid scores: minimum per-source-benchmark file recall on the v1 calibration manifest (2{,}119 instances, four benchmarks, $B{=}8000$). The selected cell is highlighted. Surface is flat (top-3 within $0.001$); $\tau$ varies modestly across rows, $\beta_{\mathrm{core}}$ is essentially insensitive within the winning row. This grid was originally run under the v1 hybrid combiner; re-calibration on the deployed-default EGO pipeline is scheduled (Section~\ref{sec:limitations}).}
+\caption{Calibration grid scores (v4 re-calibration on the deployed-default EGO pipeline): minimum per-source-benchmark file recall on the v1 calibration manifest, $B{=}8000$, 5$\times$3 grid over $\tau \in \{0.04, \dots, 0.20\}$ and $\beta_{\mathrm{core}} \in \{0.5, 0.7, 0.9\}$. The validated winner ($\tau{=}0.12$, $\beta_{\mathrm{core}}{=}0.5$) is highlighted. The surface is flat and cleanly monotone: the top-3 cells lie within $0.004$, $\beta_{\mathrm{core}}{=}0.5$ dominates every row, and the objective degrades monotonically in both parameters; the grid-best cell ($\tau{=}0.04$, $0.6572$) is statistically indistinguishable from the winner on the held-out validation manifest, which confirmed $\tau{=}0.12$.}
 \label{tab:calibration-grid}
 \begin{tabular}{lccc}
 \toprule
 $\tau \; \backslash \; \beta_{\mathrm{core}}$ & $0.5$ & $0.7$ & $0.9$ \\
 \midrule
-$0.04$ & $0.1081$ & $0.1068$ & $0.1053$ \\
-$0.08$ & $0.1091$ & $0.1081$ & $0.1050$ \\
-$0.12$ & $\mathbf{0.1092^\ast}$ & $0.1077$ & $0.1050$ \\
-$0.16$ & $0.1036$ & $0.1029$ & $0.1011$ \\
+$0.04$ & $0.6572$ & $0.6518$ & $0.6431$ \\
+$0.08$ & $0.6554$ & $0.6507$ & $0.6420$ \\
+$0.12$ & $\mathbf{0.6532^\ast}$ & $0.6483$ & $0.6402$ \\
+$0.16$ & $0.6494$ & $0.6442$ & $0.6357$ \\
+$0.20$ & $0.6459$ & $0.6417$ & $0.6327$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -523,18 +524,18 @@ Table~\ref{tab:prelim-bench} reports per-benchmark file-level recall and precisi
 \begin{table}[h]
 \centering
 \small
-\caption{Per-benchmark file-level metrics, scoring=EGO (deployed default), $B{=}8000$ tokens, with 95\% percentile bootstrap CIs ($B{=}10{,}000$ resamples, seed=42). Reported as \emph{intent-to-treat}: recall and precision are computed over all $n{=}500$ instances per test set, with \texttt{clone\_fail} and execution-error rows contributing recall $0$. The \texttt{ok\%} column reports the fraction of instances where the pipeline produced a non-error selection. An \emph{ok-only} sensitivity analysis (recall over the \texttt{ok\%} subset) gives $0.810$ on ContextBench Verified, $0.935$ on PolyBench-500, and $0.913$ on SWE-bench Verified: infrastructure failures (clone, patch-apply, out-of-memory) depress the ITT headline by $7$--$9$ recall points on the two multi-language sets, so the ITT numbers are a lower bound that conflates retrieval quality with runner robustness. We keep ITT as the headline for honesty. The pooled row is the instance-level mean; it coincides with the macro (per-set) average because each test set has $n{=}500$. It is \emph{not} the IR micro-average $\sum_i |C_i \cap G_i| / \sum_i |G_i|$, which weights instances by gold-set size and differs from both.}
+\caption{Per-benchmark file-level metrics, scoring=EGO (deployed default), $B{=}8000$ tokens, with 95\% percentile bootstrap CIs ($B{=}10{,}000$ resamples, seed=42). Consolidated rerun at commit \texttt{9eed77aa} (v4-calibrated $\tau{=}0.12$, $\beta_{\mathrm{core}}{=}0.5$, fixed patch-apply status gating, two-pass edge construction). Reported as \emph{intent-to-treat}: recall and precision are computed over all $n{=}500$ instances per test set, with \texttt{clone\_fail}, \texttt{apply\_fail}, and \texttt{timeout} rows contributing recall $0$. The \texttt{ok\%} column reports the fraction of instances where the pipeline produced a non-error selection. An \emph{ok-only} sensitivity analysis (recall over the \texttt{ok\%} subset) gives $0.840$ on ContextBench Verified, $0.988$ on PolyBench-500, and $0.998$ on SWE-bench Verified; the residual non-ok rows are 5 deterministic dataset-side patch-encoding failures (CRLF-in-repo vs.\ LF-normalized gold patch) plus per-instance timeouts in the near-dense-graph repository class. We keep ITT as the headline for honesty. The pooled row is the instance-level mean; it coincides with the macro (per-set) average because each test set has $n{=}500$. It is \emph{not} the IR micro-average $\sum_i |C_i \cap G_i| / \sum_i |G_i|$, which weights instances by gold-set size and differs from both.}
 \label{tab:prelim-bench}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lrllr}
 \toprule
 \textbf{Test set} & \textbf{n} & \textbf{File recall} & \textbf{File precision} & \textbf{ok\%} \\
 \midrule
-ContextBench Verified            & 500  & 0.739 [0.708, 0.769] & 0.131 [0.118, 0.144] & 91.2\% \\
-PolyBench-500                    & 500  & 0.847 [0.818, 0.876] & 0.144 [0.129, 0.160] & 90.6\% \\
-SWE-bench Verified               & 500  & 0.913 [0.889, 0.936] & 0.069 [0.060, 0.078] & 100.0\% \\
+ContextBench Verified            & 500  & 0.816 [0.792, 0.839] & 0.236 [0.216, 0.256] & 97.2\% \\
+PolyBench-500                    & 500  & 0.942 [0.923, 0.960] & 0.248 [0.227, 0.271] & 95.4\% \\
+SWE-bench Verified               & 500  & 0.998 [0.994, 1.000] & 0.158 [0.144, 0.174] & 100.0\% \\
 \midrule
-Pooled                           & 1500 & 0.833 [0.816, 0.850] & 0.115 [0.107, 0.122] & 93.9\% \\
+Pooled                           & 1500 & 0.919 [0.908, 0.929] & 0.214 [0.203, 0.226] & 97.5\% \\
 \bottomrule
 \end{tabular}}
 \end{table}
@@ -542,32 +543,32 @@ Pooled                           & 1500 & 0.833 [0.816, 0.850] & 0.115 [0.107, 0
 \begin{table}[h]
 \centering
 \small
-\caption{Per-language metrics with 95\% percentile bootstrap CIs ($B{=}10{,}000$). Pooled across the three test sets, \emph{intent-to-treat}: instances whose pipeline run failed (clone, apply, or out-of-memory kill) contribute recall $0$. The ok-only column reports mean recall over the $n_{\mathrm{ok}}$ instances with a completed selection. The Go ITT row is \emph{infrastructure-bound}, not a retrieval result: 21 of 40 instances are out-of-memory kills during graph construction (Section~\ref{sec:limitations}); ok-only Go recall is $0.935$.}
+\caption{Per-language metrics with 95\% percentile bootstrap CIs ($B{=}10{,}000$). Pooled across the three test sets, \emph{intent-to-treat}: instances whose pipeline run failed (clone, apply, timeout) contribute recall $0$. The ok-only column reports mean recall over the $n_{\mathrm{ok}}$ instances with a completed selection. The out-of-memory kill class that dominated Go in the previous snapshot (21/40 instances) is resolved by the two-pass bounded edge construction; the remaining Go gap to ok-only is per-instance timeouts on near-dense-graph repositories.}
 \label{tab:prelim-lang}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lrrll}
 \toprule
 \textbf{Language} & \textbf{n} & \textbf{$n_{\mathrm{ok}}$} & \textbf{File recall (ITT)} & \textbf{File recall (ok-only)} \\
 \midrule
-Python      & 891 & 850 & 0.831 [0.808, 0.852] & 0.871 \\
-TypeScript  & 191 & 170 & 0.852 [0.804, 0.897] & 0.957 \\
-JavaScript  & 185 & 183 & 0.883 [0.847, 0.917] & 0.893 \\
-Java        & 140 & 134 & 0.874 [0.822, 0.921] & 0.913 \\
-Go          &  40 &  19 & 0.444 [0.299, 0.593] & 0.935 \\
-C           &  23 &  23 & 0.754 [0.640, 0.857] & 0.754 \\
-Rust        &  20 &  20 & 0.937 [0.887, 0.979] & 0.937 \\
-C++         &  10 &  10 & 0.715 [0.583, 0.848] & 0.715 \\
+Python      & 891 & 884 & 0.938 [0.926, 0.949] & 0.945 \\
+TypeScript  & 191 & 176 & 0.879 [0.837, 0.919] & 0.954 \\
+JavaScript  & 185 & 185 & 0.917 [0.889, 0.942] & 0.917 \\
+Java        & 140 & 131 & 0.903 [0.856, 0.945] & 0.965 \\
+Go          &  40 &  34 & 0.782 [0.664, 0.887] & 0.921 \\
+C           &  23 &  23 & 0.885 [0.811, 0.948] & 0.885 \\
+Rust        &  20 &  20 & 0.944 [0.885, 0.989] & 0.944 \\
+C++         &  10 &  10 & 0.809 [0.701, 0.917] & 0.809 \\
 \bottomrule
 \end{tabular}}
 \end{table}
 
 \subsection{Observations}
 
-\paragraph{Recall at a tight 8k-token budget.} Pooled mean file recall is $0.833$ [95\% CI $0.816, 0.850$] across all 1500 instances at $B{=}8000$. Per-benchmark recall is highest on SWE-bench Verified ($0.913$), then PolyBench-500 ($0.847$), and lowest on ContextBench Verified ($0.739$); the per-set spread (about 17 percentage points) is much larger than each set's CI half-width and is therefore benchmark-driven, not noise. SWE-bench Verified file recall plateaus at $0.913$ across the entire budget grid $\{8\mathrm{k}, 16\mathrm{k}, 32\mathrm{k}, 64\mathrm{k}, 128\mathrm{k}, -1\}$ and is identical for both graph-based scoring modes (EGO and PPR both return $0.913$); this saturation reflects an upper limit imposed by gold-set composition and seed coverage on that benchmark rather than a property of the scoring objective, and the budget curve is therefore most informative on ContextBench Verified and PolyBench-500.
+\paragraph{Recall at a tight 8k-token budget.} Pooled mean file recall is $0.919$ [95\% CI $0.908, 0.929$] across all 1500 instances at $B{=}8000$. Per-benchmark recall is highest on SWE-bench Verified ($0.998$), then PolyBench-500 ($0.942$), and lowest on ContextBench Verified ($0.816$); the per-set spread is much larger than each set's CI half-width and is therefore benchmark-driven, not noise. SWE-bench Verified file recall saturates near $1.0$ across the entire budget grid $\{8\mathrm{k}, 16\mathrm{k}, 32\mathrm{k}, 64\mathrm{k}, 128\mathrm{k}, -1\}$; Section~\ref{sec:nontrivial} shows that this saturation is a property of the gold-set composition (the gold set coincides with the input diff's own files on that benchmark), so the headline recall on SWE-bench Verified and PolyBench-500 measures \emph{changed-file retention} rather than context retrieval, and ContextBench Verified is the only test set whose recall reflects genuine retrieval.
 
-\paragraph{Per-language pattern.} On ok-only recall, TypeScript ($0.957$), Rust ($0.937$), Go ($0.935$), and Java ($0.913$) lead; JavaScript ($0.893$) and Python ($0.871$) follow closely; C ($0.754$) and C++ ($0.715$) trail with sample sizes too small for firm conclusions. Go's low intent-to-treat number ($0.444$ [$0.299, 0.593$]) is \emph{not} a retrieval outlier: 21 of the 40 Go instances failed with out-of-memory kills during pipeline execution on large vendored-dependency repositories (\texttt{status=oom\_kill} in the run checkpoints; edge materialization on this class reaches millions of candidate edges pre-cap) and contribute recall $0$ to the ITT mean; over the 19 completed instances, Go recall is $0.935$, second only to Rust among $n \geq 20$ languages. The failure is engineering, not the symbol-reference heuristic; it has since been fixed in the implementation (two-pass edge construction with a bounded per-source top-$K$, cutting retained edge state from $O(E_{\mathrm{raw}})$ to $O(n + Kn)$, output-equivalent by construction), and the affected instances re-enter the consolidated rerun. Across the completed instances, dynamic languages (Python, JavaScript) give up only $4$--$9$ recall points to the statically-typed cluster---consistent with the symbol-reference heuristic handling the common cases despite its known blindness to dynamic dispatch (Section~\ref{sec:scoring}); a per-language seed-excluded breakdown from the consolidated rerun is needed before drawing a resolver-quality conclusion.
+\paragraph{Per-language pattern.} On ok-only recall, Java ($0.965$), TypeScript ($0.954$), Python ($0.945$), and Rust ($0.944$) lead; Go ($0.921$) and JavaScript ($0.917$) follow closely; C ($0.885$) and C++ ($0.809$) trail with sample sizes too small for firm conclusions. The out-of-memory kill class that dominated Go in the previous snapshot (21/40 instances, \texttt{status=oom\_kill}) is resolved: the two-pass edge construction with a bounded per-source top-$K$ (output-equivalent by construction, verified by the bit-equivalence gate) cut retained edge state from $O(E_{\mathrm{raw}})$ to $O(n + Kn)$, and 34 of 40 Go instances now complete; the residual gap is per-instance timeouts on near-dense-graph repositories. The per-language spread on completed instances is under 6 points among $n \geq 40$ languages---consistent with the symbol-reference heuristic handling the common cases despite its known blindness to dynamic dispatch (Section~\ref{sec:scoring}); a per-language seed-excluded breakdown remains future work before drawing a resolver-quality conclusion.
 
-\paragraph{Precision is uniformly low ($\approx 0.12$).} Mean file precision is approximately $|G|/k$ where $|G|$ is the gold-file count per instance ($\sim 1$--$3$) and $k$ is the number of files that fit the budget. Low file precision indicates that the selector retrieves many non-gold files under the fixed budget; downstream LLM context quality depends on both recall and noise, so file recall is a necessary but insufficient proxy. ContextBench Verified provides block-level (line-range) annotations beyond the file level; we plan to report block-level recall on that subset to characterize how concentrated the selected context is around the gold regions, and to bound the true noise floor implied by the file-precision number.
+\paragraph{Precision remains low ($\approx 0.21$ pooled).} Mean file precision is approximately $|G|/k$ where $|G|$ is the gold-file count per instance ($\sim 1$--$3$) and $k$ is the number of files that fit the budget. Low file precision indicates that the selector retrieves many non-gold files under the fixed budget; downstream LLM context quality depends on both recall and noise, so file recall is a necessary but insufficient proxy. The scoring-mode ablation (Section~\ref{sec:prelim-ablation}) shows precision is strongly mode-dependent: PPR reaches $0.328$ pooled at essentially identical recall, so the EGO precision deficit is a property of the expansion policy, not of the budget. ContextBench Verified provides block-level (line-range) annotations beyond the file level; we plan to report block-level recall on that subset to characterize how concentrated the selected context is around the gold regions, and to bound the true noise floor implied by the file-precision number.
 
 \subsection{Baseline Comparisons}
 \label{sec:prelim-baselines}
@@ -583,26 +584,26 @@ Two external file-level baselines run the same protocol (same manifests, same bu
 \begin{table}[h]
 \centering
 \small
-\caption{diffctx (EGO, deployed default) vs.\ external baselines at $B{=}8000$ tokens, all 1500 paired instances. $\Delta$ is the per-instance paired delta in file recall (positive favors diffctx). 95\% paired-bootstrap percentile CI on $\Delta$ ($B{=}10{,}000$ resamples, seed $=42$); $p$-value from one-sided Wilcoxon signed-rank ($H_1$: diffctx $>$ baseline), asymptotic and floored at $2.2\times10^{-16}$ (machine-epsilon convention; nominal magnitudes below the floor are approximation artifacts, not exact probabilities). Aider oracle-mentioned rows are not run in this revision.}
+\caption{diffctx (EGO, deployed default) vs.\ external baselines at $B{=}8000$ tokens, all 1500 paired instances. $\Delta$ is the per-instance paired delta in file recall (positive favors diffctx). 95\% paired-bootstrap percentile CI on $\Delta$ ($B{=}10{,}000$ resamples, seed $=42$); $p$-value from the permutation sign-flip test (\texttt{permutation\_paired}, one-sided, $10^5$ permutations, add-one corrected). The diffctx column is final (consolidated rerun at commit \texttt{9eed77aa}); the external-baseline cells of the same rerun are still executing and their columns are marked TBD --- the previous snapshot's baseline numbers are not reproduced here because they pair against a superseded diffctx run.}
 \label{tab:prelim-baselines}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lrlllc}
 \toprule
-\textbf{Test set} & \textbf{n} & \textbf{diffctx} & \textbf{baseline} & \textbf{$\Delta$ recall [95\% CI]} & \textbf{Wilcoxon $p$} \\
+\textbf{Test set} & \textbf{n} & \textbf{diffctx} & \textbf{baseline} & \textbf{$\Delta$ recall [95\% CI]} & \textbf{perm.\ $p$} \\
 \midrule
 \multicolumn{6}{l}{\emph{vs.\ BM25 over patch identifiers}} \\
 \midrule
-ContextBench Verified  & 500 & 0.739 & 0.485 & $+0.254$ [$+0.215, +0.293$] & $<2.2\mathrm{e}{-16}$ \\
-PolyBench-500          & 500 & 0.847 & 0.672 & $+0.175$ [$+0.143, +0.207$] & $<2.2\mathrm{e}{-16}$ \\
-SWE-bench Verified     & 500 & 0.913 & 0.540 & $+0.373$ [$+0.333, +0.413$] & $<2.2\mathrm{e}{-16}$ \\
-\textbf{Pooled}        & \textbf{1500} & \textbf{0.833} & \textbf{0.566} & $\mathbf{+0.267\ [+0.245,\ +0.290]}$ & $\mathbf{<2.2\mathrm{e}{-16}}$ \\
+ContextBench Verified  & 500 & 0.816 & TBD & TBD & TBD \\
+PolyBench-500          & 500 & 0.942 & TBD & TBD & TBD \\
+SWE-bench Verified     & 500 & 0.998 & TBD & TBD & TBD \\
+\textbf{Pooled}        & \textbf{1500} & \textbf{0.919} & TBD & TBD & TBD \\
 \midrule
 \multicolumn{6}{l}{\emph{vs.\ Aider repo-map (fair-input mode)}} \\
 \midrule
-ContextBench Verified            & 500  & 0.739 & 0.432 & $+0.307$ [$+0.262, +0.352$] & $<2.2\mathrm{e}{-16}$ \\
-PolyBench-500                    & 500  & 0.847 & 0.284 & $+0.564$ [$+0.516, +0.610$] & $<2.2\mathrm{e}{-16}$ \\
-SWE-bench Verified               & 500  & 0.913 & 0.657 & $+0.257$ [$+0.209, +0.305$] & $<2.2\mathrm{e}{-16}$ \\
-\textbf{Pooled}                  & \textbf{1500} & \textbf{0.833} & \textbf{0.457} & $\mathbf{+0.376\ [+0.348,\ +0.403]}$ & $\mathbf{<2.2\mathrm{e}{-16}}$ \\
+ContextBench Verified            & 500  & 0.816 & TBD & TBD & TBD \\
+PolyBench-500                    & 500  & 0.942 & TBD & TBD & TBD \\
+SWE-bench Verified               & 500  & 0.998 & TBD & TBD & TBD \\
+\textbf{Pooled}                  & \textbf{1500} & \textbf{0.919} & TBD & TBD & TBD \\
 \bottomrule
 \end{tabular}}
 \end{table}
@@ -610,29 +611,58 @@ SWE-bench Verified               & 500  & 0.913 & 0.657 & $+0.257$ [$+0.209, +0.
 \subsection{Scoring-Mode Ablation}
 \label{sec:prelim-ablation}
 
-Section~\ref{sec:scoring} introduces three pluggable scoring modes (EGO, PPR, internal BM25). In this revision the two graph-based modes (EGO, PPR) are run in isolation inside the pipeline on the full 1500-instance test manifest with operational hyperparameters held at the EGO-default values ($\tau{=}0.12$, $\beta_{\mathrm{core}}{=}0.5$, $B{=}8000$); the external whole-file BM25 baseline serves as the lexical reference point at the same budget. The internal-BM25 cell (\texttt{BM25Scoring} on the identical candidate universe, fragments, core handling, and post-passes) was not swept in this revision---without it, Table~\ref{tab:prelim-ablation} attributes recall to graph-based scoring versus an \emph{external lexical protocol}, not a within-framework source-of-relevance ablation, and it is a required cell of the consolidated rerun (Section~\ref{sec:limitations}). Per-mode re-tuning is recorded as a sensitivity question --- if the deployed-default hyperparameters disadvantage a single-mode run, that disadvantage is itself an argument against the single mode in deployment.
+Section~\ref{sec:scoring} introduces three pluggable scoring modes (EGO, PPR, internal BM25). In the consolidated rerun all three are run in isolation inside the pipeline on the full 1500-instance test manifest with operational hyperparameters held at the EGO-default values ($\tau{=}0.12$, $\beta_{\mathrm{core}}{=}0.5$, $B{=}8000$). The internal-BM25 cell (\texttt{BM25Scoring} on the identical candidate universe, fragments, core handling, and post-passes) closes the gap flagged in the previous snapshot: Table~\ref{tab:prelim-ablation} is now a genuine within-framework source-of-relevance ablation, holding the selection machinery constant and varying only $\hat{w}(f, \Delta)$. Per-mode re-tuning is recorded as a sensitivity question --- if the deployed-default hyperparameters disadvantage a single-mode run, that disadvantage is itself an argument against the single mode in deployment.
 
-Section~\ref{sec:ego} predicts that PPR with a high restart probability $1-\alpha$ approximates bounded-radius EGO. The ablation tests this empirically: a monotone ordering BM25 $\prec$ EGO $\prec$ PPR would validate the structural-relevance hypothesis with maximum strength; an EGO $\approx$ PPR or EGO $>$ PPR result informs conclusions about the radius of relevance for diff-aware context selection.
+Section~\ref{sec:ego} predicts that PPR with a high restart probability $1-\alpha$ approximates bounded-radius EGO. The ablation tests this empirically: a monotone ordering BM25 $\prec$ EGO $\prec$ PPR would validate the structural-relevance hypothesis with maximum strength; the observed outcome (below) is more nuanced and motivates the retrieval-vs-retention decomposition of Section~\ref{sec:nontrivial}.
 
 \begin{table}[h]
 \centering
 \small
-\caption{Scoring-mode ablation at $B{=}8000$, deployed-default operational hyperparameters. File recall with 95\% percentile bootstrap CIs over $n{=}500$ instances per test set, intent-to-treat. The first two columns are graph-based scoring instantiations of $\hat{w}(f, \Delta)$ inside the diffctx pipeline; EGO is the deployed default. The third column reproduces the external whole-file BM25 baseline of Table~\ref{tab:prelim-baselines} as a reference point at the same budget; an internal-BM25 instantiation (BM25 fragments inside the framework's selection machinery, distinct from whole-file packing) is implemented in \texttt{src/scoring.rs::BM25Scoring} but was not run as a separate sweep cell in this version and is left as future work.}
+\caption{Scoring-mode ablation at $B{=}8000$, deployed-default operational hyperparameters, consolidated rerun. File recall (upper block) and file precision (lower block) with 95\% percentile bootstrap CIs, intent-to-treat. All three columns are instantiations of $\hat{w}(f, \Delta)$ inside the identical diffctx pipeline (same candidate universe, fragmentation, core handling, and post-passes); EGO is the deployed default, and internal BM25 is \texttt{src/scoring.rs::BM25Scoring} --- distinct from the external whole-file-packing baseline of Table~\ref{tab:prelim-baselines}. Mean used tokens at $B{=}8000$: EGO 4915, PPR 4904, internal BM25 2883.}
 \label{tab:prelim-ablation}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lrlll}
 \toprule
-\textbf{Test set} & \textbf{n} & \textbf{EGO (default)} & \textbf{PPR} & \textbf{BM25 (ext.\ ref.)} \\
+\textbf{Test set} & \textbf{n} & \textbf{EGO (default)} & \textbf{PPR} & \textbf{BM25 (internal)} \\
 \midrule
-ContextBench Verified            & 500   & \textbf{0.739 [0.708, 0.769]} & 0.708 [0.677, 0.738] & 0.485 [0.451, 0.519] \\
-PolyBench-500                    & 500   & \textbf{0.847 [0.818, 0.876]} & 0.846 [0.817, 0.875] & 0.672 [0.640, 0.704] \\
-SWE-bench Verified               & 500   & 0.913 [0.889, 0.936]          & 0.913 [0.889, 0.936] & 0.540 [0.497, 0.582] \\
-\textbf{Pooled}                  & 1500  & \textbf{0.833 [0.816, 0.850]} & 0.822 [0.805, 0.839] & 0.566 [0.544, 0.587] \\
+\multicolumn{5}{l}{\emph{File recall}} \\
+\midrule
+ContextBench Verified            & 500   & 0.816 [0.792, 0.839] & 0.806 [0.782, 0.829] & \textbf{0.846 [0.825, 0.866]} \\
+PolyBench-500                    & 500   & 0.942 [0.923, 0.960] & 0.956 [0.938, 0.971] & \textbf{0.981 [0.970, 0.990]} \\
+SWE-bench Verified               & 500   & 0.998 [0.994, 1.000] & \textbf{1.000 [1.000, 1.000]} & \textbf{1.000 [1.000, 1.000]} \\
+\textbf{Pooled}                  & 1500  & 0.919 [0.908, 0.929] & 0.920 [0.910, 0.930] & \textbf{0.942 [0.934, 0.951]} \\
+\midrule
+\multicolumn{5}{l}{\emph{File precision}} \\
+\midrule
+ContextBench Verified            & 500   & 0.236 [0.216, 0.256] & \textbf{0.357 [0.331, 0.383]} & 0.284 [0.263, 0.305] \\
+PolyBench-500                    & 500   & 0.248 [0.227, 0.271] & \textbf{0.363 [0.335, 0.391]} & 0.298 [0.277, 0.320] \\
+SWE-bench Verified               & 500   & 0.158 [0.144, 0.174] & \textbf{0.265 [0.244, 0.287]} & 0.155 [0.142, 0.169] \\
+\textbf{Pooled}                  & 1500  & 0.214 [0.203, 0.226] & \textbf{0.328 [0.314, 0.343]} & 0.246 [0.235, 0.257] \\
 \bottomrule
 \end{tabular}}
 \end{table}
 
-The ablation reveals two structural facts. First, on SWE-bench Verified both graph-based modes (EGO, PPR) report identical recall ($0.913$) at every budget from $8000$ to $-1$ (Table~\ref{tab:prelim-budget}); this saturation is consistent with a gold-set composition in which seed coverage by patch identifiers already accounts for the bulk of returnable mass, and the scoring objective only re-orders ties. Second, on the two non-saturated benchmarks (ContextBench Verified, PolyBench-500), EGO matches or slightly exceeds PPR (PPR trails by $\sim$3 points on ContextBench Verified with overlapping CIs, numerically tied on PolyBench-500); a \emph{paired} EGO-vs-PPR test has not been run in this revision, so ``EGO $\geq$ PPR'' should be read as a numerical ordering pending the paired analysis in the consolidated rerun. The direction is consistent with the prediction in Section~\ref{sec:ego} that bounded-radius EGO captures the bulk of relevance for diff-aware selection without the additional global mass that PPR distributes, and it motivates EGO as the deployed default. The internal-BM25 cell that would isolate the graph-based scoring component from the framework's selection machinery (fragmentation, partition matroid, lazy-greedy stopping) at constant inputs is likewise part of the consolidated rerun.
+The ablation reveals three structural facts. First, no single mode dominates: internal BM25 leads headline recall ($0.942$ pooled, at $40\%$ fewer used tokens), PPR leads precision ($0.328$ pooled, $+11$ points over EGO at essentially identical recall), and the deployed default EGO leads neither. Second, on SWE-bench Verified all modes saturate at recall $\approx 1.0$; as Section~\ref{sec:nontrivial} shows, gold coincides with the input diff's own files there, so the mode ordering on that set is uninformative about retrieval. Third, the headline ordering \emph{inverts} on the retrieval-only metric: on the ContextBench Verified subset with gold files outside the diff, EGO recovers $0.352$ of nontrivial gold versus $0.402$ for internal BM25 and $0.244$ for PPR, while the union of EGO and BM25 hits reaches $0.473$ --- the two signals are complementary rather than redundant (Section~\ref{sec:nontrivial}). Formal paired tests across modes (Friedman/Nemenyi per the preregistered P2 protocol) are computed in the final post-processing pass over the completed sweep.
+
+The clean-run operational ablations promised by the methodology (Section~\ref{sec:greedy}) were also swept as separate cells at $B{=}8000$ (Table~\ref{tab:operational-ablation}). Removing the relatedness bonus or disabling adaptive stopping ($\tau{=}0$) moves pooled recall and precision by under one point --- both mechanisms are recall-neutral at this budget, and adaptive stopping earns its keep on latency rather than quality. Removing the lexical component ($\epsilon{=}0$) is likewise nearly headline-neutral ($0.923$ vs.\ $0.919$) but drops \emph{retrieval} substantially ($0.310$ vs.\ $0.352$ nontrivial recall, Section~\ref{sec:nontrivial}) --- headline recall hides exactly the component interaction that matters. The Boltzmann objective raises headline recall slightly ($0.928$) while collapsing precision to $0.084$: it fills the budget indiscriminately and is dominated by the default objective.
+
+\begin{table}[h]
+\centering
+\small
+\caption{Operational ablations at $B{=}8000$, pooled over 1500 instances, intent-to-treat. Each row is a separate sweep cell toggling one mechanism via its clean-run flag (\texttt{DIFFCTX\_EGO\_LEXICAL\_EPS=0}, \texttt{DIFFCTX\_OBJECTIVE=boltzmann}, \texttt{DIFFCTX\_RELATEDNESS\_BONUS=0}, \texttt{-{}-tau 0}) against the deployed EGO default.}
+\label{tab:operational-ablation}
+\begin{tabular}{lll}
+\toprule
+\textbf{Variant} & \textbf{Pooled recall} & \textbf{Pooled precision} \\
+\midrule
+EGO (deployed default)            & 0.919 [0.908, 0.929] & 0.214 [0.203, 0.226] \\
+\quad no lexical ($\epsilon{=}0$) & 0.923 [0.912, 0.933] & 0.234 \\
+\quad no relatedness bonus        & 0.927 [0.916, 0.936] & 0.217 \\
+\quad no adaptive stopping ($\tau{=}0$) & 0.929 [0.919, 0.939] & 0.216 \\
+\quad Boltzmann objective         & 0.928 [0.919, 0.938] & 0.084 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \subsection{Budget Curve}
 \label{sec:prelim-budget}
@@ -650,12 +680,12 @@ To support claims about budget efficiency, the same protocol is repeated under E
 \textbf{Budget $B$} & \textbf{n} & \textbf{Mean recall [95\% CI]} & \textbf{Mean used tokens} \\
 \midrule
 $0$         & 1500 & 0.000 [0.000, 0.000] & 0       \\
-$8{,}000$   & 1500 & 0.833 [0.816, 0.850] & 5{,}116   \\
-$16{,}000$  & 1500 & 0.839 [0.822, 0.855] & 9{,}779   \\
-$32{,}000$  & 1500 & 0.844 [0.828, 0.860] & 16{,}882  \\
-$64{,}000$  & 1500 & 0.846 [0.830, 0.863] & 26{,}157  \\
-$128{,}000$ & 1500 & 0.846 [0.829, 0.863] & 35{,}998  \\
-$-1$ ($\infty$) & 1500 & 0.855 [0.838, 0.871] & 169{,}083 \\
+$8{,}000$   & 1500 & 0.919 [0.908, 0.929] & 4{,}915   \\
+$16{,}000$  & 1500 & 0.930 [0.920, 0.940] & 9{,}378   \\
+$32{,}000$  & 1500 & 0.935 [0.925, 0.945] & 16{,}087  \\
+$64{,}000$  & 1500 & 0.940 [0.930, 0.949] & 24{,}222  \\
+$128{,}000$ & 1500 & 0.941 [0.931, 0.951] & 32{,}533  \\
+$-1$ ($\infty$) & 1500 & 0.948 [0.939, 0.957] & 120{,}244 \\
 \bottomrule
 \end{tabular}}
 \end{table}
@@ -675,19 +705,15 @@ Figure~\ref{fig:budget-curves} overlays the pooled budget curves of the three me
     legend pos=south east, legend cell align=left,
     grid=major, grid style={dashed,gray!30},
 ]
-\addplot coordinates {(8000,0.833) (16000,0.839) (32000,0.844) (64000,0.846) (128000,0.846)};
+\addplot coordinates {(8000,0.919) (16000,0.930) (32000,0.935) (64000,0.940) (128000,0.941)};
 \addlegendentry{diffctx-EGO}
-\addplot coordinates {(8000,0.566) (16000,0.721) (32000,0.846) (64000,0.900) (128000,0.911)};
-\addlegendentry{BM25 (external)}
-\addplot coordinates {(8000,0.457) (16000,0.544) (32000,0.614) (64000,0.671) (128000,0.719)};
-\addlegendentry{Aider fair-input}
 \end{axis}
 \end{tikzpicture}
-\caption{Pooled file recall vs.\ token budget (intent-to-treat, $n{=}1500$). diffctx-EGO is nearly flat---$0.833$ at $B{=}8000$ already---while whole-file BM25 packing needs ${\sim}32\mathrm{k}$ tokens to catch up and Aider trails at every budget; the whole-system advantage over external whole-file baselines is specific to the tight-budget regime. Data from Tables~\ref{tab:prelim-budget}--\ref{tab:bm25-budget-curve}.}
+\caption{Pooled file recall vs.\ token budget (intent-to-treat, $n{=}1500$), consolidated rerun. diffctx-EGO is nearly flat---$0.919$ at $B{=}8000$ already. The external-baseline curves (whole-file BM25 packing, Aider fair-input) are TBD pending the rerun's baseline cells and will be overlaid here from Tables~\ref{tab:aider-budget-curve}--\ref{tab:bm25-budget-curve}.}
 \label{fig:budget-curves}
 \end{figure}
 
-For comparison, Table~\ref{tab:aider-budget-curve} reports the same budget sweep for the Aider repo-map fair-input baseline. The $16\times$ budget gap between the two protocols at the headline crossover is informative: diffctx-EGO at $B{=}8000$ achieves pooled recall $0.833$, while Aider at $B{=}128{,}000$ reaches only $0.719$; the lexical/structural primitives Aider's repo-map builds on do not appear to compensate for the absence of typed-edge propagation even when granted an order-of-magnitude larger token budget.
+For comparison, Table~\ref{tab:aider-budget-curve} will report the same budget sweep for the Aider repo-map fair-input baseline once its cells of the consolidated rerun complete (TBD below). The previous snapshot showed a $16\times$ budget gap in diffctx's favor (Aider at $B{=}128{,}000$ below diffctx-EGO at $B{=}8000$); whether it persists against the rerun's higher diffctx numbers is pending.
 
 \begin{table}[h]
 \centering
@@ -700,16 +726,16 @@ For comparison, Table~\ref{tab:aider-budget-curve} reports the same budget sweep
 \textbf{Budget $B$} & \textbf{n} & \textbf{ContextBench Verified} & \textbf{PolyBench-500} & \textbf{SWE-bench Verified} & \textbf{Pooled} \\
 \midrule
 $0$         & 1500 & 0.000 & 0.000 & 0.000 & 0.000 \\
-$8{,}000$   & 1500 & 0.432 [0.396, 0.468] & 0.284 [0.249, 0.320] & 0.657 [0.617, 0.698] & 0.457 [0.434, 0.481] \\
-$16{,}000$  & 1500 & 0.509 [0.474, 0.544] & 0.356 [0.319, 0.394] & 0.766 [0.730, 0.801] & 0.544 [0.521, 0.567] \\
-$32{,}000$  & 1500 & 0.601 [0.566, 0.637] & 0.401 [0.363, 0.440] & 0.839 [0.806, 0.869] & 0.614 [0.591, 0.636] \\
-$64{,}000$  & 1500 & 0.662 [0.627, 0.696] & 0.455 [0.416, 0.495] & 0.897 [0.870, 0.921] & 0.671 [0.649, 0.693] \\
-$128{,}000$ & 1500 & 0.714 [0.680, 0.747] & 0.527 [0.489, 0.566] & 0.916 [0.892, 0.938] & 0.719 [0.698, 0.739] \\
+$8{,}000$   & 1500 & TBD & TBD & TBD & TBD \\
+$16{,}000$  & 1500 & TBD & TBD & TBD & TBD \\
+$32{,}000$  & 1500 & TBD & TBD & TBD & TBD \\
+$64{,}000$  & 1500 & TBD & TBD & TBD & TBD \\
+$128{,}000$ & 1500 & TBD & TBD & TBD & TBD \\
 \bottomrule
 \end{tabular}}
 \end{table}
 
-The same sweep for the external BM25 baseline (Table~\ref{tab:bm25-budget-curve}) bounds the regime in which graph-based selection helps: whole-file lexical packing is far behind at tight budgets ($0.566$ vs.\ $0.833$ pooled at $B{=}8000$) but overtakes diffctx-EGO once the budget is large enough to simply include most candidate files---pooled $0.846$ vs.\ $0.844$ at $B{=}32\mathrm{k}$, $0.900$ vs.\ $0.846$ at $64\mathrm{k}$, $0.911$ vs.\ $0.846$ at $128\mathrm{k}$. The whole-system advantage over external whole-file baselines is therefore specific to the tight-budget regime ($B \lesssim 16\mathrm{k}$)---attributing it to the typed graph specifically awaits the internal-BM25 cell of the consolidated rerun---which is exactly the regime motivating the problem (Section~\ref{sec:problem}, cost model and ``lost in the middle''~\cite{liu2023lost}); at large budgets, recall saturates for any reasonable method and precision, not recall, becomes the binding concern.
+The same sweep for the external BM25 baseline (Table~\ref{tab:bm25-budget-curve}) bounds the regime in which the whole-system advantage holds; its rerun cells are TBD. The previous snapshot showed whole-file lexical packing far behind at tight budgets but overtaking diffctx-EGO beyond ${\sim}32\mathrm{k}$ tokens, scoping the contribution to the tight-budget regime---exactly the regime motivating the problem (Section~\ref{sec:problem}, cost model and ``lost in the middle''~\cite{liu2023lost}); at large budgets, recall saturates for any reasonable method and precision, not recall, becomes the binding concern. Note that the within-framework internal-BM25 cell (Table~\ref{tab:prelim-ablation}) already separates the lexical-signal question from the whole-file-packing question: the framework's fragment-level machinery lifts BM25 from whole-file packing to the strongest headline-recall mode at $2.9\mathrm{k}$ mean used tokens.
 
 \begin{table}[h]
 \centering
@@ -722,29 +748,58 @@ The same sweep for the external BM25 baseline (Table~\ref{tab:bm25-budget-curve}
 \textbf{Budget $B$} & \textbf{n} & \textbf{ContextBench Verified} & \textbf{PolyBench-500} & \textbf{SWE-bench Verified} & \textbf{Pooled} \\
 \midrule
 $0$         & 1500 & 0.000 & 0.000 & 0.000 & 0.000 \\
-$8{,}000$   & 1500 & 0.485 & 0.672 & 0.540 & 0.566 \\
-$16{,}000$  & 1500 & 0.625 & 0.781 & 0.756 & 0.721 \\
-$32{,}000$  & 1500 & 0.737 & 0.871 & 0.931 & 0.846 \\
-$64{,}000$  & 1500 & 0.806 & 0.925 & 0.970 & 0.900 \\
-$128{,}000$ & 1500 & 0.849 & 0.936 & 0.947 & 0.911 \\
+$8{,}000$   & 1500 & TBD & TBD & TBD & TBD \\
+$16{,}000$  & 1500 & TBD & TBD & TBD & TBD \\
+$32{,}000$  & 1500 & TBD & TBD & TBD & TBD \\
+$64{,}000$  & 1500 & TBD & TBD & TBD & TBD \\
+$128{,}000$ & 1500 & TBD & TBD & TBD & TBD \\
 \bottomrule
 \end{tabular}}
 \end{table}
 
+\subsection{Trivial Retention vs.\ Context Retrieval}
+\label{sec:nontrivial}
+
+The evaluation protocol feeds the gold patch itself to the selector as the input diff, so every method trivially includes the diff's own files (changed-file retention is $\geq 0.99$ for all diffctx modes). Headline file recall therefore conflates two different abilities: \emph{retaining} the files the reader already knows about, and \emph{retrieving} related context files the diff does not name. The harness records the decomposition per instance: \texttt{gold\_to\_changed\_ratio} (1.0 means gold coincides with the diff) and \texttt{nontrivial\_file\_recall} (recall restricted to gold files \emph{outside} the diff).
+
+Applying the decomposition to the three test sets is clarifying. On SWE-bench Verified and PolyBench-500, \emph{no instance} has gold files outside the diff --- their gold sets derive from the patch, so their recall columns measure retention plus budget compliance, and a baseline that simply echoes the diff's files is near-optimal on them. ContextBench Verified is the only test set with human-annotated context beyond the diff: 213 of its 500 instances carry nontrivial gold (573 files total). Table~\ref{tab:nontrivial} reports the retrieval-only comparison on that subset.
+
+\begin{table}[h]
+\centering
+\small
+\caption{Retrieval-only comparison at $B{=}8000$: mean per-instance \texttt{nontrivial\_file\_recall} over the 213 ContextBench Verified instances whose gold sets extend beyond the input diff (573 nontrivial gold files), \emph{ok}-status instances. Union rows report the per-instance recall of the union of the two methods' selected sets --- an oracle combination bound, not a runnable method. Trivial floors: the changed-files-only baseline scores $0.000$ by construction; random packing scores $0.012$.}
+\label{tab:nontrivial}
+\begin{tabular}{lc}
+\toprule
+\textbf{Method} & \textbf{Nontrivial recall} \\
+\midrule
+Changed-files floor (\texttt{patch\_files}) & 0.000 \\
+Random packing floor                        & 0.012 \\
+PPR                                         & 0.244 \\
+EGO without lexical component ($\epsilon{=}0$) & 0.310 \\
+EGO (deployed default)                      & 0.352 \\
+BM25 (internal)                             & 0.402 \\
+\midrule
+Union EGO $\cup$ BM25 (oracle bound)        & 0.473 \\
+Union EGO$_{\epsilon=0}$ $\cup$ BM25 (oracle bound) & 0.475 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three readings follow. First, all methods clear the trivial floors by an order of magnitude --- context retrieval is real. Second, the lexical signal is currently the strongest single retrieval signal ($0.402$ for internal BM25): the deployed default EGO, selected by recall-oriented calibration, trails the plain lexical mode on the very ability the calibration intended to optimize. Third --- and most consequential for the method --- the signals are \emph{complementary}, not redundant: EGO finds 41 nontrivial gold files that BM25 misses (BM25 finds 63 that EGO misses), and the oracle union reaches $0.473$--$0.475$, seven points above the best single method. The deployed EGO mode, which mixes graph and lexical signals with hand-set weights, lands \emph{below} its own best component ($0.352 < 0.402$) --- the classic signature of a miscalibrated mixture. This measurement motivates the per-edge-category weight calibration of Section~\ref{sec:weight-calibration} as the highest-leverage open item: the gap between the deployed mixture and the oracle union ($0.352 \to 0.473$) is the available headroom. The budget curve on the nontrivial subset also differs qualitatively from the headline: nontrivial recall for EGO grows from $0.352$ at $8\mathrm{k}$ to $0.503$ at $32\mathrm{k}$ and $0.581$ at $128\mathrm{k}$ --- larger budgets do buy genuine context, but headline precision falls faster than nontrivial recall rises, so the added context arrives buried in noise.
+
 \subsection{Limitations of the Current Empirical Snapshot}
 \label{sec:limitations}
 
-The numbers in this section reflect the v2 sweep at commit \texttt{7458eced}. The following items are honest open questions about the snapshot:
+The diffctx-side numbers in this section reflect the consolidated rerun at commit \texttt{9eed77aa} (v4 calibration, status-gated patch application, two-pass edge construction); the external-baseline cells (BM25 whole-file, Aider fair-input, Aider oracle-mentioned) of the same rerun are still executing and are marked TBD. The following items are honest open questions about the snapshot:
 
 \begin{itemize}
-    \item \textbf{SWE-bench Verified file recall is saturated.} On SWE-bench Verified, both graph-based scoring modes (EGO and PPR) return $0.913$ at every budget from $8000$ to the unbounded cap, while external BM25 rises from $0.540$ at $B{=}8000$ to $0.970$ at $64\mathrm{k}$ and then dips to $0.947$ at $128\mathrm{k}$ (a pack-order non-monotonicity of skip-and-continue file packing, Table~\ref{tab:bm25-budget-curve}). The plateau is structural: SWE-bench Verified ships no context annotation, so $G = \mathrm{files}(\Delta)$ by construction (Section~\ref{sec:eval}) and recall measures seed retention only; the residual gap to $1.0$ is \emph{hypothesized} to be seed loss inside the pipeline (filtering or oversized-file handling of patch files)---an engineering property rather than a scoring one---pending a per-instance accounting of the missing gold files from the consolidated rerun's logs, which now record the selected file set per instance. SWE-bench Verified is therefore informative as a baseline-comparison metric (graph $\gg$ lexical at small budgets) but uninformative as a scoring-mode comparison.
+    \item \textbf{External-baseline cells are TBD.} The BM25 whole-file, Aider fair-input, and Aider oracle-mentioned cells of the consolidated rerun are still executing; Tables~\ref{tab:prelim-baselines}, \ref{tab:aider-budget-curve}, and \ref{tab:bm25-budget-curve} carry TBD markers, and every diffctx-vs-external claim in this revision is inherited from the previous snapshot pending those cells. The preregistered confirmatory tests (P1 vs.\ external BM25, P3 Aider-oracle headroom) run in the final post-processing pass.
+    \item \textbf{Two of three test sets measure retention, not retrieval.} SWE-bench Verified and PolyBench-500 carry no gold files outside the input diff (Section~\ref{sec:nontrivial}), so their recall columns are changed-file-retention measurements; genuine retrieval is measurable only on the 213-instance nontrivial subset of ContextBench Verified. The headline pooled recall is therefore dominated by retention. Future evaluation work should prioritize benchmarks with human-annotated context beyond the diff.
+    \item \textbf{The deployed mixture is miscalibrated.} The EGO mode's hand-set combination of graph and lexical signals scores below its own lexical component on nontrivial retrieval ($0.352$ vs.\ $0.402$; oracle union $0.473$). Per-edge-category weight calibration from inclusion-provenance data (Section~\ref{sec:weight-calibration}) is the highest-leverage open item; the emission-side instrumentation for it (per-category edge counters in the run telemetry) has landed post-freeze.
     \item \textbf{PolyBench-500 fragment-level metrics are not reported.} PolyBench-500 ships a \texttt{modified\_nodes} field encoding CST node paths (e.g., \texttt{file.java->program->class\_declaration:Foo->method\_declaration:bar}) rather than line ranges, and the current adapter does not yet resolve these symbolic paths to \texttt{(start\_line, end\_line)} tuples via a tree-sitter pass on the post-patch worktree. PolyBench-500 therefore contributes to file-level recall only; fragment-level and line-level metrics on this benchmark are deferred.
-    \item \textbf{Aider PolyBench-500 infrastructure failure rate.} Aider fair-input on PolyBench-500 has a $24.4\%$ non-\texttt{ok} status rate at $B{=}8000$: $85$ instances ($17.0\%$) hit the $600$s helper-process timeout, and $37$ instances ($7.4\%$) fail with \texttt{QueryError: Invalid node type at row 2, column 2: module} — a tree-sitter grammar version mismatch in the bundled \texttt{aider-chat==0.86.2} package against the installed parsers. The intent-to-treat number ($0.284$ pooled at $B{=}8000$) folds these failures in as recall $0$; an \emph{ok}-only sensitivity analysis on the same cells gives $0.375$ on PolyBench-500, still well below external BM25 ($0.673$ on the same instances). For comparison, Aider's \texttt{ok\%} is $94.0\%$ on SWE-bench Verified (mostly Python, the language Aider's repo-map heuristics are most mature on) and $84.8\%$ on ContextBench Verified. The Aider oracle-mentioned variant (\texttt{mentioned\_fnames} populated from \texttt{instance.gold\_files}, an upper-bound stress test rather than a baseline) is part of the consolidated rerun; whether Aider-oracle approaches diffctx-EGO recall is the open question.
-    \item \textbf{$(\tau, \beta_{\mathrm{core}})$ post-fix re-calibration: executed.} The hyperparameter calibration in Section~\ref{sec:greedy} predates the seed/selection fixes that produced the v2 numbers. The focused re-calibration over $\tau \in \{0.04, 0.08, 0.12, 0.16, 0.20\} \times \beta_{\mathrm{core}} \in \{0.5, 0.7, 0.9\}$ on the current pipeline (600\,s per-instance timeout; per-cell logs retained) has since been run: the surface remains flat and is cleanly monotone (top-3 within $0.004$; $\beta_{\mathrm{core}}{=}0.5$ dominant in every row; the extended $\tau{=}0.20$ row is uniformly worse), matching the v1 flatness expectation. The validated winner and the regenerated grid table land with the consolidated rerun; the test-set numbers in this section still reflect the v1-calibrated $(\tau{=}0.12, \beta_{\mathrm{core}}{=}0.5)$.
-    \item \textbf{Go out-of-memory class.} 21 of 40 Go instances are killed out-of-memory during graph construction on large vendored-dependency repositories and score recall $0$ under intent-to-treat (Section observations above). The cause---edge materialization reaching tens of millions of candidate edges (p99 $14.3$M, max $28.3$M measured) before the per-source cap---has since been removed by a bit-equivalent two-pass construction with a bounded per-source top-$K$ ($O(n + Kn)$ retained state); the snapshot numbers in this section predate that fix, so the Go ITT row here still measures infrastructure, and the affected instances are recovered in the consolidated rerun.
-    \item \textbf{Promised ablations not yet run.} Two ablations referenced by the methodology are open: objective-level (submodular concept coverage vs.\ modular relevance at matched budgets, Section~\ref{sec:utility}) and stopping (with vs.\ without adaptive stopping at matched budgets, Section~\ref{sec:greedy}). The clean-run flags (\texttt{DIFFCTX\_OBJECTIVE}, \texttt{DIFFCTX\_RELATEDNESS\_BONUS}, \texttt{DIFFCTX\_EGO\_LEXICAL\_EPS}) exist so both can be run without pipeline code changes; stopping is disabled via \texttt{-{}-tau 0} (no dedicated flag). The sweep harness does not yet expose these variables as sweep axes---that is orchestration work for the consolidated rerun, alongside an internal-BM25 cell, a changed-files-only floor baseline, and random/degree-matched scoring floors.
-    \item \textbf{Per-future timeout.} The runner's per-future timeout does not enforce in single-worker mode because \texttt{concurrent.futures.as\_completed} applies a bulk deadline rather than per-call. About 2\% of instances exceed the configured 180\,s; this increases wall-clock but does not corrupt results.
-    \item \textbf{Patch-apply failures were not status-gated at the sweep commit.} At \texttt{7458eced} the eval harness called \texttt{apply\_as\_commit} without checking its return value, so instances whose gold patch failed \texttt{git apply --index} were silently scored against an unrelated diff (the base commit's own history) rather than excluded as the docstring contract specified. Fixed post-snapshot (commit \texttt{7711da24}) to record \texttt{status=apply\_fail} and exclude from metrics, matching \texttt{clone\_fail}. Re-measuring on the same manifests with the fix shows the exposure is small and dataset-driven: $5/500$ ($1.0\%$) on PolyBench-500, $0/500$ on ContextBench Verified and SWE-bench Verified, pooled $\approx 0.33\%$, the same five instances regardless of scoring mode (consistent with a revision-pin issue in those five gold patches, not a scoring-mode effect). Because an unrelated diff rarely overlaps the true gold set, these instances almost certainly already contributed recall $\approx 0$ under the pre-fix code; the bound on the resulting shift in pooled recall is well inside the reported CI half-width ($\pm 0.017$), so the headline numbers are not expected to change materially. A full re-run with the fix is recorded as an open item for the next revision rather than performed retroactively on this snapshot.
+    \item \textbf{Residual non-\texttt{ok} rows.} Pooled \texttt{ok\%} is $97.5\%$. The residue decomposes into: 5 deterministic PolyBench-500 patch-application failures --- verified to be CRLF-encoded repository blobs vs.\ LF-normalized gold patches in the upstream dataset (a whitespace-tolerant apply accepts all five); per-instance $900$\,s timeouts concentrated in the near-dense-graph repository class (the \texttt{mui/material-ui} family, where pre-cap edge emission reaches ${\sim}2\times10^8$); and 4 clone failures. The former OOM-kill class is eliminated by the two-pass bounded edge construction; the timeout class is the remaining engineering target, with per-category emission counters now in telemetry to attribute the blowup to a specific edge-builder family.
+    \item \textbf{Per-future timeout.} The runner's per-future timeout does not enforce in single-worker mode because \texttt{concurrent.futures.as\_completed} applies a bulk deadline rather than per-call. A small fraction of instances exceed the configured deadline; this increases wall-clock but does not corrupt results.
 \end{itemize}
 
 \newpage
@@ -771,9 +826,9 @@ While we provide operational ranges for parameters ($\alpha$, $\tau$, edge weigh
 \newpage
 \section{Conclusion}
 
-We have presented diffctx, a framework for diff-aware code context selection that formulates the problem as budgeted utility maximization over multi-resolution fragments on a typed dependency graph. The deployed system maximizes a monotone submodular concept-coverage objective with lazy-greedy budgeted selection and engineering heuristics, including an adaptive stopping rule that carries an additive loss certificate (Proposition~\ref{prop:stopping}). A pluggable scoring abstraction (EGO, PPR, BM25) allows the same selection algorithm to be instantiated with different relevance signals without changing the optimization machinery; bounded ego-network expansion (EGO) is the deployed default, motivated empirically by the ablation in Section~\ref{sec:prelim-results}. We do not claim a new approximation algorithm; we use known optimization structure to make context selection explicit, analyzable, and extensible.
+We have presented diffctx, a framework for diff-aware code context selection that formulates the problem as budgeted utility maximization over multi-resolution fragments on a typed dependency graph. The deployed system maximizes a monotone submodular concept-coverage objective with lazy-greedy budgeted selection and engineering heuristics, including an adaptive stopping rule that carries an additive loss certificate (Proposition~\ref{prop:stopping}). A pluggable scoring abstraction (EGO, PPR, BM25) allows the same selection algorithm to be instantiated with different relevance signals without changing the optimization machinery; bounded ego-network expansion (EGO) is the deployed default, though the consolidated rerun's ablation (Section~\ref{sec:prelim-results}) shows the three modes trade off along different axes and the graph-lexical mixture is not yet calibrated to dominate its components. We do not claim a new approximation algorithm; we use known optimization structure to make context selection explicit, analyzable, and extensible.
 
-Key contributions: (1) an explicit ``algorithm $\times$ constraint $\times$ guarantee'' map (Table~\ref{tab:algo-constraint-guarantee}) that separates the deployed heuristic from analyzable variants of the framework, with the submodular concept-coverage objective (Section~\ref{sec:utility}) as the deployed default and the modular Boltzmann variant as opt-in; (2) a typed-edge dependency graph with per-category treatment (hub-suppression exemption for semantic, structural, and test edges); (3) empirical results (Section~\ref{sec:prelim-results}) showing pooled file recall $0.833$ [95\% CI $0.816, 0.850$] at $B{=}8000$ on 1500 multi-language instances under the deployed-default EGO scoring mode (per-benchmark recall: SWE-bench Verified $0.913$, PolyBench-500 $0.847$, ContextBench Verified $0.739$), and paired-bootstrap comparisons against two same-budget baselines: against external BM25-over-patch-identifiers, pooled $\Delta = +0.267$ [$+0.245, +0.290$], one-sided Wilcoxon $p < 2.2\times10^{-16}$; against Aider repo-map (fair-input mode), pooled $\Delta = +0.376$ [$+0.348, +0.403$], $p < 2.2\times10^{-16}$ ($n{=}1500$ in both). The Aider budget curve (Table~\ref{tab:aider-budget-curve}) shows that even at $B{=}128{,}000$ pooled Aider recall reaches only $0.719$, below the diffctx-EGO recall of $0.833$ at the $16\times$ smaller $B{=}8000$ budget. We further report a scoring-mode ablation (EGO, PPR, external BM25 reference at $B{=}8000$) showing EGO $\geq$ PPR $>$ BM25 with the two graph modes $\approx$26--27 points above the lexical baseline pooled; and a budget curve $B \in \{0, 8\mathrm{k}, 16\mathrm{k}, 32\mathrm{k}, 64\mathrm{k}, 128\mathrm{k}, -1\}$ showing recall reaches $0.833$ at $B{=}8000$ and saturates by $B{=}128\mathrm{k}$ (heuristic-bounded asymptote $0.855$ at the unbounded token cap $B{=}{-1}$). Conversely, whole-file BM25 packing overtakes EGO beyond ${\sim}32\mathrm{k}$ tokens (Table~\ref{tab:bm25-budget-curve}), scoping the contribution to the tight-budget regime in which context selection is actually hard.
+Key contributions: (1) an explicit ``algorithm $\times$ constraint $\times$ guarantee'' map (Table~\ref{tab:algo-constraint-guarantee}) that separates the deployed heuristic from analyzable variants of the framework, with the submodular concept-coverage objective (Section~\ref{sec:utility}) as the deployed default and the modular Boltzmann variant as opt-in; (2) a typed-edge dependency graph with per-category treatment (hub-suppression exemption for semantic, structural, and test edges); (3) empirical results from the consolidated rerun (Section~\ref{sec:prelim-results}) showing pooled file recall $0.919$ [95\% CI $0.908, 0.929$] at $B{=}8000$ on 1500 multi-language instances under the deployed-default EGO scoring mode (per-benchmark recall: SWE-bench Verified $0.998$, PolyBench-500 $0.942$, ContextBench Verified $0.816$), a within-framework scoring-mode ablation in which no mode dominates (internal BM25 leads headline recall at $0.942$ pooled, PPR leads precision at $0.328$ pooled), and a budget curve $B \in \{0, 8\mathrm{k}, 16\mathrm{k}, 32\mathrm{k}, 64\mathrm{k}, 128\mathrm{k}, -1\}$ showing recall $0.919$ at $B{=}8000$ saturating to a heuristic-bounded asymptote of $0.948$; and (4) a retention/retrieval decomposition of the evaluation metric (Section~\ref{sec:nontrivial}) showing that headline recall is dominated by trivially retaining the diff's own files, that on the genuine-retrieval subset the lexical signal beats the deployed graph-lexical mixture ($0.402$ vs.\ $0.352$ nontrivial recall), and that graph and lexical hits are complementary (oracle union $0.473$) --- localizing the framework's open problem in mixture calibration rather than in either signal. Paired comparisons against external baselines (whole-file BM25 packing, Aider repo-map fair-input and oracle-mentioned) are TBD pending the rerun's remaining cells; the previous snapshot's comparisons favored diffctx by wide margins ($\Delta$ pooled recall $+0.267$ and $+0.376$ respectively) and are expected to be refreshed rather than reversed, but no claim is carried forward until the cells complete.
 
 \subsection{Future Work}
 \label{sec:future-work}
